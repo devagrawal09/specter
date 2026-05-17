@@ -1,198 +1,254 @@
-import { createFileRoute, useRouter } from '@tanstack/solid-router'
+import { createFileRoute, Link, useRouter } from '@tanstack/solid-router'
 import { useServerFn } from '@tanstack/solid-start'
-import { createSignal, For, Show } from 'solid-js'
+import { createMemo, createSignal, For, Show } from 'solid-js'
 
-import { createNote, listNotes } from '../server/notes.functions'
+import {
+  addTodo,
+  changeTodoCompletion,
+  listTodos,
+  removeTodo,
+} from '../features/todos/todos.functions'
+import {
+  parseTodoStatusFilter,
+  type TodoStatusFilter,
+} from '../features/todos/todos.slice'
+
+const filterOptions = [
+  { status: 'all', label: 'All' },
+  { status: 'active', label: 'Active' },
+  { status: 'completed', label: 'Completed' },
+] as const
 
 export const Route = createFileRoute('/')({
-  loader: () => listNotes(),
-  component: App,
+  validateSearch: (search) => ({
+    status: parseTodoStatusFilter(search.status),
+  }),
+  loaderDeps: ({ search }) => ({ status: search.status }),
+  loader: ({ deps }) => listTodos({ data: { status: deps.status } }),
+  component: TodoPage,
 })
 
-function App() {
+function TodoPage() {
   const router = useRouter()
-  const notes = Route.useLoaderData()
-  const createNoteFn = useServerFn(createNote)
+  const search = Route.useSearch()
+  const view = Route.useLoaderData()
+  const addTodoFn = useServerFn(addTodo)
+  const changeTodoCompletionFn = useServerFn(changeTodoCompletion)
+  const removeTodoFn = useServerFn(removeTodo)
   const [title, setTitle] = createSignal('')
-  const [body, setBody] = createSignal('')
-  const [isSaving, setIsSaving] = createSignal(false)
-  const [error, setError] = createSignal('')
+  const [isAdding, setIsAdding] = createSignal(false)
+  const [pendingToggleId, setPendingToggleId] = createSignal('')
+  const [pendingRemoveId, setPendingRemoveId] = createSignal('')
+  const [addError, setAddError] = createSignal('')
+  const [rowError, setRowError] = createSignal<{
+    todoId: string
+    message: string
+  } | null>(null)
+  const normalizedTitle = createMemo(() => title().trim())
+  const emptyMessage = createMemo(() => {
+    if (search().status === 'active') {
+      return 'No active todos.'
+    }
+
+    if (search().status === 'completed') {
+      return 'No completed todos.'
+    }
+
+    return 'No todos yet.'
+  })
+
+  async function refreshTodos() {
+    await router.invalidate()
+  }
+
+  async function submitTodo(event: SubmitEvent) {
+    event.preventDefault()
+    setAddError('')
+    setIsAdding(true)
+
+    try {
+      await addTodoFn({ data: { title: title() } })
+      setTitle('')
+      await refreshTodos()
+    } catch (error) {
+      setAddError(error instanceof Error ? error.message : 'Unable to add todo')
+    } finally {
+      setIsAdding(false)
+    }
+  }
+
+  async function toggleTodo(todoId: string, completed: boolean) {
+    setRowError(null)
+    setPendingToggleId(todoId)
+
+    try {
+      await changeTodoCompletionFn({ data: { todoId, completed } })
+      await refreshTodos()
+    } catch (error) {
+      setRowError({
+        todoId,
+        message:
+          error instanceof Error ? error.message : 'Unable to update todo',
+      })
+    } finally {
+      setPendingToggleId('')
+    }
+  }
+
+  async function deleteTodo(todoId: string) {
+    setRowError(null)
+    setPendingRemoveId(todoId)
+
+    try {
+      await removeTodoFn({ data: { todoId } })
+      await refreshTodos()
+    } catch (error) {
+      setRowError({
+        todoId,
+        message:
+          error instanceof Error ? error.message : 'Unable to remove todo',
+      })
+    } finally {
+      setPendingRemoveId('')
+    }
+  }
 
   return (
-    <main class="page-wrap px-4 pb-8 pt-14">
-      <section class="island-shell rise-in relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14">
-        <div class="pointer-events-none absolute -left-20 -top-24 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(79,184,178,0.32),transparent_66%)]" />
-        <div class="pointer-events-none absolute -bottom-20 -right-20 h-56 w-56 rounded-full bg-[radial-gradient(circle,rgba(47,106,74,0.18),transparent_66%)]" />
-        <p class="island-kicker mb-3">TanStack Start Base Template</p>
-        <h1 class="display-title mb-5 max-w-3xl text-4xl leading-[1.02] font-bold tracking-tight text-[var(--sea-ink)] sm:text-6xl">
-          Start simple, ship quickly.
-        </h1>
-        <p class="mb-8 max-w-2xl text-base text-[var(--sea-ink-soft)] sm:text-lg">
-          This base starter intentionally keeps things light: two routes, clean
-          structure, and the essentials you need to build from scratch.
-        </p>
-        <div class="flex flex-wrap gap-3">
-          <a
-            href="/about"
-            class="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] no-underline transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)]"
-          >
-            About This Starter
-          </a>
-          <a
-            href="https://tanstack.com/router"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="rounded-full border border-[rgba(23,58,64,0.2)] bg-white/50 px-5 py-2.5 text-sm font-semibold text-[var(--sea-ink)] no-underline transition hover:-translate-y-0.5 hover:border-[rgba(23,58,64,0.35)]"
-          >
-            Router Guide
-          </a>
-        </div>
-      </section>
-
-      <section class="island-shell mt-8 rounded-2xl p-6">
-        <div class="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+    <main class="page-wrap px-4 py-10 sm:py-14">
+      <section class="island-shell mx-auto max-w-3xl rounded-2xl p-5 sm:p-6">
+        <header class="flex flex-col gap-4 border-b border-[rgba(23,58,64,0.12)] pb-5 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p class="island-kicker mb-2">SQLite Persistence</p>
-            <h2 class="m-0 text-xl font-semibold text-[var(--sea-ink)]">
-              Notes
-            </h2>
+            <h1 class="m-0 text-2xl font-semibold text-[var(--sea-ink)]">
+              Todos
+            </h1>
+            <p class="mb-0 mt-2 text-sm text-[var(--sea-ink-soft)]">
+              {view().totalCount} total · {view().activeCount} active ·{' '}
+              {view().completedCount} completed
+            </p>
           </div>
-          <p class="m-0 text-sm text-[var(--sea-ink-soft)]">
-            {notes().length} saved
-          </p>
-        </div>
+
+          <nav
+            aria-label="Todo status"
+            class="grid grid-cols-3 rounded-xl border border-[rgba(23,58,64,0.14)] bg-white/55 p-1"
+          >
+            <For each={filterOptions}>
+              {(option) => (
+                <FilterLink
+                  active={search().status === option.status}
+                  label={option.label}
+                  status={option.status}
+                />
+              )}
+            </For>
+          </nav>
+        </header>
 
         <form
-          class="grid gap-3"
-          onSubmit={async (event) => {
-            event.preventDefault()
-            setError('')
-            setIsSaving(true)
-
-            try {
-              await createNoteFn({ data: { title: title(), body: body() } })
-              setTitle('')
-              setBody('')
-              await router.invalidate()
-            } catch (createError) {
-              setError(
-                createError instanceof Error
-                  ? createError.message
-                  : 'Unable to create note',
-              )
-            } finally {
-              setIsSaving(false)
-            }
-          }}
+          class="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]"
+          onSubmit={submitTodo}
         >
-          <label class="grid gap-1 text-sm font-semibold text-[var(--sea-ink)]">
-            Title
-            <input
-              value={title()}
-              onInput={(event) => setTitle(event.currentTarget.value)}
-              class="rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/70 px-3 py-2 text-sm font-normal text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.55)]"
-              required
-            />
+          <label class="sr-only" for="todo-title">
+            Todo title
           </label>
-          <label class="grid gap-1 text-sm font-semibold text-[var(--sea-ink)]">
-            Body
-            <textarea
-              value={body()}
-              onInput={(event) => setBody(event.currentTarget.value)}
-              class="min-h-24 rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/70 px-3 py-2 text-sm font-normal text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.55)]"
-            />
-          </label>
-          <div class="flex flex-wrap items-center gap-3">
-            <button
-              type="submit"
-              disabled={isSaving()}
-              class="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
-            >
-              {isSaving() ? 'Saving...' : 'Create Note'}
-            </button>
-            <Show when={error()}>
-              <p class="m-0 text-sm font-semibold text-red-700">{error()}</p>
-            </Show>
-          </div>
+          <input
+            id="todo-title"
+            value={title()}
+            onInput={(event) => {
+              setTitle(event.currentTarget.value)
+              setAddError('')
+            }}
+            maxlength="120"
+            placeholder="Add a todo"
+            class="h-11 min-w-0 rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/75 px-3 text-sm text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.65)]"
+          />
+          <button
+            type="submit"
+            disabled={isAdding() || !normalizedTitle()}
+            class="h-11 min-w-24 rounded-xl border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.16)] px-5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:bg-[rgba(79,184,178,0.26)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isAdding() ? 'Adding...' : 'Add'}
+          </button>
+          <Show when={addError()}>
+            <p class="m-0 text-sm font-semibold text-red-700 sm:col-span-2">
+              {addError()}
+            </p>
+          </Show>
         </form>
 
-        <div class="mt-6 grid gap-3">
+        <div class="mt-6 grid gap-2">
           <Show
-            when={notes().length > 0}
+            when={view().todos.length > 0}
             fallback={
-              <p class="m-0 text-sm text-[var(--sea-ink-soft)]">
-                No notes yet.
+              <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
+                {emptyMessage()}
               </p>
             }
           >
-            <For each={notes()}>
-              {(note) => (
-                <article class="rounded-2xl border border-[rgba(23,58,64,0.12)] bg-white/55 p-4">
-                  <h3 class="m-0 text-base font-semibold text-[var(--sea-ink)]">
-                    {note.title}
-                  </h3>
-                  <Show when={note.body}>
-                    <p class="mb-0 mt-2 whitespace-pre-wrap text-sm text-[var(--sea-ink-soft)]">
-                      {note.body}
+            <For each={view().todos}>
+              {(todo) => (
+                <article class="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-[rgba(23,58,64,0.12)] bg-white/60 px-3 py-2">
+                  <input
+                    type="checkbox"
+                    checked={todo.completed}
+                    disabled={pendingToggleId() === todo.id}
+                    aria-label={`Mark ${todo.title} ${
+                      todo.completed ? 'active' : 'completed'
+                    }`}
+                    onChange={(event) =>
+                      toggleTodo(todo.id, event.currentTarget.checked)
+                    }
+                    class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
+                  />
+                  <div class="min-w-0">
+                    <p
+                      class="m-0 break-words text-sm font-medium text-[var(--sea-ink)]"
+                      classList={{
+                        'text-[var(--sea-ink-soft)] line-through':
+                          todo.completed,
+                      }}
+                    >
+                      {todo.title}
                     </p>
-                  </Show>
-                  <p class="mb-0 mt-3 text-xs text-[var(--sea-ink-soft)]">
-                    {new Date(note.createdAt).toLocaleString()}
-                  </p>
+                    <Show when={rowError()?.todoId === todo.id}>
+                      <p class="mb-0 mt-1 text-xs font-semibold text-red-700">
+                        {rowError()?.message}
+                      </p>
+                    </Show>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={pendingRemoveId() === todo.id}
+                    onClick={() => deleteTodo(todo.id)}
+                    class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {pendingRemoveId() === todo.id ? 'Removing' : 'Remove'}
+                  </button>
                 </article>
               )}
             </For>
           </Show>
         </div>
       </section>
-
-      <section class="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          [
-            'Type-Safe Routing',
-            'Routes and links stay in sync across every page.',
-          ],
-          [
-            'Server Functions',
-            'Call server code from your UI without creating API boilerplate.',
-          ],
-          [
-            'Streaming by Default',
-            'Ship progressively rendered responses for faster experiences.',
-          ],
-          [
-            'Tailwind Native',
-            'Design quickly with utility-first styling and reusable tokens.',
-          ],
-        ].map(([title, desc], index) => (
-          <article
-            class="island-shell feature-card rise-in rounded-2xl p-5"
-            style={{ 'animation-delay': `${index * 90 + 80}ms` }}
-          >
-            <h2 class="mb-2 text-base font-semibold text-[var(--sea-ink)]">
-              {title}
-            </h2>
-            <p class="m-0 text-sm text-[var(--sea-ink-soft)]">{desc}</p>
-          </article>
-        ))}
-      </section>
-
-      <section class="island-shell mt-8 rounded-2xl p-6">
-        <p class="island-kicker mb-2">Quick Start</p>
-        <ul class="m-0 list-disc space-y-2 pl-5 text-sm text-[var(--sea-ink-soft)]">
-          <li>
-            Edit <code>src/routes/index.tsx</code> to customize the home page.
-          </li>
-          <li>
-            Update <code>src/components/Header.tsx</code> for navigation and
-            product links.
-          </li>
-          <li>
-            Add routes in <code>src/routes</code> and tweak visual tokens in{' '}
-            <code>src/styles.css</code>.
-          </li>
-        </ul>
-      </section>
     </main>
+  )
+}
+
+function FilterLink(props: {
+  active: boolean
+  label: string
+  status: TodoStatusFilter
+}) {
+  return (
+    <Link
+      to="/"
+      search={props.status === 'all' ? {} : { status: props.status }}
+      class="grid h-9 min-w-20 place-items-center rounded-lg px-3 text-sm font-semibold text-[var(--sea-ink-soft)] no-underline transition hover:text-[var(--sea-ink)]"
+      classList={{
+        'bg-white text-[var(--sea-ink)] shadow-[0_1px_4px_rgba(23,58,64,0.12)]':
+          props.active,
+      }}
+    >
+      {props.label}
+    </Link>
   )
 }

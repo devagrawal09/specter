@@ -25,7 +25,8 @@
     "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
     "solid-js": "^1.9.12",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
