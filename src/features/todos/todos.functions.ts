@@ -1,8 +1,6 @@
-import { asc, desc, eq, isNull } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/solid-start'
+import { z } from 'zod'
 
-import { db } from '../../db/client.server'
-import { todoEvents, todos } from '../../db/schema'
 import { addTodoInput, handleAddTodo } from './slices/add-todo/add-todo.slice'
 import {
   changeTodoCompletionInput,
@@ -12,153 +10,54 @@ import {
   handleRemoveTodo,
   removeTodoInput,
 } from './slices/remove-todo/remove-todo.slice'
-import {
-  createTodosView,
-  listTodosInput,
-} from './slices/todos-view/todos-view.slice'
+import { listTodosInput } from './slices/todos-view/todos-view.slice'
 import type { TodoEvent } from './shared/todo-events'
-import type { TodoSnapshot, TodoStatusFilter } from './shared/todo-types'
+import type { TodoSnapshot } from './shared/todo-types'
 
-type TodoRow = typeof todos.$inferSelect
-type TodoStore = Pick<typeof db, 'insert' | 'select' | 'update'>
+export const todoCommandInput = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('addTodo'),
+    payload: addTodoInput,
+  }),
+  z.object({
+    type: z.literal('changeTodoCompletion'),
+    payload: changeTodoCompletionInput,
+  }),
+  z.object({
+    type: z.literal('removeTodo'),
+    payload: removeTodoInput,
+  }),
+])
 
-function rowToSnapshot(row: TodoRow): TodoSnapshot {
-  return {
-    id: row.id,
-    title: row.title,
-    completed: row.completed,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    removedAt: row.removedAt?.toISOString() ?? null,
-  }
-}
+export type TodoCommand = z.infer<typeof todoCommandInput>
 
-function readSnapshots(tx: TodoStore = db) {
-  return tx.select().from(todos).all().map(rowToSnapshot)
-}
-
-function readVisibleSnapshots(status: TodoStatusFilter) {
-  const rows = db
-    .select()
-    .from(todos)
-    .where(isNull(todos.removedAt))
-    .orderBy(asc(todos.completed), desc(todos.createdAt))
-    .all()
-
-  return createTodosView(rows.map(rowToSnapshot), status)
-}
-
-function insertEvents(tx: TodoStore, events: TodoEvent[]) {
-  if (events.length === 0) {
-    return
+export function handleTodoCommand(
+  state: TodoSnapshot[],
+  command: TodoCommand,
+): TodoEvent[] {
+  if (command.type === 'addTodo') {
+    return handleAddTodo(command.payload)
   }
 
-  tx.insert(todoEvents)
-    .values(
-      events.map((event) => ({
-        type: event.type,
-        payload: JSON.stringify(event.payload),
-        createdAt: eventCreatedAt(event),
-      })),
-    )
-    .run()
-}
-
-function eventCreatedAt(event: TodoEvent) {
-  if (event.type === 'todoAdded') {
-    return new Date(event.payload.createdAt)
+  if (command.type === 'changeTodoCompletion') {
+    return handleChangeTodoCompletion(state, command.payload)
   }
 
-  if (event.type === 'todoCompletionChanged') {
-    return new Date(event.payload.updatedAt)
-  }
-
-  return new Date(event.payload.removedAt)
-}
-
-function applyEventsToSnapshots(tx: TodoStore, events: TodoEvent[]) {
-  for (const event of events) {
-    if (event.type === 'todoAdded') {
-      const createdAt = new Date(event.payload.createdAt)
-
-      tx.insert(todos)
-        .values({
-          id: event.payload.todoId,
-          title: event.payload.title,
-          completed: false,
-          createdAt,
-          updatedAt: createdAt,
-          removedAt: null,
-        })
-        .run()
-    }
-
-    if (event.type === 'todoCompletionChanged') {
-      tx.update(todos)
-        .set({
-          completed: event.payload.completed,
-          updatedAt: new Date(event.payload.updatedAt),
-        })
-        .where(eq(todos.id, event.payload.todoId))
-        .run()
-    }
-
-    if (event.type === 'todoRemoved') {
-      const removedAt = new Date(event.payload.removedAt)
-
-      tx.update(todos)
-        .set({ updatedAt: removedAt, removedAt })
-        .where(eq(todos.id, event.payload.todoId))
-        .run()
-    }
-  }
-}
-
-function persistCommand(events: TodoEvent[]) {
-  db.transaction((tx) => {
-    insertEvents(tx, events)
-    applyEventsToSnapshots(tx, events)
-  })
+  return handleRemoveTodo(state, command.payload)
 }
 
 export const listTodos = createServerFn({ method: 'GET' })
   .inputValidator(listTodosInput)
-  .handler(async ({ data }) => readVisibleSnapshots(data.status))
-
-export const addTodo = createServerFn({ method: 'POST' })
-  .inputValidator(addTodoInput)
   .handler(async ({ data }) => {
-    const events = handleAddTodo(data)
+    const { readVisibleSnapshots } = await import('./todos.persistence.server')
 
-    persistCommand(events)
-
-    return readVisibleSnapshots('all')
+    return readVisibleSnapshots(data.status)
   })
 
-export const changeTodoCompletion = createServerFn({ method: 'POST' })
-  .inputValidator(changeTodoCompletionInput)
+export const dispatchTodoCommand = createServerFn({ method: 'POST' })
+  .inputValidator(todoCommandInput)
   .handler(async ({ data }) => {
-    db.transaction((tx) => {
-      const currentState = readSnapshots(tx)
-      const commandEvents = handleChangeTodoCompletion(currentState, data)
+    const { persistTodoCommand } = await import('./todos.persistence.server')
 
-      insertEvents(tx, commandEvents)
-      applyEventsToSnapshots(tx, commandEvents)
-    })
-
-    return readVisibleSnapshots('all')
-  })
-
-export const removeTodo = createServerFn({ method: 'POST' })
-  .inputValidator(removeTodoInput)
-  .handler(async ({ data }) => {
-    db.transaction((tx) => {
-      const currentState = readSnapshots(tx)
-      const events = handleRemoveTodo(currentState, data)
-
-      insertEvents(tx, events)
-      applyEventsToSnapshots(tx, events)
-    })
-
-    return readVisibleSnapshots('all')
+    return persistTodoCommand(data)
   })

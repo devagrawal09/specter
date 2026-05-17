@@ -3,10 +3,8 @@ import { useServerFn } from '@tanstack/solid-start'
 import { createMemo, createSignal, For, Show } from 'solid-js'
 
 import {
-  addTodo,
-  changeTodoCompletion,
+  dispatchTodoCommand,
   listTodos,
-  removeTodo,
 } from '../features/todos/todos.functions'
 import {
   parseTodoStatusFilter,
@@ -32,9 +30,7 @@ function TodoPage() {
   const router = useRouter()
   const search = Route.useSearch()
   const view = Route.useLoaderData()
-  const addTodoFn = useServerFn(addTodo)
-  const changeTodoCompletionFn = useServerFn(changeTodoCompletion)
-  const removeTodoFn = useServerFn(removeTodo)
+  const dispatchTodoCommandFn = useServerFn(dispatchTodoCommand)
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createSignal(false)
   const [pendingToggleId, setPendingToggleId] = createSignal('')
@@ -67,7 +63,9 @@ function TodoPage() {
     setIsAdding(true)
 
     try {
-      await addTodoFn({ data: { title: title() } })
+      await dispatchTodoCommandFn({
+        data: { type: 'addTodo', payload: { title: title() } },
+      })
       setTitle('')
       await refreshTodos()
     } catch (error) {
@@ -82,7 +80,12 @@ function TodoPage() {
     setPendingToggleId(todoId)
 
     try {
-      await changeTodoCompletionFn({ data: { todoId, completed } })
+      await dispatchTodoCommandFn({
+        data: {
+          type: 'changeTodoCompletion',
+          payload: { todoId, completed },
+        },
+      })
       await refreshTodos()
     } catch (error) {
       setRowError({
@@ -100,7 +103,9 @@ function TodoPage() {
     setPendingRemoveId(todoId)
 
     try {
-      await removeTodoFn({ data: { todoId } })
+      await dispatchTodoCommandFn({
+        data: { type: 'removeTodo', payload: { todoId } },
+      })
       await refreshTodos()
     } catch (error) {
       setRowError({
@@ -241,7 +246,7 @@ function FilterLink(props: {
   return (
     <Link
       to="/"
-      search={props.status === 'all' ? {} : { status: props.status }}
+      search={{ status: props.status }}
       class="grid h-9 min-w-20 place-items-center rounded-lg px-3 text-sm font-semibold text-[var(--sea-ink-soft)] no-underline transition hover:text-[var(--sea-ink)]"
       classList={{
         'bg-white text-[var(--sea-ink)] shadow-[0_1px_4px_rgba(23,58,64,0.12)]':

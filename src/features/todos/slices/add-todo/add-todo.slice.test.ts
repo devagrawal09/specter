@@ -3,13 +3,15 @@ import { describe, expect, it } from 'vitest'
 import { firstDate } from '../../shared/todo-test-events'
 import { handleAddTodo } from './add-todo.slice'
 
+const todoId = '00000000-0000-4000-8000-000000000001'
+
 describe('add todo command slice', () => {
   it('emits a todoAdded event', () => {
-    expect(handleAddTodo({ title: 'Ship it' }, firstDate, 'todo-1')).toEqual([
+    expect(handleAddTodo({ title: 'Ship it' }, firstDate, todoId)).toEqual([
       {
         type: 'todoAdded',
         payload: {
-          todoId: 'todo-1',
+          todoId,
           title: 'Ship it',
           createdAt: firstDate.toISOString(),
         },
@@ -18,7 +20,11 @@ describe('add todo command slice', () => {
   })
 
   it('trims added titles', () => {
-    const [event] = handleAddTodo({ title: '  Ship it  ' }, firstDate, 'todo-1')
+    const [event] = handleAddTodo({ title: '  Ship it  ' }, firstDate, todoId)
+
+    if (event.type !== 'todoAdded') {
+      throw new Error(`Expected todoAdded event, received ${event.type}`)
+    }
 
     expect(event.payload.title).toBe('Ship it')
   })
