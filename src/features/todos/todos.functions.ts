@@ -1,18 +1,15 @@
 import { createServerFn } from '@tanstack/solid-start'
 import { z } from 'zod'
 
-import { addTodoInput, handleAddTodo } from './slices/add-todo/add-todo.slice'
+import { addTodoInput, handleAddTodo } from './slices/add-todo/slice'
 import {
   changeTodoCompletionInput,
-  handleChangeTodoCompletion,
-} from './slices/change-todo-completion/change-todo-completion.slice'
-import {
-  handleRemoveTodo,
-  removeTodoInput,
-} from './slices/remove-todo/remove-todo.slice'
-import { listTodosInput } from './slices/todos-view/todos-view.slice'
+  decideChangeTodoCompletion,
+} from './slices/change-todo-completion/slice'
+import { decideRemoveTodo, removeTodoInput } from './slices/remove-todo/slice'
+import { listTodosInput } from './slices/todos-view/slice'
 import type { TodoEvent } from './shared/todo-events'
-import type { TodoSnapshot } from './shared/todo-types'
+import type { TodoStore } from './shared/todo-persistence-types'
 
 export const todoCommandInput = z.discriminatedUnion('type', [
   z.object({
@@ -31,8 +28,8 @@ export const todoCommandInput = z.discriminatedUnion('type', [
 
 export type TodoCommand = z.infer<typeof todoCommandInput>
 
-export function handleTodoCommand(
-  state: TodoSnapshot[],
+export function decideTodoCommand(
+  tx: TodoStore,
   command: TodoCommand,
 ): TodoEvent[] {
   if (command.type === 'addTodo') {
@@ -40,10 +37,10 @@ export function handleTodoCommand(
   }
 
   if (command.type === 'changeTodoCompletion') {
-    return handleChangeTodoCompletion(state, command.payload)
+    return decideChangeTodoCompletion(tx, command.payload)
   }
 
-  return handleRemoveTodo(state, command.payload)
+  return decideRemoveTodo(tx, command.payload)
 }
 
 export const listTodos = createServerFn({ method: 'GET' })

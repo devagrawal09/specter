@@ -1,5 +1,7 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
+import { createTestDb, storedEvent } from '../../shared/test-db'
 import {
   todoAdded,
   todoCompleted,
@@ -8,7 +10,8 @@ import {
   secondDate,
   thirdDate,
 } from '../../shared/todo-test-events'
-import { projectTodos } from './todos-view.slice'
+import { applyTodosViewEvents, projectTodos } from './slice'
+import { todoListItems } from './schema'
 
 describe('todos view projection slice', () => {
   it('projects an empty view', () => {
@@ -72,5 +75,31 @@ describe('todos view projection slice', () => {
     expect(
       projectTodos(events, 'completed').todos.map((todo) => todo.id),
     ).toEqual(['todo-2'])
+  })
+
+  it('applies stored events to its list item table', () => {
+    const { db, sqlite } = createTestDb()
+
+    applyTodosViewEvents(db, [
+      storedEvent(todoAdded('todo-1', 'Ship it', firstDate), 1),
+      storedEvent(todoCompleted('todo-1', secondDate), 2),
+      storedEvent(todoRemoved('todo-1', thirdDate), 3),
+    ])
+
+    const row = db
+      .select()
+      .from(todoListItems)
+      .where(eq(todoListItems.id, 'todo-1'))
+      .get()
+
+    expect(row).toMatchObject({
+      id: 'todo-1',
+      title: 'Ship it',
+      completed: true,
+      lastAppliedEventId: 3,
+    })
+    expect(row?.removedAt?.toISOString()).toBe(thirdDate.toISOString())
+
+    sqlite.close()
   })
 })

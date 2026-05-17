@@ -1,55 +1,77 @@
-import { asc, desc, eq, isNull } from 'drizzle-orm'
+import { asc, desc, isNull } from 'drizzle-orm'
 
 import { db } from '../../db/client.server'
-import { todoEvents, todos } from '../../db/schema'
+import { todoEvents, todoListItems } from '../../db/schema'
 import type { TodoEvent } from './shared/todo-events'
-import type { TodoSnapshot, TodoStatusFilter } from './shared/todo-types'
-import { createTodosView } from './slices/todos-view/todos-view.slice'
-import { handleTodoCommand, type TodoCommand } from './todos.functions'
+import type {
+  StoredTodoEvent,
+  TodoStore,
+} from './shared/todo-persistence-types'
+import type { TodoStatusFilter } from './shared/todo-types'
+import { applyChangeTodoCompletionEvents } from './slices/change-todo-completion/slice'
+import { applyRemoveTodoEvents } from './slices/remove-todo/slice'
+import { createTodosView } from './slices/todos-view/slice'
+import { applyTodosViewEvents } from './slices/todos-view/slice'
+import { decideTodoCommand, type TodoCommand } from './todos.functions'
 
-type TodoRow = typeof todos.$inferSelect
-type TodoStore = Pick<typeof db, 'insert' | 'select' | 'update'>
+export function readVisibleSnapshotsFromStore(
+  tx: TodoStore,
+  status: TodoStatusFilter,
+) {
+  const rows = tx
+    .select()
+    .from(todoListItems)
+    .where(isNull(todoListItems.removedAt))
+    .orderBy(asc(todoListItems.completed), desc(todoListItems.createdAt))
+    .all()
 
-function rowToSnapshot(row: TodoRow): TodoSnapshot {
-  return {
-    id: row.id,
-    title: row.title,
-    completed: row.completed,
-    createdAt: row.createdAt.toISOString(),
-    updatedAt: row.updatedAt.toISOString(),
-    removedAt: row.removedAt?.toISOString() ?? null,
-  }
-}
-
-function readSnapshots(tx: TodoStore = db) {
-  return tx.select().from(todos).all().map(rowToSnapshot)
+  return createTodosView(
+    rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      completed: row.completed,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      removedAt: row.removedAt?.toISOString() ?? null,
+    })),
+    status,
+  )
 }
 
 export function readVisibleSnapshots(status: TodoStatusFilter) {
-  const rows = db
-    .select()
-    .from(todos)
-    .where(isNull(todos.removedAt))
-    .orderBy(asc(todos.completed), desc(todos.createdAt))
-    .all()
-
-  return createTodosView(rows.map(rowToSnapshot), status)
+  return readVisibleSnapshotsFromStore(db, status)
 }
 
-function insertEvents(tx: TodoStore, events: TodoEvent[]) {
+function insertEvents(tx: TodoStore, events: TodoEvent[]): StoredTodoEvent[] {
   if (events.length === 0) {
-    return
+    return []
   }
 
-  tx.insert(todoEvents)
-    .values(
-      events.map((event) => ({
+  const storedEvents: StoredTodoEvent[] = []
+
+  for (const event of events) {
+    const row = tx
+      .insert(todoEvents)
+      .values({
         type: event.type,
         payload: JSON.stringify(event.payload),
         createdAt: eventCreatedAt(event),
-      })),
-    )
-    .run()
+      })
+      .returning({
+        id: todoEvents.id,
+        type: todoEvents.type,
+        payload: todoEvents.payload,
+      })
+      .get()
+
+    if (!row) {
+      throw new Error('Failed to persist todo event')
+    }
+
+    storedEvents.push(parseStoredTodoEvent(row))
+  }
+
+  return storedEvents
 }
 
 function eventCreatedAt(event: TodoEvent) {
@@ -64,55 +86,69 @@ function eventCreatedAt(event: TodoEvent) {
   return new Date(event.payload.removedAt)
 }
 
-function applyEventsToSnapshots(tx: TodoStore, events: TodoEvent[]) {
-  for (const event of events) {
-    if (event.type === 'todoAdded') {
-      const createdAt = new Date(event.payload.createdAt)
+function parseStoredTodoEvent(row: {
+  id: number
+  type: string
+  payload: string
+}): StoredTodoEvent {
+  const payload: unknown = JSON.parse(row.payload)
 
-      tx.insert(todos)
-        .values({
-          id: event.payload.todoId,
-          title: event.payload.title,
-          completed: false,
-          createdAt,
-          updatedAt: createdAt,
-          removedAt: null,
-        })
-        .run()
-    }
-
-    if (event.type === 'todoCompletionChanged') {
-      tx.update(todos)
-        .set({
-          completed: event.payload.completed,
-          updatedAt: new Date(event.payload.updatedAt),
-        })
-        .where(eq(todos.id, event.payload.todoId))
-        .run()
-    }
-
-    if (event.type === 'todoRemoved') {
-      const removedAt = new Date(event.payload.removedAt)
-
-      tx.update(todos)
-        .set({ updatedAt: removedAt, removedAt })
-        .where(eq(todos.id, event.payload.todoId))
-        .run()
+  if (row.type === 'todoAdded') {
+    return {
+      id: row.id,
+      type: row.type,
+      payload: payload as Extract<TodoEvent, { type: 'todoAdded' }>['payload'],
     }
   }
+
+  if (row.type === 'todoCompletionChanged') {
+    return {
+      id: row.id,
+      type: row.type,
+      payload: payload as Extract<
+        TodoEvent,
+        { type: 'todoCompletionChanged' }
+      >['payload'],
+    }
+  }
+
+  if (row.type === 'todoRemoved') {
+    return {
+      id: row.id,
+      type: row.type,
+      payload: payload as Extract<
+        TodoEvent,
+        { type: 'todoRemoved' }
+      >['payload'],
+    }
+  }
+
+  throw new Error(`Unsupported todo event type: ${row.type}`)
+}
+
+function applyEventsToSlices(tx: TodoStore, events: StoredTodoEvent[]) {
+  applyChangeTodoCompletionEvents(tx, events)
+  applyRemoveTodoEvents(tx, events)
+  applyTodosViewEvents(tx, events)
 }
 
 export function persistTodoCommand(command: TodoCommand) {
   let events: TodoEvent[] = []
 
   db.transaction((tx) => {
-    const currentState = readSnapshots(tx)
-
-    events = handleTodoCommand(currentState, command)
-
-    insertEvents(tx, events)
-    applyEventsToSnapshots(tx, events)
+    events = persistTodoCommandInTransaction(tx, command)
   })
+
+  return events
+}
+
+export function persistTodoCommandInTransaction(
+  tx: TodoStore,
+  command: TodoCommand,
+) {
+  const events = decideTodoCommand(tx, command)
+  const storedEvents = insertEvents(tx, events)
+  applyEventsToSlices(tx, storedEvents)
 
   return events
 }

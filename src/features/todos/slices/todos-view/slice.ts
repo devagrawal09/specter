@@ -1,12 +1,18 @@
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import type { TodoEvent } from '../../shared/todo-events'
+import type {
+  StoredTodoEvent,
+  TodoStore,
+} from '../../shared/todo-persistence-types'
 import type {
   TodoSnapshot,
   TodoStatusFilter,
   TodosView,
 } from '../../shared/todo-types'
 import { parseTodoStatusFilter } from '../../shared/todo-types'
+import { todoListItems } from './schema'
 
 export const listTodosInput = z.object({
   status: z
@@ -101,5 +107,49 @@ export function createTodosView(
     activeCount,
     completedCount,
     totalCount: visibleTodos.length,
+  }
+}
+
+export function applyTodosViewEvents(tx: TodoStore, events: StoredTodoEvent[]) {
+  for (const event of events) {
+    if (event.type === 'todoAdded') {
+      const createdAt = new Date(event.payload.createdAt)
+
+      tx.insert(todoListItems)
+        .values({
+          id: event.payload.todoId,
+          title: event.payload.title,
+          completed: false,
+          createdAt,
+          updatedAt: createdAt,
+          removedAt: null,
+          lastAppliedEventId: event.id,
+        })
+        .run()
+    }
+
+    if (event.type === 'todoCompletionChanged') {
+      tx.update(todoListItems)
+        .set({
+          completed: event.payload.completed,
+          updatedAt: new Date(event.payload.updatedAt),
+          lastAppliedEventId: event.id,
+        })
+        .where(eq(todoListItems.id, event.payload.todoId))
+        .run()
+    }
+
+    if (event.type === 'todoRemoved') {
+      const removedAt = new Date(event.payload.removedAt)
+
+      tx.update(todoListItems)
+        .set({
+          updatedAt: removedAt,
+          removedAt,
+          lastAppliedEventId: event.id,
+        })
+        .where(eq(todoListItems.id, event.payload.todoId))
+        .run()
+    }
   }
 }

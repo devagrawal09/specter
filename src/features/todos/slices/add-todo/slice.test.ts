@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { firstDate } from '../../shared/todo-test-events'
-import { handleAddTodo } from './add-todo.slice'
+import { handleAddTodo } from './slice'
 
 const todoId = '00000000-0000-4000-8000-000000000001'
 
