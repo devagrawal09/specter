@@ -11,7 +11,7 @@ import {
 import {
   parseTodoStatusFilter,
   type TodoStatusFilter,
-} from '../features/todos/todos.slice'
+} from '../features/todos/shared/todo-types'
 
 const filterOptions = [
   { status: 'all', label: 'All' },

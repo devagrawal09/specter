@@ -4,16 +4,16 @@ import { z } from 'zod'
 
 import { db } from '../../db/client.server'
 import { todoEvents, todos } from '../../db/schema'
+import { handleAddTodo } from './slices/add-todo/add-todo.slice'
+import { handleChangeTodoCompletion } from './slices/change-todo-completion/change-todo-completion.slice'
+import { handleRemoveTodo } from './slices/remove-todo/remove-todo.slice'
+import { createTodosView } from './slices/todos-view/todos-view.slice'
+import type { TodoEvent } from './shared/todo-events'
 import {
-  createTodosView,
-  handleAddTodo,
-  handleChangeTodoCompletion,
-  handleRemoveTodo,
   parseTodoStatusFilter,
-  type TodoEvent,
   type TodoSnapshot,
   type TodoStatusFilter,
-} from './todos.slice'
+} from './shared/todo-types'
 
 type TodoRow = typeof todos.$inferSelect
 
