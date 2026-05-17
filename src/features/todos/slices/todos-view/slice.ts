@@ -17,10 +17,6 @@ export const todosViewQueryInput = z.object({
 
 export type TodoStatusFilter = z.infer<typeof todoStatusFilterInput>
 
-export function parseTodosViewSearch(search: Record<string, unknown>) {
-  return todosViewQueryInput.parse(search)
-}
-
 export const todoListItems = sqliteTable('todo_list_items', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),

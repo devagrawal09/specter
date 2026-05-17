@@ -1,12 +1,14 @@
 import { createFileRoute } from '@tanstack/solid-router'
 import { createSignal } from 'solid-js'
 
-import { TodoCheersView } from '../features/todos/slices/todo-cheers/TodoCheersView'
-import { TodosView } from '../features/todos/slices/todos-view/TodosView'
-import { parseTodosViewSearch } from '../features/todos/slices/todos-view/slice'
+import { todoCheersSliceRegistration } from '../features/todos/slices/todo-cheers/slice'
+import { todosViewSliceRegistration } from '../features/todos/slices/todos-view/slice'
+
+const TodosView = todosViewSliceRegistration.component
+const TodoCheersView = todoCheersSliceRegistration.component
 
 export const Route = createFileRoute('/')({
-  validateSearch: parseTodosViewSearch,
+  validateSearch: (search) => todosViewSliceRegistration.schema.parse(search),
   component: TodosIndexRoute,
 })
 

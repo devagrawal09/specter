@@ -1,154 +1,93 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
-import { applyEvents, decideCommand } from '../../registry'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../../shared'
-import { createTestDb } from '../../shared/test-db'
+import { commandScenario, projectionScenario } from '../../shared/test-scenario'
 import { todoCompletionStates } from './slice'
 
-describe('change todo completion command slice', () => {
-  it('emits a completion changed event from its own state table', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(
-      [
-        {
-          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          id: 'event-1',
-        },
-      ],
-      db,
+describe('completing todos', () => {
+  commandScenario(
+    'given a saved todo, when it is completed, then it is marked complete',
+  )
+    .given(todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }))
+    .when({
+      type: 'changeTodoCompletion',
+      payload: { todoId: 'todo-1', completed: true },
+    })
+    .expect((result) =>
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: expect.any(String),
+          type: 'todoCompletionChanged',
+          payload: { todoId: 'todo-1', completed: true },
+        }),
+      ]),
     )
 
-    expect(
-      decideCommand(
-        {
-          type: 'changeTodoCompletion',
-          payload: { todoId: 'todo-1', completed: true },
-        },
-        db,
-      ),
-    ).toEqual([
-      expect.objectContaining({
-        id: expect.any(String),
-        type: 'todoCompletionChanged',
-        payload: {
-          todoId: 'todo-1',
-          completed: true,
-        },
+  commandScenario(
+    'given a completed todo, when it is completed again, then nothing changes',
+  )
+    .given(
+      todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-1',
+        completed: true,
       }),
-    ])
-
-    sqlite.close()
-  })
-
-  it('does not emit for same-state completion', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(
-      [
-        {
-          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          id: 'event-1',
-        },
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-1',
-            completed: true,
-          }),
-          id: 'event-2',
-        },
-      ],
-      db,
     )
+    .when({
+      type: 'changeTodoCompletion',
+      payload: { todoId: 'todo-1', completed: true },
+    })
+    .expect((result) => expect(result).toEqual([]))
 
-    expect(
-      decideCommand(
-        {
-          type: 'changeTodoCompletion',
-          payload: { todoId: 'todo-1', completed: true },
-        },
-        db,
-      ),
-    ).toEqual([])
+  commandScenario(
+    'given no matching todo, when a todo is completed, then the change is rejected',
+  )
+    .given()
+    .when({
+      type: 'changeTodoCompletion',
+      payload: { todoId: 'missing', completed: true },
+    })
+    .throws('Todo not found')
 
-    sqlite.close()
-  })
-
-  it('rejects completing a missing todo', () => {
-    const { db, sqlite } = createTestDb()
-
-    expect(() =>
-      decideCommand(
-        {
-          type: 'changeTodoCompletion',
-          payload: { todoId: 'missing', completed: true },
-        },
-        db,
-      ),
-    ).toThrow('Todo not found')
-
-    sqlite.close()
-  })
-
-  it('rejects completing a removed todo', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(
-      [
-        {
-          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          id: 'event-1',
-        },
-        { ...todoRemovedEvent.create({ todoId: 'todo-1' }), id: 'event-2' },
-      ],
-      db,
+  commandScenario(
+    'given a removed todo, when it is completed, then the change is rejected',
+  )
+    .given(
+      todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+      todoRemovedEvent.create({ todoId: 'todo-1' }),
     )
+    .when({
+      type: 'changeTodoCompletion',
+      payload: { todoId: 'todo-1', completed: true },
+    })
+    .throws('Todo not found')
 
-    expect(() =>
-      decideCommand(
-        {
-          type: 'changeTodoCompletion',
-          payload: { todoId: 'todo-1', completed: true },
-        },
-        db,
-      ),
-    ).toThrow('Todo not found')
-
-    sqlite.close()
-  })
-
-  it('applies completion state changes from stored events', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(
-      [
-        {
-          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          id: 'event-1',
-        },
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-1',
-            completed: true,
-          }),
-          id: 'event-2',
-        },
-      ],
-      db,
+  projectionScenario(
+    'given a todo was completed before, when completion is read later, then it is still complete',
+  )
+    .given(
+      todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-1',
+        completed: true,
+      }),
     )
-
-    expect(
+    .when(({ db }) =>
       db
         .select()
         .from(todoCompletionStates)
         .where(eq(todoCompletionStates.todoId, 'todo-1'))
         .get(),
-    ).toMatchObject({
-      todoId: 'todo-1',
-      completed: true,
-    })
-
-    sqlite.close()
-  })
+    )
+    .expect((row) =>
+      expect(row).toMatchObject({
+        todoId: 'todo-1',
+        completed: true,
+      }),
+    )
 })

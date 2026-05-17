@@ -1,134 +1,98 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
-import { applyEvents, decideCommand } from '../../registry'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../../shared'
-import { createTestDb } from '../../shared/test-db'
+import { commandScenario, projectionScenario } from '../../shared/test-scenario'
 import { createTodoCheerTodoStates } from './slice'
 
-function applyCompletedTodos(
-  count: number,
-  db: ReturnType<typeof createTestDb>['db'],
-) {
-  applyEvents(
-    Array.from({ length: count }, (_, index) => {
-      const todoId = `todo-${index + 1}`
+function completedTodoEvents(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const todoId = `todo-${index + 1}`
 
-      return [
-        {
-          ...todoAddedEvent.create({ todoId, title: todoId }),
-          id: `event-${index * 2 + 1}`,
-        },
-        {
-          ...todoCompletionChangedEvent.create({ todoId, completed: true }),
-          id: `event-${index * 2 + 2}`,
-        },
-      ]
-    }).flat(),
-    db,
-  )
+    return [
+      todoAddedEvent.create({ todoId, title: todoId }),
+      todoCompletionChangedEvent.create({ todoId, completed: true }),
+    ]
+  }).flat()
 }
 
-describe('create todo cheer command slice', () => {
-  it('rejects milestones that are not multiples of five', () => {
-    const { db, sqlite } = createTestDb()
+describe('celebrating completed todos', () => {
+  commandScenario(
+    'given a milestone that is not a multiple of five, when a cheer is requested, then the milestone is rejected',
+  )
+    .given()
+    .when({ type: 'createTodoCheer', payload: { milestone: 4 } })
+    .throws('Todo cheer milestone must be a multiple of 5')
 
-    expect(() =>
-      decideCommand({ type: 'createTodoCheer', payload: { milestone: 4 } }, db),
-    ).toThrow('Todo cheer milestone must be a multiple of 5')
-    sqlite.close()
-  })
+  commandScenario(
+    'given fewer completed todos than the milestone, when a cheer is requested, then the milestone is rejected',
+  )
+    .given(...completedTodoEvents(4))
+    .when({ type: 'createTodoCheer', payload: { milestone: 5 } })
+    .throws('Todo cheer milestone has not been reached')
 
-  it('rejects milestones above the current completed count', () => {
-    const { db, sqlite } = createTestDb()
-    applyCompletedTodos(4, db)
+  commandScenario(
+    'given a milestone already has a cheer, when a cheer is requested again, then it is rejected',
+  )
+    .given(
+      ...completedTodoEvents(5),
+      todoCheerCreatedEvent.create({
+        milestone: 5,
+        message: 'Nice work: 5 todos completed.',
+      }),
+    )
+    .when({ type: 'createTodoCheer', payload: { milestone: 5 } })
+    .throws('Todo cheer milestone already exists')
 
-    expect(() =>
-      decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
-    ).toThrow('Todo cheer milestone has not been reached')
-    sqlite.close()
-  })
-
-  it('rejects milestones that already have a cheer', () => {
-    const { db, sqlite } = createTestDb()
-    applyCompletedTodos(5, db)
-    applyEvents(
-      [
-        {
-          ...todoCheerCreatedEvent.create({
+  commandScenario(
+    'given five completed todos, when a cheer is requested, then a cheer is created for that milestone',
+  )
+    .given(...completedTodoEvents(5))
+    .when({ type: 'createTodoCheer', payload: { milestone: 5 } })
+    .expect((result) =>
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: expect.any(String),
+          type: 'todoCheerCreated',
+          payload: {
             milestone: 5,
             message: 'Nice work: 5 todos completed.',
-          }),
-          id: 'event-11',
-        },
-      ],
-      db,
+          },
+        }),
+      ]),
     )
 
-    expect(() =>
-      decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
-    ).toThrow('Todo cheer milestone already exists')
-    sqlite.close()
-  })
-
-  it('creates a server-generated cheer event for a reached milestone', () => {
-    const { db, sqlite } = createTestDb()
-    applyCompletedTodos(5, db)
-
-    expect(
-      decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
-    ).toEqual([
-      expect.objectContaining({
-        id: expect.any(String),
-        type: 'todoCheerCreated',
-        payload: {
-          milestone: 5,
-          message: 'Nice work: 5 todos completed.',
-        },
+  projectionScenario(
+    'given a todo was completed before, when cheer progress is read later, then the todo still counts as complete',
+  )
+    .given(...completedTodoEvents(1))
+    .when(({ db }) =>
+      db
+        .select()
+        .from(createTodoCheerTodoStates)
+        .where(eq(createTodoCheerTodoStates.todoId, 'todo-1'))
+        .get(),
+    )
+    .expect((row) =>
+      expect(row).toMatchObject({
+        todoId: 'todo-1',
+        completed: true,
+        removed: false,
       }),
-    ])
-    sqlite.close()
-  })
-
-  it('applies completion state to its own read model', () => {
-    const { db, sqlite } = createTestDb()
-    applyCompletedTodos(1, db)
-
-    const row = db
-      .select()
-      .from(createTodoCheerTodoStates)
-      .where(eq(createTodoCheerTodoStates.todoId, 'todo-1'))
-      .get()
-
-    expect(row).toMatchObject({
-      todoId: 'todo-1',
-      completed: true,
-      removed: false,
-    })
-    sqlite.close()
-  })
-
-  it('ignores removed todos when validating a reached milestone', () => {
-    const { db, sqlite } = createTestDb()
-    applyCompletedTodos(5, db)
-    applyEvents(
-      [
-        {
-          ...todoRemovedEvent.create({ todoId: 'todo-5' }),
-          id: 'event-11',
-        },
-      ],
-      db,
     )
 
-    expect(() =>
-      decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
-    ).toThrow('Todo cheer milestone has not been reached')
-    sqlite.close()
-  })
+  commandScenario(
+    'given one of five completed todos was removed, when a cheer is requested, then the milestone is not reached',
+  )
+    .given(
+      ...completedTodoEvents(5),
+      todoRemovedEvent.create({ todoId: 'todo-5' }),
+    )
+    .when({ type: 'createTodoCheer', payload: { milestone: 5 } })
+    .throws('Todo cheer milestone has not been reached')
 })

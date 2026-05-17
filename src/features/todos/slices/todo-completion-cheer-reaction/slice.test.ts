@@ -1,7 +1,6 @@
 import { eq } from 'drizzle-orm'
-import { describe, expect, it } from 'vitest'
+import { describe, expect } from 'vitest'
 
-import { applyEvents } from '../../registry'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -9,7 +8,10 @@ import {
   todoRemovedEvent,
   type Event,
 } from '../../shared'
-import { createTestDb } from '../../shared/test-db'
+import {
+  projectionScenario,
+  reactionScenario,
+} from '../../shared/test-scenario'
 import {
   todoCompletionCheerReactionSliceRegistration,
   todoCompletionCheerTodoStates,
@@ -20,144 +22,94 @@ function completedTodoEvents(count: number): Event[] {
     const todoId = `todo-${index + 1}`
 
     return [
-      {
-        ...todoAddedEvent.create({ todoId, title: todoId }),
-        id: `event-${index * 2 + 1}`,
-      },
-      {
-        ...todoCompletionChangedEvent.create({ todoId, completed: true }),
-        id: `event-${index * 2 + 2}`,
-      },
+      todoAddedEvent.create({ todoId, title: todoId }),
+      todoCompletionChangedEvent.create({ todoId, completed: true }),
     ]
   }).flat()
 }
 
-describe('todo completion cheer reaction slice', () => {
-  it('emits no command before the fifth completed todo', () => {
-    const { db, sqlite } = createTestDb()
-    const events = completedTodoEvents(4)
-    const lastEvent = events.at(-1)
-    applyEvents(events, db)
+describe('requesting cheers for completed todos', () => {
+  reactionScenario(
+    'given four completed todos, when the latest completion is observed, then no cheer is requested',
+  )
+    .given(...completedTodoEvents(4))
+    .whenLastGivenEvent(todoCompletionCheerReactionSliceRegistration)
+    .expect((result) => expect(result).toEqual([]))
 
-    if (!lastEvent) {
-      throw new Error('Expected completed todo events')
-    }
-
-    expect(
-      todoCompletionCheerReactionSliceRegistration.react(lastEvent, db),
-    ).toEqual([])
-    sqlite.close()
-  })
-
-  it('emits a cheer command on the fifth completed todo', () => {
-    const { db, sqlite } = createTestDb()
-    const events = completedTodoEvents(5)
-    const lastEvent = events.at(-1)
-    applyEvents(events, db)
-
-    if (!lastEvent) {
-      throw new Error('Expected completed todo events')
-    }
-
-    expect(
-      todoCompletionCheerReactionSliceRegistration.react(lastEvent, db),
-    ).toEqual([{ type: 'createTodoCheer', payload: { milestone: 5 } }])
-    sqlite.close()
-  })
-
-  it('applies completion state to its own read model', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(completedTodoEvents(1), db)
-
-    const row = db
-      .select()
-      .from(todoCompletionCheerTodoStates)
-      .where(eq(todoCompletionCheerTodoStates.todoId, 'todo-1'))
-      .get()
-
-    expect(row).toMatchObject({
-      todoId: 'todo-1',
-      completed: true,
-      removed: false,
-    })
-    sqlite.close()
-  })
-
-  it('does not emit the same milestone after dropping below and reaching it again', () => {
-    const { db, sqlite } = createTestDb()
-    const events = completedTodoEvents(5)
-    applyEvents(
-      [
-        ...events,
-        {
-          ...todoCheerCreatedEvent.create({
-            milestone: 5,
-            message: 'Nice work: 5 todos completed.',
-          }),
-          id: 'event-11',
-        },
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-5',
-            completed: false,
-          }),
-          id: 'event-12',
-        },
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-5',
-            completed: true,
-          }),
-          id: 'event-13',
-        },
-      ],
-      db,
+  reactionScenario(
+    'given five completed todos, when the latest completion is observed, then a cheer is requested',
+  )
+    .given(...completedTodoEvents(5))
+    .whenLastGivenEvent(todoCompletionCheerReactionSliceRegistration)
+    .expect((result) =>
+      expect(result).toEqual([
+        { type: 'createTodoCheer', payload: { milestone: 5 } },
+      ]),
     )
 
-    expect(
-      todoCompletionCheerReactionSliceRegistration.react(
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-5',
-            completed: true,
-          }),
-          id: 'event-13',
-        },
-        db,
-      ),
-    ).toEqual([])
-    sqlite.close()
-  })
-
-  it('keeps existing cheer state when completed todos are removed', () => {
-    const { db, sqlite } = createTestDb()
-    applyEvents(
-      [
-        ...completedTodoEvents(5),
-        {
-          ...todoCheerCreatedEvent.create({
-            milestone: 5,
-            message: 'Nice work: 5 todos completed.',
-          }),
-          id: 'event-11',
-        },
-        { ...todoRemovedEvent.create({ todoId: 'todo-5' }), id: 'event-12' },
-      ],
-      db,
+  projectionScenario(
+    'given a todo was completed before, when cheer progress is read later, then the todo still counts as complete',
+  )
+    .given(...completedTodoEvents(1))
+    .when(({ db }) =>
+      db
+        .select()
+        .from(todoCompletionCheerTodoStates)
+        .where(eq(todoCompletionCheerTodoStates.todoId, 'todo-1'))
+        .get(),
+    )
+    .expect((row) =>
+      expect(row).toMatchObject({
+        todoId: 'todo-1',
+        completed: true,
+        removed: false,
+      }),
     )
 
-    expect(
-      todoCompletionCheerReactionSliceRegistration.react(
-        {
-          ...todoCompletionChangedEvent.create({
-            todoId: 'todo-4',
-            completed: true,
-          }),
-          id: 'event-13',
-        },
-        db,
-      ),
-    ).toEqual([])
-    sqlite.close()
-  })
+  reactionScenario(
+    'given a milestone was already celebrated, when the count drops and reaches it again, then no duplicate cheer is requested',
+  )
+    .given(
+      ...completedTodoEvents(5),
+      todoCheerCreatedEvent.create({
+        milestone: 5,
+        message: 'Nice work: 5 todos completed.',
+      }),
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-5',
+        completed: false,
+      }),
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-5',
+        completed: true,
+      }),
+    )
+    .when(
+      todoCompletionCheerReactionSliceRegistration,
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-5',
+        completed: true,
+      }),
+    )
+    .expect((result) => expect(result).toEqual([]))
+
+  reactionScenario(
+    'given a milestone was already celebrated, when completed todos are removed, then no duplicate cheer is requested',
+  )
+    .given(
+      ...completedTodoEvents(5),
+      todoCheerCreatedEvent.create({
+        milestone: 5,
+        message: 'Nice work: 5 todos completed.',
+      }),
+      todoRemovedEvent.create({ todoId: 'todo-5' }),
+    )
+    .when(
+      todoCompletionCheerReactionSliceRegistration,
+      todoCompletionChangedEvent.create({
+        todoId: 'todo-4',
+        completed: true,
+      }),
+    )
+    .expect((result) => expect(result).toEqual([]))
 })
