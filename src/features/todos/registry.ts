@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { StoredEvent, Event, StoreTx } from './shared'
+import type { Event, StoreTx } from './shared'
 import { events as todoEvents } from './shared'
 export {
   createCommandSlice,
@@ -99,10 +99,10 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
         continue
       }
 
-      const storedEvents = persistEvents(events, tx)
-      applyEvents(storedEvents, tx)
+      const persistedEvents = persistEvents(events, tx)
+      applyEvents(persistedEvents, tx)
 
-      for (const event of storedEvents) {
+      for (const event of persistedEvents) {
         for (const reaction of reactionRegistrations) {
           const reactionCommands = reaction.react(event, tx)
 
@@ -119,7 +119,7 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
   return producedEvents
 }
 
-export function applyEvents(events: StoredEvent[], tx: StoreTx) {
+export function applyEvents(events: Event[], tx: StoreTx) {
   for (const event of events) {
     for (const slice of sliceRegistrations) {
       if ('apply' in slice && slice.apply) {
@@ -129,33 +129,18 @@ export function applyEvents(events: StoredEvent[], tx: StoreTx) {
   }
 }
 
-function persistEvents(events: Event[], tx: StoreTx): StoredEvent[] {
+function persistEvents(events: Event[], tx: StoreTx): Event[] {
   return events.map((event) => {
-    const row = tx
-      .insert(todoEvents)
+    tx.insert(todoEvents)
       .values({
+        id: event.id,
         type: event.type,
         payload: JSON.stringify(event.payload),
         createdAt: new Date(),
       })
-      .returning({
-        id: todoEvents.id,
-        type: todoEvents.type,
-        payload: todoEvents.payload,
-      })
-      .get()
+      .run()
 
-    if (!row) {
-      throw new Error('Failed to persist todo event')
-    }
-
-    const payload: unknown = JSON.parse(row.payload)
-
-    return {
-      id: row.id,
-      type: row.type,
-      payload,
-    } as StoredEvent
+    return event
   })
 }
 

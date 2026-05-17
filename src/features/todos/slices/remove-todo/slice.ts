@@ -7,7 +7,7 @@ import { todoAddedEvent, todoRemovedEvent } from '../../shared'
 export const todoRemovalStates = sqliteTable('todo_removal_states', {
   todoId: text('todo_id').primaryKey(),
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  lastAppliedEventId: integer('last_applied_event_id').notNull(),
+  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export const removeTodoSliceRegistration = createCommandSlice('removeTodo')

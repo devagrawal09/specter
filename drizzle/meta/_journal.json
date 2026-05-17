@@ -29,6 +29,13 @@
       "when": 1778999684616,
       "tag": "0003_illegal_red_skull",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1779000000000,
+      "tag": "0004_uuid_event_ids",
+      "breakpoints": true
     }
   ]
 }

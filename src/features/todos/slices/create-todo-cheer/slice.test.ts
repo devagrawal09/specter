@@ -6,7 +6,7 @@ import {
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
 } from '../../shared'
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { createTestDb } from '../../shared/test-db'
 
 function applyCompletedTodos(
   count: number,
@@ -17,14 +17,14 @@ function applyCompletedTodos(
       const todoId = `todo-${index + 1}`
 
       return [
-        storedEvent(
-          todoAddedEvent.create({ todoId, title: todoId }),
-          index * 2 + 1,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({ todoId, completed: true }),
-          index * 2 + 2,
-        ),
+        {
+          ...todoAddedEvent.create({ todoId, title: todoId }),
+          id: `event-${index * 2 + 1}`,
+        },
+        {
+          ...todoCompletionChangedEvent.create({ todoId, completed: true }),
+          id: `event-${index * 2 + 2}`,
+        },
       ]
     }).flat(),
     db,
@@ -56,13 +56,13 @@ describe('create todo cheer command slice', () => {
     applyCompletedTodos(5, db)
     applyEvents(
       [
-        storedEvent(
-          todoCheerCreatedEvent.create({
+        {
+          ...todoCheerCreatedEvent.create({
             milestone: 5,
             message: 'Nice work: 5 todos completed.',
           }),
-          11,
-        ),
+          id: 'event-11',
+        },
       ],
       db,
     )
@@ -80,13 +80,14 @@ describe('create todo cheer command slice', () => {
     expect(
       decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
     ).toEqual([
-      {
+      expect.objectContaining({
+        id: expect.any(String),
         type: 'todoCheerCreated',
         payload: {
           milestone: 5,
           message: 'Nice work: 5 todos completed.',
         },
-      },
+      }),
     ])
     sqlite.close()
   })

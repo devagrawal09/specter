@@ -7,7 +7,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../../shared'
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { createTestDb } from '../../shared/test-db'
 import { todoListItems, todosViewQueryInput } from './slice'
 
 describe('todos view projection slice', () => {
@@ -16,18 +16,18 @@ describe('todos view projection slice', () => {
 
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-1',
             completed: true,
           }),
-          2,
-        ),
-        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 3),
+          id: 'event-2',
+        },
+        { ...todoRemovedEvent.create({ todoId: 'todo-1' }), id: 'event-3' },
       ],
       db,
     )
@@ -42,7 +42,7 @@ describe('todos view projection slice', () => {
       id: 'todo-1',
       title: 'Ship it',
       completed: true,
-      lastAppliedEventId: 3,
+      lastAppliedEventId: 'event-3',
     })
     expect(row?.removed).toBe(true)
 

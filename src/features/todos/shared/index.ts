@@ -3,18 +3,19 @@ import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { z } from 'zod'
 
 export const events = sqliteTable('events', {
-  id: integer('id').primaryKey({ autoIncrement: true }),
+  id: text('id').primaryKey(),
   type: text('type').notNull(),
   payload: text('payload').notNull(),
   createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
 })
 
 type EventFor<TType extends string, TPayload> = {
+  id: string
   type: TType
   payload: TPayload
 }
 
-type UnknownEvent = { type: string; payload: unknown }
+type UnknownEvent = { id: string; type: string; payload: unknown }
 
 export type StoreTx = Pick<
   // biome-ignore lint/suspicious/noExplicitAny: explicit any
@@ -34,6 +35,7 @@ export function createEventSpec<
     schema,
     create(payload: Payload): TypedEvent {
       return {
+        id: crypto.randomUUID(),
         type,
         payload: schema.parse(payload),
       }
@@ -82,7 +84,3 @@ export type Event =
   | ReturnType<typeof todoCompletionChangedEvent.create>
   | ReturnType<typeof todoRemovedEvent.create>
   | ReturnType<typeof todoCheerCreatedEvent.create>
-
-export type StoredEvent = Event & {
-  id: number
-}

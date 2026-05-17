@@ -9,7 +9,7 @@ export const todoCheersQueryInput = z.object({})
 export const todoCheers = sqliteTable('todo_cheers', {
   milestone: integer('milestone').primaryKey(),
   message: text('message').notNull(),
-  lastAppliedEventId: integer('last_applied_event_id').notNull(),
+  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export type TodoCheer = typeof todoCheers.$inferSelect

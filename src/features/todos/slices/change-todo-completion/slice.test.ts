@@ -7,7 +7,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../../shared'
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { createTestDb } from '../../shared/test-db'
 import { todoCompletionStates } from './slice'
 
 describe('change todo completion command slice', () => {
@@ -15,10 +15,10 @@ describe('change todo completion command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
       ],
       db,
     )
@@ -32,13 +32,14 @@ describe('change todo completion command slice', () => {
         db,
       ),
     ).toEqual([
-      {
+      expect.objectContaining({
+        id: expect.any(String),
         type: 'todoCompletionChanged',
         payload: {
           todoId: 'todo-1',
           completed: true,
         },
-      },
+      }),
     ])
 
     sqlite.close()
@@ -48,17 +49,17 @@ describe('change todo completion command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-1',
             completed: true,
           }),
-          2,
-        ),
+          id: 'event-2',
+        },
       ],
       db,
     )
@@ -96,11 +97,11 @@ describe('change todo completion command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 2),
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        { ...todoRemovedEvent.create({ todoId: 'todo-1' }), id: 'event-2' },
       ],
       db,
     )
@@ -122,17 +123,17 @@ describe('change todo completion command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-1',
             completed: true,
           }),
-          2,
-        ),
+          id: 'event-2',
+        },
       ],
       db,
     )
@@ -146,7 +147,7 @@ describe('change todo completion command slice', () => {
     ).toMatchObject({
       todoId: 'todo-1',
       completed: true,
-      lastAppliedEventId: 2,
+      lastAppliedEventId: 'event-2',
     })
 
     sqlite.close()

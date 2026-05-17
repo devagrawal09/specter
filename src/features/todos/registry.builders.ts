@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js'
 import type { z } from 'zod'
 
-import type { StoredEvent, Event, StoreTx } from './shared'
+import type { Event, StoreTx } from './shared'
 
 export type CommandEnvelope<
   TType extends string = string,
@@ -19,7 +19,7 @@ export type CommandRegistration<
   type: TType
   schema: TSchema
   decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[]
-  apply?: (event: StoredEvent, tx: StoreTx) => void
+  apply?: (event: Event, tx: StoreTx) => void
 }
 
 export type ProjectionRegistration<
@@ -30,15 +30,15 @@ export type ProjectionRegistration<
   kind: 'projection'
   name: TName
   schema: TSchema
-  apply: (event: StoredEvent, tx: StoreTx) => void
+  apply: (event: Event, tx: StoreTx) => void
   component: TComponent
 }
 
 export type ReactionRegistration<TName extends string = string> = {
   kind: 'reaction'
   name: TName
-  apply?: (event: StoredEvent, tx: StoreTx) => void
-  react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[]
+  apply?: (event: Event, tx: StoreTx) => void
+  react: (event: Event, tx: StoreTx) => CommandEnvelope[]
 }
 
 export type SliceRegistration =
@@ -60,7 +60,7 @@ export type CommandSliceDecideStep<
     decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
   ) => CommandRegistration<TType, TSchema>
   apply: (
-    apply: (event: StoredEvent, tx: StoreTx) => void,
+    apply: (event: Event, tx: StoreTx) => void,
   ) => CommandSliceApplyStep<TType, TSchema>
 }
 
@@ -84,7 +84,7 @@ export type ProjectionSliceApplyStep<
   TSchema extends z.ZodType,
 > = {
   apply: (
-    apply: (event: StoredEvent, tx: StoreTx) => void,
+    apply: (event: Event, tx: StoreTx) => void,
   ) => ProjectionSliceComponentStep<TName, TSchema>
 }
 
@@ -99,16 +99,16 @@ export type ProjectionSliceComponentStep<
 
 export type ReactionSliceReactStep<TName extends string> = {
   react: (
-    react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[],
+    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
   ) => ReactionRegistration<TName>
   apply: (
-    apply: (event: StoredEvent, tx: StoreTx) => void,
+    apply: (event: Event, tx: StoreTx) => void,
   ) => ReactionSliceApplyStep<TName>
 }
 
 export type ReactionSliceApplyStep<TName extends string> = {
   react: (
-    react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[],
+    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
   ) => ReactionRegistration<TName>
 }
 

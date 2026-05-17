@@ -1,5 +1,5 @@
 import { and, eq } from 'drizzle-orm'
-import { integer, sqliteTable } from 'drizzle-orm/sqlite-core'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { createReactionSlice } from '../../registry.builders'
 import { todoCheerCreatedEvent, todoCompletionChangedEvent } from '../../shared'
 import { todoCompletionStates } from '../change-todo-completion/slice'
@@ -8,7 +8,7 @@ export const todoCheerMilestoneStates = sqliteTable(
   'todo_cheer_milestone_states',
   {
     milestone: integer('milestone').primaryKey(),
-    lastAppliedEventId: integer('last_applied_event_id').notNull(),
+    lastAppliedEventId: text('last_applied_event_id').notNull(),
   },
 )
 

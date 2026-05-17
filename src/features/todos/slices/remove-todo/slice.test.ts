@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import { applyEvents, decideCommand } from '../../registry'
 import { todoAddedEvent, todoRemovedEvent } from '../../shared'
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { createTestDb } from '../../shared/test-db'
 import { todoRemovalStates } from './slice'
 
 describe('remove todo command slice', () => {
@@ -11,10 +11,10 @@ describe('remove todo command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
       ],
       db,
     )
@@ -28,10 +28,11 @@ describe('remove todo command slice', () => {
         db,
       ),
     ).toEqual([
-      {
+      expect.objectContaining({
+        id: expect.any(String),
         type: 'todoRemoved',
         payload: { todoId: 'todo-1' },
-      },
+      }),
     ])
 
     sqlite.close()
@@ -57,11 +58,11 @@ describe('remove todo command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 2),
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        { ...todoRemovedEvent.create({ todoId: 'todo-1' }), id: 'event-2' },
       ],
       db,
     )
@@ -83,11 +84,11 @@ describe('remove todo command slice', () => {
     const { db, sqlite } = createTestDb()
     applyEvents(
       [
-        storedEvent(
-          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
-          1,
-        ),
-        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 2),
+        {
+          ...todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          id: 'event-1',
+        },
+        { ...todoRemovedEvent.create({ todoId: 'todo-1' }), id: 'event-2' },
       ],
       db,
     )
@@ -99,7 +100,7 @@ describe('remove todo command slice', () => {
       .get()
 
     expect(row?.removed).toBe(true)
-    expect(row?.lastAppliedEventId).toBe(2)
+    expect(row?.lastAppliedEventId).toBe('event-2')
 
     sqlite.close()
   })

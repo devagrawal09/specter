@@ -26,7 +26,7 @@ export const todoListItems = sqliteTable('todo_list_items', {
   title: text('title').notNull(),
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
   removed: integer('removed', { mode: 'boolean' }).default(false),
-  lastAppliedEventId: integer('last_applied_event_id').notNull(),
+  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export const todosViewSliceRegistration = createProjectionSlice('todosView')

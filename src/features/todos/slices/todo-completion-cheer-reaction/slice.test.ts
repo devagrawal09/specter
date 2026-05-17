@@ -6,24 +6,24 @@ import {
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-  type StoredEvent,
+  type Event,
 } from '../../shared'
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { createTestDb } from '../../shared/test-db'
 import { todoCompletionCheerReactionSliceRegistration } from './slice'
 
-function completedTodoEvents(count: number): StoredEvent[] {
+function completedTodoEvents(count: number): Event[] {
   return Array.from({ length: count }, (_, index) => {
     const todoId = `todo-${index + 1}`
 
     return [
-      storedEvent(
-        todoAddedEvent.create({ todoId, title: todoId }),
-        index * 2 + 1,
-      ),
-      storedEvent(
-        todoCompletionChangedEvent.create({ todoId, completed: true }),
-        index * 2 + 2,
-      ),
+      {
+        ...todoAddedEvent.create({ todoId, title: todoId }),
+        id: `event-${index * 2 + 1}`,
+      },
+      {
+        ...todoCompletionChangedEvent.create({ todoId, completed: true }),
+        id: `event-${index * 2 + 2}`,
+      },
     ]
   }).flat()
 }
@@ -67,40 +67,40 @@ describe('todo completion cheer reaction slice', () => {
     applyEvents(
       [
         ...events,
-        storedEvent(
-          todoCheerCreatedEvent.create({
+        {
+          ...todoCheerCreatedEvent.create({
             milestone: 5,
             message: 'Nice work: 5 todos completed.',
           }),
-          11,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({
+          id: 'event-11',
+        },
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-5',
             completed: false,
           }),
-          12,
-        ),
-        storedEvent(
-          todoCompletionChangedEvent.create({
+          id: 'event-12',
+        },
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-5',
             completed: true,
           }),
-          13,
-        ),
+          id: 'event-13',
+        },
       ],
       db,
     )
 
     expect(
       todoCompletionCheerReactionSliceRegistration.react(
-        storedEvent(
-          todoCompletionChangedEvent.create({
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-5',
             completed: true,
           }),
-          13,
-        ),
+          id: 'event-13',
+        },
         db,
       ),
     ).toEqual([])
@@ -112,27 +112,27 @@ describe('todo completion cheer reaction slice', () => {
     applyEvents(
       [
         ...completedTodoEvents(5),
-        storedEvent(
-          todoCheerCreatedEvent.create({
+        {
+          ...todoCheerCreatedEvent.create({
             milestone: 5,
             message: 'Nice work: 5 todos completed.',
           }),
-          11,
-        ),
-        storedEvent(todoRemovedEvent.create({ todoId: 'todo-5' }), 12),
+          id: 'event-11',
+        },
+        { ...todoRemovedEvent.create({ todoId: 'todo-5' }), id: 'event-12' },
       ],
       db,
     )
 
     expect(
       todoCompletionCheerReactionSliceRegistration.react(
-        storedEvent(
-          todoCompletionChangedEvent.create({
+        {
+          ...todoCompletionChangedEvent.create({
             todoId: 'todo-4',
             completed: true,
           }),
-          13,
-        ),
+          id: 'event-13',
+        },
         db,
       ),
     ).toEqual([])
