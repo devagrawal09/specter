@@ -1,41 +1,27 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import {
-  firstDate,
-  secondDate,
-  thirdDate,
-  todoAdded,
-  todoCompleted,
-  todoRemoved,
-} from '../../shared/todo-test-events'
+import { applyEvents, decideCommand } from '../../registry'
+import { todoAdded, todoCompleted, todoRemoved } from '../../shared'
 import { createTestDb, storedEvent } from '../../shared/test-db'
-import {
-  applyChangeTodoCompletionEvents,
-  decideChangeTodoCompletion,
-} from './slice'
 import { todoCompletionStates } from './schema'
 
 describe('change todo completion command slice', () => {
   it('emits a completion changed event from its own state table', () => {
     const { db, sqlite } = createTestDb()
-    applyChangeTodoCompletionEvents(db, [
-      storedEvent(todoAdded('todo-1', 'Ship it'), 1),
-    ])
+    applyEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
 
     expect(
-      decideChangeTodoCompletion(
-        db,
-        { todoId: 'todo-1', completed: true },
-        secondDate,
-      ),
+      decideCommand(db, {
+        type: 'changeTodoCompletion',
+        payload: { todoId: 'todo-1', completed: true },
+      }),
     ).toEqual([
       {
         type: 'todoCompletionChanged',
         payload: {
           todoId: 'todo-1',
           completed: true,
-          updatedAt: secondDate.toISOString(),
         },
       },
     ])
@@ -45,15 +31,15 @@ describe('change todo completion command slice', () => {
 
   it('does not emit for same-state completion', () => {
     const { db, sqlite } = createTestDb()
-    applyChangeTodoCompletionEvents(db, [
+    applyEvents(db, [
       storedEvent(todoAdded('todo-1', 'Ship it'), 1),
       storedEvent(todoCompleted('todo-1'), 2),
     ])
 
     expect(
-      decideChangeTodoCompletion(db, {
-        todoId: 'todo-1',
-        completed: true,
+      decideCommand(db, {
+        type: 'changeTodoCompletion',
+        payload: { todoId: 'todo-1', completed: true },
       }),
     ).toEqual([])
 
@@ -64,9 +50,9 @@ describe('change todo completion command slice', () => {
     const { db, sqlite } = createTestDb()
 
     expect(() =>
-      decideChangeTodoCompletion(db, {
-        todoId: 'missing',
-        completed: true,
+      decideCommand(db, {
+        type: 'changeTodoCompletion',
+        payload: { todoId: 'missing', completed: true },
       }),
     ).toThrow('Todo not found')
 
@@ -75,15 +61,15 @@ describe('change todo completion command slice', () => {
 
   it('rejects completing a removed todo', () => {
     const { db, sqlite } = createTestDb()
-    applyChangeTodoCompletionEvents(db, [
+    applyEvents(db, [
       storedEvent(todoAdded('todo-1', 'Ship it'), 1),
-      storedEvent(todoRemoved('todo-1', thirdDate), 2),
+      storedEvent(todoRemoved('todo-1'), 2),
     ])
 
     expect(() =>
-      decideChangeTodoCompletion(db, {
-        todoId: 'todo-1',
-        completed: true,
+      decideCommand(db, {
+        type: 'changeTodoCompletion',
+        payload: { todoId: 'todo-1', completed: true },
       }),
     ).toThrow('Todo not found')
 
@@ -92,9 +78,9 @@ describe('change todo completion command slice', () => {
 
   it('applies completion state changes from stored events', () => {
     const { db, sqlite } = createTestDb()
-    applyChangeTodoCompletionEvents(db, [
-      storedEvent(todoAdded('todo-1', 'Ship it', firstDate), 1),
-      storedEvent(todoCompleted('todo-1', secondDate), 2),
+    applyEvents(db, [
+      storedEvent(todoAdded('todo-1', 'Ship it'), 1),
+      storedEvent(todoCompleted('todo-1'), 2),
     ])
 
     expect(

@@ -1,16 +1,16 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { createTestDb, storedEvent } from '../../shared/test-db'
+import { applyEvents } from '../../registry'
 import { todoAdded, todoCompleted, todoRemoved } from '../../shared'
-import { mutateTodoListItemsFromEvents } from './slice'
-import { todoListItems } from './slice'
+import { createTestDb, storedEvent } from '../../shared/test-db'
+import { todoListItems, todosViewQueryInput } from './model'
 
 describe('todos view projection slice', () => {
   it('applies stored events to its list item table', () => {
     const { db, sqlite } = createTestDb()
 
-    mutateTodoListItemsFromEvents(db, [
+    applyEvents(db, [
       storedEvent(todoAdded('todo-1', 'Ship it'), 1),
       storedEvent(todoCompleted('todo-1'), 2),
       storedEvent(todoRemoved('todo-1'), 3),
@@ -31,5 +31,15 @@ describe('todos view projection slice', () => {
     expect(row?.removed).toBe(true)
 
     sqlite.close()
+  })
+
+  it('parses query statuses', () => {
+    expect(todosViewQueryInput.parse({ status: 'active' })).toEqual({
+      status: 'active',
+    })
+    expect(todosViewQueryInput.parse({ status: 'wat' })).toEqual({
+      status: 'all',
+    })
+    expect(todosViewQueryInput.parse({})).toEqual({ status: 'all' })
   })
 })

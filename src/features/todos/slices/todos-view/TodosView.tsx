@@ -1,9 +1,14 @@
 import { Link, useSearch } from '@tanstack/solid-router'
-import { useServerFn } from '@tanstack/solid-start'
+import { createServerFn, useServerFn } from '@tanstack/solid-start'
+import { and, eq } from 'drizzle-orm'
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js'
-
-import type { TodoStatusFilter } from '../../shared/todo-types'
-import { dispatchTodoCommand, listTodos } from '../../todos.functions'
+import { db } from '../../../../db/client.server'
+import { dispatchCommand } from '../../command'
+import {
+  todoListItems,
+  todosViewQueryInput,
+  type TodoStatusFilter,
+} from './model'
 
 const filterOptions = [
   { status: 'all', label: 'All' },
@@ -11,11 +16,36 @@ const filterOptions = [
   { status: 'completed', label: 'Completed' },
 ] as const
 
+const listTodos = createServerFn()
+  .inputValidator(todosViewQueryInput)
+  .handler(async ({ data }) => {
+    const visiblePredicate = eq(todoListItems.removed, false)
+
+    const activePredicate = and(
+      visiblePredicate,
+      eq(todoListItems.completed, false),
+    )
+
+    const completedPredicate = and(
+      visiblePredicate,
+      eq(todoListItems.completed, true),
+    )
+
+    const statusPredicate =
+      data.status === 'active'
+        ? activePredicate
+        : data.status === 'completed'
+          ? completedPredicate
+          : visiblePredicate
+
+    return db.select().from(todoListItems).where(statusPredicate).all()
+  })
+
 export function TodosView() {
   const search = useSearch({ from: '/' })
   const listTodosFn = useServerFn(listTodos)
-  const dispatchTodoCommandFn = useServerFn(dispatchTodoCommand)
-  const [view, { refetch }] = createResource(
+  const dispatchCommandFn = useServerFn(dispatchCommand)
+  const [todos, { refetch }] = createResource(
     () => search().status,
     (status) => listTodosFn({ data: { status } }),
   )
@@ -51,7 +81,7 @@ export function TodosView() {
     setIsAdding(true)
 
     try {
-      await dispatchTodoCommandFn({
+      await dispatchCommandFn({
         data: { type: 'addTodo', payload: { title: title() } },
       })
       setTitle('')
@@ -68,7 +98,7 @@ export function TodosView() {
     setPendingToggleId(todoId)
 
     try {
-      await dispatchTodoCommandFn({
+      await dispatchCommandFn({
         data: {
           type: 'changeTodoCompletion',
           payload: { todoId, completed },
@@ -91,7 +121,7 @@ export function TodosView() {
     setPendingRemoveId(todoId)
 
     try {
-      await dispatchTodoCommandFn({
+      await dispatchCommandFn({
         data: { type: 'removeTodo', payload: { todoId } },
       })
       await refreshTodos()
@@ -110,131 +140,140 @@ export function TodosView() {
     <main class="page-wrap px-4 py-10 sm:py-14">
       <section class="island-shell mx-auto max-w-3xl rounded-2xl p-5 sm:p-6">
         <Show
-          when={view()}
+          when={todos()}
           fallback={
             <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
               Loading todos...
             </p>
           }
         >
-          {(todosView) => (
-            <>
-              <header class="flex flex-col gap-4 border-b border-[rgba(23,58,64,0.12)] pb-5 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <h1 class="m-0 text-2xl font-semibold text-[var(--sea-ink)]">
-                    Todos
-                  </h1>
-                  <p class="mb-0 mt-2 text-sm text-[var(--sea-ink-soft)]">
-                    {todosView().totalCount} total · {todosView().activeCount}{' '}
-                    active · {todosView().completedCount} completed
-                  </p>
-                </div>
-
-                <nav
-                  aria-label="Todo status"
-                  class="grid grid-cols-3 rounded-xl border border-[rgba(23,58,64,0.14)] bg-white/55 p-1"
-                >
-                  <For each={filterOptions}>
-                    {(option) => (
-                      <FilterLink
-                        active={search().status === option.status}
-                        label={option.label}
-                        status={option.status}
-                      />
-                    )}
-                  </For>
-                </nav>
-              </header>
-
-              <form
-                class="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]"
-                onSubmit={submitTodo}
-              >
-                <label class="sr-only" for="todo-title">
-                  Todo title
-                </label>
-                <input
-                  id="todo-title"
-                  value={title()}
-                  onInput={(event) => {
-                    setTitle(event.currentTarget.value)
-                    setAddError('')
-                  }}
-                  maxlength="120"
-                  placeholder="Add a todo"
-                  class="h-11 min-w-0 rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/75 px-3 text-sm text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.65)]"
-                />
-                <button
-                  type="submit"
-                  disabled={isAdding() || !normalizedTitle()}
-                  class="h-11 min-w-24 rounded-xl border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.16)] px-5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:bg-[rgba(79,184,178,0.26)] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {isAdding() ? 'Adding...' : 'Add'}
-                </button>
-                <Show when={addError()}>
-                  <p class="m-0 text-sm font-semibold text-red-700 sm:col-span-2">
-                    {addError()}
-                  </p>
-                </Show>
-              </form>
-
-              <div class="mt-6 grid gap-2">
-                <Show
-                  when={todosView().todos.length > 0}
-                  fallback={
-                    <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
-                      {emptyMessage()}
+          {(todosView) => {
+            const totalCount = createMemo(() => todosView().length)
+            const activeCount = createMemo(
+              () => todosView().filter((todo) => !todo.completed).length,
+            )
+            const completedCount = createMemo(
+              () => todosView().filter((todo) => todo.completed).length,
+            )
+            return (
+              <>
+                <header class="flex flex-col gap-4 border-b border-[rgba(23,58,64,0.12)] pb-5 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h1 class="m-0 text-2xl font-semibold text-[var(--sea-ink)]">
+                      Todos
+                    </h1>
+                    <p class="mb-0 mt-2 text-sm text-[var(--sea-ink-soft)]">
+                      {totalCount()} total · {activeCount()} active ·{' '}
+                      {completedCount()} completed
                     </p>
-                  }
-                >
-                  <For each={todosView().todos}>
-                    {(todo) => (
-                      <article class="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-[rgba(23,58,64,0.12)] bg-white/60 px-3 py-2">
-                        <input
-                          type="checkbox"
-                          checked={todo.completed}
-                          disabled={pendingToggleId() === todo.id}
-                          aria-label={`Mark ${todo.title} ${
-                            todo.completed ? 'active' : 'completed'
-                          }`}
-                          onChange={(event) =>
-                            toggleTodo(todo.id, event.currentTarget.checked)
-                          }
-                          class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
+                  </div>
+
+                  <nav
+                    aria-label="Todo status"
+                    class="grid grid-cols-3 rounded-xl border border-[rgba(23,58,64,0.14)] bg-white/55 p-1"
+                  >
+                    <For each={filterOptions}>
+                      {(option) => (
+                        <FilterLink
+                          active={search().status === option.status}
+                          label={option.label}
+                          status={option.status}
                         />
-                        <div class="min-w-0">
-                          <p
-                            class="m-0 break-words text-sm font-medium text-[var(--sea-ink)]"
-                            classList={{
-                              'text-[var(--sea-ink-soft)] line-through':
-                                todo.completed,
-                            }}
-                          >
-                            {todo.title}
-                          </p>
-                          <Show when={rowError()?.todoId === todo.id}>
-                            <p class="mb-0 mt-1 text-xs font-semibold text-red-700">
-                              {rowError()?.message}
+                      )}
+                    </For>
+                  </nav>
+                </header>
+
+                <form
+                  class="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]"
+                  onSubmit={submitTodo}
+                >
+                  <label class="sr-only" for="todo-title">
+                    Todo title
+                  </label>
+                  <input
+                    id="todo-title"
+                    value={title()}
+                    onInput={(event) => {
+                      setTitle(event.currentTarget.value)
+                      setAddError('')
+                    }}
+                    maxlength="120"
+                    placeholder="Add a todo"
+                    class="h-11 min-w-0 rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/75 px-3 text-sm text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.65)]"
+                  />
+                  <button
+                    type="submit"
+                    disabled={isAdding() || !normalizedTitle()}
+                    class="h-11 min-w-24 rounded-xl border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.16)] px-5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:bg-[rgba(79,184,178,0.26)] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isAdding() ? 'Adding...' : 'Add'}
+                  </button>
+                  <Show when={addError()}>
+                    <p class="m-0 text-sm font-semibold text-red-700 sm:col-span-2">
+                      {addError()}
+                    </p>
+                  </Show>
+                </form>
+
+                <div class="mt-6 grid gap-2">
+                  <Show
+                    when={totalCount() > 0}
+                    fallback={
+                      <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
+                        {emptyMessage()}
+                      </p>
+                    }
+                  >
+                    <For each={todosView()}>
+                      {(todo) => (
+                        <article class="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-[rgba(23,58,64,0.12)] bg-white/60 px-3 py-2">
+                          <input
+                            type="checkbox"
+                            checked={todo.completed}
+                            disabled={pendingToggleId() === todo.id}
+                            aria-label={`Mark ${todo.title} ${
+                              todo.completed ? 'active' : 'completed'
+                            }`}
+                            onChange={(event) =>
+                              toggleTodo(todo.id, event.currentTarget.checked)
+                            }
+                            class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
+                          />
+                          <div class="min-w-0">
+                            <p
+                              class="m-0 break-words text-sm font-medium text-[var(--sea-ink)]"
+                              classList={{
+                                'text-[var(--sea-ink-soft)] line-through':
+                                  todo.completed,
+                              }}
+                            >
+                              {todo.title}
                             </p>
-                          </Show>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={pendingRemoveId() === todo.id}
-                          onClick={() => deleteTodo(todo.id)}
-                          class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          {pendingRemoveId() === todo.id
-                            ? 'Removing'
-                            : 'Remove'}
-                        </button>
-                      </article>
-                    )}
-                  </For>
-                </Show>
-              </div>
-            </>
-          )}
+                            <Show when={rowError()?.todoId === todo.id}>
+                              <p class="mb-0 mt-1 text-xs font-semibold text-red-700">
+                                {rowError()?.message}
+                              </p>
+                            </Show>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={pendingRemoveId() === todo.id}
+                            onClick={() => deleteTodo(todo.id)}
+                            class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {pendingRemoveId() === todo.id
+                              ? 'Removing'
+                              : 'Remove'}
+                          </button>
+                        </article>
+                      )}
+                    </For>
+                  </Show>
+                </div>
+              </>
+            )
+          }}
         </Show>
       </section>
     </main>

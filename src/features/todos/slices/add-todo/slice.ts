@@ -1,39 +1,29 @@
-import { z } from 'zod'
-
-import type { TodoEvent } from '../../shared'
-
-export type AddTodoCommand = { title: string }
+import z from 'zod'
+import { createCommandSlice } from '../../registry.builders'
 
 const maxTitleLength = 120
 
-export const addTodoInput = z.object({
-  title: z.string(),
-})
+export const addTodoSliceRegistration = createCommandSlice('addTodo')
+  .schema(
+    z.object({
+      title: z.string(),
+    }),
+  )
+  .decide((_tx, command) => {
+    const title = command.title.trim()
 
-export function validateTodoTitle(title: string) {
-  const normalizedTitle = title.trim()
+    if (!title) {
+      throw new Error('Todo title is required')
+    }
 
-  if (!normalizedTitle) {
-    throw new Error('Todo title is required')
-  }
+    if (title.length > maxTitleLength) {
+      throw new Error(`Todo title must be ${maxTitleLength} characters or less`)
+    }
 
-  if (normalizedTitle.length > maxTitleLength) {
-    throw new Error(`Todo title must be ${maxTitleLength} characters or less`)
-  }
-
-  return normalizedTitle
-}
-
-export function handleAddTodo(
-  command: AddTodoCommand,
-  todoId = crypto.randomUUID(),
-): TodoEvent[] {
-  const title = validateTodoTitle(command.title)
-
-  return [
-    {
-      type: 'todoAdded',
-      payload: { todoId, title },
-    },
-  ]
-}
+    return [
+      {
+        type: 'todoAdded',
+        payload: { todoId: crypto.randomUUID(), title },
+      },
+    ]
+  })

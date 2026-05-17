@@ -1,20 +1,22 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
+import { applyEvents, decideCommand } from '../../registry'
 import { todoAdded, todoRemoved } from '../../shared'
 import { createTestDb, storedEvent } from '../../shared/test-db'
-import {
-  applyRemoveTodoEvents,
-  decideRemoveTodo,
-  todoRemovalStates,
-} from './slice'
+import { todoRemovalStates } from './schema'
 
 describe('remove todo command slice', () => {
   it('emits a removed event from its own state table', () => {
     const { db, sqlite } = createTestDb()
-    applyRemoveTodoEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
+    applyEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
 
-    expect(decideRemoveTodo(db, { todoId: 'todo-1' })).toEqual([
+    expect(
+      decideCommand(db, {
+        type: 'removeTodo',
+        payload: { todoId: 'todo-1' },
+      }),
+    ).toEqual([
       {
         type: 'todoRemoved',
         payload: { todoId: 'todo-1' },
@@ -27,30 +29,36 @@ describe('remove todo command slice', () => {
   it('rejects removing a missing todo', () => {
     const { db, sqlite } = createTestDb()
 
-    expect(() => decideRemoveTodo(db, { todoId: 'missing' })).toThrow(
-      'Todo not found',
-    )
+    expect(() =>
+      decideCommand(db, {
+        type: 'removeTodo',
+        payload: { todoId: 'missing' },
+      }),
+    ).toThrow('Todo not found')
 
     sqlite.close()
   })
 
   it('rejects removing an already removed todo', () => {
     const { db, sqlite } = createTestDb()
-    applyRemoveTodoEvents(db, [
+    applyEvents(db, [
       storedEvent(todoAdded('todo-1', 'Ship it'), 1),
       storedEvent(todoRemoved('todo-1'), 2),
     ])
 
-    expect(() => decideRemoveTodo(db, { todoId: 'todo-1' })).toThrow(
-      'Todo not found',
-    )
+    expect(() =>
+      decideCommand(db, {
+        type: 'removeTodo',
+        payload: { todoId: 'todo-1' },
+      }),
+    ).toThrow('Todo not found')
 
     sqlite.close()
   })
 
   it('applies removal state from stored events', () => {
     const { db, sqlite } = createTestDb()
-    applyRemoveTodoEvents(db, [
+    applyEvents(db, [
       storedEvent(todoAdded('todo-1', 'Ship it'), 1),
       storedEvent(todoRemoved('todo-1'), 2),
     ])

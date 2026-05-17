@@ -1,82 +1,66 @@
 import { eq } from 'drizzle-orm'
-import { z } from 'zod'
+import { createCommandSlice } from '../../registry.builders'
+import { changeTodoCompletionInput, todoCompletionStates } from './schema'
 
-import type { TodoEvent } from '../../shared'
-import type { StoredTodoEvent, TodoStore } from '../../shared'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+export const changeTodoCompletionSliceRegistration = createCommandSlice(
+  'changeTodoCompletion',
+)
+  .schema(changeTodoCompletionInput)
+  .applyEvents((tx, events) => {
+    for (const event of events) {
+      if (event.type === 'todoAdded') {
+        tx.insert(todoCompletionStates)
+          .values({
+            todoId: event.payload.todoId,
+            completed: false,
+            lastAppliedEventId: event.id,
+          })
+          .run()
+      }
 
-export const todoCompletionStates = sqliteTable('todo_completion_states', {
-  todoId: text('todo_id').primaryKey(),
-  completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
-  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  lastAppliedEventId: integer('last_applied_event_id').notNull(),
-})
-export type ChangeTodoCompletionCommand = {
-  todoId: string
-}
+      if (event.type === 'todoCompletionChanged') {
+        tx.update(todoCompletionStates)
+          .set({
+            completed: event.payload.completed,
+            lastAppliedEventId: event.id,
+          })
+          .where(eq(todoCompletionStates.todoId, event.payload.todoId))
+          .run()
+      }
 
-export const changeTodoCompletionInput = z.object({
-  todoId: z.string().min(1, 'Todo id is required'),
-})
+      if (event.type === 'todoRemoved') {
+        tx.update(todoCompletionStates)
+          .set({
+            removed: true,
+            lastAppliedEventId: event.id,
+          })
+          .where(eq(todoCompletionStates.todoId, event.payload.todoId))
+          .run()
+      }
+    }
+  })
+  .decide((tx, command) => {
+    const todo = tx
+      .select()
+      .from(todoCompletionStates)
+      .where(eq(todoCompletionStates.todoId, command.todoId))
+      .get()
 
-export function decideChangeTodoCompletion(
-  tx: TodoStore,
-  command: ChangeTodoCompletionCommand,
-): TodoEvent[] {
-  const todo = tx
-    .select()
-    .from(todoCompletionStates)
-    .where(eq(todoCompletionStates.todoId, command.todoId))
-    .get()
+    if (!todo || todo.removed) {
+      throw new Error('Todo not found')
+    }
 
-  if (!todo || todo.removed) {
-    throw new Error('Todo not found')
-  }
+    if (todo.completed === command.completed) {
+      return []
+    }
 
-  return [
-    {
-      type: 'todoCompletionChanged',
-      payload: {
-        todoId: command.todoId,
-        completed: !todo.completed,
+    return [
+      {
+        type: 'todoCompletionChanged',
+        payload: {
+          todoId: command.todoId,
+          completed: command.completed,
+        },
       },
-    },
-  ]
-}
-
-export function applyChangeTodoCompletionEvents(
-  tx: TodoStore,
-  events: StoredTodoEvent[],
-) {
-  for (const event of events) {
-    if (event.type === 'todoAdded') {
-      tx.insert(todoCompletionStates)
-        .values({
-          todoId: event.payload.todoId,
-          completed: false,
-          lastAppliedEventId: event.id,
-        })
-        .run()
-    }
-
-    if (event.type === 'todoCompletionChanged') {
-      tx.update(todoCompletionStates)
-        .set({
-          completed: event.payload.completed,
-          lastAppliedEventId: event.id,
-        })
-        .where(eq(todoCompletionStates.todoId, event.payload.todoId))
-        .run()
-    }
-
-    if (event.type === 'todoRemoved') {
-      tx.update(todoCompletionStates)
-        .set({
-          removed: true,
-          lastAppliedEventId: event.id,
-        })
-        .where(eq(todoCompletionStates.todoId, event.payload.todoId))
-        .run()
-    }
-  }
-}
+    ]
+  })
