@@ -1,36 +1,52 @@
 import { z } from 'zod'
 
 import type { StoredEvent, Event, StoreTx } from './shared'
+import { events as todoEvents } from './shared'
 export {
   createCommandSlice,
   createProjectionSlice,
+  createReactionSlice,
 } from './registry.builders'
 export type {
   CommandRegistration,
+  CommandEnvelope,
   CommandSliceSchemaStep,
   ProjectionRegistration,
   ProjectionSliceSchemaStep,
+  ReactionRegistration,
+  ReactionSliceApplyStep,
+  ReactionSliceReactStep,
   SliceRegistration,
 } from './registry.builders'
 import type {
   CommandRegistration,
+  ReactionRegistration,
   SliceRegistration,
 } from './registry.builders'
 import { addTodoSliceRegistration } from './slices/add-todo/slice'
 import { changeTodoCompletionSliceRegistration } from './slices/change-todo-completion/slice'
+import { createTodoCheerSliceRegistration } from './slices/create-todo-cheer/slice'
 import { removeTodoSliceRegistration } from './slices/remove-todo/slice'
+import { todoCheersSliceRegistration } from './slices/todo-cheers/slice'
+import { todoCompletionCheerReactionSliceRegistration } from './slices/todo-completion-cheer-reaction/slice'
 import { todosViewSliceRegistration } from './slices/todos-view/slice'
+
+const maxReactionCascadeRounds = 10
 
 export const sliceRegistrations = [
   addTodoSliceRegistration,
   changeTodoCompletionSliceRegistration,
   removeTodoSliceRegistration,
+  createTodoCheerSliceRegistration,
+  todoCompletionCheerReactionSliceRegistration,
   todosViewSliceRegistration,
+  todoCheersSliceRegistration,
 ] as const satisfies readonly SliceRegistration[]
 
 assertUniqueRegistrations(sliceRegistrations)
 
 const commandRegistrations = collectCommandRegistrations(sliceRegistrations)
+const reactionRegistrations = collectReactionRegistrations(sliceRegistrations)
 
 if (commandRegistrations.length === 0) {
   throw new Error('Todo registry must include at least one command slice')
@@ -59,18 +75,88 @@ export function decideCommand(command: Command, tx: StoreTx): Event[] {
   return registration.decide(command.payload as never, tx)
 }
 
+export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
+  const producedEvents: Event[] = []
+  let pendingCommands = [command]
+  let round = 0
+
+  while (pendingCommands.length > 0) {
+    round += 1
+
+    if (round > maxReactionCascadeRounds) {
+      throw new Error(
+        `Todo reaction cascade exceeded ${maxReactionCascadeRounds} rounds`,
+      )
+    }
+
+    const nextCommands: Command[] = []
+
+    for (const pendingCommand of pendingCommands) {
+      const events = decideCommand(pendingCommand, tx)
+      producedEvents.push(...events)
+
+      if (events.length === 0) {
+        continue
+      }
+
+      const storedEvents = persistEvents(events, tx)
+      applyEvents(storedEvents, tx)
+
+      for (const event of storedEvents) {
+        for (const reaction of reactionRegistrations) {
+          const reactionCommands = reaction.react(event, tx)
+
+          for (const reactionCommand of reactionCommands) {
+            nextCommands.push(commandInput.parse(reactionCommand))
+          }
+        }
+      }
+    }
+
+    pendingCommands = nextCommands
+  }
+
+  return producedEvents
+}
+
 export function applyEvents(events: StoredEvent[], tx: StoreTx) {
   for (const event of events) {
-    applyEvent(event, tx)
+    for (const slice of sliceRegistrations) {
+      if ('apply' in slice && slice.apply) {
+        slice.apply(event, tx)
+      }
+    }
   }
 }
 
-export function applyEvent(event: StoredEvent, tx: StoreTx) {
-  for (const slice of sliceRegistrations) {
-    if ('apply' in slice && slice.apply) {
-      slice.apply(event, tx)
+function persistEvents(events: Event[], tx: StoreTx): StoredEvent[] {
+  return events.map((event) => {
+    const row = tx
+      .insert(todoEvents)
+      .values({
+        type: event.type,
+        payload: JSON.stringify(event.payload),
+        createdAt: new Date(),
+      })
+      .returning({
+        id: todoEvents.id,
+        type: todoEvents.type,
+        payload: todoEvents.payload,
+      })
+      .get()
+
+    if (!row) {
+      throw new Error('Failed to persist todo event')
     }
-  }
+
+    const payload: unknown = JSON.parse(row.payload)
+
+    return {
+      id: row.id,
+      type: row.type,
+      payload,
+    } as StoredEvent
+  })
 }
 
 function isCommandRegistration(
@@ -93,11 +179,26 @@ function collectCommandRegistrations(
   return commands
 }
 
+function collectReactionRegistrations(
+  registrations: readonly SliceRegistration[],
+) {
+  const reactions: ReactionRegistration[] = []
+
+  for (const registration of registrations) {
+    if (registration.kind === 'reaction') {
+      reactions.push(registration)
+    }
+  }
+
+  return reactions
+}
+
 function assertUniqueRegistrations(
   registrations: readonly SliceRegistration[],
 ) {
   const commandTypes = new Set<string>()
   const projectionNames = new Set<string>()
+  const reactionNames = new Set<string>()
 
   for (const registration of registrations) {
     if (registration.kind === 'command') {
@@ -106,6 +207,15 @@ function assertUniqueRegistrations(
       }
 
       commandTypes.add(registration.type)
+      continue
+    }
+
+    if (registration.kind === 'reaction') {
+      if (reactionNames.has(registration.name)) {
+        throw new Error(`Duplicate todo reaction slice: ${registration.name}`)
+      }
+
+      reactionNames.add(registration.name)
       continue
     }
 

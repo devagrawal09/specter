@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm'
 import { createMemo, createResource, createSignal, For, Show } from 'solid-js'
 import { db } from '../../../../db/client.server'
 import { dispatchCommand } from '../../command'
+import { latestTodoCheerOrder, todoCheers } from '../todo-cheers/slice'
 import {
   todoListItems,
   todosViewQueryInput,
@@ -41,13 +42,26 @@ const listTodos = createServerFn()
     return db.select().from(todoListItems).where(statusPredicate).all()
   })
 
+const getLatestTodoCheer = createServerFn().handler(async () => {
+  return db
+    .select()
+    .from(todoCheers)
+    .orderBy(latestTodoCheerOrder)
+    .limit(1)
+    .get()
+})
+
 export function TodosView() {
   const search = useSearch({ from: '/' })
   const listTodosFn = useServerFn(listTodos)
+  const getLatestTodoCheerFn = useServerFn(getLatestTodoCheer)
   const dispatchCommandFn = useServerFn(dispatchCommand)
   const [todos, { refetch }] = createResource(
     () => search().status,
     (status) => listTodosFn({ data: { status } }),
+  )
+  const [latestCheer, { refetch: refetchLatestCheer }] = createResource(() =>
+    getLatestTodoCheerFn(),
   )
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createSignal(false)
@@ -72,7 +86,7 @@ export function TodosView() {
   })
 
   async function refreshTodos() {
-    await refetch()
+    await Promise.all([refetch(), refetchLatestCheer()])
   }
 
   async function submitTodo(event: SubmitEvent) {
@@ -188,6 +202,13 @@ export function TodosView() {
                   class="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]"
                   onSubmit={submitTodo}
                 >
+                  <Show when={latestCheer()}>
+                    {(cheer) => (
+                      <p class="m-0 rounded-xl border border-[rgba(47,106,74,0.22)] bg-[rgba(79,184,178,0.16)] px-4 py-3 text-sm font-semibold text-[var(--palm)] sm:col-span-2">
+                        {cheer().message}
+                      </p>
+                    )}
+                  </Show>
                   <label class="sr-only" for="todo-title">
                     Todo title
                   </label>

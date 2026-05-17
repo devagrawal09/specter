@@ -3,6 +3,14 @@ import type { z } from 'zod'
 
 import type { StoredEvent, Event, StoreTx } from './shared'
 
+export type CommandEnvelope<
+  TType extends string = string,
+  TPayload = unknown,
+> = {
+  type: TType
+  payload: TPayload
+}
+
 export type CommandRegistration<
   TType extends string = string,
   TSchema extends z.ZodType = z.ZodType,
@@ -26,9 +34,17 @@ export type ProjectionRegistration<
   component: TComponent
 }
 
+export type ReactionRegistration<TName extends string = string> = {
+  kind: 'reaction'
+  name: TName
+  apply?: (event: StoredEvent, tx: StoreTx) => void
+  react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[]
+}
+
 export type SliceRegistration =
   | CommandRegistration
   | ProjectionRegistration<string, z.ZodType, Component>
+  | ReactionRegistration
 
 export type CommandSliceSchemaStep<TType extends string> = {
   schema: <TSchema extends z.ZodType>(
@@ -81,6 +97,21 @@ export type ProjectionSliceComponentStep<
   ) => ProjectionRegistration<TName, TSchema, TComponent>
 }
 
+export type ReactionSliceReactStep<TName extends string> = {
+  react: (
+    react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[],
+  ) => ReactionRegistration<TName>
+  apply: (
+    apply: (event: StoredEvent, tx: StoreTx) => void,
+  ) => ReactionSliceApplyStep<TName>
+}
+
+export type ReactionSliceApplyStep<TName extends string> = {
+  react: (
+    react: (event: StoredEvent, tx: StoreTx) => CommandEnvelope[],
+  ) => ReactionRegistration<TName>
+}
+
 export function createCommandSlice<const TType extends string>(
   type: TType,
 ): CommandSliceSchemaStep<TType> {
@@ -100,6 +131,26 @@ export function createCommandSlice<const TType extends string>(
           apply,
           decide,
         }),
+      }),
+    }),
+  }
+}
+
+export function createReactionSlice<const TName extends string>(
+  name: TName,
+): ReactionSliceReactStep<TName> {
+  return {
+    react: (react) => ({
+      kind: 'reaction',
+      name,
+      react,
+    }),
+    apply: (apply) => ({
+      react: (react) => ({
+        kind: 'reaction',
+        name,
+        apply,
+        react,
       }),
     }),
   }

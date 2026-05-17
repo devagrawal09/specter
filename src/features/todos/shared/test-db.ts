@@ -8,7 +8,7 @@ export function createTestDb() {
   const sqlite = new Database(':memory:')
 
   sqlite.exec(`
-    CREATE TABLE todo_events (
+    CREATE TABLE events (
       id integer PRIMARY KEY AUTOINCREMENT NOT NULL,
       type text NOT NULL,
       payload text NOT NULL,
@@ -33,6 +33,17 @@ export function createTestDb() {
       title text NOT NULL,
       completed integer DEFAULT false NOT NULL,
       removed integer DEFAULT false,
+      last_applied_event_id integer NOT NULL
+    );
+
+    CREATE TABLE todo_cheer_milestone_states (
+      milestone integer PRIMARY KEY NOT NULL,
+      last_applied_event_id integer NOT NULL
+    );
+
+    CREATE TABLE todo_cheers (
+      milestone integer PRIMARY KEY NOT NULL,
+      message text NOT NULL,
       last_applied_event_id integer NOT NULL
     );
   `)

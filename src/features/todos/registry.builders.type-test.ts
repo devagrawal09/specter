@@ -1,6 +1,10 @@
 import { z } from 'zod'
 
-import { createCommandSlice, createProjectionSlice } from './registry.builders'
+import {
+  createCommandSlice,
+  createProjectionSlice,
+  createReactionSlice,
+} from './registry.builders'
 
 const commandSchema = z.object({
   title: z.string(),
@@ -38,6 +42,21 @@ export const validProjectionRegistration = createProjectionSlice(
   .apply(() => {})
   .component(() => null)
 
+export const validReactionRegistration = createReactionSlice(
+  'typeCheckReaction',
+).react(() => [
+  {
+    type: 'addTodo',
+    payload: { title: 'From reaction' },
+  },
+])
+
+export const validReactionWithApplyRegistration = createReactionSlice(
+  'typeCheckStatefulReaction',
+)
+  .apply(() => {})
+  .react(() => [])
+
 // @ts-expect-error schema must be called before decide
 createCommandSlice('missingSchema').decide(() => [])
 
@@ -48,6 +67,9 @@ createProjectionSlice('missingProjectionApply')
   .schema(projectionSchema)
   // @ts-expect-error projection apply must be called before component
   .component(() => null)
+
+// @ts-expect-error reaction must use react instead of decide
+createReactionSlice('missingReactionReact').decide(() => [])
 
 createCommandSlice('inferredCommand')
   .schema(commandSchema)

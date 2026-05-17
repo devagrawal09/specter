@@ -69,10 +69,19 @@ export const todoRemovedEvent = createEventSpec(
   }),
 )
 
+export const todoCheerCreatedEvent = createEventSpec(
+  'todoCheerCreated',
+  z.object({
+    milestone: z.number().int().positive(),
+    message: z.string(),
+  }),
+)
+
 export type Event =
   | ReturnType<typeof todoAddedEvent.create>
   | ReturnType<typeof todoCompletionChangedEvent.create>
   | ReturnType<typeof todoRemovedEvent.create>
+  | ReturnType<typeof todoCheerCreatedEvent.create>
 
 export type StoredEvent = Event & {
   id: number
