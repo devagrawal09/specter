@@ -112,7 +112,7 @@ export type ReactionSliceApplyStep<TName extends string> = {
   ) => ReactionRegistration<TName>
 }
 
-export function createCommandSlice<const TType extends string>(
+export function createCommandSpec<const TType extends string>(
   type: TType,
 ): CommandSliceSchemaStep<TType> {
   return {
@@ -136,7 +136,7 @@ export function createCommandSlice<const TType extends string>(
   }
 }
 
-export function createReactionSlice<const TName extends string>(
+export function createReactionSpec<const TName extends string>(
   name: TName,
 ): ReactionSliceReactStep<TName> {
   return {
@@ -156,7 +156,7 @@ export function createReactionSlice<const TName extends string>(
   }
 }
 
-export function createProjectionSlice<const TName extends string>(
+export function createProjectionSpec<const TName extends string>(
   name: TName,
 ): ProjectionSliceSchemaStep<TName> {
   return {

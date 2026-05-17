@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { createReactionSlice } from '../../registry.builders'
+import { createReactionSpec } from '../../registry.builders'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -26,7 +26,7 @@ export const todoCheerMilestoneStates = sqliteTable(
   },
 )
 
-export const todoCompletionCheerReactionSliceRegistration = createReactionSlice(
+export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
   'todoCompletionCheer',
 )
   .apply((event, tx) => {

@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSlice } from '../../registry.builders'
+import { createCommandSpec } from '../../registry.builders'
 import { todoAddedEvent, todoRemovedEvent } from '../../shared'
 
 export const todoRemovalStates = sqliteTable('todo_removal_states', {
@@ -9,7 +9,7 @@ export const todoRemovalStates = sqliteTable('todo_removal_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-export const removeTodoSliceRegistration = createCommandSlice('removeTodo')
+export const removeTodoSliceRegistration = createCommandSpec('removeTodo')
   .schema(
     z.object({
       todoId: z.string().min(1, 'Todo id is required'),

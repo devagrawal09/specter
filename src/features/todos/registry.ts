@@ -3,9 +3,9 @@ import { z } from 'zod'
 import type { Event, StoreTx } from './shared'
 import { events as todoEvents } from './shared'
 export {
-  createCommandSlice,
-  createProjectionSlice,
-  createReactionSlice,
+  createCommandSpec as createCommandSlice,
+  createProjectionSpec as createProjectionSlice,
+  createReactionSpec as createReactionSlice,
 } from './registry.builders'
 export type {
   CommandRegistration,

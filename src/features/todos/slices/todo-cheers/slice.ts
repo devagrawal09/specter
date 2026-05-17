@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { lazy } from 'solid-js'
 import { z } from 'zod'
-import { createProjectionSlice } from '../../registry.builders'
+import { createProjectionSpec } from '../../registry.builders'
 import { todoCheerCreatedEvent } from '../../shared'
 
 export const todoCheersQueryInput = z.object({})
@@ -14,7 +14,7 @@ export const todoCheers = sqliteTable('todo_cheers', {
 
 export type TodoCheer = typeof todoCheers.$inferSelect
 
-export const todoCheersSliceRegistration = createProjectionSlice('todoCheers')
+export const todoCheersSliceRegistration = createProjectionSpec('todoCheers')
   .schema(todoCheersQueryInput)
   .apply((event, tx) => {
     if (!todoCheerCreatedEvent.is(event)) {

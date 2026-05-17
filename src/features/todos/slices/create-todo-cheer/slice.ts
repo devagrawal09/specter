@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSlice } from '../../registry.builders'
+import { createCommandSpec } from '../../registry.builders'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -27,7 +27,7 @@ export const createTodoCheerMilestoneStates = sqliteTable(
   },
 )
 
-export const createTodoCheerSliceRegistration = createCommandSlice(
+export const createTodoCheerSliceRegistration = createCommandSpec(
   'createTodoCheer',
 )
   .schema(

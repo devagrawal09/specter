@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { lazy } from 'solid-js'
 import { z } from 'zod'
-import { createProjectionSlice } from '../../registry.builders'
+import { createProjectionSpec } from '../../registry.builders'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -28,7 +28,7 @@ export const todoListItems = sqliteTable('todo_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
-export const todosViewSliceRegistration = createProjectionSlice('todosView')
+export const todosViewSliceRegistration = createProjectionSpec('todosView')
   .schema(todosViewQueryInput)
   .apply((event, tx) => {
     if (todoAddedEvent.is(event)) {

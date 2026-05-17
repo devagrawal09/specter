@@ -1,10 +1,10 @@
 import z from 'zod'
-import { createCommandSlice } from '../../registry.builders'
+import { createCommandSpec } from '../../registry.builders'
 import { todoAddedEvent } from '../../shared'
 
 const maxTitleLength = 120
 
-export const addTodoSliceRegistration = createCommandSlice('addTodo')
+export const addTodoSliceRegistration = createCommandSpec('addTodo')
   .schema(
     z.object({
       title: z.string(),
