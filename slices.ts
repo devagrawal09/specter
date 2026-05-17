@@ -34,3 +34,5 @@ export type TranslationIn = (effects: Effect[]) => Event[]
 // todoAddedReaction
 // todoRemovedReaction
 // todoCompletedReaction
+
+// sendNotificationEffect

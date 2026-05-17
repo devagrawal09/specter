@@ -1,8 +1,23 @@
-import { createFileRoute } from '@tanstack/solid-router'
+import { createFileRoute, useRouter } from '@tanstack/solid-router'
+import { useServerFn } from '@tanstack/solid-start'
+import { createSignal, For, Show } from 'solid-js'
 
-export const Route = createFileRoute('/')({ component: App })
+import { createNote, listNotes } from '../server/notes.functions'
+
+export const Route = createFileRoute('/')({
+  loader: () => listNotes(),
+  component: App,
+})
 
 function App() {
+  const router = useRouter()
+  const notes = Route.useLoaderData()
+  const createNoteFn = useServerFn(createNote)
+  const [title, setTitle] = createSignal('')
+  const [body, setBody] = createSignal('')
+  const [isSaving, setIsSaving] = createSignal(false)
+  const [error, setError] = createSignal('')
+
   return (
     <main class="page-wrap px-4 pb-8 pt-14">
       <section class="island-shell rise-in relative overflow-hidden rounded-[2rem] px-6 py-10 sm:px-10 sm:py-14">
@@ -31,6 +46,103 @@ function App() {
           >
             Router Guide
           </a>
+        </div>
+      </section>
+
+      <section class="island-shell mt-8 rounded-2xl p-6">
+        <div class="mb-5 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="island-kicker mb-2">SQLite Persistence</p>
+            <h2 class="m-0 text-xl font-semibold text-[var(--sea-ink)]">
+              Notes
+            </h2>
+          </div>
+          <p class="m-0 text-sm text-[var(--sea-ink-soft)]">
+            {notes().length} saved
+          </p>
+        </div>
+
+        <form
+          class="grid gap-3"
+          onSubmit={async (event) => {
+            event.preventDefault()
+            setError('')
+            setIsSaving(true)
+
+            try {
+              await createNoteFn({ data: { title: title(), body: body() } })
+              setTitle('')
+              setBody('')
+              await router.invalidate()
+            } catch (createError) {
+              setError(
+                createError instanceof Error
+                  ? createError.message
+                  : 'Unable to create note',
+              )
+            } finally {
+              setIsSaving(false)
+            }
+          }}
+        >
+          <label class="grid gap-1 text-sm font-semibold text-[var(--sea-ink)]">
+            Title
+            <input
+              value={title()}
+              onInput={(event) => setTitle(event.currentTarget.value)}
+              class="rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/70 px-3 py-2 text-sm font-normal text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.55)]"
+              required
+            />
+          </label>
+          <label class="grid gap-1 text-sm font-semibold text-[var(--sea-ink)]">
+            Body
+            <textarea
+              value={body()}
+              onInput={(event) => setBody(event.currentTarget.value)}
+              class="min-h-24 rounded-xl border border-[rgba(23,58,64,0.16)] bg-white/70 px-3 py-2 text-sm font-normal text-[var(--sea-ink)] outline-none transition focus:border-[rgba(50,143,151,0.55)]"
+            />
+          </label>
+          <div class="flex flex-wrap items-center gap-3">
+            <button
+              type="submit"
+              disabled={isSaving()}
+              class="rounded-full border border-[rgba(50,143,151,0.3)] bg-[rgba(79,184,178,0.14)] px-5 py-2.5 text-sm font-semibold text-[var(--lagoon-deep)] transition hover:-translate-y-0.5 hover:bg-[rgba(79,184,178,0.24)] disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:translate-y-0"
+            >
+              {isSaving() ? 'Saving...' : 'Create Note'}
+            </button>
+            <Show when={error()}>
+              <p class="m-0 text-sm font-semibold text-red-700">{error()}</p>
+            </Show>
+          </div>
+        </form>
+
+        <div class="mt-6 grid gap-3">
+          <Show
+            when={notes().length > 0}
+            fallback={
+              <p class="m-0 text-sm text-[var(--sea-ink-soft)]">
+                No notes yet.
+              </p>
+            }
+          >
+            <For each={notes()}>
+              {(note) => (
+                <article class="rounded-2xl border border-[rgba(23,58,64,0.12)] bg-white/55 p-4">
+                  <h3 class="m-0 text-base font-semibold text-[var(--sea-ink)]">
+                    {note.title}
+                  </h3>
+                  <Show when={note.body}>
+                    <p class="mb-0 mt-2 whitespace-pre-wrap text-sm text-[var(--sea-ink-soft)]">
+                      {note.body}
+                    </p>
+                  </Show>
+                  <p class="mb-0 mt-3 text-xs text-[var(--sea-ink-soft)]">
+                    {new Date(note.createdAt).toLocaleString()}
+                  </p>
+                </article>
+              )}
+            </For>
+          </Show>
         </div>
       </section>
 

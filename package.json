@@ -8,6 +8,9 @@
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",
     "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check"
@@ -19,6 +22,8 @@
     "@tanstack/solid-router-devtools": "latest",
     "@tanstack/solid-router-ssr-query": "latest",
     "@tanstack/solid-start": "latest",
+    "better-sqlite3": "^12.10.0",
+    "drizzle-orm": "^0.45.2",
     "solid-js": "^1.9.12",
     "tailwindcss": "^4.1.18"
   },
@@ -26,6 +31,8 @@
     "@biomejs/biome": "2.4.5",
     "@solidjs/testing-library": "^0.8.10",
     "@tanstack/devtools-vite": "latest",
+    "@types/better-sqlite3": "^7.6.13",
+    "drizzle-kit": "^0.31.10",
     "jsdom": "^28.1.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",

@@ -10,3 +10,5 @@ dist-ssr
 .output
 .vinxi
 __unconfig*
+data/*.db
+data/*.db-*
