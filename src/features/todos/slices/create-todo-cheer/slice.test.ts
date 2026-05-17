@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { applyEvents, decideCommand } from '../../registry'
@@ -5,8 +6,10 @@ import {
   todoAddedEvent,
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
+  todoRemovedEvent,
 } from '../../shared'
 import { createTestDb } from '../../shared/test-db'
+import { createTodoCheerTodoStates } from './slice'
 
 function applyCompletedTodos(
   count: number,
@@ -89,6 +92,43 @@ describe('create todo cheer command slice', () => {
         },
       }),
     ])
+    sqlite.close()
+  })
+
+  it('applies completion state to its own read model', () => {
+    const { db, sqlite } = createTestDb()
+    applyCompletedTodos(1, db)
+
+    const row = db
+      .select()
+      .from(createTodoCheerTodoStates)
+      .where(eq(createTodoCheerTodoStates.todoId, 'todo-1'))
+      .get()
+
+    expect(row).toMatchObject({
+      todoId: 'todo-1',
+      completed: true,
+      removed: false,
+    })
+    sqlite.close()
+  })
+
+  it('ignores removed todos when validating a reached milestone', () => {
+    const { db, sqlite } = createTestDb()
+    applyCompletedTodos(5, db)
+    applyEvents(
+      [
+        {
+          ...todoRemovedEvent.create({ todoId: 'todo-5' }),
+          id: 'event-11',
+        },
+      ],
+      db,
+    )
+
+    expect(() =>
+      decideCommand({ type: 'createTodoCheer', payload: { milestone: 5 } }, db),
+    ).toThrow('Todo cheer milestone has not been reached')
     sqlite.close()
   })
 })

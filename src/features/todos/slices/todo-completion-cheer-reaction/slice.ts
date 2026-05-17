@@ -1,14 +1,28 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { createReactionSlice } from '../../registry.builders'
-import { todoCheerCreatedEvent, todoCompletionChangedEvent } from '../../shared'
-import { todoCompletionStates } from '../change-todo-completion/slice'
+import {
+  todoAddedEvent,
+  todoCheerCreatedEvent,
+  todoCompletionChangedEvent,
+  todoRemovedEvent,
+} from '../../shared'
+
+export const todoCompletionCheerTodoStates = sqliteTable(
+  'todo_completion_cheer_todo_states',
+  {
+    todoId: text('todo_id').primaryKey(),
+    completed: integer('completed', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
+  },
+)
 
 export const todoCheerMilestoneStates = sqliteTable(
   'todo_cheer_milestone_states',
   {
     milestone: integer('milestone').primaryKey(),
-    lastAppliedEventId: text('last_applied_event_id').notNull(),
   },
 )
 
@@ -16,16 +30,41 @@ export const todoCompletionCheerReactionSliceRegistration = createReactionSlice(
   'todoCompletionCheer',
 )
   .apply((event, tx) => {
-    if (!todoCheerCreatedEvent.is(event)) {
-      return
+    if (todoAddedEvent.is(event)) {
+      tx.insert(todoCompletionCheerTodoStates)
+        .values({
+          todoId: event.payload.todoId,
+          completed: false,
+          removed: false,
+        })
+        .run()
     }
 
-    tx.insert(todoCheerMilestoneStates)
-      .values({
-        milestone: event.payload.milestone,
-        lastAppliedEventId: event.id,
-      })
-      .run()
+    if (todoCompletionChangedEvent.is(event)) {
+      tx.update(todoCompletionCheerTodoStates)
+        .set({
+          completed: event.payload.completed,
+        })
+        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    }
+
+    if (todoRemovedEvent.is(event)) {
+      tx.update(todoCompletionCheerTodoStates)
+        .set({
+          removed: true,
+        })
+        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    }
+
+    if (todoCheerCreatedEvent.is(event)) {
+      tx.insert(todoCheerMilestoneStates)
+        .values({
+          milestone: event.payload.milestone,
+        })
+        .run()
+    }
   })
   .react((event, tx) => {
     if (
@@ -37,11 +76,11 @@ export const todoCompletionCheerReactionSliceRegistration = createReactionSlice(
 
     const completedCount = tx
       .select()
-      .from(todoCompletionStates)
+      .from(todoCompletionCheerTodoStates)
       .where(
         and(
-          eq(todoCompletionStates.completed, true),
-          eq(todoCompletionStates.removed, false),
+          eq(todoCompletionCheerTodoStates.completed, true),
+          eq(todoCompletionCheerTodoStates.removed, false),
         ),
       )
       .all().length

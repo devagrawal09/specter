@@ -26,7 +26,6 @@ export const todoListItems = sqliteTable('todo_list_items', {
   title: text('title').notNull(),
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
   removed: integer('removed', { mode: 'boolean' }).default(false),
-  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export const todosViewSliceRegistration = createProjectionSlice('todosView')
@@ -38,7 +37,6 @@ export const todosViewSliceRegistration = createProjectionSlice('todosView')
           id: event.payload.todoId,
           title: event.payload.title,
           completed: false,
-          lastAppliedEventId: event.id,
         })
         .run()
     }
@@ -47,7 +45,6 @@ export const todosViewSliceRegistration = createProjectionSlice('todosView')
       tx.update(todoListItems)
         .set({
           completed: event.payload.completed,
-          lastAppliedEventId: event.id,
         })
         .where(eq(todoListItems.id, event.payload.todoId))
         .run()
@@ -57,7 +54,6 @@ export const todosViewSliceRegistration = createProjectionSlice('todosView')
       tx.update(todoListItems)
         .set({
           removed: true,
-          lastAppliedEventId: event.id,
         })
         .where(eq(todoListItems.id, event.payload.todoId))
         .run()

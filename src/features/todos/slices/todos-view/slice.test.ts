@@ -42,7 +42,6 @@ describe('todos view projection slice', () => {
       id: 'todo-1',
       title: 'Ship it',
       completed: true,
-      lastAppliedEventId: 'event-3',
     })
     expect(row?.removed).toBe(true)
 

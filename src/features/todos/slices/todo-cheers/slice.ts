@@ -1,5 +1,6 @@
 import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { lazy } from 'solid-js'
 import { z } from 'zod'
 import { createProjectionSlice } from '../../registry.builders'
 import { todoCheerCreatedEvent } from '../../shared'
@@ -9,7 +10,6 @@ export const todoCheersQueryInput = z.object({})
 export const todoCheers = sqliteTable('todo_cheers', {
   milestone: integer('milestone').primaryKey(),
   message: text('message').notNull(),
-  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export type TodoCheer = typeof todoCheers.$inferSelect
@@ -25,10 +25,15 @@ export const todoCheersSliceRegistration = createProjectionSlice('todoCheers')
       .values({
         milestone: event.payload.milestone,
         message: event.payload.message,
-        lastAppliedEventId: event.id,
       })
       .run()
   })
-  .component(() => null)
+  .component(
+    lazy(() =>
+      import('./TodoCheersView').then((module) => ({
+        default: module.TodoCheersView,
+      })),
+    ),
+  )
 
 export const latestTodoCheerOrder = desc(todoCheers.milestone)

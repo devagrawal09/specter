@@ -1,9 +1,31 @@
 import { and, eq } from 'drizzle-orm'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSlice } from '../../registry.builders'
-import { todoCheerCreatedEvent } from '../../shared'
-import { todoCompletionStates } from '../change-todo-completion/slice'
-import { todoCheerMilestoneStates } from '../todo-completion-cheer-reaction/slice'
+import {
+  todoAddedEvent,
+  todoCheerCreatedEvent,
+  todoCompletionChangedEvent,
+  todoRemovedEvent,
+} from '../../shared'
+
+export const createTodoCheerTodoStates = sqliteTable(
+  'create_todo_cheer_todo_states',
+  {
+    todoId: text('todo_id').primaryKey(),
+    completed: integer('completed', { mode: 'boolean' })
+      .notNull()
+      .default(false),
+    removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
+  },
+)
+
+export const createTodoCheerMilestoneStates = sqliteTable(
+  'create_todo_cheer_milestone_states',
+  {
+    milestone: integer('milestone').primaryKey(),
+  },
+)
 
 export const createTodoCheerSliceRegistration = createCommandSlice(
   'createTodoCheer',
@@ -13,6 +35,43 @@ export const createTodoCheerSliceRegistration = createCommandSlice(
       milestone: z.number().int().positive(),
     }),
   )
+  .apply((event, tx) => {
+    if (todoAddedEvent.is(event)) {
+      tx.insert(createTodoCheerTodoStates)
+        .values({
+          todoId: event.payload.todoId,
+          completed: false,
+          removed: false,
+        })
+        .run()
+    }
+
+    if (todoCompletionChangedEvent.is(event)) {
+      tx.update(createTodoCheerTodoStates)
+        .set({
+          completed: event.payload.completed,
+        })
+        .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    }
+
+    if (todoRemovedEvent.is(event)) {
+      tx.update(createTodoCheerTodoStates)
+        .set({
+          removed: true,
+        })
+        .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    }
+
+    if (todoCheerCreatedEvent.is(event)) {
+      tx.insert(createTodoCheerMilestoneStates)
+        .values({
+          milestone: event.payload.milestone,
+        })
+        .run()
+    }
+  })
   .decide((command, tx) => {
     if (command.milestone % 5 !== 0) {
       throw new Error('Todo cheer milestone must be a multiple of 5')
@@ -20,11 +79,11 @@ export const createTodoCheerSliceRegistration = createCommandSlice(
 
     const completedCount = tx
       .select()
-      .from(todoCompletionStates)
+      .from(createTodoCheerTodoStates)
       .where(
         and(
-          eq(todoCompletionStates.completed, true),
-          eq(todoCompletionStates.removed, false),
+          eq(createTodoCheerTodoStates.completed, true),
+          eq(createTodoCheerTodoStates.removed, false),
         ),
       )
       .all().length
@@ -35,8 +94,8 @@ export const createTodoCheerSliceRegistration = createCommandSlice(
 
     const existingMilestone = tx
       .select()
-      .from(todoCheerMilestoneStates)
-      .where(eq(todoCheerMilestoneStates.milestone, command.milestone))
+      .from(createTodoCheerMilestoneStates)
+      .where(eq(createTodoCheerMilestoneStates.milestone, command.milestone))
       .get()
 
     if (existingMilestone) {

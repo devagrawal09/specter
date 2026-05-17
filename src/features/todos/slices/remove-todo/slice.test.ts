@@ -100,7 +100,6 @@ describe('remove todo command slice', () => {
       .get()
 
     expect(row?.removed).toBe(true)
-    expect(row?.lastAppliedEventId).toBe('event-2')
 
     sqlite.close()
   })

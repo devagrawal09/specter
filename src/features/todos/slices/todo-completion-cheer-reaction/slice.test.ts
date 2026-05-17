@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { applyEvents } from '../../registry'
@@ -9,7 +10,10 @@ import {
   type Event,
 } from '../../shared'
 import { createTestDb } from '../../shared/test-db'
-import { todoCompletionCheerReactionSliceRegistration } from './slice'
+import {
+  todoCompletionCheerReactionSliceRegistration,
+  todoCompletionCheerTodoStates,
+} from './slice'
 
 function completedTodoEvents(count: number): Event[] {
   return Array.from({ length: count }, (_, index) => {
@@ -58,6 +62,24 @@ describe('todo completion cheer reaction slice', () => {
     expect(
       todoCompletionCheerReactionSliceRegistration.react(lastEvent, db),
     ).toEqual([{ type: 'createTodoCheer', payload: { milestone: 5 } }])
+    sqlite.close()
+  })
+
+  it('applies completion state to its own read model', () => {
+    const { db, sqlite } = createTestDb()
+    applyEvents(completedTodoEvents(1), db)
+
+    const row = db
+      .select()
+      .from(todoCompletionCheerTodoStates)
+      .where(eq(todoCompletionCheerTodoStates.todoId, 'todo-1'))
+      .get()
+
+    expect(row).toMatchObject({
+      todoId: 'todo-1',
+      completed: true,
+      removed: false,
+    })
     sqlite.close()
   })
 

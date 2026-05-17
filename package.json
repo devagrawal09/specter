@@ -12,7 +12,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
     "format": "biome format",
-    "lint": "biome lint",
+    "lint": "biome lint && node scripts/check-slice-imports.mjs",
     "check": "biome check"
   },
   "dependencies": {

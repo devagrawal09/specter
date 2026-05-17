@@ -147,7 +147,6 @@ describe('change todo completion command slice', () => {
     ).toMatchObject({
       todoId: 'todo-1',
       completed: true,
-      lastAppliedEventId: 'event-2',
     })
 
     sqlite.close()

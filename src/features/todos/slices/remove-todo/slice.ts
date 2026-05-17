@@ -7,7 +7,6 @@ import { todoAddedEvent, todoRemovedEvent } from '../../shared'
 export const todoRemovalStates = sqliteTable('todo_removal_states', {
   todoId: text('todo_id').primaryKey(),
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  lastAppliedEventId: text('last_applied_event_id').notNull(),
 })
 
 export const removeTodoSliceRegistration = createCommandSlice('removeTodo')
@@ -21,7 +20,6 @@ export const removeTodoSliceRegistration = createCommandSlice('removeTodo')
       tx.insert(todoRemovalStates)
         .values({
           todoId: event.payload.todoId,
-          lastAppliedEventId: event.id,
         })
         .run()
     }
@@ -30,7 +28,6 @@ export const removeTodoSliceRegistration = createCommandSlice('removeTodo')
       tx.update(todoRemovalStates)
         .set({
           removed: true,
-          lastAppliedEventId: event.id,
         })
         .where(eq(todoRemovalStates.todoId, event.payload.todoId))
         .run()
