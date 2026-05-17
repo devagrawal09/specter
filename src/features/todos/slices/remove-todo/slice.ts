@@ -6,7 +6,13 @@ import type {
   StoredTodoEvent,
   TodoStore,
 } from '../../shared/todo-persistence-types'
-import { todoRemovalStates } from './schema'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+
+export const todoRemovalStates = sqliteTable('todo_removal_states', {
+  todoId: text('todo_id').primaryKey(),
+  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
+  lastAppliedEventId: integer('last_applied_event_id').notNull(),
+})
 
 export type RemoveTodoCommand = { todoId: string }
 
@@ -17,7 +23,6 @@ export const removeTodoInput = z.object({
 export function decideRemoveTodo(
   tx: TodoStore,
   command: RemoveTodoCommand,
-  now = new Date(),
 ): TodoEvent[] {
   const todo = tx
     .select()
@@ -25,14 +30,14 @@ export function decideRemoveTodo(
     .where(eq(todoRemovalStates.todoId, command.todoId))
     .get()
 
-  if (!todo || todo.removedAt) {
+  if (!todo || todo.removed) {
     throw new Error('Todo not found')
   }
 
   return [
     {
       type: 'todoRemoved',
-      payload: { todoId: command.todoId, removedAt: now.toISOString() },
+      payload: { todoId: command.todoId },
     },
   ]
 }
@@ -46,7 +51,6 @@ export function applyRemoveTodoEvents(
       tx.insert(todoRemovalStates)
         .values({
           todoId: event.payload.todoId,
-          removedAt: null,
           lastAppliedEventId: event.id,
         })
         .run()
@@ -55,7 +59,7 @@ export function applyRemoveTodoEvents(
     if (event.type === 'todoRemoved') {
       tx.update(todoRemovalStates)
         .set({
-          removedAt: new Date(event.payload.removedAt),
+          removed: true,
           lastAppliedEventId: event.id,
         })
         .where(eq(todoRemovalStates.todoId, event.payload.todoId))

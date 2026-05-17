@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { TodoEvent } from '../../shared/todo-events'
+import type { TodoEvent } from '../../shared'
 
 export type AddTodoCommand = { title: string }
 
@@ -26,7 +26,6 @@ export function validateTodoTitle(title: string) {
 
 export function handleAddTodo(
   command: AddTodoCommand,
-  now = new Date(),
   todoId = crypto.randomUUID(),
 ): TodoEvent[] {
   const title = validateTodoTitle(command.title)
@@ -34,7 +33,7 @@ export function handleAddTodo(
   return [
     {
       type: 'todoAdded',
-      payload: { todoId, title, createdAt: now.toISOString() },
+      payload: { todoId, title },
     },
   ]
 }

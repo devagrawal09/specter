@@ -1,27 +1,27 @@
 import { eq } from 'drizzle-orm'
 import { z } from 'zod'
 
-import type { TodoEvent } from '../../shared/todo-events'
-import type {
-  StoredTodoEvent,
-  TodoStore,
-} from '../../shared/todo-persistence-types'
-import { todoCompletionStates } from './schema'
+import type { TodoEvent } from '../../shared'
+import type { StoredTodoEvent, TodoStore } from '../../shared'
+import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 
+export const todoCompletionStates = sqliteTable('todo_completion_states', {
+  todoId: text('todo_id').primaryKey(),
+  completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
+  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
+  lastAppliedEventId: integer('last_applied_event_id').notNull(),
+})
 export type ChangeTodoCompletionCommand = {
   todoId: string
-  completed: boolean
 }
 
 export const changeTodoCompletionInput = z.object({
   todoId: z.string().min(1, 'Todo id is required'),
-  completed: z.boolean(),
 })
 
 export function decideChangeTodoCompletion(
   tx: TodoStore,
   command: ChangeTodoCompletionCommand,
-  now = new Date(),
 ): TodoEvent[] {
   const todo = tx
     .select()
@@ -29,12 +29,8 @@ export function decideChangeTodoCompletion(
     .where(eq(todoCompletionStates.todoId, command.todoId))
     .get()
 
-  if (!todo || todo.removedAt) {
+  if (!todo || todo.removed) {
     throw new Error('Todo not found')
-  }
-
-  if (todo.completed === command.completed) {
-    return []
   }
 
   return [
@@ -42,8 +38,7 @@ export function decideChangeTodoCompletion(
       type: 'todoCompletionChanged',
       payload: {
         todoId: command.todoId,
-        completed: command.completed,
-        updatedAt: now.toISOString(),
+        completed: !todo.completed,
       },
     },
   ]
@@ -59,7 +54,6 @@ export function applyChangeTodoCompletionEvents(
         .values({
           todoId: event.payload.todoId,
           completed: false,
-          removedAt: null,
           lastAppliedEventId: event.id,
         })
         .run()
@@ -78,7 +72,7 @@ export function applyChangeTodoCompletionEvents(
     if (event.type === 'todoRemoved') {
       tx.update(todoCompletionStates)
         .set({
-          removedAt: new Date(event.payload.removedAt),
+          removed: true,
           lastAppliedEventId: event.id,
         })
         .where(eq(todoCompletionStates.todoId, event.payload.todoId))

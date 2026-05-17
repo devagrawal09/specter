@@ -1,24 +1,23 @@
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import {
-  thirdDate,
-  todoAdded,
-  todoRemoved,
-} from '../../shared/todo-test-events'
+import { todoAdded, todoRemoved } from '../../shared'
 import { createTestDb, storedEvent } from '../../shared/test-db'
-import { applyRemoveTodoEvents, decideRemoveTodo } from './slice'
-import { todoRemovalStates } from './schema'
+import {
+  applyRemoveTodoEvents,
+  decideRemoveTodo,
+  todoRemovalStates,
+} from './slice'
 
 describe('remove todo command slice', () => {
   it('emits a removed event from its own state table', () => {
     const { db, sqlite } = createTestDb()
     applyRemoveTodoEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
 
-    expect(decideRemoveTodo(db, { todoId: 'todo-1' }, thirdDate)).toEqual([
+    expect(decideRemoveTodo(db, { todoId: 'todo-1' })).toEqual([
       {
         type: 'todoRemoved',
-        payload: { todoId: 'todo-1', removedAt: thirdDate.toISOString() },
+        payload: { todoId: 'todo-1' },
       },
     ])
 
@@ -62,7 +61,7 @@ describe('remove todo command slice', () => {
       .where(eq(todoRemovalStates.todoId, 'todo-1'))
       .get()
 
-    expect(row?.removedAt?.toISOString()).toBe(thirdDate.toISOString())
+    expect(row?.removed).toBe(true)
     expect(row?.lastAppliedEventId).toBe(2)
 
     sqlite.close()
