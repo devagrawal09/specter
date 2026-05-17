@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 import type { TodoEvent } from '../../shared/todo-events'
 import type { TodoSnapshot } from '../../shared/todo-types'
 
@@ -5,6 +7,11 @@ export type ChangeTodoCompletionCommand = {
   todoId: string
   completed: boolean
 }
+
+export const changeTodoCompletionInput = z.object({
+  todoId: z.string().min(1, 'Todo id is required'),
+  completed: z.boolean(),
+})
 
 export function handleChangeTodoCompletion(
   state: TodoSnapshot[],

@@ -1,9 +1,19 @@
+import { z } from 'zod'
+
 import type { TodoEvent } from '../../shared/todo-events'
 import type {
   TodoSnapshot,
   TodoStatusFilter,
   TodosView,
 } from '../../shared/todo-types'
+import { parseTodoStatusFilter } from '../../shared/todo-types'
+
+export const listTodosInput = z.object({
+  status: z
+    .unknown()
+    .optional()
+    .transform((status) => parseTodoStatusFilter(status)),
+})
 
 export function projectTodoState(events: TodoEvent[]): TodoSnapshot[] {
   const todosById = new Map<string, TodoSnapshot>()

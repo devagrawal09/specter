@@ -1,8 +1,14 @@
+import { z } from 'zod'
+
 import type { TodoEvent } from '../../shared/todo-events'
 
 export type AddTodoCommand = { title: string }
 
 const maxTitleLength = 120
+
+export const addTodoInput = z.object({
+  title: z.string(),
+})
 
 export function validateTodoTitle(title: string) {
   const normalizedTitle = title.trim()

@@ -1,41 +1,26 @@
 import { asc, desc, eq, isNull } from 'drizzle-orm'
 import { createServerFn } from '@tanstack/solid-start'
-import { z } from 'zod'
 
 import { db } from '../../db/client.server'
 import { todoEvents, todos } from '../../db/schema'
-import { handleAddTodo } from './slices/add-todo/add-todo.slice'
-import { handleChangeTodoCompletion } from './slices/change-todo-completion/change-todo-completion.slice'
-import { handleRemoveTodo } from './slices/remove-todo/remove-todo.slice'
-import { createTodosView } from './slices/todos-view/todos-view.slice'
-import type { TodoEvent } from './shared/todo-events'
+import { addTodoInput, handleAddTodo } from './slices/add-todo/add-todo.slice'
 import {
-  parseTodoStatusFilter,
-  type TodoSnapshot,
-  type TodoStatusFilter,
-} from './shared/todo-types'
+  changeTodoCompletionInput,
+  handleChangeTodoCompletion,
+} from './slices/change-todo-completion/change-todo-completion.slice'
+import {
+  handleRemoveTodo,
+  removeTodoInput,
+} from './slices/remove-todo/remove-todo.slice'
+import {
+  createTodosView,
+  listTodosInput,
+} from './slices/todos-view/todos-view.slice'
+import type { TodoEvent } from './shared/todo-events'
+import type { TodoSnapshot, TodoStatusFilter } from './shared/todo-types'
 
 type TodoRow = typeof todos.$inferSelect
-
-const listTodosInput = z.object({
-  status: z
-    .unknown()
-    .optional()
-    .transform((status) => parseTodoStatusFilter(status)),
-})
-
-const addTodoInput = z.object({
-  title: z.string(),
-})
-
-const changeTodoCompletionInput = z.object({
-  todoId: z.string().min(1, 'Todo id is required'),
-  completed: z.boolean(),
-})
-
-const removeTodoInput = z.object({
-  todoId: z.string().min(1, 'Todo id is required'),
-})
+type TodoStore = Pick<typeof db, 'insert' | 'select' | 'update'>
 
 function rowToSnapshot(row: TodoRow): TodoSnapshot {
   return {
@@ -48,7 +33,7 @@ function rowToSnapshot(row: TodoRow): TodoSnapshot {
   }
 }
 
-function readSnapshots(tx = db) {
+function readSnapshots(tx: TodoStore = db) {
   return tx.select().from(todos).all().map(rowToSnapshot)
 }
 
@@ -63,7 +48,7 @@ function readVisibleSnapshots(status: TodoStatusFilter) {
   return createTodosView(rows.map(rowToSnapshot), status)
 }
 
-function insertEvents(tx: typeof db, events: TodoEvent[]) {
+function insertEvents(tx: TodoStore, events: TodoEvent[]) {
   if (events.length === 0) {
     return
   }
@@ -91,7 +76,7 @@ function eventCreatedAt(event: TodoEvent) {
   return new Date(event.payload.removedAt)
 }
 
-function applyEventsToSnapshots(tx: typeof db, events: TodoEvent[]) {
+function applyEventsToSnapshots(tx: TodoStore, events: TodoEvent[]) {
   for (const event of events) {
     if (event.type === 'todoAdded') {
       const createdAt = new Date(event.payload.createdAt)
