@@ -6,10 +6,13 @@ import { createTestDb } from '../../shared/test-db'
 describe('add todo command slice', () => {
   it('emits a todoAdded event', () => {
     const { db, sqlite } = createTestDb()
-    const [event] = decideCommand(db, {
-      type: 'addTodo',
-      payload: { title: 'Ship it' },
-    })
+    const [event] = decideCommand(
+      {
+        type: 'addTodo',
+        payload: { title: 'Ship it' },
+      },
+      db,
+    )
 
     expect(event).toMatchObject({
       type: 'todoAdded',
@@ -20,10 +23,13 @@ describe('add todo command slice', () => {
 
   it('trims added titles', () => {
     const { db, sqlite } = createTestDb()
-    const [event] = decideCommand(db, {
-      type: 'addTodo',
-      payload: { title: '  Ship it  ' },
-    })
+    const [event] = decideCommand(
+      {
+        type: 'addTodo',
+        payload: { title: '  Ship it  ' },
+      },
+      db,
+    )
 
     if (event.type !== 'todoAdded') {
       throw new Error(`Expected todoAdded event, received ${event.type}`)
@@ -37,7 +43,7 @@ describe('add todo command slice', () => {
     const { db, sqlite } = createTestDb()
 
     expect(() =>
-      decideCommand(db, { type: 'addTodo', payload: { title: '   ' } }),
+      decideCommand({ type: 'addTodo', payload: { title: '   ' } }, db),
     ).toThrow('Todo title is required')
     sqlite.close()
   })
@@ -46,10 +52,13 @@ describe('add todo command slice', () => {
     const { db, sqlite } = createTestDb()
 
     expect(() =>
-      decideCommand(db, {
-        type: 'addTodo',
-        payload: { title: 'x'.repeat(121) },
-      }),
+      decideCommand(
+        {
+          type: 'addTodo',
+          payload: { title: 'x'.repeat(121) },
+        },
+        db,
+      ),
     ).toThrow('Todo title must be 120 characters or less')
     sqlite.close()
   })

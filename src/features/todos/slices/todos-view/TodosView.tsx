@@ -8,7 +8,7 @@ import {
   todoListItems,
   todosViewQueryInput,
   type TodoStatusFilter,
-} from './model'
+} from './slice'
 
 const filterOptions = [
   { status: 'all', label: 'All' },

@@ -2,19 +2,35 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { applyEvents } from '../../registry'
-import { todoAdded, todoCompleted, todoRemoved } from '../../shared'
+import {
+  todoAddedEvent,
+  todoCompletionChangedEvent,
+  todoRemovedEvent,
+} from '../../shared'
 import { createTestDb, storedEvent } from '../../shared/test-db'
-import { todoListItems, todosViewQueryInput } from './model'
+import { todoListItems, todosViewQueryInput } from './slice'
 
 describe('todos view projection slice', () => {
   it('applies stored events to its list item table', () => {
     const { db, sqlite } = createTestDb()
 
-    applyEvents(db, [
-      storedEvent(todoAdded('todo-1', 'Ship it'), 1),
-      storedEvent(todoCompleted('todo-1'), 2),
-      storedEvent(todoRemoved('todo-1'), 3),
-    ])
+    applyEvents(
+      [
+        storedEvent(
+          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          1,
+        ),
+        storedEvent(
+          todoCompletionChangedEvent.create({
+            todoId: 'todo-1',
+            completed: true,
+          }),
+          2,
+        ),
+        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 3),
+      ],
+      db,
+    )
 
     const row = db
       .select()

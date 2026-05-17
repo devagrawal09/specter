@@ -12,19 +12,19 @@ const projectionSchema = z.object({
 
 export const validCommandRegistration = createCommandSlice('typeCheckCommand')
   .schema(commandSchema)
-  .decide((_tx, command) => [
+  .decide((command, _tx) => [
     {
       type: 'todoAdded',
       payload: { todoId: command.title, title: command.title },
     },
   ])
 
-export const validCommandWithApplyEventsRegistration = createCommandSlice(
+export const validCommandWithApplyRegistration = createCommandSlice(
   'typeCheckStatefulCommand',
 )
   .schema(commandSchema)
-  .applyEvents(() => {})
-  .decide((_tx, command) => [
+  .apply(() => {})
+  .decide((command, _tx) => [
     {
       type: 'todoAdded',
       payload: { todoId: command.title, title: command.title },
@@ -35,23 +35,23 @@ export const validProjectionRegistration = createProjectionSlice(
   'typeCheckProjection',
 )
   .schema(projectionSchema)
-  .applyEvents(() => {})
+  .apply(() => {})
   .component(() => null)
 
 // @ts-expect-error schema must be called before decide
 createCommandSlice('missingSchema').decide(() => [])
 
-// @ts-expect-error schema must be called before applyEvents
-createCommandSlice('missingSchemaBeforeApply').applyEvents(() => {})
+// @ts-expect-error schema must be called before apply
+createCommandSlice('missingSchemaBeforeApply').apply(() => {})
 
 createProjectionSlice('missingProjectionApply')
   .schema(projectionSchema)
-  // @ts-expect-error projection applyEvents must be called before component
+  // @ts-expect-error projection apply must be called before component
   .component(() => null)
 
 createCommandSlice('inferredCommand')
   .schema(commandSchema)
-  .decide((_tx, command) => {
+  .decide((command, _tx) => {
     // @ts-expect-error command is inferred from the schema
     command.missing
 

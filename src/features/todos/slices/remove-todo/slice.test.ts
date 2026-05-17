@@ -2,20 +2,31 @@ import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { applyEvents, decideCommand } from '../../registry'
-import { todoAdded, todoRemoved } from '../../shared'
+import { todoAddedEvent, todoRemovedEvent } from '../../shared'
 import { createTestDb, storedEvent } from '../../shared/test-db'
-import { todoRemovalStates } from './schema'
+import { todoRemovalStates } from './slice'
 
 describe('remove todo command slice', () => {
   it('emits a removed event from its own state table', () => {
     const { db, sqlite } = createTestDb()
-    applyEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
+    applyEvents(
+      [
+        storedEvent(
+          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          1,
+        ),
+      ],
+      db,
+    )
 
     expect(
-      decideCommand(db, {
-        type: 'removeTodo',
-        payload: { todoId: 'todo-1' },
-      }),
+      decideCommand(
+        {
+          type: 'removeTodo',
+          payload: { todoId: 'todo-1' },
+        },
+        db,
+      ),
     ).toEqual([
       {
         type: 'todoRemoved',
@@ -30,10 +41,13 @@ describe('remove todo command slice', () => {
     const { db, sqlite } = createTestDb()
 
     expect(() =>
-      decideCommand(db, {
-        type: 'removeTodo',
-        payload: { todoId: 'missing' },
-      }),
+      decideCommand(
+        {
+          type: 'removeTodo',
+          payload: { todoId: 'missing' },
+        },
+        db,
+      ),
     ).toThrow('Todo not found')
 
     sqlite.close()
@@ -41,16 +55,25 @@ describe('remove todo command slice', () => {
 
   it('rejects removing an already removed todo', () => {
     const { db, sqlite } = createTestDb()
-    applyEvents(db, [
-      storedEvent(todoAdded('todo-1', 'Ship it'), 1),
-      storedEvent(todoRemoved('todo-1'), 2),
-    ])
+    applyEvents(
+      [
+        storedEvent(
+          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          1,
+        ),
+        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 2),
+      ],
+      db,
+    )
 
     expect(() =>
-      decideCommand(db, {
-        type: 'removeTodo',
-        payload: { todoId: 'todo-1' },
-      }),
+      decideCommand(
+        {
+          type: 'removeTodo',
+          payload: { todoId: 'todo-1' },
+        },
+        db,
+      ),
     ).toThrow('Todo not found')
 
     sqlite.close()
@@ -58,10 +81,16 @@ describe('remove todo command slice', () => {
 
   it('applies removal state from stored events', () => {
     const { db, sqlite } = createTestDb()
-    applyEvents(db, [
-      storedEvent(todoAdded('todo-1', 'Ship it'), 1),
-      storedEvent(todoRemoved('todo-1'), 2),
-    ])
+    applyEvents(
+      [
+        storedEvent(
+          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          1,
+        ),
+        storedEvent(todoRemovedEvent.create({ todoId: 'todo-1' }), 2),
+      ],
+      db,
+    )
 
     const row = db
       .select()

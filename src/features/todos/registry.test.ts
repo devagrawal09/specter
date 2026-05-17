@@ -7,11 +7,11 @@ import {
   decideCommand,
   sliceRegistrations,
 } from './registry'
-import { todoAdded } from './shared'
+import { todoAddedEvent } from './shared'
 import { createTestDb, storedEvent } from './shared/test-db'
-import { todoCompletionStates } from './slices/change-todo-completion/schema'
-import { todoRemovalStates } from './slices/remove-todo/schema'
-import { todoListItems } from './slices/todos-view/model'
+import { todoCompletionStates } from './slices/change-todo-completion/slice'
+import { todoRemovalStates } from './slices/remove-todo/slice'
+import { todoListItems } from './slices/todos-view/slice'
 
 describe('todo registry', () => {
   it('builds command input from registered command slices', () => {
@@ -35,10 +35,13 @@ describe('todo registry', () => {
 
   it('routes decisions by command type', () => {
     const { db, sqlite } = createTestDb()
-    const [event] = decideCommand(db, {
-      type: 'addTodo',
-      payload: { title: 'Route me' },
-    })
+    const [event] = decideCommand(
+      {
+        type: 'addTodo',
+        payload: { title: 'Route me' },
+      },
+      db,
+    )
 
     expect(event).toMatchObject({
       type: 'todoAdded',
@@ -50,7 +53,15 @@ describe('todo registry', () => {
   it('applies command state and projection state in registration order', () => {
     const { db, sqlite } = createTestDb()
 
-    applyEvents(db, [storedEvent(todoAdded('todo-1', 'Ship it'), 1)])
+    applyEvents(
+      [
+        storedEvent(
+          todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+          1,
+        ),
+      ],
+      db,
+    )
 
     expect(
       db

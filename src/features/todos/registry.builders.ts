@@ -1,7 +1,7 @@
 import type { Component } from 'solid-js'
 import type { z } from 'zod'
 
-import type { StoredTodoEvent, Event, StoreTx } from './shared'
+import type { StoredEvent, Event, StoreTx } from './shared'
 
 export type CommandRegistration<
   TType extends string = string,
@@ -10,8 +10,8 @@ export type CommandRegistration<
   kind: 'command'
   type: TType
   schema: TSchema
-  decide: (tx: StoreTx, command: z.infer<TSchema>) => Event[]
-  applyEvents?: (tx: StoreTx, events: StoredTodoEvent[]) => void
+  decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[]
+  apply?: (event: StoredEvent, tx: StoreTx) => void
 }
 
 export type ProjectionRegistration<
@@ -22,7 +22,7 @@ export type ProjectionRegistration<
   kind: 'projection'
   name: TName
   schema: TSchema
-  applyEvents: (tx: StoreTx, events: StoredTodoEvent[]) => void
+  apply: (event: StoredEvent, tx: StoreTx) => void
   component: TComponent
 }
 
@@ -41,34 +41,34 @@ export type CommandSliceDecideStep<
   TSchema extends z.ZodType,
 > = {
   decide: (
-    decide: (tx: StoreTx, command: z.infer<TSchema>) => Event[],
+    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
   ) => CommandRegistration<TType, TSchema>
-  applyEvents: (
-    applyEvents: (tx: StoreTx, events: StoredTodoEvent[]) => void,
-  ) => CommandSliceApplyEventsStep<TType, TSchema>
+  apply: (
+    apply: (event: StoredEvent, tx: StoreTx) => void,
+  ) => CommandSliceApplyStep<TType, TSchema>
 }
 
-export type CommandSliceApplyEventsStep<
+export type CommandSliceApplyStep<
   TType extends string,
   TSchema extends z.ZodType,
 > = {
   decide: (
-    decide: (tx: StoreTx, command: z.infer<TSchema>) => Event[],
+    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
   ) => CommandRegistration<TType, TSchema>
 }
 
 export type ProjectionSliceSchemaStep<TName extends string> = {
   schema: <TSchema extends z.ZodType>(
     schema: TSchema,
-  ) => ProjectionSliceApplyEventsStep<TName, TSchema>
+  ) => ProjectionSliceApplyStep<TName, TSchema>
 }
 
-export type ProjectionSliceApplyEventsStep<
+export type ProjectionSliceApplyStep<
   TName extends string,
   TSchema extends z.ZodType,
 > = {
-  applyEvents: (
-    applyEvents: (tx: StoreTx, events: StoredTodoEvent[]) => void,
+  apply: (
+    apply: (event: StoredEvent, tx: StoreTx) => void,
   ) => ProjectionSliceComponentStep<TName, TSchema>
 }
 
@@ -92,12 +92,12 @@ export function createCommandSlice<const TType extends string>(
         schema,
         decide,
       }),
-      applyEvents: (applyEvents) => ({
+      apply: (apply) => ({
         decide: (decide) => ({
           kind: 'command',
           type,
           schema,
-          applyEvents,
+          apply,
           decide,
         }),
       }),
@@ -110,12 +110,12 @@ export function createProjectionSlice<const TName extends string>(
 ): ProjectionSliceSchemaStep<TName> {
   return {
     schema: (schema) => ({
-      applyEvents: (applyEvents) => ({
+      apply: (apply) => ({
         component: (component) => ({
           kind: 'projection',
           name,
           schema,
-          applyEvents,
+          apply,
           component,
         }),
       }),

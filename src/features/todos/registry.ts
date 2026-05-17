@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-import type { StoredTodoEvent, Event, StoreTx } from './shared'
+import type { StoredEvent, Event, StoreTx } from './shared'
 export {
   createCommandSlice,
   createProjectionSlice,
@@ -47,7 +47,7 @@ export const commandInput = z.discriminatedUnion('type', [
 
 export type Command = z.infer<typeof commandInput>
 
-export function decideCommand(tx: StoreTx, command: Command): Event[] {
+export function decideCommand(command: Command, tx: StoreTx): Event[] {
   const registration = commandRegistrations.find(
     (candidate) => candidate.type === command.type,
   )
@@ -56,13 +56,19 @@ export function decideCommand(tx: StoreTx, command: Command): Event[] {
     throw new Error(`Unknown todo command: ${command.type}`)
   }
 
-  return registration.decide(tx, command.payload as never)
+  return registration.decide(command.payload as never, tx)
 }
 
-export function applyEvents(tx: StoreTx, events: StoredTodoEvent[]) {
+export function applyEvents(events: StoredEvent[], tx: StoreTx) {
+  for (const event of events) {
+    applyEvent(event, tx)
+  }
+}
+
+export function applyEvent(event: StoredEvent, tx: StoreTx) {
   for (const slice of sliceRegistrations) {
-    if ('applyEvents' in slice && slice.applyEvents) {
-      slice.applyEvents(tx, events)
+    if ('apply' in slice && slice.apply) {
+      slice.apply(event, tx)
     }
   }
 }

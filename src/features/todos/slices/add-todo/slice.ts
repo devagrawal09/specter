@@ -1,5 +1,6 @@
 import z from 'zod'
 import { createCommandSlice } from '../../registry.builders'
+import { todoAddedEvent } from '../../shared'
 
 const maxTitleLength = 120
 
@@ -9,7 +10,7 @@ export const addTodoSliceRegistration = createCommandSlice('addTodo')
       title: z.string(),
     }),
   )
-  .decide((_tx, command) => {
+  .decide((command) => {
     const title = command.title.trim()
 
     if (!title) {
@@ -20,10 +21,5 @@ export const addTodoSliceRegistration = createCommandSlice('addTodo')
       throw new Error(`Todo title must be ${maxTitleLength} characters or less`)
     }
 
-    return [
-      {
-        type: 'todoAdded',
-        payload: { todoId: crypto.randomUUID(), title },
-      },
-    ]
+    return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]
   })
