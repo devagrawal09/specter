@@ -36,6 +36,19 @@ export type CommandRegistration<
   scenarios?: readonly CommandScenario<z.infer<TSchema>>[]
 }
 
+export type ProjectionUiAssertion = {
+  visible?: readonly string[]
+  hidden?: readonly string[]
+  text?: Readonly<Record<string, string>>
+  count?: Readonly<Record<string, number>>
+}
+
+export type ProjectionScenario<TWhen = unknown> = {
+  given: readonly Event[]
+  when: TWhen
+  expect: ProjectionUiAssertion
+}
+
 export type ProjectionRegistration<
   TName extends string = string,
   TSchema extends z.ZodType = z.ZodType,
@@ -46,6 +59,7 @@ export type ProjectionRegistration<
   schema: TSchema
   apply: ApplyHandlers
   component: TComponent
+  scenarios?: readonly ProjectionScenario<z.infer<TSchema>>[]
 }
 
 export type ReactionScenario = {
@@ -131,6 +145,18 @@ export type ProjectionSliceApplyStep<
 }
 
 export type ProjectionSliceComponentStep<
+  TName extends string,
+  TSchema extends z.ZodType,
+> = {
+  component: <TComponent extends Component>(
+    component: TComponent,
+  ) => ProjectionRegistration<TName, TSchema, TComponent>
+  scenarios: (
+    ...scenarios: readonly ProjectionScenario<z.infer<TSchema>>[]
+  ) => ProjectionSliceScenarioStep<TName, TSchema>
+}
+
+export type ProjectionSliceScenarioStep<
   TName extends string,
   TSchema extends z.ZodType,
 > = {
@@ -245,15 +271,26 @@ export function createProjectionSpec<const TName extends string>(
 ): ProjectionSliceSchemaStep<TName> {
   return {
     schema: (schema) => ({
-      apply: (apply) => ({
-        component: (component) => ({
+      apply: (apply) => {
+        const createRegistration = <TComponent extends Component>(
+          component: TComponent,
+          scenarios?: readonly ProjectionScenario<z.infer<typeof schema>>[],
+        ): ProjectionRegistration<TName, typeof schema, TComponent> => ({
           kind: 'projection',
           name,
           schema,
           apply,
           component,
-        }),
-      }),
+          scenarios,
+        })
+
+        return {
+          component: (component) => createRegistration(component),
+          scenarios: (...scenarios) => ({
+            component: (component) => createRegistration(component, scenarios),
+          }),
+        }
+      },
     }),
   }
 }

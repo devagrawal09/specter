@@ -53,6 +53,94 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         .run()
     },
   })
+  .scenarios(
+    {
+      given: [],
+      when: { status: 'all' },
+      expect: {
+        visible: ['empty-state'],
+        hidden: ['todo-list'],
+        text: {
+          'empty-message': 'No todos yet.',
+          'todo-summary': '0 total · 0 active · 0 completed',
+        },
+        count: { 'todo-item': 0 },
+      },
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
+      ],
+      when: { status: 'all' },
+      expect: {
+        visible: ['todo-list'],
+        hidden: ['empty-state'],
+        text: {
+          'todo-summary': '2 total · 2 active · 0 completed',
+          'todo-title-todo-1': 'Ship it',
+          'todo-title-todo-2': 'Review it',
+        },
+        count: { 'todo-item': 2 },
+      },
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-1',
+          completed: true,
+        }),
+        todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
+      ],
+      when: { status: 'active' },
+      expect: {
+        visible: ['todo-list'],
+        hidden: ['empty-state'],
+        text: {
+          'todo-summary': '1 total · 1 active · 0 completed',
+          'todo-title-todo-2': 'Review it',
+        },
+        count: { 'todo-item': 1 },
+      },
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-1',
+          completed: true,
+        }),
+        todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
+      ],
+      when: { status: 'completed' },
+      expect: {
+        visible: ['todo-list'],
+        hidden: ['empty-state'],
+        text: {
+          'todo-summary': '1 total · 0 active · 1 completed',
+          'todo-title-todo-1': 'Ship it',
+        },
+        count: { 'todo-item': 1 },
+      },
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoRemovedEvent.create({ todoId: 'todo-1' }),
+      ],
+      when: { status: 'all' },
+      expect: {
+        visible: ['empty-state'],
+        hidden: ['todo-list'],
+        text: {
+          'empty-message': 'No todos yet.',
+          'todo-summary': '0 total · 0 active · 0 completed',
+        },
+        count: { 'todo-item': 0 },
+      },
+    },
+  )
   .component(
     lazy(() =>
       import('./TodosView').then((module) => ({ default: module.TodosView })),

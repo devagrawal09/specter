@@ -13,6 +13,8 @@ export type {
   CommandEnvelope,
   CommandSliceSchemaStep,
   ProjectionRegistration,
+  ProjectionScenario,
+  ProjectionUiAssertion,
   ProjectionSliceSchemaStep,
   ReactionRegistration,
   ReactionSliceApplyStep,

@@ -26,6 +26,34 @@ export const todoCheersSliceRegistration = createProjectionSpec('todoCheers')
         .run()
     },
   })
+  .scenarios(
+    {
+      given: [],
+      when: {},
+      expect: {
+        hidden: ['todo-cheer'],
+      },
+    },
+    {
+      given: [
+        todoCheerCreatedEvent.create({
+          milestone: 5,
+          message: 'Nice work: 5 todos completed.',
+        }),
+        todoCheerCreatedEvent.create({
+          milestone: 10,
+          message: 'Nice work: 10 todos completed.',
+        }),
+      ],
+      when: {},
+      expect: {
+        visible: ['todo-cheer'],
+        text: {
+          'todo-cheer': 'Nice work: 10 todos completed.',
+        },
+      },
+    },
+  )
   .component(
     lazy(() =>
       import('./TodoCheersView').then((module) => ({
