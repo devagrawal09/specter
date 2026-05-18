@@ -41,40 +41,6 @@ function completedTodoEvents(count: number): Event[] {
 export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
   'todoCompletionCheer',
 )
-  .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoCompletionCheerTodoStates)
-        .values({
-          todoId: event.payload.todoId,
-          completed: false,
-          removed: false,
-        })
-        .run()
-    },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionCheerTodoStates)
-        .set({
-          completed: event.payload.completed,
-        })
-        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
-        .run()
-    },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionCheerTodoStates)
-        .set({
-          removed: true,
-        })
-        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
-        .run()
-    },
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(todoCheerMilestoneStates)
-        .values({
-          milestone: event.payload.milestone,
-        })
-        .run()
-    },
-  })
   .scenarios(
     {
       given: completedTodoEvents(4),
@@ -130,6 +96,40 @@ export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
       expect: [],
     },
   )
+  .apply({
+    [todoAddedEvent.type]: (event, tx) => {
+      tx.insert(todoCompletionCheerTodoStates)
+        .values({
+          todoId: event.payload.todoId,
+          completed: false,
+          removed: false,
+        })
+        .run()
+    },
+    [todoCompletionChangedEvent.type]: (event, tx) => {
+      tx.update(todoCompletionCheerTodoStates)
+        .set({
+          completed: event.payload.completed,
+        })
+        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    },
+    [todoRemovedEvent.type]: (event, tx) => {
+      tx.update(todoCompletionCheerTodoStates)
+        .set({
+          removed: true,
+        })
+        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
+        .run()
+    },
+    [todoCheerCreatedEvent.type]: (event, tx) => {
+      tx.insert(todoCheerMilestoneStates)
+        .values({
+          milestone: event.payload.milestone,
+        })
+        .run()
+    },
+  })
   .react((event, tx) => {
     if (
       !todoCompletionChangedEvent.is(event) ||

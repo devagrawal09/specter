@@ -8,6 +8,7 @@ export {
   createReactionSpec as createReactionSlice,
 } from './registry.builders'
 export type {
+  ApplyHandlers,
   CommandRegistration,
   CommandEnvelope,
   CommandSliceSchemaStep,
@@ -47,6 +48,7 @@ assertUniqueRegistrations(sliceRegistrations)
 
 const commandRegistrations = collectCommandRegistrations(sliceRegistrations)
 const reactionRegistrations = collectReactionRegistrations(sliceRegistrations)
+const eventApplications = collectEventApplications(sliceRegistrations)
 
 if (commandRegistrations.length === 0) {
   throw new Error('Todo registry must include at least one command slice')
@@ -121,10 +123,14 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
 
 export function applyEvents(events: Event[], tx: StoreTx) {
   for (const event of events) {
-    for (const slice of sliceRegistrations) {
-      if ('apply' in slice && slice.apply) {
-        slice.apply(event, tx)
-      }
+    const handlers = eventApplications[event.type]
+
+    if (!handlers) {
+      continue
+    }
+
+    for (const handler of handlers) {
+      handler(event, tx)
     }
   }
 }
@@ -176,6 +182,36 @@ function collectReactionRegistrations(
   }
 
   return reactions
+}
+
+type EventApplication = (event: Event, tx: StoreTx) => void
+
+function collectEventApplications(registrations: readonly SliceRegistration[]) {
+  const applications: Partial<Record<Event['type'], EventApplication[]>> = {}
+
+  for (const registration of registrations) {
+    if (!('apply' in registration) || !registration.apply) {
+      continue
+    }
+
+    for (const eventType of Object.keys(
+      registration.apply,
+    ) as Event['type'][]) {
+      const handler = registration.apply[eventType] as
+        | EventApplication
+        | undefined
+
+      if (!handler) {
+        continue
+      }
+
+      const existingHandlers = applications[eventType] ?? []
+      existingHandlers.push(handler)
+      applications[eventType] = existingHandlers
+    }
+  }
+
+  return applications
 }
 
 function assertUniqueRegistrations(
