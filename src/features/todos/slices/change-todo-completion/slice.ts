@@ -60,33 +60,31 @@ export const changeTodoCompletionSliceRegistration = createCommandSpec(
       expect: [errorEvent.create({ message: 'Todo not found' })],
     },
   )
-  .apply((event, tx) => {
-    if (todoAddedEvent.is(event)) {
+  .apply({
+    [todoAddedEvent.type]: (event, tx) => {
       tx.insert(todoCompletionStates)
         .values({
           todoId: event.payload.todoId,
           completed: false,
         })
         .run()
-    }
-
-    if (todoCompletionChangedEvent.is(event)) {
+    },
+    [todoCompletionChangedEvent.type]: (event, tx) => {
       tx.update(todoCompletionStates)
         .set({
           completed: event.payload.completed,
         })
         .where(eq(todoCompletionStates.todoId, event.payload.todoId))
         .run()
-    }
-
-    if (todoRemovedEvent.is(event)) {
+    },
+    [todoRemovedEvent.type]: (event, tx) => {
       tx.update(todoCompletionStates)
         .set({
           removed: true,
         })
         .where(eq(todoCompletionStates.todoId, event.payload.todoId))
         .run()
-    }
+    },
   })
   .decide((command, tx) => {
     const todo = tx

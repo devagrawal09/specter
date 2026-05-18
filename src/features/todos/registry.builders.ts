@@ -17,6 +17,13 @@ export type CommandScenario<TPayload = unknown> = {
   expect: readonly Event[]
 }
 
+export type ApplyHandlers = {
+  [TType in Event['type']]?: (
+    event: Extract<Event, { type: TType }>,
+    tx: StoreTx,
+  ) => void
+}
+
 export type CommandRegistration<
   TType extends string = string,
   TSchema extends z.ZodType = z.ZodType,
@@ -73,9 +80,7 @@ export type CommandSliceDecideStep<
   decide: (
     decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
   ) => CommandRegistration<TType, TSchema>
-  apply: (
-    apply: (event: Event, tx: StoreTx) => void,
-  ) => CommandSliceApplyStep<TType, TSchema>
+  apply: (apply: ApplyHandlers) => CommandSliceApplyStep<TType, TSchema>
   scenarios: (
     ...scenarios: readonly CommandScenario<z.infer<TSchema>>[]
   ) => CommandSliceScenarioStep<TType, TSchema>
@@ -100,9 +105,7 @@ export type CommandSliceScenarioStep<
   decide: (
     decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
   ) => CommandRegistration<TType, TSchema>
-  apply: (
-    apply: (event: Event, tx: StoreTx) => void,
-  ) => CommandSliceApplyScenarioStep<TType, TSchema>
+  apply: (apply: ApplyHandlers) => CommandSliceApplyScenarioStep<TType, TSchema>
 }
 
 export type CommandSliceApplyScenarioStep<
@@ -124,9 +127,7 @@ export type ProjectionSliceApplyStep<
   TName extends string,
   TSchema extends z.ZodType,
 > = {
-  apply: (
-    apply: (event: Event, tx: StoreTx) => void,
-  ) => ProjectionSliceComponentStep<TName, TSchema>
+  apply: (apply: ApplyHandlers) => ProjectionSliceComponentStep<TName, TSchema>
 }
 
 export type ProjectionSliceComponentStep<
@@ -142,9 +143,7 @@ export type ReactionSliceReactStep<TName extends string> = {
   react: (
     react: (event: Event, tx: StoreTx) => CommandEnvelope[],
   ) => ReactionRegistration<TName>
-  apply: (
-    apply: (event: Event, tx: StoreTx) => void,
-  ) => ReactionSliceApplyStep<TName>
+  apply: (apply: ApplyHandlers) => ReactionSliceApplyStep<TName>
   scenarios: (
     ...scenarios: readonly ReactionScenario[]
   ) => ReactionSliceScenarioStep<TName>
@@ -163,9 +162,17 @@ export type ReactionSliceScenarioStep<TName extends string> = {
   react: (
     react: (event: Event, tx: StoreTx) => CommandEnvelope[],
   ) => ReactionRegistration<TName>
-  apply: (
-    apply: (event: Event, tx: StoreTx) => void,
-  ) => ReactionSliceApplyScenarioStep<TName>
+  apply: (apply: ApplyHandlers) => ReactionSliceApplyScenarioStep<TName>
+}
+
+function createApplyFunction(handlers: ApplyHandlers) {
+  return (event: Event, tx: StoreTx) => {
+    const handler = handlers[event.type] as
+      | ((event: Event, tx: StoreTx) => void)
+      | undefined
+
+    handler?.(event, tx)
+  }
 }
 
 export type ReactionSliceApplyScenarioStep<TName extends string> = {
@@ -195,15 +202,18 @@ export function createCommandSpec<const TType extends string>(
       return {
         decide: (decide) => createRegistration(decide),
         apply: (apply) => ({
-          decide: (decide) => createRegistration(decide, apply),
+          decide: (decide) =>
+            createRegistration(decide, createApplyFunction(apply)),
           scenarios: (...scenarios) => ({
-            decide: (decide) => createRegistration(decide, apply, scenarios),
+            decide: (decide) =>
+              createRegistration(decide, createApplyFunction(apply), scenarios),
           }),
         }),
         scenarios: (...scenarios) => ({
           decide: (decide) => createRegistration(decide, undefined, scenarios),
           apply: (apply) => ({
-            decide: (decide) => createRegistration(decide, apply, scenarios),
+            decide: (decide) =>
+              createRegistration(decide, createApplyFunction(apply), scenarios),
           }),
         }),
       }
@@ -229,15 +239,17 @@ export function createReactionSpec<const TName extends string>(
   return {
     react: (react) => createRegistration(react),
     apply: (apply) => ({
-      react: (react) => createRegistration(react, apply),
+      react: (react) => createRegistration(react, createApplyFunction(apply)),
       scenarios: (...scenarios) => ({
-        react: (react) => createRegistration(react, apply, scenarios),
+        react: (react) =>
+          createRegistration(react, createApplyFunction(apply), scenarios),
       }),
     }),
     scenarios: (...scenarios) => ({
       react: (react) => createRegistration(react, undefined, scenarios),
       apply: (apply) => ({
-        react: (react) => createRegistration(react, apply, scenarios),
+        react: (react) =>
+          createRegistration(react, createApplyFunction(apply), scenarios),
       }),
     }),
   }
@@ -253,7 +265,7 @@ export function createProjectionSpec<const TName extends string>(
           kind: 'projection',
           name,
           schema,
-          apply,
+          apply: createApplyFunction(apply),
           component,
         }),
       }),

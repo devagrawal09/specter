@@ -16,17 +16,15 @@ export type TodoCheer = typeof todoCheers.$inferSelect
 
 export const todoCheersSliceRegistration = createProjectionSpec('todoCheers')
   .schema(todoCheersQueryInput)
-  .apply((event, tx) => {
-    if (!todoCheerCreatedEvent.is(event)) {
-      return
-    }
-
-    tx.insert(todoCheers)
-      .values({
-        milestone: event.payload.milestone,
-        message: event.payload.message,
-      })
-      .run()
+  .apply({
+    [todoCheerCreatedEvent.type]: (event, tx) => {
+      tx.insert(todoCheers)
+        .values({
+          milestone: event.payload.milestone,
+          message: event.payload.message,
+        })
+        .run()
+    },
   })
   .component(
     lazy(() =>

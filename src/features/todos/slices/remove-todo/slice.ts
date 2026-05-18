@@ -35,23 +35,22 @@ export const removeTodoSliceRegistration = createCommandSpec('removeTodo')
       expect: [errorEvent.create({ message: 'Todo not found' })],
     },
   )
-  .apply((event, tx) => {
-    if (todoAddedEvent.is(event)) {
+  .apply({
+    [todoAddedEvent.type]: (event, tx) => {
       tx.insert(todoRemovalStates)
         .values({
           todoId: event.payload.todoId,
         })
         .run()
-    }
-
-    if (todoRemovedEvent.is(event)) {
+    },
+    [todoRemovedEvent.type]: (event, tx) => {
       tx.update(todoRemovalStates)
         .set({
           removed: true,
         })
         .where(eq(todoRemovalStates.todoId, event.payload.todoId))
         .run()
-    }
+    },
   })
   .decide((command, tx) => {
     const todo = tx

@@ -104,8 +104,8 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
       ],
     },
   )
-  .apply((event, tx) => {
-    if (todoAddedEvent.is(event)) {
+  .apply({
+    [todoAddedEvent.type]: (event, tx) => {
       tx.insert(createTodoCheerTodoStates)
         .values({
           todoId: event.payload.todoId,
@@ -113,33 +113,30 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
           removed: false,
         })
         .run()
-    }
-
-    if (todoCompletionChangedEvent.is(event)) {
+    },
+    [todoCompletionChangedEvent.type]: (event, tx) => {
       tx.update(createTodoCheerTodoStates)
         .set({
           completed: event.payload.completed,
         })
         .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
         .run()
-    }
-
-    if (todoRemovedEvent.is(event)) {
+    },
+    [todoRemovedEvent.type]: (event, tx) => {
       tx.update(createTodoCheerTodoStates)
         .set({
           removed: true,
         })
         .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
         .run()
-    }
-
-    if (todoCheerCreatedEvent.is(event)) {
+    },
+    [todoCheerCreatedEvent.type]: (event, tx) => {
       tx.insert(createTodoCheerMilestoneStates)
         .values({
           milestone: event.payload.milestone,
         })
         .run()
-    }
+    },
   })
   .decide((command, tx) => {
     if (command.milestone % 5 !== 0) {
