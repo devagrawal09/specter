@@ -2,6 +2,8 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import { z } from 'zod'
 
+const eventBrand: unique symbol = Symbol('todoEvent')
+
 export const events = sqliteTable('events', {
   id: text('id').primaryKey(),
   type: text('type').notNull(),
@@ -10,6 +12,7 @@ export const events = sqliteTable('events', {
 })
 
 type EventFor<TType extends string, TPayload> = {
+  readonly [eventBrand]: TType
   id: string
   type: TType
   payload: TPayload
@@ -34,11 +37,15 @@ export function createEventSpec<
     type,
     schema,
     create(payload: Payload): TypedEvent {
-      return {
-        id: crypto.randomUUID(),
-        type,
-        payload: schema.parse(payload),
-      }
+      return Object.defineProperty(
+        {
+          id: crypto.randomUUID(),
+          type,
+          payload: schema.parse(payload),
+        },
+        eventBrand,
+        { value: type },
+      ) as TypedEvent
     },
     is<TEvent extends UnknownEvent>(
       event: TEvent,
@@ -79,8 +86,16 @@ export const todoCheerCreatedEvent = createEventSpec(
   }),
 )
 
+export const errorEvent = createEventSpec(
+  'error',
+  z.object({
+    message: z.string(),
+  }),
+)
+
 export type Event =
   | ReturnType<typeof todoAddedEvent.create>
   | ReturnType<typeof todoCompletionChangedEvent.create>
   | ReturnType<typeof todoRemovedEvent.create>
   | ReturnType<typeof todoCheerCreatedEvent.create>
+  | ReturnType<typeof errorEvent.create>

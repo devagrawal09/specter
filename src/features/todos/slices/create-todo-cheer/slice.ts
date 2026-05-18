@@ -3,6 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSpec } from '../../registry.builders'
 import {
+  errorEvent,
   todoAddedEvent,
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
@@ -27,6 +28,17 @@ export const createTodoCheerMilestoneStates = sqliteTable(
   },
 )
 
+function completedTodoEvents(count: number) {
+  return Array.from({ length: count }, (_, index) => {
+    const todoId = `todo-${index + 1}`
+
+    return [
+      todoAddedEvent.create({ todoId, title: todoId }),
+      todoCompletionChangedEvent.create({ todoId, completed: true }),
+    ]
+  }).flat()
+}
+
 export const createTodoCheerSliceRegistration = createCommandSpec(
   'createTodoCheer',
 )
@@ -34,6 +46,63 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
     z.object({
       milestone: z.number().int().positive(),
     }),
+  )
+  .scenarios(
+    {
+      given: [],
+      when: { milestone: 4 },
+      expect: [
+        errorEvent.create({
+          message: 'Todo cheer milestone must be a multiple of 5',
+        }),
+      ],
+    },
+    {
+      given: completedTodoEvents(4),
+      when: { milestone: 5 },
+      expect: [
+        errorEvent.create({
+          message: 'Todo cheer milestone has not been reached',
+        }),
+      ],
+    },
+    {
+      given: [
+        ...completedTodoEvents(5),
+        todoCheerCreatedEvent.create({
+          milestone: 5,
+          message: 'Nice work: 5 todos completed.',
+        }),
+      ],
+      when: { milestone: 5 },
+      expect: [
+        errorEvent.create({
+          message: 'Todo cheer milestone already exists',
+        }),
+      ],
+    },
+    {
+      given: completedTodoEvents(5),
+      when: { milestone: 5 },
+      expect: [
+        todoCheerCreatedEvent.create({
+          milestone: 5,
+          message: 'Nice work: 5 todos completed.',
+        }),
+      ],
+    },
+    {
+      given: [
+        ...completedTodoEvents(5),
+        todoRemovedEvent.create({ todoId: 'todo-5' }),
+      ],
+      when: { milestone: 5 },
+      expect: [
+        errorEvent.create({
+          message: 'Todo cheer milestone has not been reached',
+        }),
+      ],
+    },
   )
   .apply((event, tx) => {
     if (todoAddedEvent.is(event)) {
@@ -74,7 +143,11 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
   })
   .decide((command, tx) => {
     if (command.milestone % 5 !== 0) {
-      throw new Error('Todo cheer milestone must be a multiple of 5')
+      return [
+        errorEvent.create({
+          message: 'Todo cheer milestone must be a multiple of 5',
+        }),
+      ]
     }
 
     const completedCount = tx
@@ -89,7 +162,11 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
       .all().length
 
     if (completedCount < command.milestone) {
-      throw new Error('Todo cheer milestone has not been reached')
+      return [
+        errorEvent.create({
+          message: 'Todo cheer milestone has not been reached',
+        }),
+      ]
     }
 
     const existingMilestone = tx
@@ -99,7 +176,11 @@ export const createTodoCheerSliceRegistration = createCommandSpec(
       .get()
 
     if (existingMilestone) {
-      throw new Error('Todo cheer milestone already exists')
+      return [
+        errorEvent.create({
+          message: 'Todo cheer milestone already exists',
+        }),
+      ]
     }
 
     return [

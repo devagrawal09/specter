@@ -11,6 +11,12 @@ export type CommandEnvelope<
   payload: TPayload
 }
 
+export type CommandScenario<TPayload = unknown> = {
+  given: readonly Event[]
+  when: TPayload
+  expect: readonly Event[]
+}
+
 export type CommandRegistration<
   TType extends string = string,
   TSchema extends z.ZodType = z.ZodType,
@@ -20,6 +26,7 @@ export type CommandRegistration<
   schema: TSchema
   decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[]
   apply?: (event: Event, tx: StoreTx) => void
+  scenarios?: readonly CommandScenario<z.infer<TSchema>>[]
 }
 
 export type ProjectionRegistration<
@@ -34,11 +41,18 @@ export type ProjectionRegistration<
   component: TComponent
 }
 
+export type ReactionScenario = {
+  given: readonly Event[]
+  when: Event
+  expect: readonly CommandEnvelope[]
+}
+
 export type ReactionRegistration<TName extends string = string> = {
   kind: 'reaction'
   name: TName
   apply?: (event: Event, tx: StoreTx) => void
   react: (event: Event, tx: StoreTx) => CommandEnvelope[]
+  scenarios?: readonly ReactionScenario[]
 }
 
 export type SliceRegistration =
@@ -62,9 +76,36 @@ export type CommandSliceDecideStep<
   apply: (
     apply: (event: Event, tx: StoreTx) => void,
   ) => CommandSliceApplyStep<TType, TSchema>
+  scenarios: (
+    ...scenarios: readonly CommandScenario<z.infer<TSchema>>[]
+  ) => CommandSliceScenarioStep<TType, TSchema>
 }
 
 export type CommandSliceApplyStep<
+  TType extends string,
+  TSchema extends z.ZodType,
+> = {
+  decide: (
+    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
+  ) => CommandRegistration<TType, TSchema>
+  scenarios: (
+    ...scenarios: readonly CommandScenario<z.infer<TSchema>>[]
+  ) => CommandSliceApplyScenarioStep<TType, TSchema>
+}
+
+export type CommandSliceScenarioStep<
+  TType extends string,
+  TSchema extends z.ZodType,
+> = {
+  decide: (
+    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
+  ) => CommandRegistration<TType, TSchema>
+  apply: (
+    apply: (event: Event, tx: StoreTx) => void,
+  ) => CommandSliceApplyScenarioStep<TType, TSchema>
+}
+
+export type CommandSliceApplyScenarioStep<
   TType extends string,
   TSchema extends z.ZodType,
 > = {
@@ -104,9 +145,30 @@ export type ReactionSliceReactStep<TName extends string> = {
   apply: (
     apply: (event: Event, tx: StoreTx) => void,
   ) => ReactionSliceApplyStep<TName>
+  scenarios: (
+    ...scenarios: readonly ReactionScenario[]
+  ) => ReactionSliceScenarioStep<TName>
 }
 
 export type ReactionSliceApplyStep<TName extends string> = {
+  react: (
+    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
+  ) => ReactionRegistration<TName>
+  scenarios: (
+    ...scenarios: readonly ReactionScenario[]
+  ) => ReactionSliceApplyScenarioStep<TName>
+}
+
+export type ReactionSliceScenarioStep<TName extends string> = {
+  react: (
+    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
+  ) => ReactionRegistration<TName>
+  apply: (
+    apply: (event: Event, tx: StoreTx) => void,
+  ) => ReactionSliceApplyScenarioStep<TName>
+}
+
+export type ReactionSliceApplyScenarioStep<TName extends string> = {
   react: (
     react: (event: Event, tx: StoreTx) => CommandEnvelope[],
   ) => ReactionRegistration<TName>
@@ -116,41 +178,66 @@ export function createCommandSpec<const TType extends string>(
   type: TType,
 ): CommandSliceSchemaStep<TType> {
   return {
-    schema: (schema) => ({
-      decide: (decide) => ({
+    schema: (schema) => {
+      const createRegistration = (
+        decide: (command: z.infer<typeof schema>, tx: StoreTx) => Event[],
+        apply?: (event: Event, tx: StoreTx) => void,
+        scenarios?: readonly CommandScenario<z.infer<typeof schema>>[],
+      ): CommandRegistration<TType, typeof schema> => ({
         kind: 'command',
         type,
         schema,
+        apply,
         decide,
-      }),
-      apply: (apply) => ({
-        decide: (decide) => ({
-          kind: 'command',
-          type,
-          schema,
-          apply,
-          decide,
+        scenarios,
+      })
+
+      return {
+        decide: (decide) => createRegistration(decide),
+        apply: (apply) => ({
+          decide: (decide) => createRegistration(decide, apply),
+          scenarios: (...scenarios) => ({
+            decide: (decide) => createRegistration(decide, apply, scenarios),
+          }),
         }),
-      }),
-    }),
+        scenarios: (...scenarios) => ({
+          decide: (decide) => createRegistration(decide, undefined, scenarios),
+          apply: (apply) => ({
+            decide: (decide) => createRegistration(decide, apply, scenarios),
+          }),
+        }),
+      }
+    },
   }
 }
 
 export function createReactionSpec<const TName extends string>(
   name: TName,
 ): ReactionSliceReactStep<TName> {
+  const createRegistration = (
+    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
+    apply?: (event: Event, tx: StoreTx) => void,
+    scenarios?: readonly ReactionScenario[],
+  ): ReactionRegistration<TName> => ({
+    kind: 'reaction',
+    name,
+    apply,
+    react,
+    scenarios,
+  })
+
   return {
-    react: (react) => ({
-      kind: 'reaction',
-      name,
-      react,
-    }),
+    react: (react) => createRegistration(react),
     apply: (apply) => ({
-      react: (react) => ({
-        kind: 'reaction',
-        name,
-        apply,
-        react,
+      react: (react) => createRegistration(react, apply),
+      scenarios: (...scenarios) => ({
+        react: (react) => createRegistration(react, apply, scenarios),
+      }),
+    }),
+    scenarios: (...scenarios) => ({
+      react: (react) => createRegistration(react, undefined, scenarios),
+      apply: (apply) => ({
+        react: (react) => createRegistration(react, apply, scenarios),
       }),
     }),
   }

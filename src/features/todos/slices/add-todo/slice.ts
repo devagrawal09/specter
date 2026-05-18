@@ -1,6 +1,6 @@
 import z from 'zod'
 import { createCommandSpec } from '../../registry.builders'
-import { todoAddedEvent } from '../../shared'
+import { errorEvent, todoAddedEvent } from '../../shared'
 
 const maxTitleLength = 120
 
@@ -10,15 +10,45 @@ export const addTodoSliceRegistration = createCommandSpec('addTodo')
       title: z.string(),
     }),
   )
+  .scenarios(
+    {
+      given: [],
+      when: { title: 'Ship it' },
+      expect: [todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' })],
+    },
+    {
+      given: [],
+      when: { title: '  Ship it  ' },
+      expect: [todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' })],
+    },
+    {
+      given: [],
+      when: { title: '   ' },
+      expect: [errorEvent.create({ message: 'Todo title is required' })],
+    },
+    {
+      given: [],
+      when: { title: 'x'.repeat(121) },
+      expect: [
+        errorEvent.create({
+          message: `Todo title must be ${maxTitleLength} characters or less`,
+        }),
+      ],
+    },
+  )
   .decide((command) => {
     const title = command.title.trim()
 
     if (!title) {
-      throw new Error('Todo title is required')
+      return [errorEvent.create({ message: 'Todo title is required' })]
     }
 
     if (title.length > maxTitleLength) {
-      throw new Error(`Todo title must be ${maxTitleLength} characters or less`)
+      return [
+        errorEvent.create({
+          message: `Todo title must be ${maxTitleLength} characters or less`,
+        }),
+      ]
     }
 
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]

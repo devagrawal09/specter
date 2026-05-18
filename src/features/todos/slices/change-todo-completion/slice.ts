@@ -3,6 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSpec } from '../../registry.builders'
 import {
+  errorEvent,
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
@@ -22,6 +23,42 @@ export const changeTodoCompletionSliceRegistration = createCommandSpec(
       todoId: z.string().min(1, 'Todo id is required'),
       completed: z.boolean(),
     }),
+  )
+  .scenarios(
+    {
+      given: [todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' })],
+      when: { todoId: 'todo-1', completed: true },
+      expect: [
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-1',
+          completed: true,
+        }),
+      ],
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-1',
+          completed: true,
+        }),
+      ],
+      when: { todoId: 'todo-1', completed: true },
+      expect: [],
+    },
+    {
+      given: [],
+      when: { todoId: 'missing', completed: true },
+      expect: [errorEvent.create({ message: 'Todo not found' })],
+    },
+    {
+      given: [
+        todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
+        todoRemovedEvent.create({ todoId: 'todo-1' }),
+      ],
+      when: { todoId: 'todo-1', completed: true },
+      expect: [errorEvent.create({ message: 'Todo not found' })],
+    },
   )
   .apply((event, tx) => {
     if (todoAddedEvent.is(event)) {
@@ -59,7 +96,7 @@ export const changeTodoCompletionSliceRegistration = createCommandSpec(
       .get()
 
     if (!todo || todo.removed) {
-      throw new Error('Todo not found')
+      return [errorEvent.create({ message: 'Todo not found' })]
     }
 
     if (todo.completed === command.completed) {

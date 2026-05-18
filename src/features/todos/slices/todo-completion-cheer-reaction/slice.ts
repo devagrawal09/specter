@@ -6,6 +6,7 @@ import {
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
+  type Event,
 } from '../../shared'
 
 export const todoCompletionCheerTodoStates = sqliteTable(
@@ -25,6 +26,17 @@ export const todoCheerMilestoneStates = sqliteTable(
     milestone: integer('milestone').primaryKey(),
   },
 )
+
+function completedTodoEvents(count: number): Event[] {
+  return Array.from({ length: count }, (_, index) => {
+    const todoId = `todo-${index + 1}`
+
+    return [
+      todoAddedEvent.create({ todoId, title: todoId }),
+      todoCompletionChangedEvent.create({ todoId, completed: true }),
+    ]
+  }).flat()
+}
 
 export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
   'todoCompletionCheer',
@@ -63,9 +75,64 @@ export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
         .values({
           milestone: event.payload.milestone,
         })
-        .run()
+      .run()
     }
   })
+  .scenarios(
+    {
+      given: completedTodoEvents(4),
+      when: todoCompletionChangedEvent.create({
+        todoId: 'todo-4',
+        completed: true,
+      }),
+      expect: [],
+    },
+    {
+      given: completedTodoEvents(5),
+      when: todoCompletionChangedEvent.create({
+        todoId: 'todo-5',
+        completed: true,
+      }),
+      expect: [{ type: 'createTodoCheer', payload: { milestone: 5 } }],
+    },
+    {
+      given: [
+        ...completedTodoEvents(5),
+        todoCheerCreatedEvent.create({
+          milestone: 5,
+          message: 'Nice work: 5 todos completed.',
+        }),
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-5',
+          completed: false,
+        }),
+        todoCompletionChangedEvent.create({
+          todoId: 'todo-5',
+          completed: true,
+        }),
+      ],
+      when: todoCompletionChangedEvent.create({
+        todoId: 'todo-5',
+        completed: true,
+      }),
+      expect: [],
+    },
+    {
+      given: [
+        ...completedTodoEvents(5),
+        todoCheerCreatedEvent.create({
+          milestone: 5,
+          message: 'Nice work: 5 todos completed.',
+        }),
+        todoRemovedEvent.create({ todoId: 'todo-5' }),
+      ],
+      when: todoCompletionChangedEvent.create({
+        todoId: 'todo-4',
+        completed: true,
+      }),
+      expect: [],
+    },
+  )
   .react((event, tx) => {
     if (
       !todoCompletionChangedEvent.is(event) ||
