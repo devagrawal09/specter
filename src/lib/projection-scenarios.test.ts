@@ -1,19 +1,16 @@
 import { and, eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
-import { applyEvents, sliceRegistrations } from '../registry'
+import { applyEvents, sliceRegistrations } from './registry'
 import type {
   ProjectionScenario,
   ProjectionUiAssertion,
-} from '../registry.builders'
-import {
-  latestTodoCheerOrder,
-  todoCheers,
-} from '../slices/todo-cheers/slice'
+} from './registry.builders'
+import { latestTodoCheerOrder, todoCheers } from '../features/todo-cheers/slice'
 import {
   todoListItems,
   type TodoStatusFilter,
-} from '../slices/todos-view/slice'
+} from '../features/todos-view/slice'
 import type { StoreTx } from './index'
 import { createTestDb } from './test-db'
 

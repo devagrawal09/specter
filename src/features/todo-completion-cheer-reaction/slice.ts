@@ -1,13 +1,13 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { createReactionSpec } from '../../registry.builders'
+import { createReactionSpec } from '../../lib/registry.builders'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
   type Event,
-} from '../../shared/events'
+} from '../events'
 
 export const todoCompletionCheerTodoStates = sqliteTable(
   'todo_completion_cheer_todo_states',

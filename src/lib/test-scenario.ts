@@ -1,7 +1,7 @@
 import { it } from 'vitest'
 
-import { applyEvents } from '../registry'
-import type { Event } from './events'
+import { applyEvents } from './registry'
+import type { Event } from '../features/events'
 import { createTestDb } from './test-db'
 
 type TestDb = ReturnType<typeof createTestDb>

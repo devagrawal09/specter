@@ -2,8 +2,8 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { lazy } from 'solid-js'
 import { z } from 'zod'
-import { createProjectionSpec } from '../../registry.builders'
-import { todoCheerCreatedEvent } from '../../shared/events'
+import { createProjectionSpec } from '../../lib/registry.builders'
+import { todoCheerCreatedEvent } from '../events'
 
 export const todoCheersQueryInput = z.object({})
 

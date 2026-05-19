@@ -3,10 +3,10 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { fileURLToPath } from 'node:url'
 
-import * as schema from '../../../db/schema'
+import * as schema from '../db/schema'
 
 const migrationsFolder = fileURLToPath(
-  new URL('../../../../drizzle', import.meta.url),
+  new URL('../../drizzle', import.meta.url),
 )
 
 export function createTestDb() {

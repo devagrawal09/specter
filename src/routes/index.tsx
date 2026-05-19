@@ -1,8 +1,8 @@
 import { createFileRoute } from '@tanstack/solid-router'
 import { createSignal } from 'solid-js'
 
-import { todoCheersSliceRegistration } from '../features/todos/slices/todo-cheers/slice'
-import { todosViewSliceRegistration } from '../features/todos/slices/todos-view/slice'
+import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
+import { todosViewSliceRegistration } from '../features/todos-view/slice'
 
 const TodosView = todosViewSliceRegistration.component
 const TodoCheersView = todoCheersSliceRegistration.component

@@ -1,13 +1,13 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSpec } from '../../registry.builders'
+import { createCommandSpec } from '../../lib/registry.builders'
 import {
   errorEvent,
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../shared/events'
+} from '../events'
 
 export const todoCompletionStates = sqliteTable('todo_completion_states', {
   todoId: text('todo_id').primaryKey(),

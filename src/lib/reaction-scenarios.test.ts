@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyEvents, sliceRegistrations } from '../registry'
-import type { ReactionScenario } from '../registry.builders'
+import { applyEvents, sliceRegistrations } from './registry'
+import type { ReactionScenario } from './registry.builders'
 import { createTestDb } from './test-db'
 
 describe('todo reaction scenarios', () => {

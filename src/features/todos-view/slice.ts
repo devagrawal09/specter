@@ -2,12 +2,12 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { lazy } from 'solid-js'
 import { z } from 'zod'
-import { createProjectionSpec } from '../../registry.builders'
+import { createProjectionSpec } from '../../lib/registry.builders'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../shared/events'
+} from '../events'
 
 const todoStatusFilterInput = z.enum(['all', 'active', 'completed'])
 

@@ -13,6 +13,7 @@
       "**/.vscode/**/*",
       "**/index.html",
       "**/vite.config.ts",
+      "!**/.reference",
       "!**/src/routeTree.gen.ts"
     ]
   },

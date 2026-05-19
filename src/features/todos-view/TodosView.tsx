@@ -9,8 +9,8 @@ import {
   type JSX,
   Show,
 } from 'solid-js'
-import { db } from '../../../../db/client.server'
-import { dispatchCommand } from '../../command'
+import { db } from '../../db/client.server'
+import { dispatchCommand } from '../../lib/command'
 import {
   todoListItems,
   todosViewQueryInput,

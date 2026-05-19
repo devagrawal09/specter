@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
-import type { StoreTx } from './shared'
-import type { Event } from './shared/events'
-import { events as todoEvents } from './shared'
+import type { StoreTx } from '.'
+import type { Event } from '../features/events'
+import { events as todoEvents } from '.'
 export {
   createCommandSpec as createCommandSlice,
   createProjectionSpec as createProjectionSlice,
@@ -27,13 +27,13 @@ import type {
   ReactionRegistration,
   SliceRegistration,
 } from './registry.builders'
-import { addTodoSliceRegistration } from './slices/add-todo/slice'
-import { changeTodoCompletionSliceRegistration } from './slices/change-todo-completion/slice'
-import { createTodoCheerSliceRegistration } from './slices/create-todo-cheer/slice'
-import { removeTodoSliceRegistration } from './slices/remove-todo/slice'
-import { todoCheersSliceRegistration } from './slices/todo-cheers/slice'
-import { todoCompletionCheerReactionSliceRegistration } from './slices/todo-completion-cheer-reaction/slice'
-import { todosViewSliceRegistration } from './slices/todos-view/slice'
+import { addTodoSliceRegistration } from '../features/add-todo/slice'
+import { changeTodoCompletionSliceRegistration } from '../features/change-todo-completion/slice'
+import { createTodoCheerSliceRegistration } from '../features/create-todo-cheer/slice'
+import { removeTodoSliceRegistration } from '../features/remove-todo/slice'
+import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
+import { todoCompletionCheerReactionSliceRegistration } from '../features/todo-completion-cheer-reaction/slice'
+import { todosViewSliceRegistration } from '../features/todos-view/slice'
 
 const maxReactionCascadeRounds = 10
 

@@ -1,8 +1,8 @@
 import type { Component } from 'solid-js'
 import type { z } from 'zod'
 
-import type { StoreTx } from './shared'
-import type { Event } from './shared/events'
+import type { StoreTx } from '.'
+import type { Event } from '../features/events'
 
 export type CommandEnvelope<
   TType extends string = string,

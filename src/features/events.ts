@@ -1,5 +1,5 @@
 import z from 'zod'
-import { createEventSpec } from '.'
+import { createEventSpec } from '../lib'
 
 export const todoAddedEvent = createEventSpec(
   'todoAdded',

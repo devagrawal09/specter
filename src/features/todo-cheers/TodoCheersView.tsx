@@ -1,6 +1,6 @@
 import { createServerFn, useServerFn } from '@tanstack/solid-start'
 import { createResource, Show } from 'solid-js'
-import { db } from '../../../../db/client.server'
+import { db } from '../../db/client.server'
 import { latestTodoCheerOrder, todoCheers } from './slice'
 
 type TodoCheersViewProps = {

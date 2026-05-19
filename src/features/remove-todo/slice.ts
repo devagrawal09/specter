@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSpec } from '../../registry.builders'
-import { errorEvent, todoAddedEvent, todoRemovedEvent } from '../../shared/events'
+import { createCommandSpec } from '../../lib/registry.builders'
+import { errorEvent, todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalStates = sqliteTable('todo_removal_states', {
   todoId: text('todo_id').primaryKey(),
