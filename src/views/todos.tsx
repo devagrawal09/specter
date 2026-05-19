@@ -1,10 +1,10 @@
-import { Link, useSearch } from '@tanstack/solid-router'
-import { createSignal, For, Show } from 'solid-js'
+import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
 import { addTodo } from '../features/add-todo/slice'
 import { changeTodoCompletion } from '../features/change-todo-completion/slice'
 import { removeTodo } from '../features/remove-todo/slice'
 import { todosProjection } from '../features/todos-view/slice'
+import { searchParams, setSearch } from '../location'
 import { createViewSpec } from '../lib/registry.builders'
 
 const filterOptions = [
@@ -22,11 +22,11 @@ export const TodosView = createViewSpec('todos-view')
   })
   .scenarios([])
   .component((props) => {
-    const search = useSearch({ from: '/' })
+    const status = () => searchParams().get('status') ?? 'all'
     const [title, setTitle] = createSignal('')
     const [isAdding, setIsAdding] = createSignal(false)
-    const [pendingToggleId, setPendingToggleId] = createSignal('')
-    const [pendingRemoveId, setPendingRemoveId] = createSignal('')
+    const [pendingToggleId, setPendingToggleId] = createOptimistic('')
+    const [pendingRemoveId, setPendingRemoveId] = createOptimistic('')
 
     return (
       <>
@@ -48,17 +48,19 @@ export const TodosView = createViewSpec('todos-view')
           >
             <For each={filterOptions}>
               {(option) => (
-                <Link
-                  to="/"
-                  search={{ status: option.status }}
-                  class="grid h-9 min-w-20 place-items-center rounded-lg px-3 text-sm font-semibold text-[var(--sea-ink-soft)] no-underline transition hover:text-[var(--sea-ink)]"
-                  classList={{
-                    'bg-white text-[var(--sea-ink)] shadow-[0_1px_4px_rgba(23,58,64,0.12)]':
-                      search().status === option.status,
-                  }}
+                <button
+                  type="button"
+                  onClick={() => setSearch({ status: option.status })}
+                  class={[
+                    'grid h-9 min-w-20 place-items-center rounded-lg px-3 text-sm font-semibold text-[var(--sea-ink-soft)] no-underline transition hover:text-[var(--sea-ink)]',
+                    {
+                      'bg-white text-[var(--sea-ink)] shadow-[0_1px_4px_rgba(23,58,64,0.12)]':
+                        status() === option.status,
+                    },
+                  ]}
                 >
                   {option.label}
-                </Link>
+                </button>
               )}
             </For>
           </nav>
@@ -104,10 +106,10 @@ export const TodosView = createViewSpec('todos-view')
             fallback={
               <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
                 <Show
-                  when={search().status === 'active'}
+                  when={status() === 'active'}
                   fallback={
                     <Show
-                      when={search().status === 'completed'}
+                      when={status() === 'completed'}
                       fallback="No todos yet."
                     >
                       No completed todos.
@@ -130,24 +132,24 @@ export const TodosView = createViewSpec('todos-view')
                       todo.completed ? 'active' : 'completed'
                     }`}
                     onChange={async (event) => {
-                      setPendingToggleId(todo.id)
-
-                      try {
-                        await props.change({
+                      action(async function* () {
+                        setPendingToggleId(todo.id)
+                        yield props.change({
                           todoId: todo.id,
                           completed: event.currentTarget.checked,
                         })
-                      } finally {
-                        setPendingToggleId('')
-                      }
+                      })
                     }}
                     class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
                   />
                   <p
-                    class="m-0 min-w-0 break-words text-sm font-medium text-[var(--sea-ink)]"
-                    classList={{
-                      'text-[var(--sea-ink-soft)] line-through': todo.completed,
-                    }}
+                    class={[
+                      'm-0 min-w-0 break-words text-sm font-medium text-[var(--sea-ink)]',
+                      {
+                        'text-[var(--sea-ink-soft)] line-through':
+                          todo.completed,
+                      },
+                    ]}
                   >
                     {todo.title}
                   </p>
@@ -155,13 +157,10 @@ export const TodosView = createViewSpec('todos-view')
                     type="button"
                     disabled={pendingRemoveId() === todo.id}
                     onClick={async () => {
-                      setPendingRemoveId(todo.id)
-
-                      try {
-                        await props.remove({ todoId: todo.id })
-                      } finally {
-                        setPendingRemoveId('')
-                      }
+                      action(async function* () {
+                        setPendingRemoveId(todo.id)
+                        yield props.remove({ todoId: todo.id })
+                      })
                     }}
                     class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >
