@@ -1,12 +1,11 @@
 import { defineConfig } from 'vitest/config'
-import { devtools } from '@tanstack/devtools-vite'
+import build from '@hono/vite-build/node'
+import devServer from '@hono/vite-dev-server'
+import nodeAdapter from '@hono/vite-dev-server/node'
 import tailwindcss from '@tailwindcss/vite'
-
-import { tanstackStart } from '@tanstack/solid-start/plugin/vite'
-
 import solidPlugin from 'vite-plugin-solid'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   resolve: { tsconfigPaths: true },
   server: {
     port: 41731,
@@ -26,10 +25,33 @@ export default defineConfig({
       '**/.reference/**',
     ],
   },
-  plugins: [
-    devtools(),
-    tailwindcss(),
-    tanstackStart(),
-    solidPlugin({ ssr: true }),
-  ],
-})
+  build:
+    mode === 'client'
+      ? {
+          rollupOptions: {
+            input: './src/client.tsx',
+            output: {
+              dir: './dist/static',
+              entryFileNames: 'client.js',
+              chunkFileNames: 'assets/[name]-[hash].js',
+              assetFileNames: 'assets/[name][extname]',
+            },
+          },
+          copyPublicDir: false,
+          emptyOutDir: true,
+        }
+      : undefined,
+  plugins:
+    mode === 'client'
+      ? [tailwindcss(), solidPlugin()]
+      : [
+          tailwindcss(),
+          solidPlugin(),
+          devServer({ entry: './src/server.ts', adapter: nodeAdapter }),
+          build({
+            entry: './src/server.ts',
+            port: 41731,
+            external: ['better-sqlite3'],
+          }),
+        ],
+}))
