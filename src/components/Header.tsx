@@ -5,9 +5,9 @@ export default function Header() {
     <header class="site-header px-4">
       <nav class="page-wrap nav-shell">
         <h2 class="m-0 flex-shrink-0 text-base font-semibold tracking-tight">
-          <Link to="/" search={{ status: 'all' }} class="brand-pill">
+          <Link to="/variants" class="brand-pill">
             <span class="brand-dot" />
-            TanStack Start
+            Specter
           </Link>
         </h2>
 
@@ -15,28 +15,20 @@ export default function Header() {
 
         <div class="order-3 flex w-full flex-wrap items-center gap-x-4 gap-y-1 pb-1 text-sm font-semibold sm:order-2 sm:w-auto sm:flex-nowrap sm:pb-0">
           <Link
-            to="/"
-            search={{ status: 'all' }}
+            to="/variants"
             class="nav-link"
             activeProps={{ class: 'nav-link is-active' }}
           >
-            Home
+            Variants
           </Link>
           <Link
-            to="/about"
+            to="/docs"
             class="nav-link"
             activeProps={{ class: 'nav-link is-active' }}
           >
-            About
-          </Link>
-          <a
-            href="https://tanstack.com/start/latest/docs/framework/solid/overview"
-            target="_blank"
-            rel="noreferrer"
-            class="nav-link"
-          >
             Docs
-          </a>
+          </Link>
+          <span class="nav-link cursor-not-allowed opacity-60">GitHub soon</span>
         </div>
       </nav>
     </header>

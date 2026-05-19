@@ -1,6 +1,7 @@
 import { z } from 'zod'
 
-import type { Event, StoreTx } from './shared'
+import type { StoreTx } from './shared'
+import type { Event } from './shared/events'
 import { events as todoEvents } from './shared'
 export {
   createCommandSpec as createCommandSlice,

@@ -7,7 +7,7 @@ import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../shared'
+} from '../../shared/events'
 
 const todoStatusFilterInput = z.enum(['all', 'active', 'completed'])
 

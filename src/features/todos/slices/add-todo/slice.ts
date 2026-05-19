@@ -1,6 +1,6 @@
 import z from 'zod'
 import { createCommandSpec } from '../../registry.builders'
-import { errorEvent, todoAddedEvent } from '../../shared'
+import { errorEvent, todoAddedEvent } from '../../shared/events'
 
 const maxTitleLength = 120
 
@@ -14,12 +14,16 @@ export const addTodoSliceRegistration = createCommandSpec('addTodo')
     {
       given: [],
       when: { title: 'Ship it' },
-      expect: [todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' })],
+      expect: [
+        todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' }),
+      ],
     },
     {
       given: [],
       when: { title: '  Ship it  ' },
-      expect: [todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' })],
+      expect: [
+        todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' }),
+      ],
     },
     {
       given: [],
@@ -28,7 +32,7 @@ export const addTodoSliceRegistration = createCommandSpec('addTodo')
     },
     {
       given: [],
-      when: { title: 'x'.repeat(121) },
+      when: { title: 'x'.repeat(maxTitleLength + 1) },
       expect: [
         errorEvent.create({
           message: `Todo title must be ${maxTitleLength} characters or less`,

@@ -7,7 +7,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
   type Event,
-} from '../../shared'
+} from '../../shared/events'
 
 export const todoCompletionCheerTodoStates = sqliteTable(
   'todo_completion_cheer_todo_states',

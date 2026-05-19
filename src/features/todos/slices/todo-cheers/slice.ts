@@ -3,7 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { lazy } from 'solid-js'
 import { z } from 'zod'
 import { createProjectionSpec } from '../../registry.builders'
-import { todoCheerCreatedEvent } from '../../shared'
+import { todoCheerCreatedEvent } from '../../shared/events'
 
 export const todoCheersQueryInput = z.object({})
 

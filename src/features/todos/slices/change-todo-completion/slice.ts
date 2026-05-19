@@ -7,7 +7,7 @@ import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../shared'
+} from '../../shared/events'
 
 export const todoCompletionStates = sqliteTable('todo_completion_states', {
   todoId: text('todo_id').primaryKey(),
