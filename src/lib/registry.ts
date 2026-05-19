@@ -31,26 +31,26 @@ import type {
   SliceRegistration,
   ViewRegistration,
 } from './registry.builders'
-import { addTodoSliceRegistration } from '../features/add-todo/slice'
-import { changeTodoCompletionSliceRegistration } from '../features/change-todo-completion/slice'
-import { createTodoCheerSliceRegistration } from '../features/create-todo-cheer/slice'
-import { removeTodoSliceRegistration } from '../features/remove-todo/slice'
-import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
-import { todoCompletionCheerReactionSliceRegistration } from '../features/todo-completion-cheer-reaction/slice'
-import { todosViewSliceRegistration } from '../features/todos-view/slice'
+import { addTodo } from '../features/add-todo/slice'
+import { changeTodoCompletion } from '../features/change-todo-completion/slice'
+import { createTodoCheer } from '../features/create-todo-cheer/slice'
+import { removeTodo } from '../features/remove-todo/slice'
+import { todoCheers } from '../features/todo-cheers/slice'
+import { todoCompletionCheer } from '../features/todo-completion-cheer-reaction/slice'
+import { todosProjection } from '../features/todos-view/slice'
 import { TodoCheersView } from '../views/todo-cheers'
 import { TodosView } from '../views/todos'
 
 const maxReactionCascadeRounds = 10
 
 export const sliceRegistrations = [
-  addTodoSliceRegistration,
-  changeTodoCompletionSliceRegistration,
-  removeTodoSliceRegistration,
-  createTodoCheerSliceRegistration,
-  todoCompletionCheerReactionSliceRegistration,
-  todosViewSliceRegistration,
-  todoCheersSliceRegistration,
+  addTodo,
+  changeTodoCompletion,
+  removeTodo,
+  createTodoCheer,
+  todoCompletionCheer,
+  todosProjection,
+  todoCheers,
 ] as const satisfies readonly SliceRegistration[]
 
 export const viewRegistrations = [

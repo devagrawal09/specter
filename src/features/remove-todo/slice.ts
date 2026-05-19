@@ -9,7 +9,7 @@ export const todoRemovalStates = sqliteTable('todo_removal_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-export const removeTodoSliceRegistration = createCommandSpec('removeTodo')
+export const removeTodo = createCommandSpec('removeTodo')
   .schema(
     z.object({
       todoId: z.string().min(1, 'Todo id is required'),

@@ -4,7 +4,7 @@ export {
   createTodoCheerMilestoneStates,
   createTodoCheerTodoStates,
 } from '../features/create-todo-cheer/slice'
-export { todoCheers } from '../features/todo-cheers/slice'
+export { todoCheersState } from '../features/todo-cheers/slice'
 export {
   todoCheerMilestoneStates,
   todoCompletionCheerTodoStates,

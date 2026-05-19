@@ -1,10 +1,10 @@
 import { Show } from 'solid-js'
 
-import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
+import { todoCheers } from '../features/todo-cheers/slice'
 import { createViewSpec } from '../lib/registry.builders'
 
 export const TodoCheersView = createViewSpec('todo-cheers')
-  .queries({ cheer: todoCheersSliceRegistration })
+  .queries({ cheer: todoCheers })
   .triggers({})
   .scenarios([])
   .component((props) => (

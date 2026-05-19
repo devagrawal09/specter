@@ -1,10 +1,10 @@
 import { Link, useSearch } from '@tanstack/solid-router'
 import { createSignal, For, Show } from 'solid-js'
 
-import { addTodoSliceRegistration } from '../features/add-todo/slice'
-import { changeTodoCompletionSliceRegistration } from '../features/change-todo-completion/slice'
-import { removeTodoSliceRegistration } from '../features/remove-todo/slice'
-import { todosViewSliceRegistration } from '../features/todos-view/slice'
+import { addTodo } from '../features/add-todo/slice'
+import { changeTodoCompletion } from '../features/change-todo-completion/slice'
+import { removeTodo } from '../features/remove-todo/slice'
+import { todosProjection } from '../features/todos-view/slice'
 import { createViewSpec } from '../lib/registry.builders'
 
 const filterOptions = [
@@ -14,11 +14,11 @@ const filterOptions = [
 ] as const
 
 export const TodosView = createViewSpec('todos-view')
-  .queries({ todos: todosViewSliceRegistration })
+  .queries({ todos: todosProjection })
   .triggers({
-    add: addTodoSliceRegistration,
-    remove: removeTodoSliceRegistration,
-    change: changeTodoCompletionSliceRegistration,
+    add: addTodo,
+    remove: removeTodo,
+    change: changeTodoCompletion,
   })
   .scenarios([])
   .component((props) => {

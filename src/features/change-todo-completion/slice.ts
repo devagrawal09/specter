@@ -15,9 +15,7 @@ export const todoCompletionStates = sqliteTable('todo_completion_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-export const changeTodoCompletionSliceRegistration = createCommandSpec(
-  'changeTodoCompletion',
-)
+export const changeTodoCompletion = createCommandSpec('changeTodoCompletion')
   .schema(
     z.object({
       todoId: z.string().min(1, 'Todo id is required'),

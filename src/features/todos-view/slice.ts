@@ -23,9 +23,7 @@ export const todoListItems = sqliteTable('todo_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
-export type TodoListItem = typeof todoListItems.$inferSelect
-
-export const todosViewSliceRegistration = createProjectionSpec('todosView')
+export const todosProjection = createProjectionSpec('todosProjection')
   .schema(todosViewQueryInput)
   .apply({
     [todoAddedEvent.type]: (event, tx) => {
@@ -54,7 +52,6 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         .run()
     },
   })
-  .state([] as TodoListItem[])
   .scenarios(
     {
       given: [],

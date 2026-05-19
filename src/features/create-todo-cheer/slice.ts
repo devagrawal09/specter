@@ -39,9 +39,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-export const createTodoCheerSliceRegistration = createCommandSpec(
-  'createTodoCheer',
-)
+export const createTodoCheer = createCommandSpec('createTodoCheer')
   .schema(
     z.object({
       milestone: z.number().int().positive(),

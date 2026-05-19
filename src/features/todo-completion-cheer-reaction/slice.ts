@@ -38,9 +38,7 @@ function completedTodoEvents(count: number): Event[] {
   }).flat()
 }
 
-export const todoCompletionCheerReactionSliceRegistration = createReactionSpec(
-  'todoCompletionCheer',
-)
+export const todoCompletionCheer = createReactionSpec('todoCompletionCheer')
   .scenarios(
     {
       given: completedTodoEvents(4),

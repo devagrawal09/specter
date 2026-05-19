@@ -1,12 +1,12 @@
 import { createFileRoute } from '@tanstack/solid-router'
 
-import { todosViewSliceRegistration } from '../features/todos-view/slice'
+import { todosProjection } from '../features/todos-view/slice'
 import { ViewOutlet } from '../lib/view-runtime'
 import { TodoCheersView } from '../views/todo-cheers'
 import { TodosView } from '../views/todos'
 
 export const Route = createFileRoute('/')({
-  validateSearch: (search) => todosViewSliceRegistration.schema.parse(search),
+  validateSearch: (search) => todosProjection.schema.parse(search),
   component: TodosIndexRoute,
 })
 

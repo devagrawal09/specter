@@ -6,22 +6,22 @@ import { todoCheerCreatedEvent } from '../events'
 
 export const todoCheersQueryInput = z.object({})
 
-export const todoCheers = sqliteTable('todo_cheers', {
+export const todoCheersState = sqliteTable('todo_cheers', {
   milestone: integer('milestone').primaryKey(),
   message: text('message').notNull(),
 })
 
-export type TodoCheer = typeof todoCheers.$inferSelect
+export type TodoCheer = typeof todoCheersState.$inferSelect
 
 export type TodoCheersState = {
   latestCheer: TodoCheer | null
 }
 
-export const todoCheersSliceRegistration = createProjectionSpec('todoCheers')
+export const todoCheers = createProjectionSpec('todoCheers')
   .schema(todoCheersQueryInput)
   .apply({
     [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(todoCheers)
+      tx.insert(todoCheersState)
         .values({
           milestone: event.payload.milestone,
           message: event.payload.message,
@@ -60,10 +60,10 @@ export const todoCheersSliceRegistration = createProjectionSpec('todoCheers')
     latestCheer:
       tx
         .select()
-        .from(todoCheers)
+        .from(todoCheersState)
         .orderBy(latestTodoCheerOrder)
         .limit(1)
         .get() ?? null,
   }))
 
-export const latestTodoCheerOrder = desc(todoCheers.milestone)
+export const latestTodoCheerOrder = desc(todoCheersState.milestone)
