@@ -21,7 +21,6 @@ export type {
   ReactionSliceApplyStep,
   ReactionSliceReactStep,
   SliceRegistration,
-  ViewRegistration,
   ViewScenario,
 } from './registry.builders'
 import type {
@@ -29,7 +28,6 @@ import type {
   ProjectionRegistration,
   ReactionRegistration,
   SliceRegistration,
-  ViewRegistration,
 } from './registry.builders'
 import { addTodo } from '../features/add-todo/slice'
 import { changeTodoCompletion } from '../features/change-todo-completion/slice'
@@ -38,8 +36,6 @@ import { removeTodo } from '../features/remove-todo/slice'
 import { todoCheers } from '../features/todo-cheers/slice'
 import { todoCompletionCheer } from '../features/todo-completion-cheer-reaction/slice'
 import { todosProjection } from '../features/todos-view/slice'
-import { TodoCheersView } from '../views/todo-cheers'
-import { TodosView } from '../views/todos'
 
 const maxReactionCascadeRounds = 10
 
@@ -53,13 +49,7 @@ export const sliceRegistrations = [
   todoCheers,
 ] as const satisfies readonly SliceRegistration[]
 
-export const viewRegistrations = [
-  TodosView,
-  TodoCheersView,
-] as const satisfies readonly ViewRegistration[]
-
 assertUniqueRegistrations(sliceRegistrations)
-assertUniqueViewRegistrations(viewRegistrations)
 
 const commandRegistrations = collectCommandRegistrations(sliceRegistrations)
 export const projectionRegistrations =
@@ -276,19 +266,5 @@ function assertUniqueRegistrations(
     }
 
     projectionNames.add(registration.name)
-  }
-}
-
-function assertUniqueViewRegistrations(
-  registrations: readonly ViewRegistration[],
-) {
-  const viewNames = new Set<string>()
-
-  for (const registration of registrations) {
-    if (viewNames.has(registration.name)) {
-      throw new Error(`Duplicate todo view: ${registration.name}`)
-    }
-
-    viewNames.add(registration.name)
   }
 }

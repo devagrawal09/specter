@@ -1,20 +1,21 @@
-import { useSearch } from '@tanstack/solid-router'
-import { useServerFn } from '@tanstack/solid-start'
 import { createEffect, createSignal, type Component } from 'solid-js'
-import { createStore, reconcile } from 'solid-js/store'
+import { createStore } from 'solid-js'
 
-import { dispatchCommand } from './command'
-import { queryProjection } from './projection-query'
-import type { Command, ViewRegistration } from './registry'
+import { api } from '../api-client'
+import { searchParams } from '../location'
+import type { ViewRegistration } from './registry.builders'
 
 const [refreshVersion, setRefreshVersion] = createSignal(0)
+
+type ProjectionResponse =
+  | { ok: true; data: unknown }
+  | { ok: false; message: string }
+
+type CommandResponse = { ok: true } | { ok: false; message: string }
 
 export function ViewOutlet<TView extends ViewRegistration>(props: {
   view: TView
 }) {
-  const search = useSearch({ from: '/' })
-  const queryProjectionFn = useServerFn(queryProjection)
-  const dispatchCommandFn = useServerFn(dispatchCommand)
   const queryEntries = Object.entries(props.view.queries)
   const triggerEntries = Object.entries(props.view.triggers)
   const initialState = Object.fromEntries(
@@ -27,17 +28,30 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
   let handledRefreshVersion = 0
   let lastSearchKey = ''
 
-  async function refreshQueries(input = search()) {
+  async function refreshQueries(input = getSearchInput()) {
     await Promise.all(
       queryEntries.map(async ([alias, projection]) => {
-        const result = await queryProjectionFn({
-          data: {
+        const response = await api.api.projection.$get({
+          query: {
             projectionName: projection.name,
-            input,
+            input: JSON.stringify(input),
           },
         })
+        const result = (await (
+          response as Response
+        ).json()) as ProjectionResponse
 
-        setQueryStores(alias, reconcile(result))
+        if (!result.ok) {
+          throw new Error(result.message)
+        }
+
+        const updateQueryStores = setQueryStores as (
+          update: (store: Record<string, unknown>) => void,
+        ) => void
+
+        updateQueryStores((store) => {
+          store[alias] = result.data
+        })
       }),
     )
   }
@@ -46,10 +60,16 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
     triggerEntries.map(([alias, command]) => [
       alias,
       async (input: unknown) => {
-        await dispatchCommandFn({
-          data: { type: command.type, payload: input } as Command,
+        const response = await api.api.command.$post({
+          json: { type: command.type, payload: input },
         })
-        const searchInput = search()
+        const result = (await (response as Response).json()) as CommandResponse
+
+        if (!result.ok) {
+          throw new Error(result.message)
+        }
+
+        const searchInput = getSearchInput()
         const nextRefreshVersion = refreshVersion() + 1
 
         handledRefreshVersion = nextRefreshVersion
@@ -60,23 +80,29 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
     ]),
   )
 
-  createEffect(() => {
-    const input = search()
-    const searchKey = JSON.stringify(input)
-    const version = refreshVersion()
+  createEffect(
+    () => ({ input: getSearchInput(), version: refreshVersion() }),
+    ({ input, version }) => {
+      const searchKey = JSON.stringify(input)
 
-    if (version === handledRefreshVersion && searchKey === lastSearchKey) {
-      return
-    }
+      if (version === handledRefreshVersion && searchKey === lastSearchKey) {
+        return
+      }
 
-    handledRefreshVersion = version
-    lastSearchKey = searchKey
-    void refreshQueries(input)
-  })
+      handledRefreshVersion = version
+      lastSearchKey = searchKey
+      void refreshQueries(input)
+    },
+  )
 
   const ViewComponent = props.view.component as Component<
     Record<string, unknown>
   >
 
   return <ViewComponent {...queryStores} {...triggers} />
+}
+
+function getSearchInput() {
+  const status = searchParams().get('status')
+  return { status: status ?? 'all' }
 }
