@@ -1,11 +1,9 @@
 import { createFileRoute } from '@tanstack/solid-router'
-import { createSignal } from 'solid-js'
 
-import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
 import { todosViewSliceRegistration } from '../features/todos-view/slice'
-
-const TodosView = todosViewSliceRegistration.component
-const TodoCheersView = todoCheersSliceRegistration.component
+import { ViewOutlet } from '../lib/view-runtime'
+import { TodoCheersView } from '../views/todo-cheers'
+import { TodosView } from '../views/todos'
 
 export const Route = createFileRoute('/')({
   validateSearch: (search) => todosViewSliceRegistration.schema.parse(search),
@@ -13,12 +11,12 @@ export const Route = createFileRoute('/')({
 })
 
 function TodosIndexRoute() {
-  const [cheerRefreshKey, setCheerRefreshKey] = createSignal(0)
-
   return (
-    <TodosView
-      onTodosChanged={() => setCheerRefreshKey((key) => key + 1)}
-      todoCheer={<TodoCheersView refreshKey={cheerRefreshKey()} />}
-    />
+    <main class="page-wrap px-4 py-10 sm:py-14">
+      <section class="island-shell mx-auto grid max-w-3xl gap-5 rounded-2xl p-5 sm:p-6">
+        <ViewOutlet view={TodoCheersView} />
+        <ViewOutlet view={TodosView} />
+      </section>
+    </main>
   )
 }

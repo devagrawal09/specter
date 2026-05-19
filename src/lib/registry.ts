@@ -7,6 +7,7 @@ export {
   createCommandSpec as createCommandSlice,
   createProjectionSpec as createProjectionSlice,
   createReactionSpec as createReactionSlice,
+  createViewSpec,
 } from './registry.builders'
 export type {
   ApplyHandlers,
@@ -15,17 +16,20 @@ export type {
   CommandSliceSchemaStep,
   ProjectionRegistration,
   ProjectionScenario,
-  ProjectionUiAssertion,
   ProjectionSliceSchemaStep,
   ReactionRegistration,
   ReactionSliceApplyStep,
   ReactionSliceReactStep,
   SliceRegistration,
+  ViewRegistration,
+  ViewScenario,
 } from './registry.builders'
 import type {
   CommandRegistration,
+  ProjectionRegistration,
   ReactionRegistration,
   SliceRegistration,
+  ViewRegistration,
 } from './registry.builders'
 import { addTodoSliceRegistration } from '../features/add-todo/slice'
 import { changeTodoCompletionSliceRegistration } from '../features/change-todo-completion/slice'
@@ -34,6 +38,8 @@ import { removeTodoSliceRegistration } from '../features/remove-todo/slice'
 import { todoCheersSliceRegistration } from '../features/todo-cheers/slice'
 import { todoCompletionCheerReactionSliceRegistration } from '../features/todo-completion-cheer-reaction/slice'
 import { todosViewSliceRegistration } from '../features/todos-view/slice'
+import { TodoCheersView } from '../views/todo-cheers'
+import { TodosView } from '../views/todos'
 
 const maxReactionCascadeRounds = 10
 
@@ -47,9 +53,17 @@ export const sliceRegistrations = [
   todoCheersSliceRegistration,
 ] as const satisfies readonly SliceRegistration[]
 
+export const viewRegistrations = [
+  TodosView,
+  TodoCheersView,
+] as const satisfies readonly ViewRegistration[]
+
 assertUniqueRegistrations(sliceRegistrations)
+assertUniqueViewRegistrations(viewRegistrations)
 
 const commandRegistrations = collectCommandRegistrations(sliceRegistrations)
+export const projectionRegistrations =
+  collectProjectionRegistrations(sliceRegistrations)
 const reactionRegistrations = collectReactionRegistrations(sliceRegistrations)
 const eventApplications = collectEventApplications(sliceRegistrations)
 
@@ -187,6 +201,20 @@ function collectReactionRegistrations(
   return reactions
 }
 
+function collectProjectionRegistrations(
+  registrations: readonly SliceRegistration[],
+) {
+  const projections: ProjectionRegistration[] = []
+
+  for (const registration of registrations) {
+    if (registration.kind === 'projection') {
+      projections.push(registration)
+    }
+  }
+
+  return projections
+}
+
 type EventApplication = (event: Event, tx: StoreTx) => void
 
 function collectEventApplications(registrations: readonly SliceRegistration[]) {
@@ -248,5 +276,19 @@ function assertUniqueRegistrations(
     }
 
     projectionNames.add(registration.name)
+  }
+}
+
+function assertUniqueViewRegistrations(
+  registrations: readonly ViewRegistration[],
+) {
+  const viewNames = new Set<string>()
+
+  for (const registration of registrations) {
+    if (viewNames.has(registration.name)) {
+      throw new Error(`Duplicate todo view: ${registration.name}`)
+    }
+
+    viewNames.add(registration.name)
   }
 }

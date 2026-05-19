@@ -1,6 +1,5 @@
-import { eq } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { lazy } from 'solid-js'
 import { z } from 'zod'
 import { createProjectionSpec } from '../../lib/registry.builders'
 import {
@@ -23,6 +22,8 @@ export const todoListItems = sqliteTable('todo_list_items', {
   completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
+
+export type TodoListItem = typeof todoListItems.$inferSelect
 
 export const todosViewSliceRegistration = createProjectionSpec('todosView')
   .schema(todosViewQueryInput)
@@ -53,19 +54,12 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         .run()
     },
   })
+  .state([] as TodoListItem[])
   .scenarios(
     {
       given: [],
       when: { status: 'all' },
-      expect: {
-        visible: ['empty-state'],
-        hidden: ['todo-list'],
-        text: {
-          'empty-message': 'No todos yet.',
-          'todo-summary': '0 total · 0 active · 0 completed',
-        },
-        count: { 'todo-item': 0 },
-      },
+      expect: [],
     },
     {
       given: [
@@ -73,16 +67,10 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
       ],
       when: { status: 'all' },
-      expect: {
-        visible: ['todo-list'],
-        hidden: ['empty-state'],
-        text: {
-          'todo-summary': '2 total · 2 active · 0 completed',
-          'todo-title-todo-1': 'Ship it',
-          'todo-title-todo-2': 'Review it',
-        },
-        count: { 'todo-item': 2 },
-      },
+      expect: [
+        { id: 'todo-1', title: 'Ship it', completed: false, removed: false },
+        { id: 'todo-2', title: 'Review it', completed: false, removed: false },
+      ],
     },
     {
       given: [
@@ -94,15 +82,9 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
       ],
       when: { status: 'active' },
-      expect: {
-        visible: ['todo-list'],
-        hidden: ['empty-state'],
-        text: {
-          'todo-summary': '1 total · 1 active · 0 completed',
-          'todo-title-todo-2': 'Review it',
-        },
-        count: { 'todo-item': 1 },
-      },
+      expect: [
+        { id: 'todo-2', title: 'Review it', completed: false, removed: false },
+      ],
     },
     {
       given: [
@@ -114,15 +96,9 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
       ],
       when: { status: 'completed' },
-      expect: {
-        visible: ['todo-list'],
-        hidden: ['empty-state'],
-        text: {
-          'todo-summary': '1 total · 0 active · 1 completed',
-          'todo-title-todo-1': 'Ship it',
-        },
-        count: { 'todo-item': 1 },
-      },
+      expect: [
+        { id: 'todo-1', title: 'Ship it', completed: true, removed: false },
+      ],
     },
     {
       given: [
@@ -130,19 +106,28 @@ export const todosViewSliceRegistration = createProjectionSpec('todosView')
         todoRemovedEvent.create({ todoId: 'todo-1' }),
       ],
       when: { status: 'all' },
-      expect: {
-        visible: ['empty-state'],
-        hidden: ['todo-list'],
-        text: {
-          'empty-message': 'No todos yet.',
-          'todo-summary': '0 total · 0 active · 0 completed',
-        },
-        count: { 'todo-item': 0 },
-      },
+      expect: [],
     },
   )
-  .component(
-    lazy(() =>
-      import('./TodosView').then((module) => ({ default: module.TodosView })),
-    ),
-  )
+  .query((tx, input) => {
+    const visiblePredicate = eq(todoListItems.removed, false)
+
+    const activePredicate = and(
+      visiblePredicate,
+      eq(todoListItems.completed, false),
+    )
+
+    const completedPredicate = and(
+      visiblePredicate,
+      eq(todoListItems.completed, true),
+    )
+
+    const statusPredicate =
+      input.status === 'active'
+        ? activePredicate
+        : input.status === 'completed'
+          ? completedPredicate
+          : visiblePredicate
+
+    return tx.select().from(todoListItems).where(statusPredicate).all()
+  })
