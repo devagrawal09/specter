@@ -5,7 +5,7 @@ import { changeTodoCompletion } from '../features/todos-json/change-todo-complet
 import { removeTodo } from '../features/todos-json/remove-todo/slice'
 import { todosProjection } from '../features/todos-json/todos-view/slice'
 import { searchParams, setSearch } from '../location'
-import { createViewSpec } from '../lib/registry.builders'
+import { createViewSpec } from '../lib_legacy/registry.builders'
 
 const filterOptions = [
   { status: 'all', label: 'All' },

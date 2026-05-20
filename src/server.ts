@@ -3,8 +3,8 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { db } from './db/client.server'
-import { createFileJsonSliceStorage } from './lib/json-storage'
-import { registry } from './lib/registry'
+import { createFileJsonSliceStorage } from './lib_legacy/json-storage'
+import { registry } from './lib_legacy/registry'
 import './styles.css?url'
 
 const jsonStorage = createFileJsonSliceStorage('./data/slice-state')

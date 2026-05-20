@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createProjectionSpec } from '../../../lib/registry.builders'
+import { createProjectionSpec } from '../../../lib_legacy/registry.builders'
 import { todoCheerCreatedEvent } from '../events'
 
 export type TodoCheer = {

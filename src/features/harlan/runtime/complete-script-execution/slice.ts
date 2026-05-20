@@ -1,5 +1,5 @@
 import z from 'zod'
-import { createCommandSpec } from '../../../../lib/registry.builders'
+import { createCommandSpec } from '../../../../lib_legacy/registry.builders'
 import {
   harlanScriptExecutionCompletedEvent,
   harlanScriptExecutionErrorEvent,

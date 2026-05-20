@@ -16,7 +16,7 @@ export function readEventsAfter(order: number, tx: StoreTx): Event[] {
       type: event.type,
       payload: JSON.parse(event.payload),
       order: event.order,
-    })) as Event[]
+    })) as unknown as Event[]
 }
 
 export function persistEvents(events: Event[], tx: StoreTx): Event[] {

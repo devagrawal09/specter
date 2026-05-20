@@ -1,1 +1,1 @@
-export { events, sliceCursors } from '../lib'
+export { events, sliceCursors } from '../lib_legacy'

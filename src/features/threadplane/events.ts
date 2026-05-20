@@ -1,5 +1,5 @@
 import z from 'zod'
-import { createEventSpec } from '../../lib'
+import { createEventSpec } from '../../lib_legacy'
 
 type WorkspaceNode = {
   id: string

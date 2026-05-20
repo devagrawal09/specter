@@ -1,4 +1,4 @@
-import { createReactionSpec } from '../../../../lib/registry.builders'
+import { createReactionSpec } from '../../../../lib_legacy/registry.builders'
 import { harlanScriptExecutionCompletedEvent } from '../events'
 
 export const saveHarlanExecutionContextAfterCompletion = createReactionSpec(
