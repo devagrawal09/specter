@@ -1,5 +1,3 @@
-import { and, eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSpec } from '../../../lib/registry.builders'
 import {
@@ -10,23 +8,20 @@ import {
   todoRemovedEvent,
 } from '../events'
 
-export const createTodoCheerTodoStates = sqliteTable(
-  'create_todo_cheer_todo_states',
-  {
-    todoId: text('todo_id').primaryKey(),
-    completed: integer('completed', { mode: 'boolean' })
-      .notNull()
-      .default(false),
-    removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  },
-)
+type TodoCheerCommandState = {
+  todos: Record<string, { completed: boolean; removed: boolean }>
+  milestones: number[]
+}
 
-export const createTodoCheerMilestoneStates = sqliteTable(
-  'create_todo_cheer_milestone_states',
-  {
-    milestone: integer('milestone').primaryKey(),
-  },
-)
+const stateKey = 'state'
+
+function todoCheerCommandState(store: {
+  get: <TValue>(key: string) => TValue | undefined
+}) {
+  return (
+    store.get<TodoCheerCommandState>(stateKey) ?? { todos: {}, milestones: [] }
+  )
+}
 
 function completedTodoEvents(count: number) {
   return Array.from({ length: count }, (_, index) => {
@@ -39,7 +34,9 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-export const createTodoCheer = createCommandSpec('createTodoCheer')
+export const createTodoCheer = createCommandSpec('createTodoCheer', {
+  json: true,
+})
   .schema(
     z.object({
       milestone: z.number().int().positive(),
@@ -103,40 +100,55 @@ export const createTodoCheer = createCommandSpec('createTodoCheer')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(createTodoCheerTodoStates)
-        .values({
-          todoId: event.payload.todoId,
-          completed: false,
-          removed: false,
-        })
-        .run()
+    [todoAddedEvent.type]: (event, store) => {
+      const state = todoCheerCommandState(store)
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: { completed: false, removed: false },
+        },
+      })
     },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(createTodoCheerTodoStates)
-        .set({
-          completed: event.payload.completed,
-        })
-        .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
-        .run()
+    [todoCompletionChangedEvent.type]: (event, store) => {
+      const state = todoCheerCommandState(store)
+      const todo = state.todos[event.payload.todoId]
+
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: {
+            completed: event.payload.completed,
+            removed: todo?.removed ?? false,
+          },
+        },
+      })
     },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(createTodoCheerTodoStates)
-        .set({
-          removed: true,
-        })
-        .where(eq(createTodoCheerTodoStates.todoId, event.payload.todoId))
-        .run()
+    [todoRemovedEvent.type]: (event, store) => {
+      const state = todoCheerCommandState(store)
+      const todo = state.todos[event.payload.todoId]
+
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: {
+            completed: todo?.completed ?? false,
+            removed: true,
+          },
+        },
+      })
     },
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(createTodoCheerMilestoneStates)
-        .values({
-          milestone: event.payload.milestone,
-        })
-        .run()
+    [todoCheerCreatedEvent.type]: (event, store) => {
+      const state = todoCheerCommandState(store)
+      store.set(stateKey, {
+        ...state,
+        milestones: [...state.milestones, event.payload.milestone],
+      })
     },
   })
-  .decide((command, tx) => {
+  .decide((command, store) => {
     if (command.milestone % 5 !== 0) {
       return [
         errorEvent.create({
@@ -145,16 +157,10 @@ export const createTodoCheer = createCommandSpec('createTodoCheer')
       ]
     }
 
-    const completedCount = tx
-      .select()
-      .from(createTodoCheerTodoStates)
-      .where(
-        and(
-          eq(createTodoCheerTodoStates.completed, true),
-          eq(createTodoCheerTodoStates.removed, false),
-        ),
-      )
-      .all().length
+    const state = todoCheerCommandState(store)
+    const completedCount = Object.values(state.todos).filter(
+      (todo) => todo.completed && !todo.removed,
+    ).length
 
     if (completedCount < command.milestone) {
       return [
@@ -164,13 +170,7 @@ export const createTodoCheer = createCommandSpec('createTodoCheer')
       ]
     }
 
-    const existingMilestone = tx
-      .select()
-      .from(createTodoCheerMilestoneStates)
-      .where(eq(createTodoCheerMilestoneStates.milestone, command.milestone))
-      .get()
-
-    if (existingMilestone) {
+    if (state.milestones.includes(command.milestone)) {
       return [
         errorEvent.create({
           message: 'Todo cheer milestone already exists',

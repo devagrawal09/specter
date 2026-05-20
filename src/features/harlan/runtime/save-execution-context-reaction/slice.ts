@@ -3,6 +3,7 @@ import { harlanScriptExecutionCompletedEvent } from '../events'
 
 export const saveHarlanExecutionContextAfterCompletion = createReactionSpec(
   'saveHarlanExecutionContextAfterCompletion',
+  { json: true },
 )
   .scenarios({
     given: [],
@@ -37,13 +38,9 @@ export const saveHarlanExecutionContextAfterCompletion = createReactionSpec(
       },
     ],
   })
-  .react((event) => {
-    if (!harlanScriptExecutionCompletedEvent.is(event)) {
-      return []
-    }
-
-    return [
-      {
+  .apply({
+    [harlanScriptExecutionCompletedEvent.type]: (event, store) => {
+      store.set('command', {
         type: 'saveHarlanExecutionContext',
         payload: {
           sessionPath: event.payload.sessionPath,
@@ -52,6 +49,24 @@ export const saveHarlanExecutionContextAfterCompletion = createReactionSpec(
           executionContextId: event.payload.scriptExecutionId,
           context: event.payload.result.sessionSnapshot,
         },
-      },
-    ]
+      })
+    },
+  })
+  .react((store) => {
+    const command = store.get<{
+      type: 'saveHarlanExecutionContext'
+      payload: {
+        sessionPath: string
+        agentContextId: string
+        scriptExecutionId: string
+        executionContextId: string
+        context: {
+          bindings: Record<string, unknown>
+          importedModules: string[]
+          initialized?: boolean
+        }
+      }
+    }>('command')
+
+    return command ? [command] : []
   })

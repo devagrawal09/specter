@@ -1,5 +1,3 @@
-import { eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSpec } from '../../../lib/registry.builders'
 import {
@@ -9,13 +7,11 @@ import {
   todoRemovedEvent,
 } from '../events'
 
-export const todoCompletionStates = sqliteTable('todo_completion_states', {
-  todoId: text('todo_id').primaryKey(),
-  completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
-  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-})
+type TodoState = { completed: boolean; removed: boolean }
 
-export const changeTodoCompletion = createCommandSpec('changeTodoCompletion')
+export const changeTodoCompletion = createCommandSpec('changeTodoCompletion', {
+  json: true,
+})
   .schema(
     z.object({
       todoId: z.string().min(1, 'Todo id is required'),
@@ -59,37 +55,22 @@ export const changeTodoCompletion = createCommandSpec('changeTodoCompletion')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoCompletionStates)
-        .values({
-          todoId: event.payload.todoId,
-          completed: false,
-        })
-        .run()
+    [todoAddedEvent.type]: (event, store) => {
+      store.set(event.payload.todoId, { completed: false, removed: false })
     },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionStates)
-        .set({
-          completed: event.payload.completed,
-        })
-        .where(eq(todoCompletionStates.todoId, event.payload.todoId))
-        .run()
+    [todoCompletionChangedEvent.type]: (event, store) => {
+      store.patch<TodoState>(event.payload.todoId, {
+        completed: event.payload.completed,
+      })
     },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionStates)
-        .set({
-          removed: true,
-        })
-        .where(eq(todoCompletionStates.todoId, event.payload.todoId))
-        .run()
+    [todoRemovedEvent.type]: (event, store) => {
+      store.patch<TodoState>(event.payload.todoId, {
+        removed: true,
+      })
     },
   })
-  .decide((command, tx) => {
-    const todo = tx
-      .select()
-      .from(todoCompletionStates)
-      .where(eq(todoCompletionStates.todoId, command.todoId))
-      .get()
+  .decide((command, store) => {
+    const todo = store.get<TodoState>(command.todoId)
 
     if (!todo || todo.removed) {
       return [errorEvent.create({ message: 'Todo not found' })]

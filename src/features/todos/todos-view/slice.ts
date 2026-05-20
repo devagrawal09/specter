@@ -1,5 +1,3 @@
-import { and, eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createProjectionSpec } from '../../../lib/registry.builders'
 import {
@@ -8,44 +6,58 @@ import {
   todoRemovedEvent,
 } from '../events'
 
-export const todoListItems = sqliteTable('todo_list_items', {
-  id: text('id').primaryKey(),
-  title: text('title').notNull(),
-  completed: integer('completed', { mode: 'boolean' }).notNull().default(false),
-  removed: integer('removed', { mode: 'boolean' }).default(false),
-})
+type TodoListItem = {
+  id: string
+  title: string
+  completed: boolean
+  removed: boolean
+}
 
-export const todosProjection = createProjectionSpec('todosProjection')
+const itemsKey = 'items'
+
+function todoItems(store: {
+  get: <TValue>(key: string) => TValue | undefined
+}) {
+  return store.get<TodoListItem[]>(itemsKey) ?? []
+}
+
+export const todosProjection = createProjectionSpec('todosProjection', {
+  json: true,
+})
   .schema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),
     }),
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoListItems)
-        .values({
+    [todoAddedEvent.type]: (event, store) => {
+      store.set(itemsKey, [
+        ...todoItems(store),
+        {
           id: event.payload.todoId,
           title: event.payload.title,
           completed: false,
-        })
-        .run()
+          removed: false,
+        },
+      ])
     },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoListItems)
-        .set({
-          completed: event.payload.completed,
-        })
-        .where(eq(todoListItems.id, event.payload.todoId))
-        .run()
+    [todoCompletionChangedEvent.type]: (event, store) => {
+      store.set(
+        itemsKey,
+        todoItems(store).map((todo) =>
+          todo.id === event.payload.todoId
+            ? { ...todo, completed: event.payload.completed }
+            : todo,
+        ),
+      )
     },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoListItems)
-        .set({
-          removed: true,
-        })
-        .where(eq(todoListItems.id, event.payload.todoId))
-        .run()
+    [todoRemovedEvent.type]: (event, store) => {
+      store.set(
+        itemsKey,
+        todoItems(store).map((todo) =>
+          todo.id === event.payload.todoId ? { ...todo, removed: true } : todo,
+        ),
+      )
     },
   })
   .scenarios(
@@ -102,25 +114,16 @@ export const todosProjection = createProjectionSpec('todosProjection')
       expect: [],
     },
   )
-  .query((tx, input) => {
-    const visiblePredicate = eq(todoListItems.removed, false)
+  .query((store, input) => {
+    const visibleTodos = todoItems(store).filter((todo) => !todo.removed)
 
-    const activePredicate = and(
-      visiblePredicate,
-      eq(todoListItems.completed, false),
-    )
+    if (input.status === 'active') {
+      return visibleTodos.filter((todo) => !todo.completed)
+    }
 
-    const completedPredicate = and(
-      visiblePredicate,
-      eq(todoListItems.completed, true),
-    )
+    if (input.status === 'completed') {
+      return visibleTodos.filter((todo) => todo.completed)
+    }
 
-    const statusPredicate =
-      input.status === 'active'
-        ? activePredicate
-        : input.status === 'completed'
-          ? completedPredicate
-          : visiblePredicate
-
-    return tx.select().from(todoListItems).where(statusPredicate).all()
+    return visibleTodos
   })

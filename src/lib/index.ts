@@ -1,14 +1,30 @@
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { BetterSQLite3Database } from 'drizzle-orm/better-sqlite3'
 import type { z } from 'zod'
 
 const eventBrand: unique symbol = Symbol('todoEvent')
 
-export const events = sqliteTable('events', {
-  id: text('id').primaryKey(),
-  type: text('type').notNull(),
-  payload: text('payload').notNull(),
-  createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+export const events = sqliteTable(
+  'events',
+  {
+    order: integer('order').primaryKey({ autoIncrement: true }),
+    id: text('id').notNull().unique(),
+    type: text('type').notNull(),
+    payload: text('payload').notNull(),
+    createdAt: integer('created_at', { mode: 'timestamp' }).notNull(),
+  },
+  (table) => [index('events_order_idx').on(table.order)],
+)
+
+export const sliceJsonStates = sqliteTable('slice_json_states', {
+  sliceName: text('slice_name').notNull(),
+  key: text('key').notNull(),
+  value: text('value').notNull(),
+})
+
+export const sliceCursors = sqliteTable('slice_cursors', {
+  sliceName: text('slice_name').notNull(),
+  lastAppliedOrder: integer('last_applied_order').notNull(),
 })
 
 type EventFor<TType extends string, TPayload> = {

@@ -3,7 +3,11 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { db } from './db/client.server'
-import { commandInput, dispatchCommandInTx } from './lib/registry'
+import {
+  commandInput,
+  dispatchCommandInTx,
+  queryProjection,
+} from './lib/registry'
 import { projectionRegistrations } from './lib/registry'
 import './styles.css?url'
 
@@ -60,7 +64,11 @@ const routes = app
 
     return c.json({
       ok: true as const,
-      data: registration.query(db, input.data) as SerializableProjectionResult,
+      data: queryProjection(
+        registration,
+        input.data,
+        db,
+      ) as SerializableProjectionResult,
     })
   })
   .post('/api/command', async (c) => {

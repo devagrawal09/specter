@@ -1,5 +1,3 @@
-import { and, eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { createReactionSpec } from '../../../lib/registry.builders'
 import {
   todoAddedEvent,
@@ -9,23 +7,23 @@ import {
   type Event,
 } from '../events'
 
-export const todoCompletionCheerTodoStates = sqliteTable(
-  'todo_completion_cheer_todo_states',
-  {
-    todoId: text('todo_id').primaryKey(),
-    completed: integer('completed', { mode: 'boolean' })
-      .notNull()
-      .default(false),
-    removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-  },
-)
+type TodoCompletionCheerState = {
+  todos: Record<string, { completed: boolean; removed: boolean }>
+  milestones: number[]
+}
 
-export const todoCheerMilestoneStates = sqliteTable(
-  'todo_cheer_milestone_states',
-  {
-    milestone: integer('milestone').primaryKey(),
-  },
-)
+const stateKey = 'state'
+
+function todoCompletionCheerState(store: {
+  get: <TValue>(key: string) => TValue | undefined
+}) {
+  return (
+    store.get<TodoCompletionCheerState>(stateKey) ?? {
+      todos: {},
+      milestones: [],
+    }
+  )
+}
 
 function completedTodoEvents(count: number): Event[] {
   return Array.from({ length: count }, (_, index) => {
@@ -38,7 +36,9 @@ function completedTodoEvents(count: number): Event[] {
   }).flat()
 }
 
-export const todoCompletionCheer = createReactionSpec('todoCompletionCheer')
+export const todoCompletionCheer = createReactionSpec('todoCompletionCheer', {
+  json: true,
+})
   .scenarios(
     {
       given: completedTodoEvents(4),
@@ -95,69 +95,65 @@ export const todoCompletionCheer = createReactionSpec('todoCompletionCheer')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoCompletionCheerTodoStates)
-        .values({
-          todoId: event.payload.todoId,
-          completed: false,
-          removed: false,
-        })
-        .run()
+    [todoAddedEvent.type]: (event, store) => {
+      const state = todoCompletionCheerState(store)
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: { completed: false, removed: false },
+        },
+      })
     },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionCheerTodoStates)
-        .set({
-          completed: event.payload.completed,
-        })
-        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
-        .run()
+    [todoCompletionChangedEvent.type]: (event, store) => {
+      const state = todoCompletionCheerState(store)
+      const todo = state.todos[event.payload.todoId]
+
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: {
+            completed: event.payload.completed,
+            removed: todo?.removed ?? false,
+          },
+        },
+      })
     },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionCheerTodoStates)
-        .set({
-          removed: true,
-        })
-        .where(eq(todoCompletionCheerTodoStates.todoId, event.payload.todoId))
-        .run()
+    [todoRemovedEvent.type]: (event, store) => {
+      const state = todoCompletionCheerState(store)
+      const todo = state.todos[event.payload.todoId]
+
+      store.set(stateKey, {
+        ...state,
+        todos: {
+          ...state.todos,
+          [event.payload.todoId]: {
+            completed: todo?.completed ?? false,
+            removed: true,
+          },
+        },
+      })
     },
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(todoCheerMilestoneStates)
-        .values({
-          milestone: event.payload.milestone,
-        })
-        .run()
+    [todoCheerCreatedEvent.type]: (event, store) => {
+      const state = todoCompletionCheerState(store)
+      store.set(stateKey, {
+        ...state,
+        milestones: [...state.milestones, event.payload.milestone],
+      })
     },
   })
-  .react((event, tx) => {
-    if (
-      !todoCompletionChangedEvent.is(event) ||
-      event.payload.completed !== true
-    ) {
-      return []
-    }
-
-    const completedCount = tx
-      .select()
-      .from(todoCompletionCheerTodoStates)
-      .where(
-        and(
-          eq(todoCompletionCheerTodoStates.completed, true),
-          eq(todoCompletionCheerTodoStates.removed, false),
-        ),
-      )
-      .all().length
+  .react((store) => {
+    const state = todoCompletionCheerState(store)
+    const completedCount = Object.values(state.todos).filter(
+      (todo) => todo.completed && !todo.removed,
+    ).length
 
     if (completedCount === 0 || completedCount % 5 !== 0) {
       return []
     }
 
-    const existingMilestone = tx
-      .select()
-      .from(todoCheerMilestoneStates)
-      .where(eq(todoCheerMilestoneStates.milestone, completedCount))
-      .get()
-
-    if (existingMilestone) {
+    if (state.milestones.includes(completedCount)) {
       return []
     }
 

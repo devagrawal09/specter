@@ -1,30 +1,32 @@
-import { desc } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createProjectionSpec } from '../../../lib/registry.builders'
 import { todoCheerCreatedEvent } from '../events'
 
-export const todoCheersState = sqliteTable('todo_cheers', {
-  milestone: integer('milestone').primaryKey(),
-  message: text('message').notNull(),
-})
-
-export type TodoCheer = typeof todoCheersState.$inferSelect
+export type TodoCheer = {
+  milestone: number
+  message: string
+}
 
 export type TodoCheersState = {
   latestCheer: TodoCheer | null
 }
 
-export const todoCheers = createProjectionSpec('todoCheers')
+const latestCheerKey = 'latestCheer'
+
+export const todoCheers = createProjectionSpec('todoCheers', { json: true })
   .schema(z.object({}))
   .apply({
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(todoCheersState)
-        .values({
-          milestone: event.payload.milestone,
-          message: event.payload.message,
-        })
-        .run()
+    [todoCheerCreatedEvent.type]: (event, store) => {
+      const latestCheer = store.get<TodoCheer>(latestCheerKey)
+
+      if (latestCheer && latestCheer.milestone > event.payload.milestone) {
+        return
+      }
+
+      store.set(latestCheerKey, {
+        milestone: event.payload.milestone,
+        message: event.payload.message,
+      })
     },
   })
   .state({ latestCheer: null } as TodoCheersState)
@@ -54,14 +56,6 @@ export const todoCheers = createProjectionSpec('todoCheers')
       },
     },
   )
-  .query((tx) => ({
-    latestCheer:
-      tx
-        .select()
-        .from(todoCheersState)
-        .orderBy(latestTodoCheerOrder)
-        .limit(1)
-        .get() ?? null,
+  .query((store) => ({
+    latestCheer: store.get<TodoCheer>(latestCheerKey) ?? null,
   }))
-
-export const latestTodoCheerOrder = desc(todoCheersState.milestone)

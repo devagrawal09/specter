@@ -4,7 +4,7 @@ import { errorEvent, todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
 
-export const addTodo = createCommandSpec('addTodo')
+export const addTodo = createCommandSpec('addTodo', { json: true })
   .schema(
     z.object({
       title: z.string(),

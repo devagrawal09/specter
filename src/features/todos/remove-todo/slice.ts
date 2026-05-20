@@ -1,15 +1,10 @@
-import { eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSpec } from '../../../lib/registry.builders'
 import { errorEvent, todoAddedEvent, todoRemovedEvent } from '../events'
 
-export const todoRemovalStates = sqliteTable('todo_removal_states', {
-  todoId: text('todo_id').primaryKey(),
-  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
-})
+type TodoState = { removed: boolean }
 
-export const removeTodo = createCommandSpec('removeTodo')
+export const removeTodo = createCommandSpec('removeTodo', { json: true })
   .schema(
     z.object({
       todoId: z.string().min(1, 'Todo id is required'),
@@ -36,28 +31,15 @@ export const removeTodo = createCommandSpec('removeTodo')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoRemovalStates)
-        .values({
-          todoId: event.payload.todoId,
-        })
-        .run()
+    [todoAddedEvent.type]: (event, store) => {
+      store.set(event.payload.todoId, { removed: false })
     },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoRemovalStates)
-        .set({
-          removed: true,
-        })
-        .where(eq(todoRemovalStates.todoId, event.payload.todoId))
-        .run()
+    [todoRemovedEvent.type]: (event, store) => {
+      store.patch<TodoState>(event.payload.todoId, { removed: true })
     },
   })
-  .decide((command, tx) => {
-    const todo = tx
-      .select()
-      .from(todoRemovalStates)
-      .where(eq(todoRemovalStates.todoId, command.todoId))
-      .get()
+  .decide((command, store) => {
+    const todo = store.get<TodoState>(command.todoId)
 
     if (!todo || todo.removed) {
       return [errorEvent.create({ message: 'Todo not found' })]

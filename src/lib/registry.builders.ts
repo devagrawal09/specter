@@ -4,6 +4,32 @@ import type { z } from 'zod'
 import type { StoreTx } from '.'
 import type { Event } from '../features/events'
 
+export type SliceOptions = {
+  json?: boolean
+  eager?: boolean
+}
+
+export type JsonValue =
+  | null
+  | string
+  | number
+  | boolean
+  | JsonValue[]
+  | { [key: string]: JsonValue }
+
+export type JsonReadStore = {
+  get: <TValue>(key: string) => TValue | undefined
+}
+
+export type JsonWriteStore = JsonReadStore & {
+  set: (key: string, value: unknown) => void
+  patch: <TValue extends Record<string, unknown>>(
+    key: string,
+    value: Partial<TValue>,
+  ) => void
+  delete: (key: string) => void
+}
+
 export type CommandEnvelope<
   TType extends string = string,
   TPayload = unknown,
@@ -25,11 +51,11 @@ export type ApplyHandlers = {
   ) => void
 }
 
-export type MemoryApplyHandlers<TState> = {
+export type JsonApplyHandlers = {
   [TType in Event['type']]?: (
-    state: TState,
     event: Extract<Event, { type: TType }>,
-  ) => TState
+    store: JsonWriteStore,
+  ) => void
 }
 
 export type CommandRegistration<
@@ -37,12 +63,32 @@ export type CommandRegistration<
   TSchema extends z.ZodType = z.ZodType,
 > = {
   kind: 'command'
+  json?: false
+  eager?: boolean
   type: TType
   schema: TSchema
-  decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[]
   apply?: ApplyHandlers
+  decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[]
   scenarios?: readonly CommandScenario<z.infer<TSchema>>[]
 }
+
+export type JsonCommandRegistration<
+  TType extends string = string,
+  TSchema extends z.ZodType = z.ZodType,
+> = {
+  kind: 'command'
+  json: true
+  eager?: boolean
+  type: TType
+  schema: TSchema
+  apply?: JsonApplyHandlers
+  decide: (command: z.infer<TSchema>, store: JsonReadStore) => Event[]
+  scenarios?: readonly CommandScenario<z.infer<TSchema>>[]
+}
+
+export type AnyCommandRegistration =
+  | CommandRegistration
+  | JsonCommandRegistration
 
 export type ProjectionScenario<TWhen = unknown, TExpect = unknown> = {
   given: readonly Event[]
@@ -56,7 +102,8 @@ export type ProjectionRegistration<
   TState = unknown,
 > = {
   kind: 'projection'
-  storage: 'durable'
+  json?: false
+  eager?: boolean
   name: TName
   schema: TSchema
   apply: ApplyHandlers
@@ -65,24 +112,78 @@ export type ProjectionRegistration<
   scenarios?: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
 }
 
-export type MemoryProjectionRegistration<
+export type JsonProjectionRegistration<
   TName extends string = string,
   TSchema extends z.ZodType = z.ZodType,
   TState = unknown,
 > = {
   kind: 'projection'
-  storage: 'memory'
+  json: true
+  eager?: boolean
   name: TName
   schema: TSchema
-  initialState: TState
-  apply: MemoryApplyHandlers<TState>
-  query: (state: TState, input: z.infer<TSchema>) => TState
+  apply: JsonApplyHandlers
+  state: TState
+  query: (store: JsonReadStore, input: z.infer<TSchema>) => TState
   scenarios?: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
 }
 
 export type AnyProjectionRegistration =
   | ProjectionRegistration<string, z.ZodType>
-  | MemoryProjectionRegistration<string, z.ZodType>
+  | JsonProjectionRegistration<string, z.ZodType>
+
+export type ReactionScenario = {
+  given: readonly Event[]
+  when: Event
+  expect: readonly CommandEnvelope[]
+}
+
+export type ReactionRegistration<TName extends string = string> = {
+  kind: 'reaction'
+  json?: false
+  eager?: boolean
+  name: TName
+  apply?: ApplyHandlers
+  react: (tx: StoreTx) => CommandEnvelope[]
+  scenarios?: readonly ReactionScenario[]
+}
+
+export type JsonReactionRegistration<TName extends string = string> = {
+  kind: 'reaction'
+  json: true
+  eager?: boolean
+  name: TName
+  apply?: JsonApplyHandlers
+  react: (store: JsonReadStore) => CommandEnvelope[]
+  scenarios?: readonly ReactionScenario[]
+}
+
+export type AnyReactionRegistration =
+  | ReactionRegistration
+  | JsonReactionRegistration
+
+export type SliceRegistration =
+  | AnyCommandRegistration
+  | AnyProjectionRegistration
+  | AnyReactionRegistration
+
+type ProjectionQueryResult<TRegistration> =
+  TRegistration extends ProjectionRegistration<string, z.ZodType, infer TState>
+    ? TState
+    : TRegistration extends JsonProjectionRegistration<
+          string,
+          z.ZodType,
+          infer TState
+        >
+      ? TState
+      : never
+
+type CommandPayload<TRegistration> =
+  TRegistration extends AnyCommandRegistration
+    ? TRegistration extends { schema: infer TSchema extends z.ZodType }
+      ? z.infer<TSchema>
+      : never
+    : never
 
 type ViewScenarioGiven<
   TQueries extends Record<string, AnyProjectionRegistration>,
@@ -97,25 +198,9 @@ export type ViewScenario<TGiven = unknown> = {
   expect?: unknown
 }
 
-type ProjectionQueryResult<TRegistration> =
-  TRegistration extends ProjectionRegistration<string, z.ZodType, infer TState>
-    ? TState
-    : TRegistration extends MemoryProjectionRegistration<
-          string,
-          z.ZodType,
-          infer TState
-        >
-      ? TState
-      : never
-
-type CommandPayload<TRegistration> =
-  TRegistration extends CommandRegistration<string, infer TSchema>
-    ? z.infer<TSchema>
-    : never
-
 export type ViewProps<
   TQueries extends Record<string, AnyProjectionRegistration>,
-  TTriggers extends Record<string, CommandRegistration>,
+  TTriggers extends Record<string, AnyCommandRegistration>,
 > = {
   [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
 } & {
@@ -130,9 +215,9 @@ export type ViewRegistration<
     string,
     AnyProjectionRegistration
   >,
-  TTriggers extends Record<string, CommandRegistration> = Record<
+  TTriggers extends Record<string, AnyCommandRegistration> = Record<
     string,
-    CommandRegistration
+    AnyCommandRegistration
   >,
 > = {
   kind: 'view'
@@ -143,185 +228,161 @@ export type ViewRegistration<
   component: Component<never>
 }
 
-export type ReactionScenario = {
-  given: readonly Event[]
-  when: Event
-  expect: readonly CommandEnvelope[]
-}
-
-export type ReactionRegistration<TName extends string = string> = {
-  kind: 'reaction'
-  name: TName
-  apply?: ApplyHandlers
-  react: (event: Event, tx: StoreTx) => CommandEnvelope[]
-  scenarios?: readonly ReactionScenario[]
-}
-
-export type SliceRegistration =
-  | CommandRegistration
-  | ProjectionRegistration<string, z.ZodType>
-  | MemoryProjectionRegistration<string, z.ZodType>
-  | ReactionRegistration
-
-export type CommandSliceSchemaStep<TType extends string> = {
+export type CommandSliceSchemaStep<
+  TType extends string,
+  TJson extends boolean,
+> = {
   schema: <TSchema extends z.ZodType>(
     schema: TSchema,
-  ) => CommandSliceDecideStep<TType, TSchema>
+  ) => CommandSliceStep<TType, TSchema, TJson>
 }
 
-export type CommandSliceDecideStep<
+export type CommandSliceStep<
   TType extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
   decide: (
-    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
-  ) => CommandRegistration<TType, TSchema>
-  apply: (apply: ApplyHandlers) => CommandSliceApplyStep<TType, TSchema>
+    decide: TJson extends true
+      ? (command: z.infer<TSchema>, store: JsonReadStore) => Event[]
+      : (command: z.infer<TSchema>, tx: StoreTx) => Event[],
+  ) => TJson extends true
+    ? JsonCommandRegistration<TType, TSchema>
+    : CommandRegistration<TType, TSchema>
+  apply: (
+    apply: TJson extends true ? JsonApplyHandlers : ApplyHandlers,
+  ) => CommandSliceApplyStep<TType, TSchema, TJson>
   scenarios: (
     ...scenarios: readonly CommandScenario<z.infer<TSchema>>[]
-  ) => CommandSliceScenarioStep<TType, TSchema>
+  ) => CommandSliceScenarioStep<TType, TSchema, TJson>
 }
 
 export type CommandSliceApplyStep<
   TType extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
-  decide: (
-    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
-  ) => CommandRegistration<TType, TSchema>
-  scenarios: (
-    ...scenarios: readonly CommandScenario<z.infer<TSchema>>[]
-  ) => CommandSliceApplyScenarioStep<TType, TSchema>
+  decide: CommandSliceStep<TType, TSchema, TJson>['decide']
+  scenarios: CommandSliceStep<TType, TSchema, TJson>['scenarios']
 }
 
 export type CommandSliceScenarioStep<
   TType extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
-  decide: (
-    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
-  ) => CommandRegistration<TType, TSchema>
-  apply: (apply: ApplyHandlers) => CommandSliceApplyScenarioStep<TType, TSchema>
+  decide: CommandSliceStep<TType, TSchema, TJson>['decide']
+  apply: CommandSliceStep<TType, TSchema, TJson>['apply']
 }
 
-export type CommandSliceApplyScenarioStep<
-  TType extends string,
-  TSchema extends z.ZodType,
+export type ProjectionSliceSchemaStep<
+  TName extends string,
+  TJson extends boolean,
 > = {
-  decide: (
-    decide: (command: z.infer<TSchema>, tx: StoreTx) => Event[],
-  ) => CommandRegistration<TType, TSchema>
-}
-
-export type ProjectionSliceSchemaStep<TName extends string> = {
   schema: <TSchema extends z.ZodType>(
     schema: TSchema,
-  ) => ProjectionSliceApplyStep<TName, TSchema>
-}
-
-export type MemoryProjectionSliceSchemaStep<TName extends string> = {
-  schema: <TSchema extends z.ZodType>(
-    schema: TSchema,
-  ) => MemoryProjectionSliceStateStep<TName, TSchema>
-}
-
-export type MemoryProjectionSliceStateStep<
-  TName extends string,
-  TSchema extends z.ZodType,
-> = {
-  state: <TState>(
-    initialState: TState,
-  ) => MemoryProjectionSliceApplyStep<TName, TSchema, TState>
-}
-
-export type MemoryProjectionSliceApplyStep<
-  TName extends string,
-  TSchema extends z.ZodType,
-  TState,
-> = {
-  apply: (
-    apply: MemoryApplyHandlers<TState>,
-  ) => MemoryProjectionSliceQueryStep<TName, TSchema, TState>
-}
-
-export type MemoryProjectionSliceQueryStep<
-  TName extends string,
-  TSchema extends z.ZodType,
-  TState,
-> = {
-  query: (
-    query: (state: TState, input: z.infer<TSchema>) => TState,
-  ) => MemoryProjectionRegistration<TName, TSchema, TState>
-  scenarios: (
-    ...scenarios: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
-  ) => MemoryProjectionSliceScenarioStep<TName, TSchema, TState>
-}
-
-export type MemoryProjectionSliceScenarioStep<
-  TName extends string,
-  TSchema extends z.ZodType,
-  TState,
-> = {
-  query: (
-    query: (state: TState, input: z.infer<TSchema>) => TState,
-  ) => MemoryProjectionRegistration<TName, TSchema, TState>
+  ) => ProjectionSliceApplyStep<TName, TSchema, TJson>
 }
 
 export type ProjectionSliceApplyStep<
   TName extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
-  apply: (apply: ApplyHandlers) => ProjectionSliceQueryStep<TName, TSchema>
+  apply: (
+    apply: TJson extends true ? JsonApplyHandlers : ApplyHandlers,
+  ) => ProjectionSliceQueryStep<TName, TSchema, TJson>
 }
 
 export type ProjectionSliceQueryStep<
   TName extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
   query: <TState>(
-    query: (tx: StoreTx, input: z.infer<TSchema>) => TState,
-  ) => ProjectionRegistration<TName, TSchema, TState>
+    query: TJson extends true
+      ? (store: JsonReadStore, input: z.infer<TSchema>) => TState
+      : (tx: StoreTx, input: z.infer<TSchema>) => TState,
+  ) => TJson extends true
+    ? JsonProjectionRegistration<TName, TSchema, TState>
+    : ProjectionRegistration<TName, TSchema, TState>
   state: <TState>(
     state: TState,
-  ) => ProjectionSliceStateStep<TName, TSchema, TState>
+  ) => ProjectionSliceStateStep<TName, TSchema, TState, TJson>
   scenarios: (
     ...scenarios: readonly ProjectionScenario<z.infer<TSchema>>[]
-  ) => ProjectionSliceScenarioStep<TName, TSchema>
+  ) => ProjectionSliceScenarioStep<TName, TSchema, TJson>
 }
 
 export type ProjectionSliceScenarioStep<
   TName extends string,
   TSchema extends z.ZodType,
+  TJson extends boolean,
 > = {
-  query: <TState>(
-    query: (tx: StoreTx, input: z.infer<TSchema>) => TState,
-  ) => ProjectionRegistration<TName, TSchema, TState>
-  state: <TState>(
-    state: TState,
-  ) => ProjectionSliceStateScenarioStep<TName, TSchema, TState>
+  query: ProjectionSliceQueryStep<TName, TSchema, TJson>['query']
+  state: ProjectionSliceQueryStep<TName, TSchema, TJson>['state']
 }
 
 export type ProjectionSliceStateStep<
   TName extends string,
   TSchema extends z.ZodType,
   TState,
+  TJson extends boolean,
 > = {
   query: (
-    query: (tx: StoreTx, input: z.infer<TSchema>) => TState,
-  ) => ProjectionRegistration<TName, TSchema, TState>
+    query: TJson extends true
+      ? (store: JsonReadStore, input: z.infer<TSchema>) => TState
+      : (tx: StoreTx, input: z.infer<TSchema>) => TState,
+  ) => TJson extends true
+    ? JsonProjectionRegistration<TName, TSchema, TState>
+    : ProjectionRegistration<TName, TSchema, TState>
   scenarios: (
     ...scenarios: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
-  ) => ProjectionSliceStateScenarioStep<TName, TSchema, TState>
+  ) => ProjectionSliceStateScenarioStep<TName, TSchema, TState, TJson>
 }
 
 export type ProjectionSliceStateScenarioStep<
   TName extends string,
   TSchema extends z.ZodType,
   TState,
+  TJson extends boolean,
 > = {
-  query: (
-    query: (tx: StoreTx, input: z.infer<TSchema>) => TState,
-  ) => ProjectionRegistration<TName, TSchema, TState>
+  query: ProjectionSliceStateStep<TName, TSchema, TState, TJson>['query']
+}
+
+export type ReactionSliceReactStep<
+  TName extends string,
+  TJson extends boolean,
+> = {
+  react: (
+    react: TJson extends true
+      ? (store: JsonReadStore) => CommandEnvelope[]
+      : (tx: StoreTx) => CommandEnvelope[],
+  ) => TJson extends true
+    ? JsonReactionRegistration<TName>
+    : ReactionRegistration<TName>
+  apply: (
+    apply: TJson extends true ? JsonApplyHandlers : ApplyHandlers,
+  ) => ReactionSliceApplyStep<TName, TJson>
+  scenarios: (
+    ...scenarios: readonly ReactionScenario[]
+  ) => ReactionSliceScenarioStep<TName, TJson>
+}
+
+export type ReactionSliceApplyStep<
+  TName extends string,
+  TJson extends boolean,
+> = {
+  react: ReactionSliceReactStep<TName, TJson>['react']
+  scenarios: ReactionSliceReactStep<TName, TJson>['scenarios']
+}
+
+export type ReactionSliceScenarioStep<
+  TName extends string,
+  TJson extends boolean,
+> = {
+  react: ReactionSliceReactStep<TName, TJson>['react']
+  apply: ReactionSliceReactStep<TName, TJson>['apply']
 }
 
 export type ViewSliceQueriesStep<TName extends string> = {
@@ -334,7 +395,7 @@ export type ViewSliceTriggersStep<
   TName extends string,
   TQueries extends Record<string, AnyProjectionRegistration>,
 > = {
-  triggers: <TTriggers extends Record<string, CommandRegistration>>(
+  triggers: <TTriggers extends Record<string, AnyCommandRegistration>>(
     triggers: TTriggers,
   ) => ViewSliceScenariosStep<TName, TQueries, TTriggers>
 }
@@ -342,7 +403,7 @@ export type ViewSliceTriggersStep<
 export type ViewSliceScenariosStep<
   TName extends string,
   TQueries extends Record<string, AnyProjectionRegistration>,
-  TTriggers extends Record<string, CommandRegistration>,
+  TTriggers extends Record<string, AnyCommandRegistration>,
 > = {
   scenarios: (
     scenarios: readonly ViewScenario<ViewScenarioGiven<TQueries>>[],
@@ -352,56 +413,35 @@ export type ViewSliceScenariosStep<
 export type ViewSliceComponentStep<
   TName extends string,
   TQueries extends Record<string, AnyProjectionRegistration>,
-  TTriggers extends Record<string, CommandRegistration>,
+  TTriggers extends Record<string, AnyCommandRegistration>,
 > = {
   component: (
     component: Component<ViewProps<TQueries, TTriggers>>,
   ) => ViewRegistration<TName, TQueries, TTriggers>
 }
 
-export type ReactionSliceReactStep<TName extends string> = {
-  react: (
-    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
-  ) => ReactionRegistration<TName>
-  apply: (apply: ApplyHandlers) => ReactionSliceApplyStep<TName>
-  scenarios: (
-    ...scenarios: readonly ReactionScenario[]
-  ) => ReactionSliceScenarioStep<TName>
-}
-
-export type ReactionSliceApplyStep<TName extends string> = {
-  react: (
-    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
-  ) => ReactionRegistration<TName>
-  scenarios: (
-    ...scenarios: readonly ReactionScenario[]
-  ) => ReactionSliceApplyScenarioStep<TName>
-}
-
-export type ReactionSliceScenarioStep<TName extends string> = {
-  react: (
-    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
-  ) => ReactionRegistration<TName>
-  apply: (apply: ApplyHandlers) => ReactionSliceApplyScenarioStep<TName>
-}
-
-export type ReactionSliceApplyScenarioStep<TName extends string> = {
-  react: (
-    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
-  ) => ReactionRegistration<TName>
-}
-
 export function createCommandSpec<const TType extends string>(
   type: TType,
-): CommandSliceSchemaStep<TType> {
+): CommandSliceSchemaStep<TType, false>
+export function createCommandSpec<const TType extends string>(
+  type: TType,
+  options: { json: true },
+): CommandSliceSchemaStep<TType, true>
+export function createCommandSpec<const TType extends string>(
+  type: TType,
+  options: SliceOptions = {},
+  // biome-ignore lint/suspicious/noExplicitAny: overload implementation bridges durable/json builders
+): any {
   return {
-    schema: (schema) => {
+    schema: (schema: z.ZodType) => {
       const createRegistration = (
-        decide: (command: z.infer<typeof schema>, tx: StoreTx) => Event[],
-        apply?: ApplyHandlers,
-        scenarios?: readonly CommandScenario<z.infer<typeof schema>>[],
-      ): CommandRegistration<TType, typeof schema> => ({
+        decide: unknown,
+        apply?: unknown,
+        scenarios?: unknown,
+      ) => ({
         kind: 'command',
+        json: options.json ? true : undefined,
+        eager: options.eager,
         type,
         schema,
         apply,
@@ -410,17 +450,20 @@ export function createCommandSpec<const TType extends string>(
       })
 
       return {
-        decide: (decide) => createRegistration(decide),
-        apply: (apply) => ({
-          decide: (decide) => createRegistration(decide, apply),
-          scenarios: (...scenarios) => ({
-            decide: (decide) => createRegistration(decide, apply, scenarios),
+        decide: (decide: unknown) => createRegistration(decide),
+        apply: (apply: unknown) => ({
+          decide: (decide: unknown) => createRegistration(decide, apply),
+          scenarios: (...scenarios: unknown[]) => ({
+            decide: (decide: unknown) =>
+              createRegistration(decide, apply, scenarios),
           }),
         }),
-        scenarios: (...scenarios) => ({
-          decide: (decide) => createRegistration(decide, undefined, scenarios),
-          apply: (apply) => ({
-            decide: (decide) => createRegistration(decide, apply, scenarios),
+        scenarios: (...scenarios: unknown[]) => ({
+          decide: (decide: unknown) =>
+            createRegistration(decide, undefined, scenarios),
+          apply: (apply: unknown) => ({
+            decide: (decide: unknown) =>
+              createRegistration(decide, apply, scenarios),
           }),
         }),
       }
@@ -428,54 +471,29 @@ export function createCommandSpec<const TType extends string>(
   }
 }
 
-export function createReactionSpec<const TName extends string>(
-  name: TName,
-): ReactionSliceReactStep<TName> {
-  const createRegistration = (
-    react: (event: Event, tx: StoreTx) => CommandEnvelope[],
-    apply?: ApplyHandlers,
-    scenarios?: readonly ReactionScenario[],
-  ): ReactionRegistration<TName> => ({
-    kind: 'reaction',
-    name,
-    apply,
-    react,
-    scenarios,
-  })
-
-  return {
-    react: (react) => createRegistration(react),
-    apply: (apply) => ({
-      react: (react) => createRegistration(react, apply),
-      scenarios: (...scenarios) => ({
-        react: (react) => createRegistration(react, apply, scenarios),
-      }),
-    }),
-    scenarios: (...scenarios) => ({
-      react: (react) => createRegistration(react, undefined, scenarios),
-      apply: (apply) => ({
-        react: (react) => createRegistration(react, apply, scenarios),
-      }),
-    }),
-  }
-}
-
 export function createProjectionSpec<const TName extends string>(
   name: TName,
-): ProjectionSliceSchemaStep<TName> {
+): ProjectionSliceSchemaStep<TName, false>
+export function createProjectionSpec<const TName extends string>(
+  name: TName,
+  options: { json: true },
+): ProjectionSliceSchemaStep<TName, true>
+export function createProjectionSpec<const TName extends string>(
+  name: TName,
+  options: SliceOptions = {},
+  // biome-ignore lint/suspicious/noExplicitAny: overload implementation bridges durable/json builders
+): any {
   return {
-    schema: (schema) => ({
-      apply: (apply) => {
-        const createRegistration = <TState>(
-          query: (tx: StoreTx, input: z.infer<typeof schema>) => TState,
-          state: TState,
-          scenarios?: readonly ProjectionScenario<
-            z.infer<typeof schema>,
-            TState
-          >[],
-        ): ProjectionRegistration<TName, typeof schema, TState> => ({
+    schema: (schema: z.ZodType) => ({
+      apply: (apply: unknown) => {
+        const createRegistration = (
+          query: unknown,
+          state?: unknown,
+          scenarios?: unknown,
+        ) => ({
           kind: 'projection',
-          storage: 'durable',
+          json: options.json ? true : undefined,
+          eager: options.eager,
           name,
           schema,
           apply,
@@ -484,42 +502,22 @@ export function createProjectionSpec<const TName extends string>(
           scenarios,
         })
 
-        const createStateStep = <TState>(
-          state: TState,
-          scenarios?: readonly ProjectionScenario<
-            z.infer<typeof schema>,
-            TState
-          >[],
-        ) => ({
-          query: (
-            query: (tx: StoreTx, input: z.infer<typeof schema>) => TState,
-          ) => createRegistration(query, state, scenarios),
+        const createStateStep = (state: unknown, scenarios?: unknown) => ({
+          query: (query: unknown) =>
+            createRegistration(query, state, scenarios),
         })
 
         return {
-          query: (query) => createRegistration(query, undefined as never),
-          state: (state) => ({
-            query: (query) => createRegistration(query, state),
-            scenarios: (...scenarios) => createStateStep(state, scenarios),
+          query: (query: unknown) => createRegistration(query),
+          state: (state: unknown) => ({
+            query: (query: unknown) => createRegistration(query, state),
+            scenarios: (...scenarios: unknown[]) =>
+              createStateStep(state, scenarios),
           }),
-          scenarios: (...scenarios) => ({
-            query: (query) =>
-              createRegistration(
-                query,
-                undefined as never,
-                scenarios as readonly ProjectionScenario<
-                  z.infer<typeof schema>,
-                  never
-                >[],
-              ),
-            state: (state) =>
-              createStateStep(
-                state,
-                scenarios as readonly ProjectionScenario<
-                  z.infer<typeof schema>,
-                  typeof state
-                >[],
-              ),
+          scenarios: (...scenarios: unknown[]) => ({
+            query: (query: unknown) =>
+              createRegistration(query, undefined, scenarios),
+            state: (state: unknown) => createStateStep(state, scenarios),
           }),
         }
       },
@@ -527,37 +525,45 @@ export function createProjectionSpec<const TName extends string>(
   }
 }
 
-export function createMemoryProjectionSpec<const TName extends string>(
+export function createReactionSpec<const TName extends string>(
   name: TName,
-): MemoryProjectionSliceSchemaStep<TName> {
-  return {
-    schema: (schema) => ({
-      state: (initialState) => ({
-        apply: (apply) => {
-          const createRegistration = (
-            query: (state: typeof initialState, input: z.infer<typeof schema>) => typeof initialState,
-            scenarios?: readonly ProjectionScenario<
-              z.infer<typeof schema>,
-              typeof initialState
-            >[],
-          ): MemoryProjectionRegistration<TName, typeof schema, typeof initialState> => ({
-            kind: 'projection',
-            storage: 'memory',
-            name,
-            schema,
-            initialState,
-            apply,
-            query,
-            scenarios,
-          })
+): ReactionSliceReactStep<TName, false>
+export function createReactionSpec<const TName extends string>(
+  name: TName,
+  options: { json: true },
+): ReactionSliceReactStep<TName, true>
+export function createReactionSpec<const TName extends string>(
+  name: TName,
+  options: SliceOptions = {},
+  // biome-ignore lint/suspicious/noExplicitAny: overload implementation bridges durable/json builders
+): any {
+  const createRegistration = (
+    react: unknown,
+    apply?: unknown,
+    scenarios?: unknown,
+  ) => ({
+    kind: 'reaction',
+    json: options.json ? true : undefined,
+    eager: options.eager,
+    name,
+    apply,
+    react,
+    scenarios,
+  })
 
-          return {
-            query: (query) => createRegistration(query),
-            scenarios: (...scenarios) => ({
-              query: (query) => createRegistration(query, scenarios),
-            }),
-          }
-        },
+  return {
+    react: (react: unknown) => createRegistration(react),
+    apply: (apply: unknown) => ({
+      react: (react: unknown) => createRegistration(react, apply),
+      scenarios: (...scenarios: unknown[]) => ({
+        react: (react: unknown) => createRegistration(react, apply, scenarios),
+      }),
+    }),
+    scenarios: (...scenarios: unknown[]) => ({
+      react: (react: unknown) =>
+        createRegistration(react, undefined, scenarios),
+      apply: (apply: unknown) => ({
+        react: (react: unknown) => createRegistration(react, apply, scenarios),
       }),
     }),
   }

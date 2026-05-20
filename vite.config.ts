@@ -1,8 +1,8 @@
-import { defineConfig } from 'vitest/config'
 import build from '@hono/vite-build/node'
 import devServer from '@hono/vite-dev-server'
 import nodeAdapter from '@hono/vite-dev-server/node'
 import tailwindcss from '@tailwindcss/vite'
+import { defineConfig } from 'vite'
 import solidPlugin from 'vite-plugin-solid'
 
 export default defineConfig(({ mode }) => ({

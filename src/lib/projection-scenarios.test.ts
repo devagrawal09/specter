@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import type { z } from 'zod'
 
-import { applyEvents, sliceRegistrations } from './registry'
+import { applyEvents, queryProjection, sliceRegistrations } from './registry'
 import type {
-  ProjectionRegistration,
+  AnyProjectionRegistration,
   ProjectionScenario,
 } from './registry.builders'
 import { createTestDb } from './test-db'
@@ -14,11 +13,7 @@ describe('projection scenarios', () => {
       continue
     }
 
-    const projection = registration as ProjectionRegistration<
-      string,
-      z.ZodType,
-      unknown
-    >
+    const projection = registration as AnyProjectionRegistration
     const scenarios = projection.scenarios
 
     if (!scenarios) {
@@ -34,7 +29,7 @@ describe('projection scenarios', () => {
             applyEvents([...scenario.given], db)
 
             const projectionInput = projection.schema.parse(scenario.when)
-            const result = projection.query(db, projectionInput)
+            const result = queryProjection(projection, projectionInput, db)
 
             expect(result).toEqual(scenario.expect)
           } finally {

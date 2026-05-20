@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyEvents, sliceRegistrations } from './registry'
+import { applyEvents, reactToEvent, sliceRegistrations } from './registry'
 import type { ReactionScenario } from './registry.builders'
 import { createTestDb } from './test-db'
 
@@ -19,9 +19,9 @@ describe('reaction scenarios', () => {
           const { db, sqlite } = createTestDb()
 
           try {
-            applyEvents([...scenario.given], db)
+            applyEvents([...scenario.given, scenario.when], db)
 
-            const result = registration.react(scenario.when, db)
+            const result = reactToEvent(registration, scenario.when, db)
 
             expect(result).toEqual([...scenario.expect])
           } finally {
