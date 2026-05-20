@@ -4,7 +4,7 @@ import { applyEvents, sliceRegistrations } from './registry'
 import type { ReactionScenario } from './registry.builders'
 import { createTestDb } from './test-db'
 
-describe('todo reaction scenarios', () => {
+describe('reaction scenarios', () => {
   for (const registration of sliceRegistrations) {
     if (registration.kind !== 'reaction' || !registration.scenarios) {
       continue

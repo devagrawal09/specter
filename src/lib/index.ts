@@ -23,7 +23,7 @@ type UnknownEvent = { id: string; type: string; payload: unknown }
 export type StoreTx = Pick<
   // biome-ignore lint/suspicious/noExplicitAny: explicit any
   BetterSQLite3Database<any>,
-  'insert' | 'select' | 'update'
+  'delete' | 'insert' | 'select' | 'update'
 >
 
 export function createEventSpec<

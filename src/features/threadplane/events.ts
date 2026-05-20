@@ -1,8 +1,6 @@
 import z from 'zod'
 import { createEventSpec } from '../../lib'
 
-const workspaceId = z.string().min(1)
-
 type WorkspaceNode = {
   id: string
   kind: 'dir' | 'file'
@@ -24,7 +22,7 @@ const workspaceNode: z.ZodType<WorkspaceNode> = z.lazy(() =>
 export const threadplaneWorkspaceCreatedEvent = createEventSpec(
   'threadplaneWorkspaceCreated',
   z.object({
-    workspaceId,
+    workspaceId: z.string().min(1),
     name: z.string().min(1),
   }),
 )
@@ -32,7 +30,7 @@ export const threadplaneWorkspaceCreatedEvent = createEventSpec(
 export const threadplaneMessagePostedEvent = createEventSpec(
   'threadplaneMessagePosted',
   z.object({
-    workspaceId,
+    workspaceId: z.string().min(1),
     messageId: z.string().min(1),
     parentId: z.string().min(1).optional(),
     authorType: z.enum(['agent', 'system', 'user']),
@@ -45,7 +43,7 @@ export const threadplaneMessagePostedEvent = createEventSpec(
 export const threadplaneAgentUpdatedEvent = createEventSpec(
   'threadplaneAgentUpdated',
   z.object({
-    workspaceId,
+    workspaceId: z.string().min(1),
     agentId: z.string().min(1),
     agent: z.record(z.string(), z.unknown()),
   }),
@@ -54,7 +52,7 @@ export const threadplaneAgentUpdatedEvent = createEventSpec(
 export const threadplaneWorkspaceTreeChangedEvent = createEventSpec(
   'threadplaneWorkspaceTreeChanged',
   z.object({
-    workspaceId,
+    workspaceId: z.string().min(1),
     tree: z.array(workspaceNode),
   }),
 )
@@ -62,7 +60,7 @@ export const threadplaneWorkspaceTreeChangedEvent = createEventSpec(
 export const threadplaneFileWrittenEvent = createEventSpec(
   'threadplaneFileWritten',
   z.object({
-    workspaceId,
+    workspaceId: z.string().min(1),
     path: z.string().min(1),
     sizeBytes: z.number().int().nonnegative(),
   }),

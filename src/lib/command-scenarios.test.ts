@@ -2,10 +2,10 @@ import { describe, expect, it } from 'vitest'
 
 import { applyEvents, decideCommand, sliceRegistrations } from './registry'
 import type { CommandScenario } from './registry.builders'
-import type { Event } from '../features/todos/events'
+import type { Event } from '../features/events'
 import { createTestDb } from './test-db'
 
-describe('todo command scenarios', () => {
+describe('command scenarios', () => {
   for (const registration of sliceRegistrations) {
     if (registration.kind !== 'command' || !registration.scenarios) {
       continue

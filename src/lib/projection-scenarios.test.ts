@@ -8,7 +8,7 @@ import type {
 } from './registry.builders'
 import { createTestDb } from './test-db'
 
-describe('todo projection scenarios', () => {
+describe('projection scenarios', () => {
   for (const registration of sliceRegistrations) {
     if (registration.kind !== 'projection' || !registration.scenarios) {
       continue

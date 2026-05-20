@@ -4,8 +4,6 @@ import { z } from 'zod'
 import { createProjectionSpec } from '../../../lib/registry.builders'
 import { todoCheerCreatedEvent } from '../events'
 
-export const todoCheersQueryInput = z.object({})
-
 export const todoCheersState = sqliteTable('todo_cheers', {
   milestone: integer('milestone').primaryKey(),
   message: text('message').notNull(),
@@ -18,7 +16,7 @@ export type TodoCheersState = {
 }
 
 export const todoCheers = createProjectionSpec('todoCheers')
-  .schema(todoCheersQueryInput)
+  .schema(z.object({}))
   .apply({
     [todoCheerCreatedEvent.type]: (event, tx) => {
       tx.insert(todoCheersState)

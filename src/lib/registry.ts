@@ -1,8 +1,8 @@
 import { z } from 'zod'
 
 import type { StoreTx } from '.'
-import type { Event } from '../features/todos/events'
-import { events as todoEvents } from '.'
+import type { Event } from '../features/events'
+import { events as eventTable } from '.'
 export {
   createCommandSpec as createCommandSlice,
   createProjectionSpec as createProjectionSlice,
@@ -30,6 +30,13 @@ import type {
   SliceRegistration,
 } from './registry.builders'
 import { addTodo } from '../features/todos/add-todo/slice'
+import {
+  completeHarlanScriptExecution,
+  failHarlanScriptExecution,
+} from '../features/harlan/runtime/complete-script-execution/slice'
+import { executeHarlanScript } from '../features/harlan/runtime/execute-script/slice'
+import { saveHarlanExecutionContext } from '../features/harlan/runtime/save-execution-context/slice'
+import { saveHarlanExecutionContextAfterCompletion } from '../features/harlan/runtime/save-execution-context-reaction/slice'
 import { changeTodoCompletion } from '../features/todos/change-todo-completion/slice'
 import { createTodoCheer } from '../features/todos/create-todo-cheer/slice'
 import { removeTodo } from '../features/todos/remove-todo/slice'
@@ -44,6 +51,11 @@ export const sliceRegistrations = [
   changeTodoCompletion,
   removeTodo,
   createTodoCheer,
+  executeHarlanScript,
+  completeHarlanScriptExecution,
+  failHarlanScriptExecution,
+  saveHarlanExecutionContext,
+  saveHarlanExecutionContextAfterCompletion,
   todoCompletionCheer,
   todosProjection,
   todoCheers,
@@ -58,7 +70,7 @@ const reactionRegistrations = collectReactionRegistrations(sliceRegistrations)
 const eventApplications = collectEventApplications(sliceRegistrations)
 
 if (commandRegistrations.length === 0) {
-  throw new Error('Todo registry must include at least one command slice')
+  throw new Error('Registry must include at least one command slice')
 }
 
 const commandSchemas = commandRegistrations.map((command) =>
@@ -78,7 +90,7 @@ export function decideCommand(command: Command, tx: StoreTx): Event[] {
   )
 
   if (!registration) {
-    throw new Error(`Unknown todo command: ${command.type}`)
+    throw new Error(`Unknown command: ${command.type}`)
   }
 
   return registration.decide(command.payload as never, tx)
@@ -94,7 +106,7 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
 
     if (round > maxReactionCascadeRounds) {
       throw new Error(
-        `Todo reaction cascade exceeded ${maxReactionCascadeRounds} rounds`,
+        `Reaction cascade exceeded ${maxReactionCascadeRounds} rounds`,
       )
     }
 
@@ -144,7 +156,7 @@ export function applyEvents(events: Event[], tx: StoreTx) {
 
 function persistEvents(events: Event[], tx: StoreTx): Event[] {
   return events.map((event) => {
-    tx.insert(todoEvents)
+    tx.insert(eventTable)
       .values({
         id: event.id,
         type: event.type,
@@ -245,7 +257,7 @@ function assertUniqueRegistrations(
   for (const registration of registrations) {
     if (registration.kind === 'command') {
       if (commandTypes.has(registration.type)) {
-        throw new Error(`Duplicate todo command slice: ${registration.type}`)
+        throw new Error(`Duplicate command slice: ${registration.type}`)
       }
 
       commandTypes.add(registration.type)
@@ -254,7 +266,7 @@ function assertUniqueRegistrations(
 
     if (registration.kind === 'reaction') {
       if (reactionNames.has(registration.name)) {
-        throw new Error(`Duplicate todo reaction slice: ${registration.name}`)
+        throw new Error(`Duplicate reaction slice: ${registration.name}`)
       }
 
       reactionNames.add(registration.name)
@@ -262,7 +274,7 @@ function assertUniqueRegistrations(
     }
 
     if (projectionNames.has(registration.name)) {
-      throw new Error(`Duplicate todo projection slice: ${registration.name}`)
+      throw new Error(`Duplicate projection slice: ${registration.name}`)
     }
 
     projectionNames.add(registration.name)

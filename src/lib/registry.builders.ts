@@ -2,7 +2,7 @@ import type { Component } from 'solid-js'
 import type { z } from 'zod'
 
 import type { StoreTx } from '.'
-import type { Event } from '../features/todos/events'
+import type { Event } from '../features/events'
 
 export type CommandEnvelope<
   TType extends string = string,
@@ -23,6 +23,13 @@ export type ApplyHandlers = {
     event: Extract<Event, { type: TType }>,
     tx: StoreTx,
   ) => void
+}
+
+export type MemoryApplyHandlers<TState> = {
+  [TType in Event['type']]?: (
+    state: TState,
+    event: Extract<Event, { type: TType }>,
+  ) => TState
 }
 
 export type CommandRegistration<
@@ -49,6 +56,7 @@ export type ProjectionRegistration<
   TState = unknown,
 > = {
   kind: 'projection'
+  storage: 'durable'
   name: TName
   schema: TSchema
   apply: ApplyHandlers
@@ -57,8 +65,27 @@ export type ProjectionRegistration<
   scenarios?: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
 }
 
+export type MemoryProjectionRegistration<
+  TName extends string = string,
+  TSchema extends z.ZodType = z.ZodType,
+  TState = unknown,
+> = {
+  kind: 'projection'
+  storage: 'memory'
+  name: TName
+  schema: TSchema
+  initialState: TState
+  apply: MemoryApplyHandlers<TState>
+  query: (state: TState, input: z.infer<TSchema>) => TState
+  scenarios?: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
+}
+
+export type AnyProjectionRegistration =
+  | ProjectionRegistration<string, z.ZodType>
+  | MemoryProjectionRegistration<string, z.ZodType>
+
 type ViewScenarioGiven<
-  TQueries extends Record<string, ProjectionRegistration>,
+  TQueries extends Record<string, AnyProjectionRegistration>,
 > = {
   [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
 }
@@ -73,7 +100,13 @@ export type ViewScenario<TGiven = unknown> = {
 type ProjectionQueryResult<TRegistration> =
   TRegistration extends ProjectionRegistration<string, z.ZodType, infer TState>
     ? TState
-    : never
+    : TRegistration extends MemoryProjectionRegistration<
+          string,
+          z.ZodType,
+          infer TState
+        >
+      ? TState
+      : never
 
 type CommandPayload<TRegistration> =
   TRegistration extends CommandRegistration<string, infer TSchema>
@@ -81,7 +114,7 @@ type CommandPayload<TRegistration> =
     : never
 
 export type ViewProps<
-  TQueries extends Record<string, ProjectionRegistration>,
+  TQueries extends Record<string, AnyProjectionRegistration>,
   TTriggers extends Record<string, CommandRegistration>,
 > = {
   [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
@@ -93,9 +126,9 @@ export type ViewProps<
 
 export type ViewRegistration<
   TName extends string = string,
-  TQueries extends Record<string, ProjectionRegistration> = Record<
+  TQueries extends Record<string, AnyProjectionRegistration> = Record<
     string,
-    ProjectionRegistration
+    AnyProjectionRegistration
   >,
   TTriggers extends Record<string, CommandRegistration> = Record<
     string,
@@ -127,6 +160,7 @@ export type ReactionRegistration<TName extends string = string> = {
 export type SliceRegistration =
   | CommandRegistration
   | ProjectionRegistration<string, z.ZodType>
+  | MemoryProjectionRegistration<string, z.ZodType>
   | ReactionRegistration
 
 export type CommandSliceSchemaStep<TType extends string> = {
@@ -183,6 +217,54 @@ export type ProjectionSliceSchemaStep<TName extends string> = {
   schema: <TSchema extends z.ZodType>(
     schema: TSchema,
   ) => ProjectionSliceApplyStep<TName, TSchema>
+}
+
+export type MemoryProjectionSliceSchemaStep<TName extends string> = {
+  schema: <TSchema extends z.ZodType>(
+    schema: TSchema,
+  ) => MemoryProjectionSliceStateStep<TName, TSchema>
+}
+
+export type MemoryProjectionSliceStateStep<
+  TName extends string,
+  TSchema extends z.ZodType,
+> = {
+  state: <TState>(
+    initialState: TState,
+  ) => MemoryProjectionSliceApplyStep<TName, TSchema, TState>
+}
+
+export type MemoryProjectionSliceApplyStep<
+  TName extends string,
+  TSchema extends z.ZodType,
+  TState,
+> = {
+  apply: (
+    apply: MemoryApplyHandlers<TState>,
+  ) => MemoryProjectionSliceQueryStep<TName, TSchema, TState>
+}
+
+export type MemoryProjectionSliceQueryStep<
+  TName extends string,
+  TSchema extends z.ZodType,
+  TState,
+> = {
+  query: (
+    query: (state: TState, input: z.infer<TSchema>) => TState,
+  ) => MemoryProjectionRegistration<TName, TSchema, TState>
+  scenarios: (
+    ...scenarios: readonly ProjectionScenario<z.infer<TSchema>, TState>[]
+  ) => MemoryProjectionSliceScenarioStep<TName, TSchema, TState>
+}
+
+export type MemoryProjectionSliceScenarioStep<
+  TName extends string,
+  TSchema extends z.ZodType,
+  TState,
+> = {
+  query: (
+    query: (state: TState, input: z.infer<TSchema>) => TState,
+  ) => MemoryProjectionRegistration<TName, TSchema, TState>
 }
 
 export type ProjectionSliceApplyStep<
@@ -243,14 +325,14 @@ export type ProjectionSliceStateScenarioStep<
 }
 
 export type ViewSliceQueriesStep<TName extends string> = {
-  queries: <TQueries extends Record<string, ProjectionRegistration>>(
+  queries: <TQueries extends Record<string, AnyProjectionRegistration>>(
     queries: TQueries,
   ) => ViewSliceTriggersStep<TName, TQueries>
 }
 
 export type ViewSliceTriggersStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionRegistration>,
+  TQueries extends Record<string, AnyProjectionRegistration>,
 > = {
   triggers: <TTriggers extends Record<string, CommandRegistration>>(
     triggers: TTriggers,
@@ -259,7 +341,7 @@ export type ViewSliceTriggersStep<
 
 export type ViewSliceScenariosStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionRegistration>,
+  TQueries extends Record<string, AnyProjectionRegistration>,
   TTriggers extends Record<string, CommandRegistration>,
 > = {
   scenarios: (
@@ -269,7 +351,7 @@ export type ViewSliceScenariosStep<
 
 export type ViewSliceComponentStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionRegistration>,
+  TQueries extends Record<string, AnyProjectionRegistration>,
   TTriggers extends Record<string, CommandRegistration>,
 > = {
   component: (
@@ -393,6 +475,7 @@ export function createProjectionSpec<const TName extends string>(
           >[],
         ): ProjectionRegistration<TName, typeof schema, TState> => ({
           kind: 'projection',
+          storage: 'durable',
           name,
           schema,
           apply,
@@ -440,6 +523,42 @@ export function createProjectionSpec<const TName extends string>(
           }),
         }
       },
+    }),
+  }
+}
+
+export function createMemoryProjectionSpec<const TName extends string>(
+  name: TName,
+): MemoryProjectionSliceSchemaStep<TName> {
+  return {
+    schema: (schema) => ({
+      state: (initialState) => ({
+        apply: (apply) => {
+          const createRegistration = (
+            query: (state: typeof initialState, input: z.infer<typeof schema>) => typeof initialState,
+            scenarios?: readonly ProjectionScenario<
+              z.infer<typeof schema>,
+              typeof initialState
+            >[],
+          ): MemoryProjectionRegistration<TName, typeof schema, typeof initialState> => ({
+            kind: 'projection',
+            storage: 'memory',
+            name,
+            schema,
+            initialState,
+            apply,
+            query,
+            scenarios,
+          })
+
+          return {
+            query: (query) => createRegistration(query),
+            scenarios: (...scenarios) => ({
+              query: (query) => createRegistration(query, scenarios),
+            }),
+          }
+        },
+      }),
     }),
   }
 }

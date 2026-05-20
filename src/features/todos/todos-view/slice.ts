@@ -8,14 +8,6 @@ import {
   todoRemovedEvent,
 } from '../events'
 
-const todoStatusFilterInput = z.enum(['all', 'active', 'completed'])
-
-export const todosViewQueryInput = z.object({
-  status: todoStatusFilterInput.catch('all'),
-})
-
-export type TodoStatusFilter = z.infer<typeof todoStatusFilterInput>
-
 export const todoListItems = sqliteTable('todo_list_items', {
   id: text('id').primaryKey(),
   title: text('title').notNull(),
@@ -24,7 +16,11 @@ export const todoListItems = sqliteTable('todo_list_items', {
 })
 
 export const todosProjection = createProjectionSpec('todosProjection')
-  .schema(todosViewQueryInput)
+  .schema(
+    z.object({
+      status: z.enum(['all', 'active', 'completed']).catch('all'),
+    }),
+  )
   .apply({
     [todoAddedEvent.type]: (event, tx) => {
       tx.insert(todoListItems)
