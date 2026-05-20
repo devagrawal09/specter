@@ -1,6 +1,6 @@
 import { it } from 'vitest'
 
-import { applyEvents } from './registry'
+import { registry } from './registry'
 import type { Event } from '../features/events'
 import { createTestRuntime } from './test-db'
 
@@ -97,7 +97,7 @@ function applyGivenEvents(
   const events = values.filter(isEvent)
 
   if (events.length > 0) {
-    applyEvents(events, runtime)
+    registry.applyEvents(events, runtime)
   }
 }
 

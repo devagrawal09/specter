@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyEvents, decideCommand, sliceRegistrations } from './registry'
+import { registry } from './registry'
 import type { CommandScenario } from './registry.builders'
 import type { Event } from '../features/events'
 import { createTestRuntime } from './test-db'
 
 describe('command scenarios', () => {
-  for (const registration of sliceRegistrations) {
+  for (const registration of registry.sliceRegistrations) {
     if (registration.kind !== 'command' || !registration.scenarios) {
       continue
     }
@@ -20,9 +20,9 @@ describe('command scenarios', () => {
           const { runtime, sqlite } = createTestRuntime()
 
           try {
-            applyEvents([...scenario.given], runtime)
+            registry.applyEvents([...scenario.given], runtime)
 
-            const result = decideCommand(
+            const result = registry.decideCommand(
               { type: commandType, payload: scenario.when },
               runtime,
             )

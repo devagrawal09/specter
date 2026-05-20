@@ -4,12 +4,7 @@ import { z } from 'zod'
 
 import { db } from './db/client.server'
 import { createFileJsonSliceStorage } from './lib/json-storage'
-import {
-  commandInput,
-  dispatchCommandInTx,
-  queryProjection,
-} from './lib/registry'
-import { projectionRegistrations } from './lib/registry'
+import { registry } from './lib/registry'
 import './styles.css?url'
 
 const jsonStorage = createFileJsonSliceStorage('./data/slice-state')
@@ -48,7 +43,7 @@ const routes = app
       return c.json(error('BAD_REQUEST', body.error.message), 400)
     }
 
-    const registration = projectionRegistrations.find(
+    const registration = registry.projectionRegistrations.find(
       (projection) => projection.name === body.data.projectionName,
     )
 
@@ -67,14 +62,16 @@ const routes = app
 
     return c.json({
       ok: true as const,
-      data: queryProjection(registration, input.data, {
+      data: registry.queryProjection(registration, input.data, {
         tx: db,
         jsonStorage,
       }) as SerializableProjectionResult,
     })
   })
   .post('/api/command', async (c) => {
-    const body = commandInput.safeParse(await c.req.json().catch(() => null))
+    const body = registry.commandInput.safeParse(
+      await c.req.json().catch(() => null),
+    )
 
     if (!body.success) {
       return c.json(error('BAD_REQUEST', body.error.message), 400)
@@ -82,7 +79,7 @@ const routes = app
 
     try {
       db.transaction((tx) =>
-        dispatchCommandInTx(body.data, { tx, jsonStorage }),
+        registry.dispatchCommandInTx(body.data, { tx, jsonStorage }),
       )
       return c.json({ ok: true as const })
     } catch (cause) {

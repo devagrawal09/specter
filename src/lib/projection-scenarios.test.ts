@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { applyEvents, queryProjection, sliceRegistrations } from './registry'
+import { registry } from './registry'
 import type {
   AnyProjectionRegistration,
   ProjectionScenario,
@@ -8,7 +8,7 @@ import type {
 import { createTestRuntime } from './test-db'
 
 describe('projection scenarios', () => {
-  for (const registration of sliceRegistrations) {
+  for (const registration of registry.sliceRegistrations) {
     if (registration.kind !== 'projection' || !registration.scenarios) {
       continue
     }
@@ -26,10 +26,14 @@ describe('projection scenarios', () => {
           const { runtime, sqlite } = createTestRuntime()
 
           try {
-            applyEvents([...scenario.given], runtime)
+            registry.applyEvents([...scenario.given], runtime)
 
             const projectionInput = projection.schema.parse(scenario.when)
-            const result = queryProjection(projection, projectionInput, runtime)
+            const result = registry.queryProjection(
+              projection,
+              projectionInput,
+              runtime,
+            )
 
             expect(result).toEqual(scenario.expect)
           } finally {
