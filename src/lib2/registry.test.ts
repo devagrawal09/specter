@@ -37,7 +37,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },
@@ -92,7 +92,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },
@@ -156,7 +156,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },
@@ -242,7 +242,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },
@@ -338,6 +338,41 @@ describe('lib2 registry', () => {
       )
 
       expect(repeatedEvents).toEqual([])
+
+      failReaction = true
+
+      await expect(
+        Effect.runPromise(
+          Stream.runDrain(
+            registry.dispatch({
+              name: 'createThing',
+              payload: { name: 'Grace' },
+            }),
+          ).pipe(Effect.provide(layer)),
+        ),
+      ).rejects.toThrow('reaction failed')
+
+      expect(snapshots.get('greetNewThings')).toEqual({
+        lastAppliedOrder: 1,
+        state: { name: 'Ada' },
+      })
+
+      failReaction = false
+
+      const secondRecoveredEvents = Array.from(
+        await Effect.runPromise(
+          Stream.runCollect(registry.runReactions()).pipe(
+            Effect.provide(layer),
+          ),
+        ),
+      )
+
+      expect(secondRecoveredEvents.map((event) => event.type)).toEqual([
+        'greetingSent',
+      ])
+      expect(secondRecoveredEvents.map((event) => event.payload)).toEqual([
+        { name: 'Grace' },
+      ])
     } finally {
       sqlite.close()
       rmSync(directory, { recursive: true, force: true })
@@ -350,7 +385,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },
@@ -395,7 +430,7 @@ describe('lib2 registry', () => {
     const sqlite = new Database(sqliteFilename)
     const snapshots = new Map<string, JsonSliceSnapshot>()
     const jsonStorage = {
-      read: (sliceName: string) => snapshots.get(sliceName),
+      read: (sliceName: string) => structuredClone(snapshots.get(sliceName)),
       write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
         snapshots.set(sliceName, structuredClone(snapshot))
       },

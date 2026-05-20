@@ -56,30 +56,32 @@ function createJsonSliceState(
   snapshot: JsonSliceSnapshot,
   write: (snapshot: JsonSliceSnapshot) => void,
 ): SliceState {
+  const pendingSnapshot = structuredClone(snapshot)
   let dirty = false
 
   return {
     input: {
-      get: <TValue>(key: string) => snapshot.state[key] as TValue | undefined,
+      get: <TValue>(key: string) =>
+        pendingSnapshot.state[key] as TValue | undefined,
       set: (key: string, value: unknown) => {
-        snapshot.state[key] = value
+        pendingSnapshot.state[key] = value
         dirty = true
       },
       patch: (key: string, value: Record<string, unknown>) => {
-        const existing = snapshot.state[key] as
+        const existing = pendingSnapshot.state[key] as
           | Record<string, unknown>
           | undefined
-        snapshot.state[key] = { ...(existing ?? {}), ...value }
+        pendingSnapshot.state[key] = { ...(existing ?? {}), ...value }
         dirty = true
       },
       delete: (key: string) => {
-        delete snapshot.state[key]
+        delete pendingSnapshot.state[key]
         dirty = true
       },
     },
-    lastAppliedOrder: Effect.succeed(snapshot.lastAppliedOrder),
+    lastAppliedOrder: Effect.succeed(pendingSnapshot.lastAppliedOrder),
     setLastAppliedOrder: (order) => {
-      snapshot.lastAppliedOrder = order
+      pendingSnapshot.lastAppliedOrder = order
       dirty = true
       return Effect.void
     },
@@ -88,7 +90,7 @@ function createJsonSliceState(
         return
       }
 
-      write(snapshot)
+      write(pendingSnapshot)
       dirty = false
     }),
   }
