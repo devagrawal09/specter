@@ -1,9 +1,17 @@
 export type { Event, EventSpec, PersistedEvent } from './event'
 export { createEventSpec } from './event'
+export { EventNotPersistedError, EventPayloadParseError } from './event-log'
 export type { JsonSliceSnapshot, JsonSliceStorage } from './json-storage'
 export { emptySnapshot } from './json-storage'
 export { createRegistryRuntimeLayer } from './layers'
-export { createRegistry } from './registry'
+export {
+  createRegistry,
+  EmptyCommandRegistryError,
+  InvalidCommandError,
+  InvalidProjectionInputError,
+  UnknownCommandError,
+  UnknownProjectionError,
+} from './registry'
 export type { RegistryRuntime } from './services'
 export {
   autoOrder,

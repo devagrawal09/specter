@@ -1,5 +1,5 @@
 import * as SqlClient from '@effect/sql/SqlClient'
-import { Effect, Stream } from 'effect'
+import { Data, Effect, Stream } from 'effect'
 import { z } from 'zod'
 
 import type { PersistedEvent } from './event'
@@ -10,6 +10,35 @@ import type {
   ReactionSlice,
   SliceRegistration,
 } from './slice'
+
+export class EmptyCommandRegistryError extends Data.TaggedError(
+  'EmptyCommandRegistryError',
+) {}
+
+export class InvalidCommandError extends Data.TaggedError(
+  'InvalidCommandError',
+)<{
+  readonly error: z.ZodError
+}> {}
+
+export class InvalidProjectionInputError extends Data.TaggedError(
+  'InvalidProjectionInputError',
+)<{
+  readonly projectionName: string
+  readonly error: z.ZodError
+}> {}
+
+export class UnknownCommandError extends Data.TaggedError(
+  'UnknownCommandError',
+)<{
+  readonly commandName: string
+}> {}
+
+export class UnknownProjectionError extends Data.TaggedError(
+  'UnknownProjectionError',
+)<{
+  readonly projectionName: string
+}> {}
 
 export function createRegistry(registrations: readonly SliceRegistration[]) {
   const commands = registrations.filter(
@@ -22,38 +51,48 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     (slice): slice is ReactionSlice => slice.kind === 'reaction',
   )
 
-  if (commands.length === 0) {
-    throw new Error('Registry must include at least one command slice')
-  }
-
-  const commandInput = z.discriminatedUnion('name', [
-    z.object({
-      name: z.literal(commands[0].name),
-      payload: commands[0].schema,
-    }),
-    ...commands.slice(1).map((command) =>
-      z.object({
-        name: z.literal(command.name),
-        payload: command.schema,
-      }),
-    ),
-  ])
-
   function dispatch(rawCommand: unknown) {
-    const initialCommand = commandInput.parse(rawCommand)
-
     return Stream.fromEffect(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
+        const firstCommand = commands[0]
+
+        if (!firstCommand) {
+          return yield* Effect.fail(new EmptyCommandRegistryError())
+        }
+
+        const commandInput = z.discriminatedUnion('name', [
+          z.object({
+            name: z.literal(firstCommand.name),
+            payload: firstCommand.schema,
+          }),
+          ...commands.slice(1).map((command) =>
+            z.object({
+              name: z.literal(command.name),
+              payload: command.schema,
+            }),
+          ),
+        ])
+        const initialCommand = commandInput.safeParse(rawCommand)
+
+        if (!initialCommand.success) {
+          return yield* Effect.fail(
+            new InvalidCommandError({ error: initialCommand.error }),
+          )
+        }
 
         return yield* sql.withTransaction(
           Effect.gen(function* () {
             const commandSlice = commands.find(
-              (slice) => slice.name === initialCommand.name,
+              (slice) => slice.name === initialCommand.data.name,
             )
 
             if (!commandSlice) {
-              throw new Error(`Unknown command: ${initialCommand.name}`)
+              return yield* Effect.fail(
+                new UnknownCommandError({
+                  commandName: initialCommand.data.name,
+                }),
+              )
             }
 
             const eventLog = yield* EventLogService
@@ -89,7 +128,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
             }
 
             const events = yield* commandSlice.decide(
-              initialCommand.payload as never,
+              initialCommand.data.payload as never,
               commandState.input as never,
             )
 
@@ -142,6 +181,24 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     return Stream.fromEffect(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
+        const firstCommand = commands[0]
+
+        if (!firstCommand) {
+          return yield* Effect.fail(new EmptyCommandRegistryError())
+        }
+
+        const commandInput = z.discriminatedUnion('name', [
+          z.object({
+            name: z.literal(firstCommand.name),
+            payload: firstCommand.schema,
+          }),
+          ...commands.slice(1).map((command) =>
+            z.object({
+              name: z.literal(command.name),
+              payload: command.schema,
+            }),
+          ),
+        ])
 
         const results = yield* Effect.forEach(reactions, (reaction) =>
           sql.withTransaction(
@@ -184,17 +241,27 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
                 reactionState.input as never,
               )
               const persistedEvents = yield* Effect.forEach(
-                reactionCommands.map((reactionCommand) =>
-                  commandInput.parse(reactionCommand),
-                ),
-                (command) =>
+                reactionCommands,
+                (reactionCommand) =>
                   Effect.gen(function* () {
+                    const command = commandInput.safeParse(reactionCommand)
+
+                    if (!command.success) {
+                      return yield* Effect.fail(
+                        new InvalidCommandError({ error: command.error }),
+                      )
+                    }
+
                     const commandSlice = commands.find(
-                      (slice) => slice.name === command.name,
+                      (slice) => slice.name === command.data.name,
                     )
 
                     if (!commandSlice) {
-                      throw new Error(`Unknown command: ${command.name}`)
+                      return yield* Effect.fail(
+                        new UnknownCommandError({
+                          commandName: command.data.name,
+                        }),
+                      )
                     }
 
                     const commandState = sliceStates.create(
@@ -238,7 +305,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
                     }
 
                     const events = yield* commandSlice.decide(
-                      command.payload as never,
+                      command.data.payload as never,
                       commandState.input as never,
                     )
 
@@ -304,7 +371,9 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
       )
 
       if (!registration) {
-        throw new Error(`Unknown projection: ${projectionName}`)
+        return yield* Effect.fail(
+          new UnknownProjectionError({ projectionName }),
+        )
       }
 
       const eventLog = yield* EventLogService
@@ -330,9 +399,8 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
                 if (handler) {
                   yield* handler(event, state.input as never)
+                  yield* state.setLastAppliedOrder(event.order)
                 }
-
-                yield* state.setLastAppliedOrder(event.order)
               }),
           )
 
@@ -340,9 +408,18 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
         }
       }
 
-      const parsedInput = registration.schema.parse(input)
+      const parsedInput = registration.schema.safeParse(input)
 
-      return yield* registration.query(state.input as never, parsedInput)
+      if (!parsedInput.success) {
+        return yield* Effect.fail(
+          new InvalidProjectionInputError({
+            projectionName,
+            error: parsedInput.error,
+          }),
+        )
+      }
+
+      return yield* registration.query(state.input as never, parsedInput.data)
     })
   }
 

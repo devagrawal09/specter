@@ -10,6 +10,9 @@ import {
   createEventSpec,
   createRegistry,
   createRegistryRuntimeLayer,
+  InvalidCommandError,
+  InvalidProjectionInputError,
+  UnknownProjectionError,
 } from './index'
 import type { JsonSliceSnapshot } from './json-storage'
 
@@ -335,6 +338,107 @@ describe('lib2 registry', () => {
       )
 
       expect(repeatedEvents).toEqual([])
+    } finally {
+      sqlite.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('fails invalid command envelopes with a typed registry error', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-registry-'))
+    const sqliteFilename = join(directory, 'registry.sqlite')
+    const sqlite = new Database(sqliteFilename)
+    const snapshots = new Map<string, JsonSliceSnapshot>()
+    const jsonStorage = {
+      read: (sliceName: string) => snapshots.get(sliceName),
+      write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
+        snapshots.set(sliceName, structuredClone(snapshot))
+      },
+    }
+
+    sqlite.exec(
+      'create table events ("order" integer primary key autoincrement, id text not null unique, type text not null, payload text not null, created_at integer not null); create index events_order_idx on events ("order"); create table slice_cursors (slice_name text not null, last_applied_order integer not null);',
+    )
+
+    try {
+      const registry = createRegistry([
+        {
+          kind: 'command',
+          name: 'createThing',
+          schema: z.object({ name: z.string() }),
+          decide: (payload) =>
+            Effect.succeed([thingCreated.create(payload as { name: string })]),
+        },
+      ])
+
+      await expect(
+        Effect.runPromise(
+          Stream.runDrain(
+            registry.dispatch({ name: 'createThing', payload: { name: 123 } }),
+          ).pipe(
+            Effect.provide(
+              createRegistryRuntimeLayer({ sqliteFilename, jsonStorage }),
+            ),
+            Effect.flip,
+          ),
+        ),
+      ).resolves.toBeInstanceOf(InvalidCommandError)
+    } finally {
+      sqlite.close()
+      rmSync(directory, { recursive: true, force: true })
+    }
+  })
+
+  it('fails projection registry errors with typed errors', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-registry-'))
+    const sqliteFilename = join(directory, 'registry.sqlite')
+    const sqlite = new Database(sqliteFilename)
+    const snapshots = new Map<string, JsonSliceSnapshot>()
+    const jsonStorage = {
+      read: (sliceName: string) => snapshots.get(sliceName),
+      write: (sliceName: string, snapshot: JsonSliceSnapshot) => {
+        snapshots.set(sliceName, structuredClone(snapshot))
+      },
+    }
+
+    sqlite.exec(
+      'create table events ("order" integer primary key autoincrement, id text not null unique, type text not null, payload text not null, created_at integer not null); create index events_order_idx on events ("order"); create table slice_cursors (slice_name text not null, last_applied_order integer not null);',
+    )
+
+    try {
+      const registry = createRegistry([
+        {
+          kind: 'command',
+          name: 'createThing',
+          schema: z.object({ name: z.string() }),
+          decide: (payload) =>
+            Effect.succeed([thingCreated.create(payload as { name: string })]),
+        },
+        {
+          kind: 'projection',
+          name: 'thingByName',
+          json: true,
+          schema: z.object({ name: z.string() }),
+          apply: {},
+          query: (_input, query) => Effect.succeed(query),
+        },
+      ])
+      const layer = createRegistryRuntimeLayer({ sqliteFilename, jsonStorage })
+
+      await expect(
+        Effect.runPromise(
+          registry
+            .query('missingProjection', {})
+            .pipe(Effect.provide(layer), Effect.flip),
+        ),
+      ).resolves.toBeInstanceOf(UnknownProjectionError)
+      await expect(
+        Effect.runPromise(
+          registry
+            .query('thingByName', { name: 123 })
+            .pipe(Effect.provide(layer), Effect.flip),
+        ),
+      ).resolves.toBeInstanceOf(InvalidProjectionInputError)
     } finally {
       sqlite.close()
       rmSync(directory, { recursive: true, force: true })

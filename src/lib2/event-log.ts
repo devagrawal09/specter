@@ -1,10 +1,23 @@
 import { and, asc, eq, gt, inArray } from 'drizzle-orm'
 import * as SqliteDrizzle from '@effect/sql-drizzle/Sqlite'
-import { Effect, Layer } from 'effect'
+import { Data, Effect, Layer } from 'effect'
 
 import { events as eventTable } from '../lib_legacy'
 import type { Event, PersistedEvent } from './event'
 import { EventLogService, type EventLogPort } from './services'
+
+export class EventPayloadParseError extends Data.TaggedError(
+  'EventPayloadParseError',
+)<{
+  readonly eventId: string
+  readonly cause: unknown
+}> {}
+
+export class EventNotPersistedError extends Data.TaggedError(
+  'EventNotPersistedError',
+)<{
+  readonly eventId: string
+}> {}
 
 export const EventLogLive = Layer.effect(
   EventLogService,
@@ -29,12 +42,22 @@ export const EventLogLive = Layer.effect(
             )
             .orderBy(asc(eventTable.order))
 
-          return rows.map((event) => ({
-            id: event.id,
-            type: event.type,
-            payload: JSON.parse(event.payload),
-            order: event.order,
-          })) as unknown as PersistedEvent[]
+          return yield* Effect.forEach(rows, (event) =>
+            Effect.gen(function* () {
+              const payload = yield* Effect.try({
+                try: () => JSON.parse(event.payload) as unknown,
+                catch: (cause) =>
+                  new EventPayloadParseError({ eventId: event.id, cause }),
+              })
+
+              return {
+                id: event.id,
+                type: event.type,
+                payload,
+                order: event.order,
+              } as unknown as PersistedEvent
+            }),
+          )
         }),
       append: (events: readonly Event[]) =>
         Effect.gen(function* () {
@@ -55,7 +78,9 @@ export const EventLogLive = Layer.effect(
               const persistedEvent = rows[0]
 
               if (!persistedEvent) {
-                throw new Error(`Event was not persisted: ${event.id}`)
+                return yield* Effect.fail(
+                  new EventNotPersistedError({ eventId: event.id }),
+                )
               }
 
               return { ...event, order: persistedEvent.order }
