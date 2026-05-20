@@ -1,6 +1,6 @@
 import z from 'zod'
 import { createCommandSpec } from '../../../lib/registry.builders'
-import { errorEvent, todoAddedEvent } from '../../todos/events'
+import { errorEvent, todoAddedEvent } from '../../todos-json/events'
 
 const maxTitleLength = 120
 

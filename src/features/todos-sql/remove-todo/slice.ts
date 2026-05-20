@@ -6,7 +6,7 @@ import {
   errorEvent,
   todoAddedEvent,
   todoRemovedEvent,
-} from '../../todos/events'
+} from '../../todos-json/events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
