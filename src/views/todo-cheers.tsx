@@ -1,6 +1,6 @@
 import { Show } from 'solid-js'
 
-import { todoCheers } from '../features/todo-cheers/slice'
+import { todoCheers } from '../features/todos/todo-cheers/slice'
 import { createViewSpec } from '../lib/registry.builders'
 
 export const TodoCheersView = createViewSpec('todo-cheers')

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { applyEvents, decideCommand, sliceRegistrations } from './registry'
 import type { CommandScenario } from './registry.builders'
-import type { Event } from '../features/events'
+import type { Event } from '../features/todos/events'
 import { createTestDb } from './test-db'
 
 describe('todo command scenarios', () => {

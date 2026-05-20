@@ -1,9 +1,9 @@
 import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
-import { addTodo } from '../features/add-todo/slice'
-import { changeTodoCompletion } from '../features/change-todo-completion/slice'
-import { removeTodo } from '../features/remove-todo/slice'
-import { todosProjection } from '../features/todos-view/slice'
+import { addTodo } from '../features/todos/add-todo/slice'
+import { changeTodoCompletion } from '../features/todos/change-todo-completion/slice'
+import { removeTodo } from '../features/todos/remove-todo/slice'
+import { todosProjection } from '../features/todos/todos-view/slice'
 import { searchParams, setSearch } from '../location'
 import { createViewSpec } from '../lib/registry.builders'
 

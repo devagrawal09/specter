@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSpec } from '../../lib/registry.builders'
+import { createCommandSpec } from '../../../lib/registry.builders'
 import {
   errorEvent,
   todoAddedEvent,

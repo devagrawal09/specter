@@ -1,7 +1,7 @@
 import { z } from 'zod'
 
 import type { StoreTx } from '.'
-import type { Event } from '../features/events'
+import type { Event } from '../features/todos/events'
 import { events as todoEvents } from '.'
 export {
   createCommandSpec as createCommandSlice,
@@ -29,13 +29,13 @@ import type {
   ReactionRegistration,
   SliceRegistration,
 } from './registry.builders'
-import { addTodo } from '../features/add-todo/slice'
-import { changeTodoCompletion } from '../features/change-todo-completion/slice'
-import { createTodoCheer } from '../features/create-todo-cheer/slice'
-import { removeTodo } from '../features/remove-todo/slice'
-import { todoCheers } from '../features/todo-cheers/slice'
-import { todoCompletionCheer } from '../features/todo-completion-cheer-reaction/slice'
-import { todosProjection } from '../features/todos-view/slice'
+import { addTodo } from '../features/todos/add-todo/slice'
+import { changeTodoCompletion } from '../features/todos/change-todo-completion/slice'
+import { createTodoCheer } from '../features/todos/create-todo-cheer/slice'
+import { removeTodo } from '../features/todos/remove-todo/slice'
+import { todoCheers } from '../features/todos/todo-cheers/slice'
+import { todoCompletionCheer } from '../features/todos/todo-completion-cheer-reaction/slice'
+import { todosProjection } from '../features/todos/todos-view/slice'
 
 const maxReactionCascadeRounds = 10
 
