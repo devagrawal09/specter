@@ -2,12 +2,12 @@ import { it } from 'vitest'
 
 import { applyEvents } from './registry'
 import type { Event } from '../features/events'
-import { createTestDb } from './test-db'
+import { createTestRuntime } from './test-db'
 
-type TestDb = ReturnType<typeof createTestDb>
+type TestRuntime = ReturnType<typeof createTestRuntime>
 
 type ScenarioContext<TGiven extends readonly unknown[]> = {
-  db: TestDb['db']
+  runtime: TestRuntime['runtime']
   given: TGiven
 }
 
@@ -69,11 +69,11 @@ function createScenarioRuntime<TGiven extends readonly unknown[]>(
   givenValues: TGiven,
   run: (context: ScenarioContext<TGiven>) => void,
 ) {
-  const { db, sqlite } = createTestDb()
-  const context = { db, given: givenValues }
+  const { runtime, sqlite } = createTestRuntime()
+  const context = { runtime, given: givenValues }
 
   try {
-    applyGivenEvents(givenValues, db)
+    applyGivenEvents(givenValues, runtime)
     run(context)
   } finally {
     sqlite.close()
@@ -90,11 +90,14 @@ function expectScenarioResult<TGiven extends readonly unknown[], TResult>(
   }
 }
 
-function applyGivenEvents(values: readonly unknown[], db: TestDb['db']) {
+function applyGivenEvents(
+  values: readonly unknown[],
+  runtime: TestRuntime['runtime'],
+) {
   const events = values.filter(isEvent)
 
   if (events.length > 0) {
-    applyEvents(events, db)
+    applyEvents(events, runtime)
   }
 }
 

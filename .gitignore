@@ -12,4 +12,6 @@ dist-ssr
 __unconfig*
 data/*.db
 data/*.db-*
+data/slice-state
+data/test-slice-state
 .reference

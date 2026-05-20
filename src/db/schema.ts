@@ -1,1 +1,1 @@
-export { events, sliceCursors, sliceJsonStates } from '../lib'
+export { events, sliceCursors } from '../lib'

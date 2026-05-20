@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { applyEvents, decideCommand, sliceRegistrations } from './registry'
 import type { CommandScenario } from './registry.builders'
 import type { Event } from '../features/events'
-import { createTestDb } from './test-db'
+import { createTestRuntime } from './test-db'
 
 describe('command scenarios', () => {
   for (const registration of sliceRegistrations) {
@@ -17,14 +17,14 @@ describe('command scenarios', () => {
     describe(commandType, () => {
       for (const scenario of scenarios) {
         it(scenarioLabel(scenario), () => {
-          const { db, sqlite } = createTestDb()
+          const { runtime, sqlite } = createTestRuntime()
 
           try {
-            applyEvents([...scenario.given], db)
+            applyEvents([...scenario.given], runtime)
 
             const result = decideCommand(
               { type: commandType, payload: scenario.when },
-              db,
+              runtime,
             )
 
             expect(result).toHaveLength(scenario.expect.length)

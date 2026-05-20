@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { applyEvents, reactToEvent, sliceRegistrations } from './registry'
 import type { ReactionScenario } from './registry.builders'
-import { createTestDb } from './test-db'
+import { createTestRuntime } from './test-db'
 
 describe('reaction scenarios', () => {
   for (const registration of sliceRegistrations) {
@@ -16,12 +16,12 @@ describe('reaction scenarios', () => {
     describe(reactionName, () => {
       for (const scenario of scenarios) {
         it(scenarioLabel(scenario), () => {
-          const { db, sqlite } = createTestDb()
+          const { runtime, sqlite } = createTestRuntime()
 
           try {
-            applyEvents([...scenario.given, scenario.when], db)
+            applyEvents([...scenario.given, scenario.when], runtime)
 
-            const result = reactToEvent(registration, scenario.when, db)
+            const result = reactToEvent(registration, scenario.when, runtime)
 
             expect(result).toEqual([...scenario.expect])
           } finally {

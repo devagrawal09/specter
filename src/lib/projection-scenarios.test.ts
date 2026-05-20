@@ -5,7 +5,7 @@ import type {
   AnyProjectionRegistration,
   ProjectionScenario,
 } from './registry.builders'
-import { createTestDb } from './test-db'
+import { createTestRuntime } from './test-db'
 
 describe('projection scenarios', () => {
   for (const registration of sliceRegistrations) {
@@ -23,13 +23,13 @@ describe('projection scenarios', () => {
     describe(projection.name, () => {
       for (const scenario of scenarios) {
         it(scenarioLabel(scenario), () => {
-          const { db, sqlite } = createTestDb()
+          const { runtime, sqlite } = createTestRuntime()
 
           try {
-            applyEvents([...scenario.given], db)
+            applyEvents([...scenario.given], runtime)
 
             const projectionInput = projection.schema.parse(scenario.when)
-            const result = queryProjection(projection, projectionInput, db)
+            const result = queryProjection(projection, projectionInput, runtime)
 
             expect(result).toEqual(scenario.expect)
           } finally {

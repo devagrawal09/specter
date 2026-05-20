@@ -14,9 +14,3 @@ CREATE TABLE `slice_cursors` (
 	`slice_name` text NOT NULL,
 	`last_applied_order` integer NOT NULL
 );
---> statement-breakpoint
-CREATE TABLE `slice_json_states` (
-	`slice_name` text NOT NULL,
-	`key` text NOT NULL,
-	`value` text NOT NULL
-);

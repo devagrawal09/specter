@@ -1,15 +1,17 @@
-import { and, asc, eq, gt } from 'drizzle-orm'
+import { asc, eq, gt } from 'drizzle-orm'
 import { z } from 'zod'
 
 import type { StoreTx } from '.'
 import type { Event } from '../features/events'
-import { events as eventTable, sliceCursors, sliceJsonStates } from '.'
+import { events as eventTable, sliceCursors } from '.'
 export {
   createCommandSpec as createCommandSlice,
   createProjectionSpec as createProjectionSlice,
   createReactionSpec as createReactionSlice,
   createViewSpec,
 } from './registry.builders'
+import type { JsonSliceSnapshot, JsonSliceStorage } from './json-storage'
+import { emptySnapshot } from './json-storage'
 export type {
   AnyCommandRegistration,
   AnyProjectionRegistration,
@@ -36,6 +38,7 @@ import type {
   AnyCommandRegistration,
   AnyProjectionRegistration,
   AnyReactionRegistration,
+  CommandEnvelope,
   JsonReadStore,
   JsonWriteStore,
   SliceRegistration,
@@ -56,6 +59,11 @@ import { todoCompletionCheer } from '../features/todos-json/todo-completion-chee
 import { todosProjection } from '../features/todos-json/todos-view/slice'
 
 const maxReactionCascadeRounds = 10
+
+export type RegistryRuntime = {
+  tx: StoreTx
+  jsonStorage: JsonSliceStorage
+}
 
 export const sliceRegistrations = [
   addTodo,
@@ -95,32 +103,28 @@ export const commandInput = z.discriminatedUnion('type', [
 
 export type Command = z.infer<typeof commandInput>
 
-export function decideCommand(command: Command, tx: StoreTx): Event[] {
-  const registration = commandRegistrations.find(
-    (candidate) => candidate.type === command.type,
+export function decideCommand(
+  command: Command,
+  runtime: RegistryRuntime,
+): Event[] {
+  const registration = bindCommandRegistration(
+    commandRegistrations.find((candidate) => candidate.type === command.type),
+    runtime,
   )
 
   if (!registration) {
     throw new Error(`Unknown command: ${command.type}`)
   }
 
-  if (registration.apply) {
-    catchUpSliceState(registration, tx)
-  }
+  catchUpSliceState(registration, runtime)
 
-  if (registration.json) {
-    catchUpSliceState(registration, tx)
-
-    return registration.decide(
-      command.payload as never,
-      createJsonReadStore(registration.type, tx),
-    )
-  }
-
-  return registration.decide(command.payload as never, tx)
+  return registration.decide(command.payload as never)
 }
 
-export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
+export function dispatchCommandInTx(
+  command: Command,
+  runtime: RegistryRuntime,
+): Event[] {
   const producedEvents: Event[] = []
   let pendingCommands = [command]
   let round = 0
@@ -137,15 +141,15 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
     const nextCommands: Command[] = []
 
     for (const pendingCommand of pendingCommands) {
-      const events = decideCommand(pendingCommand, tx)
+      const events = decideCommand(pendingCommand, runtime)
       producedEvents.push(...events)
 
       if (events.length === 0) {
         continue
       }
 
-      const persistedEvents = persistEvents(events, tx)
-      applyEagerSlices(persistedEvents, tx)
+      const persistedEvents = persistEvents(events, runtime.tx)
+      applyEagerSlices(persistedEvents, runtime)
 
       const notifiedReactions = new Set<AnyReactionRegistration>()
 
@@ -160,7 +164,7 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
       }
 
       for (const reaction of notifiedReactions) {
-        const reactionCommands = reactWithState(reaction, tx)
+        const reactionCommands = reactWithState(reaction, runtime)
 
         for (const reactionCommand of reactionCommands) {
           nextCommands.push(commandInput.parse(reactionCommand))
@@ -174,7 +178,7 @@ export function dispatchCommandInTx(command: Command, tx: StoreTx): Event[] {
   return producedEvents
 }
 
-export function applyEvents(events: Event[], tx: StoreTx) {
+export function applyEvents(events: Event[], runtime: RegistryRuntime) {
   for (const event of events) {
     const handlers = eventApplications[event.type]
 
@@ -183,7 +187,7 @@ export function applyEvents(events: Event[], tx: StoreTx) {
     }
 
     for (const handler of handlers) {
-      handler(event, tx)
+      handler(event, runtime)
     }
   }
 }
@@ -191,59 +195,46 @@ export function applyEvents(events: Event[], tx: StoreTx) {
 export function queryProjection(
   registration: AnyProjectionRegistration,
   input: unknown,
-  tx: StoreTx,
+  runtime: RegistryRuntime,
 ) {
-  if (registration.apply) {
-    catchUpSliceState(registration, tx)
-  }
+  const boundRegistration = bindProjectionRegistration(registration, runtime)
+  catchUpSliceState(boundRegistration, runtime)
 
-  if (registration.json) {
-    return registration.query(
-      createJsonReadStore(registration.name, tx),
-      input as never,
-    )
-  }
-
-  return registration.query(tx, input as never)
+  return boundRegistration.query(input as never)
 }
 
 export function reactToEvent(
   registration: AnyReactionRegistration,
   _event: Event,
-  tx: StoreTx,
+  runtime: RegistryRuntime,
 ) {
-  catchUpSliceState(registration, tx)
+  const boundRegistration = bindReactionRegistration(registration, runtime)
+  catchUpSliceState(boundRegistration, runtime)
 
-  if (registration.json) {
-    return registration.react(createJsonReadStore(registration.name, tx))
-  }
-
-  return registration.react(tx)
+  return boundRegistration.react()
 }
 
-function reactWithState(registration: AnyReactionRegistration, tx: StoreTx) {
-  catchUpSliceState(registration, tx)
+function reactWithState(
+  registration: AnyReactionRegistration,
+  runtime: RegistryRuntime,
+) {
+  const boundRegistration = bindReactionRegistration(registration, runtime)
+  catchUpSliceState(boundRegistration, runtime)
 
-  if (registration.json) {
-    return registration.react(createJsonReadStore(registration.name, tx))
-  }
-
-  return registration.react(tx)
+  return boundRegistration.react()
 }
 
-function catchUpSliceState(registration: SliceRegistration, tx: StoreTx) {
-  if (!('apply' in registration) || !registration.apply) {
+function catchUpSliceState(
+  registration: BoundSliceRegistration,
+  runtime: RegistryRuntime,
+) {
+  if (!registration.apply) {
     return
   }
 
-  const sliceName = sliceRegistrationName(registration)
-  const cursor = tx
-    .select()
-    .from(sliceCursors)
-    .where(eq(sliceCursors.sliceName, sliceName))
-    .get()
-  const lastAppliedOrder = cursor?.lastAppliedOrder ?? 0
-  const persistedEvents = tx
+  const lastAppliedOrder = registration.state.lastAppliedOrder()
+
+  const persistedEvents = runtime.tx
     .select()
     .from(eventTable)
     .where(gt(eventTable.order, lastAppliedOrder))
@@ -259,59 +250,42 @@ function catchUpSliceState(registration: SliceRegistration, tx: StoreTx) {
         payload: JSON.parse(event.payload),
       } as Event,
       event.order,
-      tx,
     )
   }
+
+  registration.state.commit()
 }
 
 function applyEventToSlice(
-  registration: SliceRegistration,
+  registration: BoundSliceRegistration,
   event: Event,
   eventOrder: number | undefined,
-  tx: StoreTx,
 ) {
-  if (!('apply' in registration) || !registration.apply) {
+  if (!registration.apply) {
     return
   }
 
-  const sliceName = sliceRegistrationName(registration)
-
-  if (registration.json) {
-    const handler = registration.apply?.[event.type] as
-      | ((event: Event, store: JsonWriteStore) => void)
-      | undefined
-
-    handler?.(event, createJsonWriteStore(sliceName, tx))
-  } else {
-    const handler = registration.apply?.[event.type] as
-      | ((event: Event, tx: StoreTx) => void)
-      | undefined
-
-    handler?.(event, tx)
-  }
+  registration.apply[event.type]?.(event)
 
   if (eventOrder !== undefined) {
-    tx.delete(sliceCursors).where(eq(sliceCursors.sliceName, sliceName)).run()
-
-    tx.insert(sliceCursors)
-      .values({ sliceName, lastAppliedOrder: eventOrder })
-      .run()
+    registration.state.setLastAppliedOrder(eventOrder)
   }
 }
 
-function applyEagerSlices(events: Event[], tx: StoreTx) {
+function applyEagerSlices(events: Event[], runtime: RegistryRuntime) {
   for (const event of events) {
     for (const registration of sliceRegistrations) {
       if (!registration.eager) {
         continue
       }
 
+      const boundRegistration = bindSliceRegistration(registration, runtime)
       applyEventToSlice(
-        registration,
+        boundRegistration,
         event,
         (event as Event & { order?: number }).order,
-        tx,
       )
+      boundRegistration.state.commit()
     }
   }
 }
@@ -392,7 +366,7 @@ function collectProjectionRegistrations(
   return projections
 }
 
-type EventApplication = (event: Event, tx: StoreTx) => void
+type EventApplication = (event: Event, runtime: RegistryRuntime) => void
 
 function collectEventApplications(registrations: readonly SliceRegistration[]) {
   const applications: Partial<Record<Event['type'], EventApplication[]>> = {}
@@ -405,27 +379,19 @@ function collectEventApplications(registrations: readonly SliceRegistration[]) {
     for (const eventType of Object.keys(
       registration.apply,
     ) as Event['type'][]) {
-      const handler = registration.apply[eventType] as
-        | ((event: Event, tx?: StoreTx) => void)
-        | undefined
-
-      if (!handler) {
+      if (!registration.apply[eventType]) {
         continue
       }
 
       const existingHandlers = applications[eventType] ?? []
-      existingHandlers.push((event, tx) => {
-        if (registration.json) {
-          applyEventToSlice(
-            registration,
-            event,
-            (event as Event & { order?: number }).order,
-            tx,
-          )
-          return
-        }
-
-        handler(event, tx)
+      existingHandlers.push((event, runtime) => {
+        const boundRegistration = bindSliceRegistration(registration, runtime)
+        applyEventToSlice(
+          boundRegistration,
+          event,
+          (event as Event & { order?: number }).order,
+        )
+        boundRegistration.state.commit()
       })
       applications[eventType] = existingHandlers
     }
@@ -434,81 +400,202 @@ function collectEventApplications(registrations: readonly SliceRegistration[]) {
   return applications
 }
 
-function createJsonReadStore(sliceName: string, tx: StoreTx): JsonReadStore {
-  return {
-    get: (key) => {
-      const row = tx
-        .select()
-        .from(sliceJsonStates)
-        .where(
-          and(
-            eq(sliceJsonStates.sliceName, sliceName),
-            eq(sliceJsonStates.key, key),
-          ),
-        )
-        .get()
+type BoundSliceState = {
+  input: StoreTx | JsonWriteStore
+  lastAppliedOrder: () => number
+  setLastAppliedOrder: (order: number) => void
+  commit: () => void
+}
 
-      if (!row) {
-        return undefined
+type BoundSliceRegistration = {
+  name: string
+  apply?: Partial<Record<Event['type'], (event: Event) => void>>
+  state: BoundSliceState
+}
+
+type BoundCommandRegistration = BoundSliceRegistration & {
+  type: string
+  decide: (payload: never) => Event[]
+}
+
+type BoundProjectionRegistration = BoundSliceRegistration & {
+  query: (input: never) => unknown
+}
+
+type BoundReactionRegistration = BoundSliceRegistration & {
+  react: () => CommandEnvelope[]
+}
+
+function bindCommandRegistration(
+  registration: AnyCommandRegistration | undefined,
+  runtime: RegistryRuntime,
+): BoundCommandRegistration | undefined {
+  if (!registration) {
+    return undefined
+  }
+
+  const boundRegistration = bindSliceRegistration(registration, runtime)
+
+  return {
+    ...boundRegistration,
+    type: registration.type,
+    decide: (payload) =>
+      registration.decide(payload, boundRegistration.state.input as never),
+  }
+}
+
+function bindProjectionRegistration(
+  registration: AnyProjectionRegistration,
+  runtime: RegistryRuntime,
+): BoundProjectionRegistration {
+  const boundRegistration = bindSliceRegistration(registration, runtime)
+
+  return {
+    ...boundRegistration,
+    query: (input) =>
+      registration.query(boundRegistration.state.input as never, input),
+  }
+}
+
+function bindReactionRegistration(
+  registration: AnyReactionRegistration,
+  runtime: RegistryRuntime,
+): BoundReactionRegistration {
+  const boundRegistration = bindSliceRegistration(registration, runtime)
+
+  return {
+    ...boundRegistration,
+    react: () => registration.react(boundRegistration.state.input as never),
+  }
+}
+
+function bindSliceRegistration(
+  registration: SliceRegistration,
+  runtime: RegistryRuntime,
+): BoundSliceRegistration {
+  const name = sliceRegistrationName(registration)
+  const state = createSliceState(name, registration, runtime)
+
+  return {
+    name,
+    state,
+    apply: bindApplyHandlers(registration, state.input),
+  }
+}
+
+function bindApplyHandlers(
+  registration: SliceRegistration,
+  input: StoreTx | JsonWriteStore,
+) {
+  if (!('apply' in registration) || !registration.apply) {
+    return undefined
+  }
+
+  const handlers: Partial<Record<Event['type'], (event: Event) => void>> = {}
+
+  for (const eventType of Object.keys(registration.apply) as Event['type'][]) {
+    const handler = registration.apply[eventType] as
+      | ((event: Event, input: never) => void)
+      | undefined
+
+    if (!handler) {
+      continue
+    }
+
+    handlers[eventType] = (event) => handler(event, input as never)
+  }
+
+  return handlers
+}
+
+function createSliceState(
+  sliceName: string,
+  registration: SliceRegistration,
+  runtime: RegistryRuntime,
+): BoundSliceState {
+  if (registration.json) {
+    return createJsonSliceState(sliceName, runtime.jsonStorage)
+  }
+
+  return createSqlSliceState(sliceName, runtime.tx)
+}
+
+function createSqlSliceState(sliceName: string, tx: StoreTx): BoundSliceState {
+  return {
+    input: tx,
+    lastAppliedOrder: () =>
+      tx
+        .select()
+        .from(sliceCursors)
+        .where(eq(sliceCursors.sliceName, sliceName))
+        .get()?.lastAppliedOrder ?? 0,
+    setLastAppliedOrder: (order) => {
+      tx.delete(sliceCursors).where(eq(sliceCursors.sliceName, sliceName)).run()
+
+      tx.insert(sliceCursors)
+        .values({ sliceName, lastAppliedOrder: order })
+        .run()
+    },
+    commit: () => {},
+  }
+}
+
+function createJsonSliceState(
+  sliceName: string,
+  storage: JsonSliceStorage,
+): BoundSliceState {
+  const snapshot = storage.read(sliceName) ?? emptySnapshot()
+  let dirty = false
+  const store = createJsonWriteStore(snapshot, () => {
+    dirty = true
+  })
+
+  return {
+    input: store,
+    lastAppliedOrder: () => snapshot.lastAppliedOrder,
+    setLastAppliedOrder: (order) => {
+      snapshot.lastAppliedOrder = order
+      dirty = true
+    },
+    commit: () => {
+      if (!dirty) {
+        return
       }
 
-      return JSON.parse(row.value)
+      storage.write(sliceName, snapshot)
+      dirty = false
     },
   }
 }
 
-function createJsonWriteStore(sliceName: string, tx: StoreTx): JsonWriteStore {
+function createJsonReadStore(snapshot: JsonSliceSnapshot): JsonReadStore {
   return {
-    ...createJsonReadStore(sliceName, tx),
-    set: (key, value) => {
-      tx.delete(sliceJsonStates)
-        .where(
-          and(
-            eq(sliceJsonStates.sliceName, sliceName),
-            eq(sliceJsonStates.key, key),
-          ),
-        )
-        .run()
+    get: <TValue>(key: string) => {
+      return snapshot.state[key] as TValue | undefined
+    },
+  }
+}
 
-      tx.insert(sliceJsonStates)
-        .values({
-          sliceName,
-          key,
-          value: JSON.stringify(value),
-        })
-        .run()
+function createJsonWriteStore(
+  snapshot: JsonSliceSnapshot,
+  markDirty: () => void,
+): JsonWriteStore {
+  return {
+    ...createJsonReadStore(snapshot),
+    set: (key, value) => {
+      snapshot.state[key] = value
+      markDirty()
     },
     patch: (key, value) => {
-      const existing = createJsonReadStore(sliceName, tx).get<
-        Record<string, unknown>
-      >(key)
-
-      tx.delete(sliceJsonStates)
-        .where(
-          and(
-            eq(sliceJsonStates.sliceName, sliceName),
-            eq(sliceJsonStates.key, key),
-          ),
-        )
-        .run()
-
-      tx.insert(sliceJsonStates)
-        .values({
-          sliceName,
-          key,
-          value: JSON.stringify({ ...(existing ?? {}), ...value }),
-        })
-        .run()
+      const existing = snapshot.state[key] as
+        | Record<string, unknown>
+        | undefined
+      snapshot.state[key] = { ...(existing ?? {}), ...value }
+      markDirty()
     },
     delete: (key) => {
-      tx.delete(sliceJsonStates)
-        .where(
-          and(
-            eq(sliceJsonStates.sliceName, sliceName),
-            eq(sliceJsonStates.key, key),
-          ),
-        )
-        .run()
+      delete snapshot.state[key]
+      markDirty()
     },
   }
 }

@@ -16,12 +16,6 @@ export const events = sqliteTable(
   (table) => [index('events_order_idx').on(table.order)],
 )
 
-export const sliceJsonStates = sqliteTable('slice_json_states', {
-  sliceName: text('slice_name').notNull(),
-  key: text('key').notNull(),
-  value: text('value').notNull(),
-})
-
 export const sliceCursors = sqliteTable('slice_cursors', {
   sliceName: text('slice_name').notNull(),
   lastAppliedOrder: integer('last_applied_order').notNull(),

@@ -4,6 +4,7 @@ import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { join } from 'node:path'
 
 import * as schema from '../db/schema'
+import { createMemoryJsonSliceStorage } from './json-storage'
 
 const migrationsFolder = join(process.cwd(), 'drizzle')
 
@@ -14,4 +15,16 @@ export function createTestDb() {
   migrate(db, { migrationsFolder })
 
   return { db, sqlite }
+}
+
+export function createTestRuntime() {
+  const { db, sqlite } = createTestDb()
+
+  return {
+    runtime: {
+      tx: db,
+      jsonStorage: createMemoryJsonSliceStorage(),
+    },
+    sqlite,
+  }
 }

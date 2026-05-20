@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 import { z } from 'zod'
 
 import { db } from './db/client.server'
+import { createFileJsonSliceStorage } from './lib/json-storage'
 import {
   commandInput,
   dispatchCommandInTx,
@@ -10,6 +11,8 @@ import {
 } from './lib/registry'
 import { projectionRegistrations } from './lib/registry'
 import './styles.css?url'
+
+const jsonStorage = createFileJsonSliceStorage('./data/slice-state')
 
 const projectionInput = z.object({
   projectionName: z.string(),
@@ -64,11 +67,10 @@ const routes = app
 
     return c.json({
       ok: true as const,
-      data: queryProjection(
-        registration,
-        input.data,
-        db,
-      ) as SerializableProjectionResult,
+      data: queryProjection(registration, input.data, {
+        tx: db,
+        jsonStorage,
+      }) as SerializableProjectionResult,
     })
   })
   .post('/api/command', async (c) => {
@@ -79,7 +81,9 @@ const routes = app
     }
 
     try {
-      db.transaction((tx) => dispatchCommandInTx(body.data, tx))
+      db.transaction((tx) =>
+        dispatchCommandInTx(body.data, { tx, jsonStorage }),
+      )
       return c.json({ ok: true as const })
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Command failed'
