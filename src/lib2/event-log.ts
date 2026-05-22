@@ -27,7 +27,7 @@ export const EventLogLive = Layer.effect(
     return {
       readAfter: (order: number, eventTypes: readonly string[]) =>
         Effect.gen(function* () {
-          if (eventTypes.length === 0) {
+          if (!eventTypes.length) {
             return []
           }
 
