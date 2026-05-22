@@ -1,11 +1,11 @@
 export type { Event, EventSpec, PersistedEvent } from './event'
 export { createEventSpec } from './event'
 export { EventNotPersistedError, EventPayloadParseError } from './event-log'
-export type { JsonSliceSnapshot, JsonSliceStorage } from './json-storage'
-export { emptySnapshot } from './json-storage'
 export { createRegistryRuntimeLayer } from './layers'
 export {
   createRegistry,
+  DuplicateCommandNameError,
+  DuplicateSliceNameError,
   EmptyCommandRegistryError,
   InvalidCommandError,
   InvalidProjectionInputError,

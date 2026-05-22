@@ -11,6 +11,6 @@ CREATE UNIQUE INDEX `events_id_unique` ON `events` (`id`);
 CREATE INDEX `events_order_idx` ON `events` (`order`);
 --> statement-breakpoint
 CREATE TABLE `slice_cursors` (
-	`slice_name` text NOT NULL,
+	`slice_name` text PRIMARY KEY NOT NULL,
 	`last_applied_order` integer NOT NULL
 );

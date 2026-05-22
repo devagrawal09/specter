@@ -33,7 +33,7 @@ export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
 
     const eventLog = yield* EventLogService
     const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name, slice.json === true)
+    const state = sliceStates.create(slice.name)
 
     if (slice.apply) {
       const eventTypes = Object.keys(slice.apply).filter(
@@ -56,8 +56,6 @@ export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
               yield* state.setLastAppliedOrder(event.order)
             }),
         )
-
-        yield* state.commit
       }
     }
 
@@ -74,7 +72,7 @@ export function queryProjection(
 
     const eventLog = yield* EventLogService
     const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name, slice.json === true)
+    const state = sliceStates.create(slice.name)
 
     if (slice.apply) {
       const eventTypes = Object.keys(slice.apply).filter(
@@ -97,8 +95,6 @@ export function queryProjection(
               yield* state.setLastAppliedOrder(event.order)
             }),
         )
-
-        yield* state.commit
       }
     }
 
@@ -118,7 +114,7 @@ export function reactToScenario(
 
     const eventLog = yield* EventLogService
     const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name, slice.json === true)
+    const state = sliceStates.create(slice.name)
 
     if (slice.apply) {
       const eventTypes = Object.keys(slice.apply).filter(
@@ -141,8 +137,6 @@ export function reactToScenario(
               yield* state.setLastAppliedOrder(event.order)
             }),
         )
-
-        yield* state.commit
       }
     }
 
@@ -164,10 +158,7 @@ export function replay(
         ),
         (registration) =>
           Effect.gen(function* () {
-            const state = sliceStates.create(
-              registration.name,
-              registration.json === true,
-            )
+            const state = sliceStates.create(registration.name)
             const handler = registration.apply?.[event.type]
 
             if (handler) {
@@ -175,7 +166,6 @@ export function replay(
             }
 
             yield* state.setLastAppliedOrder(event.order)
-            yield* state.commit
           }),
       ),
     )

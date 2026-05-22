@@ -13,7 +13,7 @@ export type CommandEnvelope<
 
 export type ApplyHandlers = Record<
   string,
-  ((event: Event, input: never) => Effect.Effect<void>) | undefined
+  ((event: Event, input: never) => Effect.Effect<void, unknown>) | undefined
 >
 
 export type CommandSlice<
@@ -23,10 +23,12 @@ export type CommandSlice<
   kind: 'command'
   name: TName
   schema: TSchema
-  json?: boolean
   eager?: boolean
   apply?: ApplyHandlers
-  decide: (payload: z.infer<TSchema>, input: never) => Effect.Effect<Event[]>
+  decide: (
+    payload: z.infer<TSchema>,
+    input: never,
+  ) => Effect.Effect<Event[], unknown>
 }
 
 export type ProjectionSlice<
@@ -36,19 +38,19 @@ export type ProjectionSlice<
   kind: 'projection'
   name: TName
   schema: TSchema
-  json?: boolean
   eager?: boolean
   apply: ApplyHandlers
-  query: (input: never, query: z.infer<TSchema>) => Effect.Effect<unknown>
+  query: (
+    input: never,
+    query: z.infer<TSchema>,
+  ) => Effect.Effect<unknown, unknown>
 }
 
 export type ReactionSlice<TName extends string = string> = {
   kind: 'reaction'
   name: TName
-  json?: boolean
-  eager?: boolean
   apply?: ApplyHandlers
-  react: (input: never) => Effect.Effect<CommandEnvelope[]>
+  react: (input: never) => Effect.Effect<CommandEnvelope[], unknown>
 }
 
 export type SliceRegistration = CommandSlice | ProjectionSlice | ReactionSlice

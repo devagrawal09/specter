@@ -40,6 +40,18 @@ export class UnknownProjectionError extends Data.TaggedError(
   readonly projectionName: string
 }> {}
 
+export class DuplicateCommandNameError extends Data.TaggedError(
+  'DuplicateCommandNameError',
+)<{
+  readonly commandName: string
+}> {}
+
+export class DuplicateSliceNameError extends Data.TaggedError(
+  'DuplicateSliceNameError',
+)<{
+  readonly sliceName: string
+}> {}
+
 export function createRegistry(registrations: readonly SliceRegistration[]) {
   const commands = registrations.filter(
     (slice): slice is CommandSlice => slice.kind === 'command',
@@ -51,11 +63,37 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     (slice): slice is ReactionSlice => slice.kind === 'reaction',
   )
 
+  const duplicateCommandName = commands.find(
+    (command, index) =>
+      commands.findIndex((candidate) => candidate.name === command.name) !==
+      index,
+  )?.name
+  const duplicateSliceName = registrations.find(
+    (registration, index) =>
+      registrations.findIndex(
+        (candidate) => candidate.name === registration.name,
+      ) !== index,
+  )?.name
+
   function dispatch(rawCommand: unknown) {
     return Stream.fromEffect(
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         const firstCommand = commands[0]
+
+        if (duplicateCommandName) {
+          return yield* Effect.fail(
+            new DuplicateCommandNameError({
+              commandName: duplicateCommandName,
+            }),
+          )
+        }
+
+        if (duplicateSliceName) {
+          return yield* Effect.fail(
+            new DuplicateSliceNameError({ sliceName: duplicateSliceName }),
+          )
+        }
 
         if (!firstCommand) {
           return yield* Effect.fail(new EmptyCommandRegistryError())
@@ -81,7 +119,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
           )
         }
 
-        return yield* sql.withTransaction(
+        const result = yield* sql.withTransaction(
           Effect.gen(function* () {
             const commandSlice = commands.find(
               (slice) => slice.name === initialCommand.data.name,
@@ -97,10 +135,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
             const eventLog = yield* EventLogService
             const sliceStates = yield* SliceStates
-            const commandState = sliceStates.create(
-              commandSlice.name,
-              commandSlice.json === true,
-            )
+            const commandState = sliceStates.create(commandSlice.name)
 
             if (commandSlice.apply) {
               const eventTypes = Object.keys(commandSlice.apply).filter(
@@ -122,8 +157,6 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
                       }
                     }),
                 )
-
-                yield* commandState.commit
               }
             }
 
@@ -135,6 +168,8 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
             return yield* eventLog.append(events)
           }),
         )
+
+        return result
       }),
     ).pipe(
       Stream.flatMap((persistedEvents) =>
@@ -146,24 +181,27 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
               yield* Effect.forEach(persistedEvents, (event) =>
                 Effect.forEach(
-                  registrations.filter((registration) => registration.eager),
+                  registrations.filter(
+                    (registration) =>
+                      registration.kind !== 'reaction' && registration.eager,
+                  ),
                   (registration) =>
-                    sql.withTransaction(
-                      Effect.gen(function* () {
-                        const sliceStates = yield* SliceStates
-                        const state = sliceStates.create(
-                          registration.name,
-                          registration.json === true,
-                        )
-                        const apply = registration.apply?.[event.type]
+                    Effect.gen(function* () {
+                      yield* sql.withTransaction(
+                        Effect.gen(function* () {
+                          const sliceStates = yield* SliceStates
+                          const state = sliceStates.create(registration.name)
+                          const apply = registration.apply?.[event.type]
 
-                        if (apply) {
-                          yield* apply(event, state.input as never)
-                          yield* state.setLastAppliedOrder(event.order)
-                          yield* state.commit
-                        }
-                      }),
-                    ),
+                          if (apply) {
+                            yield* apply(event, state.input as never)
+                            yield* state.setLastAppliedOrder(event.order)
+                          }
+
+                          return
+                        }),
+                      )
+                    }),
                 ),
               )
             }),
@@ -182,6 +220,20 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
       Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         const firstCommand = commands[0]
+
+        if (duplicateCommandName) {
+          return yield* Effect.fail(
+            new DuplicateCommandNameError({
+              commandName: duplicateCommandName,
+            }),
+          )
+        }
+
+        if (duplicateSliceName) {
+          return yield* Effect.fail(
+            new DuplicateSliceNameError({ sliceName: duplicateSliceName }),
+          )
+        }
 
         if (!firstCommand) {
           return yield* Effect.fail(new EmptyCommandRegistryError())
@@ -204,7 +256,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
           sql.withTransaction(
             Effect.gen(function* () {
               if (!reaction.apply) {
-                return []
+                return { advanced: false, events: [] }
               }
 
               const eventTypes = Object.keys(reaction.apply).filter(
@@ -212,23 +264,23 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
               )
 
               if (eventTypes.length === 0) {
-                return []
+                return { advanced: false, events: [] }
               }
 
               const eventLog = yield* EventLogService
               const sliceStates = yield* SliceStates
-              const reactionState = sliceStates.create(
-                reaction.name,
-                reaction.json === true,
-              )
+              const reactionState = sliceStates.create(reaction.name)
+              const durableLastAppliedOrder =
+                yield* reactionState.lastAppliedOrder
+
               const unappliedEvents = yield* eventLog.readAfter(
-                yield* reactionState.lastAppliedOrder,
+                durableLastAppliedOrder,
                 eventTypes,
               )
               const event = unappliedEvents[0]
 
               if (!event) {
-                return []
+                return { advanced: false, events: [] }
               }
 
               const apply = reaction.apply[event.type]
@@ -240,7 +292,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
               const reactionCommands = yield* reaction.react(
                 reactionState.input as never,
               )
-              const persistedEvents = yield* Effect.forEach(
+              const persistedResults = yield* Effect.forEach(
                 reactionCommands,
                 (reactionCommand) =>
                   Effect.gen(function* () {
@@ -264,10 +316,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
                       )
                     }
 
-                    const commandState = sliceStates.create(
-                      commandSlice.name,
-                      commandSlice.json === true,
-                    )
+                    const commandState = sliceStates.create(commandSlice.name)
 
                     if (commandSlice.apply) {
                       const commandEventTypes = Object.keys(
@@ -299,8 +348,6 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
                               }
                             }),
                         )
-
-                        yield* commandState.commit
                       }
                     }
 
@@ -314,47 +361,58 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
               )
 
               yield* reactionState.setLastAppliedOrder(event.order)
-              yield* reactionState.commit
 
-              return persistedEvents.flat()
+              return {
+                advanced: true,
+                events: persistedResults.flatMap((result) =>
+                  Array.from(result),
+                ),
+              }
             }),
           ),
         )
 
-        return results.flat()
+        return {
+          advanced: results.some((result) => result.advanced),
+          events: results.flatMap((result) => result.events),
+        }
       }),
     ).pipe(
-      Stream.flatMap((persistedEvents) =>
-        persistedEvents.length === 0
+      Stream.flatMap((result) =>
+        !result.advanced
           ? Stream.empty
           : Stream.concat(
-              Stream.fromIterable(persistedEvents),
+              Stream.fromIterable(result.events),
               Stream.fromEffect(
                 Effect.gen(function* () {
                   const sql = yield* SqlClient.SqlClient
 
-                  yield* Effect.forEach(persistedEvents, (event) =>
+                  yield* Effect.forEach(result.events, (event) =>
                     Effect.forEach(
                       registrations.filter(
-                        (registration) => registration.eager,
+                        (registration) =>
+                          registration.kind !== 'reaction' &&
+                          registration.eager,
                       ),
                       (registration) =>
-                        sql.withTransaction(
-                          Effect.gen(function* () {
-                            const sliceStates = yield* SliceStates
-                            const state = sliceStates.create(
-                              registration.name,
-                              registration.json === true,
-                            )
-                            const apply = registration.apply?.[event.type]
+                        Effect.gen(function* () {
+                          yield* sql.withTransaction(
+                            Effect.gen(function* () {
+                              const sliceStates = yield* SliceStates
+                              const state = sliceStates.create(
+                                registration.name,
+                              )
+                              const apply = registration.apply?.[event.type]
 
-                            if (apply) {
-                              yield* apply(event, state.input as never)
-                              yield* state.setLastAppliedOrder(event.order)
-                              yield* state.commit
-                            }
-                          }),
-                        ),
+                              if (apply) {
+                                yield* apply(event, state.input as never)
+                                yield* state.setLastAppliedOrder(event.order)
+                              }
+
+                              return
+                            }),
+                          )
+                        }),
                     ),
                   )
                 }),
@@ -366,6 +424,12 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
   function query(projectionName: string, input: unknown) {
     return Effect.gen(function* () {
+      if (duplicateSliceName) {
+        return yield* Effect.fail(
+          new DuplicateSliceNameError({ sliceName: duplicateSliceName }),
+        )
+      }
+
       const registration = projections.find(
         (projection) => projection.name === projectionName,
       )
@@ -376,50 +440,56 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
         )
       }
 
-      const eventLog = yield* EventLogService
-      const sliceStates = yield* SliceStates
-      const state = sliceStates.create(
-        registration.name,
-        registration.json === true,
+      const sql = yield* SqlClient.SqlClient
+
+      const result = yield* sql.withTransaction(
+        Effect.gen(function* () {
+          const eventLog = yield* EventLogService
+          const sliceStates = yield* SliceStates
+          const state = sliceStates.create(registration.name)
+
+          if (registration.apply) {
+            const eventTypes = Object.keys(registration.apply).filter(
+              (eventType) => registration.apply?.[eventType],
+            )
+
+            if (eventTypes.length > 0) {
+              const lastAppliedOrder = yield* state.lastAppliedOrder
+
+              yield* Effect.forEach(
+                yield* eventLog.readAfter(lastAppliedOrder, eventTypes),
+                (event) =>
+                  Effect.gen(function* () {
+                    const handler = registration.apply?.[event.type]
+
+                    if (handler) {
+                      yield* handler(event, state.input as never)
+                      yield* state.setLastAppliedOrder(event.order)
+                    }
+                  }),
+              )
+            }
+          }
+
+          const parsedInput = registration.schema.safeParse(input)
+
+          if (!parsedInput.success) {
+            return yield* Effect.fail(
+              new InvalidProjectionInputError({
+                projectionName,
+                error: parsedInput.error,
+              }),
+            )
+          }
+
+          return yield* registration.query(
+            state.input as never,
+            parsedInput.data,
+          )
+        }),
       )
 
-      if (registration.apply) {
-        const eventTypes = Object.keys(registration.apply).filter(
-          (eventType) => registration.apply?.[eventType],
-        )
-
-        if (eventTypes.length > 0) {
-          const lastAppliedOrder = yield* state.lastAppliedOrder
-
-          yield* Effect.forEach(
-            yield* eventLog.readAfter(lastAppliedOrder, eventTypes),
-            (event) =>
-              Effect.gen(function* () {
-                const handler = registration.apply?.[event.type]
-
-                if (handler) {
-                  yield* handler(event, state.input as never)
-                  yield* state.setLastAppliedOrder(event.order)
-                }
-              }),
-          )
-
-          yield* state.commit
-        }
-      }
-
-      const parsedInput = registration.schema.safeParse(input)
-
-      if (!parsedInput.success) {
-        return yield* Effect.fail(
-          new InvalidProjectionInputError({
-            projectionName,
-            error: parsedInput.error,
-          }),
-        )
-      }
-
-      return yield* registration.query(state.input as never, parsedInput.data)
+      return result
     })
   }
 

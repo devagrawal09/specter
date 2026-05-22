@@ -17,7 +17,7 @@ export const events = sqliteTable(
 )
 
 export const sliceCursors = sqliteTable('slice_cursors', {
-  sliceName: text('slice_name').notNull(),
+  sliceName: text('slice_name').primaryKey(),
   lastAppliedOrder: integer('last_applied_order').notNull(),
 })
 
