@@ -1,7 +1,8 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: slice callbacks can require arbitrary Effect services.
 import type { z } from 'zod'
 import type { Effect } from 'effect'
 
-import type { Event } from './event'
+import type { Event, PersistedEvent } from './event'
 
 export type CommandEnvelope<
   TName extends string = string,
@@ -13,7 +14,7 @@ export type CommandEnvelope<
 
 export type ApplyHandlers = Record<
   string,
-  (event: Event, input: unknown) => Effect.Effect<void, unknown>
+  (event: Event, input: unknown) => Effect.Effect<void, unknown, any>
 >
 
 export type CommandSlice<
@@ -24,11 +25,11 @@ export type CommandSlice<
   name: TName
   schema: TSchema
   eager?: boolean
-  apply: ApplyHandlers
+  apply?: ApplyHandlers
   decide: (
     payload: z.infer<TSchema>,
     input: unknown,
-  ) => Effect.Effect<Event[], unknown>
+  ) => Effect.Effect<Event[], unknown, any>
 }
 
 export type ProjectionSlice<
@@ -39,18 +40,37 @@ export type ProjectionSlice<
   name: TName
   schema: TSchema
   eager?: boolean
-  apply: ApplyHandlers
+  apply?: ApplyHandlers
   query: (
     input: unknown,
     query: z.infer<TSchema>,
-  ) => Effect.Effect<unknown, unknown>
+  ) => Effect.Effect<unknown, unknown, any>
 }
 
-export type ReactionSlice<TName extends string = string> = {
+export type CommandDispatch = (
+  command: CommandEnvelope,
+) => Effect.Effect<PersistedEvent[], unknown, any>
+
+export type ReactionExec<TPayload = CommandEnvelope> = (
+  payload: TPayload,
+) => Effect.Effect<void, unknown, any>
+
+export type ReactionPlugin<TPayload = CommandEnvelope> = (
+  dispatch: CommandDispatch,
+) => Effect.Effect<ReactionExec<TPayload>, unknown, any>
+
+export type ReactionSlice<
+  TName extends string = string,
+  TPayload = CommandEnvelope,
+> = {
   kind: 'reaction'
   name: TName
   apply: ApplyHandlers
-  react: (input: unknown) => Effect.Effect<CommandEnvelope[], unknown>
+  plugin?: ReactionPlugin<TPayload>
+  react: (exec: ReactionExec<TPayload>) => Effect.Effect<void, unknown, any>
 }
 
-export type SliceRegistration = CommandSlice | ProjectionSlice | ReactionSlice
+export type SliceRegistration =
+  | CommandSlice
+  | ProjectionSlice
+  | ReactionSlice<string, any>

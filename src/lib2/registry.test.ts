@@ -1,8 +1,10 @@
+// biome-ignore-all lint/suspicious/noExplicitAny: test helpers accept reaction callbacks with arbitrary Effect services.
 import Database from 'better-sqlite3'
 import { eq } from 'drizzle-orm'
+import * as SqliteDrizzle from '@effect/sql-drizzle/Sqlite'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
-import { Effect, Stream } from 'effect'
+import { Effect } from 'effect'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -17,9 +19,11 @@ import {
   DuplicateSliceNameError,
   InvalidCommandError,
   InvalidProjectionInputError,
+  reactToScenario,
   UnknownProjectionError,
 } from './index'
 import type { Event } from './event'
+import type { ReactionExec, ReactionSlice } from './slice'
 
 const thingCreated = createEventSpec(
   'thingCreated',
@@ -72,17 +76,20 @@ const sendGreetingCommand = {
     Effect.succeed([greetingSent.create(payload as { name: string })]),
 }
 
-function greetingReaction(
+function greetingReaction<
+  TPayload = { name: string; payload: { name: string } },
+>(
   name: string,
   react: (
     name: string | null,
-  ) => Effect.Effect<{ name: string; payload: { name: string } }[]>,
-) {
+    exec: ReactionExec<TPayload>,
+  ) => Effect.Effect<void, unknown, any>,
+): ReactionSlice<string, TPayload> {
   return {
     kind: 'reaction' as const,
     name,
     apply: {
-      thingCreated: (event: Event, input: never) =>
+      thingCreated: (event: Event, input: unknown) =>
         Effect.gen(function* () {
           const db = input as unknown as SqliteRemoteDatabase
           const payload = event.payload as { name: string }
@@ -96,15 +103,15 @@ function greetingReaction(
             })
         }),
     },
-    react: (input: never) =>
+    react: (exec: ReactionExec<TPayload>) =>
       Effect.gen(function* () {
-        const db = input as unknown as SqliteRemoteDatabase
+        const db = yield* SqliteDrizzle.SqliteDrizzle
         const rows = yield* db
           .select()
           .from(reactionStates)
           .where(eq(reactionStates.sliceName, name))
 
-        return yield* react(rows[0]?.name ?? null)
+        return yield* react(rows[0]?.name ?? null, exec)
       }),
   }
 }
@@ -116,15 +123,13 @@ describe('lib2 registry', () => {
     try {
       const registry = createRegistry([createThingCommand])
 
-      const events = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(
-            registry.dispatch({
-              name: 'createThing',
-              payload: { name: 'Ada' },
-            }),
-          ).pipe(Effect.provide(runtime.layer)),
-        ),
+      const events = await Effect.runPromise(
+        registry
+          .dispatch({
+            name: 'createThing',
+            payload: { name: 'Ada' },
+          })
+          .pipe(Effect.provide(runtime.layer)),
       )
 
       expect(events).toEqual([
@@ -150,7 +155,7 @@ describe('lib2 registry', () => {
           name: 'thingNames',
           schema: z.object({}),
           apply: {
-            thingCreated: (event: Event, input: never) =>
+            thingCreated: (event: Event, input: unknown) =>
               Effect.gen(function* () {
                 const db = input as unknown as SqliteRemoteDatabase
                 const payload = event.payload as { name: string }
@@ -169,9 +174,9 @@ describe('lib2 registry', () => {
       ])
 
       await Effect.runPromise(
-        Stream.runDrain(
-          registry.dispatch({ name: 'createThing', payload: { name: 'Ada' } }),
-        ).pipe(Effect.provide(runtime.layer)),
+        registry
+          .dispatch({ name: 'createThing', payload: { name: 'Ada' } })
+          .pipe(Effect.provide(runtime.layer)),
       )
 
       await expect(
@@ -191,22 +196,20 @@ describe('lib2 registry', () => {
       const registry = createRegistry([
         createThingCommand,
         sendGreetingCommand,
-        greetingReaction('greetNewThings', (name) =>
-          Effect.succeed(
-            name ? [{ name: 'sendGreeting', payload: { name } }] : [],
-          ),
+        greetingReaction('greetNewThings', (name, exec) =>
+          name
+            ? exec({ name: 'sendGreeting', payload: { name } })
+            : Effect.succeed(undefined),
         ),
       ])
 
-      const events = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(
-            registry.dispatch({
-              name: 'createThing',
-              payload: { name: 'Ada' },
-            }),
-          ).pipe(Effect.provide(runtime.layer)),
-        ),
+      const events = await Effect.runPromise(
+        registry
+          .dispatch({
+            name: 'createThing',
+            payload: { name: 'Ada' },
+          })
+          .pipe(Effect.provide(runtime.layer)),
       )
 
       expect(events.map((event) => event.type)).toEqual([
@@ -229,30 +232,26 @@ describe('lib2 registry', () => {
       const registry = createRegistry([
         createThingCommand,
         sendGreetingCommand,
-        greetingReaction('greetOnlyGrace', (name) =>
-          Effect.succeed(
-            name === 'Grace'
-              ? [{ name: 'sendGreeting', payload: { name } }]
-              : [],
-          ),
+        greetingReaction('greetOnlyGrace', (name, exec) =>
+          name === 'Grace'
+            ? exec({ name: 'sendGreeting', payload: { name } })
+            : Effect.succeed(undefined),
         ),
       ])
 
       await Effect.runPromise(
-        Stream.runDrain(
-          registry.dispatch({ name: 'createThing', payload: { name: 'Ada' } }),
-        ).pipe(Effect.provide(runtime.layer)),
+        registry
+          .dispatch({ name: 'createThing', payload: { name: 'Ada' } })
+          .pipe(Effect.provide(runtime.layer)),
       )
 
-      const events = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(
-            registry.dispatch({
-              name: 'createThing',
-              payload: { name: 'Grace' },
-            }),
-          ).pipe(Effect.provide(runtime.layer)),
-        ),
+      const events = await Effect.runPromise(
+        registry
+          .dispatch({
+            name: 'createThing',
+            payload: { name: 'Grace' },
+          })
+          .pipe(Effect.provide(runtime.layer)),
       )
 
       expect(events.map((event) => event.type)).toEqual([
@@ -276,36 +275,38 @@ describe('lib2 registry', () => {
       const registry = createRegistry([
         createThingCommand,
         sendGreetingCommand,
-        greetingReaction('greetNewThings', (name) =>
+        greetingReaction('greetNewThings', (name, exec) =>
           Effect.sync(() => {
             if (failReaction) {
               throw new Error('reaction failed')
             }
 
-            return name ? [{ name: 'sendGreeting', payload: { name } }] : []
-          }),
+            return name
+          }).pipe(
+            Effect.flatMap((currentName) =>
+              currentName
+                ? exec({ name: 'sendGreeting', payload: { name: currentName } })
+                : Effect.succeed(undefined),
+            ),
+          ),
         ),
       ])
 
       await expect(
         Effect.runPromise(
-          Stream.runDrain(
-            registry.dispatch({
+          registry
+            .dispatch({
               name: 'createThing',
               payload: { name: 'Ada' },
-            }),
-          ).pipe(Effect.provide(runtime.layer)),
+            })
+            .pipe(Effect.provide(runtime.layer)),
         ),
       ).rejects.toThrow('reaction failed')
 
       failReaction = false
 
-      const recoveredEvents = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(registry.runReactions()).pipe(
-            Effect.provide(runtime.layer),
-          ),
-        ),
+      const recoveredEvents = await Effect.runPromise(
+        registry.runReactions().pipe(Effect.provide(runtime.layer)),
       )
 
       expect(recoveredEvents.map((event) => event.type)).toEqual([
@@ -315,12 +316,8 @@ describe('lib2 registry', () => {
         { name: 'Ada' },
       ])
 
-      const repeatedEvents = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(registry.runReactions()).pipe(
-            Effect.provide(runtime.layer),
-          ),
-        ),
+      const repeatedEvents = await Effect.runPromise(
+        registry.runReactions().pipe(Effect.provide(runtime.layer)),
       )
 
       expect(repeatedEvents).toEqual([])
@@ -329,23 +326,19 @@ describe('lib2 registry', () => {
 
       await expect(
         Effect.runPromise(
-          Stream.runDrain(
-            registry.dispatch({
+          registry
+            .dispatch({
               name: 'createThing',
               payload: { name: 'Grace' },
-            }),
-          ).pipe(Effect.provide(runtime.layer)),
+            })
+            .pipe(Effect.provide(runtime.layer)),
         ),
       ).rejects.toThrow('reaction failed')
 
       failReaction = false
 
-      const secondRecoveredEvents = Array.from(
-        await Effect.runPromise(
-          Stream.runCollect(registry.runReactions()).pipe(
-            Effect.provide(runtime.layer),
-          ),
-        ),
+      const secondRecoveredEvents = await Effect.runPromise(
+        registry.runReactions().pipe(Effect.provide(runtime.layer)),
       )
 
       expect(secondRecoveredEvents.map((event) => event.type)).toEqual([
@@ -359,6 +352,84 @@ describe('lib2 registry', () => {
     }
   })
 
+  it('initializes custom reaction plugins once and executes payload side effects', async () => {
+    const runtime = createTestRuntime()
+    const payloads: { kind: string; name: string }[] = []
+    let pluginStarts = 0
+
+    try {
+      const registry = createRegistry([
+        createThingCommand,
+        {
+          ...greetingReaction('notifyNewThings', (name, exec) =>
+            name ? exec({ kind: 'notify', name }) : Effect.succeed(undefined),
+          ),
+          plugin: () =>
+            Effect.sync(() => {
+              pluginStarts += 1
+
+              return (payload: { kind: string; name: string }) =>
+                Effect.sync(() => {
+                  payloads.push(payload)
+                })
+            }),
+        },
+      ])
+
+      await Effect.runPromise(
+        registry
+          .dispatch({ name: 'createThing', payload: { name: 'Ada' } })
+          .pipe(Effect.provide(runtime.layer)),
+      )
+      await Effect.runPromise(
+        registry
+          .dispatch({ name: 'createThing', payload: { name: 'Grace' } })
+          .pipe(Effect.provide(runtime.layer)),
+      )
+
+      expect(pluginStarts).toBe(1)
+      expect(payloads).toEqual([
+        { kind: 'notify', name: 'Ada' },
+        { kind: 'notify', name: 'Grace' },
+      ])
+    } finally {
+      runtime.cleanup()
+    }
+  })
+
+  it('records reaction scenario exec payloads without running plugins', async () => {
+    const runtime = createTestRuntime()
+    let pluginRan = false
+
+    try {
+      const slice = {
+        ...greetingReaction('greetScenarioThings', (name, exec) =>
+          name
+            ? exec({ name: 'sendGreeting', payload: { name } })
+            : Effect.succeed(undefined),
+        ),
+        plugin: () =>
+          Effect.sync(() => {
+            pluginRan = true
+
+            return () => Effect.succeed(undefined)
+          }),
+      }
+
+      await expect(
+        Effect.runPromise(
+          reactToScenario(slice, {
+            given: [thingCreated.create({ name: 'Ada' })],
+            expect: [{ name: 'sendGreeting', payload: { name: 'Ada' } }],
+          }).pipe(Effect.provide(runtime.layer)),
+        ),
+      ).resolves.toEqual([{ name: 'sendGreeting', payload: { name: 'Ada' } }])
+      expect(pluginRan).toBe(false)
+    } finally {
+      runtime.cleanup()
+    }
+  })
+
   it('fails invalid command envelopes with a typed registry error', async () => {
     const runtime = createTestRuntime()
 
@@ -367,9 +438,9 @@ describe('lib2 registry', () => {
 
       await expect(
         Effect.runPromise(
-          Stream.runDrain(
-            registry.dispatch({ name: 'createThing', payload: { name: 123 } }),
-          ).pipe(Effect.provide(runtime.layer), Effect.flip),
+          registry
+            .dispatch({ name: 'createThing', payload: { name: 123 } })
+            .pipe(Effect.provide(runtime.layer), Effect.flip),
         ),
       ).resolves.toBeInstanceOf(InvalidCommandError)
     } finally {
@@ -415,42 +486,30 @@ describe('lib2 registry', () => {
     const runtime = createTestRuntime()
 
     try {
-      const duplicateCommandRegistry = createRegistry([
-        createThingCommand,
-        {
-          ...createThingCommand,
-          decide: (payload: unknown) =>
-            Effect.succeed([thingCreated.create(payload as { name: string })]),
-        },
-      ])
-      const duplicateSliceRegistry = createRegistry([
-        createThingCommand,
-        {
-          kind: 'projection',
-          name: 'createThing',
-          schema: z.object({}),
-          apply: {},
-          query: () => Effect.succeed(undefined),
-        },
-      ])
-
-      await expect(
-        Effect.runPromise(
-          Stream.runDrain(
-            duplicateCommandRegistry.dispatch({
-              name: 'createThing',
-              payload: { name: 'Ada' },
-            }),
-          ).pipe(Effect.provide(runtime.layer), Effect.flip),
-        ),
-      ).resolves.toBeInstanceOf(DuplicateCommandNameError)
-      await expect(
-        Effect.runPromise(
-          duplicateSliceRegistry
-            .query('createThing', {})
-            .pipe(Effect.provide(runtime.layer), Effect.flip),
-        ),
-      ).resolves.toBeInstanceOf(DuplicateSliceNameError)
+      expect(() =>
+        createRegistry([
+          createThingCommand,
+          {
+            ...createThingCommand,
+            decide: (payload: unknown) =>
+              Effect.succeed([
+                thingCreated.create(payload as { name: string }),
+              ]),
+          },
+        ]),
+      ).toThrow(DuplicateCommandNameError)
+      expect(() =>
+        createRegistry([
+          createThingCommand,
+          {
+            kind: 'projection',
+            name: 'createThing',
+            schema: z.object({}),
+            apply: {},
+            query: () => Effect.succeed(undefined),
+          },
+        ]),
+      ).toThrow(DuplicateSliceNameError)
     } finally {
       runtime.cleanup()
     }

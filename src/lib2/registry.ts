@@ -2,10 +2,14 @@ import * as SqlClient from '@effect/sql/SqlClient'
 import { Data, Effect } from 'effect'
 import { z } from 'zod'
 
+import type { PersistedEvent } from './event'
 import { EventLogService, SliceStates } from './services'
 import type {
+  CommandEnvelope,
+  CommandDispatch,
   CommandSlice,
   ProjectionSlice,
+  ReactionExec,
   ReactionSlice,
   SliceRegistration,
 } from './slice'
@@ -51,6 +55,8 @@ export class DuplicateSliceNameError extends Data.TaggedError(
   readonly sliceName: string
 }> {}
 
+type RegistryServices = EventLogService | SliceStates | SqlClient.SqlClient
+
 export function createRegistry(registrations: readonly SliceRegistration[]) {
   const commands = registrations.filter(
     (slice): slice is CommandSlice => slice.kind === 'command',
@@ -85,13 +91,15 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     throw new DuplicateSliceNameError({ sliceName: duplicateSliceName })
   }
 
+  const reactionExecs = new Map<string, ReactionExec<unknown>>()
+
   function catchUpSlice(slice: SliceRegistration) {
     return Effect.gen(function* () {
       const eventLog = yield* EventLogService
       const sliceStates = yield* SliceStates
       const state = sliceStates.create(slice.name)
 
-      const eventTypes = Object.keys(slice.apply)
+      const eventTypes = Object.keys(slice.apply ?? {})
 
       if (!eventTypes.length) {
         return { state, advanced: false } as const
@@ -109,7 +117,11 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
       yield* Effect.forEach(unappliedEvents, (event) =>
         Effect.gen(function* () {
-          yield* slice.apply[event.type](event, state.input)
+          const handler = slice.apply?.[event.type]
+
+          if (handler) {
+            yield* handler(event, state.input)
+          }
         }),
       )
 
@@ -120,7 +132,9 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     })
   }
 
-  const dispatch = (c: unknown) =>
+  const dispatchOnce = (
+    c: unknown,
+  ): Effect.Effect<PersistedEvent[], unknown, RegistryServices> =>
     Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
       const firstCommand = commands[0]
@@ -200,44 +214,121 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
       return result
     })
 
-  function runReactions() {
+  const dispatch = (
+    c: unknown,
+  ): Effect.Effect<PersistedEvent[], unknown, RegistryServices> =>
+    Effect.gen(function* () {
+      const result = yield* dispatchOnce(c)
+      const reactionResult = yield* drainReactions()
+
+      return [...result, ...reactionResult]
+    })
+
+  function getReactionExec(
+    reaction: ReactionSlice,
+  ): Effect.Effect<
+    ReactionExec<unknown> | undefined,
+    unknown,
+    RegistryServices
+  > {
+    return Effect.gen(function* () {
+      const cachedExec = reactionExecs.get(reaction.name)
+
+      if (cachedExec) {
+        return cachedExec
+      }
+
+      const plugin = reaction.plugin
+
+      if (!plugin) {
+        return undefined
+      }
+
+      const exec = yield* plugin(dispatchOnce as CommandDispatch)
+
+      reactionExecs.set(reaction.name, exec as ReactionExec<unknown>)
+
+      return exec as ReactionExec<unknown>
+    })
+  }
+
+  function drainReactions(): Effect.Effect<
+    PersistedEvent[],
+    unknown,
+    RegistryServices
+  > {
+    return Effect.gen(function* () {
+      const allEvents: PersistedEvent[] = []
+
+      while (true) {
+        const result = yield* runReactionsOnce()
+
+        if (!result.advanced) {
+          return allEvents
+        }
+
+        allEvents.push(...result.events)
+      }
+    })
+  }
+
+  function runReactionsOnce(): Effect.Effect<
+    { advanced: boolean; events: PersistedEvent[] },
+    unknown,
+    RegistryServices
+  > {
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
-      const firstCommand = commands[0]
-
-      if (!firstCommand) {
-        return yield* Effect.fail(new EmptyCommandRegistryError())
-      }
 
       const results = yield* Effect.forEach(reactions, (reaction) =>
         sql.withTransaction(
           Effect.gen(function* () {
-            if (!reaction.apply) {
-              return { advanced: false, events: [] }
-            }
-
             const eventTypes = Object.keys(reaction.apply)
 
             if (eventTypes.length === 0) {
               return { advanced: false, events: [] }
             }
 
-            const { state, advanced } = yield* catchUpSlice(reaction)
+            const eventLog = yield* EventLogService
+            const sliceStates = yield* SliceStates
+            const reactionState = sliceStates.create(reaction.name)
+            const lastAppliedOrder = yield* reactionState.lastAppliedOrder
+            const unappliedEvents = yield* eventLog.readAfter(
+              lastAppliedOrder,
+              eventTypes,
+            )
 
-            if (!advanced) {
+            if (!unappliedEvents.length) {
               return { advanced: false, events: [] }
             }
 
-            const reactionCommands = yield* reaction.react(state)
-
-            const persistedResults = yield* Effect.forEach(
-              reactionCommands,
-              dispatch,
+            yield* Effect.forEach(unappliedEvents, (event) =>
+              Effect.gen(function* () {
+                yield* reaction.apply[event.type](event, reactionState.input)
+              }),
             )
+
+            const emittedEvents: PersistedEvent[] = []
+            const pluginExec = yield* getReactionExec(reaction)
+            const exec: ReactionExec<unknown> = pluginExec
+              ? pluginExec
+              : (command) =>
+                  Effect.gen(function* () {
+                    const events = yield* dispatchOnce(
+                      command as CommandEnvelope,
+                    )
+
+                    emittedEvents.push(...events)
+                  })
+
+            yield* reaction.react(exec)
+
+            const lastEvent = unappliedEvents[unappliedEvents.length - 1]
+            yield* reactionState.setLastAppliedOrder(lastEvent.order)
 
             return {
               advanced: true,
-              events: persistedResults.flat(),
+              events: emittedEvents,
             }
           }),
         ),
@@ -250,7 +341,10 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     })
   }
 
-  function query(projectionName: string, input: unknown) {
+  function query(
+    projectionName: string,
+    input: unknown,
+  ): Effect.Effect<unknown, unknown, RegistryServices> {
     return Effect.gen(function* () {
       const registration = projections.find(
         (projection) => projection.name === projectionName,
@@ -287,5 +381,5 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     })
   }
 
-  return { dispatch, query, runReactions }
+  return { dispatch, query, runReactions: drainReactions }
 }

@@ -22,9 +22,9 @@ export type ProjectionScenario<TWhen = unknown, TExpect = unknown> = {
   expect: TExpect
 }
 
-export type ReactionScenario = {
+export type ReactionScenario<TPayload = CommandEnvelope> = {
   given: readonly Event[]
-  expect: readonly CommandEnvelope[]
+  expect: readonly TPayload[]
 }
 
 export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
@@ -105,42 +105,22 @@ export function queryProjection(
   })
 }
 
-export function reactToScenario(
-  slice: ReactionSlice,
-  scenario: ReactionScenario,
-) {
+export function reactToScenario<TPayload>(
+  slice: ReactionSlice<string, TPayload>,
+  scenario: ReactionScenario<TPayload>,
+): Effect.Effect<TPayload[], unknown, SliceStates> {
   return Effect.gen(function* () {
     yield* replay([slice], autoOrder(scenario.given))
 
-    const eventLog = yield* EventLogService
-    const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name)
+    const payloads: TPayload[] = []
 
-    if (slice.apply) {
-      const eventTypes = Object.keys(slice.apply).filter(
-        (eventType) => slice.apply?.[eventType],
-      )
+    yield* slice.react((payload) =>
+      Effect.sync(() => {
+        payloads.push(payload)
+      }),
+    )
 
-      if (eventTypes.length > 0) {
-        const lastAppliedOrder = yield* state.lastAppliedOrder
-
-        yield* Effect.forEach(
-          yield* eventLog.readAfter(lastAppliedOrder, eventTypes),
-          (event) =>
-            Effect.gen(function* () {
-              const handler = slice.apply?.[event.type]
-
-              if (handler) {
-                yield* handler(event, state.input as never)
-              }
-
-              yield* state.setLastAppliedOrder(event.order)
-            }),
-        )
-      }
-    }
-
-    return yield* slice.react(state.input as never)
+    return payloads
   })
 }
 
