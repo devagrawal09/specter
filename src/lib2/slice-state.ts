@@ -4,15 +4,15 @@ import { Effect, Layer } from 'effect'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 
 import { sliceCursors } from '../lib_legacy'
-import { SliceStates, type SliceState } from './services'
+import { SliceStores, type SliceStore } from './services'
 
 export const SliceStatesLive = Layer.effect(
-  SliceStates,
+  SliceStores,
   Effect.gen(function* () {
     const db = yield* SqliteDrizzle.SqliteDrizzle
 
     return {
-      create: (sliceName: string) => createSqlSliceState(sliceName, db),
+      get: (sliceName: string) => createSqlSliceState(sliceName, db),
     }
   }),
 )
@@ -20,9 +20,9 @@ export const SliceStatesLive = Layer.effect(
 function createSqlSliceState(
   sliceName: string,
   db: SqliteRemoteDatabase,
-): SliceState {
+): SliceStore {
   return {
-    input: db,
+    state: db,
     lastAppliedOrder: Effect.gen(function* () {
       const rows = yield* db
         .select()

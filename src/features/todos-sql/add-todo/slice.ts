@@ -1,5 +1,5 @@
 import z from 'zod'
-import { createCommandSpec } from '../../../lib_legacy/registry.builders'
+import { createCommandSpec } from '../../../lib2'
 import { errorEvent, todoAddedEvent } from '../../todos-json/events'
 
 const maxTitleLength = 120
@@ -40,7 +40,7 @@ export const addTodoSql = createCommandSpec('addTodo')
       ],
     },
   )
-  .decide((command) => {
+  .handle((_input, command) => {
     const title = command.title.trim()
 
     if (!title) {

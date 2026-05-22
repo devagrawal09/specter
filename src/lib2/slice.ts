@@ -1,5 +1,6 @@
 // biome-ignore-all lint/suspicious/noExplicitAny: slice callbacks can require arbitrary Effect services.
 import type { z } from 'zod'
+import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import type { Effect } from 'effect'
 
 import type { Event, PersistedEvent } from './event'
@@ -8,13 +9,13 @@ export type CommandEnvelope<
   TName extends string = string,
   TPayload = unknown,
 > = {
-  name: TName
+  type: TName
   payload: TPayload
 }
 
 export type ApplyHandlers = Record<
   string,
-  (event: Event, input: unknown) => Effect.Effect<void, unknown, any>
+  (event: Event, db: SqliteRemoteDatabase) => Effect.Effect<void, unknown, any>
 >
 
 export type CommandSlice<
@@ -24,11 +25,11 @@ export type CommandSlice<
   kind: 'command'
   name: TName
   schema: TSchema
-  eager?: boolean
-  apply?: ApplyHandlers
-  decide: (
-    payload: z.infer<TSchema>,
-    input: unknown,
+  apply: ApplyHandlers
+  scenarios?: readonly unknown[]
+  handle: (
+    db: SqliteRemoteDatabase,
+    command: z.infer<TSchema>,
   ) => Effect.Effect<Event[], unknown, any>
 }
 
@@ -39,10 +40,10 @@ export type ProjectionSlice<
   kind: 'projection'
   name: TName
   schema: TSchema
-  eager?: boolean
-  apply?: ApplyHandlers
-  query: (
-    input: unknown,
+  apply: ApplyHandlers
+  scenarios?: readonly unknown[]
+  handle: (
+    db: SqliteRemoteDatabase,
     query: z.infer<TSchema>,
   ) => Effect.Effect<unknown, unknown, any>
 }
@@ -52,12 +53,12 @@ export type CommandDispatch = (
 ) => Effect.Effect<PersistedEvent[], unknown, any>
 
 export type ReactionExec<TPayload = CommandEnvelope> = (
-  payload: TPayload,
-) => Effect.Effect<void, unknown, any>
+  reaction: TPayload,
+) => Effect.Effect<unknown, unknown, any>
 
 export type ReactionPlugin<TPayload = CommandEnvelope> = (
-  dispatch: CommandDispatch,
-) => Effect.Effect<ReactionExec<TPayload>, unknown, any>
+  command: CommandDispatch,
+) => Effect.Effect<ReactionExec<TPayload>, unknown, unknown>
 
 export type ReactionSlice<
   TName extends string = string,
@@ -67,7 +68,10 @@ export type ReactionSlice<
   name: TName
   apply: ApplyHandlers
   plugin?: ReactionPlugin<TPayload>
-  react: (exec: ReactionExec<TPayload>) => Effect.Effect<void, unknown, any>
+  scenarios?: readonly unknown[]
+  handle: (
+    db: SqliteRemoteDatabase,
+  ) => Effect.Effect<TPayload | undefined, unknown, any>
 }
 
 export type SliceRegistration =

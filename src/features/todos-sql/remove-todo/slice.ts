@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { Effect } from 'effect'
 import { z } from 'zod'
-import { createCommandSpec } from '../../../lib_legacy/registry.builders'
+import { createCommandSpec } from '../../../lib2'
 import {
   errorEvent,
   todoAddedEvent,
@@ -40,28 +41,39 @@ export const removeTodoSql = createCommandSpec('removeTodo')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoRemovalSqlStates)
-        .values({ todoId: event.payload.todoId })
-        .run()
-    },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoRemovalSqlStates)
-        .set({ removed: true })
-        .where(eq(todoRemovalSqlStates.todoId, event.payload.todoId))
-        .run()
-    },
-  })
-  .decide((command, tx) => {
-    const todo = tx
-      .select()
-      .from(todoRemovalSqlStates)
-      .where(eq(todoRemovalSqlStates.todoId, command.todoId))
-      .get()
+    [todoAddedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
 
-    if (!todo || todo.removed) {
-      return [errorEvent.create({ message: 'Todo not found' })]
-    }
+        yield* db
+          .insert(todoRemovalSqlStates)
+          .values({ todoId: payload.todoId })
+      }),
+    [todoRemovedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
 
-    return [todoRemovedEvent.create({ todoId: command.todoId })]
+        yield* db
+          .update(todoRemovalSqlStates)
+          .set({ removed: true })
+          .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
+      }),
   })
+  .handle((input, command) =>
+    Effect.gen(function* () {
+      const db = input
+      const rows = yield* db
+        .select()
+        .from(todoRemovalSqlStates)
+        .where(eq(todoRemovalSqlStates.todoId, command.todoId))
+      const todo = rows[0]
+
+      if (!todo || todo.removed) {
+        return [errorEvent.create({ message: 'Todo not found' })]
+      }
+
+      return [todoRemovedEvent.create({ todoId: command.todoId })]
+    }),
+  )

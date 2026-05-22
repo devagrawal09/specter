@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { Effect } from 'effect'
 import { z } from 'zod'
-import { createCommandSpec } from '../../../lib_legacy/registry.builders'
+import { createCommandSpec } from '../../../lib2'
 import {
   errorEvent,
   todoAddedEvent,
@@ -64,46 +65,59 @@ export const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoCompletionSqlStates)
-        .values({
-          todoId: event.payload.todoId,
+    [todoAddedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
+
+        yield* db.insert(todoCompletionSqlStates).values({
+          todoId: payload.todoId,
           completed: false,
         })
-        .run()
-    },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionSqlStates)
-        .set({ completed: event.payload.completed })
-        .where(eq(todoCompletionSqlStates.todoId, event.payload.todoId))
-        .run()
-    },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoCompletionSqlStates)
-        .set({ removed: true })
-        .where(eq(todoCompletionSqlStates.todoId, event.payload.todoId))
-        .run()
-    },
-  })
-  .decide((command, tx) => {
-    const todo = tx
-      .select()
-      .from(todoCompletionSqlStates)
-      .where(eq(todoCompletionSqlStates.todoId, command.todoId))
-      .get()
-
-    if (!todo || todo.removed) {
-      return [errorEvent.create({ message: 'Todo not found' })]
-    }
-
-    if (todo.completed === command.completed) {
-      return []
-    }
-
-    return [
-      todoCompletionChangedEvent.create({
-        todoId: command.todoId,
-        completed: command.completed,
       }),
-    ]
+    [todoCompletionChangedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string; completed: boolean }
+
+        yield* db
+          .update(todoCompletionSqlStates)
+          .set({ completed: payload.completed })
+          .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
+      }),
+    [todoRemovedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
+
+        yield* db
+          .update(todoCompletionSqlStates)
+          .set({ removed: true })
+          .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
+      }),
   })
+  .handle((input, command) =>
+    Effect.gen(function* () {
+      const db = input
+      const rows = yield* db
+        .select()
+        .from(todoCompletionSqlStates)
+        .where(eq(todoCompletionSqlStates.todoId, command.todoId))
+      const todo = rows[0]
+
+      if (!todo || todo.removed) {
+        return [errorEvent.create({ message: 'Todo not found' })]
+      }
+
+      if (todo.completed === command.completed) {
+        return []
+      }
+
+      return [
+        todoCompletionChangedEvent.create({
+          todoId: command.todoId,
+          completed: command.completed,
+        }),
+      ]
+    }),
+  )

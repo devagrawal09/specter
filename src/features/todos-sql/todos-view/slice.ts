@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { Effect } from 'effect'
 import { z } from 'zod'
-import { createProjectionSpec } from '../../../lib_legacy/registry.builders'
+import { createProjectionSpec } from '../../../lib2'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -22,27 +23,37 @@ export const todosSqlProjection = createProjectionSpec('todosProjection')
     }),
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(todoSqlListItems)
-        .values({
-          id: event.payload.todoId,
-          title: event.payload.title,
+    [todoAddedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string; title: string }
+
+        yield* db.insert(todoSqlListItems).values({
+          id: payload.todoId,
+          title: payload.title,
           completed: false,
         })
-        .run()
-    },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(todoSqlListItems)
-        .set({ completed: event.payload.completed })
-        .where(eq(todoSqlListItems.id, event.payload.todoId))
-        .run()
-    },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(todoSqlListItems)
-        .set({ removed: true })
-        .where(eq(todoSqlListItems.id, event.payload.todoId))
-        .run()
-    },
+      }),
+    [todoCompletionChangedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string; completed: boolean }
+
+        yield* db
+          .update(todoSqlListItems)
+          .set({ completed: payload.completed })
+          .where(eq(todoSqlListItems.id, payload.todoId))
+      }),
+    [todoRemovedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
+
+        yield* db
+          .update(todoSqlListItems)
+          .set({ removed: true })
+          .where(eq(todoSqlListItems.id, payload.todoId))
+      }),
   })
   .scenarios(
     {
@@ -98,23 +109,26 @@ export const todosSqlProjection = createProjectionSpec('todosProjection')
       expect: [],
     },
   )
-  .query((tx, input) => {
-    const visiblePredicate = eq(todoSqlListItems.removed, false)
-    const activePredicate = and(
-      visiblePredicate,
-      eq(todoSqlListItems.completed, false),
-    )
-    const completedPredicate = and(
-      visiblePredicate,
-      eq(todoSqlListItems.completed, true),
-    )
+  .handle((input, query) =>
+    Effect.gen(function* () {
+      const db = input
+      const visiblePredicate = eq(todoSqlListItems.removed, false)
+      const activePredicate = and(
+        visiblePredicate,
+        eq(todoSqlListItems.completed, false),
+      )
+      const completedPredicate = and(
+        visiblePredicate,
+        eq(todoSqlListItems.completed, true),
+      )
 
-    const statusPredicate =
-      input.status === 'active'
-        ? activePredicate
-        : input.status === 'completed'
-          ? completedPredicate
-          : visiblePredicate
+      const statusPredicate =
+        query.status === 'active'
+          ? activePredicate
+          : query.status === 'completed'
+            ? completedPredicate
+            : visiblePredicate
 
-    return tx.select().from(todoSqlListItems).where(statusPredicate).all()
-  })
+      return yield* db.select().from(todoSqlListItems).where(statusPredicate)
+    }),
+  )

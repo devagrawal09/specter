@@ -1,8 +1,9 @@
 import * as SqlClient from '@effect/sql/SqlClient'
 import { Data, Effect } from 'effect'
-import type { z } from 'zod'
+import type { ZodError } from 'zod'
 
 import { EventLogService, SliceStores } from './services'
+import type { Event } from './event'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -18,14 +19,14 @@ export class EmptyCommandRegistryError extends Data.TaggedError(
 export class InvalidCommandError extends Data.TaggedError(
   'InvalidCommandError',
 )<{
-  readonly error: z.ZodError
+  readonly error: ZodError
 }> {}
 
 export class InvalidProjectionInputError extends Data.TaggedError(
   'InvalidProjectionInputError',
 )<{
   readonly projectionName: string
-  readonly error: z.ZodError
+  readonly error: ZodError
 }> {}
 
 export class UnknownCommandError extends Data.TaggedError(
@@ -50,26 +51,27 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
   const registry: {
     commands: Record<string, CommandSlice>
     projections: Record<string, ProjectionSlice>
-    reactions: Record<string, ReactionSlice<string, CommandEnvelope>>
+    reactions: Record<string, ReactionSlice<string, unknown>>
   } = { commands: {}, projections: {}, reactions: {} }
+  const sliceNames = new Set<string>()
 
   registrations.forEach((registration) => {
+    if (sliceNames.has(registration.name)) {
+      throw new DuplicateSliceNameError({ sliceName: registration.name })
+    }
+
+    sliceNames.add(registration.name)
+
     switch (registration.kind) {
       case 'command': {
-        if (registry.commands[registration.name])
-          throw new DuplicateSliceNameError({ sliceName: registration.name })
         registry.commands[registration.name] = registration
         break
       }
       case 'projection': {
-        if (registry.projections[registration.name])
-          throw new DuplicateSliceNameError({ sliceName: registration.name })
         registry.projections[registration.name] = registration
         break
       }
       case 'reaction': {
-        if (registry.reactions[registration.name])
-          throw new DuplicateSliceNameError({ sliceName: registration.name })
         registry.reactions[registration.name] = registration
         break
       }
@@ -78,7 +80,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
   const reactionExecs = new Map<
     string,
-    (command: CommandEnvelope) => Effect.Effect<unknown, unknown, unknown>
+    (command: unknown) => Effect.Effect<unknown, unknown, unknown>
   >()
 
   function catchUpSlice(slice: SliceRegistration) {
@@ -114,28 +116,51 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     })
   }
 
-  function dispatch(c: { type: string; payload: unknown }) {
+  function dispatch(c: CommandEnvelope) {
     return Effect.gen(function* () {
       const sql = yield* SqlClient.SqlClient
       const commandSlice = registry.commands[c.type]
-      const command = commandSlice.schema.parse(c.payload)
+
+      if (!commandSlice) {
+        return yield* Effect.fail(
+          new UnknownCommandError({ commandName: c.type }),
+        )
+      }
+
+      const parsedCommand = commandSlice.schema.safeParse(c.payload)
+
+      if (!parsedCommand.success) {
+        return yield* Effect.fail(
+          new InvalidCommandError({ error: parsedCommand.error }),
+        )
+      }
+
       return yield* sql.withTransaction(
         Effect.gen(function* () {
           const eventLog = yield* EventLogService
           const { store } = yield* catchUpSlice(commandSlice)
-          const events = yield* commandSlice.handle(store.state, command)
+          const events = yield* commandSlice.handle(
+            store.state,
+            parsedCommand.data,
+          ) as Effect.Effect<Event[], unknown, never>
           return yield* eventLog.append(events)
         }),
       )
     })
   }
 
-  function getReactionExec(reaction: ReactionSlice) {
+  function getReactionExec(reaction: ReactionSlice<string, unknown>) {
     return Effect.gen(function* () {
       const cachedExec = reactionExecs.get(reaction.name)
       if (cachedExec) return cachedExec
-      if (!reaction.plugin) return dispatch
-      const exec = yield* reaction.plugin(dispatch)
+      if (!reaction.plugin) {
+        return (payload: unknown) => dispatch(payload as CommandEnvelope)
+      }
+      const exec = yield* reaction.plugin(dispatch) as Effect.Effect<
+        (command: unknown) => Effect.Effect<unknown, unknown, never>,
+        unknown,
+        never
+      >
       reactionExecs.set(reaction.name, exec)
       return exec
     })
@@ -146,14 +171,32 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     query: (projectionName: string, input: unknown) =>
       Effect.gen(function* () {
         const registration = registry.projections[projectionName]
+
+        if (!registration) {
+          return yield* Effect.fail(
+            new UnknownProjectionError({ projectionName }),
+          )
+        }
+
+        const parsedInput = registration.schema.safeParse(input)
+
+        if (!parsedInput.success) {
+          return yield* Effect.fail(
+            new InvalidProjectionInputError({
+              projectionName,
+              error: parsedInput.error,
+            }),
+          )
+        }
+
         const sql = yield* SqlClient.SqlClient
         return yield* sql.withTransaction(
           Effect.gen(function* () {
             const { store } = yield* catchUpSlice(registration)
             return yield* registration.handle(
               store.state,
-              registration.schema.parse(input),
-            )
+              parsedInput.data,
+            ) as Effect.Effect<unknown, unknown, never>
           }),
         )
       }),
@@ -167,10 +210,12 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
               Effect.gen(function* () {
                 const { store, advanced } = yield* catchUpSlice(reaction)
                 if (!advanced) return false
-                const effect = yield* reaction.handle(store.state)
+                const effect = yield* reaction.handle(
+                  store.state,
+                ) as Effect.Effect<unknown, unknown, never>
                 if (!effect) return false
                 const exec = yield* getReactionExec(reaction)
-                yield* exec(effect)
+                yield* exec(effect) as Effect.Effect<unknown, unknown, never>
                 return true
               }),
             ),

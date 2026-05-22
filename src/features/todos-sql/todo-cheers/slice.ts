@@ -1,7 +1,8 @@
 import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { Effect } from 'effect'
 import { z } from 'zod'
-import { createProjectionSpec } from '../../../lib_legacy/registry.builders'
+import { createProjectionSpec } from '../../../lib2'
 import { todoCheerCreatedEvent } from '../../todos-json/events'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
@@ -18,16 +19,17 @@ export type TodoSqlCheersState = {
 export const todoSqlCheers = createProjectionSpec('todoCheers')
   .schema(z.object({}))
   .apply({
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(todoSqlCheersState)
-        .values({
-          milestone: event.payload.milestone,
-          message: event.payload.message,
+    [todoCheerCreatedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { milestone: number; message: string }
+
+        yield* db.insert(todoSqlCheersState).values({
+          milestone: payload.milestone,
+          message: payload.message,
         })
-        .run()
-    },
+      }),
   })
-  .state({ latestCheer: null } as TodoSqlCheersState)
   .scenarios(
     {
       given: [],
@@ -54,12 +56,15 @@ export const todoSqlCheers = createProjectionSpec('todoCheers')
       },
     },
   )
-  .query((tx) => ({
-    latestCheer:
-      tx
+  .handle((input) =>
+    Effect.gen(function* () {
+      const db = input
+      const latestCheers = yield* db
         .select()
         .from(todoSqlCheersState)
         .orderBy(desc(todoSqlCheersState.milestone))
         .limit(1)
-        .get() ?? null,
-  }))
+
+      return { latestCheer: latestCheers[0] ?? null }
+    }),
+  )

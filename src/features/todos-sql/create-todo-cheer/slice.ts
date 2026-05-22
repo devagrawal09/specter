@@ -1,7 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { Effect } from 'effect'
 import { z } from 'zod'
-import { createCommandSpec } from '../../../lib_legacy/registry.builders'
+import { createCommandSpec } from '../../../lib2'
 import {
   errorEvent,
   todoAddedEvent,
@@ -103,79 +104,98 @@ export const createTodoCheerSql = createCommandSpec('createTodoCheer')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, tx) => {
-      tx.insert(createTodoCheerSqlTodoStates)
-        .values({
-          todoId: event.payload.todoId,
+    [todoAddedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
+
+        yield* db.insert(createTodoCheerSqlTodoStates).values({
+          todoId: payload.todoId,
           completed: false,
           removed: false,
         })
-        .run()
-    },
-    [todoCompletionChangedEvent.type]: (event, tx) => {
-      tx.update(createTodoCheerSqlTodoStates)
-        .set({ completed: event.payload.completed })
-        .where(eq(createTodoCheerSqlTodoStates.todoId, event.payload.todoId))
-        .run()
-    },
-    [todoRemovedEvent.type]: (event, tx) => {
-      tx.update(createTodoCheerSqlTodoStates)
-        .set({ removed: true })
-        .where(eq(createTodoCheerSqlTodoStates.todoId, event.payload.todoId))
-        .run()
-    },
-    [todoCheerCreatedEvent.type]: (event, tx) => {
-      tx.insert(createTodoCheerSqlMilestoneStates)
-        .values({ milestone: event.payload.milestone })
-        .run()
-    },
-  })
-  .decide((command, tx) => {
-    if (command.milestone % 5 !== 0) {
-      return [
-        errorEvent.create({
-          message: 'Todo cheer milestone must be a multiple of 5',
-        }),
-      ]
-    }
-
-    const completedCount = tx
-      .select()
-      .from(createTodoCheerSqlTodoStates)
-      .where(
-        and(
-          eq(createTodoCheerSqlTodoStates.completed, true),
-          eq(createTodoCheerSqlTodoStates.removed, false),
-        ),
-      )
-      .all().length
-
-    if (completedCount < command.milestone) {
-      return [
-        errorEvent.create({
-          message: 'Todo cheer milestone has not been reached',
-        }),
-      ]
-    }
-
-    const existingMilestone = tx
-      .select()
-      .from(createTodoCheerSqlMilestoneStates)
-      .where(eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone))
-      .get()
-
-    if (existingMilestone) {
-      return [
-        errorEvent.create({
-          message: 'Todo cheer milestone already exists',
-        }),
-      ]
-    }
-
-    return [
-      todoCheerCreatedEvent.create({
-        milestone: command.milestone,
-        message: `Nice work: ${command.milestone} todos completed.`,
       }),
-    ]
+    [todoCompletionChangedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string; completed: boolean }
+
+        yield* db
+          .update(createTodoCheerSqlTodoStates)
+          .set({ completed: payload.completed })
+          .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
+      }),
+    [todoRemovedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { todoId: string }
+
+        yield* db
+          .update(createTodoCheerSqlTodoStates)
+          .set({ removed: true })
+          .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
+      }),
+    [todoCheerCreatedEvent.type]: (event, input) =>
+      Effect.gen(function* () {
+        const db = input
+        const payload = event.payload as { milestone: number }
+
+        yield* db
+          .insert(createTodoCheerSqlMilestoneStates)
+          .values({ milestone: payload.milestone })
+      }),
   })
+  .handle((input, command) =>
+    Effect.gen(function* () {
+      const db = input
+
+      if (command.milestone % 5 !== 0) {
+        return [
+          errorEvent.create({
+            message: 'Todo cheer milestone must be a multiple of 5',
+          }),
+        ]
+      }
+
+      const completedTodos = yield* db
+        .select()
+        .from(createTodoCheerSqlTodoStates)
+        .where(
+          and(
+            eq(createTodoCheerSqlTodoStates.completed, true),
+            eq(createTodoCheerSqlTodoStates.removed, false),
+          ),
+        )
+      const completedCount = completedTodos.length
+
+      if (completedCount < command.milestone) {
+        return [
+          errorEvent.create({
+            message: 'Todo cheer milestone has not been reached',
+          }),
+        ]
+      }
+
+      const existingMilestones = yield* db
+        .select()
+        .from(createTodoCheerSqlMilestoneStates)
+        .where(
+          eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone),
+        )
+
+      if (existingMilestones[0]) {
+        return [
+          errorEvent.create({
+            message: 'Todo cheer milestone already exists',
+          }),
+        ]
+      }
+
+      return [
+        todoCheerCreatedEvent.create({
+          milestone: command.milestone,
+          message: `Nice work: ${command.milestone} todos completed.`,
+        }),
+      ]
+    }),
+  )

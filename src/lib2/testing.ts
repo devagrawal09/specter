@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 
 import type { Event, PersistedEvent } from './event'
-import { EventLogService, SliceStates } from './services'
+import { EventLogService, SliceStores } from './services'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -11,29 +11,29 @@ import type {
 } from './slice'
 
 export type CommandScenario<TPayload = unknown> = {
-  given: readonly Event[]
+  given: readonly unknown[]
   when: TPayload
-  expect: readonly Event[]
+  expect: readonly unknown[]
 }
 
 export type ProjectionScenario<TWhen = unknown, TExpect = unknown> = {
-  given: readonly Event[]
+  given: readonly unknown[]
   when: TWhen
   expect: TExpect
 }
 
 export type ReactionScenario<TPayload = CommandEnvelope> = {
-  given: readonly Event[]
+  given: readonly unknown[]
   expect: readonly TPayload[]
 }
 
 export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given))
+    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
 
     const eventLog = yield* EventLogService
-    const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name)
+    const sliceStates = yield* SliceStores
+    const state = sliceStates.get(slice.name)
 
     if (slice.apply) {
       const eventTypes = Object.keys(slice.apply).filter(
@@ -50,7 +50,7 @@ export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
               const handler = slice.apply?.[event.type]
 
               if (handler) {
-                yield* handler(event, state.input as never)
+                yield* handler(event, state.state as never)
               }
 
               yield* state.setLastAppliedOrder(event.order)
@@ -59,7 +59,7 @@ export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
       }
     }
 
-    return yield* slice.decide(scenario.when as never, state.input as never)
+    return yield* slice.handle(state.state as never, scenario.when as never)
   })
 }
 
@@ -68,11 +68,11 @@ export function queryProjection(
   scenario: ProjectionScenario,
 ) {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given))
+    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
 
     const eventLog = yield* EventLogService
-    const sliceStates = yield* SliceStates
-    const state = sliceStates.create(slice.name)
+    const sliceStates = yield* SliceStores
+    const state = sliceStates.get(slice.name)
 
     if (slice.apply) {
       const eventTypes = Object.keys(slice.apply).filter(
@@ -89,7 +89,7 @@ export function queryProjection(
               const handler = slice.apply?.[event.type]
 
               if (handler) {
-                yield* handler(event, state.input as never)
+                yield* handler(event, state.state as never)
               }
 
               yield* state.setLastAppliedOrder(event.order)
@@ -98,8 +98,8 @@ export function queryProjection(
       }
     }
 
-    return yield* slice.query(
-      state.input as never,
+    return yield* slice.handle(
+      state.state as never,
       slice.schema.parse(scenario.when),
     )
   })
@@ -108,17 +108,20 @@ export function queryProjection(
 export function reactToScenario<TPayload>(
   slice: ReactionSlice<string, TPayload>,
   scenario: ReactionScenario<TPayload>,
-): Effect.Effect<TPayload[], unknown, SliceStates> {
+): Effect.Effect<TPayload[], unknown, SliceStores> {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given))
+    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
 
     const payloads: TPayload[] = []
 
-    yield* slice.react((payload) =>
-      Effect.sync(() => {
-        payloads.push(payload)
-      }),
-    )
+    const sliceStates = yield* SliceStores
+    const state = sliceStates.get(slice.name)
+
+    const payload = yield* slice.handle(state.state)
+
+    if (payload !== undefined) {
+      payloads.push(payload)
+    }
 
     return payloads
   })
@@ -129,7 +132,7 @@ export function replay(
   events: readonly PersistedEvent[],
 ) {
   return Effect.gen(function* () {
-    const sliceStates = yield* SliceStates
+    const sliceStates = yield* SliceStores
 
     yield* Effect.forEach(events, (event) =>
       Effect.forEach(
@@ -138,11 +141,11 @@ export function replay(
         ),
         (registration) =>
           Effect.gen(function* () {
-            const state = sliceStates.create(registration.name)
+            const state = sliceStates.get(registration.name)
             const handler = registration.apply?.[event.type]
 
             if (handler) {
-              yield* handler(event, state.input as never)
+              yield* handler(event, state.state as never)
             }
 
             yield* state.setLastAppliedOrder(event.order)

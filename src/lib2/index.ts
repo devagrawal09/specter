@@ -1,10 +1,14 @@
 export type { Event, EventSpec, PersistedEvent } from './event'
 export { createEventSpec } from './event'
+export {
+  createCommandSpec,
+  createProjectionSpec,
+  createReactionSpec,
+} from './builders'
 export { EventNotPersistedError, EventPayloadParseError } from './event-log'
 export { createRegistryRuntimeLayer } from './layers'
 export {
   createRegistry,
-  DuplicateCommandNameError,
   DuplicateSliceNameError,
   EmptyCommandRegistryError,
   InvalidCommandError,
@@ -28,8 +32,11 @@ export type {
 export type {
   ApplyHandlers,
   CommandEnvelope,
+  CommandDispatch,
   CommandSlice,
   ProjectionSlice,
+  ReactionExec,
+  ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
 } from './slice'

@@ -1,4 +1,5 @@
 import { Context, type Effect } from 'effect'
+import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 
 import type { Event, PersistedEvent } from './event'
 
@@ -19,17 +20,17 @@ export class EventLogService extends Context.Tag('lib2/EventLog')<
   EventLogPort
 >() {}
 
-export type SliceStateStore = {
-  create: (sliceName: string) => SliceState
+export type SliceRepo = {
+  get: (sliceName: string) => SliceStore
 }
 
-export type SliceState = {
-  input: unknown
+export type SliceStore = {
+  state: SqliteRemoteDatabase
   lastAppliedOrder: Effect.Effect<number, unknown>
   setLastAppliedOrder: (order: number) => Effect.Effect<void, unknown>
 }
 
-export class SliceStates extends Context.Tag('lib2/SliceStates')<
-  SliceStates,
-  SliceStateStore
+export class SliceStores extends Context.Tag('lib2/SliceStores')<
+  SliceStores,
+  SliceRepo
 >() {}
