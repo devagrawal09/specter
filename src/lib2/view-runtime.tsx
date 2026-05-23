@@ -1,9 +1,4 @@
-import {
-  createEffect,
-  createSignal,
-  createStore,
-  Show,
-} from 'solid-js'
+import { createEffect, createSignal, createStore, Show } from 'solid-js'
 
 import { api } from '../api-client'
 import { searchParams } from '../location'
@@ -28,7 +23,7 @@ export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
 }) {
   const queryEntries = Object.entries(props.view.queries)
   const triggerEntries = Object.entries(props.view.triggers)
-  const initialState = Object.fromEntries(
+  const initialState: Record<string, unknown> = Object.fromEntries(
     queryEntries.map(([alias]) => [alias, undefined]),
   )
   const [queryStores, setQueryStores] = createStore(initialState)
@@ -51,13 +46,7 @@ export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
           throw new Error(result.message)
         }
 
-        const updateQueryStores = setQueryStores as (
-          update: (store: Record<string, unknown>) => void,
-        ) => void
-
-        updateQueryStores((store) => {
-          store[alias] = result.data
-        })
+        setQueryStores((store) => ({ ...store, [alias]: result.data }))
       }),
     )
     setIsReady(true)

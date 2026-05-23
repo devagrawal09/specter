@@ -1,10 +1,14 @@
 import { Show } from 'solid-js'
 
-import { todoSqlCheers } from '../features/todos-sql/todo-cheers/slice'
 import { createViewSpec } from '../lib2/builders'
+import type { TodoSqlCheersRef } from '../features/todos-sql/registry'
+
+const todoCheers: TodoSqlCheersRef = {
+  name: 'todoCheers',
+}
 
 export const TodoCheersView = createViewSpec('todo-cheers')
-  .queries({ cheer: todoSqlCheers })
+  .queries({ cheer: todoCheers })
   .triggers({})
   .scenarios([])
   .component((props) => (

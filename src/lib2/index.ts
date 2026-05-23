@@ -32,6 +32,7 @@ export type {
 } from './testing'
 export type {
   ApplyHandlers,
+  CommandRef,
   CommandEnvelope,
   CommandDispatch,
   CommandSlice,
@@ -40,6 +41,10 @@ export type {
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  ProjectionRef,
+  ViewCommandRef,
+  ViewComponent,
+  ViewProjectionRef,
   ViewProps,
   ViewRegistration,
   ViewScenario,

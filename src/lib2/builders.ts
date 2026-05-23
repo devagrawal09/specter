@@ -14,8 +14,10 @@ import type {
   ProjectionSlice,
   ReactionPlugin,
   ReactionSlice,
+  ViewCommandRef,
   ViewProps,
   ViewComponent,
+  ViewProjectionRef,
   ViewRegistration,
   ViewScenario,
 } from './slice'
@@ -120,30 +122,28 @@ type ReactionScenarioStep<TName extends string, TPayload> = {
 }
 
 type ViewQueriesStep<TName extends string> = {
-  queries: <TQueries extends Record<string, ProjectionSlice>>(
+  queries: <TQueries extends Record<string, ViewProjectionRef>>(
     queries: TQueries,
   ) => ViewTriggersStep<TName, TQueries>
 }
 
 type ViewTriggersStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionSlice>,
+  TQueries extends Record<string, ViewProjectionRef>,
 > = {
-  triggers: <TTriggers extends Record<string, CommandSlice>>(
+  triggers: <TTriggers extends Record<string, ViewCommandRef>>(
     triggers: TTriggers,
   ) => ViewScenariosStep<TName, TQueries, TTriggers>
 }
 
 type ViewScenariosStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionSlice>,
-  TTriggers extends Record<string, CommandSlice>,
+  TQueries extends Record<string, ViewProjectionRef>,
+  TTriggers extends Record<string, ViewCommandRef>,
 > = {
   scenarios: (
     scenarios: readonly ViewScenario<{
-      [TKey in keyof TQueries]: TQueries[TKey] extends ProjectionSlice<
-        string,
-        AnySchema,
+      [TKey in keyof TQueries]: TQueries[TKey] extends ViewProjectionRef<
         infer TResult
       >
         ? TResult
@@ -154,8 +154,8 @@ type ViewScenariosStep<
 
 type ViewComponentStep<
   TName extends string,
-  TQueries extends Record<string, ProjectionSlice>,
-  TTriggers extends Record<string, CommandSlice>,
+  TQueries extends Record<string, ViewProjectionRef>,
+  TTriggers extends Record<string, ViewCommandRef>,
 > = {
   component: (
     component: ViewComponent<ViewProps<TQueries, TTriggers>>,

@@ -1,11 +1,11 @@
 {
-  "id": "cfd0fc7c-9284-4aa4-8106-0cddb58253e7",
-  "prevId": "759229a6-9f8c-4585-b00a-9efd11e8a812",
   "version": "6",
   "dialect": "sqlite",
+  "id": "cfd0fc7c-9284-4aa4-8106-0cddb58253e7",
+  "prevId": "759229a6-9f8c-4585-b00a-9efd11e8a812",
   "tables": {
-    "create_todo_cheer_milestone_states": {
-      "name": "create_todo_cheer_milestone_states",
+    "create_todo_cheer_sql_milestone_states": {
+      "name": "create_todo_cheer_sql_milestone_states",
       "columns": {
         "milestone": {
           "name": "milestone",
@@ -21,8 +21,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "create_todo_cheer_todo_states": {
-      "name": "create_todo_cheer_todo_states",
+    "create_todo_cheer_sql_todo_states": {
+      "name": "create_todo_cheer_sql_todo_states",
       "columns": {
         "todo_id": {
           "name": "todo_id",
@@ -57,10 +57,17 @@
     "events": {
       "name": "events",
       "columns": {
+        "order": {
+          "name": "order",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": true
+        },
         "id": {
           "name": "id",
           "type": "text",
-          "primaryKey": true,
+          "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
@@ -86,14 +93,53 @@
           "autoincrement": false
         }
       },
+      "indexes": {
+        "events_id_unique": {
+          "name": "events_id_unique",
+          "columns": [
+            "id"
+          ],
+          "isUnique": true
+        },
+        "events_order_idx": {
+          "name": "events_order_idx",
+          "columns": [
+            "order"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "slice_cursors": {
+      "name": "slice_cursors",
+      "columns": {
+        "slice_name": {
+          "name": "slice_name",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "last_applied_order": {
+          "name": "last_applied_order",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
       "indexes": {},
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "todo_cheer_milestone_states": {
-      "name": "todo_cheer_milestone_states",
+    "todo_cheer_sql_milestone_states": {
+      "name": "todo_cheer_sql_milestone_states",
       "columns": {
         "milestone": {
           "name": "milestone",
@@ -109,8 +155,99 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "todo_cheers": {
-      "name": "todo_cheers",
+    "todo_completion_cheer_sql_todo_states": {
+      "name": "todo_completion_cheer_sql_todo_states",
+      "columns": {
+        "todo_id": {
+          "name": "todo_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed": {
+          "name": "completed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "removed": {
+          "name": "removed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "todo_completion_sql_states": {
+      "name": "todo_completion_sql_states",
+      "columns": {
+        "todo_id": {
+          "name": "todo_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed": {
+          "name": "completed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "removed": {
+          "name": "removed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "todo_removal_sql_states": {
+      "name": "todo_removal_sql_states",
+      "columns": {
+        "todo_id": {
+          "name": "todo_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "removed": {
+          "name": "removed",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "todo_sql_cheers": {
+      "name": "todo_sql_cheers",
       "columns": {
         "milestone": {
           "name": "milestone",
@@ -133,74 +270,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "todo_completion_cheer_todo_states": {
-      "name": "todo_completion_cheer_todo_states",
-      "columns": {
-        "todo_id": {
-          "name": "todo_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "completed": {
-          "name": "completed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "removed": {
-          "name": "removed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "todo_completion_states": {
-      "name": "todo_completion_states",
-      "columns": {
-        "todo_id": {
-          "name": "todo_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "completed": {
-          "name": "completed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        },
-        "removed": {
-          "name": "removed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "todo_list_items": {
-      "name": "todo_list_items",
+    "todo_sql_list_items": {
+      "name": "todo_sql_list_items",
       "columns": {
         "id": {
           "name": "id",
@@ -238,39 +309,14 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
-    },
-    "todo_removal_states": {
-      "name": "todo_removal_states",
-      "columns": {
-        "todo_id": {
-          "name": "todo_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "removed": {
-          "name": "removed",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
     }
   },
   "views": {},
   "enums": {},
   "_meta": {
-    "columns": {},
     "schemas": {},
-    "tables": {}
+    "tables": {},
+    "columns": {}
   },
   "internal": {
     "indexes": {}

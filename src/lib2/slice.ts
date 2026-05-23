@@ -9,7 +9,10 @@ import type { EventLogService, SliceStores } from './services'
 
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
-export type RegistryServices = EventLogService | SliceStores | SqlClient.SqlClient
+export type RegistryServices =
+  | EventLogService
+  | SliceStores
+  | SqlClient.SqlClient
 
 export type CommandEnvelope<
   TName extends string = string,
@@ -58,17 +61,39 @@ export type ProjectionSlice<
   ) => Effect.Effect<TResult, unknown, never>
 }
 
-type ProjectionQueryResult<TRegistration> =
-  TRegistration extends ProjectionSlice<string, AnySchema, infer TResult>
-    ? TResult
+export type ViewProjectionRef<
+  TResult = unknown,
+  TName extends string = string,
+> = {
+  name: TName
+  result?: TResult
+}
+
+export type ViewCommandRef<
+  TPayload = unknown,
+  TName extends string = string,
+> = {
+  name: TName
+  payload?: TPayload
+}
+
+export type ProjectionRef<TRegistration> =
+  TRegistration extends ProjectionSlice<infer TName, AnySchema, infer TResult>
+    ? ViewProjectionRef<TResult, TName>
     : never
+
+export type CommandRef<TRegistration> =
+  TRegistration extends CommandSlice<infer TName, infer TSchema>
+    ? ViewCommandRef<SchemaType<TSchema>, TName>
+    : never
+
+type ProjectionQueryResult<TRegistration> =
+  TRegistration extends ViewProjectionRef<infer TResult> ? TResult : never
 
 type CommandPayload<TRegistration> =
-  TRegistration extends CommandSlice<string, infer TSchema>
-    ? SchemaType<TSchema>
-    : never
+  TRegistration extends ViewCommandRef<infer TPayload> ? TPayload : never
 
-type ViewScenarioGiven<TQueries extends Record<string, ProjectionSlice>> = {
+type ViewScenarioGiven<TQueries extends Record<string, ViewProjectionRef>> = {
   [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
 }
 
@@ -80,8 +105,8 @@ export type ViewScenario<TGiven = unknown> = {
 }
 
 export type ViewProps<
-  TQueries extends Record<string, ProjectionSlice>,
-  TTriggers extends Record<string, CommandSlice>,
+  TQueries extends Record<string, ViewProjectionRef>,
+  TTriggers extends Record<string, ViewCommandRef>,
 > = {
   [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
 } & {
@@ -96,11 +121,14 @@ export type ViewComponent<TProps extends Record<string, unknown>> = {
 
 export type ViewRegistration<
   TName extends string = string,
-  TQueries extends Record<string, ProjectionSlice> = Record<
+  TQueries extends Record<string, ViewProjectionRef> = Record<
     string,
-    ProjectionSlice
+    ViewProjectionRef
   >,
-  TTriggers extends Record<string, CommandSlice> = Record<string, CommandSlice>,
+  TTriggers extends Record<string, ViewCommandRef> = Record<
+    string,
+    ViewCommandRef
+  >,
 > = {
   kind: 'view'
   name: TName

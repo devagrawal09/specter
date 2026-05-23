@@ -1,11 +1,29 @@
 import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
-import { addTodoSql } from '../features/todos-sql/add-todo/slice'
-import { changeTodoCompletionSql } from '../features/todos-sql/change-todo-completion/slice'
-import { removeTodoSql } from '../features/todos-sql/remove-todo/slice'
-import { todosSqlProjection } from '../features/todos-sql/todos-view/slice'
 import { searchParams, setSearch } from '../location'
 import { createViewSpec } from '../lib2/builders'
+import type {
+  AddTodoSqlRef,
+  ChangeTodoCompletionSqlRef,
+  RemoveTodoSqlRef,
+  TodosSqlProjectionRef,
+} from '../features/todos-sql/registry'
+
+const todosProjection: TodosSqlProjectionRef = {
+  name: 'todosProjection',
+}
+
+const addTodo: AddTodoSqlRef = {
+  name: 'addTodo',
+}
+
+const removeTodo: RemoveTodoSqlRef = {
+  name: 'removeTodo',
+}
+
+const changeTodoCompletion: ChangeTodoCompletionSqlRef = {
+  name: 'changeTodoCompletion',
+}
 
 const filterOptions = [
   { status: 'all', label: 'All' },
@@ -14,11 +32,11 @@ const filterOptions = [
 ] as const
 
 export const TodosView = createViewSpec('todos-view')
-  .queries({ todos: todosSqlProjection })
+  .queries({ todos: todosProjection })
   .triggers({
-    add: addTodoSql,
-    remove: removeTodoSql,
-    change: changeTodoCompletionSql,
+    add: addTodo,
+    remove: removeTodo,
+    change: changeTodoCompletion,
   })
   .scenarios([])
   .component((props) => {
