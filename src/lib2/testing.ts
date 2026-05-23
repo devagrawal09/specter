@@ -1,4 +1,5 @@
 import { Effect } from 'effect'
+import * as Schema from 'effect/Schema'
 
 import type { Event, PersistedEvent } from './event'
 import { EventLogService, SliceStores } from './services'
@@ -100,7 +101,7 @@ export function queryProjection(
 
     return yield* slice.handle(
       state.state as never,
-      slice.schema.parse(scenario.when),
+      Schema.decodeUnknownSync(slice.schema)(scenario.when),
     )
   })
 }

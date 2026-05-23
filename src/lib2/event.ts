@@ -1,9 +1,9 @@
-import type { z } from 'zod'
+import * as Schema from 'effect/Schema'
 
-declare const eventBrand: unique symbol
+type AnySchema = Schema.Schema.AnyNoContext
+type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
 
 export type Event<TType extends string = string, TPayload = unknown> = {
-  readonly [eventBrand]: TType
   id: string
   type: TType
   payload: TPayload
@@ -18,25 +18,27 @@ export type PersistedEvent<
 
 export type EventSpec<TType extends string = string, TPayload = unknown> = {
   type: TType
-  schema: z.ZodType
+  schema: AnySchema
   create: (payload: TPayload) => Event<TType, TPayload>
   is: (event: Event) => event is Event<TType, TPayload>
 }
 
 export function createEventSpec<
   const TType extends string,
-  TSchema extends z.ZodType,
->(type: TType, schema: TSchema): EventSpec<TType, z.infer<TSchema>> {
+  TSchema extends AnySchema,
+>(type: TType, schema: TSchema): EventSpec<TType, SchemaType<TSchema>> {
+  const decode = Schema.decodeUnknownSync(schema)
+  const isPayload = Schema.is(schema)
+
   return {
     type,
     schema,
-    create: (payload) =>
-      ({
+    create: (payload) => ({
         id: crypto.randomUUID(),
         type,
-        payload: schema.parse(payload),
-      }) as Event<TType, z.infer<TSchema>>,
-    is: (event): event is Event<TType, z.infer<TSchema>> =>
-      event.type === type && schema.safeParse(event.payload).success,
+        payload: decode(payload),
+      }),
+    is: (event): event is Event<TType, SchemaType<TSchema>> =>
+      event.type === type && isPayload(event.payload),
   }
 }

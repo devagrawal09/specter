@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { createReactionSpec } from '../../../lib2'
+import { createReactionSpec } from '../../../lib2/builders'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,

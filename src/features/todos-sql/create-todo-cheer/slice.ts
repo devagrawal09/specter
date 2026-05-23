@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { z } from 'zod'
-import { createCommandSpec } from '../../../lib2'
+import * as Schema from 'effect/Schema'
+import { createCommandSpec } from '../../../lib2/builders'
 import {
   errorEvent,
   todoAddedEvent,
@@ -42,8 +42,8 @@ function completedTodoEvents(count: number) {
 
 export const createTodoCheerSql = createCommandSpec('createTodoCheer')
   .schema(
-    z.object({
-      milestone: z.number().int().positive(),
+    Schema.Struct({
+      milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
     }),
   )
   .scenarios(

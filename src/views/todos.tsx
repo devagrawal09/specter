@@ -1,11 +1,11 @@
 import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
-import { addTodo } from '../features/todos-json/add-todo/slice'
-import { changeTodoCompletion } from '../features/todos-json/change-todo-completion/slice'
-import { removeTodo } from '../features/todos-json/remove-todo/slice'
-import { todosProjection } from '../features/todos-json/todos-view/slice'
+import { addTodoSql } from '../features/todos-sql/add-todo/slice'
+import { changeTodoCompletionSql } from '../features/todos-sql/change-todo-completion/slice'
+import { removeTodoSql } from '../features/todos-sql/remove-todo/slice'
+import { todosSqlProjection } from '../features/todos-sql/todos-view/slice'
 import { searchParams, setSearch } from '../location'
-import { createViewSpec } from '../lib_legacy/registry.builders'
+import { createViewSpec } from '../lib2/builders'
 
 const filterOptions = [
   { status: 'all', label: 'All' },
@@ -14,11 +14,11 @@ const filterOptions = [
 ] as const
 
 export const TodosView = createViewSpec('todos-view')
-  .queries({ todos: todosProjection })
+  .queries({ todos: todosSqlProjection })
   .triggers({
-    add: addTodo,
-    remove: removeTodo,
-    change: changeTodoCompletion,
+    add: addTodoSql,
+    remove: removeTodoSql,
+    change: changeTodoCompletionSql,
   })
   .scenarios([])
   .component((props) => {

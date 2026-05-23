@@ -3,8 +3,10 @@ import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { join } from 'node:path'
 
-import * as schema from '../db/schema'
+import { events, sliceCursors } from '.'
 import { createMemoryJsonSliceStorage } from './json-storage'
+
+const schema = { events, sliceCursors }
 
 const migrationsFolder = join(process.cwd(), 'drizzle')
 

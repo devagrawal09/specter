@@ -1,18 +1,15 @@
 import { serveStatic } from '@hono/node-server/serve-static'
+import { Effect } from 'effect'
 import { Hono } from 'hono'
-import { z } from 'zod'
 
-import { db } from './db/client.server'
-import { createFileJsonSliceStorage } from './lib_legacy/json-storage'
-import { registry } from './lib_legacy/registry'
+import { todoSqlRegistrations } from './features/todos-sql/registry'
+import { createRegistry, createRegistryRuntimeLayer } from './lib2'
 import './styles.css?url'
 
-const jsonStorage = createFileJsonSliceStorage('./data/slice-state')
-
-const projectionInput = z.object({
-  projectionName: z.string(),
-  input: z.unknown(),
-})
+const registry = Effect.runSync(createRegistry(todoSqlRegistrations))
+const runtimeLayer = createRegistryRuntimeLayer({ sqliteFilename: './data/app.db' })
+let reactionQueueRunning = false
+let reactionQueueRequested = false
 
 type ApiError = {
   ok: false
@@ -20,67 +17,53 @@ type ApiError = {
   message: string
 }
 
-type SerializableProjectionResult =
-  | null
-  | string
-  | number
-  | boolean
-  | SerializableProjectionResult[]
-  | { [key: string]: SerializableProjectionResult }
-
 const app = new Hono()
 
 const routes = app
-  .get('/api/projection', (c) => {
+  .get('/api/projection', async (c) => {
     const rawInput = c.req.query('input')
     const parsedInput = rawInput ? safeJsonParse(rawInput) : {}
-    const body = projectionInput.safeParse({
-      projectionName: c.req.query('projectionName'),
-      input: parsedInput,
-    })
-
-    if (!body.success) {
-      return c.json(error('BAD_REQUEST', body.error.message), 400)
-    }
-
-    const registration = registry.projectionRegistrations.find(
-      (projection) => projection.name === body.data.projectionName,
-    )
-
-    if (!registration) {
-      return c.json(
-        error('NOT_FOUND', `Unknown projection: ${body.data.projectionName}`),
-        404,
-      )
-    }
-
-    const input = registration.schema.safeParse(body.data.input)
-
-    if (!input.success) {
-      return c.json(error('BAD_REQUEST', input.error.message), 400)
-    }
-
-    return c.json({
-      ok: true as const,
-      data: registry.queryProjection(registration, input.data, {
-        tx: db,
-        jsonStorage,
-      }) as SerializableProjectionResult,
-    })
-  })
-  .post('/api/command', async (c) => {
-    const body = registry.commandInput.safeParse(
-      await c.req.json().catch(() => null),
-    )
-
-    if (!body.success) {
-      return c.json(error('BAD_REQUEST', body.error.message), 400)
-    }
 
     try {
-      db.transaction((tx) =>
-        registry.dispatchCommandInTx(body.data, { tx, jsonStorage }),
+      const data = await Effect.runPromise(
+        registry
+          .query(c.req.query('projectionName') ?? '', parsedInput)
+          .pipe(Effect.provide(runtimeLayer)),
       )
+
+      return c.json({
+        ok: true as const,
+        data,
+      })
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Projection failed'
+
+      return c.json(
+        error('INTERNAL_ERROR', message),
+        500,
+      )
+    }
+  })
+  .post('/api/command', async (c) => {
+    const command = await c.req.json().catch(() => null)
+
+    try {
+      await Effect.runPromise(
+        registry
+          .dispatch({
+            type:
+              command && typeof command === 'object' && 'type' in command
+                ? String(command.type)
+                : '',
+            payload:
+              command && typeof command === 'object' && 'payload' in command
+                ? command.payload
+                : undefined,
+          })
+          .pipe(Effect.provide(runtimeLayer)),
+      )
+      startReactionQueue()
+
       return c.json({ ok: true as const })
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Command failed'
@@ -103,6 +86,41 @@ function safeJsonParse(value: string) {
     return JSON.parse(value)
   } catch {
     return undefined
+  }
+}
+
+function startReactionQueue() {
+  reactionQueueRequested = true
+
+  if (reactionQueueRunning) {
+    return
+  }
+
+  reactionQueueRunning = true
+  void drainReactionQueue()
+}
+
+async function drainReactionQueue() {
+  try {
+    while (reactionQueueRequested) {
+      reactionQueueRequested = false
+
+      while (
+        await Effect.runPromise(
+          registry.runReactions().pipe(Effect.provide(runtimeLayer)),
+        )
+      ) {
+        // Reactions can dispatch commands that produce more reaction work.
+      }
+    }
+  } catch (cause) {
+    console.error('Reaction queue failed', cause)
+  } finally {
+    reactionQueueRunning = false
+
+    if (reactionQueueRequested) {
+      startReactionQueue()
+    }
   }
 }
 

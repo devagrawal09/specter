@@ -1,8 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { z } from 'zod'
-import { createProjectionSpec } from '../../../lib2'
+import * as Either from 'effect/Either'
+import * as Schema from 'effect/Schema'
+import { createProjectionSpec } from '../../../lib2/builders'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -18,8 +19,10 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
 
 export const todosSqlProjection = createProjectionSpec('todosProjection')
   .schema(
-    z.object({
-      status: z.enum(['all', 'active', 'completed']).catch('all'),
+    Schema.Struct({
+      status: Schema.Literal('all', 'active', 'completed').annotations({
+        decodingFallback: () => Either.right('all' as const),
+      }),
     }),
   )
   .apply({

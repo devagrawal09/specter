@@ -1,13 +1,13 @@
-import z from 'zod'
-import { createCommandSpec } from '../../../lib2'
+import * as Schema from 'effect/Schema'
+import { createCommandSpec } from '../../../lib2/builders'
 import { errorEvent, todoAddedEvent } from '../../todos-json/events'
 
 const maxTitleLength = 120
 
 export const addTodoSql = createCommandSpec('addTodo')
   .schema(
-    z.object({
-      title: z.string(),
+    Schema.Struct({
+      title: Schema.String,
     }),
   )
   .scenarios(

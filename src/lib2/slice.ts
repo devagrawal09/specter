@@ -1,9 +1,15 @@
-// biome-ignore-all lint/suspicious/noExplicitAny: slice callbacks can require arbitrary Effect services.
-import type { z } from 'zod'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import type { Effect } from 'effect'
+import type * as SqlClient from '@effect/sql/SqlClient'
+import type * as Schema from 'effect/Schema'
+import type { Component } from 'solid-js'
 
 import type { Event, PersistedEvent } from './event'
+import type { EventLogService, SliceStores } from './services'
+
+type AnySchema = Schema.Schema.AnyNoContext
+type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
+export type RegistryServices = EventLogService | SliceStores | SqlClient.SqlClient
 
 export type CommandEnvelope<
   TName extends string = string,
@@ -15,12 +21,15 @@ export type CommandEnvelope<
 
 export type ApplyHandlers = Record<
   string,
-  (event: Event, db: SqliteRemoteDatabase) => Effect.Effect<void, unknown, any>
+  (
+    event: Event,
+    db: SqliteRemoteDatabase,
+  ) => Effect.Effect<void, unknown, never>
 >
 
 export type CommandSlice<
   TName extends string = string,
-  TSchema extends z.ZodType = z.ZodType,
+  TSchema extends AnySchema = AnySchema,
 > = {
   kind: 'command'
   name: TName
@@ -29,13 +38,14 @@ export type CommandSlice<
   scenarios?: readonly unknown[]
   handle: (
     db: SqliteRemoteDatabase,
-    command: z.infer<TSchema>,
-  ) => Effect.Effect<Event[], unknown, any>
+    command: SchemaType<TSchema>,
+  ) => Effect.Effect<Event[], unknown, never>
 }
 
 export type ProjectionSlice<
   TName extends string = string,
-  TSchema extends z.ZodType = z.ZodType,
+  TSchema extends AnySchema = AnySchema,
+  TResult = unknown,
 > = {
   kind: 'projection'
   name: TName
@@ -44,21 +54,73 @@ export type ProjectionSlice<
   scenarios?: readonly unknown[]
   handle: (
     db: SqliteRemoteDatabase,
-    query: z.infer<TSchema>,
-  ) => Effect.Effect<unknown, unknown, any>
+    query: SchemaType<TSchema>,
+  ) => Effect.Effect<TResult, unknown, never>
+}
+
+type ProjectionQueryResult<TRegistration> =
+  TRegistration extends ProjectionSlice<string, AnySchema, infer TResult>
+    ? TResult
+    : never
+
+type CommandPayload<TRegistration> =
+  TRegistration extends CommandSlice<string, infer TSchema>
+    ? SchemaType<TSchema>
+    : never
+
+type ViewScenarioGiven<TQueries extends Record<string, ProjectionSlice>> = {
+  [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
+}
+
+export type ViewScenario<TGiven = unknown> = {
+  name?: string
+  given: TGiven
+  when?: unknown
+  expect?: unknown
+}
+
+export type ViewProps<
+  TQueries extends Record<string, ProjectionSlice>,
+  TTriggers extends Record<string, CommandSlice>,
+> = {
+  [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
+} & {
+  [TKey in keyof TTriggers]: (
+    input: CommandPayload<TTriggers[TKey]>,
+  ) => Promise<void>
+}
+
+export type ViewComponent<TProps extends Record<string, unknown>> = {
+  bivarianceHack(props: TProps): ReturnType<Component<TProps>>
+}['bivarianceHack']
+
+export type ViewRegistration<
+  TName extends string = string,
+  TQueries extends Record<string, ProjectionSlice> = Record<
+    string,
+    ProjectionSlice
+  >,
+  TTriggers extends Record<string, CommandSlice> = Record<string, CommandSlice>,
+> = {
+  kind: 'view'
+  name: TName
+  queries: TQueries
+  triggers: TTriggers
+  scenarios: readonly ViewScenario<ViewScenarioGiven<TQueries>>[]
+  component: ViewComponent<ViewProps<TQueries, TTriggers>>
 }
 
 export type CommandDispatch = (
   command: CommandEnvelope,
-) => Effect.Effect<PersistedEvent[], unknown, any>
+) => Effect.Effect<PersistedEvent[], unknown, RegistryServices>
 
-export type ReactionExec<TPayload = CommandEnvelope> = (
-  reaction: TPayload,
-) => Effect.Effect<unknown, unknown, any>
+export type ReactionExec = (
+  reaction: unknown,
+) => Effect.Effect<unknown, unknown, RegistryServices>
 
-export type ReactionPlugin<TPayload = CommandEnvelope> = (
+export type ReactionPlugin = (
   command: CommandDispatch,
-) => Effect.Effect<ReactionExec<TPayload>, unknown, unknown>
+) => Effect.Effect<ReactionExec, unknown, RegistryServices>
 
 export type ReactionSlice<
   TName extends string = string,
@@ -67,14 +129,14 @@ export type ReactionSlice<
   kind: 'reaction'
   name: TName
   apply: ApplyHandlers
-  plugin?: ReactionPlugin<TPayload>
+  plugin?: ReactionPlugin
   scenarios?: readonly unknown[]
   handle: (
     db: SqliteRemoteDatabase,
-  ) => Effect.Effect<TPayload | undefined, unknown, any>
+  ) => Effect.Effect<TPayload | undefined, unknown, never>
 }
 
 export type SliceRegistration =
   | CommandSlice
   | ProjectionSlice
-  | ReactionSlice<string, any>
+  | ReactionSlice<string, unknown>

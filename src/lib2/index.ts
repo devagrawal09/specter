@@ -4,6 +4,7 @@ export {
   createCommandSpec,
   createProjectionSpec,
   createReactionSpec,
+  createViewSpec,
 } from './builders'
 export { EventNotPersistedError, EventPayloadParseError } from './event-log'
 export { createRegistryRuntimeLayer } from './layers'
@@ -39,4 +40,7 @@ export type {
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  ViewProps,
+  ViewRegistration,
+  ViewScenario,
 } from './slice'

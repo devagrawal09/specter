@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { z } from 'zod'
-import { createCommandSpec } from '../../../lib2'
+import * as Schema from 'effect/Schema'
+import { createCommandSpec } from '../../../lib2/builders'
 import {
   errorEvent,
   todoAddedEvent,
@@ -16,8 +16,8 @@ export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
 
 export const removeTodoSql = createCommandSpec('removeTodo')
   .schema(
-    z.object({
-      todoId: z.string().min(1, 'Todo id is required'),
+    Schema.Struct({
+      todoId: Schema.String.pipe(Schema.minLength(1)),
     }),
   )
   .scenarios(

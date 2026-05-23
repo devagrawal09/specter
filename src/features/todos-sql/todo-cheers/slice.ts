@@ -1,8 +1,8 @@
 import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { z } from 'zod'
-import { createProjectionSpec } from '../../../lib2'
+import * as Schema from 'effect/Schema'
+import { createProjectionSpec } from '../../../lib2/builders'
 import { todoCheerCreatedEvent } from '../../todos-json/events'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
@@ -17,7 +17,7 @@ export type TodoSqlCheersState = {
 }
 
 export const todoSqlCheers = createProjectionSpec('todoCheers')
-  .schema(z.object({}))
+  .schema(Schema.Struct({}))
   .apply({
     [todoCheerCreatedEvent.type]: (event, input) =>
       Effect.gen(function* () {
