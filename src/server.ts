@@ -7,7 +7,9 @@ import { createRegistry, createRegistryRuntimeLayer } from './lib2'
 import './styles.css?url'
 
 const registry = Effect.runSync(createRegistry(todoSqlRegistrations))
-const runtimeLayer = createRegistryRuntimeLayer({ sqliteFilename: './data/app.db' })
+const runtimeLayer = createRegistryRuntimeLayer({
+  sqliteFilename: './data/app.db',
+})
 let reactionQueueRunning = false
 let reactionQueueRequested = false
 
@@ -24,51 +26,83 @@ const routes = app
     const rawInput = c.req.query('input')
     const parsedInput = rawInput ? safeJsonParse(rawInput) : {}
 
-    try {
-      const data = await Effect.runPromise(
-        registry
-          .query(c.req.query('projectionName') ?? '', parsedInput)
-          .pipe(Effect.provide(runtimeLayer)),
-      )
+    const response = await Effect.runPromise(
+      registry.query(c.req.query('projectionName') ?? '', parsedInput).pipe(
+        Effect.provide(runtimeLayer),
+        Effect.map((data) => ({
+          body: { ok: true as const, data },
+          status: 200 as const,
+        })),
+        Effect.catchTags({
+          InvalidProjectionInputError: (cause) =>
+            Effect.succeed({
+              body: error('BAD_REQUEST', cause.message),
+              status: 400 as const,
+            }),
+          UnknownProjectionError: (cause) =>
+            Effect.succeed({
+              body: error('NOT_FOUND', cause.message),
+              status: 404 as const,
+            }),
+        }),
+        Effect.catchAll((cause) =>
+          Effect.succeed({
+            body: error(
+              'INTERNAL_ERROR',
+              cause instanceof Error ? cause.message : 'Projection failed',
+            ),
+            status: 500 as const,
+          }),
+        ),
+      ),
+    )
 
-      return c.json({
-        ok: true as const,
-        data,
-      })
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Projection failed'
-
-      return c.json(
-        error('INTERNAL_ERROR', message),
-        500,
-      )
-    }
+    return c.json(response.body, response.status)
   })
   .post('/api/command', async (c) => {
     const command = await c.req.json().catch(() => null)
 
-    try {
-      await Effect.runPromise(
-        registry
-          .dispatch({
-            type:
-              command && typeof command === 'object' && 'type' in command
-                ? String(command.type)
-                : '',
-            payload:
-              command && typeof command === 'object' && 'payload' in command
-                ? command.payload
-                : undefined,
-          })
-          .pipe(Effect.provide(runtimeLayer)),
-      )
-      startReactionQueue()
+    const response = await Effect.runPromise(
+      registry
+        .dispatch({
+          type:
+            command && typeof command === 'object' && 'type' in command
+              ? String(command.type)
+              : '',
+          payload:
+            command && typeof command === 'object' && 'payload' in command
+              ? command.payload
+              : undefined,
+        })
+        .pipe(
+          Effect.provide(runtimeLayer),
+          Effect.tap(() => Effect.sync(startReactionQueue)),
+          Effect.as({ body: { ok: true as const }, status: 200 as const }),
+          Effect.catchTags({
+            InvalidCommandError: (cause) =>
+              Effect.succeed({
+                body: error('BAD_REQUEST', cause.message),
+                status: 400 as const,
+              }),
+            UnknownCommandError: (cause) =>
+              Effect.succeed({
+                body: error('NOT_FOUND', cause.message),
+                status: 404 as const,
+              }),
+          }),
+          Effect.catchAll((cause) =>
+            Effect.succeed({
+              body: error(
+                'INTERNAL_ERROR',
+                cause instanceof Error ? cause.message : 'Command failed',
+              ),
+              status: 500 as const,
+            }),
+          ),
+        ),
+    )
 
-      return c.json({ ok: true as const })
-    } catch (cause) {
-      const message = cause instanceof Error ? cause.message : 'Command failed'
-      return c.json(error('INTERNAL_ERROR', message), 500)
-    }
+    return c.json(response.body, response.status)
   })
 
 app.use('/static/*', serveStatic({ root: './dist' }))
