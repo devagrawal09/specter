@@ -3,11 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
 import { createCommandSpec } from '../../../lib2/builders'
-import {
-  errorEvent,
-  todoAddedEvent,
-  todoRemovedEvent,
-} from '../../todos-json/events'
+import { errorEvent, todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),

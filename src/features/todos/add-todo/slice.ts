@@ -1,6 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { createCommandSpec } from '../../../lib2/builders'
-import { errorEvent, todoAddedEvent } from '../../todos-json/events'
+import { errorEvent, todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
 

@@ -8,7 +8,7 @@ import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../todos-json/events'
+} from '../events'
 
 export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   id: text('id').primaryKey(),

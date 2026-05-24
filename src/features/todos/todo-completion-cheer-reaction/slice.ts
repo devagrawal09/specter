@@ -7,7 +7,7 @@ import {
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
-} from '../../todos-json/events'
+} from '../events'
 
 export const todoCompletionCheerSqlTodoStates = sqliteTable(
   'todo_completion_cheer_sql_todo_states',
