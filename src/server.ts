@@ -2,7 +2,7 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Effect } from 'effect'
 import { Hono } from 'hono'
 
-import { todoSqlRegistrations } from './features/todos-sql/registry'
+import { todoSqlRegistrations } from './features/todos/registry'
 import { createRegistry, createRegistryRuntimeLayer } from './lib2'
 import './styles.css?url'
 
