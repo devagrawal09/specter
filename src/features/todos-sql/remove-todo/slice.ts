@@ -14,7 +14,7 @@ export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-export const removeTodoSql = createCommandSpec('removeTodo')
+const removeTodoSql = createCommandSpec('removeTodo')
   .schema(
     Schema.Struct({
       todoId: Schema.String.pipe(Schema.minLength(1)),
@@ -77,3 +77,5 @@ export const removeTodoSql = createCommandSpec('removeTodo')
       return [todoRemovedEvent.create({ todoId: command.todoId })]
     }),
   )
+
+export default removeTodoSql

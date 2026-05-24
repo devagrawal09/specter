@@ -40,7 +40,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-export const createTodoCheerSql = createCommandSpec('createTodoCheer')
+const createTodoCheerSql = createCommandSpec('createTodoCheer')
   .schema(
     Schema.Struct({
       milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
@@ -199,3 +199,5 @@ export const createTodoCheerSql = createCommandSpec('createTodoCheer')
       ]
     }),
   )
+
+export default createTodoCheerSql

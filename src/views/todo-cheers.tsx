@@ -1,11 +1,7 @@
 import { Show } from 'solid-js'
 
 import { createViewSpec } from '../lib2/builders'
-import type { TodoSqlCheersRef } from '../features/todos-sql/registry'
-
-const todoCheers: TodoSqlCheersRef = {
-  name: 'todoCheers',
-}
+import { todoCheers } from 'virtual:specter/refs'
 
 export const TodoCheersView = createViewSpec('todo-cheers')
   .queries({ cheer: todoCheers })

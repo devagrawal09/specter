@@ -4,7 +4,7 @@ import { errorEvent, todoAddedEvent } from '../../todos-json/events'
 
 const maxTitleLength = 120
 
-export const addTodoSql = createCommandSpec('addTodo')
+const addTodoSql = createCommandSpec('addTodo')
   .schema(
     Schema.Struct({
       title: Schema.String,
@@ -57,3 +57,5 @@ export const addTodoSql = createCommandSpec('addTodo')
 
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]
   })
+
+export default addTodoSql

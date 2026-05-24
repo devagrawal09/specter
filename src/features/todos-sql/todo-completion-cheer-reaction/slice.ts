@@ -38,7 +38,7 @@ function completedTodoEvents(count: number): unknown[] {
   }).flat()
 }
 
-export const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
+const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
   .scenarios(
     {
       given: [
@@ -173,3 +173,5 @@ export const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
       }
     }),
   )
+
+export default todoCompletionCheerSql

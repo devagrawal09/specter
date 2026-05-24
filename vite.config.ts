@@ -4,6 +4,7 @@ import nodeAdapter from '@hono/vite-dev-server/node'
 import tailwindcss from '@tailwindcss/vite'
 import { defineConfig } from 'vite'
 import solidPlugin from 'vite-plugin-solid'
+import { specterRefsPlugin } from './src/lib2/vite-plugin-refs'
 
 export default defineConfig(({ mode }) => ({
   resolve: { tsconfigPaths: true },
@@ -43,8 +44,9 @@ export default defineConfig(({ mode }) => ({
       : undefined,
   plugins:
     mode === 'client'
-      ? [tailwindcss(), solidPlugin()]
+      ? [specterRefsPlugin(), tailwindcss(), solidPlugin()]
       : [
+          specterRefsPlugin(),
           tailwindcss(),
           solidPlugin(),
           devServer({ entry: './src/server.ts', adapter: nodeAdapter }),

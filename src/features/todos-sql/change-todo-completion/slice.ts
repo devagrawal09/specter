@@ -21,7 +21,7 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-export const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
+const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
   .schema(
     Schema.Struct({
       todoId: Schema.String.pipe(Schema.minLength(1)),
@@ -121,3 +121,5 @@ export const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
       ]
     }),
   )
+
+export default changeTodoCompletionSql

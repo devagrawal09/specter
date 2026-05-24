@@ -16,7 +16,7 @@ export type TodoSqlCheersState = {
   latestCheer: TodoSqlCheer | null
 }
 
-export const todoSqlCheers = createProjectionSpec('todoCheers')
+const todoSqlCheers = createProjectionSpec('todoCheers')
   .schema(Schema.Struct({}))
   .apply({
     [todoCheerCreatedEvent.type]: (event, input) =>
@@ -68,3 +68,5 @@ export const todoSqlCheers = createProjectionSpec('todoCheers')
       return { latestCheer: latestCheers[0] ?? null }
     }),
   )
+
+export default todoSqlCheers

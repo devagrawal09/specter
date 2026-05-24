@@ -17,7 +17,7 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
-export const todosSqlProjection = createProjectionSpec('todosProjection')
+const todosSqlProjection = createProjectionSpec('todosProjection')
   .schema(
     Schema.Struct({
       status: Schema.Literal('all', 'active', 'completed').annotations({
@@ -135,3 +135,5 @@ export const todosSqlProjection = createProjectionSpec('todosProjection')
       return yield* db.select().from(todoSqlListItems).where(statusPredicate)
     }),
   )
+
+export default todosSqlProjection

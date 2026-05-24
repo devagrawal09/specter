@@ -2,28 +2,12 @@ import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
 import { searchParams, setSearch } from '../location'
 import { createViewSpec } from '../lib2/builders'
-import type {
-  AddTodoSqlRef,
-  ChangeTodoCompletionSqlRef,
-  RemoveTodoSqlRef,
-  TodosSqlProjectionRef,
-} from '../features/todos-sql/registry'
-
-const todosProjection: TodosSqlProjectionRef = {
-  name: 'todosProjection',
-}
-
-const addTodo: AddTodoSqlRef = {
-  name: 'addTodo',
-}
-
-const removeTodo: RemoveTodoSqlRef = {
-  name: 'removeTodo',
-}
-
-const changeTodoCompletion: ChangeTodoCompletionSqlRef = {
-  name: 'changeTodoCompletion',
-}
+import {
+  addTodo,
+  changeTodoCompletion,
+  removeTodo,
+  todosProjection,
+} from 'virtual:specter/refs'
 
 const filterOptions = [
   { status: 'all', label: 'All' },
