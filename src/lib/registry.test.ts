@@ -11,7 +11,8 @@ import { expect, it } from 'vitest'
 
 import {
   createCommandSlice,
-  createProjectionSlice,
+  defineApplyHandlers,
+  createQuerySlice,
   createReactionSlice,
 } from './builders'
 import { createEventDefinition } from './event'
@@ -20,6 +21,7 @@ import { EventLogService } from './services'
 import type { SpecterAppServices } from './slice'
 import {
   createSpecterApp,
+  EmptyCommandSetError,
   InvalidEventDraftError,
   ReactionRunError,
   UnknownEventTypeError,
@@ -30,11 +32,58 @@ const observedEvent = createEventDefinition(
   Schema.Struct({ value: Schema.String }),
 )
 
+it('rejects apps without command slices', () => {
+  const query = createQuerySlice('observedQuery')
+    .schema(Schema.Struct({}))
+    .apply({})
+    .handle(() => [])
+
+  const result = Effect.runSync(
+    createSpecterApp({
+      events: [observedEvent],
+      slices: [query],
+    }).pipe(Effect.either),
+  )
+
+  expect(Either.isLeft(result)).toBe(true)
+  if (!Either.isLeft(result)) {
+    throw new Error('App creation unexpectedly succeeded')
+  }
+  expect(result.left).toBeInstanceOf(EmptyCommandSetError)
+})
+
+it('accepts apply handlers keyed by registered Event Definitions', () => {
+  const applyHandlers = defineApplyHandlers([observedEvent], {
+    [observedEvent.type]: () => Effect.void,
+  })
+
+  expect(Object.keys(applyHandlers)).toEqual([observedEvent.type])
+})
+
+it('passes typed apply handlers through slice builders', () => {
+  const query = createQuerySlice('observedQuery')
+    .schema(Schema.Struct({}))
+    .apply(
+      defineApplyHandlers([observedEvent], {
+        [observedEvent.type]: (event) => {
+          const value: string = event.payload.value
+
+          return Effect.sync(() => {
+            expect(value).toBe(value)
+          })
+        },
+      }),
+    )
+    .handle(() => [])
+
+  expect(Object.keys(query.apply)).toEqual([observedEvent.type])
+})
+
 it('rejects slice apply keys that are not registered event definitions', () => {
   const command = createCommandSlice('noop')
     .schema(Schema.Struct({}))
     .handle(() => [])
-  const projection = createProjectionSlice('badProjection')
+  const query = createQuerySlice('badQuery')
     .schema(Schema.Struct({}))
     .apply({ missingEvent: () => Effect.void })
     .handle(() => [])
@@ -42,7 +91,7 @@ it('rejects slice apply keys that are not registered event definitions', () => {
   const result = Effect.runSync(
     createSpecterApp({
       events: [observedEvent],
-      slices: [command, projection],
+      slices: [command, query],
     }).pipe(Effect.either),
   )
 

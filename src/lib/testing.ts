@@ -6,7 +6,7 @@ import { EventLogService, SliceStores } from './services'
 import type {
   CommandEnvelope,
   CommandSlice,
-  ProjectionSlice,
+  QuerySlice,
   ReactionSlice,
   SliceRegistration,
 } from './slice'
@@ -20,7 +20,7 @@ export type CommandScenario<TPayload = unknown> = {
   }
 }
 
-export type ProjectionScenario<TWhen = unknown, TExpect = unknown> = {
+export type QueryScenario<TWhen = unknown, TExpect = unknown> = {
   given: readonly unknown[]
   when: TWhen
   expect: TExpect
@@ -67,10 +67,7 @@ export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
   })
 }
 
-export function queryProjection(
-  slice: ProjectionSlice,
-  scenario: ProjectionScenario,
-) {
+export function querySlice(slice: QuerySlice, scenario: QueryScenario) {
   return Effect.gen(function* () {
     yield* replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 

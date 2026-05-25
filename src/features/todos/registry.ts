@@ -4,8 +4,8 @@ import createTodoCheerSql from './create-todo-cheer/slice'
 import removeTodoSql from './remove-todo/slice'
 import todoSqlCheers from './todo-cheers/slice'
 import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
-import todosSqlProjection from './todos-view/slice'
-import type { CommandRef, ProjectionRef } from '../../lib'
+import todosSqlQuery from './todos-view/slice'
+import type { CommandRef, QueryRef } from '../../lib'
 import { todoEventDefinitions } from './events'
 
 export const todoSqlRegistrations = [
@@ -14,7 +14,7 @@ export const todoSqlRegistrations = [
   removeTodoSql,
   createTodoCheerSql,
   todoCompletionCheerSql,
-  todosSqlProjection,
+  todosSqlQuery,
   todoSqlCheers,
 ] as const
 
@@ -23,8 +23,8 @@ export const todoSpecterAppConfig = {
   slices: todoSqlRegistrations,
 } as const
 
-export type TodosSqlProjectionRef = ProjectionRef<typeof todosSqlProjection>
-export type TodoSqlCheersRef = ProjectionRef<typeof todoSqlCheers>
+export type TodosSqlQueryRef = QueryRef<typeof todosSqlQuery>
+export type TodoSqlCheersRef = QueryRef<typeof todoSqlCheers>
 export type AddTodoSqlRef = CommandRef<typeof addTodoSql>
 export type RemoveTodoSqlRef = CommandRef<typeof removeTodoSql>
 export type ChangeTodoCompletionSqlRef = CommandRef<

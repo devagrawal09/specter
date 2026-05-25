@@ -1,8 +1,8 @@
 # Specter
 
-Specter is a TypeScript framework for building vertically sliced, event-sourced applications that are easy for humans and AI agents to understand, extend, and verify.
+Specter is a TypeScript and Solid framework for building vertically sliced, event-sourced applications that are easy for humans and AI agents to understand, extend, and verify.
 
-The core idea is simple: describe application behavior as typed executable specifications, then implement that behavior in independent vertical slices. Those specifications are not Markdown notes that drift away from the code. They compile with the application, they can be run as tests, and they give agents a precise structure to work inside.
+The core idea is simple: describe application behavior as typed executable scenarios and contracts, then implement that behavior in independent vertical slices. Those scenarios are not Markdown notes that drift away from the code. They compile with the application, they can be run as tests, and they give agents a precise structure to work inside.
 
 This repository contains Specter's current framework code in `src/lib` and a runnable todo reference app in `src/features/todos`.
 
@@ -12,7 +12,7 @@ Large applications are hard for agents because behavior is usually spread across
 
 Specter pushes the application toward two constraints:
 
-1. Structured specifications: behavior is written in TypeScript with schemas, scenarios, event definitions, and typed slice APIs.
+1. Structured contracts: behavior is written in TypeScript with schemas, scenarios, event definitions, and typed slice APIs.
 2. Vertical slices: each piece of behavior owns its input contract, state, scenarios, event handlers, and implementation.
 
 That gives you a codebase where a user or an agent can ask, "How does removing a todo work?" and find the command slice that contains the contract, examples, state updates, and handler in one place.
@@ -23,13 +23,13 @@ A Specter application is built from five concepts:
 
 1. Event Definitions
 2. Command Slices
-3. Projection Slices
+3. Query Slices
 4. Reaction Slices
 5. Views
 
-Events are the durable facts of the system. Commands decide whether new events should be created. Projections turn events into queryable read models. Reactions observe events and trigger follow-up work. Views bind projections and commands to UI components.
+Events are the durable facts of the system. Commands decide whether new events should be created. Queries turn events into readable state. Reactions observe events and trigger follow-up work. Views bind queries and commands to UI components.
 
-The global event log is the source of truth. Outside of that event log, every slice owns its own internal state. A command slice can keep exactly the state it needs to validate commands. A projection slice can keep exactly the state it needs to answer queries. A reaction slice can keep exactly the state it needs to decide whether to run side effects.
+The global event log is the source of truth. Outside of that event log, every slice owns its own internal state. A command slice can keep exactly the state it needs to validate commands. A query slice can keep exactly the state it needs to answer queries. A reaction slice can keep exactly the state it needs to decide whether to run side effects.
 
 Slices do not directly depend on each other. They communicate through events and command dispatch.
 
@@ -42,8 +42,8 @@ At runtime, Specter works like this:
 3. The command handler queries its private state and returns event drafts, or rejects the command.
 4. Accepted event drafts are validated against registered Event Definitions.
 5. The Event Log persists accepted events with IDs, order, and timestamps.
-6. Projection and reaction slices catch up independently by applying events they care about.
-7. Views query projections and dispatch commands through typed refs.
+6. Query and reaction slices catch up independently by applying events they care about.
+7. Views run queries and dispatch commands through typed refs.
 
 This lets each slice be built, tested, and reasoned about independently while still producing one coherent application.
 
@@ -53,7 +53,7 @@ This lets each slice be built, tested, and reasoned about independently while st
 src/
   lib/                  Specter framework API and runtime
   features/todos/       Reference todo feature built with Specter
-  views/                Solid views bound to Specter projections/commands
+  views/                Solid views bound to Specter Client methods
   db/schema.ts          Drizzle schema exports for migrations
   server.ts             Hono server and Specter API endpoints
   client.tsx            Solid client entrypoint
@@ -121,8 +121,8 @@ The simplest command has a schema, scenarios, and a handler:
 
 ```ts
 import * as Schema from 'effect/Schema'
-import { createCommandSlice, rejectCommand } from '../../../lib'
-import { todoAddedEvent } from '../events'
+import { createCommandSlice, defineApplyHandlers, rejectCommand } from '../../../lib'
+import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 const maxTitleLength = 120
 
@@ -164,29 +164,29 @@ const addTodoSql = createCommandSlice('addTodo')
   })
 ```
 
-The scenarios are executable specifications. They say what should happen given prior events and a command input. The implementation can change, but the behavior must continue to satisfy the scenarios.
+The scenarios are executable examples. They say what should happen given prior events and a command input. The implementation can change, but the behavior must continue to satisfy the scenarios.
 
-Commands that need state add `.apply()` handlers before `.handle()`:
+Commands that need state add `.apply()` handlers before `.handle()`. Use `defineApplyHandlers` when you want TypeScript to check handler keys against a specific Event Definition list; bare object literals remain supported but are validated only when the Specter App is created.
 
 ```ts
 const removeTodoSql = createCommandSlice('removeTodo')
   .schema(Schema.Struct({ todoId: Schema.String }))
-  .apply({
-    [todoAddedEvent.type]: (event, db) => {
-      const payload = todoAddedEvent.decode(event.payload)
-      return db.insert(todoRemovalSqlStates).values({
-        todoId: payload.todoId,
-        removed: false,
-      })
-    },
-    [todoRemovedEvent.type]: (event, db) => {
-      const payload = todoRemovedEvent.decode(event.payload)
-      return db
-        .update(todoRemovalSqlStates)
-        .set({ removed: true })
-        .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
-    },
-  })
+  .apply(
+    defineApplyHandlers([todoAddedEvent, todoRemovedEvent], {
+      [todoAddedEvent.type]: (event, db) => {
+        return db.insert(todoRemovalSqlStates).values({
+          todoId: event.payload.todoId,
+          removed: false,
+        })
+      },
+      [todoRemovedEvent.type]: (event, db) => {
+        return db
+          .update(todoRemovalSqlStates)
+          .set({ removed: true })
+          .where(eq(todoRemovalSqlStates.todoId, event.payload.todoId))
+      },
+    }),
+  )
   .handle((db, command) => {
     // Query this command slice's private state, then return events or reject.
   })
@@ -194,14 +194,14 @@ const removeTodoSql = createCommandSlice('removeTodo')
 
 The state belongs to the command slice. It is not shared application state. It is a local decision cache derived from the Event Log.
 
-## Projection Slices
+## Query Slices
 
-A Projection Slice turns events into queryable state. Projections are how the UI and API read from the system.
+A Query Slice turns events into readable state. Queries are how the UI and API read from the system.
 
-The todo list projection owns a table that stores the fields needed to render todos: ID, title, completion state, and removal state. It applies todo events into that table, then handles queries against it.
+The todo list query owns a table that stores the fields needed to render todos: ID, title, completion state, and removal state. It applies todo events into that table, then handles queries against it.
 
 ```ts
-const todosSqlProjection = createProjectionSlice('todosProjection')
+const todosSqlQuery = createQuerySlice('todosQuery')
   .schema(
     Schema.Struct({
       status: Schema.Literal('all', 'active', 'completed'),
@@ -231,7 +231,7 @@ const todosSqlProjection = createProjectionSlice('todosProjection')
   })
 ```
 
-Like commands, projections can have scenarios. A projection scenario says: given these events, when this query runs, expect this result.
+Like commands, queries can have scenarios. A query scenario says: given these events, when this query runs, expect this result.
 
 ## Reaction Slices
 
@@ -273,7 +273,7 @@ Reaction scenarios describe workflow behavior. For example: given five completed
 
 ## Views
 
-Views bind projection refs and command refs to UI components.
+Views bind query refs and command refs to UI components through the Specter Client context.
 
 The Vite refs plugin scans feature slices and generates typed virtual refs in `src/specter-refs.generated.d.ts`. The Solid views import those refs from `virtual:specter/refs`.
 
@@ -283,11 +283,11 @@ import {
   addTodo,
   changeTodoCompletion,
   removeTodo,
-  todosProjection,
+  todosQuery,
 } from 'virtual:specter/refs'
 
 export const TodosView = createView('todos-view')
-  .queries({ todos: todosProjection })
+  .queries({ todos: todosQuery })
   .triggers({
     add: addTodo,
     remove: removeTodo,
@@ -295,12 +295,14 @@ export const TodosView = createView('todos-view')
   })
   .scenarios([])
   .component((props) => {
-    // props.todos comes from the projection.
-    // props.add, props.remove, and props.change dispatch commands.
+    // props.todos comes from the query.
+    // props.add, props.remove, and props.change return Effect values.
   })
 ```
 
-This keeps the UI connected to the same slice vocabulary as the backend. The view does not need to know HTTP route details or projection endpoint details.
+At runtime the Solid app provides a Specter Client. Components decide when to run trigger Effects and how to represent pending or failed work. Query loading is currently handled by the view runtime while the transport remains the existing Hono HTTP boundary.
+
+This keeps the UI connected to the same slice vocabulary as the backend. The view does not need to know HTTP route details or query endpoint details.
 
 ## Registering an App
 
@@ -313,7 +315,7 @@ import createTodoCheerSql from './create-todo-cheer/slice'
 import removeTodoSql from './remove-todo/slice'
 import todoSqlCheers from './todo-cheers/slice'
 import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
-import todosSqlProjection from './todos-view/slice'
+import todosSqlQuery from './todos-view/slice'
 import { todoEventDefinitions } from './events'
 
 export const todoSqlRegistrations = [
@@ -322,7 +324,7 @@ export const todoSqlRegistrations = [
   removeTodoSql,
   createTodoCheerSql,
   todoCompletionCheerSql,
-  todosSqlProjection,
+  todosSqlQuery,
   todoSqlCheers,
 ] as const
 
@@ -341,9 +343,9 @@ const runtimeLayer = createSpecterAppRuntimeLayer({
 })
 ```
 
-The current demo server exposes two API operations:
+ADR 0001 commits Specter to Effect RPC as the core transport. The current implementation has not added the Effect RPC packages yet, so the demo server still exposes two HTTP operations behind the Specter Client boundary:
 
-1. `GET /api/projection?projectionName=...&input=...`
+1. `GET /api/query?queryName=...&input=...`
 2. `POST /api/command`
 
 Successful commands append events and schedule the reaction queue. Reactions run asynchronously after the command response begins resolving.
@@ -373,7 +375,7 @@ Use scenarios for:
 3. Idempotency rules
 4. Edge cases
 5. Workflow policies
-6. Projection query behavior
+6. Query behavior
 
 When you add a new business rule, add a scenario next to the slice that owns the rule.
 
@@ -386,10 +388,10 @@ A typical Specter feature follows this order:
 3. Add scenarios to specify command behavior.
 4. Add private slice tables only where a slice needs state to decide or query.
 5. Add `.apply()` handlers that derive slice state from events.
-6. Add projection slices for UI/API reads.
+6. Add query slices for UI/API reads.
 7. Add reaction slices for workflows and automations.
 8. Register the slices and Event Definitions in the feature registry.
-9. Add views that bind projection refs and command refs to UI.
+9. Add views that bind query refs and command refs to UI.
 10. Run tests and migrations.
 
 Prefer adding behavior near the slice that owns it. Avoid extracting shared helpers too early. A little duplication between slices is often clearer than a shared abstraction that hides ownership.
@@ -477,10 +479,10 @@ The current demo uses Drizzle tables for the Event Log, slice cursors, and slice
 Specter is still being actively shaped. The current repo proves the core loop:
 
 1. Define typed Event Definitions.
-2. Build command, projection, and reaction slices.
+2. Build command, query, and reaction slices.
 3. Write scenarios beside the slice implementation.
 4. Persist events in SQLite.
 5. Derive each slice's private state from the Event Log.
-6. Render Solid views using typed projection and command refs.
+6. Render Solid views through a Specter Client context using typed query and command refs.
 
-The todo app is intentionally small, but it exercises the framework path end to end: commands create events, projections render todos, reactions create milestone cheers, and the UI dispatches commands through generated refs.
+The todo app is intentionally small, but it exercises the framework path end to end: commands create events, queries render todos, reactions create milestone cheers, and the UI dispatches commands through generated refs.

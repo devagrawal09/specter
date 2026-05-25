@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createProjectionSlice } from '../../../lib'
+import { createQuerySlice } from '../../../lib'
 import { todoCheerCreatedEvent } from '../events'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
@@ -16,7 +16,7 @@ export type TodoSqlCheersState = {
   latestCheer: TodoSqlCheer | null
 }
 
-const todoSqlCheers = createProjectionSlice('todoCheers')
+const todoSqlCheers = createQuerySlice('todoCheers')
   .schema(Schema.Struct({}))
   .apply({
     [todoCheerCreatedEvent.type]: (event, input) =>
@@ -65,7 +65,9 @@ const todoSqlCheers = createProjectionSlice('todoCheers')
         .orderBy(desc(todoSqlCheersState.milestone))
         .limit(1)
 
-      return { latestCheer: latestCheers[0] ?? null }
+      const state: TodoSqlCheersState = { latestCheer: latestCheers[0] ?? null }
+
+      return state
     }),
   )
 

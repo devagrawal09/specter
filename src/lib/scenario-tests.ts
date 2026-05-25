@@ -15,10 +15,10 @@ import type { EventLogService, SliceStores } from './services'
 import type { SliceRegistration } from './slice'
 import type {
   CommandScenario,
-  ProjectionScenario,
+  QueryScenario,
   ReactionScenario,
 } from './testing'
-import { decideCommand, queryProjection, reactToScenario } from './testing'
+import { decideCommand, querySlice, reactToScenario } from './testing'
 
 export type ScenarioTestOptions = {
   migrationsFolder?: string
@@ -92,9 +92,9 @@ export function testScenarios(
     }
   })
 
-  describe('lib projection scenarios', () => {
+  describe('lib query scenarios', () => {
     for (const registration of registrations) {
-      if (registration.kind !== 'projection' || !registration.scenarios) {
+      if (registration.kind !== 'query' || !registration.scenarios) {
         continue
       }
 
@@ -102,13 +102,13 @@ export function testScenarios(
 
       describe(registration.name, () => {
         for (const scenario of scenarios) {
-          if (!isProjectionScenario(scenario)) {
+          if (!isQueryScenario(scenario)) {
             continue
           }
 
-          it(projectionScenarioLabel(scenario), async () => {
+          it(queryScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              queryProjection(registration, scenario),
+              querySlice(registration, scenario),
               options,
             )
 
@@ -180,7 +180,7 @@ function isCommandScenario(value: unknown): value is CommandScenario {
   return hasGivenExpectArray(value) && 'when' in value
 }
 
-function isProjectionScenario(value: unknown): value is ProjectionScenario {
+function isQueryScenario(value: unknown): value is QueryScenario {
   return hasGiven(value) && 'when' in value && 'expect' in value
 }
 
@@ -241,10 +241,10 @@ function commandScenarioLabel(scenario: CommandScenario) {
   ].join(', ')
 }
 
-function projectionScenarioLabel(scenario: ProjectionScenario) {
+function queryScenarioLabel(scenario: QueryScenario) {
   return [
     `given ${scenario.given.length} event(s)`,
-    'when projection input is applied',
+    'when query input is applied',
     'then expected query state is returned',
   ].join(', ')
 }

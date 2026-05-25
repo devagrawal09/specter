@@ -9,14 +9,14 @@ import type {
   CommandEnvelope,
   CommandSlice,
   SpecterAppServices,
-  ProjectionSlice,
+  QuerySlice,
   ReactionExec,
   ReactionSlice,
   SliceRegistration,
 } from './slice'
 
-export class EmptyCommandRegistryError extends Data.TaggedError(
-  'EmptyCommandRegistryError',
+export class EmptyCommandSetError extends Data.TaggedError(
+  'EmptyCommandSetError',
 ) {}
 
 export class InvalidCommandError extends Data.TaggedError(
@@ -38,10 +38,10 @@ export class InvalidEventDraftError extends Data.TaggedError(
   readonly error: unknown
 }> {}
 
-export class InvalidProjectionInputError extends Data.TaggedError(
-  'InvalidProjectionInputError',
+export class InvalidQueryInputError extends Data.TaggedError(
+  'InvalidQueryInputError',
 )<{
-  readonly projectionName: string
+  readonly queryName: string
   readonly error: ParseResult.ParseError
 }> {}
 
@@ -51,10 +51,8 @@ export class UnknownCommandError extends Data.TaggedError(
   readonly commandName: string
 }> {}
 
-export class UnknownProjectionError extends Data.TaggedError(
-  'UnknownProjectionError',
-)<{
-  readonly projectionName: string
+export class UnknownQueryError extends Data.TaggedError('UnknownQueryError')<{
+  readonly queryName: string
 }> {}
 
 export class DuplicateSliceNameError extends Data.TaggedError(
@@ -124,11 +122,11 @@ export function createSpecterApp(config: SpecterAppConfig) {
       eventDefinitions[eventDefinition.type] = eventDefinition
     }
 
-    const registry: {
+    const slicesByKind: {
       commands: Record<string, CommandSlice>
-      projections: Record<string, ProjectionSlice>
+      queries: Record<string, QuerySlice>
       reactions: Record<string, ReactionSlice<string, unknown>>
-    } = { commands: {}, projections: {}, reactions: {} }
+    } = { commands: {}, queries: {}, reactions: {} }
     const sliceNames = new Set<string>()
 
     for (const registration of config.slices) {
@@ -142,22 +140,22 @@ export function createSpecterApp(config: SpecterAppConfig) {
 
       switch (registration.kind) {
         case 'command': {
-          registry.commands[registration.name] = registration
+          slicesByKind.commands[registration.name] = registration
           break
         }
-        case 'projection': {
-          registry.projections[registration.name] = registration
+        case 'query': {
+          slicesByKind.queries[registration.name] = registration
           break
         }
         case 'reaction': {
-          registry.reactions[registration.name] = registration
+          slicesByKind.reactions[registration.name] = registration
           break
         }
       }
     }
 
-    if (Object.keys(registry.commands).length === 0) {
-      return yield* Effect.fail(new EmptyCommandRegistryError())
+    if (Object.keys(slicesByKind.commands).length === 0) {
+      return yield* Effect.fail(new EmptyCommandSetError())
     }
 
     const reactionExecs = new Map<string, ReactionExec>()
@@ -228,9 +226,11 @@ export function createSpecterApp(config: SpecterAppConfig) {
           return { store, advanced: false } as const
         }
 
-        yield* Effect.forEach(unappliedEvents, (event) =>
-          slice.apply[event.type](event, store.state),
-        )
+        yield* Effect.forEach(unappliedEvents, (event) => {
+          const apply = slice.apply[event.type]
+
+          return apply ? apply(event, store.state) : Effect.void
+        })
 
         const lastEvent = unappliedEvents[unappliedEvents.length - 1]
         yield* store.setLastAppliedOrder(lastEvent.order)
@@ -252,7 +252,7 @@ export function createSpecterApp(config: SpecterAppConfig) {
     ): Effect.Effect<void, unknown, SpecterAppServices> {
       return Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
-        const commandSlice = registry.commands[c.type]
+        const commandSlice = slicesByKind.commands[c.type]
 
         if (!commandSlice) {
           return yield* Effect.fail(
@@ -309,22 +309,19 @@ export function createSpecterApp(config: SpecterAppConfig) {
 
     return {
       dispatch,
-      query: (projectionName: string, input: unknown) =>
+      query: (queryName: string, input: unknown) =>
         Effect.gen(function* () {
-          const registration = registry.projections[projectionName]
+          const registration = slicesByKind.queries[queryName]
 
           if (!registration) {
-            return yield* Effect.fail(
-              new UnknownProjectionError({ projectionName }),
-            )
+            return yield* Effect.fail(new UnknownQueryError({ queryName }))
           }
 
           const parsedInput = yield* Schema.decodeUnknown(registration.schema)(
             input,
           ).pipe(
             Effect.mapError(
-              (error) =>
-                new InvalidProjectionInputError({ projectionName, error }),
+              (error) => new InvalidQueryInputError({ queryName, error }),
             ),
           )
 
@@ -340,7 +337,7 @@ export function createSpecterApp(config: SpecterAppConfig) {
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient
           const reactionEffects = yield* Effect.forEach(
-            Object.values(registry.reactions),
+            Object.values(slicesByKind.reactions),
             (reaction) =>
               sql
                 .withTransaction(

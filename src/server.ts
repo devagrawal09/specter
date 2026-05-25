@@ -22,24 +22,24 @@ type ApiError = {
 const app = new Hono()
 
 const routes = app
-  .get('/api/projection', async (c) => {
+  .get('/api/query', async (c) => {
     const rawInput = c.req.query('input')
     const parsedInput = rawInput ? safeJsonParse(rawInput) : {}
 
     const response = await Effect.runPromise(
-      specterApp.query(c.req.query('projectionName') ?? '', parsedInput).pipe(
+      specterApp.query(c.req.query('queryName') ?? '', parsedInput).pipe(
         Effect.provide(runtimeLayer),
         Effect.map((data) => ({
           body: { ok: true as const, data },
           status: 200 as const,
         })),
         Effect.catchTags({
-          InvalidProjectionInputError: (cause: { message: string }) =>
+          InvalidQueryInputError: (cause: { message: string }) =>
             Effect.succeed({
               body: error('BAD_REQUEST', cause.message),
               status: 400 as const,
             }),
-          UnknownProjectionError: (cause: { message: string }) =>
+          UnknownQueryError: (cause: { message: string }) =>
             Effect.succeed({
               body: error('NOT_FOUND', cause.message),
               status: 404 as const,
@@ -49,7 +49,7 @@ const routes = app
           Effect.succeed({
             body: error(
               'INTERNAL_ERROR',
-              cause instanceof Error ? cause.message : 'Projection failed',
+              cause instanceof Error ? cause.message : 'Query failed',
             ),
             status: 500 as const,
           }),

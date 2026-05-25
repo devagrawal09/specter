@@ -4,11 +4,15 @@ import type * as SqlClient from '@effect/sql/SqlClient'
 import type * as Schema from 'effect/Schema'
 import type { Component } from 'solid-js'
 
-import type { Event, EventDraft } from './event'
+import type { Event, EventDefinition, EventDraft } from './event'
 import type { EventLogService, SliceStores } from './services'
 
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
+type ApplyEventDefinition<
+  TType extends string = string,
+  TPayload = unknown,
+> = Pick<EventDefinition<TType, TPayload>, 'type' | 'decode'>
 export type SpecterAppServices =
   | EventLogService
   | SliceStores
@@ -26,13 +30,48 @@ export type CommandEnvelope<
   payload: TPayload
 }
 
-export type ApplyHandlers = Record<
-  string,
-  (
-    event: Event,
+type EventType<TEventDefinition> = TEventDefinition extends {
+  type: infer TType extends string
+}
+  ? TType
+  : never
+
+type EventPayloadForType<TEventDefinition, TType extends string> =
+  TEventDefinition extends ApplyEventDefinition<TType, infer TPayload>
+    ? TPayload
+    : never
+
+type EventForType<
+  TEventDefinitions extends readonly ApplyEventDefinition[],
+  TType extends string,
+> = Event<TType, EventPayloadForType<TEventDefinitions[number], TType>>
+
+type ApplyHandler<TEvent extends Event> = {
+  bivarianceHack(
+    event: TEvent,
     db: SqliteRemoteDatabase,
-  ) => Effect.Effect<void, unknown, never>
->
+  ): Effect.Effect<void, unknown, never>
+}['bivarianceHack']
+
+export type ApplyHandlers<
+  TEventDefinitions extends
+    readonly ApplyEventDefinition[] = readonly ApplyEventDefinition[],
+> = Partial<{
+  [TType in EventType<TEventDefinitions[number]>]: ApplyHandler<
+    EventForType<TEventDefinitions, TType>
+  >
+}>
+
+export function defineApplyHandlers<
+  const TEventDefinitions extends readonly ApplyEventDefinition[],
+>(
+  _eventDefinitions: TEventDefinitions,
+  apply: ApplyHandlers<TEventDefinitions>,
+): ApplyHandlers<TEventDefinitions> {
+  return apply
+}
+
+type AnyApplyHandlers = ApplyHandlers<readonly ApplyEventDefinition[]>
 
 export type CommandSlice<
   TName extends string = string,
@@ -41,7 +80,7 @@ export type CommandSlice<
   kind: 'command'
   name: TName
   schema: TSchema
-  apply: ApplyHandlers
+  apply: AnyApplyHandlers
   scenarios?: readonly unknown[]
   handle: (
     db: SqliteRemoteDatabase,
@@ -49,15 +88,15 @@ export type CommandSlice<
   ) => Effect.Effect<EventDraft[], unknown, never>
 }
 
-export type ProjectionSlice<
+export type QuerySlice<
   TName extends string = string,
   TSchema extends AnySchema = AnySchema,
   TResult = unknown,
 > = {
-  kind: 'projection'
+  kind: 'query'
   name: TName
   schema: TSchema
-  apply: ApplyHandlers
+  apply: AnyApplyHandlers
   scenarios?: readonly unknown[]
   handle: (
     db: SqliteRemoteDatabase,
@@ -65,10 +104,7 @@ export type ProjectionSlice<
   ) => Effect.Effect<TResult, unknown, never>
 }
 
-export type ViewProjectionRef<
-  TResult = unknown,
-  TName extends string = string,
-> = {
+export type ViewQueryRef<TResult = unknown, TName extends string = string> = {
   name: TName
   result?: TResult
 }
@@ -81,9 +117,9 @@ export type ViewCommandRef<
   payload?: TPayload
 }
 
-export type ProjectionRef<TRegistration> =
-  TRegistration extends ProjectionSlice<infer TName, AnySchema, infer TResult>
-    ? ViewProjectionRef<TResult, TName>
+export type QueryRef<TRegistration> =
+  TRegistration extends QuerySlice<infer TName, AnySchema, infer TResult>
+    ? ViewQueryRef<TResult, TName>
     : never
 
 export type CommandRef<TRegistration> =
@@ -91,14 +127,14 @@ export type CommandRef<TRegistration> =
     ? ViewCommandRef<SchemaType<TSchema>, TName>
     : never
 
-type ProjectionQueryResult<TRegistration> =
-  TRegistration extends ViewProjectionRef<infer TResult> ? TResult : never
+type ViewQueryResult<TRegistration> =
+  TRegistration extends ViewQueryRef<infer TResult> ? TResult : never
 
 type CommandPayload<TRegistration> =
   TRegistration extends ViewCommandRef<infer TPayload> ? TPayload : never
 
-type ViewScenarioGiven<TQueries extends Record<string, ViewProjectionRef>> = {
-  [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
+type ViewScenarioGiven<TQueries extends Record<string, ViewQueryRef>> = {
+  [TKey in keyof TQueries]: ViewQueryResult<TQueries[TKey]>
 }
 
 export type ViewScenario<TGiven = unknown> = {
@@ -109,14 +145,14 @@ export type ViewScenario<TGiven = unknown> = {
 }
 
 export type ViewProps<
-  TQueries extends Record<string, ViewProjectionRef>,
+  TQueries extends Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef>,
 > = {
-  [TKey in keyof TQueries]: ProjectionQueryResult<TQueries[TKey]>
+  [TKey in keyof TQueries]: ViewQueryResult<TQueries[TKey]>
 } & {
   [TKey in keyof TTriggers]: (
     input: CommandPayload<TTriggers[TKey]>,
-  ) => Promise<void>
+  ) => Effect.Effect<void, unknown>
 }
 
 export type ViewComponent<TProps extends Record<string, unknown>> = {
@@ -125,15 +161,12 @@ export type ViewComponent<TProps extends Record<string, unknown>> = {
 
 export type ViewRegistration<
   TName extends string = string,
-  TQueries extends Record<string, ViewProjectionRef> = Record<
-    string,
-    ViewProjectionRef
-  >,
+  TQueries extends Record<string, ViewQueryRef> = Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef> = Record<
     string,
     ViewCommandRef
   >,
-> = {
+> = ViewComponent<Record<string, never>> & {
   kind: 'view'
   name: TName
   queries: TQueries
@@ -160,7 +193,7 @@ export type ReactionSlice<
 > = {
   kind: 'reaction'
   name: TName
-  apply: ApplyHandlers
+  apply: AnyApplyHandlers
   plugin?: ReactionPlugin
   scenarios?: readonly unknown[]
   handle: (
@@ -170,5 +203,5 @@ export type ReactionSlice<
 
 export type SliceRegistration =
   | CommandSlice
-  | ProjectionSlice
+  | QuerySlice
   | ReactionSlice<string, unknown>

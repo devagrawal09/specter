@@ -5,27 +5,30 @@ import type * as Schema from 'effect/Schema'
 import type { EventDraft } from './event'
 import type {
   CommandScenario,
-  ProjectionScenario,
+  QueryScenario,
   ReactionScenario,
 } from './testing'
 import type {
   ApplyHandlers,
   CommandSlice,
-  ProjectionSlice,
+  QuerySlice,
   ReactionPlugin,
   ReactionSlice,
   ViewCommandRef,
   ViewProps,
   ViewComponent,
-  ViewProjectionRef,
+  ViewQueryRef,
   ViewRegistration,
   ViewScenario,
 } from './slice'
 import { CommandRejectedError } from './registry'
+import { createRuntimeView } from './view-runtime'
+export { defineApplyHandlers } from './slice'
 
 type MaybeEffect<T, E = unknown> = T | Effect.Effect<T, E, never>
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
+type AnyApplyHandlers = ApplyHandlers
 
 type CommandSchemaStep<TName extends string> = {
   schema: <TSchema extends AnySchema>(
@@ -40,7 +43,9 @@ type CommandStep<TName extends string, TSchema extends AnySchema> = {
       command: SchemaType<TSchema>,
     ) => MaybeEffect<EventDraft[]>,
   ) => CommandSlice<TName, TSchema> & { scenarios?: readonly CommandScenario[] }
-  apply: (apply: ApplyHandlers) => CommandApplyStep<TName, TSchema>
+  apply: <const TApply extends AnyApplyHandlers>(
+    apply: TApply,
+  ) => CommandApplyStep<TName, TSchema>
   scenarios: (
     ...scenarios: readonly CommandScenario<SchemaType<TSchema>>[]
   ) => CommandScenarioStep<TName, TSchema>
@@ -57,43 +62,49 @@ type CommandApplyStep<TName extends string, TSchema extends AnySchema> = {
 
 type CommandScenarioStep<TName extends string, TSchema extends AnySchema> = {
   handle: CommandStep<TName, TSchema>['handle']
-  apply: (apply: ApplyHandlers) => {
+  apply: <const TApply extends AnyApplyHandlers>(
+    apply: TApply,
+  ) => {
     handle: CommandStep<TName, TSchema>['handle']
   }
 }
 
-type ProjectionSchemaStep<TName extends string> = {
+type QuerySchemaStep<TName extends string> = {
   schema: <TSchema extends AnySchema>(
     schema: TSchema,
-  ) => ProjectionApplyStep<TName, TSchema>
+  ) => QueryApplyStep<TName, TSchema>
 }
 
-type ProjectionApplyStep<TName extends string, TSchema extends AnySchema> = {
-  apply: (apply: ApplyHandlers) => ProjectionQueryStep<TName, TSchema>
+type QueryApplyStep<TName extends string, TSchema extends AnySchema> = {
+  apply: <const TApply extends AnyApplyHandlers>(
+    apply: TApply,
+  ) => QueryHandleStep<TName, TSchema>
 }
 
-type ProjectionQueryStep<TName extends string, TSchema extends AnySchema> = {
+type QueryHandleStep<TName extends string, TSchema extends AnySchema> = {
   handle: <TResult>(
     handle: (
       input: SqliteRemoteDatabase,
       handle: SchemaType<TSchema>,
     ) => MaybeEffect<TResult>,
-  ) => ProjectionSlice<TName, TSchema, TResult> & {
-    scenarios?: readonly ProjectionScenario[]
+  ) => QuerySlice<TName, TSchema, TResult> & {
+    scenarios?: readonly QueryScenario[]
   }
   scenarios: (
-    ...scenarios: readonly ProjectionScenario<SchemaType<TSchema>>[]
-  ) => ProjectionScenarioStep<TName, TSchema>
+    ...scenarios: readonly QueryScenario<SchemaType<TSchema>>[]
+  ) => QueryScenarioStep<TName, TSchema>
 }
 
-type ProjectionScenarioStep<TName extends string, TSchema extends AnySchema> = {
-  handle: ProjectionQueryStep<TName, TSchema>['handle']
+type QueryScenarioStep<TName extends string, TSchema extends AnySchema> = {
+  handle: QueryHandleStep<TName, TSchema>['handle']
 }
 
 type ReactionStep<TName extends string, TPayload> = {
   payload: <TNextPayload>() => ReactionStep<TName, TNextPayload>
   plugin: (plugin: ReactionPlugin) => ReactionPluginStep<TName, TPayload>
-  apply: (apply: ApplyHandlers) => ReactionApplyStep<TName, TPayload>
+  apply: <const TApply extends AnyApplyHandlers>(
+    apply: TApply,
+  ) => ReactionApplyStep<TName, TPayload>
   scenarios: (
     ...scenarios: readonly ReactionScenario<TPayload>[]
   ) => ReactionScenarioStep<TName, TPayload>
@@ -123,14 +134,14 @@ type ReactionScenarioStep<TName extends string, TPayload> = {
 }
 
 type ViewQueriesStep<TName extends string> = {
-  queries: <TQueries extends Record<string, ViewProjectionRef>>(
+  queries: <TQueries extends Record<string, ViewQueryRef>>(
     queries: TQueries,
   ) => ViewTriggersStep<TName, TQueries>
 }
 
 type ViewTriggersStep<
   TName extends string,
-  TQueries extends Record<string, ViewProjectionRef>,
+  TQueries extends Record<string, ViewQueryRef>,
 > = {
   triggers: <TTriggers extends Record<string, ViewCommandRef>>(
     triggers: TTriggers,
@@ -139,12 +150,12 @@ type ViewTriggersStep<
 
 type ViewScenariosStep<
   TName extends string,
-  TQueries extends Record<string, ViewProjectionRef>,
+  TQueries extends Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef>,
 > = {
   scenarios: (
     scenarios: readonly ViewScenario<{
-      [TKey in keyof TQueries]: TQueries[TKey] extends ViewProjectionRef<
+      [TKey in keyof TQueries]: TQueries[TKey] extends ViewQueryRef<
         infer TResult
       >
         ? TResult
@@ -155,7 +166,7 @@ type ViewScenariosStep<
 
 type ViewComponentStep<
   TName extends string,
-  TQueries extends Record<string, ViewProjectionRef>,
+  TQueries extends Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef>,
 > = {
   component: (
@@ -177,7 +188,7 @@ export function createCommandSlice<const TName extends string>(
           db: SqliteRemoteDatabase,
           command: SchemaType<typeof schema>,
         ) => MaybeEffect<EventDraft[]>,
-        apply: ApplyHandlers,
+        apply: AnyApplyHandlers,
         scenarios?: readonly CommandScenario[],
       ) => ({
         kind: 'command' as const,
@@ -210,9 +221,9 @@ export function createCommandSlice<const TName extends string>(
   }
 }
 
-export function createProjectionSlice<const TName extends string>(
+export function createQuerySlice<const TName extends string>(
   name: TName,
-): ProjectionSchemaStep<TName> {
+): QuerySchemaStep<TName> {
   return {
     schema: (schema) => ({
       apply: (apply) => {
@@ -221,11 +232,11 @@ export function createProjectionSlice<const TName extends string>(
             db: SqliteRemoteDatabase,
             query: SchemaType<typeof schema>,
           ) => MaybeEffect<TResult>,
-          scenarios?: readonly ProjectionScenario[],
-        ): ProjectionSlice<TName, typeof schema, TResult> & {
-          scenarios?: readonly ProjectionScenario[]
+          scenarios?: readonly QueryScenario[],
+        ): QuerySlice<TName, typeof schema, TResult> & {
+          scenarios?: readonly QueryScenario[]
         } => ({
-          kind: 'projection' as const,
+          kind: 'query' as const,
           name,
           schema,
           apply,
@@ -260,14 +271,18 @@ export function createView<const TName extends string>(
     queries: (queries) => ({
       triggers: (triggers) => ({
         scenarios: (scenarios) => ({
-          component: (component) => ({
-            kind: 'view' as const,
-            name,
-            queries,
-            triggers,
-            scenarios,
-            component,
-          }),
+          component: (component) => {
+            const registration = {
+              kind: 'view' as const,
+              name,
+              queries,
+              triggers,
+              scenarios,
+              component,
+            }
+
+            return Object.assign(createRuntimeView(registration), registration)
+          },
         }),
       }),
     }),
@@ -277,7 +292,7 @@ export function createView<const TName extends string>(
 function createReactionStep<TName extends string, TPayload>(
   name: TName,
   plugin?: ReactionPlugin,
-  apply?: ApplyHandlers,
+  apply?: AnyApplyHandlers,
   scenarios?: readonly ReactionScenario<TPayload>[],
 ): ReactionStep<TName, TPayload> {
   const createRegistration = (

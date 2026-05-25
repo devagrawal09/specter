@@ -3,7 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Either from 'effect/Either'
 import * as Schema from 'effect/Schema'
-import { createProjectionSlice } from '../../../lib'
+import { createQuerySlice } from '../../../lib'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -17,7 +17,7 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
-const todosSqlProjection = createProjectionSlice('todosProjection')
+const todosSqlQuery = createQuerySlice('todosQuery')
   .schema(
     Schema.Struct({
       status: Schema.Literal('all', 'active', 'completed').annotations({
@@ -136,4 +136,4 @@ const todosSqlProjection = createProjectionSlice('todosProjection')
     }),
   )
 
-export default todosSqlProjection
+export default todosSqlQuery

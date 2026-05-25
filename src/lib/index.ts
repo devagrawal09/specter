@@ -2,17 +2,17 @@ export type {
   Event,
   EventDefinition,
   EventDraft,
-  EventSpec,
   PersistedEvent,
 } from './event'
-export { createEventDefinition, createEventSpec } from './event'
+export { createEventDefinition } from './event'
 export { defineSpecterClient } from './client'
 export type { SpecterClient } from './client'
 export {
   createCommandSlice,
-  createProjectionSlice,
+  createQuerySlice,
   createReactionSlice,
   createView,
+  defineApplyHandlers,
   rejectCommand,
 } from './builders'
 export { EventNotPersistedError, EventPayloadParseError } from './event-log'
@@ -22,26 +22,26 @@ export {
   CommandRejectedError,
   DuplicateSliceNameError,
   DuplicateEventTypeError,
-  EmptyCommandRegistryError,
+  EmptyCommandSetError,
   InvalidEventDraftError,
   InvalidCommandError,
-  InvalidProjectionInputError,
+  InvalidQueryInputError,
   ReactionRunError,
   UnknownCommandError,
   UnknownEventTypeError,
-  UnknownProjectionError,
+  UnknownQueryError,
 } from './registry'
 export type { SpecterAppRuntime } from './services'
 export {
   autoOrder,
   decideCommand,
-  queryProjection,
+  querySlice,
   reactToScenario,
   replay,
 } from './testing'
 export type {
   CommandScenario,
-  ProjectionScenario,
+  QueryScenario,
   ReactionScenario,
 } from './testing'
 export type {
@@ -50,15 +50,15 @@ export type {
   CommandEnvelope,
   CommandDispatch,
   CommandSlice,
-  ProjectionSlice,
+  QuerySlice,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
-  ProjectionRef,
+  QueryRef,
   ViewCommandRef,
   ViewComponent,
-  ViewProjectionRef,
+  ViewQueryRef,
   ViewProps,
   ViewRegistration,
   ViewScenario,

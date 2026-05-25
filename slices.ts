@@ -1,8 +1,8 @@
 export type Event = {};
 
-export type ProjectionState<S> = (events: Event[]) => S
-export type ProjectionView<P, S, O> = (state: S, params: P) => O
-export type Projection<P, O> = (events: Event[], params: P) => O
+export type QueryState<S> = (events: Event[]) => S
+export type QueryView<P, S, O> = (state: S, params: P) => O
+export type Query<P, O> = (events: Event[], params: P) => O
 
 export type CommandState<S> = (events: Event[]) => S
 export type CommandHandler<C, S> = (state: S, command: C) => Event[]
@@ -26,7 +26,7 @@ export type TranslationIn = (effects: Effect[]) => Event[]
 // todoRemovedEvent
 // todoCompletedEvent
 
-// todosProjection
+// todosQuery
 // addTodoCommand
 // removeTodoCommand
 // completeTodoCommand

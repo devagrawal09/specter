@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import { createSignal, For, Show } from 'solid-js'
 
 import { searchParams, setSearch } from '../location'
@@ -6,7 +7,7 @@ import {
   addTodo,
   changeTodoCompletion,
   removeTodo,
-  todosProjection,
+  todosQuery,
 } from 'virtual:specter/refs'
 
 const filterOptions = [
@@ -16,7 +17,7 @@ const filterOptions = [
 ] as const
 
 export const TodosView = createView('todos-view')
-  .queries({ todos: todosProjection })
+  .queries({ todos: todosQuery })
   .triggers({
     add: addTodo,
     remove: removeTodo,
@@ -75,7 +76,7 @@ export const TodosView = createView('todos-view')
             setIsAdding(true)
 
             try {
-              await props.add({ title: title() })
+              await Effect.runPromise(props.add({ title: title() }))
               setTitle('')
             } finally {
               setIsAdding(false)
@@ -137,10 +138,12 @@ export const TodosView = createView('todos-view')
                       setPendingToggleId(todo.id)
 
                       try {
-                        await props.change({
-                          todoId: todo.id,
-                          completed: event.currentTarget.checked,
-                        })
+                        await Effect.runPromise(
+                          props.change({
+                            todoId: todo.id,
+                            completed: event.currentTarget.checked,
+                          }),
+                        )
                       } finally {
                         setPendingToggleId('')
                       }
@@ -165,7 +168,9 @@ export const TodosView = createView('todos-view')
                       setPendingRemoveId(todo.id)
 
                       try {
-                        await props.remove({ todoId: todo.id })
+                        await Effect.runPromise(
+                          props.remove({ todoId: todo.id }),
+                        )
                       } finally {
                         setPendingRemoveId('')
                       }

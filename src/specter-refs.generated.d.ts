@@ -12,10 +12,10 @@ declare module 'virtual:specter/refs' {
   export const removeTodo: import('./lib').CommandRef<
     typeof import('./features/todos/remove-todo/slice').default
   >
-  export const todoCheers: import('./lib').ProjectionRef<
+  export const todoCheers: import('./lib').QueryRef<
     typeof import('./features/todos/todo-cheers/slice').default
   >
-  export const todosProjection: import('./lib').ProjectionRef<
+  export const todosQuery: import('./lib').QueryRef<
     typeof import('./features/todos/todos-view/slice').default
   >
 }

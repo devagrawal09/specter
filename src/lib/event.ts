@@ -34,11 +34,6 @@ export type EventDefinition<
   is: (event: EventDraft) => event is EventDraft<TType, TPayload>
 }
 
-export type EventSpec<
-  TType extends string = string,
-  TPayload = unknown,
-> = EventDefinition<TType, TPayload>
-
 export function createEventDefinition<
   const TType extends string,
   TSchema extends AnySchema,
@@ -58,5 +53,3 @@ export function createEventDefinition<
       event.type === type && isPayload(event.payload),
   }
 }
-
-export const createEventSpec = createEventDefinition

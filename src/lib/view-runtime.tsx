@@ -1,16 +1,26 @@
-import { createEffect, createSignal, createStore, Show } from 'solid-js'
+import { Effect } from 'effect'
+import {
+  createContext,
+  createEffect,
+  createSignal,
+  createStore,
+  type Element,
+  Show,
+  useContext,
+} from 'solid-js'
 
-import { api } from '../api-client'
 import { searchParams } from '../location'
+import type { AnySpecterClient } from './client'
 import type { ViewComponent } from './slice'
 
 const [refreshVersion, setRefreshVersion] = createSignal(0)
 
-type ProjectionResponse =
-  | { ok: true; data: unknown }
-  | { ok: false; message: string }
+type RuntimeSpecterClient = AnySpecterClient
+type RuntimeSpecterClientMethod = (
+  input: unknown,
+) => Effect.Effect<unknown, unknown>
 
-type CommandResponse = { ok: true } | { ok: false; message: string }
+const SpecterClientContext = createContext<RuntimeSpecterClient>()
 
 type RuntimeViewRegistration = {
   queries: Record<string, { name: string }>
@@ -18,9 +28,39 @@ type RuntimeViewRegistration = {
   component: ViewComponent<Record<string, unknown>>
 }
 
-export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
+export function SpecterClientProvider(props: {
+  client: RuntimeSpecterClient
+  children: Element
+}) {
+  return (
+    <SpecterClientContext value={props.client}>
+      {props.children}
+    </SpecterClientContext>
+  )
+}
+
+export function useSpecterClient() {
+  const client = useContext(SpecterClientContext)
+
+  if (!client) {
+    throw new Error('Missing Specter Client context')
+  }
+
+  return client
+}
+
+export function createRuntimeView<TView extends RuntimeViewRegistration>(
+  view: TView,
+): ViewComponent<Record<string, never>> {
+  return function RuntimeView() {
+    return <RuntimeSpecterView view={view} />
+  }
+}
+
+function RuntimeSpecterView<TView extends RuntimeViewRegistration>(props: {
   view: TView
 }) {
+  const client = useSpecterClient()
   const queryEntries = Object.entries(props.view.queries)
   const triggerEntries = Object.entries(props.view.triggers)
   const initialState: Record<string, unknown> = Object.fromEntries(
@@ -33,20 +73,12 @@ export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
 
   async function refreshQueries(input = getSearchInput()) {
     await Promise.all(
-      queryEntries.map(async ([alias, projection]) => {
-        const response = await api.api.projection.$get({
-          query: {
-            projectionName: projection.name,
-            input: JSON.stringify(input),
-          },
-        })
-        const result: ProjectionResponse = await response.json()
+      queryEntries.map(async ([alias, queryRef]) => {
+        const query = getClientMethod(client, queryRef.name)
 
-        if (!result.ok) {
-          throw new Error(result.message)
-        }
+        const result = await Effect.runPromise(query(input))
 
-        setQueryStores((store) => ({ ...store, [alias]: result.data }))
+        setQueryStores((store) => ({ ...store, [alias]: result }))
       }),
     )
     setIsReady(true)
@@ -55,26 +87,23 @@ export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
   const triggers = Object.fromEntries(
     triggerEntries.map(([alias, command]) => [
       alias,
-      async (input: unknown) => {
-        const response = await api.api.command.$post({
-          json: { type: command.name, payload: input },
+      (input: unknown) => {
+        const trigger = getClientMethod(client, command.name)
+
+        return Effect.gen(function* () {
+          yield* trigger(input)
+
+          const searchInput = getSearchInput()
+          const nextRefreshVersion = refreshVersion() + 1
+
+          handledRefreshVersion = nextRefreshVersion
+          lastSearchKey = JSON.stringify(searchInput)
+          setRefreshVersion(nextRefreshVersion)
+          yield* Effect.promise(() => refreshQueries(searchInput))
+
+          setTimeout(() => setRefreshVersion(refreshVersion() + 1), 100)
+          setTimeout(() => setRefreshVersion(refreshVersion() + 1), 500)
         })
-        const result: CommandResponse = await response.json()
-
-        if (!result.ok) {
-          throw new Error(result.message)
-        }
-
-        const searchInput = getSearchInput()
-        const nextRefreshVersion = refreshVersion() + 1
-
-        handledRefreshVersion = nextRefreshVersion
-        lastSearchKey = JSON.stringify(searchInput)
-        setRefreshVersion(nextRefreshVersion)
-        await refreshQueries(searchInput)
-
-        setTimeout(() => setRefreshVersion(refreshVersion() + 1), 100)
-        setTimeout(() => setRefreshVersion(refreshVersion() + 1), 500)
       },
     ]),
   )
@@ -101,6 +130,27 @@ export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
       <ViewComponent {...queryStores} {...triggers} />
     </Show>
   )
+}
+
+function getClientMethod(
+  client: RuntimeSpecterClient,
+  name: string,
+): RuntimeSpecterClientMethod {
+  const method = Object.entries(client).find(
+    ([methodName]) => methodName === name,
+  )?.[1]
+
+  if (!isRuntimeSpecterClientMethod(method)) {
+    throw new Error(`Missing Specter Client method "${name}"`)
+  }
+
+  return method
+}
+
+function isRuntimeSpecterClientMethod(
+  value: unknown,
+): value is RuntimeSpecterClientMethod {
+  return typeof value === 'function'
 }
 
 function getSearchInput() {

@@ -13,7 +13,7 @@ const virtualModuleId = 'virtual:specter/refs'
 const resolvedVirtualModuleId = `\0${virtualModuleId}`
 const generatedDtsPath = path.join('src', 'specter-refs.generated.d.ts')
 
-type RefKind = 'command' | 'projection'
+type RefKind = 'command' | 'query'
 
 type SliceRef = {
   filePath: string
@@ -94,7 +94,7 @@ function writeDeclaration(root: string) {
 function generateDeclaration(root: string) {
   const refs = collectRefs(root)
   const exports = refs.map((ref) => {
-    const refType = ref.kind === 'command' ? 'CommandRef' : 'ProjectionRef'
+    const refType = ref.kind === 'command' ? 'CommandRef' : 'QueryRef'
 
     return [
       `  export const ${ref.exportName}: import('./lib').${refType}<`,
@@ -155,12 +155,12 @@ function parseSliceRef(
   source: string,
 ): SliceRef | undefined {
   const specMatch = source.match(
-    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*create(Command|Projection|Reaction)Slice\(\s*['"]([^'"]+)['"]/,
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*create(Command|Query|Reaction)Slice\(\s*['"]([^'"]+)['"]/,
   )
 
   if (!specMatch) {
     throw new Error(
-      `Expected ${relative(root, filePath)} to create its default slice with createCommandSlice, createProjectionSlice, or createReactionSlice`,
+      `Expected ${relative(root, filePath)} to create its default slice with createCommandSlice, createQuerySlice, or createReactionSlice`,
     )
   }
 
@@ -212,8 +212,8 @@ function getRefKind(builderKind: string): RefKind | undefined {
   switch (builderKind) {
     case 'Command':
       return 'command'
-    case 'Projection':
-      return 'projection'
+    case 'Query':
+      return 'query'
     case 'Reaction':
       return
     default:
