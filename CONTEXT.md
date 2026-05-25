@@ -1,0 +1,93 @@
+# Specter
+
+Specter is a TypeScript and Solid framework for vertically sliced event-sourced applications. Example applications exist to prove the framework API and clarify usage; they are not the product itself.
+
+## Language
+
+**Specter**:
+A TypeScript and Solid framework for vertically sliced event-sourced applications.
+_Avoid_: Todo app
+
+**Reference application**:
+An executable application used to prove Specter's canonical framework API and demonstrate intended usage. A Reference application should not lag behind the intended Specter API.
+_Avoid_: Product app, primary app
+
+**Specter App**:
+The runtime composition of Event definitions and Slices for a user-defined application scope. A Specter App owns one Event Log, dispatches commands, answers projection queries, and runs reactions.
+_Avoid_: Registry
+
+**Specter Client**:
+The Effect RPC client inferred from a Specter App. It exposes top-level methods named exactly after Command Slice and Projection Slice names; TypeScript return types distinguish command methods from projection methods.
+_Avoid_: Stringly-typed dispatch client
+
+**Slice**:
+A named specification unit in a vertical feature that participates in event-log catch-up and slice state. A slice has one kind: Command Slice, Projection Slice, or Reaction Slice; slice names are unique within a Specter App and become Specter Client method names, every Slice declares Event interests with Event definitions, and relevant Events are applied in global Event Log order.
+_Avoid_: Full feature, persistence shard, view
+
+**Slice State**:
+The private event-derived state a Slice uses after catch-up. Command Slice state supports decisions, Projection Slice state supports queries, and Reaction Slice state supports whether to produce a Reaction Effect; two Slices should not share Slice State.
+_Avoid_: Shared app state
+
+**Slice Cursor**:
+The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds.
+_Avoid_: App-wide checkpoint
+
+**View**:
+An executable UI contract that composes Projection Slices and Command Slices through typed references and local query and trigger aliases. A View uses a Specter Client context to expose Effect-based queries and triggers; the component chooses when to run them and how to render loading or failures. A View is a sibling of Slice, not a kind of Slice, and Views are not validated as members of a Specter App.
+_Avoid_: Slice, route
+
+**Command Slice**:
+A slice that defines exactly one command and decides which events should be emitted when that command is accepted. The Command Slice name is the command type clients dispatch, and the slice may maintain event-derived decision state before handling the command. Command catch-up, read-only decision handling, and event append happen in one transaction; Events emitted by one accepted command append atomically and in order, then self-emitted Events are applied later through normal catch-up.
+_Avoid_: Stateless command handler, projection reader
+
+**Reaction Slice**:
+A slice that asynchronously observes new events after command success and may produce zero or one Reaction Effect per catch-up cycle. Reaction catch-up and read-only handling happen in one transaction; executing the resulting Reaction Effect happens afterward in a separate transaction or effect boundary. Reaction Slice failures do not prevent unrelated Reaction Slices from running in the same reaction run.
+_Avoid_: Batch effect emitter
+
+**Reaction Effect**:
+The ephemeral output of a Reaction Slice. By default, a Reaction Effect is interpreted as a command dispatch; a per-slice reaction plugin can interpret other effect payloads. Reaction Effects are not automatically retried.
+_Avoid_: Reaction command
+
+**Reaction Run Failure**:
+An aggregate failure reported after a reaction run processes all unrelated Reaction Slices it can. It includes the failed Reaction Slice names and causes.
+_Avoid_: First failure only
+
+**Projection Slice**:
+A slice that owns an event-derived read model and answers one projection query at its slice name. Projection catch-up and read-only query execution happen in one transaction; Projection Slices serve reads and Views, not Command Slice decisions.
+_Avoid_: Shared command state, pure query
+
+**Event**:
+A domain fact emitted by an accepted command or reaction. The Specter App assigns Event IDs when appending Events to the Event Log.
+_Avoid_: Error response, validation failure
+
+**Event Definition**:
+A named schema and factory for Events. Event Definitions are owned by Vertical Features and registered with a Specter App; event type names are unique within a Specter App's Event Log, and persisted event payloads are decoded against their Event Definitions before being applied to Slices.
+_Avoid_: Event instance
+
+**Event Draft**:
+A typed event value created by an Event Definition before it is appended to the Event Log. Command Slices emit Event Drafts; the Specter App appends them and returns persisted Events with log metadata.
+_Avoid_: Persisted event
+
+**Event Log**:
+The ordered durable record of registered Events owned by a Specter App. In runtime use, Events enter the Event Log through accepted commands; the Event Log assigns persistence metadata such as ID, order, and recorded timestamp. The Event Log can contain as many event types as the application needs, but should not accept unknown event types.
+_Avoid_: Per-feature log
+
+**Rejected Command**:
+A command that is not accepted and does not emit events. A rejected command returns a standard failure envelope with a domain-defined reason instead of appending to the event log.
+_Avoid_: Error event
+
+**Invalid Command Input**:
+A command payload that cannot be decoded against the command schema. Invalid command input is different from a Rejected Command, whose payload decoded successfully.
+_Avoid_: Rejected command
+
+**Invalid Projection Input**:
+A projection query input that cannot be decoded against the Projection Slice schema. Invalid projection input should fail the query rather than silently becoming an empty or default result.
+_Avoid_: Empty projection result
+
+**Scenario**:
+An executable example attached to a Slice or View. Slice scenarios are usually shaped as given Event Drafts, when input or action, and expected outcome; View scenarios exercise component behavior with declared query data and trigger stubs. Given and expected Event Drafts must match registered Event Definitions; given Event Drafts are test setup, not runtime ingestion; in Command Slice scenarios, expecting no events means the command must fail as a Rejected Command.
+_Avoid_: Test-only case, documentation-only example
+
+**Vertical Feature**:
+A user-facing capability grouped around domain behavior and composed from nearby Slices, Views, and Event definitions. A vertical feature is a comprehension boundary, not necessarily a runtime boundary.
+_Avoid_: Runtime module, route
