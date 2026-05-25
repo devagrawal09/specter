@@ -1,9 +1,13 @@
 import { serveStatic } from '@hono/node-server/serve-static'
-import { Effect } from 'effect'
+import { Etag } from '@effect/platform'
+import { NodeContext, NodeHttpPlatform } from '@effect/platform-node'
+import { RpcSerialization, RpcServer } from '@effect/rpc'
+import { Effect, Layer } from 'effect'
 import { Hono } from 'hono'
 
 import { todoSpecterAppConfig } from './features/todos/registry'
 import { createSpecterApp, createSpecterAppRuntimeLayer } from './lib'
+import { specterRpcGroup } from './lib/client'
 import './styles.css?url'
 
 const specterApp = Effect.runSync(createSpecterApp(todoSpecterAppConfig))
@@ -13,105 +17,47 @@ const runtimeLayer = createSpecterAppRuntimeLayer({
 let reactionQueueRunning = false
 let reactionQueueRequested = false
 
-type ApiError = {
-  ok: false
-  code: 'BAD_REQUEST' | 'NOT_FOUND' | 'INTERNAL_ERROR'
-  message: string
-}
-
 const app = new Hono()
 
-const routes = app
-  .get('/api/query', async (c) => {
-    const rawInput = c.req.query('input')
-    const parsedInput = rawInput ? safeJsonParse(rawInput) : {}
+const rpcHandlers = specterRpcGroup.toLayer({
+  Dispatch: ({ commandName, payload }) =>
+    specterApp.dispatch({ type: commandName, payload }).pipe(
+      Effect.provide(runtimeLayer),
+      Effect.tap(() => Effect.sync(startReactionQueue)),
+      Effect.catchTags({
+        CommandRejectedError: (cause: { reason: string }) =>
+          Effect.fail(cause.reason),
+        InvalidCommandError: (cause: { message: string }) =>
+          Effect.fail(cause.message),
+        UnknownCommandError: (cause: { message: string }) =>
+          Effect.fail(cause.message),
+      }),
+      Effect.catchAll((cause) => Effect.fail(messageFromCause(cause))),
+    ),
+  Query: ({ queryName, input }) =>
+    specterApp.query(queryName, input).pipe(
+      Effect.provide(runtimeLayer),
+      Effect.catchTags({
+        InvalidQueryInputError: (cause: { message: string }) =>
+          Effect.fail(cause.message),
+        UnknownQueryError: (cause: { message: string }) =>
+          Effect.fail(cause.message),
+      }),
+      Effect.catchAll((cause) => Effect.fail(messageFromCause(cause))),
+    ),
+})
 
-    const response = await Effect.runPromise(
-      specterApp.query(c.req.query('queryName') ?? '', parsedInput).pipe(
-        Effect.provide(runtimeLayer),
-        Effect.map((data) => ({
-          body: { ok: true as const, data },
-          status: 200 as const,
-        })),
-        Effect.catchTags({
-          InvalidQueryInputError: (cause: { message: string }) =>
-            Effect.succeed({
-              body: error('BAD_REQUEST', cause.message),
-              status: 400 as const,
-            }),
-          UnknownQueryError: (cause: { message: string }) =>
-            Effect.succeed({
-              body: error('NOT_FOUND', cause.message),
-              status: 404 as const,
-            }),
-        }),
-        Effect.catchAll((cause) =>
-          Effect.succeed({
-            body: error(
-              'INTERNAL_ERROR',
-              cause instanceof Error ? cause.message : 'Query failed',
-            ),
-            status: 500 as const,
-          }),
-        ),
-      ),
-    )
+const rpcWebHandler = RpcServer.toWebHandler(specterRpcGroup, {
+  layer: Layer.mergeAll(
+    rpcHandlers,
+    RpcSerialization.layerNdjson,
+    NodeContext.layer,
+    NodeHttpPlatform.layer,
+    Etag.layer,
+  ),
+})
 
-    return c.json(response.body, response.status)
-  })
-  .post('/api/command', async (c) => {
-    const command = await c.req.json().catch(() => null)
-
-    const response = await Effect.runPromise(
-      specterApp
-        .dispatch({
-          type:
-            command && typeof command === 'object' && 'type' in command
-              ? String(command.type)
-              : '',
-          payload:
-            command && typeof command === 'object' && 'payload' in command
-              ? command.payload
-              : undefined,
-        })
-        .pipe(
-          Effect.provide(runtimeLayer),
-          Effect.as({ body: { ok: true as const }, status: 200 as const }),
-          Effect.catchTags({
-            CommandRejectedError: (cause: { reason: string }) =>
-              Effect.succeed({
-                body: error('BAD_REQUEST', cause.reason),
-                status: 400 as const,
-              }),
-            InvalidCommandError: (cause: { message: string }) =>
-              Effect.succeed({
-                body: error('BAD_REQUEST', cause.message),
-                status: 400 as const,
-              }),
-            UnknownCommandError: (cause: { message: string }) =>
-              Effect.succeed({
-                body: error('NOT_FOUND', cause.message),
-                status: 404 as const,
-              }),
-          }),
-          Effect.catchAll((cause) =>
-            Effect.succeed({
-              body: error(
-                'INTERNAL_ERROR',
-                cause instanceof Error ? cause.message : 'Command failed',
-              ),
-              status: 500 as const,
-            }),
-          ),
-        ),
-    )
-
-    if (response.status === 200) {
-      setTimeout(startReactionQueue, 0)
-    }
-
-    return c.json(response.body, response.status)
-  })
+const routes = app.all('/rpc', (c) => rpcWebHandler.handler(c.req.raw))
 
 app.use('/static/*', serveStatic({ root: './dist' }))
 app.get('/manifest.json', serveStatic({ path: './public/manifest.json' }))
@@ -119,16 +65,8 @@ app.get('/favicon.ico', serveStatic({ path: './public/favicon.ico' }))
 
 app.get('*', (c) => c.html(renderShell()))
 
-function error(code: ApiError['code'], message: string): ApiError {
-  return { ok: false, code, message }
-}
-
-function safeJsonParse(value: string) {
-  try {
-    return JSON.parse(value)
-  } catch {
-    return undefined
-  }
+function messageFromCause(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause)
 }
 
 function startReactionQueue() {

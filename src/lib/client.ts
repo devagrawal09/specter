@@ -1,33 +1,11 @@
-import { Effect } from 'effect'
+import { FetchHttpClient } from '@effect/platform'
+import { Rpc, RpcClient, RpcGroup, RpcSerialization } from '@effect/rpc'
+import { Effect, Layer, Schema } from 'effect'
 
 import type { SpecterAppConfig } from './registry'
 
 const specterClientBrand: unique symbol = Symbol('SpecterClient')
 const specterClientBrandValue: true = true
-
-type CommandResponse = { ok: true } | { ok: false; message: string }
-type QueryResponse =
-  | { ok: true; data: unknown }
-  | { ok: false; message: string }
-
-type JsonResponse = {
-  json: () => Promise<unknown>
-}
-
-export type SpecterHttpApi = {
-  api: {
-    command: {
-      $post: (request: {
-        json: { type: string; payload: unknown }
-      }) => Promise<JsonResponse>
-    }
-    query: {
-      $get: (request: {
-        query: { queryName: string; input: string }
-      }) => Promise<JsonResponse>
-    }
-  }
-}
 
 type SpecterClientDefinition = {
   dispatch: (
@@ -57,82 +35,55 @@ export function defineSpecterClient<const TConfig extends SpecterAppConfig>(
   })
 }
 
-export function createHttpSpecterClient<const TConfig extends SpecterAppConfig>(
-  api: SpecterHttpApi,
+export const specterRpcGroup = RpcGroup.make(
+  Rpc.make('Dispatch', {
+    payload: {
+      commandName: Schema.String,
+      payload: Schema.Unknown,
+    },
+    error: Schema.String,
+  }),
+  Rpc.make('Query', {
+    payload: {
+      queryName: Schema.String,
+      input: Schema.Unknown,
+    },
+    success: Schema.Unknown,
+    error: Schema.String,
+  }),
+)
+
+export function createRpcSpecterClient<const TConfig extends SpecterAppConfig>(
+  url = '/rpc',
 ) {
+  const protocolLayer = RpcClient.layerProtocolHttp({ url }).pipe(
+    Layer.provide([FetchHttpClient.layer, RpcSerialization.layerNdjson]),
+  )
+
   return defineSpecterClient<TConfig>({
     dispatch: (commandName, payload) =>
-      Effect.tryPromise({
-        try: async () => {
-          const response = await api.api.command.$post({
-            json: { type: commandName, payload },
-          })
-          const result = decodeCommandResponse(await response.json())
+      Effect.gen(function* () {
+        const client = yield* RpcClient.make(specterRpcGroup)
 
-          if (!result.ok) {
-            throw new Error(result.message)
-          }
-        },
-        catch: (cause) => cause,
-      }),
+        yield* client.Dispatch({ commandName, payload }, { discard: true })
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(protocolLayer),
+        Effect.mapError(toError),
+      ),
     query: (queryName, input) =>
-      Effect.tryPromise({
-        try: async () => {
-          const response = await api.api.query.$get({
-            query: {
-              queryName,
-              input: JSON.stringify(input),
-            },
-          })
-          const result = decodeQueryResponse(await response.json())
+      Effect.gen(function* () {
+        const client = yield* RpcClient.make(specterRpcGroup)
 
-          if (!result.ok) {
-            throw new Error(result.message)
-          }
-
-          return result.data
-        },
-        catch: (cause) => cause,
-      }),
+        return yield* client.Query({ queryName, input })
+      }).pipe(
+        Effect.scoped,
+        Effect.provide(protocolLayer),
+        Effect.mapError(toError),
+      ),
   })
 }
 
-function decodeCommandResponse(data: unknown): CommandResponse {
-  if (!isObject(data) || !('ok' in data) || typeof data.ok !== 'boolean') {
-    throw new Error('Invalid command response')
-  }
-
-  if (data.ok) {
-    return { ok: true }
-  }
-
-  if (!('message' in data) || typeof data.message !== 'string') {
-    throw new Error('Invalid command response')
-  }
-
-  return { ok: false, message: data.message }
-}
-
-function decodeQueryResponse(data: unknown): QueryResponse {
-  if (!isObject(data) || !('ok' in data) || typeof data.ok !== 'boolean') {
-    throw new Error('Invalid query response')
-  }
-
-  if (data.ok) {
-    if (!('data' in data)) {
-      throw new Error('Invalid query response')
-    }
-
-    return { ok: true, data: data.data }
-  }
-
-  if (!('message' in data) || typeof data.message !== 'string') {
-    throw new Error('Invalid query response')
-  }
-
-  return { ok: false, message: data.message }
-}
-
-function isObject(value: unknown): value is object {
-  return typeof value === 'object' && value !== null
+function toError(cause: unknown) {
+  return cause instanceof Error ? cause : new Error(String(cause))
 }

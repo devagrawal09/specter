@@ -343,10 +343,7 @@ const runtimeLayer = createSpecterAppRuntimeLayer({
 })
 ```
 
-ADR 0001 commits Specter to Effect RPC as the core transport. The current implementation has not added the Effect RPC packages yet, so the demo server still exposes two HTTP operations behind the Specter Client boundary:
-
-1. `GET /api/query?queryName=...&input=...`
-2. `POST /api/command`
+ADR 0001 commits Specter to Effect RPC as the core transport. The demo server exposes the Specter RPC group at `/rpc`, and the browser client uses Effect RPC over streaming HTTP/NDJSON behind the Specter Client boundary.
 
 Successful commands append events and schedule the reaction queue. Reactions run asynchronously after the command response begins resolving.
 

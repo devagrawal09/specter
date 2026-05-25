@@ -286,7 +286,11 @@ export function createView<const TName extends string>(
               configurable: true,
             })
 
-            return Object.assign(runtimeView, registration)
+            return Object.assign(runtimeView, registration) as ViewRegistration<
+              TName,
+              typeof queries,
+              typeof triggers
+            >
           },
         }),
       }),
