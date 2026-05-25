@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 import type * as Schema from 'effect/Schema'
 
-import type { Event } from './event'
+import type { EventDraft } from './event'
 import type {
   CommandScenario,
   ProjectionScenario,
@@ -21,8 +21,9 @@ import type {
   ViewRegistration,
   ViewScenario,
 } from './slice'
+import { CommandRejectedError } from './registry'
 
-type MaybeEffect<T> = T | Effect.Effect<T, unknown, never>
+type MaybeEffect<T, E = unknown> = T | Effect.Effect<T, E, never>
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
 
@@ -37,7 +38,7 @@ type CommandStep<TName extends string, TSchema extends AnySchema> = {
     handle: (
       db: SqliteRemoteDatabase,
       command: SchemaType<TSchema>,
-    ) => MaybeEffect<Event[]>,
+    ) => MaybeEffect<EventDraft[]>,
   ) => CommandSlice<TName, TSchema> & { scenarios?: readonly CommandScenario[] }
   apply: (apply: ApplyHandlers) => CommandApplyStep<TName, TSchema>
   scenarios: (
@@ -162,7 +163,11 @@ type ViewComponentStep<
   ) => ViewRegistration<TName, TQueries, TTriggers>
 }
 
-export function createCommandSpec<const TName extends string>(
+export function rejectCommand(reason: string) {
+  return Effect.fail(new CommandRejectedError({ reason }))
+}
+
+export function createCommandSlice<const TName extends string>(
   name: TName,
 ): CommandSchemaStep<TName> {
   return {
@@ -171,7 +176,7 @@ export function createCommandSpec<const TName extends string>(
         handle: (
           db: SqliteRemoteDatabase,
           command: SchemaType<typeof schema>,
-        ) => MaybeEffect<Event[]>,
+        ) => MaybeEffect<EventDraft[]>,
         apply: ApplyHandlers,
         scenarios?: readonly CommandScenario[],
       ) => ({
@@ -205,7 +210,7 @@ export function createCommandSpec<const TName extends string>(
   }
 }
 
-export function createProjectionSpec<const TName extends string>(
+export function createProjectionSlice<const TName extends string>(
   name: TName,
 ): ProjectionSchemaStep<TName> {
   return {
@@ -242,13 +247,13 @@ export function createProjectionSpec<const TName extends string>(
   }
 }
 
-export function createReactionSpec<const TName extends string>(
+export function createReactionSlice<const TName extends string>(
   name: TName,
 ): ReactionStep<TName, import('./slice').CommandEnvelope> {
   return createReactionStep(name)
 }
 
-export function createViewSpec<const TName extends string>(
+export function createView<const TName extends string>(
   name: TName,
 ): ViewQueriesStep<TName> {
   return {
@@ -306,9 +311,9 @@ function createReactionStep<TName extends string, TPayload>(
   return s
 }
 
-function toEffect<T>(
-  run: () => MaybeEffect<T>,
-): Effect.Effect<T, unknown, never> {
+function toEffect<T, E>(
+  run: () => MaybeEffect<T, E>,
+): Effect.Effect<T, E, never> {
   return Effect.suspend(() => {
     const result = run()
 

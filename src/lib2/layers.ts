@@ -3,10 +3,10 @@ import { SqliteClient } from '@effect/sql-sqlite-node'
 import { Layer } from 'effect'
 
 import { EventLogLive } from './event-log'
-import type { RegistryRuntime } from './services'
+import type { SpecterAppRuntime } from './services'
 import { SliceStatesLive } from './slice-state'
 
-export function createRegistryRuntimeLayer(runtime: RegistryRuntime) {
+export function createSpecterAppRuntimeLayer(runtime: SpecterAppRuntime) {
   const sql = SqliteClient.layer({ filename: runtime.sqliteFilename })
   const drizzle = SqliteDrizzle.layer.pipe(Layer.provide(sql))
 

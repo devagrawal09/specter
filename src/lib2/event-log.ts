@@ -3,7 +3,7 @@ import * as SqliteDrizzle from '@effect/sql-drizzle/Sqlite'
 import { Data, Effect, Layer } from 'effect'
 
 import { events as eventTable } from '../lib_legacy'
-import type { Event, PersistedEvent } from './event'
+import type { EventDraft, PersistedEvent } from './event'
 import { EventLogService, type EventLogPort } from './services'
 
 export class EventPayloadParseError extends Data.TaggedError(
@@ -55,35 +55,44 @@ export const EventLogLive = Layer.effect(
                 type: event.type,
                 payload,
                 order: event.order,
-              } as unknown as PersistedEvent
+                recordedAt: event.createdAt,
+              } satisfies PersistedEvent
             }),
           )
         }),
-      append: (events: readonly Event[]) =>
+      append: (events: readonly EventDraft[]) =>
         Effect.gen(function* () {
-          return yield* Effect.forEach(events, (event) =>
+          return yield* Effect.forEach(events, (eventDraft) =>
             Effect.gen(function* () {
+              const id = crypto.randomUUID()
+              const recordedAt = new Date()
+
               yield* db.insert(eventTable).values({
-                id: event.id,
-                type: event.type,
-                payload: JSON.stringify(event.payload),
-                createdAt: new Date(),
+                id,
+                type: eventDraft.type,
+                payload: JSON.stringify(eventDraft.payload),
+                createdAt: recordedAt,
               })
 
               const rows = yield* db
                 .select({ order: eventTable.order })
                 .from(eventTable)
-                .where(eq(eventTable.id, event.id))
+                .where(eq(eventTable.id, id))
 
               const persistedEvent = rows[0]
 
               if (!persistedEvent) {
                 return yield* Effect.fail(
-                  new EventNotPersistedError({ eventId: event.id }),
+                  new EventNotPersistedError({ eventId: id }),
                 )
               }
 
-              return { ...event, order: persistedEvent.order }
+              return {
+                ...eventDraft,
+                id,
+                order: persistedEvent.order,
+                recordedAt,
+              }
             }),
           )
         }),

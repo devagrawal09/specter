@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
 
-import type { Event, PersistedEvent } from './event'
+import type { EventDraft, PersistedEvent } from './event'
 import { EventLogService, SliceStores } from './services'
 import type {
   CommandEnvelope,
@@ -15,6 +15,9 @@ export type CommandScenario<TPayload = unknown> = {
   given: readonly unknown[]
   when: TPayload
   expect: readonly unknown[]
+  reject?: {
+    reason: string
+  }
 }
 
 export type ProjectionScenario<TWhen = unknown, TExpect = unknown> = {
@@ -30,7 +33,7 @@ export type ReactionScenario<TPayload = CommandEnvelope> = {
 
 export function decideCommand(slice: CommandSlice, scenario: CommandScenario) {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
+    yield* replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
     const eventLog = yield* EventLogService
     const sliceStates = yield* SliceStores
@@ -69,7 +72,7 @@ export function queryProjection(
   scenario: ProjectionScenario,
 ) {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
+    yield* replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
     const eventLog = yield* EventLogService
     const sliceStates = yield* SliceStores
@@ -111,7 +114,7 @@ export function reactToScenario<TPayload>(
   scenario: ReactionScenario<TPayload>,
 ): Effect.Effect<TPayload[], unknown, SliceStores> {
   return Effect.gen(function* () {
-    yield* replay([slice], autoOrder(scenario.given as readonly Event[]))
+    yield* replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
     const payloads: TPayload[] = []
 
@@ -156,9 +159,11 @@ export function replay(
   })
 }
 
-export function autoOrder(events: readonly Event[]) {
+export function autoOrder(events: readonly EventDraft[]) {
   return events.map((event, index) => ({
     ...event,
+    id: `scenario-event-${index + 1}`,
     order: index + 1,
-  })) as PersistedEvent[]
+    recordedAt: new Date(0),
+  })) satisfies PersistedEvent[]
 }

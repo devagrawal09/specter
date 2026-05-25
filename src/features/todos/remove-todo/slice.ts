@@ -2,15 +2,15 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createCommandSpec } from '../../../lib2/builders'
-import { errorEvent, todoAddedEvent, todoRemovedEvent } from '../events'
+import { createCommandSlice, rejectCommand } from '../../../lib2'
+import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-const removeTodoSql = createCommandSpec('removeTodo')
+const removeTodoSql = createCommandSlice('removeTodo')
   .schema(
     Schema.Struct({
       todoId: Schema.String.pipe(Schema.minLength(1)),
@@ -25,7 +25,7 @@ const removeTodoSql = createCommandSpec('removeTodo')
     {
       given: [],
       when: { todoId: 'missing' },
-      expect: [errorEvent.create({ message: 'Todo not found' })],
+      expect: [],
     },
     {
       given: [
@@ -33,14 +33,14 @@ const removeTodoSql = createCommandSpec('removeTodo')
         todoRemovedEvent.create({ todoId: 'todo-1' }),
       ],
       when: { todoId: 'todo-1' },
-      expect: [errorEvent.create({ message: 'Todo not found' })],
+      expect: [],
     },
   )
   .apply({
     [todoAddedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoAddedEvent.decode(event.payload)
 
         yield* db
           .insert(todoRemovalSqlStates)
@@ -49,7 +49,7 @@ const removeTodoSql = createCommandSpec('removeTodo')
     [todoRemovedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoRemovedEvent.decode(event.payload)
 
         yield* db
           .update(todoRemovalSqlStates)
@@ -67,7 +67,7 @@ const removeTodoSql = createCommandSpec('removeTodo')
       const todo = rows[0]
 
       if (!todo || todo.removed) {
-        return [errorEvent.create({ message: 'Todo not found' })]
+        return yield* rejectCommand('Todo not found')
       }
 
       return [todoRemovedEvent.create({ todoId: command.todoId })]

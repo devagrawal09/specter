@@ -3,10 +3,17 @@ import * as Schema from 'effect/Schema'
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
 
-export type Event<TType extends string = string, TPayload = unknown> = {
-  id: string
+export type EventDraft<TType extends string = string, TPayload = unknown> = {
   type: TType
   payload: TPayload
+}
+
+export type Event<
+  TType extends string = string,
+  TPayload = unknown,
+> = EventDraft<TType, TPayload> & {
+  id: string
+  recordedAt: Date
 }
 
 export type PersistedEvent<
@@ -16,17 +23,26 @@ export type PersistedEvent<
   order: number
 }
 
-export type EventSpec<TType extends string = string, TPayload = unknown> = {
+export type EventDefinition<
+  TType extends string = string,
+  TPayload = unknown,
+> = {
   type: TType
   schema: AnySchema
-  create: (payload: TPayload) => Event<TType, TPayload>
-  is: (event: Event) => event is Event<TType, TPayload>
+  create: (payload: TPayload) => EventDraft<TType, TPayload>
+  decode: (payload: unknown) => TPayload
+  is: (event: EventDraft) => event is EventDraft<TType, TPayload>
 }
 
-export function createEventSpec<
+export type EventSpec<
+  TType extends string = string,
+  TPayload = unknown,
+> = EventDefinition<TType, TPayload>
+
+export function createEventDefinition<
   const TType extends string,
   TSchema extends AnySchema,
->(type: TType, schema: TSchema): EventSpec<TType, SchemaType<TSchema>> {
+>(type: TType, schema: TSchema): EventDefinition<TType, SchemaType<TSchema>> {
   const decode = Schema.decodeUnknownSync(schema)
   const isPayload = Schema.is(schema)
 
@@ -34,11 +50,13 @@ export function createEventSpec<
     type,
     schema,
     create: (payload) => ({
-        id: crypto.randomUUID(),
-        type,
-        payload: decode(payload),
-      }),
-    is: (event): event is Event<TType, SchemaType<TSchema>> =>
+      type,
+      payload: decode(payload),
+    }),
+    decode,
+    is: (event): event is EventDraft<TType, SchemaType<TSchema>> =>
       event.type === type && isPayload(event.payload),
   }
 }
+
+export const createEventSpec = createEventDefinition

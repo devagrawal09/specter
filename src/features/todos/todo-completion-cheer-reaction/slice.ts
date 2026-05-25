@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { createReactionSpec } from '../../../lib2/builders'
+import { createReactionSlice } from '../../../lib2'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -38,7 +38,7 @@ function completedTodoEvents(count: number): unknown[] {
   }).flat()
 }
 
-const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
+const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
   .scenarios(
     {
       given: [
@@ -102,7 +102,7 @@ const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
     [todoAddedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoAddedEvent.decode(event.payload)
 
         yield* db.insert(todoCompletionCheerSqlTodoStates).values({
           todoId: payload.todoId,
@@ -113,7 +113,7 @@ const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
     [todoCompletionChangedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string; completed: boolean }
+        const payload = todoCompletionChangedEvent.decode(event.payload)
 
         yield* db
           .update(todoCompletionCheerSqlTodoStates)
@@ -123,7 +123,7 @@ const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
     [todoRemovedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoRemovedEvent.decode(event.payload)
 
         yield* db
           .update(todoCompletionCheerSqlTodoStates)
@@ -133,7 +133,7 @@ const todoCompletionCheerSql = createReactionSpec('todoCompletionCheer')
     [todoCheerCreatedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { milestone: number }
+        const payload = todoCheerCreatedEvent.decode(event.payload)
 
         yield* db
           .insert(todoCheerSqlMilestoneStates)

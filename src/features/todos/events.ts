@@ -1,47 +1,46 @@
-import z from 'zod'
-import { createEventSpec } from '../../lib_legacy'
+import * as Schema from 'effect/Schema'
+import { createEventDefinition } from '../../lib2'
 
-export const todoAddedEvent = createEventSpec(
+export const todoAddedEvent = createEventDefinition(
   'todoAdded',
-  z.object({
-    todoId: z.string(),
-    title: z.string(),
+  Schema.Struct({
+    todoId: Schema.String,
+    title: Schema.String,
   }),
 )
 
-export const todoCompletionChangedEvent = createEventSpec(
+export const todoCompletionChangedEvent = createEventDefinition(
   'todoCompletionChanged',
-  z.object({
-    todoId: z.string(),
-    completed: z.boolean(),
+  Schema.Struct({
+    todoId: Schema.String,
+    completed: Schema.Boolean,
   }),
 )
 
-export const todoRemovedEvent = createEventSpec(
+export const todoRemovedEvent = createEventDefinition(
   'todoRemoved',
-  z.object({
-    todoId: z.string(),
+  Schema.Struct({
+    todoId: Schema.String,
   }),
 )
 
-export const todoCheerCreatedEvent = createEventSpec(
+export const todoCheerCreatedEvent = createEventDefinition(
   'todoCheerCreated',
-  z.object({
-    milestone: z.number().int().positive(),
-    message: z.string(),
+  Schema.Struct({
+    milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
+    message: Schema.String,
   }),
 )
 
-export const errorEvent = createEventSpec(
-  'error',
-  z.object({
-    message: z.string(),
-  }),
-)
+export const todoEventDefinitions = [
+  todoAddedEvent,
+  todoCompletionChangedEvent,
+  todoRemovedEvent,
+  todoCheerCreatedEvent,
+] as const
 
 export type Event =
   | ReturnType<typeof todoAddedEvent.create>
   | ReturnType<typeof todoCompletionChangedEvent.create>
   | ReturnType<typeof todoRemovedEvent.create>
   | ReturnType<typeof todoCheerCreatedEvent.create>
-  | ReturnType<typeof errorEvent.create>

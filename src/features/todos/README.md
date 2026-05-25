@@ -1,7 +1,5 @@
-# Todos SQL Reference
+# Todos Reference Application
 
-This feature mirrors the todo slices using explicit SQLite-backed slice state.
+This feature is Specter's executable reference application. It demonstrates the current lib2 API with Event Definitions, Event Drafts, Command Slices, Projection Slices, a Reaction Slice, and Views.
 
-It is intentionally not registered in the main slice registry. The active todo
-feature uses generic JSON slice state; these files exist as a reference for the
-older SQL-state style.
+The slices use explicit SQLite-backed Slice State. Command handlers emit Event Drafts for accepted commands and reject expected domain failures through typed Effect failure instead of emitting error events.

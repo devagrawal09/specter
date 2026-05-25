@@ -2,9 +2,8 @@ import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createCommandSpec } from '../../../lib2/builders'
+import { createCommandSlice, rejectCommand } from '../../../lib2'
 import {
-  errorEvent,
   todoAddedEvent,
   todoCheerCreatedEvent,
   todoCompletionChangedEvent,
@@ -40,7 +39,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-const createTodoCheerSql = createCommandSpec('createTodoCheer')
+const createTodoCheerSql = createCommandSlice('createTodoCheer')
   .schema(
     Schema.Struct({
       milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
@@ -50,20 +49,12 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
     {
       given: [],
       when: { milestone: 4 },
-      expect: [
-        errorEvent.create({
-          message: 'Todo cheer milestone must be a multiple of 5',
-        }),
-      ],
+      expect: [],
     },
     {
       given: completedTodoEvents(4),
       when: { milestone: 5 },
-      expect: [
-        errorEvent.create({
-          message: 'Todo cheer milestone has not been reached',
-        }),
-      ],
+      expect: [],
     },
     {
       given: [
@@ -74,11 +65,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
         }),
       ],
       when: { milestone: 5 },
-      expect: [
-        errorEvent.create({
-          message: 'Todo cheer milestone already exists',
-        }),
-      ],
+      expect: [],
     },
     {
       given: completedTodoEvents(5),
@@ -96,18 +83,14 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
         todoRemovedEvent.create({ todoId: 'todo-5' }),
       ],
       when: { milestone: 5 },
-      expect: [
-        errorEvent.create({
-          message: 'Todo cheer milestone has not been reached',
-        }),
-      ],
+      expect: [],
     },
   )
   .apply({
     [todoAddedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoAddedEvent.decode(event.payload)
 
         yield* db.insert(createTodoCheerSqlTodoStates).values({
           todoId: payload.todoId,
@@ -118,7 +101,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
     [todoCompletionChangedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string; completed: boolean }
+        const payload = todoCompletionChangedEvent.decode(event.payload)
 
         yield* db
           .update(createTodoCheerSqlTodoStates)
@@ -128,7 +111,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
     [todoRemovedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoRemovedEvent.decode(event.payload)
 
         yield* db
           .update(createTodoCheerSqlTodoStates)
@@ -138,7 +121,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
     [todoCheerCreatedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { milestone: number }
+        const payload = todoCheerCreatedEvent.decode(event.payload)
 
         yield* db
           .insert(createTodoCheerSqlMilestoneStates)
@@ -150,11 +133,9 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
       const db = input
 
       if (command.milestone % 5 !== 0) {
-        return [
-          errorEvent.create({
-            message: 'Todo cheer milestone must be a multiple of 5',
-          }),
-        ]
+        return yield* rejectCommand(
+          'Todo cheer milestone must be a multiple of 5',
+        )
       }
 
       const completedTodos = yield* db
@@ -169,11 +150,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
       const completedCount = completedTodos.length
 
       if (completedCount < command.milestone) {
-        return [
-          errorEvent.create({
-            message: 'Todo cheer milestone has not been reached',
-          }),
-        ]
+        return yield* rejectCommand('Todo cheer milestone has not been reached')
       }
 
       const existingMilestones = yield* db
@@ -184,11 +161,7 @@ const createTodoCheerSql = createCommandSpec('createTodoCheer')
         )
 
       if (existingMilestones[0]) {
-        return [
-          errorEvent.create({
-            message: 'Todo cheer milestone already exists',
-          }),
-        ]
+        return yield* rejectCommand('Todo cheer milestone already exists')
       }
 
       return [

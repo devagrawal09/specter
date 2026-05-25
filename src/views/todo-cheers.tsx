@@ -1,9 +1,9 @@
 import { Show } from 'solid-js'
 
-import { createViewSpec } from '../lib2/builders'
+import { createView } from '../lib2/view'
 import { todoCheers } from 'virtual:specter/refs'
 
-export const TodoCheersView = createViewSpec('todo-cheers')
+export const TodoCheersView = createView('todo-cheers')
   .queries({ cheer: todoCheers })
   .triggers({})
   .scenarios([])

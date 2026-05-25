@@ -1,6 +1,6 @@
 # Specter
 
-Specter is a small Hono + Vite + Solid todo app backed by local SQLite.
+Specter is a TypeScript and Solid framework for vertically sliced event-sourced applications. The todo app in `src/features/todos` is a reference application for proving the framework API.
 
 ## Development
 
@@ -34,3 +34,7 @@ npm run db:migrate
 ```
 
 The SQLite database is stored at `./data/app.db`.
+
+## Current API Direction
+
+The lib2 API now uses Specter language: `createSpecterApp`, `createCommandSlice`, `createProjectionSlice`, `createReactionSlice`, `createView`, Event Definitions, and Event Drafts. Event Definitions are registered with the Specter App; the Event Log assigns IDs, order, and recorded timestamps when accepted commands append drafts.

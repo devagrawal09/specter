@@ -4,15 +4,19 @@ import type * as SqlClient from '@effect/sql/SqlClient'
 import type * as Schema from 'effect/Schema'
 import type { Component } from 'solid-js'
 
-import type { Event, PersistedEvent } from './event'
+import type { Event, EventDraft } from './event'
 import type { EventLogService, SliceStores } from './services'
 
 type AnySchema = Schema.Schema.AnyNoContext
 type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
-export type RegistryServices =
+export type SpecterAppServices =
   | EventLogService
   | SliceStores
   | SqlClient.SqlClient
+
+export type RejectedCommand = {
+  readonly reason: string
+}
 
 export type CommandEnvelope<
   TName extends string = string,
@@ -42,7 +46,7 @@ export type CommandSlice<
   handle: (
     db: SqliteRemoteDatabase,
     command: SchemaType<TSchema>,
-  ) => Effect.Effect<Event[], unknown, never>
+  ) => Effect.Effect<EventDraft[], unknown, never>
 }
 
 export type ProjectionSlice<
@@ -140,15 +144,15 @@ export type ViewRegistration<
 
 export type CommandDispatch = (
   command: CommandEnvelope,
-) => Effect.Effect<PersistedEvent[], unknown, RegistryServices>
+) => Effect.Effect<void, unknown, SpecterAppServices>
 
 export type ReactionExec = (
   reaction: unknown,
-) => Effect.Effect<unknown, unknown, RegistryServices>
+) => Effect.Effect<unknown, unknown, SpecterAppServices>
 
 export type ReactionPlugin = (
   command: CommandDispatch,
-) => Effect.Effect<ReactionExec, unknown, RegistryServices>
+) => Effect.Effect<ReactionExec, unknown, SpecterAppServices>
 
 export type ReactionSlice<
   TName extends string = string,

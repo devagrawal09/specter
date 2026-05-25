@@ -49,7 +49,10 @@ export function specterRefsPlugin(): Plugin {
       const refs = collectRefs(root)
 
       return `${refs
-        .map((ref) => `export const ${ref.exportName} = { name: ${JSON.stringify(ref.name)} }`)
+        .map(
+          (ref) =>
+            `export const ${ref.exportName} = { name: ${JSON.stringify(ref.name)} }`,
+        )
         .join('\n')}\n`
     },
     configureServer(server) {
@@ -93,7 +96,11 @@ function generateDeclaration(root: string) {
   const exports = refs.map((ref) => {
     const refType = ref.kind === 'command' ? 'CommandRef' : 'ProjectionRef'
 
-    return `  export const ${ref.exportName}: import('./lib2').${refType}<typeof import('${ref.importPath}').default>`
+    return [
+      `  export const ${ref.exportName}: import('./lib2').${refType}<`,
+      `    typeof import('${ref.importPath}').default`,
+      '  >',
+    ].join('\n')
   })
 
   return [
@@ -117,7 +124,7 @@ function collectRefs(root: string) {
 
     const source = readFileSync(filePath, 'utf8')
 
-    if (!source.includes('/lib2/builders') && !source.includes('lib2/builders')) {
+    if (!source.includes('/lib2') && !source.includes('lib2')) {
       continue
     }
 
@@ -128,7 +135,6 @@ function collectRefs(root: string) {
     }
 
     const existingPath = names.get(ref.name)
-
 
     if (existingPath) {
       throw new Error(
@@ -149,12 +155,12 @@ function parseSliceRef(
   source: string,
 ): SliceRef | undefined {
   const specMatch = source.match(
-    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*create(Command|Projection|Reaction)Spec\(\s*['"]([^'"]+)['"]/,
+    /\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*create(Command|Projection|Reaction)Slice\(\s*['"]([^'"]+)['"]/,
   )
 
   if (!specMatch) {
     throw new Error(
-      `Expected ${relative(root, filePath)} to create its default slice with createCommandSpec, createProjectionSpec, or createReactionSpec`,
+      `Expected ${relative(root, filePath)} to create its default slice with createCommandSlice, createProjectionSlice, or createReactionSlice`,
     )
   }
 
@@ -163,7 +169,9 @@ function parseSliceRef(
   const sliceName = specMatch[3]
 
   if (!localName || !builderKind || !sliceName) {
-    throw new Error(`Could not parse slice registration in ${relative(root, filePath)}`)
+    throw new Error(
+      `Could not parse slice registration in ${relative(root, filePath)}`,
+    )
   }
 
   const defaultMatch = source.match(/\bexport\s+default\s+([A-Za-z_$][\w$]*)\b/)

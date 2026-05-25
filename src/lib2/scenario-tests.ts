@@ -2,13 +2,15 @@ import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import { Effect } from 'effect'
+import * as Either from 'effect/Either'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import type { Event } from './event'
-import { createRegistryRuntimeLayer } from './layers'
+import type { EventDraft } from './event'
+import { createSpecterAppRuntimeLayer } from './layers'
+import { CommandRejectedError } from './registry'
 import type { EventLogService, SliceStores } from './services'
 import type { SliceRegistration } from './slice'
 import type {
@@ -42,11 +44,29 @@ export function testScenarios(
 
           it(commandScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              decideCommand(registration, scenario),
+              decideCommand(registration, scenario).pipe(Effect.either),
               options,
             )
 
-            expect(result).toHaveLength(scenario.expect.length)
+            if (scenario.expect.length === 0) {
+              expect(Either.isLeft(result)).toBe(true)
+              if (scenario.reject) {
+                if (!Either.isLeft(result)) {
+                  throw new Error('Command scenario did not reject')
+                }
+                expect(result.left).toBeInstanceOf(CommandRejectedError)
+                expect(result.left).toMatchObject({
+                  reason: scenario.reject.reason,
+                })
+              }
+              return
+            }
+
+            if (Either.isLeft(result)) {
+              throw new Error('Command scenario rejected unexpectedly')
+            }
+
+            expect(result.right).toHaveLength(scenario.expect.length)
 
             for (const [index, expectedEvent] of scenario.expect.entries()) {
               if (!isEvent(expectedEvent)) {
@@ -55,11 +75,10 @@ export function testScenarios(
                 )
               }
 
-              const actualEvent = result[index]
+              const actualEvent = result.right[index]
 
               expect(actualEvent).toEqual(
                 expect.objectContaining({
-                  id: expect.any(String),
                   type: expectedEvent.type,
                 }),
               )
@@ -149,7 +168,7 @@ async function runWithTestDb<T>(
 
     return await Effect.runPromise(
       effect.pipe(
-        Effect.provide(createRegistryRuntimeLayer({ sqliteFilename })),
+        Effect.provide(createSpecterAppRuntimeLayer({ sqliteFilename })),
       ),
     )
   } finally {
@@ -184,7 +203,7 @@ function hasGivenExpectArray(
   return hasGiven(value) && 'expect' in value && Array.isArray(value.expect)
 }
 
-function comparablePayload(event: Event) {
+function comparablePayload(event: EventDraft) {
   if (isGeneratedTodoEvent(event)) {
     return expect.objectContaining({
       todoId: expect.any(String),
@@ -196,8 +215,8 @@ function comparablePayload(event: Event) {
 }
 
 function isGeneratedTodoEvent(
-  event: Event,
-): event is Event<string, { todoId: 'generated'; title: unknown }> {
+  event: EventDraft,
+): event is EventDraft<string, { todoId: 'generated'; title: unknown }> {
   const payload = event.payload
 
   return (
@@ -242,11 +261,10 @@ function reactionScenarioLabel(scenario: ReactionScenario) {
   ].join(', ')
 }
 
-function isEvent(value: unknown): value is Event {
+function isEvent(value: unknown): value is EventDraft {
   return (
     value !== null &&
     typeof value === 'object' &&
-    'id' in value &&
     'type' in value &&
     'payload' in value &&
     typeof value.type === 'string'

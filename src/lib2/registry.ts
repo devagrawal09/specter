@@ -3,10 +3,12 @@ import { Data, Effect } from 'effect'
 import type * as ParseResult from 'effect/ParseResult'
 import * as Schema from 'effect/Schema'
 
+import type { EventDraft, PersistedEvent } from './event'
 import { EventLogService, SliceStores } from './services'
 import type {
   CommandEnvelope,
   CommandSlice,
+  SpecterAppServices,
   ProjectionSlice,
   ReactionExec,
   ReactionSlice,
@@ -21,6 +23,19 @@ export class InvalidCommandError extends Data.TaggedError(
   'InvalidCommandError',
 )<{
   readonly error: ParseResult.ParseError
+}> {}
+
+export class CommandRejectedError extends Data.TaggedError(
+  'CommandRejectedError',
+)<{
+  readonly reason: string
+}> {}
+
+export class InvalidEventDraftError extends Data.TaggedError(
+  'InvalidEventDraftError',
+)<{
+  readonly eventType: string
+  readonly error: unknown
 }> {}
 
 export class InvalidProjectionInputError extends Data.TaggedError(
@@ -48,8 +63,67 @@ export class DuplicateSliceNameError extends Data.TaggedError(
   readonly sliceName: string
 }> {}
 
-export function createRegistry(registrations: readonly SliceRegistration[]) {
+export class DuplicateEventTypeError extends Data.TaggedError(
+  'DuplicateEventTypeError',
+)<{
+  readonly eventType: string
+}> {}
+
+export class UnknownEventTypeError extends Data.TaggedError(
+  'UnknownEventTypeError',
+)<{
+  readonly eventType: string
+}> {}
+
+export class ReactionRunError extends Data.TaggedError('ReactionRunError')<{
+  readonly failures: readonly {
+    readonly reactionName: string
+    readonly cause: unknown
+  }[]
+}> {}
+
+export type SpecterAppConfig = {
+  readonly events: readonly {
+    readonly type: string
+    readonly decode: (payload: unknown) => unknown
+  }[]
+  readonly slices: readonly SliceRegistration[]
+}
+
+type PreparedReactionEffect = {
+  readonly reaction: ReactionSlice<string, unknown>
+  readonly exec: ReactionExec
+  readonly effect: unknown
+}
+
+type ReactionPreparationResult =
+  | {
+      readonly _tag: 'Failed'
+      readonly reactionName: string
+      readonly cause: unknown
+    }
+  | {
+      readonly _tag: 'Prepared'
+      readonly prepared: PreparedReactionEffect | undefined
+    }
+
+export function createSpecterApp(config: SpecterAppConfig) {
   return Effect.gen(function* () {
+    const eventDefinitions: Record<
+      string,
+      { readonly type: string; readonly decode: (payload: unknown) => unknown }
+    > = {}
+
+    for (const eventDefinition of config.events) {
+      if (eventDefinitions[eventDefinition.type]) {
+        return yield* Effect.fail(
+          new DuplicateEventTypeError({ eventType: eventDefinition.type }),
+        )
+      }
+
+      eventDefinitions[eventDefinition.type] = eventDefinition
+    }
+
     const registry: {
       commands: Record<string, CommandSlice>
       projections: Record<string, ProjectionSlice>
@@ -57,7 +131,7 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
     } = { commands: {}, projections: {}, reactions: {} }
     const sliceNames = new Set<string>()
 
-    for (const registration of registrations) {
+    for (const registration of config.slices) {
       if (sliceNames.has(registration.name)) {
         return yield* Effect.fail(
           new DuplicateSliceNameError({ sliceName: registration.name }),
@@ -88,6 +162,46 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
 
     const reactionExecs = new Map<string, ReactionExec>()
 
+    function decodePersistedEvent(event: PersistedEvent) {
+      const eventDefinition = eventDefinitions[event.type]
+
+      if (!eventDefinition) {
+        return Effect.fail(new UnknownEventTypeError({ eventType: event.type }))
+      }
+
+      return Effect.succeed({
+        ...event,
+        payload: eventDefinition.decode(event.payload),
+      })
+    }
+
+    function decodeEventDraft(
+      event: EventDraft,
+    ): Effect.Effect<
+      EventDraft,
+      UnknownEventTypeError | InvalidEventDraftError,
+      never
+    > {
+      return Effect.gen(function* () {
+        const eventDefinition = eventDefinitions[event.type]
+
+        if (!eventDefinition) {
+          return yield* Effect.fail(
+            new UnknownEventTypeError({ eventType: event.type }),
+          )
+        }
+
+        return yield* Effect.try({
+          try: () => ({
+            ...event,
+            payload: eventDefinition.decode(event.payload),
+          }),
+          catch: (error) =>
+            new InvalidEventDraftError({ eventType: event.type, error }),
+        })
+      })
+    }
+
     function catchUpSlice(slice: SliceRegistration) {
       return Effect.gen(function* () {
         const eventLog = yield* EventLogService
@@ -101,9 +215,13 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
         }
 
         const lastAppliedOrder = yield* store.lastAppliedOrder
-        const unappliedEvents = yield* eventLog.readAfter(
+        const unreadEvents = yield* eventLog.readAfter(
           lastAppliedOrder,
           eventTypes,
+        )
+        const unappliedEvents = yield* Effect.forEach(
+          unreadEvents,
+          decodePersistedEvent,
         )
 
         if (!unappliedEvents.length) {
@@ -121,7 +239,17 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
       })
     }
 
-    function dispatch(c: CommandEnvelope) {
+    for (const registration of config.slices) {
+      for (const eventType of Object.keys(registration.apply ?? {})) {
+        if (!eventDefinitions[eventType]) {
+          return yield* Effect.fail(new UnknownEventTypeError({ eventType }))
+        }
+      }
+    }
+
+    function dispatch(
+      c: CommandEnvelope,
+    ): Effect.Effect<void, unknown, SpecterAppServices> {
       return Effect.gen(function* () {
         const sql = yield* SqlClient.SqlClient
         const commandSlice = registry.commands[c.type]
@@ -144,7 +272,13 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
               store.state,
               parsedCommand,
             )
-            return yield* eventLog.append(events)
+
+            const decodedEvents = yield* Effect.forEach(
+              events,
+              decodeEventDraft,
+            )
+
+            yield* eventLog.append(decodedEvents)
           }),
         )
       })
@@ -205,23 +339,80 @@ export function createRegistry(registrations: readonly SliceRegistration[]) {
       runReactions: () =>
         Effect.gen(function* () {
           const sql = yield* SqlClient.SqlClient
-          const results = yield* Effect.forEach(
+          const reactionEffects = yield* Effect.forEach(
             Object.values(registry.reactions),
             (reaction) =>
-              sql.withTransaction(
-                Effect.gen(function* () {
-                  const { store, advanced } = yield* catchUpSlice(reaction)
-                  if (!advanced) return false
-                  const effect = yield* reaction.handle(store.state)
-                  if (!effect) return false
-                  const exec = yield* getReactionExec(reaction)
-                  yield* exec(effect)
-                  return true
+              sql
+                .withTransaction(
+                  Effect.gen(function* () {
+                    const { store, advanced } = yield* catchUpSlice(reaction)
+                    if (!advanced) return undefined
+                    const effect = yield* reaction.handle(store.state)
+                    if (!effect) return undefined
+                    const exec = yield* getReactionExec(reaction)
+                    return {
+                      reaction,
+                      exec,
+                      effect,
+                    } satisfies PreparedReactionEffect
+                  }),
+                )
+                .pipe(
+                  Effect.match({
+                    onFailure: (cause) =>
+                      ({
+                        _tag: 'Failed',
+                        reactionName: reaction.name,
+                        cause,
+                      }) satisfies ReactionPreparationResult,
+                    onSuccess: (prepared) =>
+                      ({
+                        _tag: 'Prepared',
+                        prepared,
+                      }) satisfies ReactionPreparationResult,
+                  }),
+                ),
+          )
+          const preparationFailures = reactionEffects.flatMap((result) =>
+            result._tag === 'Failed'
+              ? [{ reactionName: result.reactionName, cause: result.cause }]
+              : [],
+          )
+          const results = yield* Effect.forEach(
+            reactionEffects.flatMap((item) =>
+              item._tag === 'Prepared' && item.prepared !== undefined
+                ? [item.prepared]
+                : [],
+            ),
+            ({ reaction, exec, effect }) =>
+              exec(effect).pipe(
+                Effect.match({
+                  onFailure: (cause) => ({
+                    failed: true as const,
+                    reactionName: reaction.name,
+                    cause,
+                  }),
+                  onSuccess: () => ({
+                    failed: false as const,
+                    reactionName: reaction.name,
+                  }),
                 }),
               ),
           )
-          if (results.some((r) => r)) return true
-          return false
+          const failures = [
+            ...preparationFailures,
+            ...results.flatMap((result) =>
+              result.failed
+                ? [{ reactionName: result.reactionName, cause: result.cause }]
+                : [],
+            ),
+          ]
+
+          if (failures.length) {
+            return yield* Effect.fail(new ReactionRunError({ failures }))
+          }
+
+          return results.length > 0
         }),
     }
   })

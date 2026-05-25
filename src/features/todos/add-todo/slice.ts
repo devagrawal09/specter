@@ -1,10 +1,10 @@
 import * as Schema from 'effect/Schema'
-import { createCommandSpec } from '../../../lib2/builders'
-import { errorEvent, todoAddedEvent } from '../events'
+import { createCommandSlice, rejectCommand } from '../../../lib2'
+import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
 
-const addTodoSql = createCommandSpec('addTodo')
+const addTodoSql = createCommandSlice('addTodo')
   .schema(
     Schema.Struct({
       title: Schema.String,
@@ -28,31 +28,29 @@ const addTodoSql = createCommandSpec('addTodo')
     {
       given: [],
       when: { title: '   ' },
-      expect: [errorEvent.create({ message: 'Todo title is required' })],
+      expect: [],
+      reject: { reason: 'Todo title is required' },
     },
     {
       given: [],
       when: { title: 'x'.repeat(maxTitleLength + 1) },
-      expect: [
-        errorEvent.create({
-          message: `Todo title must be ${maxTitleLength} characters or less`,
-        }),
-      ],
+      expect: [],
+      reject: {
+        reason: `Todo title must be ${maxTitleLength} characters or less`,
+      },
     },
   )
   .handle((_input, command) => {
     const title = command.title.trim()
 
     if (!title) {
-      return [errorEvent.create({ message: 'Todo title is required' })]
+      return rejectCommand('Todo title is required')
     }
 
     if (title.length > maxTitleLength) {
-      return [
-        errorEvent.create({
-          message: `Todo title must be ${maxTitleLength} characters or less`,
-        }),
-      ]
+      return rejectCommand(
+        `Todo title must be ${maxTitleLength} characters or less`,
+      )
     }
 
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]

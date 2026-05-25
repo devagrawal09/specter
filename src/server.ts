@@ -2,12 +2,12 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { Effect } from 'effect'
 import { Hono } from 'hono'
 
-import { todoSqlRegistrations } from './features/todos/registry'
-import { createRegistry, createRegistryRuntimeLayer } from './lib2'
+import { todoSpecterAppConfig } from './features/todos/registry'
+import { createSpecterApp, createSpecterAppRuntimeLayer } from './lib2'
 import './styles.css?url'
 
-const registry = Effect.runSync(createRegistry(todoSqlRegistrations))
-const runtimeLayer = createRegistryRuntimeLayer({
+const specterApp = Effect.runSync(createSpecterApp(todoSpecterAppConfig))
+const runtimeLayer = createSpecterAppRuntimeLayer({
   sqliteFilename: './data/app.db',
 })
 let reactionQueueRunning = false
@@ -27,19 +27,19 @@ const routes = app
     const parsedInput = rawInput ? safeJsonParse(rawInput) : {}
 
     const response = await Effect.runPromise(
-      registry.query(c.req.query('projectionName') ?? '', parsedInput).pipe(
+      specterApp.query(c.req.query('projectionName') ?? '', parsedInput).pipe(
         Effect.provide(runtimeLayer),
         Effect.map((data) => ({
           body: { ok: true as const, data },
           status: 200 as const,
         })),
         Effect.catchTags({
-          InvalidProjectionInputError: (cause) =>
+          InvalidProjectionInputError: (cause: { message: string }) =>
             Effect.succeed({
               body: error('BAD_REQUEST', cause.message),
               status: 400 as const,
             }),
-          UnknownProjectionError: (cause) =>
+          UnknownProjectionError: (cause: { message: string }) =>
             Effect.succeed({
               body: error('NOT_FOUND', cause.message),
               status: 404 as const,
@@ -63,7 +63,7 @@ const routes = app
     const command = await c.req.json().catch(() => null)
 
     const response = await Effect.runPromise(
-      registry
+      specterApp
         .dispatch({
           type:
             command && typeof command === 'object' && 'type' in command
@@ -79,12 +79,17 @@ const routes = app
           Effect.tap(() => Effect.sync(startReactionQueue)),
           Effect.as({ body: { ok: true as const }, status: 200 as const }),
           Effect.catchTags({
-            InvalidCommandError: (cause) =>
+            CommandRejectedError: (cause: { reason: string }) =>
+              Effect.succeed({
+                body: error('BAD_REQUEST', cause.reason),
+                status: 400 as const,
+              }),
+            InvalidCommandError: (cause: { message: string }) =>
               Effect.succeed({
                 body: error('BAD_REQUEST', cause.message),
                 status: 400 as const,
               }),
-            UnknownCommandError: (cause) =>
+            UnknownCommandError: (cause: { message: string }) =>
               Effect.succeed({
                 body: error('NOT_FOUND', cause.message),
                 status: 404 as const,
@@ -141,7 +146,7 @@ async function drainReactionQueue() {
 
       while (
         await Effect.runPromise(
-          registry.runReactions().pipe(Effect.provide(runtimeLayer)),
+          specterApp.runReactions().pipe(Effect.provide(runtimeLayer)),
         )
       ) {
         // Reactions can dispatch commands that produce more reaction work.

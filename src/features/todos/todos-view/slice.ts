@@ -3,7 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Either from 'effect/Either'
 import * as Schema from 'effect/Schema'
-import { createProjectionSpec } from '../../../lib2/builders'
+import { createProjectionSlice } from '../../../lib2'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -17,7 +17,7 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
-const todosSqlProjection = createProjectionSpec('todosProjection')
+const todosSqlProjection = createProjectionSlice('todosProjection')
   .schema(
     Schema.Struct({
       status: Schema.Literal('all', 'active', 'completed').annotations({
@@ -29,7 +29,7 @@ const todosSqlProjection = createProjectionSpec('todosProjection')
     [todoAddedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string; title: string }
+        const payload = todoAddedEvent.decode(event.payload)
 
         yield* db.insert(todoSqlListItems).values({
           id: payload.todoId,
@@ -40,7 +40,7 @@ const todosSqlProjection = createProjectionSpec('todosProjection')
     [todoCompletionChangedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string; completed: boolean }
+        const payload = todoCompletionChangedEvent.decode(event.payload)
 
         yield* db
           .update(todoSqlListItems)
@@ -50,7 +50,7 @@ const todosSqlProjection = createProjectionSpec('todosProjection')
     [todoRemovedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoRemovedEvent.decode(event.payload)
 
         yield* db
           .update(todoSqlListItems)

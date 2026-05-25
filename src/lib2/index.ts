@@ -1,23 +1,37 @@
-export type { Event, EventSpec, PersistedEvent } from './event'
-export { createEventSpec } from './event'
+export type {
+  Event,
+  EventDefinition,
+  EventDraft,
+  EventSpec,
+  PersistedEvent,
+} from './event'
+export { createEventDefinition, createEventSpec } from './event'
+export { defineSpecterClient } from './client'
+export type { SpecterClient } from './client'
 export {
-  createCommandSpec,
-  createProjectionSpec,
-  createReactionSpec,
-  createViewSpec,
+  createCommandSlice,
+  createProjectionSlice,
+  createReactionSlice,
+  createView,
+  rejectCommand,
 } from './builders'
 export { EventNotPersistedError, EventPayloadParseError } from './event-log'
-export { createRegistryRuntimeLayer } from './layers'
+export { createSpecterAppRuntimeLayer } from './layers'
 export {
-  createRegistry,
+  createSpecterApp,
+  CommandRejectedError,
   DuplicateSliceNameError,
+  DuplicateEventTypeError,
   EmptyCommandRegistryError,
+  InvalidEventDraftError,
   InvalidCommandError,
   InvalidProjectionInputError,
+  ReactionRunError,
   UnknownCommandError,
+  UnknownEventTypeError,
   UnknownProjectionError,
 } from './registry'
-export type { RegistryRuntime } from './services'
+export type { SpecterAppRuntime } from './services'
 export {
   autoOrder,
   decideCommand,

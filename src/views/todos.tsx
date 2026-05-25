@@ -1,7 +1,7 @@
 import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
 
 import { searchParams, setSearch } from '../location'
-import { createViewSpec } from '../lib2/builders'
+import { createView } from '../lib2/view'
 import {
   addTodo,
   changeTodoCompletion,
@@ -15,7 +15,7 @@ const filterOptions = [
   { status: 'completed', label: 'Completed' },
 ] as const
 
-export const TodosView = createViewSpec('todos-view')
+export const TodosView = createView('todos-view')
   .queries({ todos: todosProjection })
   .triggers({
     add: addTodo,

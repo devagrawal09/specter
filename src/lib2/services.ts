@@ -1,9 +1,9 @@
 import { Context, type Effect } from 'effect'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 
-import type { Event, PersistedEvent } from './event'
+import type { EventDraft, PersistedEvent } from './event'
 
-export type RegistryRuntime = {
+export type SpecterAppRuntime = {
   sqliteFilename: string
 }
 
@@ -12,7 +12,9 @@ export type EventLogPort = {
     order: number,
     eventTypes: readonly string[],
   ) => Effect.Effect<PersistedEvent[], unknown>
-  append: (events: readonly Event[]) => Effect.Effect<PersistedEvent[], unknown>
+  append: (
+    events: readonly EventDraft[],
+  ) => Effect.Effect<PersistedEvent[], unknown>
 }
 
 export class EventLogService extends Context.Tag('lib2/EventLog')<

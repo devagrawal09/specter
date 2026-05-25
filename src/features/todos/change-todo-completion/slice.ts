@@ -2,9 +2,8 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createCommandSpec } from '../../../lib2/builders'
+import { createCommandSlice, rejectCommand } from '../../../lib2'
 import {
-  errorEvent,
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
@@ -21,7 +20,7 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
+const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
   .schema(
     Schema.Struct({
       todoId: Schema.String.pipe(Schema.minLength(1)),
@@ -53,7 +52,7 @@ const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
     {
       given: [],
       when: { todoId: 'missing', completed: true },
-      expect: [errorEvent.create({ message: 'Todo not found' })],
+      expect: [],
     },
     {
       given: [
@@ -61,14 +60,14 @@ const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
         todoRemovedEvent.create({ todoId: 'todo-1' }),
       ],
       when: { todoId: 'todo-1', completed: true },
-      expect: [errorEvent.create({ message: 'Todo not found' })],
+      expect: [],
     },
   )
   .apply({
     [todoAddedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoAddedEvent.decode(event.payload)
 
         yield* db.insert(todoCompletionSqlStates).values({
           todoId: payload.todoId,
@@ -78,7 +77,7 @@ const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
     [todoCompletionChangedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string; completed: boolean }
+        const payload = todoCompletionChangedEvent.decode(event.payload)
 
         yield* db
           .update(todoCompletionSqlStates)
@@ -88,7 +87,7 @@ const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
     [todoRemovedEvent.type]: (event, input) =>
       Effect.gen(function* () {
         const db = input
-        const payload = event.payload as { todoId: string }
+        const payload = todoRemovedEvent.decode(event.payload)
 
         yield* db
           .update(todoCompletionSqlStates)
@@ -106,11 +105,13 @@ const changeTodoCompletionSql = createCommandSpec('changeTodoCompletion')
       const todo = rows[0]
 
       if (!todo || todo.removed) {
-        return [errorEvent.create({ message: 'Todo not found' })]
+        return yield* rejectCommand('Todo not found')
       }
 
       if (todo.completed === command.completed) {
-        return []
+        return yield* rejectCommand(
+          'Todo completion is already in requested state',
+        )
       }
 
       return [
