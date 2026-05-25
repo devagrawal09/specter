@@ -37,4 +37,4 @@ The SQLite database is stored at `./data/app.db`.
 
 ## Current API Direction
 
-The lib2 API now uses Specter language: `createSpecterApp`, `createCommandSlice`, `createProjectionSlice`, `createReactionSlice`, `createView`, Event Definitions, and Event Drafts. Event Definitions are registered with the Specter App; the Event Log assigns IDs, order, and recorded timestamps when accepted commands append drafts.
+The lib API uses Specter language: `createSpecterApp`, `createCommandSlice`, `createProjectionSlice`, `createReactionSlice`, `createView`, Event Definitions, and Event Drafts. Event Definitions are registered with the Specter App; the Event Log assigns IDs, order, and recorded timestamps when accepted commands append drafts.

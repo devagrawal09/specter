@@ -17,7 +17,7 @@ export type EventLogPort = {
   ) => Effect.Effect<PersistedEvent[], unknown>
 }
 
-export class EventLogService extends Context.Tag('lib2/EventLog')<
+export class EventLogService extends Context.Tag('lib/EventLog')<
   EventLogService,
   EventLogPort
 >() {}
@@ -32,7 +32,7 @@ export type SliceStore = {
   setLastAppliedOrder: (order: number) => Effect.Effect<void, unknown>
 }
 
-export class SliceStores extends Context.Tag('lib2/SliceStores')<
+export class SliceStores extends Context.Tag('lib/SliceStores')<
   SliceStores,
   SliceRepo
 >() {}

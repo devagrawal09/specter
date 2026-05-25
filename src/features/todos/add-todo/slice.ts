@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { createCommandSlice, rejectCommand } from '../../../lib2'
+import { createCommandSlice, rejectCommand } from '../../../lib'
 import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120

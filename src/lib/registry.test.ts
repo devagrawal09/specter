@@ -133,7 +133,7 @@ it('aggregates reaction catch-up and handle failures while continuing others', a
 async function runWithTestDb<T>(
   effect: Effect.Effect<T, unknown, SpecterAppServices>,
 ) {
-  const directory = mkdtempSync(join(tmpdir(), 'specter-lib2-'))
+  const directory = mkdtempSync(join(tmpdir(), 'specter-lib-'))
   const sqliteFilename = join(directory, 'test.sqlite')
   const sqlite = new Database(sqliteFilename)
 

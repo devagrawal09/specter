@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import { Hono } from 'hono'
 
 import { todoSpecterAppConfig } from './features/todos/registry'
-import { createSpecterApp, createSpecterAppRuntimeLayer } from './lib2'
+import { createSpecterApp, createSpecterAppRuntimeLayer } from './lib'
 import './styles.css?url'
 
 const specterApp = Effect.runSync(createSpecterApp(todoSpecterAppConfig))
@@ -76,7 +76,6 @@ const routes = app
         })
         .pipe(
           Effect.provide(runtimeLayer),
-          Effect.tap(() => Effect.sync(startReactionQueue)),
           Effect.as({ body: { ok: true as const }, status: 200 as const }),
           Effect.catchTags({
             CommandRejectedError: (cause: { reason: string }) =>
@@ -106,6 +105,10 @@ const routes = app
           ),
         ),
     )
+
+    if (response.status === 200) {
+      setTimeout(startReactionQueue, 0)
+    }
 
     return c.json(response.body, response.status)
   })
@@ -158,7 +161,7 @@ async function drainReactionQueue() {
     reactionQueueRunning = false
 
     if (reactionQueueRequested) {
-      startReactionQueue()
+      void startReactionQueue()
     }
   }
 }

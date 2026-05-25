@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { createEventDefinition } from '../../lib2'
+import { createEventDefinition } from '../../lib'
 
 export const todoAddedEvent = createEventDefinition(
   'todoAdded',

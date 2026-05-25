@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createProjectionSlice } from '../../../lib2'
+import { createProjectionSlice } from '../../../lib'
 import { todoCheerCreatedEvent } from '../events'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {

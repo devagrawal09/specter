@@ -5,7 +5,7 @@ import removeTodoSql from './remove-todo/slice'
 import todoSqlCheers from './todo-cheers/slice'
 import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
 import todosSqlProjection from './todos-view/slice'
-import type { CommandRef, ProjectionRef } from '../../lib2'
+import type { CommandRef, ProjectionRef } from '../../lib'
 import { todoEventDefinitions } from './events'
 
 export const todoSqlRegistrations = [

@@ -1,6 +1,6 @@
 import { Show } from 'solid-js'
 
-import { createView } from '../lib2/view'
+import { createView } from '../lib/view'
 import { todoCheers } from 'virtual:specter/refs'
 
 export const TodoCheersView = createView('todo-cheers')

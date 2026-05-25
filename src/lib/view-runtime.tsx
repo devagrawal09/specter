@@ -1,9 +1,8 @@
-import { createEffect, createSignal, type Component } from 'solid-js'
-import { createStore } from 'solid-js'
+import { createEffect, createSignal, createStore, Show } from 'solid-js'
 
 import { api } from '../api-client'
 import { searchParams } from '../location'
-import type { ViewRegistration } from './registry.builders'
+import type { ViewComponent } from './slice'
 
 const [refreshVersion, setRefreshVersion] = createSignal(0)
 
@@ -13,18 +12,22 @@ type ProjectionResponse =
 
 type CommandResponse = { ok: true } | { ok: false; message: string }
 
-export function ViewOutlet<TView extends ViewRegistration>(props: {
+type RuntimeViewRegistration = {
+  queries: Record<string, { name: string }>
+  triggers: Record<string, { name: string }>
+  component: ViewComponent<Record<string, unknown>>
+}
+
+export function ViewOutlet<TView extends RuntimeViewRegistration>(props: {
   view: TView
 }) {
   const queryEntries = Object.entries(props.view.queries)
   const triggerEntries = Object.entries(props.view.triggers)
-  const initialState = Object.fromEntries(
-    queryEntries.map(([alias, projection]) => [
-      alias,
-      structuredClone(projection.state),
-    ]),
+  const initialState: Record<string, unknown> = Object.fromEntries(
+    queryEntries.map(([alias]) => [alias, undefined]),
   )
   const [queryStores, setQueryStores] = createStore(initialState)
+  const [isReady, setIsReady] = createSignal(queryEntries.length === 0)
   let handledRefreshVersion = 0
   let lastSearchKey = ''
 
@@ -37,23 +40,16 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
             input: JSON.stringify(input),
           },
         })
-        const result = (await (
-          response as Response
-        ).json()) as ProjectionResponse
+        const result: ProjectionResponse = await response.json()
 
         if (!result.ok) {
           throw new Error(result.message)
         }
 
-        const updateQueryStores = setQueryStores as (
-          update: (store: Record<string, unknown>) => void,
-        ) => void
-
-        updateQueryStores((store) => {
-          store[alias] = result.data
-        })
+        setQueryStores((store) => ({ ...store, [alias]: result.data }))
       }),
     )
+    setIsReady(true)
   }
 
   const triggers = Object.fromEntries(
@@ -61,9 +57,9 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
       alias,
       async (input: unknown) => {
         const response = await api.api.command.$post({
-          json: { type: command.type, payload: input },
+          json: { type: command.name, payload: input },
         })
-        const result = (await (response as Response).json()) as CommandResponse
+        const result: CommandResponse = await response.json()
 
         if (!result.ok) {
           throw new Error(result.message)
@@ -76,6 +72,9 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
         lastSearchKey = JSON.stringify(searchInput)
         setRefreshVersion(nextRefreshVersion)
         await refreshQueries(searchInput)
+
+        setTimeout(() => setRefreshVersion(refreshVersion() + 1), 100)
+        setTimeout(() => setRefreshVersion(refreshVersion() + 1), 500)
       },
     ]),
   )
@@ -95,11 +94,13 @@ export function ViewOutlet<TView extends ViewRegistration>(props: {
     },
   )
 
-  const ViewComponent = props.view.component as Component<
-    Record<string, unknown>
-  >
+  const ViewComponent = props.view.component
 
-  return <ViewComponent {...queryStores} {...triggers} />
+  return (
+    <Show when={isReady()}>
+      <ViewComponent {...queryStores} {...triggers} />
+    </Show>
+  )
 }
 
 function getSearchInput() {

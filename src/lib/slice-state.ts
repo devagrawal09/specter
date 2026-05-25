@@ -3,7 +3,7 @@ import * as SqliteDrizzle from '@effect/sql-drizzle/Sqlite'
 import { Effect, Layer } from 'effect'
 import type { SqliteRemoteDatabase } from 'drizzle-orm/sqlite-proxy'
 
-import { sliceCursors } from '../lib_legacy'
+import { sliceCursors } from './schema'
 import { SliceStores, type SliceStore } from './services'
 
 export const SliceStatesLive = Layer.effect(

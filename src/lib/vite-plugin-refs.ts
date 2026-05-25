@@ -97,7 +97,7 @@ function generateDeclaration(root: string) {
     const refType = ref.kind === 'command' ? 'CommandRef' : 'ProjectionRef'
 
     return [
-      `  export const ${ref.exportName}: import('./lib2').${refType}<`,
+      `  export const ${ref.exportName}: import('./lib').${refType}<`,
       `    typeof import('${ref.importPath}').default`,
       '  >',
     ].join('\n')
@@ -124,7 +124,7 @@ function collectRefs(root: string) {
 
     const source = readFileSync(filePath, 'utf8')
 
-    if (!source.includes('/lib2') && !source.includes('lib2')) {
+    if (!source.includes('/lib') && !source.includes('lib')) {
       continue
     }
 

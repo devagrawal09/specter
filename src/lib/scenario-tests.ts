@@ -28,7 +28,7 @@ export function testScenarios(
   registrations: readonly SliceRegistration[],
   options: ScenarioTestOptions = {},
 ) {
-  describe('lib2 command scenarios', () => {
+  describe('lib command scenarios', () => {
     for (const registration of registrations) {
       if (registration.kind !== 'command' || !registration.scenarios) {
         continue
@@ -92,7 +92,7 @@ export function testScenarios(
     }
   })
 
-  describe('lib2 projection scenarios', () => {
+  describe('lib projection scenarios', () => {
     for (const registration of registrations) {
       if (registration.kind !== 'projection' || !registration.scenarios) {
         continue
@@ -119,7 +119,7 @@ export function testScenarios(
     }
   })
 
-  describe('lib2 reaction scenarios', () => {
+  describe('lib reaction scenarios', () => {
     for (const registration of registrations) {
       if (registration.kind !== 'reaction' || !registration.scenarios) {
         continue
@@ -151,7 +151,7 @@ async function runWithTestDb<T>(
   effect: Effect.Effect<T, unknown, EventLogService | SliceStores>,
   options: ScenarioTestOptions,
 ) {
-  const directory = mkdtempSync(join(tmpdir(), 'specter-lib2-'))
+  const directory = mkdtempSync(join(tmpdir(), 'specter-lib-'))
   const sqliteFilename = join(directory, 'test.sqlite')
   const sqlite = new Database(sqliteFilename)
 

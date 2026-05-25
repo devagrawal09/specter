@@ -3,7 +3,7 @@ import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Either from 'effect/Either'
 import * as Schema from 'effect/Schema'
-import { createProjectionSlice } from '../../../lib2'
+import { createProjectionSlice } from '../../../lib'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,

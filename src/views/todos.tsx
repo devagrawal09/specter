@@ -1,7 +1,7 @@
-import { action, createOptimistic, createSignal, For, Show } from 'solid-js'
+import { createSignal, For, Show } from 'solid-js'
 
 import { searchParams, setSearch } from '../location'
-import { createView } from '../lib2/view'
+import { createView } from '../lib/view'
 import {
   addTodo,
   changeTodoCompletion,
@@ -27,8 +27,8 @@ export const TodosView = createView('todos-view')
     const status = () => searchParams().get('status') ?? 'all'
     const [title, setTitle] = createSignal('')
     const [isAdding, setIsAdding] = createSignal(false)
-    const [pendingToggleId, setPendingToggleId] = createOptimistic('')
-    const [pendingRemoveId, setPendingRemoveId] = createOptimistic('')
+    const [pendingToggleId, setPendingToggleId] = createSignal('')
+    const [pendingRemoveId, setPendingRemoveId] = createSignal('')
 
     return (
       <>
@@ -134,13 +134,16 @@ export const TodosView = createView('todos-view')
                       todo.completed ? 'active' : 'completed'
                     }`}
                     onChange={async (event) => {
-                      action(async function* () {
-                        setPendingToggleId(todo.id)
-                        yield props.change({
+                      setPendingToggleId(todo.id)
+
+                      try {
+                        await props.change({
                           todoId: todo.id,
                           completed: event.currentTarget.checked,
                         })
-                      })
+                      } finally {
+                        setPendingToggleId('')
+                      }
                     }}
                     class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
                   />
@@ -159,10 +162,13 @@ export const TodosView = createView('todos-view')
                     type="button"
                     disabled={pendingRemoveId() === todo.id}
                     onClick={async () => {
-                      action(async function* () {
-                        setPendingRemoveId(todo.id)
-                        yield props.remove({ todoId: todo.id })
-                      })
+                      setPendingRemoveId(todo.id)
+
+                      try {
+                        await props.remove({ todoId: todo.id })
+                      } finally {
+                        setPendingRemoveId('')
+                      }
                     }}
                     class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >

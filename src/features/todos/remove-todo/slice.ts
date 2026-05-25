@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
-import { createCommandSlice, rejectCommand } from '../../../lib2'
+import { createCommandSlice, rejectCommand } from '../../../lib'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {

@@ -1,4 +1,4 @@
-export { events, sliceCursors } from '../lib_legacy'
+export { events, sliceCursors } from '../lib/schema'
 export { todoCompletionSqlStates } from '../features/todos/change-todo-completion/slice'
 export {
   createTodoCheerSqlMilestoneStates,

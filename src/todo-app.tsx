@@ -1,4 +1,4 @@
-import { ViewOutlet } from './lib2/view-runtime'
+import { ViewOutlet } from './lib/view-runtime'
 import { TodoCheersView } from './views/todo-cheers'
 import { TodosView } from './views/todos'
 

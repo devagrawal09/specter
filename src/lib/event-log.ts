@@ -2,8 +2,8 @@ import { and, asc, eq, gt, inArray } from 'drizzle-orm'
 import * as SqliteDrizzle from '@effect/sql-drizzle/Sqlite'
 import { Data, Effect, Layer } from 'effect'
 
-import { events as eventTable } from '../lib_legacy'
 import type { EventDraft, PersistedEvent } from './event'
+import { events as eventTable } from './schema'
 import { EventLogService, type EventLogPort } from './services'
 
 export class EventPayloadParseError extends Data.TaggedError(
