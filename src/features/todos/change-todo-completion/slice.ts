@@ -95,9 +95,8 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
           .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
       }),
   })
-  .handle((input, command) =>
+  .handle((db, command) =>
     Effect.gen(function* () {
-      const db = input
       const rows = yield* db
         .select()
         .from(todoCompletionSqlStates)

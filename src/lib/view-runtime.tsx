@@ -16,9 +16,6 @@ import type { ViewComponent } from './slice'
 const [refreshVersion, setRefreshVersion] = createSignal(0)
 
 type RuntimeSpecterClient = AnySpecterClient
-type RuntimeSpecterClientMethod = (
-  input: unknown,
-) => Effect.Effect<unknown, unknown>
 
 const SpecterClientContext = createContext<RuntimeSpecterClient>()
 
@@ -74,9 +71,9 @@ function RuntimeSpecterView<TView extends RuntimeViewRegistration>(props: {
   async function refreshQueries(input = getSearchInput()) {
     await Promise.all(
       queryEntries.map(async ([alias, queryRef]) => {
-        const query = getClientMethod(client, queryRef.name)
-
-        const result = await Effect.runPromise(query(input))
+        const result = await Effect.runPromise(
+          client.query(queryRef.name, input),
+        )
 
         setQueryStores((store) => ({ ...store, [alias]: result }))
       }),
@@ -88,10 +85,8 @@ function RuntimeSpecterView<TView extends RuntimeViewRegistration>(props: {
     triggerEntries.map(([alias, command]) => [
       alias,
       (input: unknown) => {
-        const trigger = getClientMethod(client, command.name)
-
         return Effect.gen(function* () {
-          yield* trigger(input)
+          yield* client.dispatch(command.name, input)
 
           const searchInput = getSearchInput()
           const nextRefreshVersion = refreshVersion() + 1
@@ -130,27 +125,6 @@ function RuntimeSpecterView<TView extends RuntimeViewRegistration>(props: {
       <ViewComponent {...queryStores} {...triggers} />
     </Show>
   )
-}
-
-function getClientMethod(
-  client: RuntimeSpecterClient,
-  name: string,
-): RuntimeSpecterClientMethod {
-  const method = Object.entries(client).find(
-    ([methodName]) => methodName === name,
-  )?.[1]
-
-  if (!isRuntimeSpecterClientMethod(method)) {
-    throw new Error(`Missing Specter Client method "${name}"`)
-  }
-
-  return method
-}
-
-function isRuntimeSpecterClientMethod(
-  value: unknown,
-): value is RuntimeSpecterClientMethod {
-  return typeof value === 'function'
 }
 
 function getSearchInput() {

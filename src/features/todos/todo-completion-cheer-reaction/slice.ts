@@ -140,9 +140,8 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
           .values({ milestone: payload.milestone })
       }),
   })
-  .handle((input) =>
+  .handle((db) =>
     Effect.gen(function* () {
-      const db = input
       const completedTodos = yield* db
         .select()
         .from(todoCompletionCheerSqlTodoStates)

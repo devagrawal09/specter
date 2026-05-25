@@ -5,8 +5,8 @@ export type {
   PersistedEvent,
 } from './event'
 export { createEventDefinition } from './event'
-export { defineSpecterClient } from './client'
-export type { SpecterClient } from './client'
+export { createHttpSpecterClient, defineSpecterClient } from './client'
+export type { SpecterClient, SpecterHttpApi } from './client'
 export {
   createCommandSlice,
   createQuerySlice,

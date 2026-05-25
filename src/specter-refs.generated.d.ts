@@ -16,6 +16,6 @@ declare module 'virtual:specter/refs' {
     typeof import('./features/todos/todo-cheers/slice').default
   >
   export const todosQuery: import('./lib').QueryRef<
-    typeof import('./features/todos/todos-view/slice').default
+    typeof import('./features/todos/todos-query/slice').default
   >
 }

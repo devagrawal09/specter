@@ -57,9 +57,8 @@ const removeTodoSql = createCommandSlice('removeTodo')
           .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
       }),
   })
-  .handle((input, command) =>
+  .handle((db, command) =>
     Effect.gen(function* () {
-      const db = input
       const rows = yield* db
         .select()
         .from(todoRemovalSqlStates)

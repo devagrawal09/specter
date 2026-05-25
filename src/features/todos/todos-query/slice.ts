@@ -112,9 +112,8 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       expect: [],
     },
   )
-  .handle((input, query) =>
+  .handle((db, query) =>
     Effect.gen(function* () {
-      const db = input
       const visiblePredicate = eq(todoSqlListItems.removed, false)
       const activePredicate = and(
         visiblePredicate,

@@ -10,4 +10,4 @@ export {
   todoCheerSqlMilestoneStates,
   todoCompletionCheerSqlTodoStates,
 } from '../features/todos/todo-completion-cheer-reaction/slice'
-export { todoSqlListItems } from '../features/todos/todos-view/slice'
+export { todoSqlListItems } from '../features/todos/todos-query/slice'

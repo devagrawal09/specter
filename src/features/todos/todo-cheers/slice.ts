@@ -56,9 +56,8 @@ const todoSqlCheers = createQuerySlice('todoCheers')
       },
     },
   )
-  .handle((input) =>
+  .handle((db) =>
     Effect.gen(function* () {
-      const db = input
       const latestCheers = yield* db
         .select()
         .from(todoSqlCheersState)

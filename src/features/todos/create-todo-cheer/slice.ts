@@ -128,10 +128,8 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
           .values({ milestone: payload.milestone })
       }),
   })
-  .handle((input, command) =>
+  .handle((db, command) =>
     Effect.gen(function* () {
-      const db = input
-
       if (command.milestone % 5 !== 0) {
         return yield* rejectCommand(
           'Todo cheer milestone must be a multiple of 5',

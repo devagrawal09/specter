@@ -40,7 +40,7 @@ const addTodoSql = createCommandSlice('addTodo')
       },
     },
   )
-  .handle((_input, command) => {
+  .handle((_db, command) => {
     const title = command.title.trim()
 
     if (!title) {
