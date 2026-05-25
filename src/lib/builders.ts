@@ -274,14 +274,19 @@ export function createView<const TName extends string>(
           component: (component) => {
             const registration = {
               kind: 'view' as const,
-              name,
               queries,
               triggers,
               scenarios,
               component,
             }
+            const runtimeView = createRuntimeView({ name, ...registration })
 
-            return Object.assign(createRuntimeView(registration), registration)
+            Object.defineProperty(runtimeView, 'name', {
+              value: name,
+              configurable: true,
+            })
+
+            return Object.assign(runtimeView, registration)
           },
         }),
       }),

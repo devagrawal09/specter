@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
+    "dev:kill": "fuser -k 41731/tcp || true",
     "build": "vite build --mode client && vite build",
     "start": "node dist/index.js",
     "preview": "vite preview",

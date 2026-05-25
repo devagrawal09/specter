@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { createEffect, createMemo, onCleanup, refresh, Show } from 'solid-js'
+import { createEffect, createMemo, Loading, refresh, Show } from 'solid-js'
 
 import { createView } from '../lib/view'
 import { todoCheers } from 'virtual:specter/refs'
@@ -16,17 +16,19 @@ export const TodoCheersView = createView('todo-cheers')
       () => {
         const intervalId = window.setInterval(() => refresh(cheerState), 10000)
 
-        onCleanup(() => window.clearInterval(intervalId))
+        return () => window.clearInterval(intervalId)
       },
     )
 
     return (
-      <Show when={cheerState().latestCheer}>
-        {(cheer) => (
-          <p class="m-0 rounded-xl border border-[rgba(47,106,74,0.22)] bg-[rgba(79,184,178,0.16)] px-4 py-3 text-sm font-semibold text-[var(--palm)]">
-            {cheer().message}
-          </p>
-        )}
-      </Show>
+      <Loading fallback={null}>
+        <Show when={cheerState().latestCheer}>
+          {(cheer) => (
+            <p class="m-0 rounded-xl border border-[rgba(47,106,74,0.22)] bg-[rgba(79,184,178,0.16)] px-4 py-3 text-sm font-semibold text-[var(--palm)]">
+              {cheer().message}
+            </p>
+          )}
+        </Show>
+      </Loading>
     )
   })
