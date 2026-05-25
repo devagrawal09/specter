@@ -1,5 +1,13 @@
 import { Effect } from 'effect'
-import { createSignal, For, Show } from 'solid-js'
+import {
+  action,
+  createMemo,
+  createOptimistic,
+  createSignal,
+  For,
+  refresh,
+  Show,
+} from 'solid-js'
 
 import { searchParams, setSearch } from '../location'
 import { createView } from '../lib/view'
@@ -16,6 +24,8 @@ const filterOptions = [
   { status: 'completed', label: 'Completed' },
 ] as const
 
+type TodoStatus = (typeof filterOptions)[number]['status']
+
 export const TodosView = createView('todos-view')
   .queries({ todos: todosQuery })
   .triggers({
@@ -25,11 +35,38 @@ export const TodosView = createView('todos-view')
   })
   .scenarios([])
   .component((props) => {
-    const status = () => searchParams().get('status') ?? 'all'
+    const status = (): TodoStatus => {
+      const value = searchParams().get('status')
+
+      return value === 'active' || value === 'completed' ? value : 'all'
+    }
+    const todos = createMemo(() =>
+      Effect.runPromise(props.todos({ status: status() })),
+    )
     const [title, setTitle] = createSignal('')
-    const [isAdding, setIsAdding] = createSignal(false)
-    const [pendingToggleId, setPendingToggleId] = createSignal('')
-    const [pendingRemoveId, setPendingRemoveId] = createSignal('')
+    const [isAdding, setIsAdding] = createOptimistic(false)
+    const [pendingToggleId, setPendingToggleId] = createOptimistic('')
+    const [pendingRemoveId, setPendingRemoveId] = createOptimistic('')
+    const add = action(function* (nextTitle: string) {
+      setIsAdding(true)
+      yield Effect.runPromise(props.add({ title: nextTitle }))
+      refresh(todos)
+    })
+    const change = action(function* (todoId: string, completed: boolean) {
+      setPendingToggleId(todoId)
+      yield Effect.runPromise(
+        props.change({
+          todoId,
+          completed,
+        }),
+      )
+      refresh(todos)
+    })
+    const remove = action(function* (todoId: string) {
+      setPendingRemoveId(todoId)
+      yield Effect.runPromise(props.remove({ todoId }))
+      refresh(todos)
+    })
 
     return (
       <>
@@ -39,9 +76,9 @@ export const TodosView = createView('todos-view')
               Todos
             </h1>
             <p class="mb-0 mt-2 text-sm text-[var(--sea-ink-soft)]">
-              {props.todos.length} total ·{' '}
-              {props.todos.filter((todo) => !todo.completed).length} active ·{' '}
-              {props.todos.filter((todo) => todo.completed).length} completed
+              {todos().length} total ·{' '}
+              {todos().filter((todo) => !todo.completed).length} active ·{' '}
+              {todos().filter((todo) => todo.completed).length} completed
             </p>
           </div>
 
@@ -73,14 +110,9 @@ export const TodosView = createView('todos-view')
           class="mt-5 grid gap-2 sm:grid-cols-[1fr_auto]"
           onSubmit={async (event) => {
             event.preventDefault()
-            setIsAdding(true)
-
-            try {
-              await Effect.runPromise(props.add({ title: title() }))
-              setTitle('')
-            } finally {
-              setIsAdding(false)
-            }
+            const nextTitle = title()
+            setTitle('')
+            await add(nextTitle)
           }}
         >
           <label class="sr-only" for="todo-title">
@@ -105,7 +137,7 @@ export const TodosView = createView('todos-view')
 
         <div class="mt-6 grid gap-2">
           <Show
-            when={props.todos.length > 0}
+            when={todos().length > 0}
             fallback={
               <p class="m-0 rounded-xl border border-dashed border-[rgba(23,58,64,0.18)] px-4 py-6 text-center text-sm text-[var(--sea-ink-soft)]">
                 <Show
@@ -113,7 +145,7 @@ export const TodosView = createView('todos-view')
                   fallback={
                     <Show
                       when={status() === 'completed'}
-                      fallback="No todos yet."
+                      fallback={'No todos yet.'}
                     >
                       No completed todos.
                     </Show>
@@ -124,7 +156,7 @@ export const TodosView = createView('todos-view')
               </p>
             }
           >
-            <For each={props.todos}>
+            <For each={todos()}>
               {(todo) => (
                 <article class="grid min-h-14 grid-cols-[auto_1fr_auto] items-center gap-3 rounded-xl border border-[rgba(23,58,64,0.12)] bg-white/60 px-3 py-2">
                   <input
@@ -135,18 +167,7 @@ export const TodosView = createView('todos-view')
                       todo.completed ? 'active' : 'completed'
                     }`}
                     onChange={async (event) => {
-                      setPendingToggleId(todo.id)
-
-                      try {
-                        await Effect.runPromise(
-                          props.change({
-                            todoId: todo.id,
-                            completed: event.currentTarget.checked,
-                          }),
-                        )
-                      } finally {
-                        setPendingToggleId('')
-                      }
+                      await change(todo.id, event.currentTarget.checked)
                     }}
                     class="h-5 w-5 accent-[var(--lagoon-deep)] disabled:cursor-not-allowed"
                   />
@@ -165,15 +186,7 @@ export const TodosView = createView('todos-view')
                     type="button"
                     disabled={pendingRemoveId() === todo.id}
                     onClick={async () => {
-                      setPendingRemoveId(todo.id)
-
-                      try {
-                        await Effect.runPromise(
-                          props.remove({ todoId: todo.id }),
-                        )
-                      } finally {
-                        setPendingRemoveId('')
-                      }
+                      await remove(todo.id)
                     }}
                     class="h-9 min-w-16 rounded-lg px-2 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
                   >

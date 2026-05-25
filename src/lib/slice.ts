@@ -107,6 +107,7 @@ export type QuerySlice<
 export type ViewQueryRef<TResult = unknown, TName extends string = string> = {
   name: TName
   result?: TResult
+  input?: unknown
 }
 
 export type ViewCommandRef<
@@ -118,8 +119,8 @@ export type ViewCommandRef<
 }
 
 export type QueryRef<TRegistration> =
-  TRegistration extends QuerySlice<infer TName, AnySchema, infer TResult>
-    ? ViewQueryRef<TResult, TName>
+  TRegistration extends QuerySlice<infer TName, infer TSchema, infer TResult>
+    ? ViewQueryRef<TResult, TName> & { input?: SchemaType<TSchema> }
     : never
 
 export type CommandRef<TRegistration> =
@@ -129,6 +130,12 @@ export type CommandRef<TRegistration> =
 
 type ViewQueryResult<TRegistration> =
   TRegistration extends ViewQueryRef<infer TResult> ? TResult : never
+
+type ViewQueryInput<TRegistration> = TRegistration extends {
+  input?: infer TInput
+}
+  ? TInput
+  : never
 
 type CommandPayload<TRegistration> =
   TRegistration extends ViewCommandRef<infer TPayload> ? TPayload : never
@@ -148,7 +155,9 @@ export type ViewProps<
   TQueries extends Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef>,
 > = {
-  [TKey in keyof TQueries]: ViewQueryResult<TQueries[TKey]>
+  [TKey in keyof TQueries]: (
+    input: ViewQueryInput<TQueries[TKey]>,
+  ) => Effect.Effect<ViewQueryResult<TQueries[TKey]>, unknown>
 } & {
   [TKey in keyof TTriggers]: (
     input: CommandPayload<TTriggers[TKey]>,
