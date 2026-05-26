@@ -117,7 +117,7 @@ function renderShell() {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Specter Todos</title>
+    <title>Specter</title>
     <link rel="stylesheet" href="${stylesheet}" />
     <script type="module" src="${clientScript}"></script>
   </head>

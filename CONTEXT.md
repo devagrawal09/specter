@@ -12,6 +12,14 @@ _Avoid_: Todo app
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. A Reference application should not lag behind the intended Specter API.
 _Avoid_: Product app, primary app
 
+**Product Site**:
+The public-facing site for presenting Specter itself and collecting interest from prospective users. A Product Site is distinct from a Reference application, even when it dogfoods Specter concepts.
+_Avoid_: Reference application, todo app
+
+**Waitlist Signup**:
+A unique email registration from a prospective Specter user on the Product Site, including the Product Site variation that originated it. A Waitlist Signup is not a repeated interest signal; duplicate email registration is rejected.
+_Avoid_: Lead event, repeated signup
+
 **Specter App**:
 The runtime composition of Event definitions and Slices for a user-defined application scope. A Specter App owns one Event Log, dispatches commands, answers queries, and runs reactions.
 _Avoid_: Registry
