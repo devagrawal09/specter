@@ -1,57 +1,25 @@
 {
-  "name": "specter",
+  "name": "specter-workspace",
   "private": true,
+  "packageManager": "pnpm@11.1.3",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "pnpm --filter @specter/core build && pnpm --filter @specter/reference dev",
     "dev:kill": "fuser -k 41731/tcp || true",
-    "build": "vite build --mode client && vite build",
-    "start": "node dist/index.js",
-    "preview": "vite preview",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio",
+    "build": "pnpm -r --filter @specter/core --filter create-specter --filter @specter/reference build",
+    "start": "pnpm --filter @specter/reference start",
+    "preview": "pnpm --filter @specter/reference preview",
+    "test": "pnpm --filter @specter/reference test",
+    "typecheck": "pnpm --filter @specter/core build && pnpm -r --filter @specter/core --filter create-specter --filter @specter/reference typecheck",
+    "db:generate": "pnpm --filter @specter/reference db:generate",
+    "db:migrate": "pnpm --filter @specter/reference db:migrate",
+    "db:studio": "pnpm --filter @specter/reference db:studio",
     "format": "biome format",
-    "lint": "biome lint && node scripts/check-slice-imports.mjs && node scripts/check-client-server-imports.mjs",
+    "lint": "biome lint && pnpm --filter @specter/reference lint:boundaries",
     "check": "biome check"
-  },
-  "dependencies": {
-    "@effect/platform": "^0.96.1",
-    "@effect/platform-node": "^0.106.0",
-    "@effect/rpc": "^0.75.1",
-    "@effect/sql": "^0.51.1",
-    "@effect/sql-drizzle": "^0.50.0",
-    "@effect/sql-sqlite-node": "^0.52.0",
-    "@hono/node-server": "2.0.3",
-    "@hono/vite-build": "1.11.1",
-    "@hono/vite-dev-server": "0.25.3",
-    "@solidjs/web": "2.0.0-beta.13",
-    "@tailwindcss/vite": "^4.1.18",
-    "better-sqlite3": "^12.10.0",
-    "drizzle-orm": "^0.45.2",
-    "effect": "^3.21.2",
-    "hono": "4.12.19",
-    "solid-js": "2.0.0-beta.13",
-    "tailwindcss": "^4.1.18",
-    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
-    "@playwright/test": "^1.60.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "drizzle-kit": "^0.31.10",
-    "jsdom": "^28.1.0",
-    "typescript": "^6.0.2",
-    "vite": "^8.0.0",
-    "vite-plugin-solid": "3.0.0-next.5",
-    "vitest": "^4.1.5"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "esbuild",
-      "lightningcss"
-    ]
+    "typescript": "^6.0.2"
   }
 }

@@ -1,0 +1,24 @@
+{
+  "name": "create-specter",
+  "version": "0.1.0",
+  "description": "Create a new Specter project.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "bin": {
+    "create-specter": "./dist/index.js"
+  },
+  "files": ["dist", "template"],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@effect/cli": "^0.75.1",
+    "@effect/platform-node": "^0.106.0",
+    "effect": "^3.21.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.2"
+  }
+}

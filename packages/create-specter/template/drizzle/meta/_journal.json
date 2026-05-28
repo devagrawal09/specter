@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1779739498353,
+      "tag": "0000_freezing_peter_parker",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1779749520000,
+      "tag": "0001_rename_todos_query_cursor",
+      "breakpoints": true
+    }
+  ]
+}

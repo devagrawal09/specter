@@ -8,6 +8,22 @@ Specter is a TypeScript and Solid framework for vertically sliced event-sourced 
 A TypeScript and Solid framework for vertically sliced event-sourced applications.
 _Avoid_: Todo app
 
+**Specter Framework Package**:
+The installable public distribution of Specter, published as `@specter/core`, that a generated Specter Project depends on for framework and runtime APIs. A Specter Framework Package is distinct from the Project Initializer.
+_Avoid_: Starter template, copied framework source
+
+**Project Initializer**:
+The tool a user runs to create a new Specter Project from a Starter Template, published as `create-specter` and invoked canonically with `npm create specter@latest`. A Project Initializer is not a runtime dependency of the generated project.
+_Avoid_: Framework package, runtime
+
+**Specter Project**:
+A user-owned application created to build with Specter. A Specter Project depends on the Specter Framework Package and may begin from a Starter Template.
+_Avoid_: Specter framework, reference application
+
+**Starter Template**:
+The template copied by the Project Initializer to create a new Specter Project. The Starter Template should demonstrate Specter through a Reference application without including Product Site or Waitlist Signup concerns.
+_Avoid_: Product Site, blank project
+
 **Reference application**:
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. A Reference application should not lag behind the intended Specter API.
 _Avoid_: Product app, primary app
