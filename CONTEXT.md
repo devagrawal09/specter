@@ -24,6 +24,10 @@ _Avoid_: Specter framework, reference application
 The template copied by the Project Initializer to create a new Specter Project. The Starter Template should demonstrate Specter through a Reference application without including Product Site or Waitlist Signup concerns.
 _Avoid_: Product Site, blank project
 
+**Agent Skill**:
+Instructional material included with a Specter Project to teach coding agents how to work with Specter's domain model, file boundaries, and development workflows. An Agent Skill is guidance for collaborators, not runtime application code.
+_Avoid_: Framework API, generated app feature
+
 **Reference application**:
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. A Reference application should not lag behind the intended Specter API.
 _Avoid_: Product app, primary app
@@ -109,8 +113,8 @@ A query input that cannot be decoded against the Query Slice schema. Invalid que
 _Avoid_: Empty query result
 
 **Scenario**:
-An executable example attached to a Slice or View. Slice scenarios are usually shaped as given Event Drafts, when input or action, and expected outcome; View scenarios exercise component behavior with declared query data and trigger stubs. Given and expected Event Drafts must match registered Event Definitions; given Event Drafts are test setup, not runtime ingestion; in Command Slice scenarios, expecting no events means the command must fail as a Rejected Command.
-_Avoid_: Test-only case, documentation-only example
+An executable example attached to a Slice. Scenarios are usually shaped as given Event Drafts, when input or action, and expected outcome. Given and expected Event Drafts must match registered Event Definitions; given Event Drafts are test setup, not runtime ingestion; in Command Slice scenarios, expecting no events means the command must fail as a Rejected Command.
+_Avoid_: View scenario, test-only case, documentation-only example
 
 **Vertical Feature**:
 A user-facing capability grouped around domain behavior and composed from nearby Slices, Views, and Event definitions. A vertical feature is a comprehension boundary, not necessarily a runtime boundary.

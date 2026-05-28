@@ -23,6 +23,7 @@ type TemplatePackageJson = {
 
 const projectDirectory = Args.text({ name: 'project-directory' }).pipe(
   Args.withDescription('Directory to create the Specter project in'),
+  Args.withDefault('my-specter-app'),
 )
 
 const force = Options.boolean('force').pipe(
@@ -66,7 +67,7 @@ const command = Command.make(
 
 const cli = Command.run(command, {
   name: 'Create Specter',
-  version: '0.1.0',
+  version: '0.1.3',
 })
 
 cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
@@ -180,6 +181,8 @@ function successMessage(projectDirectory: string, installed: boolean) {
     `  cd ${projectDirectory}`,
     installStep,
     '  npm run dev',
+    '',
+    'Agent guidance: .agents/skills/specter/SKILL.md',
   ].filter((line): line is string => line !== undefined)
 
   return lines.join('\n')

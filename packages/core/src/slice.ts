@@ -140,17 +140,6 @@ type ViewQueryInput<TRegistration> = TRegistration extends {
 type CommandPayload<TRegistration> =
   TRegistration extends ViewCommandRef<infer TPayload> ? TPayload : never
 
-type ViewScenarioGiven<TQueries extends Record<string, ViewQueryRef>> = {
-  [TKey in keyof TQueries]: ViewQueryResult<TQueries[TKey]>
-}
-
-export type ViewScenario<TGiven = unknown> = {
-  name?: string
-  given: TGiven
-  when?: unknown
-  expect?: unknown
-}
-
 export type ViewProps<
   TQueries extends Record<string, ViewQueryRef>,
   TTriggers extends Record<string, ViewCommandRef>,
@@ -180,7 +169,6 @@ export type ViewRegistration<
   name: TName
   queries: TQueries
   triggers: TTriggers
-  scenarios: readonly ViewScenario<ViewScenarioGiven<TQueries>>[]
   component: ViewComponent<ViewProps<TQueries, TTriggers>>
 }
 

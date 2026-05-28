@@ -66,5 +66,4 @@ export type {
   ViewQueryRef,
   ViewProps,
   ViewRegistration,
-  ViewScenario,
 } from './slice'

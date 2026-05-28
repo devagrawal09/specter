@@ -4,7 +4,6 @@ import type {
   ViewQueryRef,
   ViewProps,
   ViewRegistration,
-  ViewScenario,
 } from './slice'
 import { createRuntimeView } from './view-runtime'
 
@@ -20,22 +19,6 @@ type ViewTriggersStep<
 > = {
   triggers: <TTriggers extends Record<string, ViewCommandRef>>(
     triggers: TTriggers,
-  ) => ViewScenariosStep<TName, TQueries, TTriggers>
-}
-
-type ViewScenariosStep<
-  TName extends string,
-  TQueries extends Record<string, ViewQueryRef>,
-  TTriggers extends Record<string, ViewCommandRef>,
-> = {
-  scenarios: (
-    scenarios: readonly ViewScenario<{
-      [TKey in keyof TQueries]: TQueries[TKey] extends ViewQueryRef<
-        infer TResult
-      >
-        ? TResult
-        : never
-    }>[],
   ) => ViewComponentStep<TName, TQueries, TTriggers>
 }
 
@@ -55,29 +38,26 @@ export function createView<const TName extends string>(
   return {
     queries: (queries) => ({
       triggers: (triggers) => ({
-        scenarios: (scenarios) => ({
-          component: (component) => {
-            const registration = {
-              kind: 'view' as const,
-              queries,
-              triggers,
-              scenarios,
-              component,
-            }
-            const runtimeView = createRuntimeView({ name, ...registration })
+        component: (component) => {
+          const registration = {
+            kind: 'view' as const,
+            queries,
+            triggers,
+            component,
+          }
+          const runtimeView = createRuntimeView({ name, ...registration })
 
-            Object.defineProperty(runtimeView, 'name', {
-              value: name,
-              configurable: true,
-            })
+          Object.defineProperty(runtimeView, 'name', {
+            value: name,
+            configurable: true,
+          })
 
-            return Object.assign(runtimeView, registration) as ViewRegistration<
-              TName,
-              typeof queries,
-              typeof triggers
-            >
-          },
-        }),
+          return Object.assign(runtimeView, registration) as ViewRegistration<
+            TName,
+            typeof queries,
+            typeof triggers
+          >
+        },
       }),
     }),
   }

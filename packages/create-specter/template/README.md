@@ -19,6 +19,10 @@ npm run test
 npm run build
 ```
 
+## Agent Guidance
+
+This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md` for coding agents working on Events, Slices, Views, scenarios, refs, and app wiring.
+
 ## Structure
 
 ```txt

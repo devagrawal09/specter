@@ -33,7 +33,6 @@ export const TodosView = createView('todos-view')
     remove: removeTodo,
     change: changeTodoCompletion,
   })
-  .scenarios([])
   .component((props) => {
     const status = () => {
       const value = searchParams().get('status')

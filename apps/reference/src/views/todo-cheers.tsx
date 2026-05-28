@@ -7,7 +7,6 @@ import { todoCheers } from 'virtual:specter/refs'
 export const TodoCheersView = createView('todo-cheers')
   .queries({ cheer: todoCheers })
   .triggers({})
-  .scenarios([])
   .component((props) => {
     const cheerState = createMemo(() => Effect.runPromise(props.cheer({})))
 
