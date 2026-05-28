@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "TypeScript and Solid framework for vertically sliced event-sourced applications.",
   "type": "module",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "sideEffects": false,
   "files": ["dist"],
   "exports": {
