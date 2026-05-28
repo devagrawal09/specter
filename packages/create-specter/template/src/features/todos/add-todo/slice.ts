@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { createCommandSlice, rejectCommand } from '@specter/core'
+import { createCommandSlice, rejectCommand } from '@specter-ts/core'
 import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120

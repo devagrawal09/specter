@@ -10,7 +10,7 @@ import {
   refresh,
   Show,
 } from 'solid-js'
-import { createView } from '@specter/core/view'
+import { createView } from '@specter-ts/core/view'
 
 import { searchParams, setSearch } from '../location'
 import {

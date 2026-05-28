@@ -138,7 +138,7 @@ function patchPackageJson(targetDirectory: string, projectName: string) {
 
   if (coreSpec) {
     packageJson.dependencies = packageJson.dependencies ?? {}
-    packageJson.dependencies['@specter/core'] = coreSpec
+    packageJson.dependencies['@specter-ts/core'] = coreSpec
   }
 
   writeFileSync(

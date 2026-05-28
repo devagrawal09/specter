@@ -28,4 +28,4 @@ src/db/schema.ts      Drizzle schema exports for migrations
 drizzle/              SQLite migrations
 ```
 
-The framework/runtime API is imported from `@specter/core`; it is not copied into this project.
+The framework/runtime API is imported from `@specter-ts/core`; it is not copied into this project.

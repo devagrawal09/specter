@@ -5,7 +5,7 @@ Specter is a TypeScript and Solid framework for vertically sliced event-sourced 
 This repository is a pnpm workspace:
 
 ```txt
-packages/core/             @specter/core framework/runtime package
+packages/core/             @specter-ts/core framework/runtime package
 packages/create-specter/   create-specter initializer CLI
 apps/reference/            Todo Reference application used as the starter template
 ```
@@ -18,7 +18,7 @@ The intended published command is:
 npm create specter@latest my-app
 ```
 
-Until `@specter/core` is published, local verification can point generated apps at the workspace package:
+Until `@specter-ts/core` is published, local verification can point generated apps at the workspace package:
 
 ```sh
 SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-specter/dist/index.js my-app

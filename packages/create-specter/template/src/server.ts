@@ -8,7 +8,7 @@ import {
   createSpecterApp,
   createSpecterAppRuntimeLayer,
   specterRpcGroup,
-} from '@specter/core'
+} from '@specter-ts/core'
 
 import { todoSpecterAppConfig } from './features/todos/registry'
 import './styles.css?url'

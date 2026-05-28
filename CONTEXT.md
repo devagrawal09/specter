@@ -9,7 +9,7 @@ A TypeScript and Solid framework for vertically sliced event-sourced application
 _Avoid_: Todo app
 
 **Specter Framework Package**:
-The installable public distribution of Specter, published as `@specter/core`, that a generated Specter Project depends on for framework and runtime APIs. A Specter Framework Package is distinct from the Project Initializer.
+The installable public distribution of Specter, published as `@specter-ts/core`, that a generated Specter Project depends on for framework and runtime APIs. A Specter Framework Package is distinct from the Project Initializer.
 _Avoid_: Starter template, copied framework source
 
 **Project Initializer**:

@@ -1,5 +1,5 @@
 import { render } from '@solidjs/web'
-import { SpecterClientProvider } from '@specter/core/client'
+import { SpecterClientProvider } from '@specter-ts/core/client'
 
 import './styles.css'
 import { specterClient } from './specter-client'

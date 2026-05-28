@@ -1,5 +1,5 @@
 {
-  "name": "@specter/core",
+  "name": "@specter-ts/core",
   "version": "0.1.0",
   "description": "TypeScript and Solid framework for vertically sliced event-sourced applications.",
   "type": "module",

@@ -1,11 +1,11 @@
 {
   "name": "create-specter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Create a new Specter project.",
   "type": "module",
   "license": "MIT",
   "bin": {
-    "create-specter": "./dist/index.js"
+    "create-specter": "dist/index.js"
   },
   "files": ["dist", "template"],
   "scripts": {

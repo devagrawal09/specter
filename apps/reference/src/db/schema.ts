@@ -1,4 +1,4 @@
-export { events, sliceCursors } from '@specter/core/schema'
+export { events, sliceCursors } from '@specter-ts/core/schema'
 export { todoCompletionSqlStates } from '../features/todos/change-todo-completion/slice'
 export {
   createTodoCheerSqlMilestoneStates,

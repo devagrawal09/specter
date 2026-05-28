@@ -5,7 +5,7 @@ import removeTodoSql from './remove-todo/slice'
 import todoSqlCheers from './todo-cheers/slice'
 import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
 import todosSqlQuery from './todos-query/slice'
-import type { CommandRef, QueryRef } from '@specter/core'
+import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { todoEventDefinitions } from './events'
 
 export const todoSqlRegistrations = [

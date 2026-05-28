@@ -1,4 +1,4 @@
-import { testScenarios } from '@specter/core/testing'
+import { testScenarios } from '@specter-ts/core/testing'
 
 import { todoSqlRegistrations } from './registry'
 

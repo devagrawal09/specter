@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { Effect } from 'effect'
-import { createReactionSlice } from '@specter/core'
+import { createReactionSlice } from '@specter-ts/core'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,

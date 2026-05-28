@@ -97,7 +97,7 @@ function generateDeclaration(root: string) {
     const refType = ref.kind === 'command' ? 'CommandRef' : 'QueryRef'
 
     return [
-      `  export const ${ref.exportName}: import('@specter/core').${refType}<`,
+      `  export const ${ref.exportName}: import('@specter-ts/core').${refType}<`,
       `    typeof import('${ref.importPath}').default`,
       '  >',
     ].join('\n')

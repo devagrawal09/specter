@@ -1,5 +1,5 @@
 import * as Schema from 'effect/Schema'
-import { createEventDefinition } from '@specter/core'
+import { createEventDefinition } from '@specter-ts/core'
 
 export const todoAddedEvent = createEventDefinition(
   'todoAdded',

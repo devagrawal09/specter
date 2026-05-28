@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { createEffect, createMemo, Loading, refresh, Show } from 'solid-js'
-import { createView } from '@specter/core/view'
+import { createView } from '@specter-ts/core/view'
 
 import { todoCheers } from 'virtual:specter/refs'
 
