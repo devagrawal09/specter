@@ -1,6 +1,6 @@
 {
   "name": "create-specter",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Create a new Specter project.",
   "type": "module",
   "license": "MIT",

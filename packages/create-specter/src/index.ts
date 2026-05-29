@@ -67,7 +67,7 @@ const command = Command.make(
 
 const cli = Command.run(command, {
   name: 'Create Specter',
-  version: '0.1.3',
+  version: '0.2.0',
 })
 
 cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
