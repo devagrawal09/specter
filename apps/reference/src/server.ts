@@ -26,7 +26,7 @@ app.post('/api/:method', async (c) => {
   }
 
   try {
-    const result = await (operation as (input: unknown) => Promise<unknown>)(body)
+    const result = await operation(body)
 
     if (!queryMethods.has(method)) startReactionQueue()
 
