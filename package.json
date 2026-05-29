@@ -17,7 +17,11 @@
     "db:studio": "pnpm --filter @specter/reference db:studio",
     "format": "biome format",
     "lint": "biome lint && pnpm --filter @specter/reference lint:boundaries",
-    "check": "biome check"
+    "check": "biome check",
+    "release:verify": "pnpm typecheck && pnpm test && pnpm build",
+    "release:pack": "pnpm --filter @specter-ts/core pack --pack-destination /tmp/opencode && pnpm --filter create-specter pack --pack-destination /tmp/opencode",
+    "release:dry-run": "pnpm release:verify && pnpm --filter @specter-ts/core publish --dry-run --access public && pnpm --filter create-specter publish --dry-run",
+    "release:publish": "pnpm release:verify && pnpm --filter @specter-ts/core publish --access public && pnpm --filter create-specter publish"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
