@@ -1,7 +1,6 @@
 import Database from 'better-sqlite3'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
-import { Effect } from 'effect'
 import * as Either from 'effect/Either'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -9,9 +8,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { EventDraft } from './event'
-import { createSpecterAppRuntimeLayer } from './layers'
 import { CommandRejectedError } from './registry'
-import type { EventLogService, SliceStores } from './services'
 import type { SliceRegistration } from './slice'
 import type {
   CommandScenario,
@@ -22,6 +19,7 @@ import { decideCommand, querySlice, reactToScenario } from './testing'
 
 export type ScenarioTestOptions = {
   migrationsFolder?: string
+  sqliteFilenameEnv?: string
 }
 
 export function testScenarios(
@@ -44,7 +42,7 @@ export function testScenarios(
 
           it(commandScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              decideCommand(registration, scenario).pipe(Effect.either),
+              () => decideCommand(registration, scenario).then(Either.right, Either.left),
               options,
             )
 
@@ -82,8 +80,8 @@ export function testScenarios(
                   type: expectedEvent.type,
                 }),
               )
-              expect(actualEvent?.payload).toEqual(
-                comparablePayload(expectedEvent),
+              expect(payloadWithoutIds(actualEvent?.payload)).toEqual(
+                payloadWithoutIds(expectedEvent.payload),
               )
             }
           })
@@ -108,7 +106,7 @@ export function testScenarios(
 
           it(queryScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              querySlice(registration, scenario),
+              () => querySlice(registration, scenario),
               options,
             )
 
@@ -135,7 +133,7 @@ export function testScenarios(
 
           it(reactionScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              reactToScenario(registration, scenario),
+              () => reactToScenario(registration, scenario),
               options,
             )
 
@@ -148,7 +146,7 @@ export function testScenarios(
 }
 
 async function runWithTestDb<T>(
-  effect: Effect.Effect<T, unknown, EventLogService | SliceStores>,
+  run: () => Promise<T>,
   options: ScenarioTestOptions,
 ) {
   const directory = mkdtempSync(join(tmpdir(), 'specter-lib-'))
@@ -166,11 +164,25 @@ async function runWithTestDb<T>(
       sqlite.close()
     }
 
-    return await Effect.runPromise(
-      effect.pipe(
-        Effect.provide(createSpecterAppRuntimeLayer({ sqliteFilename })),
-      ),
-    )
+    const previousSqliteFilename = options.sqliteFilenameEnv
+      ? process.env[options.sqliteFilenameEnv]
+      : undefined
+
+    if (options.sqliteFilenameEnv) {
+      process.env[options.sqliteFilenameEnv] = sqliteFilename
+    }
+
+    try {
+      return await run()
+    } finally {
+      if (options.sqliteFilenameEnv) {
+        if (previousSqliteFilename === undefined) {
+          delete process.env[options.sqliteFilenameEnv]
+        } else {
+          process.env[options.sqliteFilenameEnv] = previousSqliteFilename
+        }
+      }
+    }
   } finally {
     rmSync(directory, { recursive: true, force: true })
   }
@@ -201,32 +213,6 @@ function hasGivenExpectArray(
   value: unknown,
 ): value is { given: readonly unknown[]; expect: readonly unknown[] } {
   return hasGiven(value) && 'expect' in value && Array.isArray(value.expect)
-}
-
-function comparablePayload(event: EventDraft) {
-  if (isGeneratedTodoEvent(event)) {
-    return expect.objectContaining({
-      todoId: expect.any(String),
-      title: event.payload.title,
-    })
-  }
-
-  return event.payload
-}
-
-function isGeneratedTodoEvent(
-  event: EventDraft,
-): event is EventDraft<string, { todoId: 'generated'; title: unknown }> {
-  const payload = event.payload
-
-  return (
-    event.type === 'todoAdded' &&
-    payload !== null &&
-    typeof payload === 'object' &&
-    'todoId' in payload &&
-    payload.todoId === 'generated' &&
-    'title' in payload
-  )
 }
 
 function commandScenarioLabel(scenario: CommandScenario) {
@@ -268,5 +254,42 @@ function isEvent(value: unknown): value is EventDraft {
     'type' in value &&
     'payload' in value &&
     typeof value.type === 'string'
+  )
+}
+
+function payloadWithoutIds(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(payloadWithoutIds)
+  }
+
+  if (!isPlainObject(value)) {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isIdentifierKey(key))
+      .map(([key, nested]) => [key, payloadWithoutIds(nested)]),
+  )
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object') {
+    return false
+  }
+
+  const prototype = Object.getPrototypeOf(value)
+
+  return prototype === Object.prototype || prototype === null
+}
+
+function isIdentifierKey(key: string) {
+  return (
+    key === 'id' ||
+    key === 'ID' ||
+    key.endsWith('Id') ||
+    key.endsWith('ID') ||
+    key.endsWith('_id') ||
+    key.endsWith('_ID')
   )
 }

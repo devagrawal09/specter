@@ -4,10 +4,10 @@ export {
   querySlice,
   reactToScenario,
   replay,
-} from './testing'
+} from './core/testing'
 export type {
   CommandScenario,
   QueryScenario,
   ReactionScenario,
-} from './testing'
-export { testScenarios } from './scenario-tests'
+} from './core/testing'
+export { testScenarios } from './core/scenario-tests'

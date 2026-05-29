@@ -3,25 +3,17 @@ export type {
   EventDefinition,
   EventDraft,
   PersistedEvent,
-} from './event'
-export { createEventDefinition } from './event'
-export {
-  createRpcSpecterClient,
-  defineSpecterClient,
-  specterRpcGroup,
-} from './client'
-export type { SpecterClient } from './client'
+} from './core/event'
+export { createEventDefinition } from './core/event'
+export { defineSpecterClient } from './transports/client'
+export type { SpecterClient } from './transports/client'
 export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
-  createView,
   defineApplyHandlers,
   rejectCommand,
-} from './builders'
-export { SpecterClientProvider, useSpecterClient } from './view-runtime'
-export { EventNotPersistedError, EventPayloadParseError } from './event-log'
-export { createSpecterAppRuntimeLayer } from './layers'
+} from './core/builders'
 export {
   createSpecterApp,
   CommandRejectedError,
@@ -35,20 +27,20 @@ export {
   UnknownCommandError,
   UnknownEventTypeError,
   UnknownQueryError,
-} from './registry'
-export type { SpecterAppRuntime } from './services'
+} from './core/registry'
+export type { SpecterApp, SpecterAppConfig } from './core/registry'
 export {
   autoOrder,
   decideCommand,
   querySlice,
   reactToScenario,
   replay,
-} from './testing'
+} from './core/testing'
 export type {
   CommandScenario,
   QueryScenario,
   ReactionScenario,
-} from './testing'
+} from './core/testing'
 export type {
   ApplyHandlers,
   CommandRef,
@@ -61,9 +53,9 @@ export type {
   ReactionSlice,
   SliceRegistration,
   QueryRef,
-  ViewCommandRef,
-  ViewComponent,
-  ViewQueryRef,
-  ViewProps,
-  ViewRegistration,
-} from './slice'
+} from './core/slice'
+export type {
+  EventLogAdapter,
+  SliceStore,
+  SliceStoreAdapter,
+} from './adapters/contracts'

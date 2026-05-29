@@ -1,15 +1,15 @@
 # Specter
 
-Specter is a TypeScript and Solid framework for vertically sliced event-sourced applications. Example applications exist to prove the framework API and clarify usage; they are not the product itself.
+Specter is a TypeScript runtime for vertically sliced event-sourced applications with an Effect-based typed client. Example applications exist to prove the framework API and clarify usage; they are not the product itself.
 
 ## Language
 
 **Specter**:
-A TypeScript and Solid framework for vertically sliced event-sourced applications.
+A TypeScript runtime for vertically sliced event-sourced applications with an Effect-based typed client.
 _Avoid_: Todo app
 
 **Specter Framework Package**:
-The installable public distribution of Specter, published as `@specter-ts/core`, that a generated Specter Project depends on for framework and runtime APIs. A Specter Framework Package is distinct from the Project Initializer.
+The installable public distribution of Specter, published as `@specter-ts/core`, that a generated Specter Project depends on for storage-agnostic framework and runtime APIs. A Specter Framework Package is distinct from the Project Initializer and from concrete storage adapters.
 _Avoid_: Starter template, copied framework source
 
 **Project Initializer**:
@@ -41,40 +41,40 @@ A unique email registration from a prospective Specter user on the Product Site,
 _Avoid_: Lead event, repeated signup
 
 **Specter App**:
-The runtime composition of Event definitions and Slices for a user-defined application scope. A Specter App owns one Event Log, dispatches commands, answers queries, and runs reactions.
-_Avoid_: Registry
+The runtime composition of Event definitions and Slices for a user-defined application scope. A Specter App owns exactly one Event Log, exposes flat Effect-based methods named after Command Slices and Query Slices, and runs reactions. Separate Specter Apps do not share Event Logs and communicate only through commands and side effects.
+_Avoid_: Registry, shared event log
 
 **Specter Client**:
-The app-inferred client shape exposed to views and runtime adapters. It exposes top-level methods named exactly after Command Slice and Query Slice names; TypeScript return types distinguish command methods from query methods. The concrete Effect RPC adapter is still pending, so the current reference app implements this shape over the Hono HTTP boundary.
+The app-inferred client contract exposed to runtime adapters and UI code. It exposes the same flat Effect-based Command Slice and Query Slice methods as the Specter App runtime without depending on a UI framework; the default client contract contains public command and query shapes, not internal Event or Slice State unions.
 _Avoid_: Stringly-typed dispatch client
 
 **Slice**:
-A named specification unit in a vertical feature that participates in event-log catch-up and slice state. A slice has one kind: Command Slice, Query Slice, or Reaction Slice; slice names are unique within a Specter App and become Specter Client method names, every Slice declares Event interests with Event definitions, and relevant Events are applied in global Event Log order.
-_Avoid_: Full feature, persistence shard, view
+A named specification unit in a vertical feature that participates in event-log catch-up and slice state. A slice has one kind: Command Slice, Query Slice, or Reaction Slice; slice names are unique within a Specter App, Command Slice and Query Slice names become Specter Client method names, every Slice declares Event interests with Event definitions, relevant Events are applied in global Event Log order, and handlers receive adapter-provided Slice State.
+_Avoid_: Full feature, persistence shard
 
 **Slice State**:
-The private event-derived state a Slice uses after catch-up. Command Slice state supports decisions, Query Slice state supports queries, and Reaction Slice state supports whether to produce a Reaction Effect; two Slices should not share Slice State.
+The private event-derived state a Slice uses after catch-up. Command Slice state supports decisions, Query Slice state supports queries, and Reaction Slice state supports whether to produce a Reaction Effect; two Slices should not share Slice State. Slice State is accessed through per-slice adapter-provided parameters: event application receives write-capable state, while command, query, and reaction handling receive read-only state.
 _Avoid_: Shared app state
 
 **Slice Cursor**:
-The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds.
+The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds, through the same runtime-provided store that owns the Slice State.
 _Avoid_: App-wide checkpoint
-
-**View**:
-An executable UI contract that composes Query Slices and Command Slices through typed references and local query and trigger aliases. In the current Solid runtime, queries are auto-run by the view runtime and their resolved data is passed to the component, while command triggers are passed as functions that return Effects for the component to run. Components choose when to run trigger Effects and how to represent pending or failed trigger work. A View is a sibling of Slice, not a kind of Slice, and Views are not validated as members of a Specter App.
-_Avoid_: Slice, route
 
 **Command Slice**:
 A slice that defines exactly one command and decides which events should be emitted when that command is accepted. The Command Slice name is the command type clients dispatch, and the slice may maintain event-derived decision state before handling the command. Command catch-up, read-only decision handling, and event append happen in one transaction; Events emitted by one accepted command append atomically and in order, then self-emitted Events are applied later through normal catch-up.
 _Avoid_: Stateless command handler, query reader
 
 **Reaction Slice**:
-A slice that asynchronously observes new events after command success and may produce zero or one Reaction Effect per catch-up cycle. Reaction catch-up and read-only handling happen in one transaction; executing the resulting Reaction Effect happens afterward in a separate transaction or effect boundary. Reaction Slice failures do not prevent unrelated Reaction Slices from running in the same reaction run.
+A slice that asynchronously observes new events after command success and may produce zero or one Reaction Effect per catch-up cycle. Every Reaction Slice declares an explicit Reaction Plugin; reaction catch-up and read-only handling happen in one transaction, while executing the resulting Reaction Effect happens afterward in a separate effect boundary. Reaction Slice failures do not prevent unrelated Reaction Slices from running in the same reaction run.
 _Avoid_: Batch effect emitter
 
 **Reaction Effect**:
-The ephemeral output of a Reaction Slice. By default, a Reaction Effect is interpreted as a command dispatch; a per-slice reaction plugin can interpret other effect payloads. Reaction Effects are not automatically retried.
+The ephemeral output of a Reaction Slice, interpreted by that slice's explicit Reaction Plugin. Reaction Effects are not automatically retried.
 _Avoid_: Reaction command
+
+**Reaction Plugin**:
+The explicit interpreter for a Reaction Slice's Reaction Effect, selected when the Reaction Slice is defined. Same-app command dispatch and cross-app command dispatch are both modeled as explicit Reaction Plugins.
+_Avoid_: Hidden default reaction behavior, app registry import
 
 **Reaction Run Failure**:
 An aggregate failure reported after a reaction run processes all unrelated Reaction Slices it can. It includes the failed Reaction Slice names and causes.
@@ -97,7 +97,7 @@ A typed event value created by an Event Definition before it is appended to the 
 _Avoid_: Persisted event
 
 **Event Log**:
-The ordered durable record of registered Events owned by a Specter App. In runtime use, Events enter the Event Log through accepted commands; the Event Log assigns persistence metadata such as ID, order, and recorded timestamp. The Event Log can contain as many event types as the application needs, but should not accept unknown event types.
+The ordered durable record of registered Events owned by a Specter App and accessed through one app-level adapter that atomically queries and commits Events. In runtime use, Events enter the Event Log through accepted commands; the Event Log assigns persistence metadata such as ID, order, and recorded timestamp. The Event Log can contain as many event types as the application needs, but should not accept unknown event types.
 _Avoid_: Per-feature log
 
 **Rejected Command**:
@@ -114,8 +114,8 @@ _Avoid_: Empty query result
 
 **Scenario**:
 An executable example attached to a Slice. Scenarios are usually shaped as given Event Drafts, when input or action, and expected outcome. Given and expected Event Drafts must match registered Event Definitions; given Event Drafts are test setup, not runtime ingestion; in Command Slice scenarios, expecting no events means the command must fail as a Rejected Command.
-_Avoid_: View scenario, test-only case, documentation-only example
+_Avoid_: Test-only case, documentation-only example
 
 **Vertical Feature**:
-A user-facing capability grouped around domain behavior and composed from nearby Slices, Views, and Event definitions. A vertical feature is a comprehension boundary, not necessarily a runtime boundary.
+A user-facing capability grouped around domain behavior and composed from nearby Slices and Event definitions. A vertical feature is a comprehension boundary, not necessarily a runtime boundary.
 _Avoid_: Runtime module, route

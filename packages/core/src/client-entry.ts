@@ -1,7 +1,2 @@
-export {
-  createRpcSpecterClient,
-  defineSpecterClient,
-  specterRpcGroup,
-} from './client'
-export type { AnySpecterClient, SpecterClient } from './client'
-export { SpecterClientProvider, useSpecterClient } from './view-runtime'
+export { defineSpecterClient } from './transports/client'
+export type { AnySpecterClient, SpecterClient } from './transports/client'

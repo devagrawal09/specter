@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { runSql, selectSql, sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -27,6 +27,7 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
       completed: Schema.Boolean,
     }),
   )
+  .store(sqliteSliceStore)
   .scenarios(
     {
       given: [todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' })],
@@ -64,51 +65,55 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+    [todoAddedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoAddedEvent.decode(event.payload)
 
-        yield* db.insert(todoCompletionSqlStates).values({
-          todoId: payload.todoId,
-          completed: false,
-        })
-      }),
-    [todoCompletionChangedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+        runSql(
+          db.insert(todoCompletionSqlStates).values({
+            todoId: payload.todoId,
+            completed: false,
+          }),
+        )
+      },
+    [todoCompletionChangedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoCompletionChangedEvent.decode(event.payload)
 
-        yield* db
-          .update(todoCompletionSqlStates)
-          .set({ completed: payload.completed })
-          .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
-      }),
-    [todoRemovedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+        runSql(
+          db
+            .update(todoCompletionSqlStates)
+            .set({ completed: payload.completed })
+            .where(eq(todoCompletionSqlStates.todoId, payload.todoId)),
+        )
+      },
+    [todoRemovedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoRemovedEvent.decode(event.payload)
 
-        yield* db
-          .update(todoCompletionSqlStates)
-          .set({ removed: true })
-          .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
-      }),
+        runSql(
+          db
+            .update(todoCompletionSqlStates)
+            .set({ removed: true })
+            .where(eq(todoCompletionSqlStates.todoId, payload.todoId)),
+        )
+      },
   })
-  .handle((db, command) =>
-    Effect.gen(function* () {
-      const rows = yield* db
-        .select()
-        .from(todoCompletionSqlStates)
-        .where(eq(todoCompletionSqlStates.todoId, command.todoId))
+  .handle(async (command, db) => {
+      const rows = selectSql(
+        db
+          .select()
+          .from(todoCompletionSqlStates)
+          .where(eq(todoCompletionSqlStates.todoId, command.todoId)),
+      )
       const todo = rows[0]
 
       if (!todo || todo.removed) {
-        return yield* rejectCommand('Todo not found')
+        rejectCommand('Todo not found')
       }
 
       if (todo.completed === command.completed) {
-        return yield* rejectCommand(
+        rejectCommand(
           'Todo completion is already in requested state',
         )
       }
@@ -119,7 +124,6 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
           completed: command.completed,
         }),
       ]
-    }),
-  )
+    })
 
 export default changeTodoCompletionSql

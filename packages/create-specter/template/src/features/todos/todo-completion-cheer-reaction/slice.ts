@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { Effect } from 'effect'
 import { createReactionSlice } from '@specter-ts/core'
+import { runSql, selectSql, sqliteSliceStore } from '../../../specter-sqlite'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -39,6 +39,8 @@ function completedTodoEvents(count: number): unknown[] {
 }
 
 const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
+  .plugin(async (command) => async (payload) => command(payload as never))
+  .store(sqliteSliceStore)
   .scenarios(
     {
       given: [
@@ -99,50 +101,54 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoAddedEvent.decode(event.payload)
+    [todoAddedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoAddedEvent.decode(event.payload)
 
-        yield* db.insert(todoCompletionCheerSqlTodoStates).values({
+      runSql(
+        db.insert(todoCompletionCheerSqlTodoStates).values({
           todoId: payload.todoId,
           completed: false,
           removed: false,
-        })
-      }),
-    [todoCompletionChangedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoCompletionChangedEvent.decode(event.payload)
+        }),
+      )
+    },
+    [todoCompletionChangedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoCompletionChangedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .update(todoCompletionCheerSqlTodoStates)
           .set({ completed: payload.completed })
-          .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId))
-      }),
-    [todoRemovedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoRemovedEvent.decode(event.payload)
+          .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId)),
+      )
+    },
+    [todoRemovedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoRemovedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .update(todoCompletionCheerSqlTodoStates)
           .set({ removed: true })
-          .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId))
-      }),
-    [todoCheerCreatedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoCheerCreatedEvent.decode(event.payload)
+          .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId)),
+      )
+    },
+    [todoCheerCreatedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoCheerCreatedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .insert(todoCheerSqlMilestoneStates)
-          .values({ milestone: payload.milestone })
-      }),
+          .values({ milestone: payload.milestone }),
+      )
+    },
   })
-  .handle((db) =>
-    Effect.gen(function* () {
-      const completedTodos = yield* db
+  .handle(async (db) => {
+    const completedTodos = selectSql(
+      db
         .select()
         .from(todoCompletionCheerSqlTodoStates)
         .where(
@@ -150,27 +156,29 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
             eq(todoCompletionCheerSqlTodoStates.completed, true),
             eq(todoCompletionCheerSqlTodoStates.removed, false),
           ),
-        )
-      const completedCount = completedTodos.length
+        ),
+    )
+    const completedCount = completedTodos.length
 
-      if (completedCount === 0 || completedCount % 5 !== 0) {
-        return
-      }
+    if (completedCount === 0 || completedCount % 5 !== 0) {
+      return
+    }
 
-      const existingMilestones = yield* db
+    const existingMilestones = selectSql(
+      db
         .select()
         .from(todoCheerSqlMilestoneStates)
-        .where(eq(todoCheerSqlMilestoneStates.milestone, completedCount))
+        .where(eq(todoCheerSqlMilestoneStates.milestone, completedCount)),
+    )
 
-      if (existingMilestones[0]) {
-        return
-      }
+    if (existingMilestones[0]) {
+      return
+    }
 
-      return {
-        type: 'createTodoCheer',
-        payload: { milestone: completedCount },
-      }
-    }),
-  )
+    return {
+      type: 'createTodoCheer',
+      payload: { milestone: completedCount },
+    }
+  })
 
 export default todoCompletionCheerSql

@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/core",
   "version": "0.1.1",
-  "description": "TypeScript and Solid framework for vertically sliced event-sourced applications.",
+  "description": "TypeScript framework for vertically sliced event-sourced applications.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -19,17 +19,9 @@
       "types": "./dist/testing-entry.d.ts",
       "import": "./dist/testing.js"
     },
-    "./view": {
-      "types": "./dist/view-entry.d.ts",
-      "import": "./dist/view.js"
-    },
     "./schema": {
       "types": "./dist/schema-entry.d.ts",
       "import": "./dist/schema.js"
-    },
-    "./vite": {
-      "types": "./dist/vite.d.ts",
-      "import": "./dist/vite.js"
     }
   },
   "scripts": {
@@ -37,25 +29,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@effect/platform": "^0.96.1",
-    "@effect/platform-node": "^0.106.0",
-    "@effect/rpc": "^0.75.1",
-    "@effect/sql": "^0.51.1",
-    "@effect/sql-drizzle": "^0.50.0",
-    "@effect/sql-sqlite-node": "^0.52.0",
-    "@solidjs/web": "2.0.0-beta.13",
     "drizzle-orm": "^0.45.2",
-    "effect": "^3.21.2",
-    "solid-js": "2.0.0-beta.13"
+    "effect": "^3.21.2"
   },
   "peerDependencies": {
     "better-sqlite3": "^12.10.0",
-    "vite": "^8.0.0",
     "vitest": "^4.1.5"
   },
   "peerDependenciesMeta": {
     "better-sqlite3": { "optional": true },
-    "vite": { "optional": true },
     "vitest": { "optional": true }
   },
   "devDependencies": {
@@ -63,7 +45,6 @@
     "@types/node": "^24.10.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
-    "vite-plugin-solid": "3.0.0-next.5",
     "vitest": "^4.1.5"
   }
 }

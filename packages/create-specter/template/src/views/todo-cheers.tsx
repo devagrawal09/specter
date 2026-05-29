@@ -1,33 +1,35 @@
-import { Effect } from 'effect'
-import { createEffect, createMemo, Loading, refresh, Show } from 'solid-js'
-import { createView } from '@specter-ts/core/view'
+import {
+  createEffect,
+  createMemo,
+  Loading,
+  onCleanup,
+  refresh,
+  Show,
+} from 'solid-js'
 
-import { todoCheers } from 'virtual:specter/refs'
+import { specterClient } from '../client'
+import type { TodoSqlCheersState } from '../features/todos/todo-cheers/slice'
 
-export const TodoCheersView = createView('todo-cheers')
-  .queries({ cheer: todoCheers })
-  .triggers({})
-  .component((props) => {
-    const cheerState = createMemo(() => Effect.runPromise(props.cheer({})))
+export function TodoCheersView() {
+  const cheerState = createMemo(
+    () => specterClient.todoCheers({}) as Promise<TodoSqlCheersState>,
+  )
 
-    createEffect(
-      () => {},
-      () => {
-        const intervalId = window.setInterval(() => refresh(cheerState), 10000)
+  createEffect(() => {
+    const intervalId = window.setInterval(() => refresh(cheerState), 10000)
 
-        return () => window.clearInterval(intervalId)
-      },
-    )
-
-    return (
-      <Loading fallback={null}>
-        <Show when={cheerState().latestCheer}>
-          {(cheer) => (
-            <p class="m-0 rounded-xl border border-[rgba(47,106,74,0.22)] bg-[rgba(79,184,178,0.16)] px-4 py-3 text-sm font-semibold text-[var(--palm)]">
-              {cheer().message}
-            </p>
-          )}
-        </Show>
-      </Loading>
-    )
+    onCleanup(() => window.clearInterval(intervalId))
   })
+
+  return (
+    <Loading fallback={null}>
+      <Show when={cheerState().latestCheer}>
+        {(cheer) => (
+          <p class="m-0 rounded-xl border border-[rgba(47,106,74,0.22)] bg-[rgba(79,184,178,0.16)] px-4 py-3 text-sm font-semibold text-[var(--palm)]">
+            {cheer().message}
+          </p>
+        )}
+      </Show>
+    </Loading>
+  )
+}

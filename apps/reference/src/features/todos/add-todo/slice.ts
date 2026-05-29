@@ -1,5 +1,6 @@
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
@@ -10,6 +11,7 @@ const addTodoSql = createCommandSlice('addTodo')
       title: Schema.String,
     }),
   )
+  .store(sqliteSliceStore)
   .scenarios(
     {
       given: [],
@@ -40,15 +42,15 @@ const addTodoSql = createCommandSlice('addTodo')
       },
     },
   )
-  .handle((_db, command) => {
+  .handle(async (command) => {
     const title = command.title.trim()
 
     if (!title) {
-      return rejectCommand('Todo title is required')
+      rejectCommand('Todo title is required')
     }
 
     if (title.length > maxTitleLength) {
-      return rejectCommand(
+      rejectCommand(
         `Todo title must be ${maxTitleLength} characters or less`,
       )
     }

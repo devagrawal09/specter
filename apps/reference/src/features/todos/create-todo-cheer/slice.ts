@@ -1,8 +1,8 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { runSql, selectSql, sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
   todoCheerCreatedEvent,
@@ -45,6 +45,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
       milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
     }),
   )
+  .store(sqliteSliceStore)
   .scenarios(
     {
       given: [],
@@ -87,79 +88,86 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+    [todoAddedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoAddedEvent.decode(event.payload)
 
-        yield* db.insert(createTodoCheerSqlTodoStates).values({
-          todoId: payload.todoId,
-          completed: false,
-          removed: false,
-        })
-      }),
-    [todoCompletionChangedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+        runSql(
+          db.insert(createTodoCheerSqlTodoStates).values({
+            todoId: payload.todoId,
+            completed: false,
+            removed: false,
+          }),
+        )
+      },
+    [todoCompletionChangedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoCompletionChangedEvent.decode(event.payload)
 
-        yield* db
-          .update(createTodoCheerSqlTodoStates)
-          .set({ completed: payload.completed })
-          .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
-      }),
-    [todoRemovedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+        runSql(
+          db
+            .update(createTodoCheerSqlTodoStates)
+            .set({ completed: payload.completed })
+            .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId)),
+        )
+      },
+    [todoRemovedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoRemovedEvent.decode(event.payload)
 
-        yield* db
-          .update(createTodoCheerSqlTodoStates)
-          .set({ removed: true })
-          .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
-      }),
-    [todoCheerCreatedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
+        runSql(
+          db
+            .update(createTodoCheerSqlTodoStates)
+            .set({ removed: true })
+            .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId)),
+        )
+      },
+    [todoCheerCreatedEvent.type]: async (event, input) => {
         const db = input
         const payload = todoCheerCreatedEvent.decode(event.payload)
 
-        yield* db
-          .insert(createTodoCheerSqlMilestoneStates)
-          .values({ milestone: payload.milestone })
-      }),
+        runSql(
+          db
+            .insert(createTodoCheerSqlMilestoneStates)
+            .values({ milestone: payload.milestone }),
+        )
+      },
   })
-  .handle((db, command) =>
-    Effect.gen(function* () {
+  .handle(async (command, db) => {
       if (command.milestone % 5 !== 0) {
-        return yield* rejectCommand(
+        rejectCommand(
           'Todo cheer milestone must be a multiple of 5',
         )
       }
 
-      const completedTodos = yield* db
-        .select()
-        .from(createTodoCheerSqlTodoStates)
-        .where(
-          and(
-            eq(createTodoCheerSqlTodoStates.completed, true),
-            eq(createTodoCheerSqlTodoStates.removed, false),
+      const completedTodos = selectSql(
+        db
+          .select()
+          .from(createTodoCheerSqlTodoStates)
+          .where(
+            and(
+              eq(createTodoCheerSqlTodoStates.completed, true),
+              eq(createTodoCheerSqlTodoStates.removed, false),
+            ),
           ),
-        )
+      )
       const completedCount = completedTodos.length
 
       if (completedCount < command.milestone) {
-        return yield* rejectCommand('Todo cheer milestone has not been reached')
+        rejectCommand('Todo cheer milestone has not been reached')
       }
 
-      const existingMilestones = yield* db
-        .select()
-        .from(createTodoCheerSqlMilestoneStates)
-        .where(
-          eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone),
-        )
+      const existingMilestones = selectSql(
+        db
+          .select()
+          .from(createTodoCheerSqlMilestoneStates)
+          .where(
+            eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone),
+          ),
+      )
 
       if (existingMilestones[0]) {
-        return yield* rejectCommand('Todo cheer milestone already exists')
+        rejectCommand('Todo cheer milestone already exists')
       }
 
       return [
@@ -168,7 +176,6 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
           message: `Nice work: ${command.milestone} todos completed.`,
         }),
       ]
-    }),
-  )
+    })
 
 export default createTodoCheerSql

@@ -1,1 +1,1 @@
-export { events, sliceCursors } from './schema'
+export { events, sliceCursors } from './core/schema'

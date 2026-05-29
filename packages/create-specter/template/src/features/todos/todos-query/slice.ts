@@ -1,9 +1,9 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { Effect } from 'effect'
 import * as Either from 'effect/Either'
 import * as Schema from 'effect/Schema'
 import { createQuerySlice } from '@specter-ts/core'
+import { runSql, selectSql, sqliteSliceStore } from '../../../specter-sqlite'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -17,6 +17,8 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   removed: integer('removed', { mode: 'boolean' }).default(false),
 })
 
+export type TodoSqlListItem = typeof todoSqlListItems.$inferSelect
+
 const todosSqlQuery = createQuerySlice('todosQuery')
   .schema(
     Schema.Struct({
@@ -25,38 +27,42 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       }),
     }),
   )
+  .store(sqliteSliceStore)
   .apply({
-    [todoAddedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoAddedEvent.decode(event.payload)
+    [todoAddedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoAddedEvent.decode(event.payload)
 
-        yield* db.insert(todoSqlListItems).values({
+      runSql(
+        db.insert(todoSqlListItems).values({
           id: payload.todoId,
           title: payload.title,
           completed: false,
-        })
-      }),
-    [todoCompletionChangedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoCompletionChangedEvent.decode(event.payload)
+        }),
+      )
+    },
+    [todoCompletionChangedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoCompletionChangedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .update(todoSqlListItems)
           .set({ completed: payload.completed })
-          .where(eq(todoSqlListItems.id, payload.todoId))
-      }),
-    [todoRemovedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoRemovedEvent.decode(event.payload)
+          .where(eq(todoSqlListItems.id, payload.todoId)),
+      )
+    },
+    [todoRemovedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoRemovedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .update(todoSqlListItems)
           .set({ removed: true })
-          .where(eq(todoSqlListItems.id, payload.todoId))
-      }),
+          .where(eq(todoSqlListItems.id, payload.todoId)),
+      )
+    },
   })
   .scenarios(
     {
@@ -112,27 +118,25 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       expect: [],
     },
   )
-  .handle((db, query) =>
-    Effect.gen(function* () {
-      const visiblePredicate = eq(todoSqlListItems.removed, false)
-      const activePredicate = and(
-        visiblePredicate,
-        eq(todoSqlListItems.completed, false),
-      )
-      const completedPredicate = and(
-        visiblePredicate,
-        eq(todoSqlListItems.completed, true),
-      )
+  .handle(async (query, db) => {
+    const visiblePredicate = eq(todoSqlListItems.removed, false)
+    const activePredicate = and(
+      visiblePredicate,
+      eq(todoSqlListItems.completed, false),
+    )
+    const completedPredicate = and(
+      visiblePredicate,
+      eq(todoSqlListItems.completed, true),
+    )
 
-      const statusPredicate =
-        query.status === 'active'
-          ? activePredicate
-          : query.status === 'completed'
-            ? completedPredicate
-            : visiblePredicate
+    const statusPredicate =
+      query.status === 'active'
+        ? activePredicate
+        : query.status === 'completed'
+          ? completedPredicate
+          : visiblePredicate
 
-      return yield* db.select().from(todoSqlListItems).where(statusPredicate)
-    }),
-  )
+    return selectSql(db.select().from(todoSqlListItems).where(statusPredicate))
+  })
 
 export default todosSqlQuery

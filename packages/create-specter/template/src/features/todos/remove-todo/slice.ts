@@ -1,8 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { Effect } from 'effect'
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { runSql, selectSql, sqliteSliceStore } from '../../../specter-sqlite'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
@@ -16,6 +16,7 @@ const removeTodoSql = createCommandSlice('removeTodo')
       todoId: Schema.String.pipe(Schema.minLength(1)),
     }),
   )
+  .store(sqliteSliceStore)
   .scenarios(
     {
       given: [todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' })],
@@ -37,40 +38,38 @@ const removeTodoSql = createCommandSlice('removeTodo')
     },
   )
   .apply({
-    [todoAddedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoAddedEvent.decode(event.payload)
+    [todoAddedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoAddedEvent.decode(event.payload)
 
-        yield* db
-          .insert(todoRemovalSqlStates)
-          .values({ todoId: payload.todoId })
-      }),
-    [todoRemovedEvent.type]: (event, input) =>
-      Effect.gen(function* () {
-        const db = input
-        const payload = todoRemovedEvent.decode(event.payload)
+      runSql(db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }))
+    },
+    [todoRemovedEvent.type]: async (event, input) => {
+      const db = input
+      const payload = todoRemovedEvent.decode(event.payload)
 
-        yield* db
+      runSql(
+        db
           .update(todoRemovalSqlStates)
           .set({ removed: true })
-          .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
-      }),
+          .where(eq(todoRemovalSqlStates.todoId, payload.todoId)),
+      )
+    },
   })
-  .handle((db, command) =>
-    Effect.gen(function* () {
-      const rows = yield* db
+  .handle(async (command, db) => {
+    const rows = selectSql(
+      db
         .select()
         .from(todoRemovalSqlStates)
-        .where(eq(todoRemovalSqlStates.todoId, command.todoId))
-      const todo = rows[0]
+        .where(eq(todoRemovalSqlStates.todoId, command.todoId)),
+    )
+    const todo = rows[0]
 
-      if (!todo || todo.removed) {
-        return yield* rejectCommand('Todo not found')
-      }
+    if (!todo || todo.removed) {
+      rejectCommand('Todo not found')
+    }
 
-      return [todoRemovedEvent.create({ todoId: command.todoId })]
-    }),
-  )
+    return [todoRemovedEvent.create({ todoId: command.todoId })]
+  })
 
 export default removeTodoSql

@@ -1,66 +1,42 @@
 import { serveStatic } from '@hono/node-server/serve-static'
-import { Etag } from '@effect/platform'
-import { NodeContext, NodeHttpPlatform } from '@effect/platform-node'
-import { RpcSerialization, RpcServer } from '@effect/rpc'
-import { Effect, Layer } from 'effect'
 import { Hono } from 'hono'
-import {
-  createSpecterApp,
-  createSpecterAppRuntimeLayer,
-  specterRpcGroup,
-} from '@specter-ts/core'
+import { createSpecterApp } from '@specter-ts/core'
 
 import { todoSpecterAppConfig } from './features/todos/registry'
 import './styles.css?url'
 
-const specterApp = Effect.runSync(createSpecterApp(todoSpecterAppConfig))
-const runtimeLayer = createSpecterAppRuntimeLayer({
-  sqliteFilename: './data/app.db',
-})
+const specterApp = createSpecterApp(todoSpecterAppConfig)
+const queryMethods: ReadonlySet<string> = new Set(
+  todoSpecterAppConfig.slices
+    .filter((slice) => slice.kind === 'query')
+    .map((slice) => slice.name),
+)
 let reactionQueueRunning = false
 let reactionQueueRequested = false
 
 const app = new Hono()
 
-const rpcHandlers = specterRpcGroup.toLayer({
-  Dispatch: ({ commandName, payload }) =>
-    specterApp.dispatch({ type: commandName, payload }).pipe(
-      Effect.provide(runtimeLayer),
-      Effect.tap(() => Effect.sync(startReactionQueue)),
-      Effect.catchTags({
-        CommandRejectedError: (cause: { reason: string }) =>
-          Effect.fail(cause.reason),
-        InvalidCommandError: (cause: { message: string }) =>
-          Effect.fail(cause.message),
-        UnknownCommandError: (cause: { message: string }) =>
-          Effect.fail(cause.message),
-      }),
-      Effect.catchAll((cause) => Effect.fail(messageFromCause(cause))),
-    ),
-  Query: ({ queryName, input }) =>
-    specterApp.query(queryName, input).pipe(
-      Effect.provide(runtimeLayer),
-      Effect.catchTags({
-        InvalidQueryInputError: (cause: { message: string }) =>
-          Effect.fail(cause.message),
-        UnknownQueryError: (cause: { message: string }) =>
-          Effect.fail(cause.message),
-      }),
-      Effect.catchAll((cause) => Effect.fail(messageFromCause(cause))),
-    ),
+app.post('/api/:method', async (c) => {
+  const method = c.req.param('method')
+  const body = (await c.req.json().catch(() => ({}))) as unknown
+  const operation = (specterApp as Record<string, unknown>)[method]
+
+  if (typeof operation !== 'function') {
+    return c.json({ error: `Unknown operation: ${method}` }, 404)
+  }
+
+  try {
+    const result = await (operation as (input: unknown) => Promise<unknown>)(body)
+
+    if (!queryMethods.has(method)) startReactionQueue()
+
+    return c.json(result ?? null)
+  } catch (cause) {
+    return c.json({ error: messageFromCause(cause) }, 400)
+  }
 })
 
-const rpcWebHandler = RpcServer.toWebHandler(specterRpcGroup, {
-  layer: Layer.mergeAll(
-    rpcHandlers,
-    RpcSerialization.layerNdjson,
-    NodeContext.layer,
-    NodeHttpPlatform.layer,
-    Etag.layer,
-  ),
-})
-
-const routes = app.all('/rpc', (c) => rpcWebHandler.handler(c.req.raw))
+const routes = app
 
 app.use('/static/*', serveStatic({ root: './dist' }))
 app.get('/manifest.json', serveStatic({ path: './public/manifest.json' }))
@@ -88,11 +64,7 @@ async function drainReactionQueue() {
     while (reactionQueueRequested) {
       reactionQueueRequested = false
 
-      while (
-        await Effect.runPromise(
-          specterApp.runReactions().pipe(Effect.provide(runtimeLayer)),
-        )
-      ) {
+      while (await specterApp.runtime.runReactions()) {
         // Reactions can dispatch commands that produce more reaction work.
       }
     }
