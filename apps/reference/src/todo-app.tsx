@@ -11,8 +11,6 @@ import {
   Show,
 } from 'solid-js'
 
-import type { TodoSqlCheersState } from './features/todos/todo-cheers/slice'
-import type { TodoSqlListItem } from './features/todos/todos-query/slice'
 import { searchParams, setSearch } from './location'
 import { specterClient } from './specter-client'
 
@@ -23,20 +21,12 @@ const filterOptions = [
 ] as const
 
 export function TodoApp() {
-  const cheerState = createMemo(
-    () => specterClient.todoCheers({}) as Promise<TodoSqlCheersState>,
-  )
+  const cheerState = createMemo(() => specterClient.todoCheers({}))
   const status = () => {
     const value = searchParams().get('status')
-
     return value === 'active' || value === 'completed' ? value : 'all'
   }
-  const todos = createMemo(
-    () =>
-      specterClient.todosQuery({ status: status() }) as Promise<
-        TodoSqlListItem[]
-      >,
-  )
+  const todos = createMemo(() => specterClient.todosQuery({ status: status() }))
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createOptimistic(false)
   const [pendingToggleId, setPendingToggleId] = createOptimistic('')
