@@ -1,10 +1,4 @@
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
-import { migrate } from 'drizzle-orm/better-sqlite3/migrator'
 import * as Either from 'effect/Either'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import type { EventDraft } from './event'
@@ -18,14 +12,15 @@ import type {
 import { decideCommand, querySlice, reactToScenario } from './testing'
 
 export type ScenarioTestOptions = {
-  migrationsFolder?: string
-  sqliteFilenameEnv?: string
+  runScenario?: <T>(run: () => Promise<T>) => Promise<T>
 }
 
 export function testScenarios(
   registrations: readonly SliceRegistration[],
   options: ScenarioTestOptions = {},
 ) {
+  const runScenario = options.runScenario ?? ((run) => run())
+
   describe('lib command scenarios', () => {
     for (const registration of registrations) {
       if (registration.kind !== 'command' || !registration.scenarios) {
@@ -41,13 +36,11 @@ export function testScenarios(
           }
 
           it(commandScenarioLabel(scenario), async () => {
-            const result = await runWithTestDb(
-              () =>
-                decideCommand(registration, scenario).then(
-                  Either.right,
-                  Either.left,
-                ),
-              options,
+            const result = await runScenario(() =>
+              decideCommand(registration, scenario).then(
+                Either.right,
+                Either.left,
+              ),
             )
 
             if (scenario.expect.length === 0) {
@@ -109,9 +102,8 @@ export function testScenarios(
           }
 
           it(queryScenarioLabel(scenario), async () => {
-            const result = await runWithTestDb(
-              () => querySlice(registration, scenario),
-              options,
+            const result = await runScenario(() =>
+              querySlice(registration, scenario),
             )
 
             expect(result).toEqual(scenario.expect)
@@ -136,9 +128,8 @@ export function testScenarios(
           }
 
           it(reactionScenarioLabel(scenario), async () => {
-            const result = await runWithTestDb(
-              () => reactToScenario(registration, scenario),
-              options,
+            const result = await runScenario(() =>
+              reactToScenario(registration, scenario),
             )
 
             expect(result).toEqual(scenario.expect)
@@ -147,49 +138,6 @@ export function testScenarios(
       })
     }
   })
-}
-
-async function runWithTestDb<T>(
-  run: () => Promise<T>,
-  options: ScenarioTestOptions,
-) {
-  const directory = mkdtempSync(join(tmpdir(), 'specter-lib-'))
-  const sqliteFilename = join(directory, 'test.sqlite')
-  const sqlite = new Database(sqliteFilename)
-
-  try {
-    try {
-      const db = drizzle(sqlite)
-      migrate(db, {
-        migrationsFolder:
-          options.migrationsFolder ?? join(process.cwd(), 'drizzle'),
-      })
-    } finally {
-      sqlite.close()
-    }
-
-    const previousSqliteFilename = options.sqliteFilenameEnv
-      ? process.env[options.sqliteFilenameEnv]
-      : undefined
-
-    if (options.sqliteFilenameEnv) {
-      process.env[options.sqliteFilenameEnv] = sqliteFilename
-    }
-
-    try {
-      return await run()
-    } finally {
-      if (options.sqliteFilenameEnv) {
-        if (previousSqliteFilename === undefined) {
-          delete process.env[options.sqliteFilenameEnv]
-        } else {
-          process.env[options.sqliteFilenameEnv] = previousSqliteFilename
-        }
-      }
-    }
-  } finally {
-    rmSync(directory, { recursive: true, force: true })
-  }
 }
 
 function isCommandScenario(value: unknown): value is CommandScenario {

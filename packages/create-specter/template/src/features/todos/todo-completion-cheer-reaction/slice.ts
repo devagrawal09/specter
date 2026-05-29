@@ -151,6 +151,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
         ),
       )
       .all()
+
     const completedCount = completedTodos.length
 
     if (completedCount === 0 || completedCount % 5 !== 0) {

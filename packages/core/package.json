@@ -18,10 +18,6 @@
     "./testing": {
       "types": "./dist/testing-entry.d.ts",
       "import": "./dist/testing.js"
-    },
-    "./schema": {
-      "types": "./dist/schema-entry.d.ts",
-      "import": "./dist/schema.js"
     }
   },
   "scripts": {
@@ -29,19 +25,15 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "drizzle-orm": "^0.45.2",
     "effect": "^3.21.2"
   },
   "peerDependencies": {
-    "better-sqlite3": "^12.10.0",
     "vitest": "^4.1.5"
   },
   "peerDependenciesMeta": {
-    "better-sqlite3": { "optional": true },
     "vitest": { "optional": true }
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",

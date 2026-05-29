@@ -1,7 +1,4 @@
-import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-
-import Database from 'better-sqlite3'
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
 import { drizzle } from 'drizzle-orm/better-sqlite3'
 import type {
@@ -9,30 +6,26 @@ import type {
   EventLogAdapter,
   SliceStoreAdapter,
 } from '@specter-ts/core'
-import { events, sliceCursors } from '@specter-ts/core/schema'
+import { events, sliceCursors } from './specter-schema'
 
-const sqlitePathEnv = 'SPECTER_SQLITE_PATH'
-const defaultSqlitePath = './data/app.db'
+const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
 
-let currentSqlitePath = ''
-let currentDb: SqliteDb | undefined
-
-type SqliteDb = ReturnType<typeof drizzle>
+export type SqliteDb = ReturnType<typeof drizzle>
 
 type EventRow = typeof events.$inferSelect
 
 function getDb() {
-  const sqlitePath = process.env[sqlitePathEnv] ?? defaultSqlitePath
+  const scopedDb = scopedSqliteDb.getStore()
 
-  if (currentDb && currentSqlitePath === sqlitePath) {
-    return currentDb
+  if (!scopedDb) {
+    throw new Error('No SQLite database is bound to the current async context')
   }
 
-  mkdirSync(dirname(sqlitePath), { recursive: true })
-  currentSqlitePath = sqlitePath
-  currentDb = drizzle(new Database(sqlitePath))
+  return scopedDb
+}
 
-  return currentDb
+export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
+  return scopedSqliteDb.run(db, run)
 }
 
 export const sqliteSliceStore: SliceStoreAdapter<SqliteDb, SqliteDb, never> = {

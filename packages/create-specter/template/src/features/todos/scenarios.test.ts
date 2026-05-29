@@ -1,7 +1,8 @@
 import { testScenarios } from '@specter-ts/core/testing'
 
+import { sqliteScenario } from '../../db/scenario-tests'
 import { todoSqlRegistrations } from './registry'
 
 testScenarios(todoSqlRegistrations, {
-  sqliteFilenameEnv: 'SPECTER_SQLITE_PATH',
+  runScenario: sqliteScenario({}),
 })

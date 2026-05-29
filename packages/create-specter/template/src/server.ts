@@ -1,10 +1,18 @@
 import { serveStatic } from '@hono/node-server/serve-static'
+import { mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import Database from 'better-sqlite3'
+import { drizzle } from 'drizzle-orm/better-sqlite3'
 import { Hono } from 'hono'
 import { createSpecterApp } from '@specter-ts/core'
 
+import { runWithSqliteDb } from './db/specter-sqlite'
 import { todoSpecterAppConfig } from './features/todos/registry'
 import './styles.css?url'
 
+const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
+mkdirSync(dirname(sqlitePath), { recursive: true })
+const productionDb = drizzle(new Database(sqlitePath))
 const specterApp = createSpecterApp(todoSpecterAppConfig)
 const queryMethods: ReadonlySet<string> = new Set(
   todoSpecterAppConfig.slices
@@ -26,7 +34,7 @@ app.post('/api/:method', async (c) => {
   }
 
   try {
-    const result = await operation(body)
+    const result = await runWithSqliteDb(productionDb, () => operation(body))
 
     if (!queryMethods.has(method)) startReactionQueue()
 
@@ -61,13 +69,15 @@ function startReactionQueue() {
 
 async function drainReactionQueue() {
   try {
-    while (reactionQueueRequested) {
-      reactionQueueRequested = false
+    await runWithSqliteDb(productionDb, async () => {
+      while (reactionQueueRequested) {
+        reactionQueueRequested = false
 
-      while (await specterApp.runtime.runReactions()) {
-        // Reactions can dispatch commands that produce more reaction work.
+        while (await specterApp.runtime.runReactions()) {
+          // Reactions can dispatch commands that produce more reaction work.
+        }
       }
-    }
+    })
   } catch (cause) {
     console.error('Reaction queue failed', cause)
   } finally {
