@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
-import { runSql, selectSql, sqliteSliceStore } from '../../../specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
@@ -69,43 +69,38 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
       const db = input
       const payload = todoAddedEvent.decode(event.payload)
 
-      runSql(
-        db.insert(todoCompletionSqlStates).values({
+      db.insert(todoCompletionSqlStates)
+        .values({
           todoId: payload.todoId,
           completed: false,
-        }),
-      )
+        })
+        .run()
     },
     [todoCompletionChangedEvent.type]: async (event, input) => {
       const db = input
       const payload = todoCompletionChangedEvent.decode(event.payload)
 
-      runSql(
-        db
-          .update(todoCompletionSqlStates)
-          .set({ completed: payload.completed })
-          .where(eq(todoCompletionSqlStates.todoId, payload.todoId)),
-      )
+      db.update(todoCompletionSqlStates)
+        .set({ completed: payload.completed })
+        .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
+        .run()
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
       const payload = todoRemovedEvent.decode(event.payload)
 
-      runSql(
-        db
-          .update(todoCompletionSqlStates)
-          .set({ removed: true })
-          .where(eq(todoCompletionSqlStates.todoId, payload.todoId)),
-      )
+      db.update(todoCompletionSqlStates)
+        .set({ removed: true })
+        .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
+        .run()
     },
   })
   .handle(async (command, db) => {
-    const rows = selectSql(
-      db
-        .select()
-        .from(todoCompletionSqlStates)
-        .where(eq(todoCompletionSqlStates.todoId, command.todoId)),
-    )
+    const rows = db
+      .select()
+      .from(todoCompletionSqlStates)
+      .where(eq(todoCompletionSqlStates.todoId, command.todoId))
+      .all()
     const todo = rows[0]
 
     if (!todo || todo.removed) {

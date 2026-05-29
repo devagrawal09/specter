@@ -21,13 +21,13 @@ npm run build
 
 ## Agent Guidance
 
-This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md` for coding agents working on Events, Slices, Views, scenarios, refs, and app wiring.
+This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md` for coding agents working on Events, Slices, scenarios, client calls, and app wiring.
 
 ## Structure
 
 ```txt
 src/features/todos/   Todo vertical feature with events, slices, and scenarios
-src/views/            Solid views bound to Specter command/query refs
+src/todo-app.tsx      Solid UI that calls the typed Specter client
 src/db/schema.ts      Drizzle schema exports for migrations
 drizzle/              SQLite migrations
 ```

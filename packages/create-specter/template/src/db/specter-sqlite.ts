@@ -21,14 +21,6 @@ type SqliteDb = ReturnType<typeof drizzle>
 
 type EventRow = typeof events.$inferSelect
 
-export function selectSql<TResult>(query: { all: () => TResult }) {
-  return query.all()
-}
-
-export function runSql(query: { run: () => unknown }) {
-  query.run()
-}
-
 function getDb() {
   const sqlitePath = process.env[sqlitePathEnv] ?? defaultSqlitePath
 

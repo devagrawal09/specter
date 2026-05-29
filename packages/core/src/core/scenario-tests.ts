@@ -42,7 +42,11 @@ export function testScenarios(
 
           it(commandScenarioLabel(scenario), async () => {
             const result = await runWithTestDb(
-              () => decideCommand(registration, scenario).then(Either.right, Either.left),
+              () =>
+                decideCommand(registration, scenario).then(
+                  Either.right,
+                  Either.left,
+                ),
               options,
             )
 

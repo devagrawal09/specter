@@ -5,6 +5,6 @@ export default defineConfig({
   out: './drizzle',
   dialect: 'sqlite',
   dbCredentials: {
-    url: './data/app.db',
+    url: process.env.SPECTER_SQLITE_PATH ?? './data/app.db',
   },
 })

@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import * as Schema from 'effect/Schema'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
-import { runSql, selectSql, sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
@@ -39,39 +39,34 @@ const removeTodoSql = createCommandSlice('removeTodo')
   )
   .apply({
     [todoAddedEvent.type]: async (event, input) => {
-        const db = input
-        const payload = todoAddedEvent.decode(event.payload)
+      const db = input
+      const payload = todoAddedEvent.decode(event.payload)
 
-        runSql(
-          db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }),
-        )
-      },
+      db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }).run()
+    },
     [todoRemovedEvent.type]: async (event, input) => {
-        const db = input
-        const payload = todoRemovedEvent.decode(event.payload)
+      const db = input
+      const payload = todoRemovedEvent.decode(event.payload)
 
-        runSql(
-          db
-            .update(todoRemovalSqlStates)
-            .set({ removed: true })
-            .where(eq(todoRemovalSqlStates.todoId, payload.todoId)),
-        )
-      },
+      db.update(todoRemovalSqlStates)
+        .set({ removed: true })
+        .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
+        .run()
+    },
   })
   .handle(async (command, db) => {
-      const rows = selectSql(
-        db
-          .select()
-          .from(todoRemovalSqlStates)
-          .where(eq(todoRemovalSqlStates.todoId, command.todoId)),
-      )
-      const todo = rows[0]
+    const rows = db
+      .select()
+      .from(todoRemovalSqlStates)
+      .where(eq(todoRemovalSqlStates.todoId, command.todoId))
+      .all()
+    const todo = rows[0]
 
-      if (!todo || todo.removed) {
-        rejectCommand('Todo not found')
-      }
+    if (!todo || todo.removed) {
+      rejectCommand('Todo not found')
+    }
 
-      return [todoRemovedEvent.create({ todoId: command.todoId })]
-    })
+    return [todoRemovedEvent.create({ todoId: command.todoId })]
+  })
 
 export default removeTodoSql

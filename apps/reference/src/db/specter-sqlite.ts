@@ -21,14 +21,6 @@ type SqliteDb = ReturnType<typeof drizzle>
 
 type EventRow = typeof events.$inferSelect
 
-export function selectSql<TResult>(query: { all: () => TResult }) {
-  return query.all()
-}
-
-export function runSql(query: { run: () => unknown }) {
-  query.run()
-}
-
 function getDb() {
   const sqlitePath = process.env[sqlitePathEnv] ?? defaultSqlitePath
 
@@ -83,7 +75,9 @@ export const sqliteEventLog: EventLogAdapter<never> = {
     const rows = getDb()
       .select()
       .from(events)
-      .where(and(gt(events.order, order), inArray(events.type, [...eventTypes])))
+      .where(
+        and(gt(events.order, order), inArray(events.type, [...eventTypes])),
+      )
       .orderBy(asc(events.order))
       .all()
 

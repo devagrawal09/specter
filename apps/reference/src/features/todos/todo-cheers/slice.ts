@@ -2,7 +2,7 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import * as Schema from 'effect/Schema'
 import { createQuerySlice } from '@specter-ts/core'
-import { runSql, selectSql, sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoCheerCreatedEvent } from '../events'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
@@ -21,16 +21,16 @@ const todoSqlCheers = createQuerySlice('todoCheers')
   .store(sqliteSliceStore)
   .apply({
     [todoCheerCreatedEvent.type]: async (event, input) => {
-        const db = input
-        const payload = todoCheerCreatedEvent.decode(event.payload)
+      const db = input
+      const payload = todoCheerCreatedEvent.decode(event.payload)
 
-        runSql(
-          db.insert(todoSqlCheersState).values({
-            milestone: payload.milestone,
-            message: payload.message,
-          }),
-        )
-      },
+      db.insert(todoSqlCheersState)
+        .values({
+          milestone: payload.milestone,
+          message: payload.message,
+        })
+        .run()
+    },
   })
   .scenarios(
     {
@@ -59,17 +59,16 @@ const todoSqlCheers = createQuerySlice('todoCheers')
     },
   )
   .handle(async (_query, db) => {
-      const latestCheers = selectSql(
-        db
-          .select()
-          .from(todoSqlCheersState)
-          .orderBy(desc(todoSqlCheersState.milestone))
-          .limit(1),
-      )
+    const latestCheers = db
+      .select()
+      .from(todoSqlCheersState)
+      .orderBy(desc(todoSqlCheersState.milestone))
+      .limit(1)
+      .all()
 
-      const state: TodoSqlCheersState = { latestCheer: latestCheers[0] ?? null }
+    const state: TodoSqlCheersState = { latestCheer: latestCheers[0] ?? null }
 
-      return state
-    })
+    return state
+  })
 
 export default todoSqlCheers

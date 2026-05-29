@@ -6,7 +6,7 @@ import todoSqlCheers from './todo-cheers/slice'
 import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
 import todosSqlQuery from './todos-query/slice'
 import type { CommandRef, QueryRef } from '@specter-ts/core'
-import { sqliteEventLog } from '../../specter-sqlite'
+import { sqliteEventLog } from '../../db/specter-sqlite'
 import { todoEventDefinitions } from './events'
 
 export const todoSqlRegistrations = [
