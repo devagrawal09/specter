@@ -7,15 +7,14 @@ import {
   Errored,
   For,
   Loading,
-  onCleanup,
   refresh,
   Show,
 } from 'solid-js'
 
-import { specterClient } from './client'
 import type { TodoSqlCheersState } from './features/todos/todo-cheers/slice'
 import type { TodoSqlListItem } from './features/todos/todos-query/slice'
 import { searchParams, setSearch } from './location'
+import { specterClient } from './specter-client'
 
 const filterOptions = [
   { status: 'all', label: 'All' },
@@ -24,16 +23,19 @@ const filterOptions = [
 ] as const
 
 export function TodoApp() {
-  const cheerState = createMemo(() =>
-    specterClient.todoCheers({}) as Promise<TodoSqlCheersState>,
+  const cheerState = createMemo(
+    () => specterClient.todoCheers({}) as Promise<TodoSqlCheersState>,
   )
   const status = () => {
     const value = searchParams().get('status')
 
     return value === 'active' || value === 'completed' ? value : 'all'
   }
-  const todos = createMemo(() =>
-    specterClient.todosQuery({ status: status() }) as Promise<TodoSqlListItem[]>,
+  const todos = createMemo(
+    () =>
+      specterClient.todosQuery({ status: status() }) as Promise<
+        TodoSqlListItem[]
+      >,
   )
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createOptimistic(false)
@@ -55,11 +57,13 @@ export function TodoApp() {
     refresh(todos)
   })
 
-  createEffect(() => {
-    const intervalId = window.setInterval(() => refresh(cheerState), 10000)
-
-    onCleanup(() => window.clearInterval(intervalId))
-  })
+  createEffect(
+    () => {},
+    () => {
+      const intervalId = window.setInterval(() => refresh(cheerState), 10000)
+      return () => window.clearInterval(intervalId)
+    },
+  )
 
   return (
     <main class="page-wrap px-4 py-10 sm:py-14">
