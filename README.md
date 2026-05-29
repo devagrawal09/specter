@@ -12,13 +12,13 @@ apps/reference/            Todo Reference application used as the starter templa
 
 ## Create A Project
 
-The intended published command is:
+The published command is:
 
 ```sh
 npm create specter@latest my-app
 ```
 
-Until `@specter-ts/core` is published, local verification can point generated apps at the workspace package:
+Local verification can point generated apps at a packed or workspace core build:
 
 ```sh
 SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-specter/dist/index.js my-app
@@ -35,3 +35,12 @@ pnpm dev
 ```
 
 The dev and preview servers use the fixed port `41731`.
+
+## Release
+
+```sh
+pnpm release:dry-run
+pnpm release:publish
+```
+
+`release:publish` verifies npm auth, runs typecheck/tests/build, then publishes `@specter-ts/core` before `create-specter`.

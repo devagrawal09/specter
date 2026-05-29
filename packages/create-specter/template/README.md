@@ -28,8 +28,11 @@ This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md`
 ```txt
 src/features/todos/   Todo vertical feature with events, slices, and scenarios
 src/todo-app.tsx      Solid UI that calls the typed Specter client
-src/db/schema.ts      Drizzle schema exports for migrations
+src/db/schema.ts      App-owned Drizzle schema exports for migrations
+src/db/specter-sqlite.ts SQLite Slice Store and Event Log adapters
+src/db/scenario-tests.ts In-memory SQLite scenario test helper
 drizzle/              SQLite migrations
 ```
 
 The framework/runtime API is imported from `@specter-ts/core`; it is not copied into this project.
+Specter core does not ship SQLite schema exports. Persistence schema and database setup are app infrastructure under `src/db`.
