@@ -39,7 +39,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-const createTodoCheerSql = createCommandSlice('createTodoCheer')
+const createTodoCheer = createCommandSlice('createTodoCheer')
   .schema(
     z.object({
       milestone: z.number().int().positive(),
@@ -166,4 +166,4 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     ]
   })
 
-export default createTodoCheerSql
+export default createTodoCheer

@@ -16,7 +16,7 @@ export type TodoSqlCheersState = {
   latestCheer: TodoSqlCheer | null
 }
 
-const todoSqlCheers = createQuerySlice('todoCheers')
+const todoCheers = createQuerySlice('todoCheers')
   .schema(z.object({}))
   .store(sqliteSliceStore)
   .apply({
@@ -71,4 +71,4 @@ const todoSqlCheers = createQuerySlice('todoCheers')
     return state
   })
 
-export default todoSqlCheers
+export default todoCheers

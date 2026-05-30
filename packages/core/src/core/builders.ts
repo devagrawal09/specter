@@ -15,7 +15,6 @@ import type {
   ReactionSlice,
   SliceStoreAdapter,
 } from './slice'
-import { CommandRejectedError } from './errors'
 export { defineApplyHandlers } from './slice'
 
 type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
@@ -205,7 +204,7 @@ type ReactionHandle<TName extends string, TPayload, TWriteState, TReadState> = (
 }
 
 export function rejectCommand(reason: string) {
-  throw new CommandRejectedError({ reason })
+  throw new Error(reason)
 }
 
 export function createCommandSlice<const TName extends string>(

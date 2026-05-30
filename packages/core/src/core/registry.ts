@@ -11,130 +11,6 @@ import type {
   ReactionSlice,
   SliceRegistration,
 } from './slice'
-export { CommandRejectedError } from './errors'
-
-export class EmptyCommandSetError extends Error {
-  readonly _tag = 'EmptyCommandSetError'
-
-  constructor() {
-    super('At least one command slice must be registered')
-    this.name = 'EmptyCommandSetError'
-  }
-}
-
-export class InvalidCommandError extends Error {
-  readonly _tag = 'InvalidCommandError'
-  readonly error: readonly StandardSchemaV1.Issue[]
-
-  constructor(input: { readonly error: readonly StandardSchemaV1.Issue[] }) {
-    super('Invalid command input')
-    this.name = 'InvalidCommandError'
-    this.error = input.error
-  }
-}
-
-export class InvalidEventDraftError extends Error {
-  readonly _tag = 'InvalidEventDraftError'
-  readonly eventType: string
-  readonly error: unknown
-
-  constructor(input: { readonly eventType: string; readonly error: unknown }) {
-    super(`Invalid event draft: ${input.eventType}`)
-    this.name = 'InvalidEventDraftError'
-    this.eventType = input.eventType
-    this.error = input.error
-  }
-}
-
-export class InvalidQueryInputError extends Error {
-  readonly _tag = 'InvalidQueryInputError'
-  readonly queryName: string
-  readonly error: readonly StandardSchemaV1.Issue[]
-
-  constructor(input: {
-    readonly queryName: string
-    readonly error: readonly StandardSchemaV1.Issue[]
-  }) {
-    super(`Invalid query input: ${input.queryName}`)
-    this.name = 'InvalidQueryInputError'
-    this.queryName = input.queryName
-    this.error = input.error
-  }
-}
-
-export class UnknownCommandError extends Error {
-  readonly _tag = 'UnknownCommandError'
-  readonly commandName: string
-
-  constructor(input: { readonly commandName: string }) {
-    super(`Unknown command: ${input.commandName}`)
-    this.name = 'UnknownCommandError'
-    this.commandName = input.commandName
-  }
-}
-
-export class UnknownQueryError extends Error {
-  readonly _tag = 'UnknownQueryError'
-  readonly queryName: string
-
-  constructor(input: { readonly queryName: string }) {
-    super(`Unknown query: ${input.queryName}`)
-    this.name = 'UnknownQueryError'
-    this.queryName = input.queryName
-  }
-}
-
-export class DuplicateSliceNameError extends Error {
-  readonly _tag = 'DuplicateSliceNameError'
-  readonly sliceName: string
-
-  constructor(input: { readonly sliceName: string }) {
-    super(`Duplicate slice name: ${input.sliceName}`)
-    this.name = 'DuplicateSliceNameError'
-    this.sliceName = input.sliceName
-  }
-}
-
-export class DuplicateEventTypeError extends Error {
-  readonly _tag = 'DuplicateEventTypeError'
-  readonly eventType: string
-
-  constructor(input: { readonly eventType: string }) {
-    super(`Duplicate event type: ${input.eventType}`)
-    this.name = 'DuplicateEventTypeError'
-    this.eventType = input.eventType
-  }
-}
-
-export class UnknownEventTypeError extends Error {
-  readonly _tag = 'UnknownEventTypeError'
-  readonly eventType: string
-
-  constructor(input: { readonly eventType: string }) {
-    super(`Unknown event type: ${input.eventType}`)
-    this.name = 'UnknownEventTypeError'
-    this.eventType = input.eventType
-  }
-}
-
-export class ReactionRunError extends Error {
-  readonly _tag = 'ReactionRunError'
-  readonly failures: readonly {
-    readonly reactionName: string
-    readonly cause: unknown
-  }[]
-
-  constructor(input: {
-    readonly failures: readonly {
-      readonly reactionName: string
-      readonly cause: unknown
-    }[]
-  }) {
-    super('One or more reactions failed')
-    this.name = 'ReactionRunError'
-    this.failures = input.failures
-  }
-}
 
 export type SpecterAppConfig = {
   readonly events: readonly {
@@ -187,17 +63,6 @@ type PreparedReactionEffect = {
   readonly effect: unknown
 }
 
-type ReactionPreparationResult =
-  | {
-      readonly _tag: 'Failed'
-      readonly reactionName: string
-      readonly cause: unknown
-    }
-  | {
-      readonly _tag: 'Prepared'
-      readonly prepared: PreparedReactionEffect | undefined
-    }
-
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   config: TConfig,
 ): SpecterApp<TConfig> {
@@ -211,7 +76,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   for (const eventDefinition of config.events) {
     if (eventDefinitions[eventDefinition.type]) {
-      throw new DuplicateEventTypeError({ eventType: eventDefinition.type })
+      throw new Error(`Duplicate event type: ${eventDefinition.type}`)
     }
 
     eventDefinitions[eventDefinition.type] = eventDefinition
@@ -226,7 +91,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   for (const registration of config.slices) {
     if (sliceNames.has(registration.name)) {
-      throw new DuplicateSliceNameError({ sliceName: registration.name })
+      throw new Error(`Duplicate slice name: ${registration.name}`)
     }
 
     sliceNames.add(registration.name)
@@ -245,13 +110,13 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   }
 
   if (Object.keys(slicesByKind.commands).length === 0) {
-    throw new EmptyCommandSetError()
+    throw new Error('At least one command slice must be registered')
   }
 
   for (const registration of config.slices) {
     for (const eventType of Object.keys(registration.apply ?? {})) {
       if (!eventDefinitions[eventType]) {
-        throw new UnknownEventTypeError({ eventType })
+        throw new Error(`Unknown event type: ${eventType}`)
       }
     }
   }
@@ -271,22 +136,16 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   async function decodePersistedEvent(event: PersistedEvent) {
     const eventDefinition = eventDefinitions[event.type]
-    if (!eventDefinition)
-      throw new UnknownEventTypeError({ eventType: event.type })
+    if (!eventDefinition) throw new Error(`Unknown event type: ${event.type}`)
 
     return { ...event, payload: await eventDefinition.decode(event.payload) }
   }
 
   async function decodeEventDraft(event: EventDraft) {
     const eventDefinition = eventDefinitions[event.type]
-    if (!eventDefinition)
-      throw new UnknownEventTypeError({ eventType: event.type })
+    if (!eventDefinition) throw new Error(`Unknown event type: ${event.type}`)
 
-    try {
-      return { ...event, payload: await eventDefinition.decode(event.payload) }
-    } catch (error) {
-      throw new InvalidEventDraftError({ eventType: event.type, error })
-    }
+    return { ...event, payload: await eventDefinition.decode(event.payload) }
   }
 
   async function catchUpSlice(
@@ -320,12 +179,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   async function runCommand(commandSlice: CommandSlice, input: unknown) {
     return config.eventLog.transaction((eventLog) =>
       commandSlice.store.transaction(commandSlice.name, async (store) => {
-        const parsedCommand = await decodeSchema(
-          commandSlice.schema,
-          input,
-        ).catch((error: readonly StandardSchemaV1.Issue[]) => {
-          throw new InvalidCommandError({ error })
-        })
+        const parsedCommand = await decodeSchema(commandSlice.schema, input)
         await catchUpSlice(commandSlice, store, eventLog)
         const events = await commandSlice.handle(parsedCommand, store.read)
         await eventLog.append(await Promise.all(events.map(decodeEventDraft)))
@@ -335,11 +189,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   async function runQuery(query: QuerySlice, input: unknown) {
     return query.store.transaction(query.name, async (store) => {
-      const parsedInput = await decodeSchema(query.schema, input).catch(
-        (error: readonly StandardSchemaV1.Issue[]) => {
-          throw new InvalidQueryInputError({ queryName: query.name, error })
-        },
-      )
+      const parsedInput = await decodeSchema(query.schema, input)
       await catchUpSlice(query, store)
 
       return query.handle(parsedInput, store.read)
@@ -348,8 +198,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   function dispatch(c: CommandEnvelope) {
     const command = slicesByKind.commands[c.type]
-    if (!command)
-      return Promise.reject(new UnknownCommandError({ commandName: c.type }))
+    if (!command) return Promise.reject(new Error(`Unknown command: ${c.type}`))
 
     return runCommand(command, c.payload)
   }
@@ -364,67 +213,25 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   }
 
   async function runReactions() {
-    const reactionEffects = await Promise.all(
+    const preparedEffects = await Promise.all(
       Object.values(slicesByKind.reactions).map(async (reaction) => {
-        try {
-          const prepared = await reaction.store.transaction(
-            reaction.name,
-            async (store) => {
-              const { advanced } = await catchUpSlice(reaction, store)
-              if (!advanced) return undefined
-              const effect = await reaction.handle(store.read)
-              if (!effect) return undefined
-              const exec = await getReactionExec(reaction)
+        return reaction.store.transaction(reaction.name, async (store) => {
+          const { advanced } = await catchUpSlice(reaction, store)
+          if (!advanced) return undefined
+          const effect: unknown = await reaction.handle(store.read)
+          if (effect === undefined) return undefined
+          const exec = await getReactionExec(reaction)
 
-              return { reaction, exec, effect } satisfies PreparedReactionEffect
-            },
-          )
-
-          return {
-            _tag: 'Prepared',
-            prepared,
-          } satisfies ReactionPreparationResult
-        } catch (cause) {
-          return {
-            _tag: 'Failed',
-            reactionName: reaction.name,
-            cause,
-          } satisfies ReactionPreparationResult
-        }
+          return { reaction, exec, effect } satisfies PreparedReactionEffect
+        })
       }),
     )
-    const preparationFailures = reactionEffects.flatMap((result) =>
-      result._tag === 'Failed'
-        ? [{ reactionName: result.reactionName, cause: result.cause }]
-        : [],
+    const runnableEffects = preparedEffects.filter(
+      (prepared) => prepared !== undefined,
     )
-    const results = await Promise.all(
-      reactionEffects
-        .flatMap((item) =>
-          item._tag === 'Prepared' && item.prepared !== undefined
-            ? [item.prepared]
-            : [],
-        )
-        .map(async ({ reaction, exec, effect }) => {
-          try {
-            await exec(effect)
-            return { failed: false as const, reactionName: reaction.name }
-          } catch (cause) {
-            return { failed: true as const, reactionName: reaction.name, cause }
-          }
-        }),
-    )
-    const failures = [
-      ...preparationFailures,
-      ...results.flatMap((result) =>
-        result.failed
-          ? [{ reactionName: result.reactionName, cause: result.cause }]
-          : [],
-      ),
-    ]
 
-    if (failures.length) throw new ReactionRunError({ failures })
+    await Promise.all(runnableEffects.map(({ exec, effect }) => exec(effect)))
 
-    return results.length > 0
+    return runnableEffects.length > 0
   }
 }

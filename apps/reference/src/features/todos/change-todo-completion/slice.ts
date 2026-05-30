@@ -20,7 +20,7 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
+const changeTodoCompletion = createCommandSlice('changeTodoCompletion')
   .schema(
     z.object({
       todoId: z.string().min(1),
@@ -119,4 +119,4 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
     ]
   })
 
-export default changeTodoCompletionSql
+export default changeTodoCompletion

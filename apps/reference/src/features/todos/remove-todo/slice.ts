@@ -10,7 +10,7 @@ export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-const removeTodoSql = createCommandSlice('removeTodo')
+const removeTodo = createCommandSlice('removeTodo')
   .schema(
     z.object({
       todoId: z.string().min(1),
@@ -69,4 +69,4 @@ const removeTodoSql = createCommandSlice('removeTodo')
     return [todoRemovedEvent.create({ todoId: command.todoId })]
   })
 
-export default removeTodoSql
+export default removeTodo

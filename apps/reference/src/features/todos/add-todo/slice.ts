@@ -5,7 +5,7 @@ import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
 
-const addTodoSql = createCommandSlice('addTodo')
+const addTodo = createCommandSlice('addTodo')
   .schema(
     z.object({
       title: z.string(),
@@ -56,4 +56,4 @@ const addTodoSql = createCommandSlice('addTodo')
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]
   })
 
-export default addTodoSql
+export default addTodo

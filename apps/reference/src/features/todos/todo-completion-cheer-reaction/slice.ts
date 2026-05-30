@@ -38,7 +38,7 @@ function completedTodoEvents(count: number): unknown[] {
   }).flat()
 }
 
-const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
+const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
   .plugin(async (command) => async (payload) => command(payload as never))
   .store(sqliteSliceStore)
   .scenarios(
@@ -174,4 +174,4 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
     }
   })
 
-export default todoCompletionCheerSql
+export default todoCompletionCheer

@@ -14,20 +14,7 @@ export {
   defineApplyHandlers,
   rejectCommand,
 } from './core/builders'
-export {
-  createSpecterApp,
-  CommandRejectedError,
-  DuplicateSliceNameError,
-  DuplicateEventTypeError,
-  EmptyCommandSetError,
-  InvalidEventDraftError,
-  InvalidCommandError,
-  InvalidQueryInputError,
-  ReactionRunError,
-  UnknownCommandError,
-  UnknownEventTypeError,
-  UnknownQueryError,
-} from './core/registry'
+export { createSpecterApp } from './core/registry'
 export type { SpecterApp, SpecterAppConfig } from './core/registry'
 export {
   autoOrder,

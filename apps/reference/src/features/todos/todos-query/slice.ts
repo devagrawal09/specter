@@ -18,7 +18,7 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
 
 export type TodoSqlListItem = typeof todoSqlListItems.$inferSelect
 
-const todosSqlQuery = createQuerySlice('todosQuery')
+const todosQuery = createQuerySlice('todosQuery')
   .schema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),
@@ -132,4 +132,4 @@ const todosSqlQuery = createQuerySlice('todosQuery')
     return db.select().from(todoSqlListItems).where(statusPredicate).all()
   })
 
-export default todosSqlQuery
+export default todosQuery

@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import type { drizzle } from 'drizzle-orm/better-sqlite3'
 import type {
   EventDraft,
   EventLogAdapter,
@@ -11,8 +11,6 @@ import { events, sliceCursors } from './specter-schema'
 const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
 
 export type SqliteDb = ReturnType<typeof drizzle>
-
-type EventRow = typeof events.$inferSelect
 
 function getDb() {
   const scopedDb = scopedSqliteDb.getStore()
@@ -74,7 +72,7 @@ export const sqliteEventLog: EventLogAdapter<never> = {
       .orderBy(asc(events.order))
       .all()
 
-    return rows.map((event: EventRow) => ({
+    return rows.map((event) => ({
       id: event.id,
       type: event.type,
       payload: JSON.parse(event.payload) as unknown,

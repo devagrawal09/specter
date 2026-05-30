@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
 import type { EventDraft } from './event'
-import { CommandRejectedError } from './registry'
 import type { SliceRegistration } from './slice'
 import type {
   CommandScenario,
@@ -52,9 +51,9 @@ export function testScenarios(
                 if (result._tag !== 'Left') {
                   throw new Error('Command scenario did not reject')
                 }
-                expect(result.left).toBeInstanceOf(CommandRejectedError)
+                expect(result.left).toBeInstanceOf(Error)
                 expect(result.left).toMatchObject({
-                  reason: scenario.reject.reason,
+                  message: scenario.reject.reason,
                 })
               }
               return
