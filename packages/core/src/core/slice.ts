@@ -74,13 +74,12 @@ export type CommandSlice<
   TSchema extends StandardSchemaV1 = StandardSchemaV1,
   TWriteState = unknown,
   TReadState = TWriteState,
-  TRequirements = unknown,
 > = {
   kind: 'command'
   name: TName
   description: string
   schema: TSchema
-  store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
+  store: SliceStoreAdapter<TWriteState, TReadState>
   apply: AnyApplyHandlers<TWriteState>
   scenarios?: readonly unknown[]
   handle: (
@@ -95,13 +94,12 @@ export type QuerySlice<
   TResult = unknown,
   TWriteState = unknown,
   TReadState = TWriteState,
-  TRequirements = unknown,
 > = {
   kind: 'query'
   name: TName
   description: string
   schema: TSchema
-  store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
+  store: SliceStoreAdapter<TWriteState, TReadState>
   apply: AnyApplyHandlers<TWriteState>
   scenarios?: readonly unknown[]
   handle: (
@@ -135,12 +133,11 @@ export type ReactionSlice<
   TPayload = CommandEnvelope,
   TWriteState = unknown,
   TReadState = TWriteState,
-  TRequirements = unknown,
 > = {
   kind: 'reaction'
   name: TName
   description: string
-  store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
+  store: SliceStoreAdapter<TWriteState, TReadState>
   apply: AnyApplyHandlers<TWriteState>
   plugin: ReactionPlugin
   scenarios?: readonly unknown[]
@@ -148,7 +145,7 @@ export type ReactionSlice<
 }
 
 type AnyCommandSlice = Omit<
-  CommandSlice<string, StandardSchemaV1, unknown, unknown, unknown>,
+  CommandSlice<string, StandardSchemaV1, unknown, unknown>,
   'handle'
 > & {
   handle: {
@@ -157,7 +154,7 @@ type AnyCommandSlice = Omit<
 }
 
 type AnyQuerySlice = Omit<
-  QuerySlice<string, StandardSchemaV1, unknown, unknown, unknown, unknown>,
+  QuerySlice<string, StandardSchemaV1, unknown, unknown, unknown>,
   'handle'
 > & {
   handle: {
@@ -166,7 +163,7 @@ type AnyQuerySlice = Omit<
 }
 
 type AnyReactionSlice = Omit<
-  ReactionSlice<string, unknown, unknown, unknown, unknown>,
+  ReactionSlice<string, unknown, unknown, unknown>,
   'handle'
 > & {
   handle: {

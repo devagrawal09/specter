@@ -29,11 +29,7 @@ export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
-export const sqliteSliceStore: SliceStoreAdapter<
-  ScopedSqliteDb,
-  ScopedSqliteDb,
-  never
-> = {
+export const sqliteSliceStore: SliceStoreAdapter<ScopedSqliteDb> = {
   get: createSliceStore,
   transaction: (sliceName, run) =>
     getDb().transaction((tx) =>
@@ -69,7 +65,7 @@ function createSliceStore(sliceName: string) {
   }
 }
 
-export const sqliteEventLog: EventLogAdapter<never> = {
+export const sqliteEventLog: EventLogAdapter = {
   readAfter: async (order, eventTypes) => {
     if (!eventTypes.length) return []
 
@@ -91,34 +87,36 @@ export const sqliteEventLog: EventLogAdapter<never> = {
     }))
   },
   append: async (eventDrafts: readonly EventDraft[]) => {
-    return Promise.all(eventDrafts.map(async (eventDraft) => {
-      const db = getDb()
-      const id = crypto.randomUUID()
-      const recordedAt = new Date()
+    return Promise.all(
+      eventDrafts.map(async (eventDraft) => {
+        const db = getDb()
+        const id = crypto.randomUUID()
+        const recordedAt = new Date()
 
-      await db
-        .insert(events)
-        .values({
+        await db
+          .insert(events)
+          .values({
+            id,
+            type: eventDraft.type,
+            payload: JSON.stringify(eventDraft.payload),
+            createdAt: recordedAt,
+          })
+          .run()
+
+        const rows = await db
+          .select({ order: events.order })
+          .from(events)
+          .where(eq(events.id, id))
+          .all()
+
+        return {
+          ...eventDraft,
           id,
-          type: eventDraft.type,
-          payload: JSON.stringify(eventDraft.payload),
-          createdAt: recordedAt,
-        })
-        .run()
-
-      const rows = await db
-        .select({ order: events.order })
-        .from(events)
-        .where(eq(events.id, id))
-        .all()
-
-      return {
-        ...eventDraft,
-        id,
-        order: rows[0]?.order ?? 0,
-        recordedAt,
-      }
-    }))
+          order: rows[0]?.order ?? 0,
+          recordedAt,
+        }
+      }),
+    )
   },
   transaction: (run) =>
     getDb().transaction((tx) =>

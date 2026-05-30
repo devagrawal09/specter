@@ -10,7 +10,6 @@ export type SliceStore<TWriteState = unknown, TReadState = TWriteState> = {
 export type SliceStoreAdapter<
   TWriteState = unknown,
   TReadState = TWriteState,
-  _TRequirements = unknown,
 > = {
   get: (sliceName: string) => SliceStore<TWriteState, TReadState>
   transaction: <T>(
@@ -19,7 +18,7 @@ export type SliceStoreAdapter<
   ) => Promise<T>
 }
 
-export type EventLogAdapter<_TRequirements = unknown> = {
+export type EventLogAdapter = {
   readAfter: (
     order: number,
     eventTypes: readonly string[],

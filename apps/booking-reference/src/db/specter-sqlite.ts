@@ -26,7 +26,7 @@ export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
-export const sqliteSliceStore: SliceStoreAdapter<SqliteDb, SqliteDb, never> = {
+export const sqliteSliceStore: SliceStoreAdapter<SqliteDb> = {
   get: createSliceStore,
   transaction: (sliceName, run) => run(createSliceStore(sliceName)),
 }
@@ -59,7 +59,7 @@ function createSliceStore(sliceName: string) {
   }
 }
 
-export const sqliteEventLog: EventLogAdapter<never> = {
+export const sqliteEventLog: EventLogAdapter = {
   readAfter: async (order, eventTypes) => {
     if (!eventTypes.length) return []
 
