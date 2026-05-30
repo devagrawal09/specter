@@ -1,16 +1,19 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
-import type { drizzle } from 'drizzle-orm/better-sqlite3'
+import type { drizzle } from 'drizzle-orm/libsql'
 import type {
   EventDraft,
   EventLogAdapter,
   SliceStoreAdapter,
 } from '@specter-ts/core'
+import type * as schema from './schema'
 import { events, sliceCursors } from './specter-schema'
 
-const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
+export type SqliteDb = ReturnType<typeof drizzle<typeof schema>>
+type SqliteTransaction = Parameters<Parameters<SqliteDb['transaction']>[0]>[0]
+type ScopedSqliteDb = SqliteDb | SqliteTransaction
 
-export type SqliteDb = ReturnType<typeof drizzle>
+const scopedSqliteDb = new AsyncLocalStorage<ScopedSqliteDb>()
 
 function getDb() {
   const scopedDb = scopedSqliteDb.getStore()
@@ -26,9 +29,16 @@ export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
-export const sqliteSliceStore: SliceStoreAdapter<SqliteDb, SqliteDb, never> = {
+export const sqliteSliceStore: SliceStoreAdapter<
+  ScopedSqliteDb,
+  ScopedSqliteDb,
+  never
+> = {
   get: createSliceStore,
-  transaction: (sliceName, run) => run(createSliceStore(sliceName)),
+  transaction: (sliceName, run) =>
+    getDb().transaction((tx) =>
+      scopedSqliteDb.run(tx, () => run(createSliceStore(sliceName))),
+    ),
 }
 
 function createSliceStore(sliceName: string) {
@@ -36,7 +46,7 @@ function createSliceStore(sliceName: string) {
     write: getDb(),
     read: getDb(),
     lastAppliedOrder: async () => {
-      const rows = getDb()
+      const rows = await getDb()
         .select()
         .from(sliceCursors)
         .where(eq(sliceCursors.sliceName, sliceName))
@@ -45,7 +55,7 @@ function createSliceStore(sliceName: string) {
       return rows[0]?.lastAppliedOrder ?? 0
     },
     setLastAppliedOrder: async (order: number) => {
-      getDb()
+      await getDb()
         .insert(sliceCursors)
         .values({ sliceName, lastAppliedOrder: order })
         .onConflictDoUpdate({
@@ -63,7 +73,7 @@ export const sqliteEventLog: EventLogAdapter<never> = {
   readAfter: async (order, eventTypes) => {
     if (!eventTypes.length) return []
 
-    const rows = getDb()
+    const rows = await getDb()
       .select()
       .from(events)
       .where(
@@ -81,12 +91,13 @@ export const sqliteEventLog: EventLogAdapter<never> = {
     }))
   },
   append: async (eventDrafts: readonly EventDraft[]) => {
-    return eventDrafts.map((eventDraft) => {
+    return Promise.all(eventDrafts.map(async (eventDraft) => {
       const db = getDb()
       const id = crypto.randomUUID()
       const recordedAt = new Date()
 
-      db.insert(events)
+      await db
+        .insert(events)
         .values({
           id,
           type: eventDraft.type,
@@ -95,7 +106,7 @@ export const sqliteEventLog: EventLogAdapter<never> = {
         })
         .run()
 
-      const rows = db
+      const rows = await db
         .select({ order: events.order })
         .from(events)
         .where(eq(events.id, id))
@@ -107,7 +118,10 @@ export const sqliteEventLog: EventLogAdapter<never> = {
         order: rows[0]?.order ?? 0,
         recordedAt,
       }
-    })
+    }))
   },
-  transaction: (run) => run(sqliteEventLog),
+  transaction: (run) =>
+    getDb().transaction((tx) =>
+      scopedSqliteDb.run(tx, () => run(sqliteEventLog)),
+    ),
 }

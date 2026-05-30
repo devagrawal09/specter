@@ -24,7 +24,8 @@ const todoCheers = createQuerySlice('todoCheers')
       const db = input
       const payload = await todoCheerCreatedEvent.decode(event.payload)
 
-      db.insert(todoSqlCheersState)
+      await db
+        .insert(todoSqlCheersState)
         .values({
           milestone: payload.milestone,
           message: payload.message,
@@ -59,7 +60,7 @@ const todoCheers = createQuerySlice('todoCheers')
     },
   )
   .handle(async (_query, db) => {
-    const latestCheers = db
+    const latestCheers = await db
       .select()
       .from(todoSqlCheersState)
       .orderBy(desc(todoSqlCheersState.milestone))

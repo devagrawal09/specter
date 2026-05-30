@@ -22,7 +22,6 @@
     "check": "biome check"
   },
   "dependencies": {
-    "@specter-ts/core": "workspace:*",
     "@effect/platform": "^0.96.1",
     "@effect/platform-node": "^0.106.0",
     "@effect/rpc": "^0.75.1",
@@ -32,9 +31,10 @@
     "@hono/node-server": "2.0.3",
     "@hono/vite-build": "1.11.1",
     "@hono/vite-dev-server": "0.25.3",
+    "@libsql/client": "^0.17.3",
     "@solidjs/web": "2.0.0-beta.13",
+    "@specter-ts/core": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
-    "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",
     "effect": "^3.21.2",
     "hono": "4.12.19",
@@ -45,7 +45,6 @@
   "devDependencies": {
     "@biomejs/biome": "2.4.5",
     "@playwright/test": "^1.60.0",
-    "@types/better-sqlite3": "^7.6.13",
     "drizzle-kit": "^0.31.10",
     "jsdom": "^28.1.0",
     "typescript": "^6.0.2",

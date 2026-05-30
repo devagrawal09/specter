@@ -56,7 +56,7 @@ export default defineConfig(({ mode }) => ({
           build({
             entry: './src/server.ts',
             port: 41731,
-            external: ['better-sqlite3'],
+            external: ['@libsql/client'],
           }),
         ],
 }))

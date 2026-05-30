@@ -92,7 +92,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      db.insert(createTodoCheerSqlTodoStates)
+      await db
+        .insert(createTodoCheerSqlTodoStates)
         .values({
           todoId: payload.todoId,
           completed: false,
@@ -104,7 +105,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       const db = input
       const payload = await todoCompletionChangedEvent.decode(event.payload)
 
-      db.update(createTodoCheerSqlTodoStates)
+      await db
+        .update(createTodoCheerSqlTodoStates)
         .set({ completed: payload.completed })
         .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
         .run()
@@ -113,7 +115,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       const db = input
       const payload = await todoRemovedEvent.decode(event.payload)
 
-      db.update(createTodoCheerSqlTodoStates)
+      await db
+        .update(createTodoCheerSqlTodoStates)
         .set({ removed: true })
         .where(eq(createTodoCheerSqlTodoStates.todoId, payload.todoId))
         .run()
@@ -122,7 +125,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       const db = input
       const payload = await todoCheerCreatedEvent.decode(event.payload)
 
-      db.insert(createTodoCheerSqlMilestoneStates)
+      await db
+        .insert(createTodoCheerSqlMilestoneStates)
         .values({ milestone: payload.milestone })
         .run()
     },
@@ -132,7 +136,7 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       throw new Error('Todo cheer milestone must be a multiple of 5')
     }
 
-    const completedTodos = db
+    const completedTodos = await db
       .select()
       .from(createTodoCheerSqlTodoStates)
       .where(
@@ -148,7 +152,7 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       throw new Error('Todo cheer milestone has not been reached')
     }
 
-    const existingMilestones = db
+    const existingMilestones = await db
       .select()
       .from(createTodoCheerSqlMilestoneStates)
       .where(eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone))

@@ -105,7 +105,8 @@ const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      db.insert(todoCompletionCheerSqlTodoStates)
+      await db
+        .insert(todoCompletionCheerSqlTodoStates)
         .values({
           todoId: payload.todoId,
           completed: false,
@@ -117,7 +118,8 @@ const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
       const db = input
       const payload = await todoCompletionChangedEvent.decode(event.payload)
 
-      db.update(todoCompletionCheerSqlTodoStates)
+      await db
+        .update(todoCompletionCheerSqlTodoStates)
         .set({ completed: payload.completed })
         .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId))
         .run()
@@ -126,7 +128,8 @@ const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
       const db = input
       const payload = await todoRemovedEvent.decode(event.payload)
 
-      db.update(todoCompletionCheerSqlTodoStates)
+      await db
+        .update(todoCompletionCheerSqlTodoStates)
         .set({ removed: true })
         .where(eq(todoCompletionCheerSqlTodoStates.todoId, payload.todoId))
         .run()
@@ -135,13 +138,14 @@ const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
       const db = input
       const payload = await todoCheerCreatedEvent.decode(event.payload)
 
-      db.insert(todoCheerSqlMilestoneStates)
+      await db
+        .insert(todoCheerSqlMilestoneStates)
         .values({ milestone: payload.milestone })
         .run()
     },
   })
   .handle(async (db) => {
-    const completedTodos = db
+    const completedTodos = await db
       .select()
       .from(todoCompletionCheerSqlTodoStates)
       .where(
@@ -158,7 +162,7 @@ const todoCompletionCheer = createReactionSlice('todoCompletionCheer')
       return
     }
 
-    const existingMilestones = db
+    const existingMilestones = await db
       .select()
       .from(todoCheerSqlMilestoneStates)
       .where(eq(todoCheerSqlMilestoneStates.milestone, completedCount))

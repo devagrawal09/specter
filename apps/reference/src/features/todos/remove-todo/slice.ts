@@ -42,20 +42,21 @@ const removeTodo = createCommandSlice('removeTodo')
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }).run()
+      await db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }).run()
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
       const payload = await todoRemovedEvent.decode(event.payload)
 
-      db.update(todoRemovalSqlStates)
+      await db
+        .update(todoRemovalSqlStates)
         .set({ removed: true })
         .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
         .run()
     },
   })
   .handle(async (command, db) => {
-    const rows = db
+    const rows = await db
       .select()
       .from(todoRemovalSqlStates)
       .where(eq(todoRemovalSqlStates.todoId, command.todoId))

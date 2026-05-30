@@ -1,18 +1,21 @@
 import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { createClient } from '@libsql/client/sqlite3'
+import { drizzle } from 'drizzle-orm/libsql'
 import { Hono } from 'hono'
 import { createSpecterApp } from '@specter-ts/core'
 
 import { runWithSqliteDb } from './db/specter-sqlite'
 import { todoSpecterAppConfig } from './features/todos/registry'
+import * as schema from './db/schema'
 import './styles.css?url'
 
 const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
 mkdirSync(dirname(sqlitePath), { recursive: true })
-const productionDb = drizzle(new Database(sqlitePath))
+const productionDb = drizzle(createClient({ url: `file:${sqlitePath}` }), {
+  schema,
+})
 const specterApp = createSpecterApp(todoSpecterAppConfig)
 const queryMethods: ReadonlySet<string> = new Set(
   todoSpecterAppConfig.slices
