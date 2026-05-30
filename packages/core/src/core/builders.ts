@@ -1,4 +1,4 @@
-import type * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { EventDraft } from './event'
 import type {
@@ -18,20 +18,21 @@ import type {
 import { CommandRejectedError } from './errors'
 export { defineApplyHandlers } from './slice'
 
-type AnySchema = Schema.Schema.AnyNoContext
-type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
 type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
   readonly ApplyEventDefinition[],
   TState
 >
 
 type CommandSchemaStep<TName extends string> = {
-  schema: <TSchema extends AnySchema>(
+  schema: <TSchema extends StandardSchemaV1>(
     schema: TSchema,
   ) => CommandStoreStep<TName, TSchema>
 }
 
-type CommandStoreStep<TName extends string, TSchema extends AnySchema> = {
+type CommandStoreStep<
+  TName extends string,
+  TSchema extends StandardSchemaV1,
+> = {
   store: <TWriteState, TReadState = TWriteState>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
   ) => CommandStep<TName, TSchema, TWriteState, TReadState>
@@ -39,13 +40,13 @@ type CommandStoreStep<TName extends string, TSchema extends AnySchema> = {
 
 type CommandStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
   handle: (
     handle: (
-      command: SchemaType<TSchema>,
+      command: StandardSchemaV1.InferOutput<TSchema>,
       state: TReadState,
     ) => Promise<EventDraft[]>,
   ) => CommandSlice<TName, TSchema, TWriteState, TReadState> & {
@@ -55,19 +56,23 @@ type CommandStep<
     apply: AnyApplyHandlers<TWriteState>,
   ) => CommandApplyStep<TName, TSchema, TWriteState, TReadState>
   scenarios: (
-    ...scenarios: readonly CommandScenario<SchemaType<TSchema>>[]
+    ...scenarios: readonly CommandScenario<
+      StandardSchemaV1.InferOutput<TSchema>
+    >[]
   ) => CommandScenarioStep<TName, TSchema, TWriteState, TReadState>
 }
 
 type CommandApplyStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
   handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
   scenarios: (
-    ...scenarios: readonly CommandScenario<SchemaType<TSchema>>[]
+    ...scenarios: readonly CommandScenario<
+      StandardSchemaV1.InferOutput<TSchema>
+    >[]
   ) => {
     handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
   }
@@ -75,7 +80,7 @@ type CommandApplyStep<
 
 type CommandScenarioStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
@@ -86,12 +91,12 @@ type CommandScenarioStep<
 }
 
 type QuerySchemaStep<TName extends string> = {
-  schema: <TSchema extends AnySchema>(
+  schema: <TSchema extends StandardSchemaV1>(
     schema: TSchema,
   ) => QueryStoreStep<TName, TSchema>
 }
 
-type QueryStoreStep<TName extends string, TSchema extends AnySchema> = {
+type QueryStoreStep<TName extends string, TSchema extends StandardSchemaV1> = {
   store: <TWriteState, TReadState = TWriteState>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
   ) => QueryApplyStep<TName, TSchema, TWriteState, TReadState>
@@ -99,7 +104,7 @@ type QueryStoreStep<TName extends string, TSchema extends AnySchema> = {
 
 type QueryApplyStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
@@ -110,23 +115,28 @@ type QueryApplyStep<
 
 type QueryHandleStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
   handle: <TResult>(
-    handle: (input: SchemaType<TSchema>, state: TReadState) => Promise<TResult>,
+    handle: (
+      input: StandardSchemaV1.InferOutput<TSchema>,
+      state: TReadState,
+    ) => Promise<TResult>,
   ) => QuerySlice<TName, TSchema, TResult, TWriteState, TReadState> & {
     scenarios?: readonly QueryScenario[]
   }
   scenarios: (
-    ...scenarios: readonly QueryScenario<SchemaType<TSchema>>[]
+    ...scenarios: readonly QueryScenario<
+      StandardSchemaV1.InferOutput<TSchema>
+    >[]
   ) => QueryScenarioStep<TName, TSchema, TWriteState, TReadState>
 }
 
 type QueryScenarioStep<
   TName extends string,
-  TSchema extends AnySchema,
+  TSchema extends StandardSchemaV1,
   TWriteState,
   TReadState,
 > = {
@@ -208,7 +218,7 @@ export function createCommandSlice<const TName extends string>(
       ) => {
         const createRegistration = (
           handle: (
-            command: SchemaType<typeof schema>,
+            command: StandardSchemaV1.InferOutput<typeof schema>,
             state: TReadState,
           ) => Promise<EventDraft[]>,
           apply: AnyApplyHandlers<TWriteState>,
@@ -256,7 +266,7 @@ export function createQuerySlice<const TName extends string>(
         apply: (apply: AnyApplyHandlers<TWriteState>) => {
           const createRegistration = <TResult>(
             handle: (
-              query: SchemaType<typeof schema>,
+              query: StandardSchemaV1.InferOutput<typeof schema>,
               state: TReadState,
             ) => Promise<TResult>,
             scenarios?: readonly QueryScenario[],

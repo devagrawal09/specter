@@ -1,6 +1,6 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import * as Schema from 'effect/Schema'
+import { z } from 'zod'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
@@ -41,8 +41,8 @@ function completedTodoEvents(count: number) {
 
 const createTodoCheerSql = createCommandSlice('createTodoCheer')
   .schema(
-    Schema.Struct({
-      milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
+    z.object({
+      milestone: z.number().int().positive(),
     }),
   )
   .store(sqliteSliceStore)
@@ -90,7 +90,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
   .apply({
     [todoAddedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoAddedEvent.decode(event.payload)
+      const payload = await todoAddedEvent.decode(event.payload)
 
       db.insert(createTodoCheerSqlTodoStates)
         .values({
@@ -102,7 +102,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     },
     [todoCompletionChangedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCompletionChangedEvent.decode(event.payload)
+      const payload = await todoCompletionChangedEvent.decode(event.payload)
 
       db.update(createTodoCheerSqlTodoStates)
         .set({ completed: payload.completed })
@@ -111,7 +111,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoRemovedEvent.decode(event.payload)
+      const payload = await todoRemovedEvent.decode(event.payload)
 
       db.update(createTodoCheerSqlTodoStates)
         .set({ removed: true })
@@ -120,7 +120,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     },
     [todoCheerCreatedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCheerCreatedEvent.decode(event.payload)
+      const payload = await todoCheerCreatedEvent.decode(event.payload)
 
       db.insert(createTodoCheerSqlMilestoneStates)
         .values({ milestone: payload.milestone })

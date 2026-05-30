@@ -1,6 +1,6 @@
 import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import * as Schema from 'effect/Schema'
+import { z } from 'zod'
 import { createQuerySlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoCheerCreatedEvent } from '../events'
@@ -17,12 +17,12 @@ export type TodoSqlCheersState = {
 }
 
 const todoSqlCheers = createQuerySlice('todoCheers')
-  .schema(Schema.Struct({}))
+  .schema(z.object({}))
   .store(sqliteSliceStore)
   .apply({
     [todoCheerCreatedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCheerCreatedEvent.decode(event.payload)
+      const payload = await todoCheerCreatedEvent.decode(event.payload)
 
       db.insert(todoSqlCheersState)
         .values({

@@ -1,4 +1,4 @@
-import * as Schema from 'effect/Schema'
+import { z } from 'zod'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
@@ -7,8 +7,8 @@ const maxTitleLength = 120
 
 const addTodoSql = createCommandSlice('addTodo')
   .schema(
-    Schema.Struct({
-      title: Schema.String,
+    z.object({
+      title: z.string(),
     }),
   )
   .store(sqliteSliceStore)
@@ -50,9 +50,7 @@ const addTodoSql = createCommandSlice('addTodo')
     }
 
     if (title.length > maxTitleLength) {
-      rejectCommand(
-        `Todo title must be ${maxTitleLength} characters or less`,
-      )
+      rejectCommand(`Todo title must be ${maxTitleLength} characters or less`)
     }
 
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]

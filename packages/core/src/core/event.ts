@@ -1,7 +1,6 @@
-import * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-type AnySchema = Schema.Schema.AnyNoContext
-type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
+import { decodeSchema } from './schema'
 
 export type EventDraft<TType extends string = string, TPayload = unknown> = {
   type: TType
@@ -28,28 +27,27 @@ export type EventDefinition<
   TPayload = unknown,
 > = {
   type: TType
-  schema: AnySchema
+  schema: StandardSchemaV1
   create: (payload: TPayload) => EventDraft<TType, TPayload>
-  decode: (payload: unknown) => TPayload
-  is: (event: EventDraft) => event is EventDraft<TType, TPayload>
+  decode: (payload: unknown) => Promise<TPayload>
 }
 
 export function createEventDefinition<
   const TType extends string,
-  TSchema extends AnySchema,
->(type: TType, schema: TSchema): EventDefinition<TType, SchemaType<TSchema>> {
-  const decode = Schema.decodeUnknownSync(schema)
-  const isPayload = Schema.is(schema)
+  TSchema extends StandardSchemaV1,
+>(
+  type: TType,
+  schema: TSchema,
+): EventDefinition<TType, StandardSchemaV1.InferOutput<TSchema>> {
+  const decode = (payload: unknown) => decodeSchema(schema, payload)
 
   return {
     type,
     schema,
     create: (payload) => ({
       type,
-      payload: decode(payload),
+      payload,
     }),
     decode,
-    is: (event): event is EventDraft<TType, SchemaType<TSchema>> =>
-      event.type === type && isPayload(event.payload),
   }
 }

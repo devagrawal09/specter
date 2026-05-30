@@ -1,34 +1,34 @@
-import * as Schema from 'effect/Schema'
 import { createEventDefinition } from '@specter-ts/core'
+import { z } from 'zod'
 
 export const todoAddedEvent = createEventDefinition(
   'todoAdded',
-  Schema.Struct({
-    todoId: Schema.String,
-    title: Schema.String,
+  z.object({
+    todoId: z.string(),
+    title: z.string(),
   }),
 )
 
 export const todoCompletionChangedEvent = createEventDefinition(
   'todoCompletionChanged',
-  Schema.Struct({
-    todoId: Schema.String,
-    completed: Schema.Boolean,
+  z.object({
+    todoId: z.string(),
+    completed: z.boolean(),
   }),
 )
 
 export const todoRemovedEvent = createEventDefinition(
   'todoRemoved',
-  Schema.Struct({
-    todoId: Schema.String,
+  z.object({
+    todoId: z.string(),
   }),
 )
 
 export const todoCheerCreatedEvent = createEventDefinition(
   'todoCheerCreated',
-  Schema.Struct({
-    milestone: Schema.Number.pipe(Schema.int(), Schema.positive()),
-    message: Schema.String,
+  z.object({
+    milestone: z.number().int().positive(),
+    message: z.string(),
   }),
 )
 

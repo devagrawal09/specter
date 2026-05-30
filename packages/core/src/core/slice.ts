@@ -1,4 +1,4 @@
-import type * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { SliceStoreAdapter } from '../adapters/contracts'
 import type { Event, EventDefinition, EventDraft } from './event'
@@ -8,8 +8,6 @@ export type {
   SliceStoreAdapter,
 } from '../adapters/contracts'
 
-type AnySchema = Schema.Schema.AnyNoContext
-type SchemaType<TSchema extends AnySchema> = Schema.Schema.Type<TSchema>
 export type ApplyEventDefinition<
   TType extends string = string,
   TPayload = unknown,
@@ -43,10 +41,7 @@ type EventForType<
 > = Event<TType, EventPayloadForType<TEventDefinitions[number], TType>>
 
 type ApplyHandler<TEvent extends Event, TState = unknown> = {
-  bivarianceHack(
-    event: TEvent,
-    state: TState,
-  ): Promise<void>
+  bivarianceHack(event: TEvent, state: TState): Promise<void>
 }['bivarianceHack']
 
 export type ApplyHandlers<
@@ -76,7 +71,7 @@ type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
 
 export type CommandSlice<
   TName extends string = string,
-  TSchema extends AnySchema = AnySchema,
+  TSchema extends StandardSchemaV1 = StandardSchemaV1,
   TWriteState = unknown,
   TReadState = TWriteState,
   TRequirements = unknown,
@@ -88,14 +83,14 @@ export type CommandSlice<
   apply: AnyApplyHandlers<TWriteState>
   scenarios?: readonly unknown[]
   handle: (
-    command: SchemaType<TSchema>,
+    command: StandardSchemaV1.InferOutput<TSchema>,
     state: TReadState,
   ) => Promise<EventDraft[]>
 }
 
 export type QuerySlice<
   TName extends string = string,
-  TSchema extends AnySchema = AnySchema,
+  TSchema extends StandardSchemaV1 = StandardSchemaV1,
   TResult = unknown,
   TWriteState = unknown,
   TReadState = TWriteState,
@@ -108,32 +103,30 @@ export type QuerySlice<
   apply: AnyApplyHandlers<TWriteState>
   scenarios?: readonly unknown[]
   handle: (
-    query: SchemaType<TSchema>,
+    query: StandardSchemaV1.InferOutput<TSchema>,
     state: TReadState,
   ) => Promise<TResult>
 }
 
 export type QueryRef<TRegistration> =
   TRegistration extends QuerySlice<infer TName, infer TSchema, infer TResult>
-    ? { name: TName; result?: TResult; input?: SchemaType<TSchema> }
+    ? {
+        name: TName
+        result?: TResult
+        input?: StandardSchemaV1.InferOutput<TSchema>
+      }
     : never
 
 export type CommandRef<TRegistration> =
   TRegistration extends CommandSlice<infer TName, infer TSchema>
-    ? { name: TName; payload?: SchemaType<TSchema> }
+    ? { name: TName; payload?: StandardSchemaV1.InferOutput<TSchema> }
     : never
 
-export type CommandDispatch = (
-  command: CommandEnvelope,
-) => Promise<void>
+export type CommandDispatch = (command: CommandEnvelope) => Promise<void>
 
-export type ReactionExec = (
-  reaction: unknown,
-) => Promise<unknown>
+export type ReactionExec = (reaction: unknown) => Promise<unknown>
 
-export type ReactionPlugin = (
-  command: CommandDispatch,
-) => Promise<ReactionExec>
+export type ReactionPlugin = (command: CommandDispatch) => Promise<ReactionExec>
 
 export type ReactionSlice<
   TName extends string = string,
@@ -148,32 +141,24 @@ export type ReactionSlice<
   apply: AnyApplyHandlers<TWriteState>
   plugin: ReactionPlugin
   scenarios?: readonly unknown[]
-  handle: (
-    state: TReadState,
-  ) => Promise<TPayload | undefined>
+  handle: (state: TReadState) => Promise<TPayload | undefined>
 }
 
 type AnyCommandSlice = Omit<
-  CommandSlice<string, AnySchema, unknown, unknown, unknown>,
+  CommandSlice<string, StandardSchemaV1, unknown, unknown, unknown>,
   'handle'
 > & {
   handle: {
-    bivarianceHack(
-      command: unknown,
-      state: unknown,
-    ): Promise<EventDraft[]>
+    bivarianceHack(command: unknown, state: unknown): Promise<EventDraft[]>
   }['bivarianceHack']
 }
 
 type AnyQuerySlice = Omit<
-  QuerySlice<string, AnySchema, unknown, unknown, unknown, unknown>,
+  QuerySlice<string, StandardSchemaV1, unknown, unknown, unknown, unknown>,
   'handle'
 > & {
   handle: {
-    bivarianceHack(
-      query: unknown,
-      state: unknown,
-    ): Promise<unknown>
+    bivarianceHack(query: unknown, state: unknown): Promise<unknown>
   }['bivarianceHack']
 }
 
@@ -182,10 +167,11 @@ type AnyReactionSlice = Omit<
   'handle'
 > & {
   handle: {
-    bivarianceHack(
-      state: unknown,
-    ): Promise<unknown | undefined>
+    bivarianceHack(state: unknown): Promise<unknown | undefined>
   }['bivarianceHack']
 }
 
-export type SliceRegistration = AnyCommandSlice | AnyQuerySlice | AnyReactionSlice
+export type SliceRegistration =
+  | AnyCommandSlice
+  | AnyQuerySlice
+  | AnyReactionSlice

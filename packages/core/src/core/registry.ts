@@ -1,9 +1,8 @@
-import { Data } from 'effect'
-import type * as ParseResult from 'effect/ParseResult'
-import * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { EventLogAdapter, SliceStore } from '../adapters/contracts'
 import type { EventDraft, PersistedEvent } from './event'
+import { decodeSchema } from './schema'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -14,60 +13,133 @@ import type {
 } from './slice'
 export { CommandRejectedError } from './errors'
 
-export class EmptyCommandSetError extends Data.TaggedError(
-  'EmptyCommandSetError',
-) {}
-export class InvalidCommandError extends Data.TaggedError(
-  'InvalidCommandError',
-)<{
-  readonly error: ParseResult.ParseError
-}> {}
-export class InvalidEventDraftError extends Data.TaggedError(
-  'InvalidEventDraftError',
-)<{
+export class EmptyCommandSetError extends Error {
+  readonly _tag = 'EmptyCommandSetError'
+
+  constructor() {
+    super('At least one command slice must be registered')
+    this.name = 'EmptyCommandSetError'
+  }
+}
+
+export class InvalidCommandError extends Error {
+  readonly _tag = 'InvalidCommandError'
+  readonly error: readonly StandardSchemaV1.Issue[]
+
+  constructor(input: { readonly error: readonly StandardSchemaV1.Issue[] }) {
+    super('Invalid command input')
+    this.name = 'InvalidCommandError'
+    this.error = input.error
+  }
+}
+
+export class InvalidEventDraftError extends Error {
+  readonly _tag = 'InvalidEventDraftError'
   readonly eventType: string
   readonly error: unknown
-}> {}
-export class InvalidQueryInputError extends Data.TaggedError(
-  'InvalidQueryInputError',
-)<{
+
+  constructor(input: { readonly eventType: string; readonly error: unknown }) {
+    super(`Invalid event draft: ${input.eventType}`)
+    this.name = 'InvalidEventDraftError'
+    this.eventType = input.eventType
+    this.error = input.error
+  }
+}
+
+export class InvalidQueryInputError extends Error {
+  readonly _tag = 'InvalidQueryInputError'
   readonly queryName: string
-  readonly error: ParseResult.ParseError
-}> {}
-export class UnknownCommandError extends Data.TaggedError(
-  'UnknownCommandError',
-)<{
+  readonly error: readonly StandardSchemaV1.Issue[]
+
+  constructor(input: {
+    readonly queryName: string
+    readonly error: readonly StandardSchemaV1.Issue[]
+  }) {
+    super(`Invalid query input: ${input.queryName}`)
+    this.name = 'InvalidQueryInputError'
+    this.queryName = input.queryName
+    this.error = input.error
+  }
+}
+
+export class UnknownCommandError extends Error {
+  readonly _tag = 'UnknownCommandError'
   readonly commandName: string
-}> {}
-export class UnknownQueryError extends Data.TaggedError('UnknownQueryError')<{
+
+  constructor(input: { readonly commandName: string }) {
+    super(`Unknown command: ${input.commandName}`)
+    this.name = 'UnknownCommandError'
+    this.commandName = input.commandName
+  }
+}
+
+export class UnknownQueryError extends Error {
+  readonly _tag = 'UnknownQueryError'
   readonly queryName: string
-}> {}
-export class DuplicateSliceNameError extends Data.TaggedError(
-  'DuplicateSliceNameError',
-)<{
+
+  constructor(input: { readonly queryName: string }) {
+    super(`Unknown query: ${input.queryName}`)
+    this.name = 'UnknownQueryError'
+    this.queryName = input.queryName
+  }
+}
+
+export class DuplicateSliceNameError extends Error {
+  readonly _tag = 'DuplicateSliceNameError'
   readonly sliceName: string
-}> {}
-export class DuplicateEventTypeError extends Data.TaggedError(
-  'DuplicateEventTypeError',
-)<{
+
+  constructor(input: { readonly sliceName: string }) {
+    super(`Duplicate slice name: ${input.sliceName}`)
+    this.name = 'DuplicateSliceNameError'
+    this.sliceName = input.sliceName
+  }
+}
+
+export class DuplicateEventTypeError extends Error {
+  readonly _tag = 'DuplicateEventTypeError'
   readonly eventType: string
-}> {}
-export class UnknownEventTypeError extends Data.TaggedError(
-  'UnknownEventTypeError',
-)<{
+
+  constructor(input: { readonly eventType: string }) {
+    super(`Duplicate event type: ${input.eventType}`)
+    this.name = 'DuplicateEventTypeError'
+    this.eventType = input.eventType
+  }
+}
+
+export class UnknownEventTypeError extends Error {
+  readonly _tag = 'UnknownEventTypeError'
   readonly eventType: string
-}> {}
-export class ReactionRunError extends Data.TaggedError('ReactionRunError')<{
+
+  constructor(input: { readonly eventType: string }) {
+    super(`Unknown event type: ${input.eventType}`)
+    this.name = 'UnknownEventTypeError'
+    this.eventType = input.eventType
+  }
+}
+
+export class ReactionRunError extends Error {
+  readonly _tag = 'ReactionRunError'
   readonly failures: readonly {
     readonly reactionName: string
     readonly cause: unknown
   }[]
-}> {}
+
+  constructor(input: {
+    readonly failures: readonly {
+      readonly reactionName: string
+      readonly cause: unknown
+    }[]
+  }) {
+    super('One or more reactions failed')
+    this.name = 'ReactionRunError'
+    this.failures = input.failures
+  }
+}
 
 export type SpecterAppConfig = {
   readonly events: readonly {
     readonly type: string
-    readonly decode: (payload: unknown) => unknown
+    readonly decode: (payload: unknown) => Promise<unknown>
   }[]
   readonly eventLog: EventLogAdapter
   readonly slices: readonly SliceRegistration[]
@@ -75,16 +147,16 @@ export type SpecterAppConfig = {
 
 type CommandInput<TSlice> =
   TSlice extends CommandSlice<string, infer TSchema>
-    ? Schema.Schema.Type<TSchema>
+    ? StandardSchemaV1.InferOutput<TSchema>
     : never
 
 type QueryInput<TSlice> =
   TSlice extends QuerySlice<string, infer TSchema>
-    ? Schema.Schema.Type<TSchema>
+    ? StandardSchemaV1.InferOutput<TSchema>
     : never
 
 type QueryOutput<TSlice> =
-  TSlice extends QuerySlice<string, Schema.Schema.AnyNoContext, infer TResult>
+  TSlice extends QuerySlice<string, infer _TSchema, infer TResult>
     ? TResult
     : never
 
@@ -131,7 +203,10 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 ): SpecterApp<TConfig> {
   const eventDefinitions: Record<
     string,
-    { readonly type: string; readonly decode: (payload: unknown) => unknown }
+    {
+      readonly type: string
+      readonly decode: (payload: unknown) => Promise<unknown>
+    }
   > = {}
 
   for (const eventDefinition of config.events) {
@@ -194,21 +269,21 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   return app as SpecterApp<TConfig>
 
-  function decodePersistedEvent(event: PersistedEvent) {
+  async function decodePersistedEvent(event: PersistedEvent) {
     const eventDefinition = eventDefinitions[event.type]
     if (!eventDefinition)
       throw new UnknownEventTypeError({ eventType: event.type })
 
-    return { ...event, payload: eventDefinition.decode(event.payload) }
+    return { ...event, payload: await eventDefinition.decode(event.payload) }
   }
 
-  function decodeEventDraft(event: EventDraft) {
+  async function decodeEventDraft(event: EventDraft) {
     const eventDefinition = eventDefinitions[event.type]
     if (!eventDefinition)
       throw new UnknownEventTypeError({ eventType: event.type })
 
     try {
-      return { ...event, payload: eventDefinition.decode(event.payload) }
+      return { ...event, payload: await eventDefinition.decode(event.payload) }
     } catch (error) {
       throw new InvalidEventDraftError({ eventType: event.type, error })
     }
@@ -225,7 +300,9 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
     const lastAppliedOrder = await store.lastAppliedOrder()
     const unreadEvents = await eventLog.readAfter(lastAppliedOrder, eventTypes)
-    const unappliedEvents = unreadEvents.map(decodePersistedEvent)
+    const unappliedEvents = await Promise.all(
+      unreadEvents.map(decodePersistedEvent),
+    )
 
     if (!unappliedEvents.length) return { store, advanced: false } as const
 
@@ -243,21 +320,26 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   async function runCommand(commandSlice: CommandSlice, input: unknown) {
     return config.eventLog.transaction((eventLog) =>
       commandSlice.store.transaction(commandSlice.name, async (store) => {
-        const parsedCommand = await Schema.decodeUnknownPromise(
+        const parsedCommand = await decodeSchema(
           commandSlice.schema,
-        )(input).catch((error: ParseResult.ParseError) => {
+          input,
+        ).catch((error: readonly StandardSchemaV1.Issue[]) => {
           throw new InvalidCommandError({ error })
         })
         await catchUpSlice(commandSlice, store, eventLog)
         const events = await commandSlice.handle(parsedCommand, store.read)
-        await eventLog.append(events.map(decodeEventDraft))
+        await eventLog.append(await Promise.all(events.map(decodeEventDraft)))
       }),
     )
   }
 
   async function runQuery(query: QuerySlice, input: unknown) {
     return query.store.transaction(query.name, async (store) => {
-      const parsedInput = await Schema.decodeUnknownPromise(query.schema)(input)
+      const parsedInput = await decodeSchema(query.schema, input).catch(
+        (error: readonly StandardSchemaV1.Issue[]) => {
+          throw new InvalidQueryInputError({ queryName: query.name, error })
+        },
+      )
       await catchUpSlice(query, store)
 
       return query.handle(parsedInput, store.read)

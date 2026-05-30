@@ -103,7 +103,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
   .apply({
     [todoAddedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoAddedEvent.decode(event.payload)
+      const payload = await todoAddedEvent.decode(event.payload)
 
       db.insert(todoCompletionCheerSqlTodoStates)
         .values({
@@ -115,7 +115,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
     },
     [todoCompletionChangedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCompletionChangedEvent.decode(event.payload)
+      const payload = await todoCompletionChangedEvent.decode(event.payload)
 
       db.update(todoCompletionCheerSqlTodoStates)
         .set({ completed: payload.completed })
@@ -124,7 +124,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoRemovedEvent.decode(event.payload)
+      const payload = await todoRemovedEvent.decode(event.payload)
 
       db.update(todoCompletionCheerSqlTodoStates)
         .set({ removed: true })
@@ -133,7 +133,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
     },
     [todoCheerCreatedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCheerCreatedEvent.decode(event.payload)
+      const payload = await todoCheerCreatedEvent.decode(event.payload)
 
       db.insert(todoCheerSqlMilestoneStates)
         .values({ milestone: payload.milestone })

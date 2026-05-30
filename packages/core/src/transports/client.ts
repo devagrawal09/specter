@@ -1,4 +1,4 @@
-import type * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { SpecterAppConfig } from '../core/registry'
 import type { SliceRegistration } from '../core/slice'
@@ -8,16 +8,16 @@ const specterClientBrandValue: true = true
 
 type CommandInput<TSlice> = TSlice extends {
   kind: 'command'
-  schema: infer TSchema extends Schema.Schema.AnyNoContext
+  schema: infer TSchema extends StandardSchemaV1
 }
-  ? Schema.Schema.Type<TSchema>
+  ? StandardSchemaV1.InferOutput<TSchema>
   : never
 
 type QueryInput<TSlice> = TSlice extends {
   kind: 'query'
-  schema: infer TSchema extends Schema.Schema.AnyNoContext
+  schema: infer TSchema extends StandardSchemaV1
 }
-  ? Schema.Schema.Type<TSchema>
+  ? StandardSchemaV1.InferOutput<TSchema>
   : never
 
 type QueryOutput<TSlice> = TSlice extends {

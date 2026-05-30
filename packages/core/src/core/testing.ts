@@ -1,6 +1,7 @@
-import * as Schema from 'effect/Schema'
+import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { EventDraft, PersistedEvent } from './event'
+import { decodeSchema } from './schema'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -9,16 +10,15 @@ import type {
   SliceRegistration,
 } from './slice'
 
-type CommandPayload<TSlice> = TSlice extends CommandSlice<
-  string,
-  infer TSchema
->
-  ? Schema.Schema.Type<TSchema>
-  : unknown
+type CommandPayload<TSlice> =
+  TSlice extends CommandSlice<string, infer TSchema>
+    ? StandardSchemaV1.InferOutput<TSchema>
+    : unknown
 
-type QueryPayload<TSlice> = TSlice extends QuerySlice<string, infer TSchema>
-  ? Schema.Schema.Type<TSchema>
-  : unknown
+type QueryPayload<TSlice> =
+  TSlice extends QuerySlice<string, infer TSchema>
+    ? StandardSchemaV1.InferOutput<TSchema>
+    : unknown
 
 export type CommandScenario<TPayload = unknown> = {
   given: readonly unknown[]
@@ -60,7 +60,7 @@ export async function querySlice<TSlice extends QuerySlice>(
   const state = slice.store.get(slice.name)
 
   return slice.handle(
-    Schema.decodeUnknownSync(slice.schema)(scenario.when),
+    await decodeSchema(slice.schema, scenario.when),
     state.read,
   )
 }

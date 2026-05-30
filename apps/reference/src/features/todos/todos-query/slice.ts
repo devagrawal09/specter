@@ -1,8 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import * as Either from 'effect/Either'
-import * as Schema from 'effect/Schema'
 import { createQuerySlice } from '@specter-ts/core'
+import { z } from 'zod'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
@@ -21,17 +20,15 @@ export type TodoSqlListItem = typeof todoSqlListItems.$inferSelect
 
 const todosSqlQuery = createQuerySlice('todosQuery')
   .schema(
-    Schema.Struct({
-      status: Schema.Literal('all', 'active', 'completed').annotations({
-        decodingFallback: () => Either.right('all' as const),
-      }),
+    z.object({
+      status: z.enum(['all', 'active', 'completed']).catch('all'),
     }),
   )
   .store(sqliteSliceStore)
   .apply({
     [todoAddedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoAddedEvent.decode(event.payload)
+      const payload = await todoAddedEvent.decode(event.payload)
 
       db.insert(todoSqlListItems)
         .values({
@@ -43,7 +40,7 @@ const todosSqlQuery = createQuerySlice('todosQuery')
     },
     [todoCompletionChangedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoCompletionChangedEvent.decode(event.payload)
+      const payload = await todoCompletionChangedEvent.decode(event.payload)
 
       db.update(todoSqlListItems)
         .set({ completed: payload.completed })
@@ -52,7 +49,7 @@ const todosSqlQuery = createQuerySlice('todosQuery')
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoRemovedEvent.decode(event.payload)
+      const payload = await todoRemovedEvent.decode(event.payload)
 
       db.update(todoSqlListItems)
         .set({ removed: true })

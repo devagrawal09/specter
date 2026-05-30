@@ -1,4 +1,3 @@
-import * as Either from 'effect/Either'
 import { describe, expect, it } from 'vitest'
 
 import type { EventDraft } from './event'
@@ -36,17 +35,21 @@ export function testScenarios(
           }
 
           it(commandScenarioLabel(scenario), async () => {
-            const result = await runScenario(() =>
-              decideCommand(registration, scenario).then(
-                Either.right,
-                Either.left,
-              ),
-            )
+            const result = await runScenario(async () => {
+              try {
+                return {
+                  _tag: 'Right' as const,
+                  right: await decideCommand(registration, scenario),
+                }
+              } catch (error) {
+                return { _tag: 'Left' as const, left: error }
+              }
+            })
 
             if (scenario.expect.length === 0) {
-              expect(Either.isLeft(result)).toBe(true)
+              expect(result._tag).toBe('Left')
               if (scenario.reject) {
-                if (!Either.isLeft(result)) {
+                if (result._tag !== 'Left') {
                   throw new Error('Command scenario did not reject')
                 }
                 expect(result.left).toBeInstanceOf(CommandRejectedError)
@@ -57,7 +60,7 @@ export function testScenarios(
               return
             }
 
-            if (Either.isLeft(result)) {
+            if (result._tag === 'Left') {
               throw new Error('Command scenario rejected unexpectedly')
             }
 

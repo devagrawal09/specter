@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import * as Schema from 'effect/Schema'
+import { z } from 'zod'
 import { createCommandSlice, rejectCommand } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
@@ -12,8 +12,8 @@ export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
 
 const removeTodoSql = createCommandSlice('removeTodo')
   .schema(
-    Schema.Struct({
-      todoId: Schema.String.pipe(Schema.minLength(1)),
+    z.object({
+      todoId: z.string().min(1),
     }),
   )
   .store(sqliteSliceStore)
@@ -40,13 +40,13 @@ const removeTodoSql = createCommandSlice('removeTodo')
   .apply({
     [todoAddedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoAddedEvent.decode(event.payload)
+      const payload = await todoAddedEvent.decode(event.payload)
 
       db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }).run()
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input
-      const payload = todoRemovedEvent.decode(event.payload)
+      const payload = await todoRemovedEvent.decode(event.payload)
 
       db.update(todoRemovalSqlStates)
         .set({ removed: true })
