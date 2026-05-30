@@ -1,5 +1,5 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql'
+import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { join } from 'node:path'
 import { runWithSqliteDb } from './specter-sqlite'

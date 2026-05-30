@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
-import type { drizzle } from 'drizzle-orm/libsql'
+import type { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import type {
   EventDraft,
   EventLogAdapter,

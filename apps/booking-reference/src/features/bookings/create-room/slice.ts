@@ -13,7 +13,7 @@ export const createRoomSqlRooms = sqliteTable('create_room_sql_rooms', {
   retired: integer('retired', { mode: 'boolean' }).notNull().default(false),
 })
 
-const createRoom = createCommandSlice('createRoom')
+const createRoom = createCommandSlice('createRoom', 'Creates meeting rooms.')
   .schema(
     z.object({
       name: z.string(),
@@ -24,6 +24,7 @@ const createRoom = createCommandSlice('createRoom')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Creates a room with a unique name.',
       given: [],
       when: { name: 'Boardroom', capacity: 10, location: 'Floor 2' },
       expect: [
@@ -36,6 +37,7 @@ const createRoom = createCommandSlice('createRoom')
       ],
     },
     {
+      description: 'Rejects a room name that is already active.',
       given: [
         roomCreatedEvent.create({
           roomId: 'room-1',

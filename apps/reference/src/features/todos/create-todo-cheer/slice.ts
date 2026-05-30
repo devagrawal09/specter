@@ -39,7 +39,10 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-const createTodoCheer = createCommandSlice('createTodoCheer')
+const createTodoCheer = createCommandSlice(
+  'createTodoCheer',
+  'Creates milestone cheers for completed todos.',
+)
   .schema(
     z.object({
       milestone: z.number().int().positive(),
@@ -48,16 +51,20 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Rejects a cheer milestone that is not a multiple of five.',
       given: [],
       when: { milestone: 4 },
       expect: [],
     },
     {
+      description:
+        'Rejects a cheer milestone before enough todos are completed.',
       given: completedTodoEvents(4),
       when: { milestone: 5 },
       expect: [],
     },
     {
+      description: 'Rejects a cheer milestone that was already created.',
       given: [
         ...completedTodoEvents(5),
         todoCheerCreatedEvent.create({
@@ -69,6 +76,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       expect: [],
     },
     {
+      description:
+        'Creates a cheer when the completed todo count reaches a milestone.',
       given: completedTodoEvents(5),
       when: { milestone: 5 },
       expect: [
@@ -79,6 +88,8 @@ const createTodoCheer = createCommandSlice('createTodoCheer')
       ],
     },
     {
+      description:
+        'Rejects a cheer milestone when a completed todo was removed.',
       given: [
         ...completedTodoEvents(5),
         todoRemovedEvent.create({ todoId: 'todo-5' }),

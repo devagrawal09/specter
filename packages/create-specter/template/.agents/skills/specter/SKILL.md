@@ -7,10 +7,10 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 ## Mental Model
 
-- A Specter Project is a TypeScript/Solid app built from Vertical Features under `src/features`.
+- A Specter Project is a TypeScript app built from Vertical Features under `src/features`.
 - Events are domain facts emitted by accepted commands or reactions.
 - A Slice is one command, query, or reaction unit with private event-derived Slice State.
-- UI code calls the typed Specter client; Specter core does not own Views.
+- UI code calls the typed Specter client; Specter does not own UI/frontend.
 - Scenarios are executable examples for Slices.
 - SQLite is app infrastructure. Specter core owns runtime contracts, not persistence tables or database setup.
 - Use `src/features/todos` as the worked example for file placement and naming.
@@ -38,13 +38,10 @@ description: Teaches coding agents how to add and change Specter features in gen
 - Do not import sibling Slices from another Slice in the same feature. Share Events or registry-level refs instead.
 - Do not import server or database modules into client/UI code.
 - Do not let Query Slices drive Command Slice decisions; Command Slices own their own decision state.
-- Do not emit error Events for rejected commands; throw an `Error`.
 - Do not import `@specter-ts/core/schema`; core has no SQLite schema export.
-- Do not use `process.env` mutation for scenario database injection. Use the app's scoped SQLite scenario helper.
 
 ## Checks
 
 - Run `npm run lint` after changing feature boundaries or imports.
 - Run `npm run typecheck` after changing Specter types, clients, or app wiring.
 - Run `npm test` after changing Slice behavior or scenarios.
-- Run `npm run build` when touching server, client, or Vite integration.

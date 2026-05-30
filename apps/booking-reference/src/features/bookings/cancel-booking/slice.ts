@@ -23,7 +23,10 @@ export const cancelBookingSqlBookings = sqliteTable(
   },
 )
 
-const cancelBooking = createCommandSlice('cancelBooking')
+const cancelBooking = createCommandSlice(
+  'cancelBooking',
+  'Cancels pending or approved bookings.',
+)
   .schema(
     z.object({
       bookingId: z.string().min(1),
@@ -34,6 +37,7 @@ const cancelBooking = createCommandSlice('cancelBooking')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Cancels an existing booking with a reason.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -59,6 +63,7 @@ const cancelBooking = createCommandSlice('cancelBooking')
       ],
     },
     {
+      description: 'Rejects canceling a missing booking.',
       given: [],
       when: {
         bookingId: 'missing',

@@ -23,7 +23,10 @@ export const checkInBookingSqlBookings = sqliteTable(
   },
 )
 
-const checkInBooking = createCommandSlice('checkInBooking')
+const checkInBooking = createCommandSlice(
+  'checkInBooking',
+  'Checks approved bookings into their room.',
+)
   .schema(
     z.object({
       bookingId: z.string().min(1),
@@ -33,6 +36,7 @@ const checkInBooking = createCommandSlice('checkInBooking')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Checks in an approved booking.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -58,6 +62,7 @@ const checkInBooking = createCommandSlice('checkInBooking')
       ],
     },
     {
+      description: 'Rejects checking in a missing booking.',
       given: [],
       when: { bookingId: 'missing', checkedInByEmail: 'ada@example.com' },
       expect: [],

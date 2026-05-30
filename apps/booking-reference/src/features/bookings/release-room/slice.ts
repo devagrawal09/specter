@@ -21,7 +21,10 @@ export const releaseRoomSqlBookings = sqliteTable('release_room_sql_bookings', {
   status: text('status').notNull(),
 })
 
-const releaseRoom = createCommandSlice('releaseRoom')
+const releaseRoom = createCommandSlice(
+  'releaseRoom',
+  'Releases rooms from checked-in bookings.',
+)
   .schema(
     z.object({
       bookingId: z.string().min(1),
@@ -31,6 +34,7 @@ const releaseRoom = createCommandSlice('releaseRoom')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Releases a checked-in booking early.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -60,6 +64,7 @@ const releaseRoom = createCommandSlice('releaseRoom')
       ],
     },
     {
+      description: 'Rejects releasing a missing booking.',
       given: [],
       when: { bookingId: 'missing', releasedByEmail: 'ada@example.com' },
       expect: [],

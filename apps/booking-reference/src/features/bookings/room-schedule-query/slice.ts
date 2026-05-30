@@ -35,7 +35,10 @@ export const roomScheduleBookings = sqliteTable('room_schedule_bookings', {
   status: text('status').notNull(),
 })
 
-const roomScheduleQuery = createQuerySlice('roomScheduleQuery')
+const roomScheduleQuery = createQuerySlice(
+  'roomScheduleQuery',
+  'Shows room schedules with filtered bookings.',
+)
   .schema(
     z.object({ day: z.string().optional(), status: z.string().optional() }),
   )
@@ -83,6 +86,7 @@ const roomScheduleQuery = createQuerySlice('roomScheduleQuery')
     },
   })
   .scenarios({
+    description: 'Returns rooms with bookings for the requested day.',
     given: [
       roomCreatedEvent.create({
         roomId: 'room-1',

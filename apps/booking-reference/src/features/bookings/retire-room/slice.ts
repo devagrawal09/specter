@@ -29,11 +29,15 @@ export const retireRoomSqlBookings = sqliteTable('retire_room_sql_bookings', {
   status: text('status').notNull(),
 })
 
-const retireRoom = createCommandSlice('retireRoom')
+const retireRoom = createCommandSlice(
+  'retireRoom',
+  'Retires rooms from booking use.',
+)
   .schema(z.object({ roomId: z.string().min(1) }))
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Retires an active room with no active bookings.',
       given: [
         roomCreatedEvent.create({
           roomId: 'room-1',
@@ -46,6 +50,7 @@ const retireRoom = createCommandSlice('retireRoom')
       expect: [roomRetiredEvent.create({ roomId: 'room-1' })],
     },
     {
+      description: 'Rejects retiring a missing room.',
       given: [],
       when: { roomId: 'missing' },
       expect: [],

@@ -10,7 +10,7 @@ export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
-const removeTodo = createCommandSlice('removeTodo')
+const removeTodo = createCommandSlice('removeTodo', 'Removes an existing todo.')
   .schema(
     z.object({
       todoId: z.string().min(1),
@@ -19,16 +19,19 @@ const removeTodo = createCommandSlice('removeTodo')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Removes an active todo.',
       given: [todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' })],
       when: { todoId: 'todo-1' },
       expect: [todoRemovedEvent.create({ todoId: 'todo-1' })],
     },
     {
+      description: 'Rejects removing a missing todo.',
       given: [],
       when: { todoId: 'missing' },
       expect: [],
     },
     {
+      description: 'Rejects removing a todo twice.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoRemovedEvent.create({ todoId: 'todo-1' }),
@@ -42,7 +45,10 @@ const removeTodo = createCommandSlice('removeTodo')
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      await db.insert(todoRemovalSqlStates).values({ todoId: payload.todoId }).run()
+      await db
+        .insert(todoRemovalSqlStates)
+        .values({ todoId: payload.todoId })
+        .run()
     },
     [todoRemovedEvent.type]: async (event, input) => {
       const db = input

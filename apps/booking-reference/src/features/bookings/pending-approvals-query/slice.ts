@@ -21,7 +21,10 @@ export const pendingApprovalRows = sqliteTable('pending_approval_rows', {
   status: text('status').notNull(),
 })
 
-const pendingApprovalsQuery = createQuerySlice('pendingApprovalsQuery')
+const pendingApprovalsQuery = createQuerySlice(
+  'pendingApprovalsQuery',
+  'Lists bookings still awaiting approval.',
+)
   .schema(z.object({}))
   .store(sqliteSliceStore)
   .apply({
@@ -54,6 +57,7 @@ const pendingApprovalsQuery = createQuerySlice('pendingApprovalsQuery')
     },
   })
   .scenarios({
+    description: 'Returns pending booking requests.',
     given: [
       bookingRequestedEvent.create({
         bookingId: 'booking-1',

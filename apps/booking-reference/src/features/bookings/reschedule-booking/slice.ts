@@ -38,7 +38,10 @@ export const rescheduleBookingSqlBookings = sqliteTable(
   },
 )
 
-const rescheduleBooking = createCommandSlice('rescheduleBooking')
+const rescheduleBooking = createCommandSlice(
+  'rescheduleBooking',
+  'Moves bookings to another available time.',
+)
   .schema(
     z.object({
       bookingId: z.string().min(1),
@@ -50,6 +53,7 @@ const rescheduleBooking = createCommandSlice('rescheduleBooking')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Reschedules a booking into an available time.',
       given: [
         roomCreatedEvent.create({
           roomId: 'room-1',
@@ -83,6 +87,7 @@ const rescheduleBooking = createCommandSlice('rescheduleBooking')
       ],
     },
     {
+      description: 'Rejects rescheduling a missing booking.',
       given: [],
       when: {
         bookingId: 'missing',

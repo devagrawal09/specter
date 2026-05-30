@@ -16,7 +16,10 @@ export type TodoSqlCheersState = {
   latestCheer: TodoSqlCheer | null
 }
 
-const todoCheers = createQuerySlice('todoCheers')
+const todoCheers = createQuerySlice(
+  'todoCheers',
+  'Shows the latest todo cheer.',
+)
   .schema(z.object({}))
   .store(sqliteSliceStore)
   .apply({
@@ -35,11 +38,13 @@ const todoCheers = createQuerySlice('todoCheers')
   })
   .scenarios(
     {
+      description: 'Returns no latest cheer before any cheer is created.',
       given: [],
       when: {},
       expect: { latestCheer: null },
     },
     {
+      description: 'Returns the cheer with the highest milestone.',
       given: [
         todoCheerCreatedEvent.create({
           milestone: 5,

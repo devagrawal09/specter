@@ -19,7 +19,10 @@ export const approveBookingSqlBookings = sqliteTable(
   },
 )
 
-const approveBooking = createCommandSlice('approveBooking')
+const approveBooking = createCommandSlice(
+  'approveBooking',
+  'Approves pending booking requests.',
+)
   .schema(
     z.object({
       bookingId: z.string().min(1),
@@ -30,6 +33,7 @@ const approveBooking = createCommandSlice('approveBooking')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Approves a pending booking by another user.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -55,6 +59,7 @@ const approveBooking = createCommandSlice('approveBooking')
       ],
     },
     {
+      description: 'Rejects self-approval by the requester.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',

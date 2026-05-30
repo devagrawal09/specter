@@ -19,139 +19,150 @@ export function testScenarios(
 ) {
   const runScenario = options.runScenario ?? ((run) => run())
 
-  describe('lib command scenarios', () => {
-    for (const registration of registrations) {
-      if (registration.kind !== 'command' || !registration.scenarios) {
-        continue
+  for (const registration of registrations) {
+    if (!registration.scenarios) {
+      continue
+    }
+
+    const scenarios = registration.scenarios
+
+    describe(registration.description, () => {
+      switch (registration.kind) {
+        case 'command':
+          for (const scenario of scenarios) {
+            if (!isCommandScenario(scenario)) {
+              continue
+            }
+            testCommandScenario(registration, scenario, runScenario)
+          }
+          break
+        case 'query':
+          for (const scenario of scenarios) {
+            if (!isQueryScenario(scenario)) {
+              continue
+            }
+            testQueryScenario(registration, scenario, runScenario)
+          }
+          break
+        case 'reaction':
+          for (const scenario of scenarios) {
+            if (!isReactionScenario(scenario)) {
+              continue
+            }
+            testReactionScenario(registration, scenario, runScenario)
+          }
+          break
+      }
+    })
+  }
+}
+
+function testCommandScenario(
+  registration: Extract<SliceRegistration, { kind: 'command' }>,
+  scenario: CommandScenario,
+  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+) {
+  it(scenario.description, async () => {
+    const result = await runScenario(async () => {
+      try {
+        return {
+          _tag: 'Right' as const,
+          right: await decideCommand(registration, scenario),
+        }
+      } catch (error) {
+        return { _tag: 'Left' as const, left: error }
+      }
+    })
+
+    if (scenario.expect.length === 0) {
+      expect(result._tag).toBe('Left')
+      if (scenario.reject) {
+        if (result._tag !== 'Left') {
+          throw new Error('Command scenario did not reject')
+        }
+        expect(result.left).toBeInstanceOf(Error)
+        expect(result.left).toMatchObject({
+          message: scenario.reject.reason,
+        })
+      }
+      return
+    }
+
+    if (result._tag === 'Left') {
+      throw new Error('Command scenario rejected unexpectedly')
+    }
+
+    expect(result.right).toHaveLength(scenario.expect.length)
+
+    for (const [index, expectedEvent] of scenario.expect.entries()) {
+      if (!isEvent(expectedEvent)) {
+        throw new Error('Command scenario expected value is not an event')
       }
 
-      const scenarios = registration.scenarios
+      const actualEvent = result.right[index]
 
-      describe(registration.name, () => {
-        for (const scenario of scenarios) {
-          if (!isCommandScenario(scenario)) {
-            continue
-          }
-
-          it(commandScenarioLabel(scenario), async () => {
-            const result = await runScenario(async () => {
-              try {
-                return {
-                  _tag: 'Right' as const,
-                  right: await decideCommand(registration, scenario),
-                }
-              } catch (error) {
-                return { _tag: 'Left' as const, left: error }
-              }
-            })
-
-            if (scenario.expect.length === 0) {
-              expect(result._tag).toBe('Left')
-              if (scenario.reject) {
-                if (result._tag !== 'Left') {
-                  throw new Error('Command scenario did not reject')
-                }
-                expect(result.left).toBeInstanceOf(Error)
-                expect(result.left).toMatchObject({
-                  message: scenario.reject.reason,
-                })
-              }
-              return
-            }
-
-            if (result._tag === 'Left') {
-              throw new Error('Command scenario rejected unexpectedly')
-            }
-
-            expect(result.right).toHaveLength(scenario.expect.length)
-
-            for (const [index, expectedEvent] of scenario.expect.entries()) {
-              if (!isEvent(expectedEvent)) {
-                throw new Error(
-                  'Command scenario expected value is not an event',
-                )
-              }
-
-              const actualEvent = result.right[index]
-
-              expect(actualEvent).toEqual(
-                expect.objectContaining({
-                  type: expectedEvent.type,
-                }),
-              )
-              expect(payloadWithoutIds(actualEvent?.payload)).toEqual(
-                payloadWithoutIds(expectedEvent.payload),
-              )
-            }
-          })
-        }
-      })
+      expect(actualEvent).toEqual(
+        expect.objectContaining({
+          type: expectedEvent.type,
+        }),
+      )
+      expect(payloadWithoutIds(actualEvent?.payload)).toEqual(
+        payloadWithoutIds(expectedEvent.payload),
+      )
     }
   })
+}
 
-  describe('lib query scenarios', () => {
-    for (const registration of registrations) {
-      if (registration.kind !== 'query' || !registration.scenarios) {
-        continue
-      }
+function testQueryScenario(
+  registration: Extract<SliceRegistration, { kind: 'query' }>,
+  scenario: QueryScenario,
+  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+) {
+  it(scenario.description, async () => {
+    const result = await runScenario(() => querySlice(registration, scenario))
 
-      const scenarios = registration.scenarios
-
-      describe(registration.name, () => {
-        for (const scenario of scenarios) {
-          if (!isQueryScenario(scenario)) {
-            continue
-          }
-
-          it(queryScenarioLabel(scenario), async () => {
-            const result = await runScenario(() =>
-              querySlice(registration, scenario),
-            )
-
-            expect(result).toEqual(scenario.expect)
-          })
-        }
-      })
-    }
+    expect(result).toEqual(scenario.expect)
   })
+}
 
-  describe('lib reaction scenarios', () => {
-    for (const registration of registrations) {
-      if (registration.kind !== 'reaction' || !registration.scenarios) {
-        continue
-      }
+function testReactionScenario(
+  registration: Extract<SliceRegistration, { kind: 'reaction' }>,
+  scenario: ReactionScenario,
+  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+) {
+  it(scenario.description, async () => {
+    const result = await runScenario(() =>
+      reactToScenario(registration, scenario),
+    )
 
-      const scenarios = registration.scenarios
-
-      describe(registration.name, () => {
-        for (const scenario of scenarios) {
-          if (!isReactionScenario(scenario)) {
-            continue
-          }
-
-          it(reactionScenarioLabel(scenario), async () => {
-            const result = await runScenario(() =>
-              reactToScenario(registration, scenario),
-            )
-
-            expect(result).toEqual(scenario.expect)
-          })
-        }
-      })
-    }
+    expect(result).toEqual(scenario.expect)
   })
 }
 
 function isCommandScenario(value: unknown): value is CommandScenario {
-  return hasGivenExpectArray(value) && 'when' in value
+  return hasDescription(value) && hasGivenExpectArray(value) && 'when' in value
 }
 
 function isQueryScenario(value: unknown): value is QueryScenario {
-  return hasGiven(value) && 'when' in value && 'expect' in value
+  return (
+    hasDescription(value) &&
+    hasGiven(value) &&
+    'when' in value &&
+    'expect' in value
+  )
 }
 
 function isReactionScenario(value: unknown): value is ReactionScenario {
-  return hasGivenExpectArray(value)
+  return hasDescription(value) && hasGivenExpectArray(value)
+}
+
+function hasDescription(value: unknown): value is { description: string } {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    'description' in value &&
+    typeof value.description === 'string'
+  )
 }
 
 function hasGiven(value: unknown): value is { given: readonly unknown[] } {
@@ -167,38 +178,6 @@ function hasGivenExpectArray(
   value: unknown,
 ): value is { given: readonly unknown[]; expect: readonly unknown[] } {
   return hasGiven(value) && 'expect' in value && Array.isArray(value.expect)
-}
-
-function commandScenarioLabel(scenario: CommandScenario) {
-  const expectedTypes = scenario.expect
-    .map((event) => (isEvent(event) ? event.type : 'unknown'))
-    .join(', ')
-
-  return [
-    `given ${scenario.given.length} event(s)`,
-    'when command runs',
-    `then ${expectedTypes || 'no events'}`,
-  ].join(', ')
-}
-
-function queryScenarioLabel(scenario: QueryScenario) {
-  return [
-    `given ${scenario.given.length} event(s)`,
-    'when query input is applied',
-    'then expected query state is returned',
-  ].join(', ')
-}
-
-function reactionScenarioLabel(scenario: ReactionScenario) {
-  const expectedTypes = scenario.expect
-    .map((payload) => payload.type)
-    .join(', ')
-
-  return [
-    `given ${scenario.given.length} event(s)`,
-    'when reaction state advances',
-    `then ${expectedTypes || 'no commands'}`,
-  ].join(', ')
 }
 
 function isEvent(value: unknown): value is EventDraft {

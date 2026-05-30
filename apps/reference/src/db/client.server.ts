@@ -2,7 +2,7 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql'
+import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 
 import * as schema from './schema'
 

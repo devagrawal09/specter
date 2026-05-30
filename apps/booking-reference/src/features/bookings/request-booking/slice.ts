@@ -32,7 +32,10 @@ export const requestBookingSqlBookings = sqliteTable(
   },
 )
 
-const requestBooking = createCommandSlice('requestBooking')
+const requestBooking = createCommandSlice(
+  'requestBooking',
+  'Requests a room booking for approval.',
+)
   .schema(
     z.object({
       roomId: z.string().min(1),
@@ -46,6 +49,7 @@ const requestBooking = createCommandSlice('requestBooking')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Requests a booking for an available room.',
       given: [
         roomCreatedEvent.create({
           roomId: 'room-1',
@@ -75,6 +79,7 @@ const requestBooking = createCommandSlice('requestBooking')
       ],
     },
     {
+      description: 'Rejects a booking that overlaps an active booking.',
       given: [
         roomCreatedEvent.create({
           roomId: 'room-1',

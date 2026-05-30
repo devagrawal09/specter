@@ -78,6 +78,7 @@ export type CommandSlice<
 > = {
   kind: 'command'
   name: TName
+  description: string
   schema: TSchema
   store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
   apply: AnyApplyHandlers<TWriteState>
@@ -98,6 +99,7 @@ export type QuerySlice<
 > = {
   kind: 'query'
   name: TName
+  description: string
   schema: TSchema
   store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
   apply: AnyApplyHandlers<TWriteState>
@@ -137,6 +139,7 @@ export type ReactionSlice<
 > = {
   kind: 'reaction'
   name: TName
+  description: string
   store: SliceStoreAdapter<TWriteState, TReadState, TRequirements>
   apply: AnyApplyHandlers<TWriteState>
   plugin: ReactionPlugin

@@ -38,11 +38,15 @@ function completedTodoEvents(count: number): unknown[] {
   }).flat()
 }
 
-const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
+const todoCompletionCheerSql = createReactionSlice(
+  'todoCompletionCheer',
+  'Requests cheer creation when completion milestones are reached.',
+)
   .plugin(async (command) => async (payload) => command(payload as never))
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Does not request a cheer before a milestone is reached.',
       given: [
         ...completedTodoEvents(4),
         todoCompletionChangedEvent.create({
@@ -53,6 +57,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
       expect: [],
     },
     {
+      description: 'Requests a cheer when five todos are completed.',
       given: [
         ...completedTodoEvents(5),
         todoCompletionChangedEvent.create({
@@ -63,6 +68,7 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
       expect: [{ type: 'createTodoCheer', payload: { milestone: 5 } }],
     },
     {
+      description: 'Does not request a cheer for an already-created milestone.',
       given: [
         ...completedTodoEvents(5),
         todoCheerCreatedEvent.create({
@@ -85,6 +91,8 @@ const todoCompletionCheerSql = createReactionSlice('todoCompletionCheer')
       expect: [],
     },
     {
+      description:
+        'Does not request a cheer when a completed todo was removed.',
       given: [
         ...completedTodoEvents(5),
         todoCheerCreatedEvent.create({

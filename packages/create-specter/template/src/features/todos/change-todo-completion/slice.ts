@@ -20,7 +20,10 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
+const changeTodoCompletionSql = createCommandSlice(
+  'changeTodoCompletion',
+  'Changes whether an existing todo is completed.',
+)
   .schema(
     z.object({
       todoId: z.string().min(1),
@@ -30,6 +33,7 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Marks an active todo as completed.',
       given: [todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' })],
       when: { todoId: 'todo-1', completed: true },
       expect: [
@@ -40,6 +44,7 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
       ],
     },
     {
+      description: 'Rejects a completion change that matches current state.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoCompletionChangedEvent.create({
@@ -51,11 +56,13 @@ const changeTodoCompletionSql = createCommandSlice('changeTodoCompletion')
       expect: [],
     },
     {
+      description: 'Rejects a completion change for a missing todo.',
       given: [],
       when: { todoId: 'missing', completed: true },
       expect: [],
     },
     {
+      description: 'Rejects a completion change for a removed todo.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoRemovedEvent.create({ todoId: 'todo-1' }),

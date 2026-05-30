@@ -6,6 +6,11 @@
     "module": "ESNext",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
+    "paths": {
+      "@specter-ts/core": ["./packages/core/src/index.ts"],
+      "@specter-ts/core/client": ["./packages/core/src/client-entry.ts"],
+      "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"]
+    },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,

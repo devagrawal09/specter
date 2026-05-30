@@ -19,11 +19,13 @@ export const approvalNotificationSqlStates = sqliteTable(
 
 const approvalNotificationReaction = createReactionSlice(
   'approvalNotificationReaction',
+  'Requests approval notification recording after booking approval.',
 )
   .plugin(async (command) => async (payload) => command(payload as never))
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Requests notification recording for an approved booking.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -48,6 +50,7 @@ const approvalNotificationReaction = createReactionSlice(
       ],
     },
     {
+      description: 'Does not request notification recording twice.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',

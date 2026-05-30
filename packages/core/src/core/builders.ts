@@ -205,6 +205,7 @@ type ReactionHandle<TName extends string, TPayload, TWriteState, TReadState> = (
 
 export function createCommandSlice<const TName extends string>(
   name: TName,
+  description: string,
 ): CommandSchemaStep<TName> {
   return {
     schema: (schema) => {
@@ -221,6 +222,7 @@ export function createCommandSlice<const TName extends string>(
         ) => ({
           kind: 'command' as const,
           name,
+          description,
           schema,
           store,
           apply,
@@ -252,6 +254,7 @@ export function createCommandSlice<const TName extends string>(
 
 export function createQuerySlice<const TName extends string>(
   name: TName,
+  description: string,
 ): QuerySchemaStep<TName> {
   return {
     schema: (schema) => ({
@@ -276,6 +279,7 @@ export function createQuerySlice<const TName extends string>(
           } => ({
             kind: 'query' as const,
             name,
+            description,
             schema,
             store,
             apply,
@@ -302,18 +306,21 @@ export function createQuerySlice<const TName extends string>(
 
 export function createReactionSlice<const TName extends string>(
   name: TName,
+  description: string,
 ): ReactionStep<TName, import('./slice').CommandEnvelope> {
-  return createReactionStep(name)
+  return createReactionStep(name, description)
 }
 
 function createReactionStep<TName extends string, TPayload>(
   name: TName,
+  description: string,
   scenarios?: readonly ReactionScenario<TPayload>[],
 ): ReactionStep<TName, TPayload> {
   const s: ReactionStep<TName, TPayload> = {
-    payload: <TNextPayload>() => createReactionStep<TName, TNextPayload>(name),
+    payload: <TNextPayload>() =>
+      createReactionStep<TName, TNextPayload>(name, description),
     plugin: (nextPlugin: ReactionPlugin) =>
-      createReactionStoreStep(name, nextPlugin, scenarios),
+      createReactionStoreStep(name, description, nextPlugin, scenarios),
   }
 
   return s
@@ -321,6 +328,7 @@ function createReactionStep<TName extends string, TPayload>(
 
 function createReactionStoreStep<TName extends string, TPayload>(
   name: TName,
+  description: string,
   plugin: ReactionPlugin,
   scenarios?: readonly ReactionScenario<TPayload>[],
 ): ReactionStoreStep<TName, TPayload> {
@@ -340,6 +348,7 @@ function createReactionStoreStep<TName extends string, TPayload>(
         > = (handler) => ({
           kind: 'reaction' as const,
           name,
+          description,
           store,
           apply,
           plugin,
@@ -353,10 +362,15 @@ function createReactionStoreStep<TName extends string, TPayload>(
             ...nextScenarios: readonly ReactionScenario<TPayload>[]
           ) => ({
             apply: (nextApply: ApplyHandlers) =>
-              createReactionStoreStep(name, plugin, nextScenarios)
+              createReactionStoreStep(name, description, plugin, nextScenarios)
                 .store(store)
                 .apply(nextApply),
-            handle: createReactionStoreStep(name, plugin, nextScenarios)
+            handle: createReactionStoreStep(
+              name,
+              description,
+              plugin,
+              nextScenarios,
+            )
               .store(store)
               .apply(apply).handle,
           }),

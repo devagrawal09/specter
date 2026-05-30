@@ -5,7 +5,7 @@ import { todoAddedEvent } from '../events'
 
 const maxTitleLength = 120
 
-const addTodo = createCommandSlice('addTodo')
+const addTodo = createCommandSlice('addTodo', 'Adds a todo to the list.')
   .schema(
     z.object({
       title: z.string(),
@@ -14,6 +14,7 @@ const addTodo = createCommandSlice('addTodo')
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Creates a todo with the provided title.',
       given: [],
       when: { title: 'Ship it' },
       expect: [
@@ -21,6 +22,7 @@ const addTodo = createCommandSlice('addTodo')
       ],
     },
     {
+      description: 'Trims surrounding whitespace before creating a todo.',
       given: [],
       when: { title: '  Ship it  ' },
       expect: [
@@ -28,12 +30,14 @@ const addTodo = createCommandSlice('addTodo')
       ],
     },
     {
+      description: 'Rejects a blank todo title.',
       given: [],
       when: { title: '   ' },
       expect: [],
       reject: { reason: 'Todo title is required' },
     },
     {
+      description: 'Rejects a todo title longer than the limit.',
       given: [],
       when: { title: 'x'.repeat(maxTitleLength + 1) },
       expect: [],

@@ -21,6 +21,7 @@ type QueryPayload<TSlice> =
     : unknown
 
 export type CommandScenario<TPayload = unknown> = {
+  description: string
   given: readonly unknown[]
   when: TPayload
   expect: readonly unknown[]
@@ -30,12 +31,14 @@ export type CommandScenario<TPayload = unknown> = {
 }
 
 export type QueryScenario<TWhen = unknown, TExpect = unknown> = {
+  description: string
   given: readonly unknown[]
   when: TWhen
   expect: TExpect
 }
 
 export type ReactionScenario<TPayload = CommandEnvelope> = {
+  description: string
   given: readonly unknown[]
   expect: readonly TPayload[]
 }

@@ -18,7 +18,10 @@ export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
 
 export type TodoSqlListItem = typeof todoSqlListItems.$inferSelect
 
-const todosSqlQuery = createQuerySlice('todosQuery')
+const todosSqlQuery = createQuerySlice(
+  'todosQuery',
+  'Lists visible todos by status.',
+)
   .schema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),
@@ -59,11 +62,13 @@ const todosSqlQuery = createQuerySlice('todosQuery')
   })
   .scenarios(
     {
+      description: 'Returns an empty list when no todos exist.',
       given: [],
       when: { status: 'all' },
       expect: [],
     },
     {
+      description: 'Returns all visible todos.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoAddedEvent.create({ todoId: 'todo-2', title: 'Review it' }),
@@ -75,6 +80,7 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       ],
     },
     {
+      description: 'Returns only active visible todos.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoCompletionChangedEvent.create({
@@ -89,6 +95,7 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       ],
     },
     {
+      description: 'Returns only completed visible todos.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoCompletionChangedEvent.create({
@@ -103,6 +110,7 @@ const todosSqlQuery = createQuerySlice('todosQuery')
       ],
     },
     {
+      description: 'Excludes removed todos from the list.',
       given: [
         todoAddedEvent.create({ todoId: 'todo-1', title: 'Ship it' }),
         todoRemovedEvent.create({ todoId: 'todo-1' }),

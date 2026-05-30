@@ -23,7 +23,10 @@ export const bookingActivityRows = sqliteTable('booking_activity_rows', {
   message: text('message').notNull(),
 })
 
-const bookingActivityQuery = createQuerySlice('bookingActivityQuery')
+const bookingActivityQuery = createQuerySlice(
+  'bookingActivityQuery',
+  'Shows recent booking and room activity.',
+)
   .schema(z.object({}))
   .store(sqliteSliceStore)
   .apply({
@@ -133,6 +136,7 @@ const bookingActivityQuery = createQuerySlice('bookingActivityQuery')
     },
   })
   .scenarios({
+    description: 'Returns activity rows created from room events.',
     given: [
       roomCreatedEvent.create({
         roomId: 'room-1',

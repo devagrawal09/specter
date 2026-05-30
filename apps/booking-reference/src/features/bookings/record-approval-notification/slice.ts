@@ -25,11 +25,13 @@ export const recordApprovalNotificationSqlBookings = sqliteTable(
 
 const recordApprovalNotification = createCommandSlice(
   'recordApprovalNotification',
+  'Records notifications for approved bookings.',
 )
   .schema(z.object({ bookingId: z.string().min(1) }))
   .store(sqliteSliceStore)
   .scenarios(
     {
+      description: 'Records a notification for an approved booking.',
       given: [
         bookingRequestedEvent.create({
           bookingId: 'booking-1',
@@ -55,6 +57,7 @@ const recordApprovalNotification = createCommandSlice(
       ],
     },
     {
+      description: 'Rejects notification recording for a missing booking.',
       given: [],
       when: { bookingId: 'missing' },
       expect: [],
