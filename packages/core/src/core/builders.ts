@@ -203,10 +203,6 @@ type ReactionHandle<TName extends string, TPayload, TWriteState, TReadState> = (
   scenarios?: readonly ReactionScenario<TPayload>[]
 }
 
-export function rejectCommand(reason: string) {
-  throw new Error(reason)
-}
-
 export function createCommandSlice<const TName extends string>(
   name: TName,
 ): CommandSchemaStep<TName> {

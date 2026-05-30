@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { createCommandSlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
 
@@ -46,11 +46,11 @@ const addTodoSql = createCommandSlice('addTodo')
     const title = command.title.trim()
 
     if (!title) {
-      rejectCommand('Todo title is required')
+      throw new Error('Todo title is required')
     }
 
     if (title.length > maxTitleLength) {
-      rejectCommand(`Todo title must be ${maxTitleLength} characters or less`)
+      throw new Error(`Todo title must be ${maxTitleLength} characters or less`)
     }
 
     return [todoAddedEvent.create({ todoId: crypto.randomUUID(), title })]

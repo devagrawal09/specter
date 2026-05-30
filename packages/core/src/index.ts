@@ -12,7 +12,6 @@ export {
   createQuerySlice,
   createReactionSlice,
   defineApplyHandlers,
-  rejectCommand,
 } from './core/builders'
 export { createSpecterApp } from './core/registry'
 export type { SpecterApp, SpecterAppConfig } from './core/registry'

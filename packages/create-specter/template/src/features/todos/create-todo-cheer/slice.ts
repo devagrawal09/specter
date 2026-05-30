@@ -1,7 +1,7 @@
 import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { createCommandSlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
@@ -129,7 +129,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
   })
   .handle(async (command, db) => {
     if (command.milestone % 5 !== 0) {
-      rejectCommand('Todo cheer milestone must be a multiple of 5')
+      throw new Error('Todo cheer milestone must be a multiple of 5')
     }
 
     const completedTodos = db
@@ -145,7 +145,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
     const completedCount = completedTodos.length
 
     if (completedCount < command.milestone) {
-      rejectCommand('Todo cheer milestone has not been reached')
+      throw new Error('Todo cheer milestone has not been reached')
     }
 
     const existingMilestones = db
@@ -155,7 +155,7 @@ const createTodoCheerSql = createCommandSlice('createTodoCheer')
       .all()
 
     if (existingMilestones[0]) {
-      rejectCommand('Todo cheer milestone already exists')
+      throw new Error('Todo cheer milestone already exists')
     }
 
     return [

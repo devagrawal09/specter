@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { createCommandSlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
 
@@ -63,7 +63,7 @@ const removeTodoSql = createCommandSlice('removeTodo')
     const todo = rows[0]
 
     if (!todo || todo.removed) {
-      rejectCommand('Todo not found')
+      throw new Error('Todo not found')
     }
 
     return [todoRemovedEvent.create({ todoId: command.todoId })]

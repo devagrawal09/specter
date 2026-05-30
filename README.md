@@ -8,6 +8,7 @@ This repository is a pnpm workspace:
 packages/core/             @specter-ts/core framework/runtime package
 packages/create-specter/   create-specter initializer CLI
 apps/reference/            Todo Reference application used as the starter template
+apps/booking-reference/    Meeting-room booking Reference application
 ```
 
 ## Create A Project
@@ -32,6 +33,7 @@ pnpm build
 pnpm typecheck
 pnpm test
 pnpm dev
+pnpm dev:booking
 ```
 
 The dev and preview servers use the fixed port `41731`.

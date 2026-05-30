@@ -1,7 +1,7 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import { createCommandSlice, rejectCommand } from '@specter-ts/core'
+import { createCommandSlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   todoAddedEvent,
@@ -104,11 +104,11 @@ const changeTodoCompletion = createCommandSlice('changeTodoCompletion')
     const todo = rows[0]
 
     if (!todo || todo.removed) {
-      rejectCommand('Todo not found')
+      throw new Error('Todo not found')
     }
 
     if (todo.completed === command.completed) {
-      rejectCommand('Todo completion is already in requested state')
+      throw new Error('Todo completion is already in requested state')
     }
 
     return [
