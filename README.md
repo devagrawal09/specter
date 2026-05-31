@@ -38,6 +38,18 @@ pnpm dev:booking
 
 The dev and preview servers use the fixed port `41731`.
 
+Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
+
+## Slice Scenarios
+
+Slices are created with a stable name and a human-readable description:
+
+```ts
+createCommandSlice('addTodo', 'Adds a todo to the list.')
+```
+
+Every scenario also has a `description`. `testScenarios` uses slice descriptions for suite names and scenario descriptions for test names.
+
 ## Release
 
 ```sh

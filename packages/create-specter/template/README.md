@@ -23,6 +23,16 @@ npm run build
 
 This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md` for coding agents working on Events, Slices, scenarios, client calls, and app wiring.
 
+## Slice Scenarios
+
+Create each Slice with a stable API name and a human-readable description:
+
+```ts
+createCommandSlice('addTodo', 'Adds a todo to the list.')
+```
+
+Every scenario object also needs a `description`. Scenario tests use Slice descriptions for suite names and scenario descriptions for test names.
+
 ## Structure
 
 ```txt
