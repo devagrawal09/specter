@@ -17,10 +17,10 @@
     "db:migrate": "pnpm --filter @specter/reference db:migrate",
     "db:studio": "pnpm --filter @specter/reference db:studio",
     "format": "biome format",
-    "lint": "biome lint && pnpm --filter @specter/reference lint:boundaries",
+    "lint": "biome lint && pnpm -r --filter @specter/reference --filter @specter/booking-reference lint:boundaries",
     "check": "biome check",
     "release:auth": "npm whoami && npm owner ls @specter-ts/core && npm owner ls create-specter",
-    "release:verify": "pnpm typecheck && pnpm test && pnpm build",
+    "release:verify": "pnpm check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "release:pack": "pnpm --filter @specter-ts/core pack --pack-destination /tmp/opencode && pnpm --filter create-specter pack --pack-destination /tmp/opencode",
     "release:dry-run": "pnpm release:auth && pnpm release:verify && pnpm --filter @specter-ts/core publish --dry-run --access public && pnpm --filter create-specter publish --dry-run",
     "release:publish": "pnpm release:auth && pnpm release:verify && pnpm --filter @specter-ts/core publish --access public && pnpm --filter create-specter publish"

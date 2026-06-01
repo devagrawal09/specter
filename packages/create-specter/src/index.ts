@@ -21,6 +21,10 @@ type TemplatePackageJson = {
   dependencies?: Record<string, string>
 }
 
+type PackageJson = {
+  version?: string
+}
+
 const projectDirectory = Args.text({ name: 'project-directory' }).pipe(
   Args.withDescription('Directory to create the Specter project in'),
   Args.withDefault('my-specter-app'),
@@ -67,10 +71,28 @@ const command = Command.make(
 
 const cli = Command.run(command, {
   name: 'Create Specter',
-  version: '0.2.0',
+  version: packageVersion(),
 })
 
-cli(process.argv).pipe(Effect.provide(NodeContext.layer), NodeRuntime.runMain)
+cli(normalizeArgs(process.argv)).pipe(
+  Effect.provide(NodeContext.layer),
+  NodeRuntime.runMain,
+)
+
+function packageVersion() {
+  const packageJsonPath = fileURLToPath(
+    new URL('../package.json', import.meta.url),
+  )
+  const packageJson = JSON.parse(
+    readFileSync(packageJsonPath, 'utf8'),
+  ) as PackageJson
+
+  return packageJson.version ?? '0.0.0'
+}
+
+function normalizeArgs(args: readonly string[]) {
+  return args.filter((arg) => arg !== '--yes' && arg !== '-y')
+}
 
 function prepareTargetDirectory(targetDirectory: string, force: boolean) {
   const cwd = process.cwd()

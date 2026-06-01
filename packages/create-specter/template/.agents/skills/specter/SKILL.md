@@ -33,6 +33,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 7. Prefer Events and Slices before database changes. Define app-specific Drizzle tables in the Slice file that owns that Slice State, then re-export those tables from `src/db/schema.ts` for migrations.
 8. Do not centralize Slice State table definitions in a shared schema/helper file. If two Slices need similar state, duplicate the table definition with slice-specific table names so each Slice keeps private state.
 9. Add shared Specter persistence tables only in local app infrastructure, such as `src/db/specter-schema.ts`.
+10. Use deterministic IDs in scenarios whenever query or reaction expectations include IDs. Command scenario event comparisons ignore ID-shaped payload keys, but query and reaction expectations are exact.
 
 ## Boundaries
 
@@ -46,3 +47,12 @@ description: Teaches coding agents how to add and change Specter features in gen
 - Run `npm run lint` after changing feature boundaries or imports.
 - Run `npm run typecheck` after changing Specter types, clients, or app wiring.
 - Run `npm test` after changing Slice behavior or scenarios.
+- Run `npm run db:generate` after changing Drizzle table definitions, then inspect the generated migration before applying it.
+- Put browser or end-to-end tests under `tests/` or `e2e/`; the starter excludes those paths from Vitest so Playwright tests do not get collected by `npm test`.
+- Browser tests and Vite dev/preview use fixed port `41731` with `strictPort`. If the port is occupied, treat it as a conflict to investigate rather than silently switching ports.
+
+## Project Creation
+
+- Prefer `npm create specter@latest my-app` when creating a fresh project so npm does not reuse a stale cached initializer.
+- `npm create specter@latest my-app -- --install` creates the project and runs `npm install`.
+- `--yes` and `-y` are accepted as no-op compatibility flags for automation; the initializer has no prompts.

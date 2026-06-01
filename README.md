@@ -1,6 +1,6 @@
 # Specter
 
-Specter is a TypeScript and Solid framework for vertically sliced event-sourced applications.
+Specter is a TypeScript framework for vertically sliced event-sourced applications.
 
 This repository is a pnpm workspace:
 
@@ -17,6 +17,12 @@ The published command is:
 
 ```sh
 npm create specter@latest my-app
+```
+
+Use the explicit `@latest` tag in automation so npm does not reuse a stale cached initializer. The initializer also accepts `--install` after `--` to run `npm install`:
+
+```sh
+npm create specter@latest my-app -- --install
 ```
 
 Local verification can point generated apps at a packed or workspace core build:
@@ -45,7 +51,7 @@ Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@spec
 Slices are created with a stable name and a human-readable description:
 
 ```ts
-createCommandSlice('addTodo', 'Adds a todo to the list.')
+createCommandSlice("addTodo", "Adds a todo to the list.");
 ```
 
 Every scenario also has a `description`. `testScenarios` uses slice descriptions for suite names and scenario descriptions for test names.

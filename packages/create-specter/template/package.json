@@ -29,7 +29,7 @@
     "@hono/vite-build": "1.11.1",
     "@hono/vite-dev-server": "0.25.3",
     "@solidjs/web": "2.0.0-beta.13",
-    "@specter-ts/core": "0.2.1",
+    "@specter-ts/core": "0.2.2",
     "@tailwindcss/vite": "^4.1.18",
     "better-sqlite3": "^12.10.0",
     "drizzle-orm": "^0.45.2",

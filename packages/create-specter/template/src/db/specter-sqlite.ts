@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import type { drizzle } from 'drizzle-orm/better-sqlite3'
 import type {
   EventDraft,
   EventLogAdapter,
@@ -28,7 +28,7 @@ export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
-export const sqliteSliceStore: SliceStoreAdapter<SqliteDb, SqliteDb, never> = {
+export const sqliteSliceStore: SliceStoreAdapter<SqliteDb, SqliteDb> = {
   get: createSliceStore,
   transaction: (sliceName, run) => run(createSliceStore(sliceName)),
 }
@@ -61,7 +61,7 @@ function createSliceStore(sliceName: string) {
   }
 }
 
-export const sqliteEventLog: EventLogAdapter<never> = {
+export const sqliteEventLog: EventLogAdapter = {
   query: async (order, eventTypes) => {
     if (!eventTypes.length) return []
 

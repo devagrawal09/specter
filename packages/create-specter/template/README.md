@@ -19,6 +19,10 @@ npm run test
 npm run build
 ```
 
+Browser or end-to-end tests can live under `tests/` or `e2e/`. Those paths are excluded from Vitest so Playwright tests do not get collected by `npm run test`.
+
+The dev and preview servers use fixed port `41731` with `strictPort`; if the port is occupied, stop the conflicting process instead of switching ports.
+
 ## Agent Guidance
 
 This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md` for coding agents working on Events, Slices, scenarios, client calls, and app wiring.
@@ -32,6 +36,8 @@ createCommandSlice('addTodo', 'Adds a todo to the list.')
 ```
 
 Every scenario object also needs a `description`. Scenario tests use Slice descriptions for suite names and scenario descriptions for test names.
+
+Command scenario event comparisons ignore ID-shaped payload keys. Query and reaction expectations are exact, so use deterministic IDs in scenarios when expected outputs include IDs.
 
 ## Structure
 
