@@ -19,7 +19,7 @@ export type SliceStoreAdapter<
 }
 
 export type EventLogAdapter = {
-  readAfter: (
+  query: (
     order: number,
     eventTypes: readonly string[],
   ) => Promise<PersistedEvent[]>

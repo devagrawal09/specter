@@ -158,7 +158,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     if (!eventTypes.length) return { store, advanced: false } as const
 
     const lastAppliedOrder = await store.lastAppliedOrder()
-    const unreadEvents = await eventLog.readAfter(lastAppliedOrder, eventTypes)
+    const unreadEvents = await eventLog.query(lastAppliedOrder, eventTypes)
     const unappliedEvents = await Promise.all(
       unreadEvents.map(decodePersistedEvent),
     )
@@ -177,14 +177,14 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   }
 
   async function runCommand(commandSlice: CommandSlice, input: unknown) {
-    return config.eventLog.transaction((eventLog) =>
-      commandSlice.store.transaction(commandSlice.name, async (store) => {
+    return commandSlice.store.transaction(commandSlice.name, (store) => {
+      return config.eventLog.transaction(async (eventLog) => {
         const parsedCommand = await decodeSchema(commandSlice.schema, input)
         await catchUpSlice(commandSlice, store, eventLog)
         const events = await commandSlice.handle(parsedCommand, store.read)
         await eventLog.append(await Promise.all(events.map(decodeEventDraft)))
-      }),
-    )
+      })
+    })
   }
 
   async function runQuery(query: QuerySlice, input: unknown) {

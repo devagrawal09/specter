@@ -60,7 +60,7 @@ function createSliceStore(sliceName: string) {
 }
 
 export const sqliteEventLog: EventLogAdapter = {
-  readAfter: async (order, eventTypes) => {
+  query: async (order, eventTypes) => {
     if (!eventTypes.length) return []
 
     const rows = getDb()
