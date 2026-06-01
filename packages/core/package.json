@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "TypeScript framework for vertically sliced event-sourced applications.",
   "type": "module",
   "license": "MIT",
