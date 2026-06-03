@@ -13,8 +13,12 @@ export {
   createReactionSlice,
   defineApplyHandlers,
 } from './core/builders'
-export { createSpecterApp } from './core/registry'
-export type { SpecterApp, SpecterAppConfig } from './core/registry'
+export { createSpecterApp, ReactionRunFailure } from './core/registry'
+export type {
+  ReactionRunFailureDetail,
+  SpecterApp,
+  SpecterAppConfig,
+} from './core/registry'
 export {
   autoOrder,
   decideCommand,

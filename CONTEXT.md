@@ -77,7 +77,7 @@ The explicit interpreter for a Reaction Slice's Reaction Effect, selected when t
 _Avoid_: Hidden default reaction behavior, app registry import
 
 **Reaction Run Failure**:
-An aggregate failure reported after a reaction run processes all unrelated Reaction Slices it can. It includes the failed Reaction Slice names and causes.
+An aggregate failure reported after a reaction run processes all unrelated Reaction Slices and Reaction Effects it can. It includes the failed Reaction Slice names and causes.
 _Avoid_: First failure only
 
 **Query Slice**:
