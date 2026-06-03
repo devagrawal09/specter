@@ -77,20 +77,23 @@ const cancelBooking = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(cancelBookingSqlBookings)
+      await db
+        .insert(cancelBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(cancelBookingSqlBookings)
+      await db
+        .update(cancelBookingSqlBookings)
         .set({ status: 'approved' })
         .where(eq(cancelBookingSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [bookingCanceledEvent.type]: async (event, db) => {
       const payload = await bookingCanceledEvent.decode(event.payload)
-      db.update(cancelBookingSqlBookings)
+      await db
+        .update(cancelBookingSqlBookings)
         .set({ status: 'canceled' })
         .where(eq(cancelBookingSqlBookings.bookingId, payload.bookingId))
         .run()
@@ -99,11 +102,13 @@ const cancelBooking = createCommandSlice(
   .handle(async (command, db) => {
     const reason = command.reason.trim()
     if (!reason) throw new Error('Cancel reason is required')
-    const booking = db
-      .select()
-      .from(cancelBookingSqlBookings)
-      .where(eq(cancelBookingSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(cancelBookingSqlBookings)
+        .where(eq(cancelBookingSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (!['pending', 'approved'].includes(booking.status))
       throw new Error('Only pending or approved bookings can be canceled')

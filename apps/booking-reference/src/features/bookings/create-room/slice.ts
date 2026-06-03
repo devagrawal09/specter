@@ -54,13 +54,15 @@ const createRoom = createCommandSlice('createRoom', 'Creates meeting rooms.')
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(createRoomSqlRooms)
+      await db
+        .insert(createRoomSqlRooms)
         .values({ ...payload, retired: false })
         .run()
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.update(createRoomSqlRooms)
+      await db
+        .update(createRoomSqlRooms)
         .set({ retired: true })
         .where(eq(createRoomSqlRooms.roomId, payload.roomId))
         .run()
@@ -73,11 +75,13 @@ const createRoom = createCommandSlice('createRoom', 'Creates meeting rooms.')
     if (!name) throw new Error('Room name is required')
     if (!location) throw new Error('Room location is required')
 
-    const existing = db
-      .select()
-      .from(createRoomSqlRooms)
-      .where(eq(createRoomSqlRooms.name, name))
-      .all()[0]
+    const existing = (
+      await db
+        .select()
+        .from(createRoomSqlRooms)
+        .where(eq(createRoomSqlRooms.name, name))
+        .all()
+    )[0]
 
     if (existing && !existing.retired)
       throw new Error('Room name is already in use')

@@ -74,38 +74,44 @@ const releaseRoom = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(releaseRoomSqlBookings)
+      await db
+        .insert(releaseRoomSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(releaseRoomSqlBookings)
+      await db
+        .update(releaseRoomSqlBookings)
         .set({ status: 'approved' })
         .where(eq(releaseRoomSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [bookingCheckedInEvent.type]: async (event, db) => {
       const payload = await bookingCheckedInEvent.decode(event.payload)
-      db.update(releaseRoomSqlBookings)
+      await db
+        .update(releaseRoomSqlBookings)
         .set({ status: 'checkedIn' })
         .where(eq(releaseRoomSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [roomReleasedEvent.type]: async (event, db) => {
       const payload = await roomReleasedEvent.decode(event.payload)
-      db.update(releaseRoomSqlBookings)
+      await db
+        .update(releaseRoomSqlBookings)
         .set({ status: 'released' })
         .where(eq(releaseRoomSqlBookings.bookingId, payload.bookingId))
         .run()
     },
   })
   .handle(async (command, db) => {
-    const booking = db
-      .select()
-      .from(releaseRoomSqlBookings)
-      .where(eq(releaseRoomSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(releaseRoomSqlBookings)
+        .where(eq(releaseRoomSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (booking.status !== 'checkedIn')
       throw new Error('Only checked-in bookings can be released')

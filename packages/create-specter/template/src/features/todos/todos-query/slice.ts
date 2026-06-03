@@ -33,7 +33,8 @@ const todosSqlQuery = createQuerySlice(
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      db.insert(todoSqlListItems)
+      await db
+        .insert(todoSqlListItems)
         .values({
           id: payload.todoId,
           title: payload.title,
@@ -45,7 +46,8 @@ const todosSqlQuery = createQuerySlice(
       const db = input
       const payload = await todoCompletionChangedEvent.decode(event.payload)
 
-      db.update(todoSqlListItems)
+      await db
+        .update(todoSqlListItems)
         .set({ completed: payload.completed })
         .where(eq(todoSqlListItems.id, payload.todoId))
         .run()
@@ -54,7 +56,8 @@ const todosSqlQuery = createQuerySlice(
       const db = input
       const payload = await todoRemovedEvent.decode(event.payload)
 
-      db.update(todoSqlListItems)
+      await db
+        .update(todoSqlListItems)
         .set({ removed: true })
         .where(eq(todoSqlListItems.id, payload.todoId))
         .run()
@@ -137,7 +140,7 @@ const todosSqlQuery = createQuerySlice(
           ? completedPredicate
           : visiblePredicate
 
-    return db.select().from(todoSqlListItems).where(statusPredicate).all()
+    return await db.select().from(todoSqlListItems).where(statusPredicate).all()
   })
 
 export default todosSqlQuery

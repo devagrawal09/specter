@@ -102,40 +102,46 @@ const rescheduleBooking = createCommandSlice(
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(rescheduleBookingSqlRooms)
+      await db
+        .insert(rescheduleBookingSqlRooms)
         .values({ ...payload, retired: false })
         .run()
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.update(rescheduleBookingSqlRooms)
+      await db
+        .update(rescheduleBookingSqlRooms)
         .set({ retired: true })
         .where(eq(rescheduleBookingSqlRooms.roomId, payload.roomId))
         .run()
     },
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(rescheduleBookingSqlBookings)
+      await db
+        .insert(rescheduleBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingRejectedEvent.type]: async (event, db) => {
       const payload = await bookingRejectedEvent.decode(event.payload)
-      db.update(rescheduleBookingSqlBookings)
+      await db
+        .update(rescheduleBookingSqlBookings)
         .set({ status: 'rejected' })
         .where(eq(rescheduleBookingSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [bookingCanceledEvent.type]: async (event, db) => {
       const payload = await bookingCanceledEvent.decode(event.payload)
-      db.update(rescheduleBookingSqlBookings)
+      await db
+        .update(rescheduleBookingSqlBookings)
         .set({ status: 'canceled' })
         .where(eq(rescheduleBookingSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [bookingRescheduledEvent.type]: async (event, db) => {
       const payload = await bookingRescheduledEvent.decode(event.payload)
-      db.update(rescheduleBookingSqlBookings)
+      await db
+        .update(rescheduleBookingSqlBookings)
         .set({
           roomId: payload.roomId,
           startsAt: payload.startsAt,
@@ -148,31 +154,36 @@ const rescheduleBooking = createCommandSlice(
   .handle(async (command, db) => {
     if (command.startsAt >= command.endsAt)
       throw new Error('Booking start must be before end')
-    const booking = db
-      .select()
-      .from(rescheduleBookingSqlBookings)
-      .where(eq(rescheduleBookingSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(rescheduleBookingSqlBookings)
+        .where(eq(rescheduleBookingSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (!['pending', 'approved'].includes(booking.status))
       throw new Error('Only pending or approved bookings can be rescheduled')
-    const room = db
-      .select()
-      .from(rescheduleBookingSqlRooms)
-      .where(eq(rescheduleBookingSqlRooms.roomId, command.roomId))
-      .all()[0]
+    const room = (
+      await db
+        .select()
+        .from(rescheduleBookingSqlRooms)
+        .where(eq(rescheduleBookingSqlRooms.roomId, command.roomId))
+        .all()
+    )[0]
     if (!room || room.retired) throw new Error('Room is not available')
-    const conflicting = db
-      .select()
-      .from(rescheduleBookingSqlBookings)
-      .where(eq(rescheduleBookingSqlBookings.roomId, command.roomId))
-      .all()
-      .find(
-        (row) =>
-          row.bookingId !== command.bookingId &&
-          activeBookingStatuses.includes(row.status) &&
-          overlaps(row.startsAt, row.endsAt, command.startsAt, command.endsAt),
-      )
+    const conflicting = (
+      await db
+        .select()
+        .from(rescheduleBookingSqlBookings)
+        .where(eq(rescheduleBookingSqlBookings.roomId, command.roomId))
+        .all()
+    ).find(
+      (row) =>
+        row.bookingId !== command.bookingId &&
+        activeBookingStatuses.includes(row.status) &&
+        overlaps(row.startsAt, row.endsAt, command.startsAt, command.endsAt),
+    )
     if (conflicting) throw new Error('Room is already held for that time')
     return [bookingRescheduledEvent.create(command)]
   })

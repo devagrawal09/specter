@@ -4,6 +4,7 @@ import type { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import type {
   EventDraft,
   EventLogAdapter,
+  MaybePromise,
   SliceStoreAdapter,
 } from '@specter-ts/core'
 import type * as schema from './schema'
@@ -25,7 +26,7 @@ function getDb() {
   return scopedDb
 }
 
-export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
+export function runWithSqliteDb<T>(db: SqliteDb, run: () => MaybePromise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
@@ -33,7 +34,9 @@ export const sqliteSliceStore: SliceStoreAdapter<ScopedSqliteDb> = {
   get: createSliceStore,
   transaction: (sliceName, run) =>
     getDb().transaction((tx) =>
-      scopedSqliteDb.run(tx, () => run(createSliceStore(sliceName))),
+      scopedSqliteDb.run(tx, () =>
+        Promise.resolve(run(createSliceStore(sliceName))),
+      ),
     ),
 }
 
@@ -87,39 +90,41 @@ export const sqliteEventLog: EventLogAdapter = {
     }))
   },
   append: async (eventDrafts: readonly EventDraft[]) => {
-    return Promise.all(
-      eventDrafts.map(async (eventDraft) => {
-        const db = getDb()
-        const id = crypto.randomUUID()
-        const recordedAt = new Date()
+    const db = getDb()
+    const persistedEvents = []
 
-        await db
-          .insert(events)
-          .values({
-            id,
-            type: eventDraft.type,
-            payload: JSON.stringify(eventDraft.payload),
-            createdAt: recordedAt,
-          })
-          .run()
+    for (const eventDraft of eventDrafts) {
+      const id = crypto.randomUUID()
+      const recordedAt = new Date()
 
-        const rows = await db
-          .select({ order: events.order })
-          .from(events)
-          .where(eq(events.id, id))
-          .all()
-
-        return {
-          ...eventDraft,
+      await db
+        .insert(events)
+        .values({
           id,
-          order: rows[0]?.order ?? 0,
-          recordedAt,
-        }
-      }),
-    )
+          type: eventDraft.type,
+          payload: JSON.stringify(eventDraft.payload),
+          createdAt: recordedAt,
+        })
+        .run()
+
+      const rows = await db
+        .select({ order: events.order })
+        .from(events)
+        .where(eq(events.id, id))
+        .all()
+
+      persistedEvents.push({
+        ...eventDraft,
+        id,
+        order: rows[0]?.order ?? 0,
+        recordedAt,
+      })
+    }
+
+    return persistedEvents
   },
   transaction: (run) =>
     getDb().transaction((tx) =>
-      scopedSqliteDb.run(tx, () => run(sqliteEventLog)),
+      scopedSqliteDb.run(tx, () => Promise.resolve(run(sqliteEventLog))),
     ),
 }

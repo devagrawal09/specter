@@ -60,38 +60,44 @@ const retireRoom = createCommandSlice(
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(retireRoomSqlRooms)
+      await db
+        .insert(retireRoomSqlRooms)
         .values({ ...payload, retired: false })
         .run()
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.update(retireRoomSqlRooms)
+      await db
+        .update(retireRoomSqlRooms)
         .set({ retired: true })
         .where(eq(retireRoomSqlRooms.roomId, payload.roomId))
         .run()
     },
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(retireRoomSqlBookings)
+      await db
+        .insert(retireRoomSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
   })
   .handle(async (command, db) => {
-    const room = db
-      .select()
-      .from(retireRoomSqlRooms)
-      .where(eq(retireRoomSqlRooms.roomId, command.roomId))
-      .all()[0]
+    const room = (
+      await db
+        .select()
+        .from(retireRoomSqlRooms)
+        .where(eq(retireRoomSqlRooms.roomId, command.roomId))
+        .all()
+    )[0]
     if (!room) throw new Error('Room not found')
     if (room.retired) throw new Error('Room is already retired')
-    const activeBookings = db
-      .select()
-      .from(retireRoomSqlBookings)
-      .where(eq(retireRoomSqlBookings.roomId, command.roomId))
-      .all()
-      .filter((booking) => activeBookingStatuses.includes(booking.status))
+    const activeBookings = (
+      await db
+        .select()
+        .from(retireRoomSqlBookings)
+        .where(eq(retireRoomSqlBookings.roomId, command.roomId))
+        .all()
+    ).filter((booking) => activeBookingStatuses.includes(booking.status))
     if (activeBookings.length > 0) throw new Error('Room has active bookings')
     return [roomRetiredEvent.create({ roomId: command.roomId })]
   })

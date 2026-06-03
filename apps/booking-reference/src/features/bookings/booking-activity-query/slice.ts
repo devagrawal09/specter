@@ -32,7 +32,8 @@ const bookingActivityQuery = createQuerySlice(
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           roomId: payload.roomId,
           kind: 'roomCreated',
@@ -42,7 +43,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           roomId: payload.roomId,
           kind: 'roomRetired',
@@ -52,7 +54,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           roomId: payload.roomId,
@@ -63,7 +66,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'bookingApproved',
@@ -73,7 +77,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingRejectedEvent.type]: async (event, db) => {
       const payload = await bookingRejectedEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'bookingRejected',
@@ -83,7 +88,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingRescheduledEvent.type]: async (event, db) => {
       const payload = await bookingRescheduledEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           roomId: payload.roomId,
@@ -94,7 +100,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingCanceledEvent.type]: async (event, db) => {
       const payload = await bookingCanceledEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'bookingCanceled',
@@ -104,7 +111,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [bookingCheckedInEvent.type]: async (event, db) => {
       const payload = await bookingCheckedInEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'bookingCheckedIn',
@@ -114,7 +122,8 @@ const bookingActivityQuery = createQuerySlice(
     },
     [roomReleasedEvent.type]: async (event, db) => {
       const payload = await roomReleasedEvent.decode(event.payload)
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'roomReleased',
@@ -126,7 +135,8 @@ const bookingActivityQuery = createQuerySlice(
       const payload = await approvalNotificationRecordedEvent.decode(
         event.payload,
       )
-      db.insert(bookingActivityRows)
+      await db
+        .insert(bookingActivityRows)
         .values({
           bookingId: payload.bookingId,
           kind: 'approvalNotificationRecorded',
@@ -157,7 +167,7 @@ const bookingActivityQuery = createQuerySlice(
     ],
   })
   .handle(async (_query, db) =>
-    db.select().from(bookingActivityRows).all().reverse().slice(0, 12),
+    (await db.select().from(bookingActivityRows).all()).reverse().slice(0, 12),
   )
 
 export default bookingActivityQuery

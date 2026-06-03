@@ -76,7 +76,8 @@ const changeTodoCompletionSql = createCommandSlice(
       const db = input
       const payload = await todoAddedEvent.decode(event.payload)
 
-      db.insert(todoCompletionSqlStates)
+      await db
+        .insert(todoCompletionSqlStates)
         .values({
           todoId: payload.todoId,
           completed: false,
@@ -87,7 +88,8 @@ const changeTodoCompletionSql = createCommandSlice(
       const db = input
       const payload = await todoCompletionChangedEvent.decode(event.payload)
 
-      db.update(todoCompletionSqlStates)
+      await db
+        .update(todoCompletionSqlStates)
         .set({ completed: payload.completed })
         .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
         .run()
@@ -96,14 +98,15 @@ const changeTodoCompletionSql = createCommandSlice(
       const db = input
       const payload = await todoRemovedEvent.decode(event.payload)
 
-      db.update(todoCompletionSqlStates)
+      await db
+        .update(todoCompletionSqlStates)
         .set({ removed: true })
         .where(eq(todoCompletionSqlStates.todoId, payload.todoId))
         .run()
     },
   })
   .handle(async (command, db) => {
-    const rows = db
+    const rows = await db
       .select()
       .from(todoCompletionSqlStates)
       .where(eq(todoCompletionSqlStates.todoId, command.todoId))

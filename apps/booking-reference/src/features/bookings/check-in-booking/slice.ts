@@ -72,31 +72,36 @@ const checkInBooking = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(checkInBookingSqlBookings)
+      await db
+        .insert(checkInBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(checkInBookingSqlBookings)
+      await db
+        .update(checkInBookingSqlBookings)
         .set({ status: 'approved' })
         .where(eq(checkInBookingSqlBookings.bookingId, payload.bookingId))
         .run()
     },
     [bookingCheckedInEvent.type]: async (event, db) => {
       const payload = await bookingCheckedInEvent.decode(event.payload)
-      db.update(checkInBookingSqlBookings)
+      await db
+        .update(checkInBookingSqlBookings)
         .set({ status: 'checkedIn' })
         .where(eq(checkInBookingSqlBookings.bookingId, payload.bookingId))
         .run()
     },
   })
   .handle(async (command, db) => {
-    const booking = db
-      .select()
-      .from(checkInBookingSqlBookings)
-      .where(eq(checkInBookingSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(checkInBookingSqlBookings)
+        .where(eq(checkInBookingSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (booking.status !== 'approved')
       throw new Error('Only approved bookings can be checked in')

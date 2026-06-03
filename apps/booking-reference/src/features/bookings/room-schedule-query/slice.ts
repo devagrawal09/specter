@@ -2,7 +2,7 @@ import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createQuerySlice } from '@specter-ts/core'
-import type { SqliteDb } from '../../../db/specter-sqlite'
+import type { ScopedSqliteDb } from '../../../db/specter-sqlite'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   bookingApprovedEvent,
@@ -46,20 +46,23 @@ const roomScheduleQuery = createQuerySlice(
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(roomScheduleRooms)
+      await db
+        .insert(roomScheduleRooms)
         .values({ ...payload, retired: false })
         .run()
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.update(roomScheduleRooms)
+      await db
+        .update(roomScheduleRooms)
         .set({ retired: true })
         .where(eq(roomScheduleRooms.roomId, payload.roomId))
         .run()
     },
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(roomScheduleBookings)
+      await db
+        .insert(roomScheduleBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
@@ -75,7 +78,8 @@ const roomScheduleQuery = createQuerySlice(
       updateStatus(db, event.payload, 'released'),
     [bookingRescheduledEvent.type]: async (event, db) => {
       const payload = await bookingRescheduledEvent.decode(event.payload)
-      db.update(roomScheduleBookings)
+      await db
+        .update(roomScheduleBookings)
         .set({
           roomId: payload.roomId,
           startsAt: payload.startsAt,
@@ -128,8 +132,8 @@ const roomScheduleQuery = createQuerySlice(
     ],
   })
   .handle(async (query, db) => {
-    const rooms = db.select().from(roomScheduleRooms).all()
-    const bookings = db.select().from(roomScheduleBookings).all()
+    const rooms = await db.select().from(roomScheduleRooms).all()
+    const bookings = await db.select().from(roomScheduleBookings).all()
     const day = query.day
     const status =
       query.status && query.status !== 'all' ? query.status : undefined
@@ -144,9 +148,14 @@ const roomScheduleQuery = createQuerySlice(
     }))
   })
 
-async function updateStatus(db: SqliteDb, payload: unknown, status: string) {
+async function updateStatus(
+  db: ScopedSqliteDb,
+  payload: unknown,
+  status: string,
+) {
   const bookingId = (payload as { bookingId: string }).bookingId
-  db.update(roomScheduleBookings)
+  await db
+    .update(roomScheduleBookings)
     .set({ status })
     .where(eq(roomScheduleBookings.bookingId, bookingId))
     .run()

@@ -22,8 +22,6 @@ const queryMethods: ReadonlySet<string> = new Set(
     .filter((slice) => slice.kind === 'query')
     .map((slice) => slice.name),
 )
-let reactionQueueRunning = false
-let reactionQueueRequested = false
 
 const app = new Hono()
 
@@ -39,7 +37,7 @@ app.post('/api/:method', async (c) => {
   try {
     const result = await runWithSqliteDb(productionDb, () => operation(body))
 
-    if (!queryMethods.has(method)) startReactionQueue()
+    if (!queryMethods.has(method)) await drainReactions()
 
     return c.json(result ?? null)
   } catch (cause) {
@@ -59,36 +57,15 @@ function messageFromCause(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-function startReactionQueue() {
-  reactionQueueRequested = true
-
-  if (reactionQueueRunning) {
-    return
-  }
-
-  reactionQueueRunning = true
-  void drainReactionQueue()
-}
-
-async function drainReactionQueue() {
+async function drainReactions() {
   try {
     await runWithSqliteDb(productionDb, async () => {
-      while (reactionQueueRequested) {
-        reactionQueueRequested = false
-
-        while (await specterApp.runtime.runReactions()) {
-          // Reactions can dispatch commands that produce more reaction work.
-        }
+      while (await specterApp.runtime.runReactions()) {
+        // Reactions can dispatch commands that produce more reaction work.
       }
     })
   } catch (cause) {
-    console.error('Reaction queue failed', cause)
-  } finally {
-    reactionQueueRunning = false
-
-    if (reactionQueueRequested) {
-      void startReactionQueue()
-    }
+    console.error('Reactions failed', cause)
   }
 }
 

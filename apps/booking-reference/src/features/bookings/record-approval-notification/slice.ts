@@ -67,13 +67,15 @@ const recordApprovalNotification = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(recordApprovalNotificationSqlBookings)
+      await db
+        .insert(recordApprovalNotificationSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(recordApprovalNotificationSqlBookings)
+      await db
+        .update(recordApprovalNotificationSqlBookings)
         .set({ status: 'approved' })
         .where(
           eq(
@@ -85,13 +87,18 @@ const recordApprovalNotification = createCommandSlice(
     },
   })
   .handle(async (command, db) => {
-    const booking = db
-      .select()
-      .from(recordApprovalNotificationSqlBookings)
-      .where(
-        eq(recordApprovalNotificationSqlBookings.bookingId, command.bookingId),
-      )
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(recordApprovalNotificationSqlBookings)
+        .where(
+          eq(
+            recordApprovalNotificationSqlBookings.bookingId,
+            command.bookingId,
+          ),
+        )
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (booking.status !== 'approved')
       throw new Error(

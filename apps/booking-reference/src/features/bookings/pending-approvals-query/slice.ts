@@ -30,27 +30,31 @@ const pendingApprovalsQuery = createQuerySlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(pendingApprovalRows)
+      await db
+        .insert(pendingApprovalRows)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(pendingApprovalRows)
+      await db
+        .update(pendingApprovalRows)
         .set({ status: 'approved' })
         .where(eq(pendingApprovalRows.bookingId, payload.bookingId))
         .run()
     },
     [bookingRejectedEvent.type]: async (event, db) => {
       const payload = await bookingRejectedEvent.decode(event.payload)
-      db.update(pendingApprovalRows)
+      await db
+        .update(pendingApprovalRows)
         .set({ status: 'rejected' })
         .where(eq(pendingApprovalRows.bookingId, payload.bookingId))
         .run()
     },
     [bookingCanceledEvent.type]: async (event, db) => {
       const payload = await bookingCanceledEvent.decode(event.payload)
-      db.update(pendingApprovalRows)
+      await db
+        .update(pendingApprovalRows)
         .set({ status: 'canceled' })
         .where(eq(pendingApprovalRows.bookingId, payload.bookingId))
         .run()
@@ -84,7 +88,7 @@ const pendingApprovalsQuery = createQuerySlice(
     ],
   })
   .handle(async (_query, db) => {
-    return db
+    return await db
       .select()
       .from(pendingApprovalRows)
       .where(eq(pendingApprovalRows.status, 'pending'))

@@ -7,6 +7,7 @@ export type {
 export { createEventDefinition } from './core/event'
 export { defineSpecterClient } from './transports/client'
 export type { SpecterClient } from './transports/client'
+export type { MaybePromise } from './core/maybe-promise'
 export {
   createCommandSlice,
   createQuerySlice,

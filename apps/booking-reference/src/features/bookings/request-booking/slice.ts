@@ -112,20 +112,23 @@ const requestBooking = createCommandSlice(
   .apply({
     [roomCreatedEvent.type]: async (event, db) => {
       const payload = await roomCreatedEvent.decode(event.payload)
-      db.insert(requestBookingSqlRooms)
+      await db
+        .insert(requestBookingSqlRooms)
         .values({ ...payload, retired: false })
         .run()
     },
     [roomRetiredEvent.type]: async (event, db) => {
       const payload = await roomRetiredEvent.decode(event.payload)
-      db.update(requestBookingSqlRooms)
+      await db
+        .update(requestBookingSqlRooms)
         .set({ retired: true })
         .where(eq(requestBookingSqlRooms.roomId, payload.roomId))
         .run()
     },
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(requestBookingSqlBookings)
+      await db
+        .insert(requestBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
@@ -138,28 +141,31 @@ const requestBooking = createCommandSlice(
     if (command.startsAt >= command.endsAt)
       throw new Error('Booking start must be before end')
 
-    const room = db
-      .select()
-      .from(requestBookingSqlRooms)
-      .where(eq(requestBookingSqlRooms.roomId, command.roomId))
-      .all()[0]
+    const room = (
+      await db
+        .select()
+        .from(requestBookingSqlRooms)
+        .where(eq(requestBookingSqlRooms.roomId, command.roomId))
+        .all()
+    )[0]
     if (!room || room.retired) throw new Error('Room is not available')
 
-    const conflicting = db
-      .select()
-      .from(requestBookingSqlBookings)
-      .where(eq(requestBookingSqlBookings.roomId, command.roomId))
-      .all()
-      .find(
-        (booking) =>
-          activeBookingStatuses.includes(booking.status) &&
-          overlaps(
-            booking.startsAt,
-            booking.endsAt,
-            command.startsAt,
-            command.endsAt,
-          ),
-      )
+    const conflicting = (
+      await db
+        .select()
+        .from(requestBookingSqlBookings)
+        .where(eq(requestBookingSqlBookings.roomId, command.roomId))
+        .all()
+    ).find(
+      (booking) =>
+        activeBookingStatuses.includes(booking.status) &&
+        overlaps(
+          booking.startsAt,
+          booking.endsAt,
+          command.startsAt,
+          command.endsAt,
+        ),
+    )
     if (conflicting) throw new Error('Room is already held for that time')
 
     return [

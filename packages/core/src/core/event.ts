@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
+import type { MaybePromise } from './maybe-promise'
 import { decodeSchema } from './schema'
 
 export type EventDraft<TType extends string = string, TPayload = unknown> = {
@@ -29,7 +30,7 @@ export type EventDefinition<
   type: TType
   schema: StandardSchemaV1
   create: (payload: TPayload) => EventDraft<TType, TPayload>
-  decode: (payload: unknown) => Promise<TPayload>
+  decode: (payload: unknown) => MaybePromise<TPayload>
 }
 
 export function createEventDefinition<

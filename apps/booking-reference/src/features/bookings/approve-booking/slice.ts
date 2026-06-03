@@ -83,13 +83,15 @@ const approveBooking = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(approveBookingSqlBookings)
+      await db
+        .insert(approveBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(approveBookingSqlBookings)
+      await db
+        .update(approveBookingSqlBookings)
         .set({ status: 'approved' })
         .where(eq(approveBookingSqlBookings.bookingId, payload.bookingId))
         .run()
@@ -98,11 +100,13 @@ const approveBooking = createCommandSlice(
   .handle(async (command, db) => {
     const approverName = command.approverName.trim()
     if (!approverName) throw new Error('Approver name is required')
-    const booking = db
-      .select()
-      .from(approveBookingSqlBookings)
-      .where(eq(approveBookingSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(approveBookingSqlBookings)
+        .where(eq(approveBookingSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (booking.status !== 'pending')
       throw new Error('Only pending bookings can be approved')

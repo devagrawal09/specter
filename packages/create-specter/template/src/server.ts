@@ -1,26 +1,27 @@
 import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import Database from 'better-sqlite3'
-import { drizzle } from 'drizzle-orm/better-sqlite3'
+import { createClient } from '@libsql/client/sqlite3'
+import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
 import { createSpecterApp } from '@specter-ts/core'
 
 import { runWithSqliteDb } from './db/specter-sqlite'
 import { todoSpecterAppConfig } from './features/todos/registry'
+import * as schema from './db/schema'
 import './styles.css?url'
 
 const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
 mkdirSync(dirname(sqlitePath), { recursive: true })
-const productionDb = drizzle(new Database(sqlitePath))
+const productionDb = drizzle(createClient({ url: `file:${sqlitePath}` }), {
+  schema,
+})
 const specterApp = createSpecterApp(todoSpecterAppConfig)
 const queryMethods: ReadonlySet<string> = new Set(
   todoSpecterAppConfig.slices
     .filter((slice) => slice.kind === 'query')
     .map((slice) => slice.name),
 )
-let reactionQueueRunning = false
-let reactionQueueRequested = false
 
 const app = new Hono()
 
@@ -36,7 +37,7 @@ app.post('/api/:method', async (c) => {
   try {
     const result = await runWithSqliteDb(productionDb, () => operation(body))
 
-    if (!queryMethods.has(method)) startReactionQueue()
+    if (!queryMethods.has(method)) await drainReactions()
 
     return c.json(result ?? null)
   } catch (cause) {
@@ -56,36 +57,15 @@ function messageFromCause(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause)
 }
 
-function startReactionQueue() {
-  reactionQueueRequested = true
-
-  if (reactionQueueRunning) {
-    return
-  }
-
-  reactionQueueRunning = true
-  void drainReactionQueue()
-}
-
-async function drainReactionQueue() {
+async function drainReactions() {
   try {
     await runWithSqliteDb(productionDb, async () => {
-      while (reactionQueueRequested) {
-        reactionQueueRequested = false
-
-        while (await specterApp.runtime.runReactions()) {
-          // Reactions can dispatch commands that produce more reaction work.
-        }
+      while (await specterApp.runtime.runReactions()) {
+        // Reactions can dispatch commands that produce more reaction work.
       }
     })
   } catch (cause) {
-    console.error('Reaction queue failed', cause)
-  } finally {
-    reactionQueueRunning = false
-
-    if (reactionQueueRequested) {
-      void startReactionQueue()
-    }
+    console.error('Reactions failed', cause)
   }
 }
 

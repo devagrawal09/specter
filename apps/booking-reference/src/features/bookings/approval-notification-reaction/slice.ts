@@ -77,7 +77,8 @@ const approvalNotificationReaction = createReactionSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(approvalNotificationSqlStates)
+      await db
+        .insert(approvalNotificationSqlStates)
         .values({
           bookingId: payload.bookingId,
           approved: false,
@@ -87,7 +88,8 @@ const approvalNotificationReaction = createReactionSlice(
     },
     [bookingApprovedEvent.type]: async (event, db) => {
       const payload = await bookingApprovedEvent.decode(event.payload)
-      db.update(approvalNotificationSqlStates)
+      await db
+        .update(approvalNotificationSqlStates)
         .set({ approved: true })
         .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
         .run()
@@ -96,18 +98,17 @@ const approvalNotificationReaction = createReactionSlice(
       const payload = await approvalNotificationRecordedEvent.decode(
         event.payload,
       )
-      db.update(approvalNotificationSqlStates)
+      await db
+        .update(approvalNotificationSqlStates)
         .set({ notified: true })
         .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
         .run()
     },
   })
   .handle(async (db) => {
-    const pending = db
-      .select()
-      .from(approvalNotificationSqlStates)
-      .all()
-      .find((row) => row.approved && !row.notified)
+    const pending = (
+      await db.select().from(approvalNotificationSqlStates).all()
+    ).find((row) => row.approved && !row.notified)
 
     if (!pending) return
 

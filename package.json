@@ -11,7 +11,7 @@
     "build": "pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference build",
     "start": "pnpm --filter @specter/reference start",
     "preview": "pnpm --filter @specter/reference preview",
-    "test": "pnpm -r --filter @specter/reference --filter @specter/booking-reference test",
+    "test": "pnpm -r --filter @specter-ts/core --filter @specter/reference --filter @specter/booking-reference test",
     "typecheck": "pnpm --filter @specter-ts/core build && pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference typecheck",
     "db:generate": "pnpm --filter @specter/reference db:generate",
     "db:migrate": "pnpm --filter @specter/reference db:migrate",

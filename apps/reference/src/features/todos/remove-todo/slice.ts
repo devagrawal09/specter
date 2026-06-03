@@ -1,5 +1,5 @@
 import { eq } from 'drizzle-orm'
-import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 import { createCommandSlice } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
@@ -7,7 +7,6 @@ import { todoAddedEvent, todoRemovedEvent } from '../events'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
-  removed: integer('removed', { mode: 'boolean' }).notNull().default(false),
 })
 
 const removeTodo = createCommandSlice('removeTodo', 'Removes an existing todo.')
@@ -55,8 +54,7 @@ const removeTodo = createCommandSlice('removeTodo', 'Removes an existing todo.')
       const payload = await todoRemovedEvent.decode(event.payload)
 
       await db
-        .update(todoRemovalSqlStates)
-        .set({ removed: true })
+        .delete(todoRemovalSqlStates)
         .where(eq(todoRemovalSqlStates.todoId, payload.todoId))
         .run()
     },
@@ -69,7 +67,7 @@ const removeTodo = createCommandSlice('removeTodo', 'Removes an existing todo.')
       .all()
     const todo = rows[0]
 
-    if (!todo || todo.removed) {
+    if (!todo) {
       throw new Error('Todo not found')
     }
 

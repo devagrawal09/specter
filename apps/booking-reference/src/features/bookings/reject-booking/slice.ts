@@ -77,13 +77,15 @@ const rejectBooking = createCommandSlice(
   .apply({
     [bookingRequestedEvent.type]: async (event, db) => {
       const payload = await bookingRequestedEvent.decode(event.payload)
-      db.insert(rejectBookingSqlBookings)
+      await db
+        .insert(rejectBookingSqlBookings)
         .values({ ...payload, status: 'pending' })
         .run()
     },
     [bookingRejectedEvent.type]: async (event, db) => {
       const payload = await bookingRejectedEvent.decode(event.payload)
-      db.update(rejectBookingSqlBookings)
+      await db
+        .update(rejectBookingSqlBookings)
         .set({ status: 'rejected' })
         .where(eq(rejectBookingSqlBookings.bookingId, payload.bookingId))
         .run()
@@ -94,11 +96,13 @@ const rejectBooking = createCommandSlice(
     const approverName = command.approverName.trim()
     if (!approverName) throw new Error('Approver name is required')
     if (!reason) throw new Error('Rejection reason is required')
-    const booking = db
-      .select()
-      .from(rejectBookingSqlBookings)
-      .where(eq(rejectBookingSqlBookings.bookingId, command.bookingId))
-      .all()[0]
+    const booking = (
+      await db
+        .select()
+        .from(rejectBookingSqlBookings)
+        .where(eq(rejectBookingSqlBookings.bookingId, command.bookingId))
+        .all()
+    )[0]
     if (!booking) throw new Error('Booking not found')
     if (booking.status !== 'pending')
       throw new Error('Only pending bookings can be rejected')
