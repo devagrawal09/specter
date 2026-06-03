@@ -4,7 +4,6 @@ import type { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import type {
   EventDraft,
   EventLogAdapter,
-  MaybePromise,
   SliceStoreAdapter,
 } from '@specter-ts/core'
 import type * as schema from './schema'
@@ -26,17 +25,15 @@ function getDb() {
   return scopedDb
 }
 
-export function runWithSqliteDb<T>(db: SqliteDb, run: () => MaybePromise<T>) {
+export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
   return scopedSqliteDb.run(db, run)
 }
 
 export const sqliteSliceStore: SliceStoreAdapter<ScopedSqliteDb> = {
-  get: createSliceStore,
+  get: async (sliceName) => createSliceStore(sliceName),
   transaction: (sliceName, run) =>
     getDb().transaction((tx) =>
-      scopedSqliteDb.run(tx, () =>
-        Promise.resolve(run(createSliceStore(sliceName))),
-      ),
+      scopedSqliteDb.run(tx, async () => run(createSliceStore(sliceName))),
     ),
 }
 
@@ -125,6 +122,6 @@ export const sqliteEventLog: EventLogAdapter = {
   },
   transaction: (run) =>
     getDb().transaction((tx) =>
-      scopedSqliteDb.run(tx, () => Promise.resolve(run(sqliteEventLog))),
+      scopedSqliteDb.run(tx, async () => run(sqliteEventLog)),
     ),
 }

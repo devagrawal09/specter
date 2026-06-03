@@ -12,8 +12,8 @@ test('appends multiple events in input order', async () => {
   const { sqlite, db, tempDir } = await createMigratedDb()
 
   try {
-    const appended = await runWithSqliteDb(db, () =>
-      sqliteEventLog.transaction((eventLog) =>
+    const appended = await runWithSqliteDb(db, async () =>
+      sqliteEventLog.transaction(async (eventLog) =>
         eventLog.append([
           { type: 'event.one', payload: { position: 1 } },
           { type: 'event.two', payload: { position: 2 } },

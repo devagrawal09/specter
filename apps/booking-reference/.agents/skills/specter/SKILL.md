@@ -13,6 +13,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 - UI code calls the typed Specter client; Specter does not own UI/frontend.
 - Scenarios are executable examples for Slices, and each scenario has a human-readable description used as its test name.
 - SQLite is app infrastructure. Specter core owns runtime contracts, not persistence tables or database setup.
+- Specter runtime seams are async-only: Slice handlers, apply handlers, Reaction Plugins, and local adapters return Promises even when work is immediately available.
 - Use `src/features/todos` as the worked example for file placement and naming.
 
 ## Canonical Imports

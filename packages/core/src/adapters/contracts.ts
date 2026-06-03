@@ -1,31 +1,28 @@
 import type { EventDraft, PersistedEvent } from '../core/event'
-import type { MaybePromise } from '../core/maybe-promise'
 
 export type SliceStore<TWriteState = unknown, TReadState = TWriteState> = {
   write: TWriteState
   read: TReadState
-  lastAppliedOrder: () => MaybePromise<number>
-  setLastAppliedOrder: (order: number) => MaybePromise<void>
+  lastAppliedOrder: () => Promise<number>
+  setLastAppliedOrder: (order: number) => Promise<void>
 }
 
 export type SliceStoreAdapter<
   TWriteState = unknown,
   TReadState = TWriteState,
 > = {
-  get: (sliceName: string) => SliceStore<TWriteState, TReadState>
+  get: (sliceName: string) => Promise<SliceStore<TWriteState, TReadState>>
   transaction: <T>(
     sliceName: string,
-    run: (store: SliceStore<TWriteState, TReadState>) => MaybePromise<T>,
-  ) => MaybePromise<T>
+    run: (store: SliceStore<TWriteState, TReadState>) => Promise<T>,
+  ) => Promise<T>
 }
 
 export type EventLogAdapter = {
   query: (
     order: number,
     eventTypes: readonly string[],
-  ) => MaybePromise<PersistedEvent[]>
-  append: (events: readonly EventDraft[]) => MaybePromise<PersistedEvent[]>
-  transaction: <T>(
-    run: (eventLog: EventLogAdapter) => MaybePromise<T>,
-  ) => MaybePromise<T>
+  ) => Promise<PersistedEvent[]>
+  append: (events: readonly EventDraft[]) => Promise<PersistedEvent[]>
+  transaction: <T>(run: (eventLog: EventLogAdapter) => Promise<T>) => Promise<T>
 }

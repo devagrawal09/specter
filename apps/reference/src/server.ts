@@ -17,11 +17,6 @@ const productionDb = drizzle(createClient({ url: `file:${sqlitePath}` }), {
   schema,
 })
 const specterApp = createSpecterApp(todoSpecterAppConfig)
-const queryMethods: ReadonlySet<string> = new Set(
-  todoSpecterAppConfig.slices
-    .filter((slice) => slice.kind === 'query')
-    .map((slice) => slice.name),
-)
 
 const app = new Hono()
 
@@ -35,9 +30,9 @@ app.post('/api/:method', async (c) => {
   }
 
   try {
-    const result = await runWithSqliteDb(productionDb, () => operation(body))
-
-    if (!queryMethods.has(method)) await drainReactions()
+    const result = await runWithSqliteDb(productionDb, async () =>
+      operation(body),
+    )
 
     return c.json(result ?? null)
   } catch (cause) {
@@ -55,18 +50,6 @@ app.get('*', (c) => c.html(renderShell()))
 
 function messageFromCause(cause: unknown) {
   return cause instanceof Error ? cause.message : String(cause)
-}
-
-async function drainReactions() {
-  try {
-    await runWithSqliteDb(productionDb, async () => {
-      while (await specterApp.runtime.runReactions()) {
-        // Reactions can dispatch commands that produce more reaction work.
-      }
-    })
-  } catch (cause) {
-    console.error('Reactions failed', cause)
-  }
 }
 
 function renderShell() {

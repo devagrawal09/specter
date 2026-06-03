@@ -2,13 +2,6 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { EventLogAdapter, SliceStore } from '../adapters/contracts'
 import type { EventDraft, PersistedEvent } from './event'
-import type { MaybePromise } from './maybe-promise'
-import {
-  allMaybePromises,
-  flatMapMaybePromise,
-  forEachMaybePromise,
-  mapMaybePromise,
-} from './maybe-promise'
 import { decodeSchema } from './schema'
 import type {
   CommandEnvelope,
@@ -22,7 +15,7 @@ import type {
 export type SpecterAppConfig = {
   readonly events: readonly {
     readonly type: string
-    readonly decode: (payload: unknown) => MaybePromise<unknown>
+    readonly decode: (payload: unknown) => Promise<unknown>
   }[]
   readonly eventLog: EventLogAdapter
   readonly slices: readonly SliceRegistration[]
@@ -46,23 +39,19 @@ type QueryOutput<TSlice> =
 type CommandMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'command' }> as TSlice['name']]: (
     input: CommandInput<TSlice>,
-  ) => MaybePromise<void>
+  ) => Promise<void>
 }
 
 type QueryMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'query' }> as TSlice['name']]: (
     input: QueryInput<TSlice>,
-  ) => MaybePromise<QueryOutput<TSlice>>
+  ) => Promise<QueryOutput<TSlice>>
 }
 
 export type SpecterApp<TConfig extends SpecterAppConfig> = CommandMethods<
   TConfig['slices']
 > &
-  QueryMethods<TConfig['slices']> & {
-    readonly runtime: {
-      runReactions: () => MaybePromise<boolean>
-    }
-  }
+  QueryMethods<TConfig['slices']>
 
 type PreparedReactionEffect = {
   readonly reaction: ReactionSlice<string, unknown>
@@ -77,7 +66,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     string,
     {
       readonly type: string
-      readonly decode: (payload: unknown) => MaybePromise<unknown>
+      readonly decode: (payload: unknown) => Promise<unknown>
     }
   > = {}
 
@@ -129,7 +118,10 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   }
 
   const reactionExecs = new Map<string, ReactionExec>()
-  const app: Record<string, unknown> = { runtime: { runReactions } }
+  let isDrainingReactions = false
+  let reactionDrainRequested = false
+  let activeReactionDrain: Promise<void> | undefined
+  const app: Record<string, unknown> = {}
 
   for (const command of Object.values(slicesByKind.commands)) {
     app[command.name] = (input: unknown) => runCommand(command, input)
@@ -141,33 +133,31 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   return app as SpecterApp<TConfig>
 
-  function decodePersistedEvent(event: PersistedEvent) {
+  async function decodePersistedEvent(event: PersistedEvent) {
     const eventDefinition = eventDefinitions[event.type]
     if (!eventDefinition) throw new Error(`Unknown event type: ${event.type}`)
 
-    return mapMaybePromise(
-      eventDefinition.decode(event.payload),
-      (payload) => ({
-        ...event,
-        payload,
-      }),
-    )
+    const payload = await eventDefinition.decode(event.payload)
+
+    return {
+      ...event,
+      payload,
+    }
   }
 
-  function decodeEventDraft(event: EventDraft) {
+  async function decodeEventDraft(event: EventDraft) {
     const eventDefinition = eventDefinitions[event.type]
     if (!eventDefinition) throw new Error(`Unknown event type: ${event.type}`)
 
-    return mapMaybePromise(
-      eventDefinition.decode(event.payload),
-      (payload) => ({
-        ...event,
-        payload,
-      }),
-    )
+    const payload = await eventDefinition.decode(event.payload)
+
+    return {
+      ...event,
+      payload,
+    }
   }
 
-  function catchUpSlice(
+  async function catchUpSlice(
     slice: SliceRegistration,
     store: SliceStore,
     eventLog: EventLogAdapter = config.eventLog,
@@ -176,143 +166,145 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
     if (!eventTypes.length) return { store, advanced: false } as const
 
-    return flatMapMaybePromise(store.lastAppliedOrder(), (lastAppliedOrder) =>
-      flatMapMaybePromise(
-        eventLog.query(lastAppliedOrder, eventTypes),
-        (unreadEvents) =>
-          flatMapMaybePromise(
-            allMaybePromises(unreadEvents.map(decodePersistedEvent)),
-            (unappliedEvents) => {
-              if (!unappliedEvents.length) {
-                return { store, advanced: false } as const
-              }
-
-              return flatMapMaybePromise(
-                applyEvents(slice, store, unappliedEvents),
-                () => {
-                  const lastEvent = unappliedEvents[unappliedEvents.length - 1]
-
-                  return mapMaybePromise(
-                    store.setLastAppliedOrder(lastEvent.order),
-                    () => ({ store, advanced: true }) as const,
-                  )
-                },
-              )
-            },
-          ),
-      ),
+    const lastAppliedOrder = await store.lastAppliedOrder()
+    const unreadEvents = await eventLog.query(lastAppliedOrder, eventTypes)
+    const unappliedEvents = await Promise.all(
+      unreadEvents.map(decodePersistedEvent),
     )
+
+    if (!unappliedEvents.length) {
+      return { store, advanced: false } as const
+    }
+
+    await applyEvents(slice, store, unappliedEvents)
+
+    const lastEvent = unappliedEvents[unappliedEvents.length - 1]
+    await store.setLastAppliedOrder(lastEvent.order)
+
+    return { store, advanced: true } as const
   }
 
-  function applyEvents(
+  async function applyEvents(
     slice: SliceRegistration,
     store: SliceStore,
     events: readonly PersistedEvent[],
   ) {
-    return forEachMaybePromise(events, (event) => {
+    for (const event of events) {
       const apply = slice.apply[event.type]
 
-      return apply ? apply(event, store.write) : undefined
-    })
+      if (apply) await apply(event, store.write)
+    }
   }
 
-  function runCommand(commandSlice: CommandSlice, input: unknown) {
-    return commandSlice.store.transaction(commandSlice.name, (store) => {
-      return config.eventLog.transaction((eventLog) =>
-        flatMapMaybePromise(
-          decodeSchema(commandSlice.schema, input),
-          (parsedCommand) =>
-            flatMapMaybePromise(
-              catchUpSlice(commandSlice, store, eventLog),
-              () =>
-                flatMapMaybePromise(
-                  commandSlice.handle(parsedCommand, store.read),
-                  (events) =>
-                    flatMapMaybePromise(
-                      allMaybePromises(events.map(decodeEventDraft)),
-                      (decodedEvents) =>
-                        mapMaybePromise(
-                          eventLog.append(decodedEvents),
-                          () => undefined,
-                        ),
-                    ),
-                ),
-            ),
-        ),
-      )
+  async function runCommand(commandSlice: CommandSlice, input: unknown) {
+    await runCommandOnly(commandSlice, input)
+    await requestReactionDrain()
+  }
+
+  async function runCommandOnly(commandSlice: CommandSlice, input: unknown) {
+    await commandSlice.store.transaction(commandSlice.name, async (store) => {
+      await config.eventLog.transaction(async (eventLog) => {
+        const parsedCommand = await decodeSchema(commandSlice.schema, input)
+
+        await catchUpSlice(commandSlice, store, eventLog)
+
+        const events = await commandSlice.handle(parsedCommand, store.read)
+        const decodedEvents = await Promise.all(events.map(decodeEventDraft))
+
+        await eventLog.append(decodedEvents)
+      })
     })
   }
 
   function runQuery(query: QuerySlice, input: unknown) {
-    return query.store.transaction(query.name, (store) =>
-      flatMapMaybePromise(decodeSchema(query.schema, input), (parsedInput) =>
-        flatMapMaybePromise(catchUpSlice(query, store), () =>
-          query.handle(parsedInput, store.read),
-        ),
-      ),
-    )
-  }
+    return query.store.transaction(query.name, async (store) => {
+      const parsedInput = await decodeSchema(query.schema, input)
 
-  function dispatch(c: CommandEnvelope) {
-    const command = slicesByKind.commands[c.type]
-    if (!command) throw new Error(`Unknown command: ${c.type}`)
+      await catchUpSlice(query, store)
 
-    return runCommand(command, c.payload)
-  }
-
-  function getReactionExec(reaction: ReactionSlice<string, unknown>) {
-    const cachedExec = reactionExecs.get(reaction.name)
-    if (cachedExec) return cachedExec
-
-    return mapMaybePromise(reaction.plugin(dispatch), (exec) => {
-      reactionExecs.set(reaction.name, exec)
-      return exec
+      return query.handle(parsedInput, store.read)
     })
   }
 
-  function runReactions() {
+  async function dispatch(c: CommandEnvelope) {
+    const command = slicesByKind.commands[c.type]
+    if (!command) throw new Error(`Unknown command: ${c.type}`)
+
+    await runCommandOnly(command, c.payload)
+    reactionDrainRequested = true
+  }
+
+  async function getReactionExec(reaction: ReactionSlice<string, unknown>) {
+    const cachedExec = reactionExecs.get(reaction.name)
+    if (cachedExec) return cachedExec
+
+    const exec = await reaction.plugin(dispatch)
+
+    reactionExecs.set(reaction.name, exec)
+    return exec
+  }
+
+  function requestReactionDrain() {
+    reactionDrainRequested = true
+
+    if (isDrainingReactions) return activeReactionDrain ?? Promise.resolve()
+
+    activeReactionDrain = drainReactions()
+    return activeReactionDrain
+  }
+
+  async function drainReactions() {
+    isDrainingReactions = true
+
+    try {
+      await loopReactionDrain()
+    } finally {
+      isDrainingReactions = false
+      activeReactionDrain = undefined
+    }
+  }
+
+  async function loopReactionDrain() {
+    do {
+      reactionDrainRequested = false
+    } while ((await runReactionPass()) || reactionDrainRequested)
+  }
+
+  async function runReactionPass() {
     const runnableEffects: PreparedReactionEffect[] = []
+    let madeProgress = false
 
-    return flatMapMaybePromise(
-      forEachMaybePromise(Object.values(slicesByKind.reactions), (reaction) =>
-        mapMaybePromise(
-          reaction.store.transaction(reaction.name, (store) =>
-            flatMapMaybePromise(
-              catchUpSlice(reaction, store),
-              ({ advanced }) => {
-                if (!advanced) return undefined
+    for (const reaction of Object.values(slicesByKind.reactions)) {
+      const preparedEffect = await reaction.store.transaction(
+        reaction.name,
+        async (store) => {
+          const { advanced } = await catchUpSlice(reaction, store)
 
-                return flatMapMaybePromise(
-                  reaction.handle(store.read),
-                  (effect) => {
-                    if (effect === undefined) return undefined
+          if (!advanced) return undefined
 
-                    return mapMaybePromise(
-                      getReactionExec(reaction),
-                      (exec) =>
-                        ({
-                          reaction,
-                          exec,
-                          effect,
-                        }) satisfies PreparedReactionEffect,
-                    )
-                  },
-                )
-              },
-            ),
-          ),
-          (preparedEffect) => {
-            if (preparedEffect) runnableEffects.push(preparedEffect)
-          },
-        ),
-      ),
-      () =>
-        mapMaybePromise(
-          forEachMaybePromise(runnableEffects, ({ exec, effect }) =>
-            mapMaybePromise(exec(effect), () => undefined),
-          ),
-          () => runnableEffects.length > 0,
-        ),
-    )
+          madeProgress = true
+
+          const effect = await reaction.handle(store.read)
+
+          if (effect === undefined) return undefined
+
+          const exec = await getReactionExec(reaction)
+
+          return {
+            reaction,
+            exec,
+            effect,
+          } satisfies PreparedReactionEffect
+        },
+      )
+
+      if (preparedEffect) runnableEffects.push(preparedEffect)
+    }
+
+    for (const { exec, effect } of runnableEffects) {
+      await exec(effect)
+    }
+
+    return madeProgress || runnableEffects.length > 0
   }
 }

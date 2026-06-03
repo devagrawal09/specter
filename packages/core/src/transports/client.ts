@@ -1,6 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { MaybePromise } from '../core/maybe-promise'
 import type { SpecterAppConfig } from '../core/registry'
 import type { SliceRegistration } from '../core/slice'
 
@@ -23,7 +22,7 @@ type QueryInput<TSlice> = TSlice extends {
 
 type QueryOutput<TSlice> = TSlice extends {
   kind: 'query'
-  handle: (...args: readonly never[]) => MaybePromise<infer TResult>
+  handle: (...args: readonly never[]) => Promise<infer TResult>
 }
   ? TResult
   : never

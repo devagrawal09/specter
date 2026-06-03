@@ -1,7 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { EventDraft } from './event'
-import type { MaybePromise } from './maybe-promise'
 import type {
   CommandScenario,
   QueryScenario,
@@ -48,7 +47,7 @@ type CommandStep<
     handle: (
       command: StandardSchemaV1.InferOutput<TSchema>,
       state: TReadState,
-    ) => MaybePromise<EventDraft[]>,
+    ) => Promise<EventDraft[]>,
   ) => CommandSlice<TName, TSchema, TWriteState, TReadState> & {
     scenarios?: readonly CommandScenario[]
   }
@@ -123,7 +122,7 @@ type QueryHandleStep<
     handle: (
       input: StandardSchemaV1.InferOutput<TSchema>,
       state: TReadState,
-    ) => MaybePromise<TResult>,
+    ) => Promise<TResult>,
   ) => QuerySlice<TName, TSchema, TResult, TWriteState, TReadState> & {
     scenarios?: readonly QueryScenario[]
   }
@@ -199,7 +198,7 @@ type ReactionScenarioStep<
 }
 
 type ReactionHandle<TName extends string, TPayload, TWriteState, TReadState> = (
-  handle: (state: TReadState) => MaybePromise<TPayload | undefined>,
+  handle: (state: TReadState) => Promise<TPayload | undefined>,
 ) => ReactionSlice<TName, TPayload, TWriteState, TReadState> & {
   scenarios?: readonly ReactionScenario<TPayload>[]
 }
@@ -217,7 +216,7 @@ export function createCommandSlice<const TName extends string>(
           handle: (
             command: StandardSchemaV1.InferOutput<typeof schema>,
             state: TReadState,
-          ) => MaybePromise<EventDraft[]>,
+          ) => Promise<EventDraft[]>,
           apply: AnyApplyHandlers<TWriteState>,
           scenarios?: readonly CommandScenario[],
         ) => ({
@@ -267,7 +266,7 @@ export function createQuerySlice<const TName extends string>(
             handle: (
               query: StandardSchemaV1.InferOutput<typeof schema>,
               state: TReadState,
-            ) => MaybePromise<TResult>,
+            ) => Promise<TResult>,
             scenarios?: readonly QueryScenario[],
           ): QuerySlice<
             TName,

@@ -2,7 +2,6 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { SliceStoreAdapter } from '../adapters/contracts'
 import type { Event, EventDefinition, EventDraft } from './event'
-import type { MaybePromise } from './maybe-promise'
 export type {
   EventLogAdapter,
   SliceStore,
@@ -42,7 +41,7 @@ type EventForType<
 > = Event<TType, EventPayloadForType<TEventDefinitions[number], TType>>
 
 type ApplyHandler<TEvent extends Event, TState = unknown> = {
-  bivarianceHack(event: TEvent, state: TState): MaybePromise<void>
+  bivarianceHack(event: TEvent, state: TState): Promise<void>
 }['bivarianceHack']
 
 export type ApplyHandlers<
@@ -86,7 +85,7 @@ export type CommandSlice<
   handle: (
     command: StandardSchemaV1.InferOutput<TSchema>,
     state: TReadState,
-  ) => MaybePromise<EventDraft[]>
+  ) => Promise<EventDraft[]>
 }
 
 export type QuerySlice<
@@ -106,7 +105,7 @@ export type QuerySlice<
   handle: (
     query: StandardSchemaV1.InferOutput<TSchema>,
     state: TReadState,
-  ) => MaybePromise<TResult>
+  ) => Promise<TResult>
 }
 
 export type QueryRef<TRegistration> =
@@ -123,13 +122,11 @@ export type CommandRef<TRegistration> =
     ? { name: TName; payload?: StandardSchemaV1.InferOutput<TSchema> }
     : never
 
-export type CommandDispatch = (command: CommandEnvelope) => MaybePromise<void>
+export type CommandDispatch = (command: CommandEnvelope) => Promise<void>
 
-export type ReactionExec = (reaction: unknown) => MaybePromise<unknown>
+export type ReactionExec = (reaction: unknown) => Promise<unknown>
 
-export type ReactionPlugin = (
-  command: CommandDispatch,
-) => MaybePromise<ReactionExec>
+export type ReactionPlugin = (command: CommandDispatch) => Promise<ReactionExec>
 
 export type ReactionSlice<
   TName extends string = string,
@@ -144,7 +141,7 @@ export type ReactionSlice<
   apply: AnyApplyHandlers<TWriteState>
   plugin: ReactionPlugin
   scenarios?: readonly unknown[]
-  handle: (state: TReadState) => MaybePromise<TPayload | undefined>
+  handle: (state: TReadState) => Promise<TPayload | undefined>
 }
 
 type AnyCommandSlice = Omit<
@@ -152,7 +149,7 @@ type AnyCommandSlice = Omit<
   'handle'
 > & {
   handle: {
-    bivarianceHack(command: unknown, state: unknown): MaybePromise<EventDraft[]>
+    bivarianceHack(command: unknown, state: unknown): Promise<EventDraft[]>
   }['bivarianceHack']
 }
 
@@ -161,7 +158,7 @@ type AnyQuerySlice = Omit<
   'handle'
 > & {
   handle: {
-    bivarianceHack(query: unknown, state: unknown): MaybePromise<unknown>
+    bivarianceHack(query: unknown, state: unknown): Promise<unknown>
   }['bivarianceHack']
 }
 
@@ -170,7 +167,7 @@ type AnyReactionSlice = Omit<
   'handle'
 > & {
   handle: {
-    bivarianceHack(state: unknown): MaybePromise<unknown | undefined>
+    bivarianceHack(state: unknown): Promise<unknown | undefined>
   }['bivarianceHack']
 }
 

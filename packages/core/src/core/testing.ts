@@ -49,7 +49,7 @@ export async function decideCommand<TSlice extends CommandSlice>(
 ) {
   await replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
-  const state = slice.store.get(slice.name)
+  const state = await slice.store.get(slice.name)
 
   return slice.handle(scenario.when, state.read)
 }
@@ -60,7 +60,7 @@ export async function querySlice<TSlice extends QuerySlice>(
 ) {
   await replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
-  const state = slice.store.get(slice.name)
+  const state = await slice.store.get(slice.name)
 
   return slice.handle(
     await decodeSchema(slice.schema, scenario.when),
@@ -75,7 +75,7 @@ export async function reactToScenario<TPayload>(
   await replay([slice], autoOrder(scenario.given as readonly EventDraft[]))
 
   const payloads: TPayload[] = []
-  const state = slice.store.get(slice.name)
+  const state = await slice.store.get(slice.name)
   const payload = await slice.handle(state.read)
 
   if (payload !== undefined) {
@@ -93,7 +93,7 @@ export async function replay(
     for (const registration of registrations.filter(
       (item) => item.apply?.[event.type],
     )) {
-      const state = registration.store.get(registration.name)
+      const state = await registration.store.get(registration.name)
       const handler = registration.apply?.[event.type]
 
       if (handler) {
