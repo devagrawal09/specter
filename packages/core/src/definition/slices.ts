@@ -1,12 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { SliceStoreAdapter } from '../adapters/contracts'
-import type { Event, EventDefinition, EventDraft } from './event'
+import type { SliceStoreAdapter } from '../adapters/slice-store'
+import type { Event, EventDefinition, EventDraft } from './events'
 export type {
   EventLogAdapter,
+  ReactionScheduler,
   SliceStore,
   SliceStoreAdapter,
-} from '../adapters/contracts'
+} from '../adapters'
 
 export type ApplyEventDefinition<
   TType extends string = string,
@@ -109,7 +110,13 @@ export type QuerySlice<
 }
 
 export type QueryRef<TRegistration> =
-  TRegistration extends QuerySlice<infer TName, infer TSchema, infer TResult>
+  TRegistration extends QuerySlice<
+    infer TName,
+    infer TSchema,
+    infer TResult,
+    infer _TWrite,
+    infer _TRead
+  >
     ? {
         name: TName
         result?: TResult
@@ -118,7 +125,12 @@ export type QueryRef<TRegistration> =
     : never
 
 export type CommandRef<TRegistration> =
-  TRegistration extends CommandSlice<infer TName, infer TSchema>
+  TRegistration extends CommandSlice<
+    infer TName,
+    infer TSchema,
+    infer _TWrite,
+    infer _TRead
+  >
     ? { name: TName; payload?: StandardSchemaV1.InferOutput<TSchema> }
     : never
 

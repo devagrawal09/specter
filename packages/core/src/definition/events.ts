@@ -1,6 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import { decodeSchema } from './schema'
+import { decodeSchema } from './schemas'
 
 export type EventDraft<TType extends string = string, TPayload = unknown> = {
   type: TType

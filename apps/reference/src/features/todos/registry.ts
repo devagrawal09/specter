@@ -7,6 +7,7 @@ import todoCompletionCheer from './todo-completion-cheer-reaction/slice'
 import todosQuery from './todos-query/slice'
 import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { sqliteEventLog } from '../../db/specter-sqlite'
+import { reactionScheduler } from '../../reaction-scheduler'
 import { todoEventDefinitions } from './events'
 
 export const todoRegistrations = [
@@ -22,6 +23,7 @@ export const todoRegistrations = [
 export const todoSpecterAppConfig = {
   events: todoEventDefinitions,
   eventLog: sqliteEventLog,
+  scheduler: reactionScheduler,
   slices: todoRegistrations,
 } as const
 

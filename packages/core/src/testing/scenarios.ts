@@ -1,13 +1,12 @@
 import { describe, expect, it } from 'vitest'
-
-import type { EventDraft } from './event'
-import type { SliceRegistration } from './slice'
-import type {
-  CommandScenario,
-  QueryScenario,
-  ReactionScenario,
-} from './testing'
-import { decideCommand, querySlice, reactToScenario } from './testing'
+import {
+  decodeSchema,
+  type CommandScenario,
+  type EventDraft,
+  type QueryScenario,
+  type ReactionScenario,
+  type SliceRegistration,
+} from '../definition'
 
 export type ScenarioTestOptions = {
   runScenario?: <T>(run: () => Promise<T>) => Promise<T>
@@ -65,10 +64,10 @@ function testCommandScenario(
   it(scenario.description, async () => {
     const result = await runScenario(async () => {
       try {
-        return {
-          _tag: 'Right' as const,
-          right: await decideCommand(registration, scenario),
-        }
+        await replay([registration], scenario.given as EventDraft[])
+        const state = await registration.store.get(registration.name)
+        const right = await registration.handle(scenario.when, state.read)
+        return { _tag: 'Right' as const, right }
       } catch (error) {
         return { _tag: 'Left' as const, left: error }
       }
@@ -119,7 +118,14 @@ function testQueryScenario(
   runScenario: <T>(run: () => Promise<T>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
-    const result = await runScenario(() => querySlice(registration, scenario))
+    const result = await runScenario(async () => {
+      await replay([registration], scenario.given as EventDraft[])
+      const state = await registration.store.get(registration.name)
+      return registration.handle(
+        await decodeSchema(registration.schema, scenario.when),
+        state.read,
+      )
+    })
 
     expect(result).toEqual(scenario.expect)
   })
@@ -131,9 +137,17 @@ function testReactionScenario(
   runScenario: <T>(run: () => Promise<T>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
-    const result = await runScenario(() =>
-      reactToScenario(registration, scenario),
-    )
+    const result = await runScenario(async () => {
+      await replay([registration], scenario.given as EventDraft[])
+      const payloads = []
+      const state = await registration.store.get(registration.name)
+      const payload = await registration.handle(state.read)
+
+      if (payload !== undefined) {
+        payloads.push(payload)
+      }
+      return payloads
+    })
 
     expect(result).toEqual(scenario.expect)
   })
@@ -225,4 +239,35 @@ function isIdentifierKey(key: string) {
     key.endsWith('_id') ||
     key.endsWith('_ID')
   )
+}
+
+export async function replay(
+  registrations: SliceRegistration[],
+  events: EventDraft[],
+) {
+  for (const [index, event] of events.entries()) {
+    const id = `scenario-event-${index + 1}`
+    const order = index + 1
+    const recordedAt = new Date(0)
+
+    for (const registration of registrations.filter(
+      (item) => item.apply?.[event.type],
+    )) {
+      const state = await registration.store.get(registration.name)
+      const handler = registration.apply?.[event.type]
+
+      if (handler) {
+        await handler(
+          {
+            ...event,
+            id,
+            recordedAt,
+          },
+          state.write,
+        )
+      }
+
+      await state.setLastAppliedOrder(order)
+    }
+  }
 }

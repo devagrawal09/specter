@@ -29,8 +29,12 @@ Instructional material included with a Specter Project to teach coding agents ho
 _Avoid_: Framework API, generated app feature
 
 **Reference application**:
-An executable application used to prove Specter's canonical framework API and demonstrate intended usage. A Reference application should not lag behind the intended Specter API.
+An executable application used to prove Specter's canonical framework API and demonstrate intended usage. Multiple Reference applications may coexist to exercise different Specter capabilities; a Reference application should not lag behind the intended Specter API and is not automatically the Starter Template.
 _Avoid_: Product app, primary app
+
+**Workspace**:
+In the Threadplane-style Reference application, a conversation and work surface that owns messages, agents, participants, and workspace files. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
+_Avoid_: Channel, Workstream, Project
 
 **Product Site**:
 The public-facing site for presenting Specter itself and collecting interest from prospective users. A Product Site is distinct from a Reference application, even when it dogfoods Specter concepts.
@@ -61,7 +65,7 @@ The per-slice record of the last Event Log order applied to that Slice's Slice S
 _Avoid_: App-wide checkpoint
 
 **Command Slice**:
-A slice that defines exactly one command and decides which events should be emitted when that command is accepted. The Command Slice name is the command type clients dispatch, and the slice may maintain event-derived decision state before handling the command. Command catch-up, read-only decision handling, and event append happen in one transaction; Events emitted by one accepted command append atomically and in order, then self-emitted Events are applied later through normal catch-up.
+A slice that defines exactly one command and decides which events should be emitted when that command is accepted. An accepted command emits at least one Event; a command that would emit no Events is a Rejected Command. The Command Slice name is the command type clients dispatch, and the slice may maintain event-derived decision state before handling the command. Command catch-up, read-only decision handling, and event append happen in one transaction; Events emitted by one accepted command append atomically and in order, then self-emitted Events are applied later through normal catch-up.
 _Avoid_: Stateless command handler, query reader
 
 **Reaction Slice**:
@@ -75,6 +79,14 @@ _Avoid_: Reaction command
 **Reaction Plugin**:
 The explicit interpreter for a Reaction Slice's Reaction Effect, selected when the Reaction Slice is defined. Same-app command dispatch and cross-app command dispatch are both modeled as explicit Reaction Plugins.
 _Avoid_: Hidden default reaction behavior, app registry import
+
+**Reaction Run**:
+A runtime pass where a Specter App lets registered Reaction Slices catch up to new Events and execute any resulting Reaction Effects. A Reaction Run may request another Reaction Run when a Reaction Effect dispatches a command that appends more Events.
+_Avoid_: Reaction queue, background job
+
+**Reaction Scheduler**:
+The app-level collaborator that owns pending and active Reaction Run state and decides when requested Reaction Runs execute. A Reaction Scheduler tracks run requests, not durable Reaction Effects.
+_Avoid_: Reaction Queue, effect queue
 
 **Reaction Run Failure**:
 An aggregate failure reported after a reaction run processes all unrelated Reaction Slices and Reaction Effects it can. It includes the failed Reaction Slice names and causes.
@@ -101,7 +113,7 @@ The ordered durable record of registered Events owned by a Specter App and acces
 _Avoid_: Per-feature log
 
 **Rejected Command**:
-A command that is not accepted and does not emit events. A rejected command returns a standard failure envelope with a domain-defined reason instead of appending to the event log.
+A command that is not accepted and does not emit Events. A command that would produce no Events violates the accepted-command contract and is rejected rather than treated as a successful no-op. A rejected command rejects the command promise instead of appending to the Event Log.
 _Avoid_: Error event
 
 **Invalid Command Input**:

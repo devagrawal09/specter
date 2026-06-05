@@ -3,34 +3,22 @@ export type {
   EventDefinition,
   EventDraft,
   PersistedEvent,
-} from './core/event'
-export { createEventDefinition } from './core/event'
-export { defineSpecterClient } from './transports/client'
-export type { SpecterClient } from './transports/client'
+} from './definition'
+export { createEventDefinition } from './definition'
+export { defineSpecterClient } from './client'
+export type { SpecterClient } from './client'
 export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
   defineApplyHandlers,
-} from './core/builders'
-export { createSpecterApp, ReactionRunFailure } from './core/registry'
+} from './definition'
+export { createSpecterApp, ReactionRunFailure } from './runtime'
 export type {
   ReactionRunFailureDetail,
   SpecterApp,
   SpecterAppConfig,
-} from './core/registry'
-export {
-  autoOrder,
-  decideCommand,
-  querySlice,
-  reactToScenario,
-  replay,
-} from './core/testing'
-export type {
-  CommandScenario,
-  QueryScenario,
-  ReactionScenario,
-} from './core/testing'
+} from './runtime'
 export type {
   ApplyHandlers,
   CommandRef,
@@ -43,9 +31,10 @@ export type {
   ReactionSlice,
   SliceRegistration,
   QueryRef,
-} from './core/slice'
+} from './definition'
 export type {
   EventLogAdapter,
+  ReactionScheduler,
   SliceStore,
   SliceStoreAdapter,
-} from './adapters/contracts'
+} from './adapters'

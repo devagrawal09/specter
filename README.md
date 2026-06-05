@@ -9,6 +9,7 @@ packages/core/             @specter-ts/core framework/runtime package
 packages/create-specter/   create-specter initializer CLI
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
+apps/threadplane-reference/ Threadplane-style workspace Reference application
 ```
 
 ## Create A Project
@@ -40,9 +41,10 @@ pnpm typecheck
 pnpm test
 pnpm dev
 pnpm dev:booking
+pnpm dev:threadplane
 ```
 
-The dev and preview servers use the fixed port `41731`.
+The existing Reference applications use fixed port `41731`; the Threadplane Reference application uses fixed port `41732`.
 
 Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
 

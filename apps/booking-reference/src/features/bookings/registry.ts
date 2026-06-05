@@ -1,5 +1,6 @@
 import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { sqliteEventLog } from '../../db/specter-sqlite'
+import { reactionScheduler } from '../../reaction-scheduler'
 import approveBooking from './approve-booking/slice'
 import approvalNotificationReaction from './approval-notification-reaction/slice'
 import bookingActivityQuery from './booking-activity-query/slice'
@@ -36,6 +37,7 @@ export const bookingRegistrations = [
 export const bookingSpecterAppConfig = {
   events: bookingEventDefinitions,
   eventLog: sqliteEventLog,
+  scheduler: reactionScheduler,
   slices: bookingRegistrations,
 } as const
 

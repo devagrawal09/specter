@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { SpecterAppConfig } from '../core/registry'
-import type { SliceRegistration } from '../core/slice'
+import type { SliceRegistration } from '../definition'
+import type { SpecterAppConfig } from '../runtime'
 
 const specterClientBrand: unique symbol = Symbol('SpecterClient')
 const specterClientBrandValue: true = true

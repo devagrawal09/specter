@@ -1,8 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { EventLogAdapter, SliceStore } from '../adapters/contracts'
-import type { EventDraft, PersistedEvent } from './event'
-import { decodeSchema } from './schema'
+import type {
+  EventLogAdapter,
+  ReactionScheduler,
+  SliceStore,
+} from '../adapters'
+import { decodeSchema, type EventDraft } from '../definition'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -10,7 +13,8 @@ import type {
   ReactionExec,
   ReactionSlice,
   SliceRegistration,
-} from './slice'
+} from '../definition'
+import { ReactionRunFailure, type ReactionRunFailureDetail } from './errors'
 
 export type SpecterAppConfig = {
   readonly events: readonly {
@@ -18,21 +22,39 @@ export type SpecterAppConfig = {
     readonly decode: (payload: unknown) => Promise<unknown>
   }[]
   readonly eventLog: EventLogAdapter
+  readonly scheduler: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
 }
 
 type CommandInput<TSlice> =
-  TSlice extends CommandSlice<string, infer TSchema>
+  TSlice extends CommandSlice<
+    string,
+    infer TSchema,
+    infer _TWrite,
+    infer _TRead
+  >
     ? StandardSchemaV1.InferOutput<TSchema>
     : never
 
 type QueryInput<TSlice> =
-  TSlice extends QuerySlice<string, infer TSchema>
+  TSlice extends QuerySlice<
+    string,
+    infer TSchema,
+    infer _TResult,
+    infer _TWrite,
+    infer _TRead
+  >
     ? StandardSchemaV1.InferOutput<TSchema>
     : never
 
 type QueryOutput<TSlice> =
-  TSlice extends QuerySlice<string, infer _TSchema, infer TResult>
+  TSlice extends QuerySlice<
+    string,
+    infer _TSchema,
+    infer TResult,
+    infer _TWrite,
+    infer _TRead
+  >
     ? TResult
     : never
 
@@ -57,24 +79,6 @@ type PreparedReactionEffect = {
   readonly reaction: ReactionSlice<string, unknown>
   readonly exec: ReactionExec
   readonly effect: unknown
-}
-
-export type ReactionRunFailureDetail = {
-  readonly sliceName: string
-  readonly cause: unknown
-}
-
-export class ReactionRunFailure extends AggregateError {
-  readonly failures: readonly ReactionRunFailureDetail[]
-
-  constructor(failures: readonly ReactionRunFailureDetail[]) {
-    super(
-      failures.map(({ cause }) => cause),
-      reactionRunFailureMessage(failures),
-    )
-    this.name = 'ReactionRunFailure'
-    this.failures = failures
-  }
 }
 
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
@@ -146,21 +150,21 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
       if (!command) throw new Error(`Unknown command: ${c.type}`)
 
       await runCommand(command, c.payload)
-      reactionDrainRequested = true
+      reactions.request()
     })
 
     reactionExecs.set(reaction.name, exec)
     return exec
   }
 
-  let reactionDrainRequested = false
-  let activeReactionDrain: Promise<void> | undefined
+  const reactions = config.scheduler.bind(runReactionPass)
   const app: Record<string, unknown> = {}
 
   for (const command of Object.values(slicesByKind.commands)) {
     app[command.name] = async (input: unknown) => {
       await runCommand(command, input)
-      await requestReactionDrain()
+      reactions.request()
+      await reactions.waitForIdle()
     }
   }
 
@@ -228,6 +232,10 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
         await catchUpSlice(commandSlice, store, eventLog)
 
         const events = await commandSlice.handle(parsedCommand, store.read)
+        if (events.length === 0) {
+          throw new Error(`Command emitted no events: ${commandSlice.name}`)
+        }
+
         const decodedEvents = await Promise.all(events.map(decodeEventDraft))
 
         await eventLog.append(decodedEvents)
@@ -245,72 +253,49 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     })
   }
 
-  function requestReactionDrain() {
-    reactionDrainRequested = true
+  async function runReactionPass() {
+    const runnableEffects: PreparedReactionEffect[] = []
+    const failures: ReactionRunFailureDetail[] = []
 
-    if (!activeReactionDrain) {
-      activeReactionDrain = loopReactionDrain().finally(() => {
-        activeReactionDrain = undefined
-      })
+    for (const reaction of Object.values(slicesByKind.reactions)) {
+      try {
+        const preparedEffect = await reaction.store.transaction(
+          reaction.name,
+          async (store) => {
+            const { advanced } = await catchUpSlice(reaction, store)
+
+            if (!advanced) return undefined
+
+            const effect = await reaction.handle(store.read)
+
+            if (effect === undefined) return undefined
+
+            const exec = await getReactionExec(reaction)
+
+            return {
+              reaction,
+              exec,
+              effect,
+            } satisfies PreparedReactionEffect
+          },
+        )
+
+        if (preparedEffect) runnableEffects.push(preparedEffect)
+      } catch (cause) {
+        failures.push({ sliceName: reaction.name, cause })
+      }
     }
-    return activeReactionDrain
+
+    for (const { reaction, exec, effect } of runnableEffects) {
+      try {
+        await exec(effect)
+      } catch (cause) {
+        failures.push({ sliceName: reaction.name, cause })
+      }
+    }
+
+    if (failures.length) {
+      throw new ReactionRunFailure(failures)
+    }
   }
-
-  async function loopReactionDrain() {
-    do {
-      reactionDrainRequested = false
-
-      const runnableEffects: PreparedReactionEffect[] = []
-      const failures: ReactionRunFailureDetail[] = []
-
-      for (const reaction of Object.values(slicesByKind.reactions)) {
-        try {
-          const preparedEffect = await reaction.store.transaction(
-            reaction.name,
-            async (store) => {
-              const { advanced } = await catchUpSlice(reaction, store)
-
-              if (!advanced) return undefined
-
-              const effect = await reaction.handle(store.read)
-
-              if (effect === undefined) return undefined
-
-              const exec = await getReactionExec(reaction)
-
-              return {
-                reaction,
-                exec,
-                effect,
-              } satisfies PreparedReactionEffect
-            },
-          )
-
-          if (preparedEffect) runnableEffects.push(preparedEffect)
-        } catch (cause) {
-          failures.push({ sliceName: reaction.name, cause })
-        }
-      }
-
-      for (const { reaction, exec, effect } of runnableEffects) {
-        try {
-          await exec(effect)
-        } catch (cause) {
-          failures.push({ sliceName: reaction.name, cause })
-        }
-      }
-
-      if (failures.length) {
-        throw new ReactionRunFailure(failures)
-      }
-    } while (reactionDrainRequested)
-  }
-}
-
-function reactionRunFailureMessage(
-  failures: readonly ReactionRunFailureDetail[],
-) {
-  const sliceNames = [...new Set(failures.map(({ sliceName }) => sliceName))]
-
-  return `Reaction run failed for: ${sliceNames.join(', ')}`
 }

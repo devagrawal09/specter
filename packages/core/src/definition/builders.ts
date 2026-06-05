@@ -1,11 +1,11 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { EventDraft } from './event'
+import type { EventDraft } from './events'
 import type {
   CommandScenario,
   QueryScenario,
   ReactionScenario,
-} from './testing'
+} from './scenario-types'
 import type {
   ApplyHandlers,
   ApplyEventDefinition,
@@ -14,8 +14,8 @@ import type {
   ReactionPlugin,
   ReactionSlice,
   SliceStoreAdapter,
-} from './slice'
-export { defineApplyHandlers } from './slice'
+} from './slices'
+export { defineApplyHandlers } from './slices'
 
 type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
   readonly ApplyEventDefinition[],
@@ -307,7 +307,7 @@ export function createQuerySlice<const TName extends string>(
 export function createReactionSlice<const TName extends string>(
   name: TName,
   description: string,
-): ReactionStep<TName, import('./slice').CommandEnvelope> {
+): ReactionStep<TName, import('./slices').CommandEnvelope> {
   return createReactionStep(name, description)
 }
 
