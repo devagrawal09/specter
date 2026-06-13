@@ -1,8 +1,8 @@
 import { testScenarios } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import { chatRegistrations } from './registry'
+import { workspaceRegistrations } from './registry'
 
-testScenarios(chatRegistrations, {
+testScenarios(workspaceRegistrations, {
   runScenario: sqliteScenario,
 })

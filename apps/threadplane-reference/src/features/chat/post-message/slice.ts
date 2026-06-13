@@ -1,7 +1,7 @@
 import { createCommandSlice } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { messagePostedEvent } from '../events'
 
 const postMessage = createCommandSlice(
@@ -16,7 +16,7 @@ const postMessage = createCommandSlice(
       parentMessageId: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(createSqliteSliceStore(() => ({})))
   .scenarios({
     description: 'Posts a trimmed user message.',
     given: [],

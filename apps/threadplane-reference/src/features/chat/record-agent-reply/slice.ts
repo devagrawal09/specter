@@ -1,7 +1,7 @@
 import { createCommandSlice } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { messagePostedEvent } from '../events'
 
 const recordAgentReply = createCommandSlice(
@@ -17,7 +17,7 @@ const recordAgentReply = createCommandSlice(
       content: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(createSqliteSliceStore(() => ({})))
   .scenarios({
     description: 'Records an agent reply beneath the triggering message.',
     given: [],

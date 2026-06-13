@@ -2,7 +2,7 @@ import { createQuerySlice } from '@specter-ts/core'
 import type { Event } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { messagePostedEvent } from '../events'
 
 type ChatMessage = {
@@ -30,7 +30,7 @@ const chatMessagesQuery = createQuerySlice(
       workspaceId: z.string(),
     }),
   )
-  .store(createMemorySliceStore<ChatMessagesState>(() => ({ messages: [] })))
+  .store(createSqliteSliceStore<ChatMessagesState>(() => ({ messages: [] })))
   .apply({
     [messagePostedEvent.type]: async (
       event: Event<typeof messagePostedEvent.type, unknown>,

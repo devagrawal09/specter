@@ -1,7 +1,7 @@
 import { createReactionSlice } from '@specter-ts/core'
 import type { Event } from '@specter-ts/core'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { messagePostedEvent } from '../events'
 
 type AgentReplyMessage = {
@@ -23,7 +23,7 @@ const simulatedAgentReplyReaction = createReactionSlice(
 )
   .plugin(async (command) => async (payload) => command(payload as never))
   .store(
-    createMemorySliceStore<SimulatedAgentReplyState>(() => ({
+    createSqliteSliceStore<SimulatedAgentReplyState>(() => ({
       messages: [],
       repliedToMessageIds: new Set(),
     })),
