@@ -1,4 +1,9 @@
-import { createEffect, createResource, onCleanup } from 'solid-js'
+import {
+  createEffect,
+  createResource,
+  onCleanup,
+  startTransition,
+} from 'solid-js'
 
 type ResourceSource<T> = () => T | null | undefined | false
 
@@ -24,6 +29,19 @@ export function createPollingResource<TSource, TValue>(
     { initialValue: options?.initialValue },
   )
 
+  const refetch = ((info?: unknown) => {
+    let result: ReturnType<typeof actions.refetch> | undefined
+
+    const transition = startTransition(() => {
+      result = actions.refetch(info as never)
+    })
+
+    return (
+      result ??
+      (transition.then(() => result) as ReturnType<typeof actions.refetch>)
+    )
+  }) as typeof actions.refetch
+
   createEffect(() => {
     const enabled = options?.enabled ?? true
     const value = source()
@@ -32,11 +50,11 @@ export function createPollingResource<TSource, TValue>(
 
     const intervalMs = options?.intervalMs ?? 5000
     const timer = setInterval(() => {
-      if (!resource.loading) void actions.refetch()
+      if (!resource.loading) void refetch()
     }, intervalMs)
 
     onCleanup(() => clearInterval(timer))
   })
 
-  return [resource, actions] as const
+  return [resource, { ...actions, refetch }] as const
 }

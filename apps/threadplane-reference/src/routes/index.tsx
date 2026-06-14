@@ -8,6 +8,7 @@ import {
   createResource,
   createSignal,
   on,
+  startTransition,
 } from 'solid-js'
 
 import { createPollingResource } from '../lib/create-polling-resource'
@@ -67,10 +68,12 @@ function Home() {
         !activeWorkspaceId() ||
         !items.some((item) => item.id === activeWorkspaceId())
       ) {
-        setActiveWorkspaceId(items[0].id)
-        setSelectedPath(null)
-        setSelectedFilePath(null)
-        setActiveRunId(null)
+        void startTransition(() => {
+          setActiveWorkspaceId(items[0].id)
+          setSelectedPath(null)
+          setSelectedFilePath(null)
+          setActiveRunId(null)
+        })
       }
     }),
   )
@@ -108,7 +111,9 @@ function Home() {
   createEffect(
     on(runs, (items) => {
       const latest = items?.[items.length - 1]
-      if (!activeRunId() && latest) setActiveRunId(latest.runId)
+      if (!activeRunId() && latest) {
+        void startTransition(() => setActiveRunId(latest.runId))
+      }
     }),
   )
 
@@ -147,9 +152,11 @@ function Home() {
       await refetchWorkspaces()
       const newest = created.at(-1)
       if (newest) {
-        setActiveWorkspaceId(newest.id)
-        setSelectedPath(null)
-        setSelectedFilePath(null)
+        void startTransition(() => {
+          setActiveWorkspaceId(newest.id)
+          setSelectedPath(null)
+          setSelectedFilePath(null)
+        })
         await requestScanFn({
           data: {
             workspaceId: newest.id,
@@ -224,7 +231,7 @@ function Home() {
       },
     })
     const nextRun = runs()?.at(runsBefore) ?? runs()?.at(-1)
-    if (nextRun) setActiveRunId(nextRun.runId)
+    if (nextRun) void startTransition(() => setActiveRunId(nextRun.runId))
   }
 
   const treeNodes = createMemo(() => tree() ?? [])
