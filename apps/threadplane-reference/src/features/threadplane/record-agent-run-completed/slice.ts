@@ -6,7 +6,7 @@ import { agentRunCompletedEvent } from '../events'
 
 const recordAgentRunCompleted = createCommandSlice(
   'recordAgentRunCompleted',
-  'Persists that an Agent Run completed.',
+  'Records that an Agent Run completed.',
 )
   .schema(
     z.object({
@@ -16,6 +16,24 @@ const recordAgentRunCompleted = createCommandSlice(
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  .handle(async (command) => [agentRunCompletedEvent.create(command)])
+  .scenarios({
+    description: 'Records successful completion of an Agent Run.',
+    given: [],
+    when: {
+      runId: 'run-1',
+      workspaceId: 'workspace-1',
+      agentId: 'specter',
+    },
+    expect: [
+      agentRunCompletedEvent.create({
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+      }),
+    ],
+  })
+  .handle(async () => {
+    throw new Error('TODO: implement recordAgentRunCompleted')
+  })
 
 export default recordAgentRunCompleted

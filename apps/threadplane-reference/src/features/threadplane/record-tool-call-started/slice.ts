@@ -6,7 +6,7 @@ import { toolCallStartedEvent } from '../events'
 
 const recordToolCallStarted = createCommandSlice(
   'recordToolCallStarted',
-  'Persists that an Agent Run tool call started.',
+  'Records that an Agent Run tool call started.',
 )
   .schema(
     z.object({
@@ -15,10 +15,34 @@ const recordToolCallStarted = createCommandSlice(
       workspaceId: z.string(),
       agentId: z.string(),
       toolName: z.string(),
-      input: z.unknown(),
+      inputSummary: z.string().optional(),
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  .handle(async (command) => [toolCallStartedEvent.create(command)])
+  .scenarios({
+    description: 'Records the start of a tool call from an Agent Run.',
+    given: [],
+    when: {
+      toolCallId: 'tool-call-1',
+      runId: 'run-1',
+      workspaceId: 'workspace-1',
+      agentId: 'specter',
+      toolName: 'readFile',
+      inputSummary: 'Read src/index.ts',
+    },
+    expect: [
+      toolCallStartedEvent.create({
+        toolCallId: 'tool-call-1',
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+        toolName: 'readFile',
+        inputSummary: 'Read src/index.ts',
+      }),
+    ],
+  })
+  .handle(async () => {
+    throw new Error('TODO: implement recordToolCallStarted')
+  })
 
 export default recordToolCallStarted

@@ -2,11 +2,11 @@ import { createCommandSlice } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
-import { toolCallFailedEvent } from '../events'
+import { toolCallFailedEvent, toolCallStartedEvent } from '../events'
 
 const recordToolCallFailed = createCommandSlice(
   'recordToolCallFailed',
-  'Persists that an Agent Run tool call failed.',
+  'Records that an Agent Run tool call failed.',
 )
   .schema(
     z.object({
@@ -19,6 +19,39 @@ const recordToolCallFailed = createCommandSlice(
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  .handle(async (command) => [toolCallFailedEvent.create(command)])
+  .scenarios({
+    description: 'Records a failed tool call with its error message.',
+    given: [
+      toolCallStartedEvent.create({
+        toolCallId: 'tool-call-1',
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+        toolName: 'readFile',
+        inputSummary: 'Read missing.ts',
+      }),
+    ],
+    when: {
+      toolCallId: 'tool-call-1',
+      runId: 'run-1',
+      workspaceId: 'workspace-1',
+      agentId: 'specter',
+      toolName: 'readFile',
+      error: 'File not found',
+    },
+    expect: [
+      toolCallFailedEvent.create({
+        toolCallId: 'tool-call-1',
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+        toolName: 'readFile',
+        error: 'File not found',
+      }),
+    ],
+  })
+  .handle(async () => {
+    throw new Error('TODO: implement recordToolCallFailed')
+  })
 
 export default recordToolCallFailed

@@ -6,7 +6,7 @@ import { agentRunStartedEvent } from '../events'
 
 const recordAgentRunStarted = createCommandSlice(
   'recordAgentRunStarted',
-  'Persists that an Agent Run started.',
+  'Records that an Agent Run started.',
 )
   .schema(
     z.object({
@@ -16,6 +16,24 @@ const recordAgentRunStarted = createCommandSlice(
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  .handle(async (command) => [agentRunStartedEvent.create(command)])
+  .scenarios({
+    description: 'Records the start of a requested Agent Run.',
+    given: [],
+    when: {
+      runId: 'run-1',
+      workspaceId: 'workspace-1',
+      agentId: 'specter',
+    },
+    expect: [
+      agentRunStartedEvent.create({
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+      }),
+    ],
+  })
+  .handle(async () => {
+    throw new Error('TODO: implement recordAgentRunStarted')
+  })
 
 export default recordAgentRunStarted

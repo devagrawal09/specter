@@ -20,39 +20,139 @@ export const postCreatedEvent = createEventDefinition(
   z.object({
     postId: z.string(),
     workspaceId: z.string(),
-    author: z.object({
-      type: z.enum(['user', 'agent']),
-      displayName: z.string(),
-      agentId: z.string().optional(),
-    }),
+    author: z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('user'),
+        userId: z.string().optional(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('agent'),
+        agentId: z.string(),
+        displayName: z.string(),
+      }),
+    ]),
     content: z.string(),
+    sourceRunId: z.string().optional(),
   }),
 )
 
-export const repliedToPostEvent = createEventDefinition(
-  'repliedToPost',
+export const postReplyCreatedEvent = createEventDefinition(
+  'postReplyCreated',
   z.object({
     replyId: z.string(),
     workspaceId: z.string(),
-    postId: z.string(),
     parentPostId: z.string(),
-    author: z.object({
-      type: z.enum(['user', 'agent']),
-      displayName: z.string(),
-      agentId: z.string().optional(),
-    }),
+    author: z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('user'),
+        userId: z.string().optional(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('agent'),
+        agentId: z.string(),
+        displayName: z.string(),
+      }),
+    ]),
     content: z.string(),
+    sourceRunId: z.string().optional(),
   }),
 )
 
-export const agentTriggeredEvent = createEventDefinition(
-  'agentTriggered',
+export const workspaceFilesystemInitializedEvent = createEventDefinition(
+  'workspaceFilesystemInitialized',
   z.object({
-    triggerId: z.string(),
     workspaceId: z.string(),
-    postId: z.string(),
-    agentId: z.string(),
-    agentName: z.string(),
+  }),
+)
+
+export const workspaceFilesystemScanRequestedEvent = createEventDefinition(
+  'workspaceFilesystemScanRequested',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
+    requestedBy: z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('user'),
+        userId: z.string().optional(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('agent'),
+        agentId: z.string(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('system'),
+      }),
+    ]),
+  }),
+)
+
+export const workspaceFilesystemScanStartedEvent = createEventDefinition(
+  'workspaceFilesystemScanStarted',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+  }),
+)
+
+export const workspaceFilesystemScanCompletedEvent = createEventDefinition(
+  'workspaceFilesystemScanCompleted',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    discoveredNodeCount: z.number().int().nonnegative(),
+    changedNodeCount: z.number().int().nonnegative(),
+    deletedNodeCount: z.number().int().nonnegative(),
+  }),
+)
+
+export const workspaceFilesystemScanFailedEvent = createEventDefinition(
+  'workspaceFilesystemScanFailed',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    error: z.string(),
+  }),
+)
+
+export const filesystemNodeDiscoveredEvent = createEventDefinition(
+  'filesystemNodeDiscovered',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    path: z.string(),
+    parentPath: z.string().nullable(),
+    name: z.string(),
+    kind: z.enum(['file', 'directory']),
+    sizeBytes: z.number().int().nonnegative().nullable(),
+    modifiedAt: z.string().optional(),
+  }),
+)
+
+export const filesystemNodeChangedEvent = createEventDefinition(
+  'filesystemNodeChanged',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    path: z.string(),
+    parentPath: z.string().nullable(),
+    name: z.string(),
+    kind: z.enum(['file', 'directory']),
+    sizeBytes: z.number().int().nonnegative().nullable(),
+    modifiedAt: z.string().optional(),
+  }),
+)
+
+export const filesystemNodeDeletedEvent = createEventDefinition(
+  'filesystemNodeDeleted',
+  z.object({
+    scanId: z.string(),
+    workspaceId: z.string(),
+    path: z.string(),
   }),
 )
 
@@ -64,11 +164,21 @@ export const agentRunRequestedEvent = createEventDefinition(
     postId: z.string().optional(),
     agentId: z.string(),
     agentName: z.string(),
-    requestedBy: z.object({
-      type: z.enum(['user', 'workspace', 'system']),
-      userId: z.string().optional(),
-      displayName: z.string().optional(),
-    }),
+    requestedBy: z.discriminatedUnion('type', [
+      z.object({
+        type: z.literal('user'),
+        userId: z.string().optional(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('agent'),
+        agentId: z.string(),
+        displayName: z.string(),
+      }),
+      z.object({
+        type: z.literal('system'),
+      }),
+    ]),
   }),
 )
 
@@ -88,6 +198,7 @@ export const agentRunStreamedEvent = createEventDefinition(
     workspaceId: z.string(),
     agentId: z.string(),
     chunkId: z.string(),
+    sequence: z.number().int().nonnegative(),
     delta: z.string(),
   }),
 )
@@ -119,7 +230,7 @@ export const toolCallStartedEvent = createEventDefinition(
     workspaceId: z.string(),
     agentId: z.string(),
     toolName: z.string(),
-    input: z.unknown(),
+    inputSummary: z.string().optional(),
   }),
 )
 
@@ -131,7 +242,7 @@ export const toolCallCompletedEvent = createEventDefinition(
     workspaceId: z.string(),
     agentId: z.string(),
     toolName: z.string(),
-    output: z.unknown(),
+    outputSummary: z.string().optional(),
   }),
 )
 
@@ -150,8 +261,15 @@ export const toolCallFailedEvent = createEventDefinition(
 export const threadplaneEventDefinitions = [
   workspaceCreatedEvent,
   postCreatedEvent,
-  repliedToPostEvent,
-  agentTriggeredEvent,
+  postReplyCreatedEvent,
+  workspaceFilesystemInitializedEvent,
+  workspaceFilesystemScanRequestedEvent,
+  workspaceFilesystemScanStartedEvent,
+  workspaceFilesystemScanCompletedEvent,
+  workspaceFilesystemScanFailedEvent,
+  filesystemNodeDiscoveredEvent,
+  filesystemNodeChangedEvent,
+  filesystemNodeDeletedEvent,
   agentRunRequestedEvent,
   agentRunStartedEvent,
   agentRunStreamedEvent,

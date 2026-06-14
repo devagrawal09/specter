@@ -6,7 +6,7 @@ import { agentRunStreamedEvent } from '../events'
 
 const recordAgentRunStreamed = createCommandSlice(
   'recordAgentRunStreamed',
-  'Persists streamed Agent Run output.',
+  'Records streamed Agent Run text output.',
 )
   .schema(
     z.object({
@@ -14,10 +14,35 @@ const recordAgentRunStreamed = createCommandSlice(
       workspaceId: z.string(),
       agentId: z.string(),
       chunkId: z.string(),
+      sequence: z.number().int().nonnegative(),
       delta: z.string(),
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  .handle(async (command) => [agentRunStreamedEvent.create(command)])
+  .scenarios({
+    description: 'Records a streamed text chunk from an Agent Run.',
+    given: [],
+    when: {
+      runId: 'run-1',
+      workspaceId: 'workspace-1',
+      agentId: 'specter',
+      chunkId: 'chunk-1',
+      sequence: 0,
+      delta: 'I found ',
+    },
+    expect: [
+      agentRunStreamedEvent.create({
+        runId: 'run-1',
+        workspaceId: 'workspace-1',
+        agentId: 'specter',
+        chunkId: 'chunk-1',
+        sequence: 0,
+        delta: 'I found ',
+      }),
+    ],
+  })
+  .handle(async () => {
+    throw new Error('TODO: implement recordAgentRunStreamed')
+  })
 
 export default recordAgentRunStreamed

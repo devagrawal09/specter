@@ -2,18 +2,16 @@ import { createCommandSlice } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
-import { agentRunRequestedEvent } from '../events'
+import { workspaceFilesystemScanRequestedEvent } from '../events'
 
-const requestAgentRun = createCommandSlice(
-  'requestAgentRun',
-  'Requests an Agent Run for workspace agent work.',
+const requestWorkspaceFilesystemScan = createCommandSlice(
+  'requestWorkspaceFilesystemScan',
+  'Requests a workspace filesystem metadata scan.',
 )
   .schema(
     z.object({
       workspaceId: z.string(),
-      postId: z.string().optional(),
-      agentId: z.string(),
-      agentName: z.string(),
+      reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
       requestedBy: z.discriminatedUnion('type', [
         z.object({
           type: z.literal('user'),
@@ -34,48 +32,50 @@ const requestAgentRun = createCommandSlice(
   .store(createMemorySliceStore(() => ({})))
   .scenarios(
     {
-      description: 'Requests an Agent Run for a workspace post.',
+      description: 'Requests an explicit user-triggered filesystem scan.',
       given: [],
       when: {
         workspaceId: 'workspace-1',
-        postId: 'post-1',
-        agentId: 'specter',
-        agentName: 'Specter',
+        reason: 'userRequested',
         requestedBy: { type: 'user', userId: 'user-1', displayName: 'Ada' },
       },
       expect: [
-        agentRunRequestedEvent.create({
-          runId: 'generated',
+        workspaceFilesystemScanRequestedEvent.create({
+          scanId: 'generated',
           workspaceId: 'workspace-1',
-          postId: 'post-1',
-          agentId: 'specter',
-          agentName: 'Specter',
+          reason: 'userRequested',
           requestedBy: { type: 'user', userId: 'user-1', displayName: 'Ada' },
         }),
       ],
     },
     {
-      description: 'Requests a system Agent Run without a post target.',
+      description: 'Requests a scan after an agent tool changes files.',
       given: [],
       when: {
         workspaceId: 'workspace-1',
-        agentId: 'specter',
-        agentName: 'Specter',
-        requestedBy: { type: 'system' },
+        reason: 'agentToolChanged',
+        requestedBy: {
+          type: 'agent',
+          agentId: 'specter',
+          displayName: 'Specter',
+        },
       },
       expect: [
-        agentRunRequestedEvent.create({
-          runId: 'generated',
+        workspaceFilesystemScanRequestedEvent.create({
+          scanId: 'generated',
           workspaceId: 'workspace-1',
-          agentId: 'specter',
-          agentName: 'Specter',
-          requestedBy: { type: 'system' },
+          reason: 'agentToolChanged',
+          requestedBy: {
+            type: 'agent',
+            agentId: 'specter',
+            displayName: 'Specter',
+          },
         }),
       ],
     },
   )
   .handle(async () => {
-    throw new Error('TODO: implement requestAgentRun')
+    throw new Error('TODO: implement requestWorkspaceFilesystemScan')
   })
 
-export default requestAgentRun
+export default requestWorkspaceFilesystemScan
