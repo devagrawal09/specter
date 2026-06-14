@@ -46,6 +46,8 @@ test('creates a workspace, posts, scans, previews a file, and shows a simulated 
   await page.getByPlaceholder('Workspace name').fill(workspaceName)
   await page.getByRole('button', { name: 'Create Workspace' }).click()
 
+  await expect(page.getByRole('button', { name: workspaceName })).toBeVisible()
+  await page.getByRole('button', { name: workspaceName }).click()
   await expect(page.getByRole('heading', { name: workspaceName })).toBeVisible()
 
   const workspace = (await listThreadplaneWorkspacesOnServer()).find(
