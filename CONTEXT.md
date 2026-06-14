@@ -32,9 +32,17 @@ _Avoid_: Framework API, generated app feature
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. Multiple Reference applications may coexist to exercise different Specter capabilities; a Reference application should not lag behind the intended Specter API and is not automatically the Starter Template.
 _Avoid_: Product app, primary app
 
+**Threadplane Reference app**:
+The canonical Reference application that models collaborative Workspaces with messages, agents, participants, workspace files, and Agent Runs. The app name is Threadplane Reference app, not Threadplace.
+_Avoid_: Threadplace, primary product
+
 **Workspace**:
-In the Threadplane-style Reference application, a conversation and work surface that owns messages, agents, participants, and workspace files. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
+In the Threadplane Reference app, a conversation and work surface that owns messages, agents, participants, workspace files, and Agent Runs. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
 _Avoid_: Channel, Workstream, Project
+
+**Agent Run**:
+A durable domain concept for a single agent execution requested by a Workspace, user, or system event and observed through lifecycle facts. The current lifecycle fact vocabulary is run requested, run started, run streamed, run completed, run failed, tool call started, tool call completed, and tool call failed.
+_Avoid_: Agent job, transient plugin invocation
 
 **Product Site**:
 The public-facing site for presenting Specter itself and collecting interest from prospective users. A Product Site is distinct from a Reference application, even when it dogfoods Specter concepts.

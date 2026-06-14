@@ -56,22 +56,66 @@ export const agentTriggeredEvent = createEventDefinition(
   }),
 )
 
-export const agentReasonedEvent = createEventDefinition(
-  'agentReasoned',
+export const agentRunRequestedEvent = createEventDefinition(
+  'agentRunRequested',
   z.object({
-    reasoningId: z.string(),
-    triggerId: z.string(),
+    runId: z.string(),
     workspaceId: z.string(),
+    postId: z.string().optional(),
     agentId: z.string(),
-    content: z.string(),
+    agentName: z.string(),
+    requestedBy: z.object({
+      type: z.enum(['user', 'workspace', 'system']),
+      userId: z.string().optional(),
+      displayName: z.string().optional(),
+    }),
   }),
 )
 
-export const agentCalledToolEvent = createEventDefinition(
-  'agentCalledTool',
+export const agentRunStartedEvent = createEventDefinition(
+  'agentRunStarted',
+  z.object({
+    runId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+  }),
+)
+
+export const agentRunStreamedEvent = createEventDefinition(
+  'agentRunStreamed',
+  z.object({
+    runId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+    chunkId: z.string(),
+    delta: z.string(),
+  }),
+)
+
+export const agentRunCompletedEvent = createEventDefinition(
+  'agentRunCompleted',
+  z.object({
+    runId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+  }),
+)
+
+export const agentRunFailedEvent = createEventDefinition(
+  'agentRunFailed',
+  z.object({
+    runId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+    error: z.string(),
+  }),
+)
+
+export const toolCallStartedEvent = createEventDefinition(
+  'toolCallStarted',
   z.object({
     toolCallId: z.string(),
-    triggerId: z.string(),
+    runId: z.string(),
     workspaceId: z.string(),
     agentId: z.string(),
     toolName: z.string(),
@@ -79,15 +123,27 @@ export const agentCalledToolEvent = createEventDefinition(
   }),
 )
 
-export const agentRespondedEvent = createEventDefinition(
-  'agentResponded',
+export const toolCallCompletedEvent = createEventDefinition(
+  'toolCallCompleted',
   z.object({
-    responseId: z.string(),
-    triggerId: z.string(),
+    toolCallId: z.string(),
+    runId: z.string(),
     workspaceId: z.string(),
     agentId: z.string(),
-    content: z.string(),
-    postId: z.string().optional(),
+    toolName: z.string(),
+    output: z.unknown(),
+  }),
+)
+
+export const toolCallFailedEvent = createEventDefinition(
+  'toolCallFailed',
+  z.object({
+    toolCallId: z.string(),
+    runId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+    toolName: z.string(),
+    error: z.string(),
   }),
 )
 
@@ -96,7 +152,12 @@ export const threadplaneEventDefinitions = [
   postCreatedEvent,
   repliedToPostEvent,
   agentTriggeredEvent,
-  agentReasonedEvent,
-  agentCalledToolEvent,
-  agentRespondedEvent,
+  agentRunRequestedEvent,
+  agentRunStartedEvent,
+  agentRunStreamedEvent,
+  agentRunCompletedEvent,
+  agentRunFailedEvent,
+  toolCallStartedEvent,
+  toolCallCompletedEvent,
+  toolCallFailedEvent,
 ] as const
