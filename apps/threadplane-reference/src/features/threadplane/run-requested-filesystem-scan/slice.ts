@@ -2,11 +2,15 @@ import { createReactionSlice } from '@specter-ts/core'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
+  filesystemNodeChangedEvent,
+  filesystemNodeDeletedEvent,
+  filesystemNodeDiscoveredEvent,
   workspaceFilesystemScanCompletedEvent,
   workspaceFilesystemScanFailedEvent,
   workspaceFilesystemScanRequestedEvent,
   workspaceFilesystemScanStartedEvent,
 } from '../events'
+import { scanWorkspaceFilesystem } from '../filesystem-metadata-adapter'
 
 type FilesystemScanJob = {
   scanId: string
@@ -19,13 +23,93 @@ type RunRequestedFilesystemScanState = {
   terminalScanIds: Set<string>
 }
 
+const lastSnapshotsByWorkspace = new Map<string, Map<string, string>>()
+
 const runRequestedFilesystemScan = createReactionSlice(
   'runRequestedFilesystemScan',
   'Executes requested workspace filesystem scans through the scan runner.',
 )
   .payload<FilesystemScanJob>()
-  .plugin(async () => async () => {
-    throw new Error('TODO: wire filesystem scan runner')
+  .plugin(async (command) => async (job) => {
+    const scanJob = job as FilesystemScanJob
+    const previous =
+      lastSnapshotsByWorkspace.get(scanJob.workspaceId) ??
+      new Map<string, string>()
+
+    try {
+      const current = await scanWorkspaceFilesystem(scanJob.workspaceId)
+      const next = new Map(
+        current.map((node) => [node.path, JSON.stringify(node)]),
+      )
+      const discovered = current.filter((node) => !previous.has(node.path))
+      const changed = current.filter(
+        (node) =>
+          previous.has(node.path) &&
+          previous.get(node.path) !== JSON.stringify(node),
+      )
+      const deleted = [...previous.keys()].filter(
+        (nodePath) => !next.has(nodePath),
+      )
+
+      lastSnapshotsByWorkspace.set(scanJob.workspaceId, next)
+
+      await command(
+        workspaceFilesystemScanStartedEvent.create({
+          workspaceId: scanJob.workspaceId,
+          scanId: scanJob.scanId,
+        }) as never,
+      )
+      for (const node of discovered) {
+        await command(
+          filesystemNodeDiscoveredEvent.create({
+            scanId: scanJob.scanId,
+            workspaceId: scanJob.workspaceId,
+            ...node,
+          }) as never,
+        )
+      }
+      for (const node of changed) {
+        await command(
+          filesystemNodeChangedEvent.create({
+            scanId: scanJob.scanId,
+            workspaceId: scanJob.workspaceId,
+            ...node,
+          }) as never,
+        )
+      }
+      for (const path of deleted) {
+        await command(
+          filesystemNodeDeletedEvent.create({
+            scanId: scanJob.scanId,
+            workspaceId: scanJob.workspaceId,
+            path,
+          }) as never,
+        )
+      }
+      return command(
+        workspaceFilesystemScanCompletedEvent.create({
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+          discoveredNodeCount: discovered.length,
+          changedNodeCount: changed.length,
+          deletedNodeCount: deleted.length,
+        }) as never,
+      )
+    } catch (error) {
+      await command(
+        workspaceFilesystemScanStartedEvent.create({
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+        }) as never,
+      )
+      return command(
+        workspaceFilesystemScanFailedEvent.create({
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+          error: error instanceof Error ? error.message : String(error),
+        }) as never,
+      )
+    }
   })
   .store(
     createMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
@@ -34,6 +118,35 @@ const runRequestedFilesystemScan = createReactionSlice(
       terminalScanIds: new Set(),
     })),
   )
+  .apply({
+    [workspaceFilesystemScanRequestedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanRequestedEvent.decode(
+        event.payload,
+      )
+      state.requestedScans.push({
+        scanId: payload.scanId,
+        workspaceId: payload.workspaceId,
+      })
+    },
+    [workspaceFilesystemScanStartedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanStartedEvent.decode(
+        event.payload,
+      )
+      state.startedScanIds.add(payload.scanId)
+    },
+    [workspaceFilesystemScanCompletedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanCompletedEvent.decode(
+        event.payload,
+      )
+      state.terminalScanIds.add(payload.scanId)
+    },
+    [workspaceFilesystemScanFailedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanFailedEvent.decode(
+        event.payload,
+      )
+      state.terminalScanIds.add(payload.scanId)
+    },
+  })
   .scenarios(
     {
       description: 'Queues a requested filesystem scan that has not started.',
@@ -95,8 +208,14 @@ const runRequestedFilesystemScan = createReactionSlice(
       expect: [],
     },
   )
-  .handle(async (): Promise<FilesystemScanJob | undefined> => {
-    throw new Error('TODO: implement runRequestedFilesystemScan')
+  .handle(async (state): Promise<FilesystemScanJob | undefined> => {
+    const job = state.requestedScans.find(
+      (scan) =>
+        !state.startedScanIds.has(scan.scanId) &&
+        !state.terminalScanIds.has(scan.scanId),
+    )
+    if (!job) return undefined
+    return job
   })
 
 export default runRequestedFilesystemScan
