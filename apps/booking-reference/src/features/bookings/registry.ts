@@ -37,7 +37,7 @@ export const bookingRegistrations = [
 export const bookingSpecterAppConfig = {
   events: bookingEventDefinitions,
   eventLog: sqliteEventLog,
-  scheduler: reactionScheduler,
+  schedule: reactionScheduler,
   slices: bookingRegistrations,
 } as const
 

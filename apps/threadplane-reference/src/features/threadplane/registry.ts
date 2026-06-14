@@ -68,6 +68,6 @@ export const threadplaneSliceSkeletons = threadplaneScaffoldRegistrations
 export const threadplaneReferenceSpecterAppConfig = {
   events: threadplaneEventDefinitions,
   eventLog: sqliteEventLog,
-  scheduler: memoryReactionScheduler,
+  schedule: memoryReactionScheduler,
   slices: threadplaneScaffoldRegistrations,
 } as const

@@ -22,7 +22,7 @@ export type SpecterAppConfig = {
     readonly decode: (payload: unknown) => Promise<unknown>
   }[]
   readonly eventLog: EventLogAdapter
-  readonly scheduler: ReactionScheduler
+  readonly schedule: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
 }
 
@@ -150,21 +150,23 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
       if (!command) throw new Error(`Unknown command: ${c.type}`)
 
       await runCommand(command, c.payload)
-      reactions.request()
+      // The active drain owns idleness; reaction-emitted commands only request
+      // another pass so they do not await themselves.
+      requestReactions()
     })
 
     reactionExecs.set(reaction.name, exec)
     return exec
   }
 
-  const reactions = config.scheduler.bind(runReactionPass)
+  const requestReactions = config.schedule(runReactions)
   const app: Record<string, unknown> = {}
 
   for (const command of Object.values(slicesByKind.commands)) {
     app[command.name] = async (input: unknown) => {
       await runCommand(command, input)
-      reactions.request()
-      await reactions.waitForIdle()
+      const waitForReactionsIdle = requestReactions()
+      await waitForReactionsIdle()
     }
   }
 
@@ -253,7 +255,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     })
   }
 
-  async function runReactionPass() {
+  async function runReactions() {
     const runnableEffects: PreparedReactionEffect[] = []
     const failures: ReactionRunFailureDetail[] = []
 

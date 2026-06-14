@@ -30,13 +30,13 @@ export const threadplaneReferenceEventDefinitions = [
 export const threadplaneReferenceSpecterAppConfig = {
   events: threadplaneReferenceEventDefinitions,
   eventLog: sqliteEventLog,
-  scheduler: memoryReactionScheduler,
+  schedule: memoryReactionScheduler,
   slices: threadplaneReferenceRegistrations,
 } as const
 
 export const chatSpecterAppConfig = {
   events: chatEventDefinitions,
   eventLog: sqliteEventLog,
-  scheduler: memoryReactionScheduler,
+  schedule: memoryReactionScheduler,
   slices: chatRegistrations,
 } as const

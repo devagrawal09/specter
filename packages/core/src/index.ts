@@ -35,6 +35,8 @@ export type {
 export type {
   EventLogAdapter,
   ReactionScheduler,
+  RequestReactions,
   SliceStore,
   SliceStoreAdapter,
+  WaitForReactionsIdle,
 } from './adapters'

@@ -23,7 +23,7 @@ export const todoRegistrations = [
 export const todoSpecterAppConfig = {
   events: todoEventDefinitions,
   eventLog: sqliteEventLog,
-  scheduler: reactionScheduler,
+  schedule: reactionScheduler,
   slices: todoRegistrations,
 } as const
 

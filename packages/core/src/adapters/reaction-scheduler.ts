@@ -1,6 +1,3 @@
-export type ReactionScheduler = {
-  bind: (run: () => Promise<void>) => {
-    request: () => void
-    waitForIdle: () => Promise<void>
-  }
-}
+export type WaitForReactionsIdle = () => Promise<void>
+export type RequestReactions = () => WaitForReactionsIdle
+export type ReactionScheduler = (run: () => Promise<void>) => RequestReactions
