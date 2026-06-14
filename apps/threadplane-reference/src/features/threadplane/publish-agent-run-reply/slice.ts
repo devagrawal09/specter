@@ -39,12 +39,47 @@ const publishAgentRunReply = createReactionSlice(
   'Requests a visible chat reply when an Agent Run completes with streamed text.',
 )
   .payload<RecordVisibleAgentReplyCommand>()
-  .plugin(async () => async () => {
-    throw new Error('TODO: dispatch visible agent reply command')
+  .plugin(async (dispatch) => async (payload) => {
+    await dispatch(payload as never)
   })
   .store(
     createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
   )
+  .apply({
+    [agentRunRequestedEvent.type]: async (event, state) => {
+      const payload = await agentRunRequestedEvent.decode(event.payload)
+
+      state.runs.push({
+        runId: payload.runId,
+        workspaceId: payload.workspaceId,
+        postId: payload.postId,
+        agentId: payload.agentId,
+        agentName: payload.agentName,
+        text: '',
+        completed: false,
+        failed: false,
+        replyPublished: false,
+      })
+    },
+    [agentRunStreamedEvent.type]: async (event, state) => {
+      const payload = await agentRunStreamedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+
+      if (run) run.text += payload.delta
+    },
+    [agentRunCompletedEvent.type]: async (event, state) => {
+      const payload = await agentRunCompletedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+
+      if (run) run.completed = true
+    },
+    [agentRunFailedEvent.type]: async (event, state) => {
+      const payload = await agentRunFailedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+
+      if (run) run.failed = true
+    },
+  })
   .scenarios(
     {
       description:
@@ -134,8 +169,31 @@ const publishAgentRunReply = createReactionSlice(
       expect: [],
     },
   )
-  .handle(async (): Promise<RecordVisibleAgentReplyCommand | undefined> => {
-    throw new Error('TODO: implement publishAgentRunReply')
-  })
+  .handle(
+    async (state): Promise<RecordVisibleAgentReplyCommand | undefined> => {
+      const run = state.runs.find(
+        (item) =>
+          item.postId && item.completed && !item.failed && !item.replyPublished,
+      )
+
+      if (!run || !run.postId || !run.text.trim()) {
+        return undefined
+      }
+
+      run.replyPublished = true
+
+      return {
+        type: 'recordVisibleAgentReply',
+        payload: {
+          workspaceId: run.workspaceId,
+          parentPostId: run.postId,
+          runId: run.runId,
+          agentId: run.agentId,
+          agentName: run.agentName,
+          content: run.text.trim(),
+        },
+      }
+    },
+  )
 
 export default publishAgentRunReply

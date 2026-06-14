@@ -6,7 +6,18 @@ import {
   agentRunFailedEvent,
   agentRunRequestedEvent,
   agentRunStartedEvent,
+  agentRunStreamedEvent,
+  toolCallCompletedEvent,
+  toolCallFailedEvent,
+  toolCallStartedEvent,
 } from '../events'
+import {
+  buildFailureMessage,
+  buildStreamChunks,
+  getSimulatedAgentPlan,
+  pickToolName,
+  shouldFailRun,
+} from '../simulated-agent-plan'
 
 type AgentRunJob = {
   runId: string
@@ -16,27 +27,276 @@ type AgentRunJob = {
   agentName: string
 }
 
+type RunRequestedAgentRunCommand =
+  | {
+      type: 'recordAgentRunStarted'
+      payload: {
+        runId: string
+        workspaceId: string
+        agentId: string
+      }
+    }
+  | {
+      type: 'recordToolCallStarted'
+      payload: {
+        toolCallId: string
+        runId: string
+        workspaceId: string
+        agentId: string
+        toolName: string
+        inputSummary?: string
+      }
+    }
+  | {
+      type: 'recordToolCallCompleted'
+      payload: {
+        toolCallId: string
+        runId: string
+        workspaceId: string
+        agentId: string
+        toolName: string
+        outputSummary?: string
+      }
+    }
+  | {
+      type: 'recordToolCallFailed'
+      payload: {
+        toolCallId: string
+        runId: string
+        workspaceId: string
+        agentId: string
+        toolName: string
+        error: string
+      }
+    }
+  | {
+      type: 'recordAgentRunStreamed'
+      payload: {
+        runId: string
+        workspaceId: string
+        agentId: string
+        chunkId: string
+        sequence: number
+        delta: string
+      }
+    }
+  | {
+      type: 'recordAgentRunCompleted'
+      payload: {
+        runId: string
+        workspaceId: string
+        agentId: string
+      }
+    }
+  | {
+      type: 'recordAgentRunFailed'
+      payload: {
+        runId: string
+        workspaceId: string
+        agentId: string
+        error: string
+      }
+    }
+
 type RunRequestedAgentRunState = {
   requestedRuns: AgentRunJob[]
+  runPlans: Record<
+    string,
+    {
+      toolName: string
+      chunks: string[]
+      shouldFail: boolean
+      failed: boolean
+      completed: boolean
+      toolStarted: boolean
+      toolCompleted: boolean
+      streamIndex: number
+    }
+  >
   startedRunIds: Set<string>
   terminalRunIds: Set<string>
+}
+
+export function createRunRequestedAgentRunState(): RunRequestedAgentRunState {
+  return {
+    requestedRuns: [],
+    runPlans: {},
+    startedRunIds: new Set(),
+    terminalRunIds: new Set(),
+  }
+}
+
+export function nextRunRequestedAgentRunCommand(
+  state: RunRequestedAgentRunState,
+): RunRequestedAgentRunCommand | undefined {
+  const nextRun = state.requestedRuns.find(
+    (run) => !state.terminalRunIds.has(run.runId),
+  )
+
+  if (!nextRun) return undefined
+
+  const plan = state.runPlans[nextRun.runId]
+  if (!plan) return undefined
+
+  if (!state.startedRunIds.has(nextRun.runId)) {
+    return {
+      type: 'recordAgentRunStarted',
+      payload: {
+        runId: nextRun.runId,
+        workspaceId: nextRun.workspaceId,
+        agentId: nextRun.agentId,
+      },
+    }
+  }
+
+  if (!plan.toolStarted) {
+    return {
+      type: 'recordToolCallStarted',
+      payload: {
+        toolCallId: `${nextRun.runId}-tool-1`,
+        runId: nextRun.runId,
+        workspaceId: nextRun.workspaceId,
+        agentId: nextRun.agentId,
+        toolName: plan.toolName,
+        inputSummary: 'Simulated workspace inspection',
+      },
+    }
+  }
+
+  if (!plan.toolCompleted) {
+    if (plan.shouldFail && !plan.failed) {
+      return {
+        type: 'recordToolCallFailed',
+        payload: {
+          toolCallId: `${nextRun.runId}-tool-1`,
+          runId: nextRun.runId,
+          workspaceId: nextRun.workspaceId,
+          agentId: nextRun.agentId,
+          toolName: plan.toolName,
+          error: buildFailureMessage(plan.toolName),
+        },
+      }
+    }
+
+    return {
+      type: 'recordToolCallCompleted',
+      payload: {
+        toolCallId: `${nextRun.runId}-tool-1`,
+        runId: nextRun.runId,
+        workspaceId: nextRun.workspaceId,
+        agentId: nextRun.agentId,
+        toolName: plan.toolName,
+        outputSummary: `Simulated ${plan.toolName} output`,
+      },
+    }
+  }
+
+  if (plan.shouldFail || plan.failed) {
+    return {
+      type: 'recordAgentRunFailed',
+      payload: {
+        runId: nextRun.runId,
+        workspaceId: nextRun.workspaceId,
+        agentId: nextRun.agentId,
+        error: buildFailureMessage(plan.toolName),
+      },
+    }
+  }
+
+  if (plan.streamIndex < plan.chunks.length) {
+    return {
+      type: 'recordAgentRunStreamed',
+      payload: {
+        chunkId: `${nextRun.runId}-chunk-${plan.streamIndex + 1}`,
+        runId: nextRun.runId,
+        workspaceId: nextRun.workspaceId,
+        agentId: nextRun.agentId,
+        sequence: plan.streamIndex,
+        delta: plan.chunks[plan.streamIndex],
+      },
+    }
+  }
+
+  return {
+    type: 'recordAgentRunCompleted',
+    payload: {
+      runId: nextRun.runId,
+      workspaceId: nextRun.workspaceId,
+      agentId: nextRun.agentId,
+    },
+  }
 }
 
 const runRequestedAgentRun = createReactionSlice(
   'runRequestedAgentRun',
   'Executes requested Agent Runs through the configured agent plugin.',
 )
-  .payload<AgentRunJob>()
-  .plugin(async () => async () => {
-    throw new Error('TODO: wire simulated or real agent plugin')
+  .payload<RunRequestedAgentRunCommand>()
+  .plugin(async (dispatch) => async (payload) => {
+    await dispatch(payload as never)
   })
   .store(
-    createMemorySliceStore<RunRequestedAgentRunState>(() => ({
-      requestedRuns: [],
-      startedRunIds: new Set(),
-      terminalRunIds: new Set(),
-    })),
+    createMemorySliceStore<RunRequestedAgentRunState>(
+      createRunRequestedAgentRunState,
+    ),
   )
+  .apply({
+    [agentRunRequestedEvent.type]: async (event, state) => {
+      const payload = await agentRunRequestedEvent.decode(event.payload)
+      const plan = getSimulatedAgentPlan(payload.runId)
+
+      state.requestedRuns.push(payload)
+      state.runPlans[payload.runId] = {
+        toolName: pickToolName(plan.seed, payload.runId),
+        chunks: buildStreamChunks(plan.seed, payload.runId),
+        shouldFail: shouldFailRun(plan.seed, payload.runId),
+        failed: false,
+        completed: false,
+        toolStarted: false,
+        toolCompleted: false,
+        streamIndex: 0,
+      }
+    },
+    [agentRunStartedEvent.type]: async (event, state) => {
+      const payload = await agentRunStartedEvent.decode(event.payload)
+      state.startedRunIds.add(payload.runId)
+    },
+    [toolCallStartedEvent.type]: async (event, state) => {
+      const payload = await toolCallStartedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) plan.toolStarted = true
+    },
+    [toolCallCompletedEvent.type]: async (event, state) => {
+      const payload = await toolCallCompletedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) plan.toolCompleted = true
+    },
+    [toolCallFailedEvent.type]: async (event, state) => {
+      const payload = await toolCallFailedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) {
+        plan.failed = true
+        plan.toolCompleted = true
+      }
+    },
+    [agentRunStreamedEvent.type]: async (event, state) => {
+      const payload = await agentRunStreamedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) plan.streamIndex = payload.sequence + 1
+    },
+    [agentRunCompletedEvent.type]: async (event, state) => {
+      const payload = await agentRunCompletedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) plan.completed = true
+      state.terminalRunIds.add(payload.runId)
+    },
+    [agentRunFailedEvent.type]: async (event, state) => {
+      const payload = await agentRunFailedEvent.decode(event.payload)
+      const plan = state.runPlans[payload.runId]
+      if (plan) plan.failed = true
+      state.terminalRunIds.add(payload.runId)
+    },
+  })
   .scenarios(
     {
       description: 'Queues a requested Agent Run that has not started.',
@@ -52,16 +312,17 @@ const runRequestedAgentRun = createReactionSlice(
       ],
       expect: [
         {
-          runId: 'run-1',
-          workspaceId: 'workspace-1',
-          postId: 'post-1',
-          agentId: 'specter',
-          agentName: 'Specter',
+          type: 'recordAgentRunStarted',
+          payload: {
+            runId: 'run-1',
+            workspaceId: 'workspace-1',
+            agentId: 'specter',
+          },
         },
       ],
     },
     {
-      description: 'Does not queue an Agent Run that already started.',
+      description: 'Continues an Agent Run that already started.',
       given: [
         agentRunRequestedEvent.create({
           runId: 'run-1',
@@ -76,7 +337,19 @@ const runRequestedAgentRun = createReactionSlice(
           agentId: 'specter',
         }),
       ],
-      expect: [],
+      expect: [
+        {
+          type: 'recordToolCallStarted',
+          payload: {
+            toolCallId: 'run-1-tool-1',
+            runId: 'run-1',
+            workspaceId: 'workspace-1',
+            agentId: 'specter',
+            toolName: 'searchFiles',
+            inputSummary: 'Simulated workspace inspection',
+          },
+        },
+      ],
     },
     {
       description:
@@ -111,8 +384,8 @@ const runRequestedAgentRun = createReactionSlice(
       expect: [],
     },
   )
-  .handle(async (): Promise<AgentRunJob | undefined> => {
-    throw new Error('TODO: implement runRequestedAgentRun')
+  .handle(async (state): Promise<RunRequestedAgentRunCommand | undefined> => {
+    return nextRunRequestedAgentRunCommand(state)
   })
 
 export default runRequestedAgentRun
