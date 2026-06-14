@@ -23,9 +23,9 @@ export function getSimulatedAgentPlan(runId: string): SimulatedAgentPlan {
   return { mode, seed }
 }
 
-export function shouldFailRun(seed: number, runId: string) {
+export function shouldFailRun(_seed: number, runId: string) {
   if (isTestMode()) return runId.includes('fail')
-  return pick(seed, runId, 0) % 5 === 0
+  return false
 }
 
 export function pickToolName(seed: number, runId: string) {

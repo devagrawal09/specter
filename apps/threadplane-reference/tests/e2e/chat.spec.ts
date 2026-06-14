@@ -79,8 +79,25 @@ test('creates a workspace, posts, scans, previews a file, and shows a simulated 
   await expect(
     page.getByRole('button', { name: /Simulated Agent · (completed|failed|running|pending)/ }),
   ).toBeVisible()
-  await expect(page.getByText('I found the issue.', { exact: false })).toBeVisible()
-
-  const chat = await listThreadplaneWorkspaceChatOnServer({ workspaceId: workspace!.id })
-  expect(chat.some((item) => item.author.type === 'agent')).toBeTruthy()
+  await expect
+    .poll(async () => {
+      const chat = await listThreadplaneWorkspaceChatOnServer({
+        workspaceId: workspace!.id,
+      })
+      return chat.find(
+        (item) => item.author.type === 'agent' && Boolean(item.sourceRunId),
+      )
+    })
+    .toBeTruthy()
+  const chat = await listThreadplaneWorkspaceChatOnServer({
+    workspaceId: workspace!.id,
+  })
+  const visibleAgentReply = chat.find(
+    (item) => item.author.type === 'agent' && Boolean(item.sourceRunId),
+  )
+  expect(visibleAgentReply).toBeTruthy()
+  expect(visibleAgentReply?.parentPostId).toBeTruthy()
+  await expect(
+    page.getByText(visibleAgentReply?.content ?? '', { exact: false }),
+  ).toBeVisible()
 })

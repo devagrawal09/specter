@@ -106,6 +106,21 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
     ).toBeDefined()
 
     expect(
+      await listThreadplaneWorkspaceChatOnServer({
+        workspaceId: 'workspace-main',
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
+          content: 'I found the issue.',
+          parentPostId: 'generated',
+          sourceRunId: runId,
+        }),
+      ]),
+    )
+
+    expect(
       await readThreadplaneWorkspaceTextFileOnServer({
         workspaceId: 'workspace-main',
         path: 'src/index.ts',

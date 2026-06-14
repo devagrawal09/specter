@@ -23,7 +23,6 @@ import {
   readThreadplaneWorkspaceTextFile,
   requestThreadplaneAgentRun,
   requestThreadplaneFilesystemScan,
-  replyToThreadplanePost,
 } from '../features/threadplane/server-functions'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -54,7 +53,6 @@ function Home() {
   const requestRunFn = useServerFn(requestThreadplaneAgentRun)
   const listRunsFn = useServerFn(listThreadplaneWorkspaceAgentRuns)
   const listTimelineFn = useServerFn(listThreadplaneAgentRunTimeline)
-  const replyToPostFn = useServerFn(replyToThreadplanePost)
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,
@@ -225,16 +223,6 @@ function Home() {
         requestedBy: { type: 'user', displayName: 'Threadplane User' },
       },
     })
-    if (postId) {
-      await replyToPostFn({
-        data: {
-          workspaceId,
-          parentPostId: postId,
-          author: { displayName: 'Simulated Agent' },
-          content: 'I found the issue.',
-        },
-      })
-    }
     const nextRun = runs()?.at(runsBefore) ?? runs()?.at(-1)
     if (nextRun) setActiveRunId(nextRun.runId)
   }
