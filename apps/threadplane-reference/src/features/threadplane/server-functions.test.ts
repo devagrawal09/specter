@@ -123,6 +123,85 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
   rmSync(tempDir, { recursive: true, force: true })
 })
 
+test('threadplane preview reads reject unsafe files and read valid text', async () => {
+  const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-preview-'))
+  process.env.THREADPLANE_WORKSPACE_ROOT = tempDir
+
+  const workspaceRoot = join(tempDir, 'workspace-main')
+  await mkdir(join(workspaceRoot, 'src'), { recursive: true })
+  await writeFile(join(workspaceRoot, 'src', 'ok.txt'), 'hello world\n')
+  await writeFile(
+    join(workspaceRoot, 'src', 'binary.bin'),
+    new Uint8Array([0, 159]),
+  )
+  await writeFile(
+    join(workspaceRoot, 'src', 'invalid-utf8.bin'),
+    new Uint8Array([0xc3, 0x28]),
+  )
+  await writeFile(
+    join(workspaceRoot, 'src', 'large.txt'),
+    'x'.repeat(256 * 1024 + 1),
+  )
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: 'src/ok.txt',
+    }),
+  ).resolves.toBe('hello world\n')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: 'src/large.txt',
+    }),
+  ).rejects.toThrow('Preview file exceeds maximum size')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: 'src/binary.bin',
+    }),
+  ).rejects.toThrow('Preview file appears to be binary')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: 'src/invalid-utf8.bin',
+    }),
+  ).rejects.toThrow('Preview file is not valid UTF-8 text')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: '../escape-workspace',
+      path: 'src/ok.txt',
+    }),
+  ).rejects.toThrow('Workspace id must be relative and normalized')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: '../escape.txt',
+    }),
+  ).rejects.toThrow('File path must be relative and normalized')
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: 'src/missing.txt',
+    }),
+  ).rejects.toThrow()
+
+  await expect(
+    readThreadplaneWorkspaceTextFileOnServer({
+      workspaceId: 'workspace-main',
+      path: '.',
+    }),
+  ).rejects.toThrow('File path must be relative and normalized')
+
+  rmSync(tempDir, { recursive: true, force: true })
+})
+
 test('threadplane server functions preserve database state across app reopen', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-reference-'))
   const sqlitePath = join(tempDir, 'app.db')
