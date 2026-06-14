@@ -9,7 +9,8 @@ import {
   runWithSqliteDb,
 } from './specter-sqlite'
 
-const sqlitePath = './data/threadplane-reference.db'
+const sqlitePath =
+  process.env.THREADPLANE_REFERENCE_DB_PATH ?? './data/threadplane-reference.db'
 const sqliteUrl = `file:${sqlitePath}`
 
 mkdirSync(dirname(sqlitePath), { recursive: true })
@@ -17,9 +18,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 const sqlite = createClient({ url: sqliteUrl })
 let prepared: Promise<void> | undefined
 
-export async function runWithThreadplaneReferenceDb<T>(
-  run: () => Promise<T>,
-) {
+export async function runWithThreadplaneReferenceDb<T>(run: () => Promise<T>) {
   if (hasSqliteDbBinding()) return run()
 
   prepared ??= prepareSpecterSqlite(sqlite)

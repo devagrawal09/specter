@@ -4,9 +4,9 @@ const DEFAULT_TOOL_NAMES = [
   'searchFiles',
 ] as const
 const DEFAULT_CHUNKS = [
-  'Working on it',
-  'I found a likely cause',
-  'Here is the result',
+  'Working on it.',
+  'I found a likely cause.',
+  'Here is the result.',
 ] as const
 
 type SimulatedAgentMode = 'demo' | 'test'
@@ -37,8 +37,12 @@ export function buildStreamChunks(seed: number, runId: string) {
   if (isTestMode()) return ['I found ', 'the issue.']
   const first = DEFAULT_CHUNKS[pick(seed, runId, 2) % DEFAULT_CHUNKS.length]
   const second = DEFAULT_CHUNKS[pick(seed, runId, 3) % DEFAULT_CHUNKS.length]
-  return [first, second].filter(
+  const chunks = [first, second].filter(
     (chunk, index, items) => chunk && items.indexOf(chunk) === index,
+  )
+
+  return chunks.map((chunk, index) =>
+    index === chunks.length - 1 ? chunk : `${chunk} `,
   )
 }
 
