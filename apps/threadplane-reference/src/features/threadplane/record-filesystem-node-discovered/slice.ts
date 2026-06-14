@@ -66,8 +66,23 @@ const recordFilesystemNodeDiscovered = createCommandSlice(
       },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement recordFilesystemNodeDiscovered')
+  .handle(async (command) => {
+    if (
+      command.path.startsWith('/') ||
+      command.path.includes('..') ||
+      command.path === ''
+    ) {
+      throw new Error('Filesystem node path must be relative and normalized')
+    }
+    if (
+      command.parentPath !== null &&
+      (command.parentPath.startsWith('/') ||
+        command.parentPath.includes('..') ||
+        command.parentPath === '')
+    ) {
+      throw new Error('Filesystem parent path must be relative and normalized')
+    }
+    return [filesystemNodeDiscoveredEvent.create(command)]
   })
 
 export default recordFilesystemNodeDiscovered

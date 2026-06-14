@@ -74,8 +74,15 @@ const requestWorkspaceFilesystemScan = createCommandSlice(
       ],
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement requestWorkspaceFilesystemScan')
+  .handle(async (command) => {
+    return [
+      workspaceFilesystemScanRequestedEvent.create({
+        scanId: crypto.randomUUID(),
+        workspaceId: command.workspaceId,
+        reason: command.reason,
+        requestedBy: command.requestedBy,
+      }),
+    ]
   })
 
 export default requestWorkspaceFilesystemScan

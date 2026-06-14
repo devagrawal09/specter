@@ -80,8 +80,23 @@ const recordFilesystemNodeChanged = createCommandSlice(
       },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement recordFilesystemNodeChanged')
+  .handle(async (command) => {
+    if (
+      command.path.startsWith('/') ||
+      command.path.includes('..') ||
+      command.path === ''
+    ) {
+      throw new Error('Filesystem node path must be relative and normalized')
+    }
+    if (
+      command.parentPath !== null &&
+      (command.parentPath.startsWith('/') ||
+        command.parentPath.includes('..') ||
+        command.parentPath === '')
+    ) {
+      throw new Error('Filesystem parent path must be relative and normalized')
+    }
+    return [filesystemNodeChangedEvent.create(command)]
   })
 
 export default recordFilesystemNodeChanged

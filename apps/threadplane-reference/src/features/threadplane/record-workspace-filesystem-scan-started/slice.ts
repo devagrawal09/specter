@@ -39,8 +39,13 @@ const recordWorkspaceFilesystemScanStarted = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordWorkspaceFilesystemScanStarted')
+  .handle(async (command) => {
+    return [
+      workspaceFilesystemScanStartedEvent.create({
+        scanId: command.scanId,
+        workspaceId: command.workspaceId,
+      }),
+    ]
   })
 
 export default recordWorkspaceFilesystemScanStarted

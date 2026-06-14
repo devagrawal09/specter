@@ -52,6 +52,18 @@ type WorkspaceFilesystemStatusState = {
   statuses: Record<string, WorkspaceFilesystemStatus>
 }
 
+const getStatus = (
+  state: WorkspaceFilesystemStatusState,
+  workspaceId: string,
+): WorkspaceFilesystemStatus => {
+  const existing = state.statuses[workspaceId]
+  if (existing) return existing
+
+  const status = { initialized: false, latestScan: null }
+  state.statuses[workspaceId] = status
+  return status
+}
+
 const workspaceFilesystemStatus = createQuerySlice(
   'workspaceFilesystemStatus',
   'Shows filesystem initialization and latest scan status for a workspace.',
@@ -66,7 +78,64 @@ const workspaceFilesystemStatus = createQuerySlice(
       statuses: {},
     })),
   )
-  .apply({})
+  .apply({
+    [workspaceFilesystemInitializedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemInitializedEvent.decode(
+        event.payload,
+      )
+      const current = getStatus(state, payload.workspaceId)
+      current.initialized = true
+    },
+    [workspaceFilesystemScanRequestedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanRequestedEvent.decode(
+        event.payload,
+      )
+      const current = getStatus(state, payload.workspaceId)
+      current.latestScan = {
+        scanId: payload.scanId,
+        status: 'requested',
+        reason: payload.reason,
+        requestedBy: payload.requestedBy,
+      }
+    },
+    [workspaceFilesystemScanStartedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanStartedEvent.decode(
+        event.payload,
+      )
+      const current = state.statuses[payload.workspaceId]
+      if (current?.latestScan?.scanId === payload.scanId) {
+        current.latestScan = { ...current.latestScan, status: 'running' }
+      }
+    },
+    [workspaceFilesystemScanCompletedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanCompletedEvent.decode(
+        event.payload,
+      )
+      const current = state.statuses[payload.workspaceId]
+      if (current?.latestScan?.scanId === payload.scanId) {
+        current.latestScan = {
+          ...current.latestScan,
+          status: 'completed',
+          discoveredNodeCount: payload.discoveredNodeCount,
+          changedNodeCount: payload.changedNodeCount,
+          deletedNodeCount: payload.deletedNodeCount,
+        }
+      }
+    },
+    [workspaceFilesystemScanFailedEvent.type]: async (event, state) => {
+      const payload = await workspaceFilesystemScanFailedEvent.decode(
+        event.payload,
+      )
+      const current = state.statuses[payload.workspaceId]
+      if (current?.latestScan?.scanId === payload.scanId) {
+        current.latestScan = {
+          ...current.latestScan,
+          status: 'failed',
+          error: payload.error,
+        }
+      }
+    },
+  })
   .scenarios(
     {
       description: 'Reports a workspace with no initialized filesystem state.',
@@ -195,8 +264,13 @@ const workspaceFilesystemStatus = createQuerySlice(
       },
     },
   )
-  .handle(async (): Promise<WorkspaceFilesystemStatus> => {
-    throw new Error('TODO: implement workspaceFilesystemStatus')
+  .handle(async (query, state): Promise<WorkspaceFilesystemStatus> => {
+    return (
+      state.statuses[query.workspaceId] ?? {
+        initialized: false,
+        latestScan: null,
+      }
+    )
   })
 
 export default workspaceFilesystemStatus

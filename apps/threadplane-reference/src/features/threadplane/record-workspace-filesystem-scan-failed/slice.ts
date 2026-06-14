@@ -32,8 +32,14 @@ const recordWorkspaceFilesystemScanFailed = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordWorkspaceFilesystemScanFailed')
+  .handle(async (command) => {
+    return [
+      workspaceFilesystemScanFailedEvent.create({
+        scanId: command.scanId,
+        workspaceId: command.workspaceId,
+        error: command.error,
+      }),
+    ]
   })
 
 export default recordWorkspaceFilesystemScanFailed

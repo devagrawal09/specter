@@ -38,8 +38,16 @@ const recordWorkspaceFilesystemScanCompleted = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordWorkspaceFilesystemScanCompleted')
+  .handle(async (command) => {
+    return [
+      workspaceFilesystemScanCompletedEvent.create({
+        scanId: command.scanId,
+        workspaceId: command.workspaceId,
+        discoveredNodeCount: command.discoveredNodeCount,
+        changedNodeCount: command.changedNodeCount,
+        deletedNodeCount: command.deletedNodeCount,
+      }),
+    ]
   })
 
 export default recordWorkspaceFilesystemScanCompleted

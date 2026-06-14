@@ -60,8 +60,15 @@ const recordFilesystemNodeDeleted = createCommandSlice(
       },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement recordFilesystemNodeDeleted')
+  .handle(async (command) => {
+    if (
+      command.path.startsWith('/') ||
+      command.path.includes('..') ||
+      command.path === ''
+    ) {
+      throw new Error('Filesystem node path must be relative and normalized')
+    }
+    return [filesystemNodeDeletedEvent.create(command)]
   })
 
 export default recordFilesystemNodeDeleted

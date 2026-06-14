@@ -35,7 +35,41 @@ const workspaceFilesystemTree = createQuerySlice(
   .store(
     createMemorySliceStore<WorkspaceFilesystemTreeState>(() => ({ nodes: [] })),
   )
-  .apply({})
+  .apply({
+    [filesystemNodeDiscoveredEvent.type]: async (event, state) => {
+      const payload = await filesystemNodeDiscoveredEvent.decode(event.payload)
+      const existingIndex = state.nodes.findIndex(
+        (node) =>
+          node.workspaceId === payload.workspaceId &&
+          node.path === payload.path,
+      )
+      const node = { ...payload }
+      if (existingIndex >= 0) state.nodes[existingIndex] = node
+      else state.nodes.push(node)
+    },
+    [filesystemNodeChangedEvent.type]: async (event, state) => {
+      const payload = await filesystemNodeChangedEvent.decode(event.payload)
+      const existingIndex = state.nodes.findIndex(
+        (node) =>
+          node.workspaceId === payload.workspaceId &&
+          node.path === payload.path,
+      )
+      const node = { ...payload }
+      if (existingIndex >= 0) state.nodes[existingIndex] = node
+      else state.nodes.push(node)
+    },
+    [filesystemNodeDeletedEvent.type]: async (event, state) => {
+      const payload = await filesystemNodeDeletedEvent.decode(event.payload)
+      state.nodes = state.nodes.filter(
+        (node) =>
+          node.workspaceId !== payload.workspaceId ||
+          !(
+            node.path === payload.path ||
+            node.path.startsWith(`${payload.path}/`)
+          ),
+      )
+    },
+  })
   .scenarios(
     {
       description:
@@ -199,8 +233,15 @@ const workspaceFilesystemTree = createQuerySlice(
       ],
     },
   )
-  .handle(async (): Promise<WorkspaceFilesystemNode[]> => {
-    throw new Error('TODO: implement workspaceFilesystemTree')
-  })
+  .handle(
+    async (query, state): Promise<WorkspaceFilesystemNode[]> =>
+      state.nodes
+        .filter((node) => node.workspaceId === query.workspaceId)
+        .filter(
+          (node) =>
+            query.parentPath === undefined ||
+            node.parentPath === query.parentPath,
+        ),
+  )
 
 export default workspaceFilesystemTree
