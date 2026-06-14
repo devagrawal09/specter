@@ -37,7 +37,41 @@ const workspaceAgentRuns = createQuerySlice(
     }),
   )
   .store(createMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
-  .apply({})
+  .apply({
+    [agentRunRequestedEvent.type]: async (event, state) => {
+      const payload = await agentRunRequestedEvent.decode(event.payload)
+      if (payload.workspaceId) {
+        state.runs.push({
+          runId: payload.runId,
+          workspaceId: payload.workspaceId,
+          postId: payload.postId,
+          agentId: payload.agentId,
+          agentName: payload.agentName,
+          status: 'pending',
+          requestedBy: payload.requestedBy,
+        })
+      }
+    },
+    [agentRunStartedEvent.type]: async (event, state) => {
+      const payload = await agentRunStartedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+      if (run && run.workspaceId === payload.workspaceId) run.status = 'running'
+    },
+    [agentRunCompletedEvent.type]: async (event, state) => {
+      const payload = await agentRunCompletedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+      if (run && run.workspaceId === payload.workspaceId)
+        run.status = 'completed'
+    },
+    [agentRunFailedEvent.type]: async (event, state) => {
+      const payload = await agentRunFailedEvent.decode(event.payload)
+      const run = state.runs.find((item) => item.runId === payload.runId)
+      if (run && run.workspaceId === payload.workspaceId) {
+        run.status = 'failed'
+        run.error = payload.error
+      }
+    },
+  })
   .scenarios({
     description:
       'Lists workspace Agent Runs with pending, running, completed, and failed statuses.',
@@ -138,8 +172,8 @@ const workspaceAgentRuns = createQuerySlice(
       },
     ],
   })
-  .handle(async (): Promise<WorkspaceAgentRun[]> => {
-    throw new Error('TODO: implement workspaceAgentRuns')
+  .handle(async (query, state): Promise<WorkspaceAgentRun[]> => {
+    return state.runs.filter((run) => run.workspaceId === query.workspaceId)
   })
 
 export default workspaceAgentRuns

@@ -41,8 +41,17 @@ const recordToolCallStarted = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordToolCallStarted')
+  .handle(async (command) => {
+    return [
+      toolCallStartedEvent.create({
+        toolCallId: command.toolCallId,
+        runId: command.runId,
+        workspaceId: command.workspaceId,
+        agentId: command.agentId,
+        toolName: command.toolName,
+        inputSummary: command.inputSummary,
+      }),
+    ]
   })
 
 export default recordToolCallStarted

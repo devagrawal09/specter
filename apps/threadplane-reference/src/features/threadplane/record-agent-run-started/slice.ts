@@ -32,8 +32,14 @@ const recordAgentRunStarted = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordAgentRunStarted')
+  .handle(async (command) => {
+    return [
+      agentRunStartedEvent.create({
+        runId: command.runId,
+        workspaceId: command.workspaceId,
+        agentId: command.agentId,
+      }),
+    ]
   })
 
 export default recordAgentRunStarted

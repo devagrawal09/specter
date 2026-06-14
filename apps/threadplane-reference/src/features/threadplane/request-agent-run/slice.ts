@@ -74,8 +74,23 @@ const requestAgentRun = createCommandSlice(
       ],
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement requestAgentRun')
+  .handle(async (command) => {
+    const agentName = command.agentName.trim()
+
+    if (!agentName) {
+      throw new Error('Agent name is required')
+    }
+
+    return [
+      agentRunRequestedEvent.create({
+        runId: crypto.randomUUID(),
+        workspaceId: command.workspaceId,
+        postId: command.postId,
+        agentId: command.agentId,
+        agentName,
+        requestedBy: command.requestedBy,
+      }),
+    ]
   })
 
 export default requestAgentRun

@@ -41,8 +41,23 @@ const recordAgentRunStreamed = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordAgentRunStreamed')
+  .handle(async (command) => {
+    const delta = command.delta
+
+    if (!delta) {
+      throw new Error('Streamed delta is required')
+    }
+
+    return [
+      agentRunStreamedEvent.create({
+        runId: command.runId,
+        workspaceId: command.workspaceId,
+        agentId: command.agentId,
+        chunkId: command.chunkId,
+        sequence: command.sequence,
+        delta,
+      }),
+    ]
   })
 
 export default recordAgentRunStreamed

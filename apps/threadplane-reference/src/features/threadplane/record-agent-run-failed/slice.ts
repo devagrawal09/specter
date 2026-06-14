@@ -35,8 +35,21 @@ const recordAgentRunFailed = createCommandSlice(
       }),
     ],
   })
-  .handle(async () => {
-    throw new Error('TODO: implement recordAgentRunFailed')
+  .handle(async (command) => {
+    const error = command.error.trim()
+
+    if (!error) {
+      throw new Error('Agent run error is required')
+    }
+
+    return [
+      agentRunFailedEvent.create({
+        runId: command.runId,
+        workspaceId: command.workspaceId,
+        agentId: command.agentId,
+        error,
+      }),
+    ]
   })
 
 export default recordAgentRunFailed
