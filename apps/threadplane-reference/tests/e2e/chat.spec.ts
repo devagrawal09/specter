@@ -1,6 +1,14 @@
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
+
 import { expect, test, type Page, type TestInfo } from '@playwright/test'
 
-function uniqueMessage(label: string, testInfo: TestInfo) {
+import {
+  listThreadplaneWorkspaceChatOnServer,
+  listThreadplaneWorkspacesOnServer,
+} from '../../src/features/threadplane/server-runtime.server'
+
+function uniqueLabel(label: string, testInfo: TestInfo) {
   return `${label} ${Date.now()}-${testInfo.workerIndex}`
 }
 
@@ -9,7 +17,7 @@ async function openThreadplane(page: Page) {
     await page.goto('/')
 
     try {
-      await expect(page.getByPlaceholder('Write a message...')).toBeVisible({
+      await expect(page.getByPlaceholder('Workspace name')).toBeVisible({
         timeout: 10_000,
       })
       return
@@ -19,66 +27,58 @@ async function openThreadplane(page: Page) {
   }
 }
 
-test('loads the Threadplane workspace chat shell', async ({ page }) => {
+test('loads the reference shell', async ({ page }) => {
   await openThreadplane(page)
 
-  await expect(page.locator('aside').getByText(/^threadplane$/i)).toBeVisible()
-  await expect(
-    page.getByRole('heading', { name: 'Workspace Chat' }),
-  ).toBeVisible()
-  await expect(page.getByPlaceholder('Write a message...')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Reference UI' })).toBeVisible()
+  await expect(page.getByPlaceholder('Workspace name')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Simulate run' })).toBeVisible()
 })
 
-test('sends a normal chat message', async ({ page }, testInfo) => {
-  const message = uniqueMessage('e2e normal message', testInfo)
-
-  await openThreadplane(page)
-  await page.getByPlaceholder('Write a message...').fill(message)
-  await page.getByRole('button', { name: 'Send' }).click()
-
-  await expect(page.getByText(message, { exact: true })).toBeVisible()
-})
-
-test('sends a Specter mention and shows the deterministic reply', async ({
+test('creates a workspace, posts, scans, previews a file, and shows a simulated run', async ({
   page,
 }, testInfo) => {
-  const message = uniqueMessage('e2e @specter mention', testInfo)
-
-  await openThreadplane(page)
-  await page.getByPlaceholder('Write a message...').fill(message)
-  await page.getByRole('button', { name: 'Send' }).click()
-
-  await expect(page.getByText(message, { exact: true })).toBeVisible()
-  await expect(
-    page.getByText(`Specter heard: ${message}`, { exact: true }),
-  ).toBeVisible()
-})
-
-test('creates and selects a workspace with scoped Specter replies', async ({
-  page,
-}, testInfo) => {
-  const workspaceName = uniqueMessage('E2E Workspace', testInfo)
-  const message = uniqueMessage('workspace scoped @specter mention', testInfo)
+  const workspaceName = uniqueLabel('E2E Workspace', testInfo)
+  const message = uniqueLabel('e2e post', testInfo)
+  const fileContents = uniqueLabel('preview file', testInfo)
 
   await openThreadplane(page)
   await page.getByPlaceholder('Workspace name').fill(workspaceName)
   await page.getByRole('button', { name: 'Create Workspace' }).click()
 
-  await expect(
-    page.getByRole('heading', { name: workspaceName }),
-  ).toBeVisible()
+  await expect(page.getByRole('heading', { name: workspaceName })).toBeVisible()
 
-  await page.getByPlaceholder('Write a message...').fill(message)
-  await page.getByRole('button', { name: 'Send' }).click()
+  const workspace = (await listThreadplaneWorkspacesOnServer()).find(
+    (item) => item.name === workspaceName,
+  )
+  expect(workspace).toBeTruthy()
 
+  const workspaceRoot = path.join(
+    process.cwd(),
+    'data',
+    'threadplane-workspaces',
+    workspace!.id,
+  )
+  await mkdir(workspaceRoot, { recursive: true })
+  await writeFile(path.join(workspaceRoot, 'notes.txt'), `${fileContents}\n`)
+
+  await page.getByPlaceholder('Write a post...').fill(message)
+  await page.getByRole('button', { name: 'Post' }).click()
   await expect(page.getByText(message, { exact: true })).toBeVisible()
-  await expect(
-    page.getByText(`Specter heard: ${message}`, { exact: true }),
-  ).toBeVisible()
 
-  await page.getByRole('button', { name: 'Main Workspace' }).click()
+  await page.getByRole('button', { name: 'Scan' }).click()
+  await expect(page.getByText('Latest')).toBeVisible()
+  await expect(page.getByRole('button', { name: /📄 notes\.txt/ })).toBeVisible()
+
+  await page.getByRole('button', { name: /📄 notes\.txt/ }).click()
+  await expect(page.getByText(fileContents, { exact: false })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Simulate run' }).click()
   await expect(
-    page.getByRole('heading', { name: 'Main Workspace' }),
+    page.getByRole('button', { name: /Simulated Agent · (completed|failed|running|pending)/ }),
   ).toBeVisible()
-  await expect(page.getByText(message, { exact: true })).not.toBeVisible()
+  await expect(page.getByText('I found the issue.', { exact: false })).toBeVisible()
+
+  const chat = await listThreadplaneWorkspaceChatOnServer({ workspaceId: workspace!.id })
+  expect(chat.some((item) => item.author.type === 'agent')).toBeTruthy()
 })
