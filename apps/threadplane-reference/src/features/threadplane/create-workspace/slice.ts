@@ -58,8 +58,30 @@ const createWorkspace = createCommandSlice(
       reject: { reason: 'Workspace name is required' },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement createWorkspace')
+  .handle(async (command) => {
+    const name = command.name.trim()
+    const workspaceId = crypto.randomUUID()
+
+    if (!name) {
+      throw new Error('Workspace name is required')
+    }
+
+    return [
+      workspaceCreatedEvent.create({
+        workspaceId,
+        name,
+        createdBy: command.createdBy,
+      }),
+      workspaceFilesystemInitializedEvent.create({
+        workspaceId,
+      }),
+      workspaceFilesystemScanRequestedEvent.create({
+        scanId: crypto.randomUUID(),
+        workspaceId,
+        reason: 'workspaceCreated',
+        requestedBy: { type: 'system' },
+      }),
+    ]
   })
 
 export default createWorkspace

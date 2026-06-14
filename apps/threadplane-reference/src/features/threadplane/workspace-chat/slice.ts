@@ -37,7 +37,31 @@ const workspaceChat = createQuerySlice(
     }),
   )
   .store(createMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
-  .apply({})
+  .apply({
+    [postCreatedEvent.type]: async (event, state) => {
+      const payload = await postCreatedEvent.decode(event.payload)
+
+      state.posts.push({
+        id: payload.postId,
+        workspaceId: payload.workspaceId,
+        author: payload.author,
+        content: payload.content,
+        sourceRunId: payload.sourceRunId,
+      })
+    },
+    [postReplyCreatedEvent.type]: async (event, state) => {
+      const payload = await postReplyCreatedEvent.decode(event.payload)
+
+      state.posts.push({
+        id: payload.replyId,
+        workspaceId: payload.workspaceId,
+        parentPostId: payload.parentPostId,
+        author: payload.author,
+        content: payload.content,
+        sourceRunId: payload.sourceRunId,
+      })
+    },
+  })
   .scenarios({
     description:
       'Lists workspace posts, user replies, and visible agent replies in posting order.',
@@ -95,8 +119,8 @@ const workspaceChat = createQuerySlice(
       },
     ],
   })
-  .handle(async (): Promise<WorkspaceChatItem[]> => {
-    throw new Error('TODO: implement workspaceChat')
-  })
+  .handle(async (query, state) =>
+    state.posts.filter((post) => post.workspaceId === query.workspaceId),
+  )
 
 export default workspaceChat

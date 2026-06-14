@@ -53,8 +53,25 @@ const createPost = createCommandSlice(
       reject: { reason: 'Post content is required' },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement createPost')
+  .handle(async (command) => {
+    const content = command.content.trim()
+
+    if (!content) {
+      throw new Error('Post content is required')
+    }
+
+    return [
+      postCreatedEvent.create({
+        postId: crypto.randomUUID(),
+        workspaceId: command.workspaceId,
+        author: {
+          type: 'user',
+          userId: command.author.userId,
+          displayName: command.author.displayName,
+        },
+        content,
+      }),
+    ]
   })
 
 export default createPost

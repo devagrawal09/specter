@@ -61,8 +61,27 @@ const recordVisibleAgentReply = createCommandSlice(
       reject: { reason: 'Agent reply content is required' },
     },
   )
-  .handle(async () => {
-    throw new Error('TODO: implement recordVisibleAgentReply')
+  .handle(async (command) => {
+    const content = command.content.trim()
+
+    if (!content) {
+      throw new Error('Agent reply content is required')
+    }
+
+    return [
+      postReplyCreatedEvent.create({
+        replyId: crypto.randomUUID(),
+        workspaceId: command.workspaceId,
+        parentPostId: command.parentPostId,
+        author: {
+          type: 'agent',
+          agentId: command.agentId,
+          displayName: command.agentName,
+        },
+        content,
+        sourceRunId: command.runId,
+      }),
+    ]
   })
 
 export default recordVisibleAgentReply

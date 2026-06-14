@@ -23,7 +23,25 @@ const workspaceList = createQuerySlice(
 )
   .schema(z.object({}))
   .store(createMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
-  .apply({})
+  .apply({
+    [workspaceCreatedEvent.type]: async (event, state) => {
+      const payload = await workspaceCreatedEvent.decode(event.payload)
+
+      if (
+        state.workspaces.some(
+          (workspace) => workspace.id === payload.workspaceId,
+        )
+      ) {
+        return
+      }
+
+      state.workspaces.push({
+        id: payload.workspaceId,
+        name: payload.name,
+        createdBy: payload.createdBy,
+      })
+    },
+  })
   .scenarios({
     description: 'Lists workspaces in creation order.',
     given: [
@@ -47,8 +65,6 @@ const workspaceList = createQuerySlice(
       { id: 'workspace-2', name: 'Design Lab' },
     ],
   })
-  .handle(async (): Promise<WorkspaceListItem[]> => {
-    throw new Error('TODO: implement workspaceList')
-  })
+  .handle(async (_query, state) => state.workspaces)
 
 export default workspaceList
