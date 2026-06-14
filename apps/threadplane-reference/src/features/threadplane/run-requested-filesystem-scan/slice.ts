@@ -2,9 +2,6 @@ import { createReactionSlice } from '@specter-ts/core'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
-  filesystemNodeChangedEvent,
-  filesystemNodeDeletedEvent,
-  filesystemNodeDiscoveredEvent,
   workspaceFilesystemScanCompletedEvent,
   workspaceFilesystemScanFailedEvent,
   workspaceFilesystemScanRequestedEvent,
@@ -53,62 +50,66 @@ const runRequestedFilesystemScan = createReactionSlice(
 
       lastSnapshotsByWorkspace.set(scanJob.workspaceId, next)
 
-      await command(
-        workspaceFilesystemScanStartedEvent.create({
+      await command({
+        type: 'recordWorkspaceFilesystemScanStarted',
+        payload: {
           workspaceId: scanJob.workspaceId,
           scanId: scanJob.scanId,
-        }) as never,
-      )
+        },
+      } as never)
       for (const node of discovered) {
-        await command(
-          filesystemNodeDiscoveredEvent.create({
+        await command({
+          type: 'recordFilesystemNodeDiscovered',
+          payload: {
             scanId: scanJob.scanId,
             workspaceId: scanJob.workspaceId,
             ...node,
-          }) as never,
-        )
+          },
+        } as never)
       }
       for (const node of changed) {
-        await command(
-          filesystemNodeChangedEvent.create({
+        await command({
+          type: 'recordFilesystemNodeChanged',
+          payload: {
             scanId: scanJob.scanId,
             workspaceId: scanJob.workspaceId,
             ...node,
-          }) as never,
-        )
+          },
+        } as never)
       }
       for (const path of deleted) {
-        await command(
-          filesystemNodeDeletedEvent.create({
+        await command({
+          type: 'recordFilesystemNodeDeleted',
+          payload: {
             scanId: scanJob.scanId,
             workspaceId: scanJob.workspaceId,
             path,
-          }) as never,
-        )
+          },
+        } as never)
       }
-      return command(
-        workspaceFilesystemScanCompletedEvent.create({
+      return command({
+        type: 'recordWorkspaceFilesystemScanCompleted',
+        payload: {
           scanId: scanJob.scanId,
           workspaceId: scanJob.workspaceId,
           discoveredNodeCount: discovered.length,
           changedNodeCount: changed.length,
           deletedNodeCount: deleted.length,
-        }) as never,
-      )
+        },
+      } as never)
     } catch (error) {
-      await command(
-        workspaceFilesystemScanStartedEvent.create({
-          scanId: scanJob.scanId,
-          workspaceId: scanJob.workspaceId,
-        }) as never,
-      )
-      return command(
-        workspaceFilesystemScanFailedEvent.create({
+      await command({
+        type: 'recordWorkspaceFilesystemScanStarted',
+        payload: { scanId: scanJob.scanId, workspaceId: scanJob.workspaceId },
+      } as never)
+      return command({
+        type: 'recordWorkspaceFilesystemScanFailed',
+        payload: {
           scanId: scanJob.scanId,
           workspaceId: scanJob.workspaceId,
           error: error instanceof Error ? error.message : String(error),
-        }) as never,
-      )
+        },
+      } as never)
     }
   })
   .store(

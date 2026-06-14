@@ -1,3 +1,5 @@
+import { sqliteEventLog } from '../../db/specter-sqlite'
+import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
 import agentRunTimeline from './agent-run-timeline/slice'
 import createPost from './create-post/slice'
 import createWorkspace from './create-workspace/slice'
@@ -23,10 +25,10 @@ import requestAgentRun from './request-agent-run/slice'
 import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/slice'
 import runRequestedAgentRun from './run-requested-agent-run/slice'
 import runRequestedFilesystemScan from './run-requested-filesystem-scan/slice'
-import { threadplaneEventDefinitions } from './events'
 import workspaceAgentRuns from './workspace-agent-runs/slice'
 import workspaceChat from './workspace-chat/slice'
 import workspaceList from './workspace-list/slice'
+import { threadplaneEventDefinitions } from './events'
 
 export { threadplaneEventDefinitions }
 
@@ -62,3 +64,10 @@ export const threadplaneScaffoldRegistrations = [
 ] as const
 
 export const threadplaneSliceSkeletons = threadplaneScaffoldRegistrations
+
+export const threadplaneReferenceSpecterAppConfig = {
+  events: threadplaneEventDefinitions,
+  eventLog: sqliteEventLog,
+  scheduler: memoryReactionScheduler,
+  slices: threadplaneScaffoldRegistrations,
+} as const
