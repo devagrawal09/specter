@@ -79,7 +79,9 @@ test('records the Threadplane Reference common workflow demo', async ({ page }) 
   })
   await expect(runButton).toBeVisible()
   await runButton.click()
-  await expect(page.getByText(/inspectWorkspace|readFile|searchFiles/)).toBeVisible()
+  await expect(
+    page.getByText(/^(inspectWorkspace|readFile|searchFiles)$/).first(),
+  ).toBeVisible()
   await page.screenshot({
     path: path.join(artifactRoot, '06-agent-run-tool-calls.png'),
     fullPage: true,
@@ -102,7 +104,9 @@ test('records the Threadplane Reference common workflow demo', async ({ page }) 
     (item) => item.author.type === 'agent' && Boolean(item.sourceRunId),
   )?.content
   expect(agentReply).toBeTruthy()
-  await expect(page.getByText(String(agentReply), { exact: false })).toBeVisible()
+  await expect(
+    page.getByText(String(agentReply), { exact: false }).first(),
+  ).toBeVisible()
   await page.screenshot({
     path: path.join(artifactRoot, '07-final-agent-reply.png'),
     fullPage: true,

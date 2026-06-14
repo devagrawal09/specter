@@ -40,6 +40,7 @@ test('creates a workspace, posts, scans, previews a file, and shows a simulated 
 }, testInfo) => {
   const workspaceName = uniqueLabel('E2E Workspace', testInfo)
   const message = uniqueLabel('e2e post', testInfo)
+  const keyboardMessage = uniqueLabel('keyboard e2e post', testInfo)
   const fileContents = uniqueLabel('preview file', testInfo)
 
   await openThreadplane(page)
@@ -63,17 +64,27 @@ test('creates a workspace, posts, scans, previews a file, and shows a simulated 
   )
   await mkdir(workspaceRoot, { recursive: true })
   await writeFile(path.join(workspaceRoot, 'notes.txt'), `${fileContents}\n`)
+  await writeFile(path.join(workspaceRoot, 'binary.bin'), new Uint8Array([0, 1, 2]))
 
   await page.getByPlaceholder('Write a post...').fill(message)
   await page.getByRole('button', { name: 'Post' }).click()
   await expect(page.getByText(message, { exact: true })).toBeVisible()
 
+  await page.getByPlaceholder('Write a post...').fill(keyboardMessage)
+  await page.getByPlaceholder('Write a post...').press('Control+Enter')
+  await expect(page.getByText(keyboardMessage, { exact: true })).toBeVisible()
+
   await page.getByRole('button', { name: 'Scan' }).click()
   await expect(page.getByText('Latest')).toBeVisible()
   await expect(page.getByRole('button', { name: /📄 notes\.txt/ })).toBeVisible()
+  await expect(page.getByRole('button', { name: /📄 binary\.bin/ })).toBeVisible()
 
   await page.getByRole('button', { name: /📄 notes\.txt/ }).click()
   await expect(page.getByText(fileContents, { exact: false })).toBeVisible()
+
+  await page.getByRole('button', { name: /📄 binary\.bin/ }).click()
+  await expect(page.getByText('Preview unavailable')).toBeVisible()
+  await expect(page.getByText('Preview file appears to be binary')).toBeVisible()
 
   await page.getByRole('button', { name: 'Simulate run' }).click()
   await expect(
@@ -98,6 +109,6 @@ test('creates a workspace, posts, scans, previews a file, and shows a simulated 
   expect(visibleAgentReply).toBeTruthy()
   expect(visibleAgentReply?.parentPostId).toBeTruthy()
   await expect(
-    page.getByText(visibleAgentReply?.content ?? '', { exact: false }),
+    page.getByText(visibleAgentReply?.content ?? '', { exact: false }).first(),
   ).toBeVisible()
 })

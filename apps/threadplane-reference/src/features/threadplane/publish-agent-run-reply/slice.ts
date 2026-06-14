@@ -6,6 +6,7 @@ import {
   agentRunFailedEvent,
   agentRunRequestedEvent,
   agentRunStreamedEvent,
+  postReplyCreatedEvent,
 } from '../events'
 
 type RecordVisibleAgentReplyCommand = {
@@ -78,6 +79,13 @@ const publishAgentRunReply = createReactionSlice(
       const run = state.runs.find((item) => item.runId === payload.runId)
 
       if (run) run.failed = true
+    },
+    [postReplyCreatedEvent.type]: async (event, state) => {
+      const payload = await postReplyCreatedEvent.decode(event.payload)
+      if (!payload.sourceRunId) return
+
+      const run = state.runs.find((item) => item.runId === payload.sourceRunId)
+      if (run) run.replyPublished = true
     },
   })
   .scenarios(
@@ -167,6 +175,75 @@ const publishAgentRunReply = createReactionSlice(
         }),
       ],
       expect: [],
+    },
+    {
+      description:
+        'Continues publishing eligible Agent Run replies after an earlier reply event.',
+      given: [
+        agentRunRequestedEvent.create({
+          runId: 'run-1',
+          workspaceId: 'workspace-1',
+          postId: 'post-1',
+          agentId: 'specter',
+          agentName: 'Specter',
+          requestedBy: { type: 'user', displayName: 'Ada' },
+        }),
+        agentRunStreamedEvent.create({
+          runId: 'run-1',
+          workspaceId: 'workspace-1',
+          agentId: 'specter',
+          chunkId: 'chunk-1',
+          sequence: 0,
+          delta: 'Already published.',
+        }),
+        agentRunCompletedEvent.create({
+          runId: 'run-1',
+          workspaceId: 'workspace-1',
+          agentId: 'specter',
+        }),
+        postReplyCreatedEvent.create({
+          replyId: 'reply-1',
+          workspaceId: 'workspace-1',
+          parentPostId: 'post-1',
+          author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
+          content: 'Already published.',
+          sourceRunId: 'run-1',
+        }),
+        agentRunRequestedEvent.create({
+          runId: 'run-2',
+          workspaceId: 'workspace-1',
+          postId: 'post-2',
+          agentId: 'specter',
+          agentName: 'Specter',
+          requestedBy: { type: 'user', displayName: 'Ada' },
+        }),
+        agentRunStreamedEvent.create({
+          runId: 'run-2',
+          workspaceId: 'workspace-1',
+          agentId: 'specter',
+          chunkId: 'chunk-2',
+          sequence: 0,
+          delta: 'Publish this one.',
+        }),
+        agentRunCompletedEvent.create({
+          runId: 'run-2',
+          workspaceId: 'workspace-1',
+          agentId: 'specter',
+        }),
+      ],
+      expect: [
+        {
+          type: 'recordVisibleAgentReply',
+          payload: {
+            workspaceId: 'workspace-1',
+            parentPostId: 'post-2',
+            runId: 'run-2',
+            agentId: 'specter',
+            agentName: 'Specter',
+            content: 'Publish this one.',
+          },
+        },
+      ],
     },
   )
   .handle(
