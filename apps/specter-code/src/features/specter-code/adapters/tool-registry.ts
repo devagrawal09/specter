@@ -2,7 +2,8 @@ import type { PermissionAction, PermissionRequest } from "./permissions"
 
 export type ToolMetadataUpdate = {
   toolName: string
-  status: "started" | "completed" | "failed"
+  status: "started" | "output" | "completed" | "failed"
+  stream?: "stdout" | "stderr"
   summary?: string
 }
 
