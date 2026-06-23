@@ -9,7 +9,7 @@ permission:
   grep: allow
   list: allow
   edit: allow
-  bash: ask
+  bash: allow
   task: allow
   webfetch: allow
   websearch: allow

@@ -9,11 +9,11 @@
     "dev:booking": "pnpm --filter @specter-ts/core build && pnpm --filter @specter/booking-reference dev",
     "dev:threadplane": "pnpm --filter @specter/threadplane-reference dev",
     "dev:kill": "fuser -k 41731/tcp || true",
-    "build": "pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference build",
+    "build": "pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference --filter @specter/specter-code build",
     "start": "pnpm --filter @specter/reference start",
     "preview": "pnpm --filter @specter/reference preview",
-    "test": "pnpm -r --filter @specter-ts/core --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference test",
-    "typecheck": "pnpm --filter @specter-ts/core build && pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference typecheck",
+    "test": "pnpm -r --filter @specter-ts/core --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference --filter @specter/specter-code test",
+    "typecheck": "pnpm --filter @specter-ts/core build && pnpm -r --filter @specter-ts/core --filter create-specter --filter @specter/reference --filter @specter/booking-reference --filter @specter/threadplane-reference --filter @specter/specter-code typecheck",
     "db:generate": "pnpm --filter @specter/reference db:generate",
     "db:migrate": "pnpm --filter @specter/reference db:migrate",
     "db:studio": "pnpm --filter @specter/reference db:studio",
@@ -24,7 +24,8 @@
     "release:verify": "pnpm check && pnpm lint && pnpm typecheck && pnpm test && pnpm build",
     "release:pack": "pnpm --filter @specter-ts/core pack --pack-destination /tmp/opencode && pnpm --filter create-specter pack --pack-destination /tmp/opencode",
     "release:dry-run": "pnpm release:auth && pnpm release:verify && pnpm --filter @specter-ts/core publish --dry-run --access public && pnpm --filter create-specter publish --dry-run",
-    "release:publish": "pnpm release:auth && pnpm release:verify && pnpm --filter @specter-ts/core publish --access public && pnpm --filter create-specter publish"
+    "release:publish": "pnpm release:auth && pnpm release:verify && pnpm --filter @specter-ts/core publish --access public && pnpm --filter create-specter publish",
+    "dev:specter-code": "pnpm --filter @specter/specter-code dev"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.5",

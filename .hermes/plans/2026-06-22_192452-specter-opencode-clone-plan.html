@@ -1,0 +1,1230 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Specter OpenCode Clone Implementation Plan</title>
+  <style>
+    :root { --bg:#070914; --panel:rgba(255,255,255,.065); --text:#eef2ff; --muted:#a6b0cf; --faint:#66708f; --line:rgba(255,255,255,.12); --accent:#8b5cf6; --accent-2:#22d3ee; --accent-3:#34d399; --code-bg:#0c1022; --shadow:0 24px 80px rgba(0,0,0,.45); --radius:24px; color-scheme:dark; }
+    * { box-sizing:border-box; } html { scroll-behavior:smooth; }
+    body { margin:0; min-height:100vh; color:var(--text); background:radial-gradient(circle at 12% 4%, rgba(139,92,246,.36), transparent 30vw), radial-gradient(circle at 88% 8%, rgba(34,211,238,.28), transparent 34vw), radial-gradient(circle at 70% 70%, rgba(52,211,153,.12), transparent 34vw), linear-gradient(180deg,#070914 0%,#090b18 52%,#050711 100%); font:15px/1.65 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    a { color:inherit; } .shell { display:grid; grid-template-columns:300px minmax(0,1fr); min-height:100vh; }
+    aside { position:sticky; top:0; height:100vh; overflow:auto; padding:24px 18px; border-right:1px solid var(--line); background:rgba(5,7,17,.72); backdrop-filter:blur(22px); }
+    .brand { display:flex; align-items:center; gap:12px; margin-bottom:24px; } .mark { width:42px; height:42px; border-radius:14px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); box-shadow:0 0 34px rgba(34,211,238,.24); display:grid; place-items:center; font-weight:900; }
+    .brand strong { display:block; line-height:1.1; } .brand span { color:var(--muted); font-size:12px; } .toc { display:grid; gap:2px; } .toc a { text-decoration:none; color:var(--muted); border-radius:10px; padding:7px 10px; display:block; } .toc a:hover { background:var(--panel); color:var(--text); } .toc-l2 { margin-top:8px; font-weight:750; color:#dbeafe!important; } .toc-l3 { padding-left:22px!important; font-size:13px; }
+    main { min-width:0; } .hero { padding:64px clamp(28px,5vw,72px) 32px; border-bottom:1px solid var(--line); } .eyebrow { display:inline-flex; align-items:center; gap:8px; padding:7px 12px; border:1px solid rgba(139,92,246,.35); border-radius:999px; background:rgba(139,92,246,.13); color:#ddd6fe; font-weight:750; font-size:12px; letter-spacing:.08em; text-transform:uppercase; }
+    h1 { max-width:1040px; margin:20px 0 16px; font-size:clamp(44px,7vw,92px); line-height:.92; letter-spacing:-.075em; } .hero p { max-width:980px; color:var(--muted); font-size:clamp(17px,2.1vw,22px); line-height:1.55; }
+    .stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; margin-top:32px; max-width:1040px; } .stat { padding:18px; border:1px solid var(--line); border-radius:20px; background:var(--panel); box-shadow:var(--shadow); } .stat strong { display:block; font-size:28px; line-height:1; } .stat span { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.08em; }
+    .summary { display:grid; grid-template-columns:1fr 1fr; gap:18px; padding:28px clamp(28px,5vw,72px); } .summary-card { border:1px solid var(--line); background:linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.04)); border-radius:var(--radius); padding:24px; box-shadow:var(--shadow); } .summary-card h2 { margin:0 0 10px; font-size:18px; letter-spacing:-.02em; } .summary-card p { margin:0; color:var(--muted); }
+    .milestones { grid-column:1/-1; display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px; } .milestone { border:1px solid var(--line); border-radius:20px; padding:18px; background:rgba(255,255,255,.055); } .milestone span { display:inline-grid; place-items:center; width:28px; height:28px; border-radius:10px; background:linear-gradient(135deg,var(--accent),var(--accent-2)); font-weight:900; } .milestone h3 { margin:14px 0 8px; font-size:15px; } .milestone p { margin:0; color:var(--muted); font-size:13px; }
+    .content { max-width:1120px; padding:8px clamp(28px,5vw,72px) 96px; } .doc-title { display:none; } h2 { margin:56px 0 14px; padding-top:14px; font-size:clamp(28px,4vw,46px); line-height:1; letter-spacing:-.05em; } h3 { margin:34px 0 12px; font-size:24px; letter-spacing:-.03em; } h4 { margin:26px 0 10px; font-size:18px; color:#dbeafe; } .anchor { opacity:0; position:absolute; transform:translateX(-24px); text-decoration:none; color:var(--accent-2); } h2:hover .anchor,h3:hover .anchor,h4:hover .anchor { opacity:1; }
+    p,li { color:#c8d0e9; } strong { color:#fff; } blockquote { margin:18px 0; padding:14px 18px; border-left:4px solid var(--accent-2); border-radius:14px; background:rgba(34,211,238,.08); color:#dffafe; } ul,ol { padding-left:26px; } li { margin:6px 0; } hr { border:0; height:1px; background:var(--line); margin:34px 0; } code { font-family:"SFMono-Regular",Consolas,"Liberation Mono",Menlo,monospace; font-size:.92em; color:#bae6fd; background:rgba(34,211,238,.1); padding:.16em .38em; border-radius:7px; } pre { overflow:auto; border:1px solid rgba(148,163,184,.18); border-radius:18px; background:linear-gradient(180deg,#0d1226,#080b18); padding:18px; box-shadow:inset 0 1px 0 rgba(255,255,255,.04); } pre code { background:transparent; padding:0; color:#d7e3ff; font-size:13px; } .footer { color:var(--faint); font-size:12px; padding:24px clamp(28px,5vw,72px); border-top:1px solid var(--line); }
+    @media (max-width:980px) { .shell { grid-template-columns:1fr; } aside { position:relative; height:auto; max-height:360px; } .stats,.summary,.milestones { grid-template-columns:1fr; } }
+    @media print { body { background:white; color:#0f172a; } aside { display:none; } .shell { display:block; } .hero,.summary,.content,.footer { padding-left:24px; padding-right:24px; } .summary-card,.milestone,.stat { box-shadow:none; border-color:#cbd5e1; } p,li,.hero p,.summary-card p,.milestone p { color:#334155; } code,pre { color:#0f172a; background:#f1f5f9; } }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside><div class="brand"><div class="mark">S</div><div><strong>Specter Code</strong><span>OpenCode clone plan</span></div></div><nav class="toc" aria-label="Plan table of contents"><a class="toc-l2" href="#research-summary">Research Summary</a><a class="toc-l3" href="#specter-repository">Specter repository</a><a class="toc-l3" href="#opencode-clone-reference">OpenCode clone reference</a><a class="toc-l3" href="#existing-specter-opencode-experiments">Existing Specter/OpenCode experiments</a><a class="toc-l2" href="#product-scope-and-definition-of-done">Product Scope and Definition of Done</a><a class="toc-l2" href="#proposed-file-layout">Proposed File Layout</a><a class="toc-l2" href="#implementation-plan">Implementation Plan</a><a class="toc-l3" href="#phase-0-guardrails-and-baseline">Phase 0: Guardrails and baseline</a><a class="toc-l3" href="#phase-1-create-the-app-skeleton-from-threadplane">Phase 1: Create the app skeleton from Threadplane</a><a class="toc-l3" href="#phase-2-domain-schema-and-event-vocabulary">Phase 2: Domain schema and event vocabulary</a><a class="toc-l3" href="#phase-3-core-session-slices">Phase 3: Core session slices</a><a class="toc-l3" href="#phase-4-agent-runtime-adapter-streaming-and-fake-to-real-replacement">Phase 4: Agent runtime adapter, streaming, and fake-to-real replacement</a><a class="toc-l3" href="#phase-5-tool-registry-and-core-tools">Phase 5: Tool registry and core tools</a><a class="toc-l3" href="#phase-6-permissions-approvals-and-safety">Phase 6: Permissions, approvals, and safety</a><a class="toc-l3" href="#phase-7-persistence-and-large-transcript-storage">Phase 7: Persistence and large transcript storage</a><a class="toc-l3" href="#phase-8-api-compatibility-layer">Phase 8: API compatibility layer</a><a class="toc-l3" href="#phase-9-config-providers-agents-skills-plugins">Phase 9: Config, providers, agents, skills, plugins</a><a class="toc-l3" href="#phase-10-filesystem-git-snapshots-lsp-mcp-pty">Phase 10: Filesystem, git, snapshots, LSP, MCP, PTY</a><a class="toc-l3" href="#phase-11-web-ui-parity">Phase 11: Web UI parity</a><a class="toc-l3" href="#phase-12-cli-and-tui-surfaces">Phase 12: CLI and TUI surfaces</a><a class="toc-l3" href="#phase-13-opencode-migration-compatibility">Phase 13: OpenCode migration compatibility</a><a class="toc-l3" href="#phase-14-hardening-performance-and-developer-experience">Phase 14: Hardening, performance, and developer experience</a><a class="toc-l2" href="#milestones">Milestones</a><a class="toc-l3" href="#milestone-a-specter-code-mvp">Milestone A: Specter Code MVP</a><a class="toc-l3" href="#milestone-b-real-local-coding-assistant">Milestone B: Real local coding assistant</a><a class="toc-l3" href="#milestone-c-opencode-parity-beta">Milestone C: OpenCode parity beta</a><a class="toc-l3" href="#milestone-d-complete-clone">Milestone D: Complete clone</a><a class="toc-l2" href="#files-likely-to-change">Files Likely to Change</a><a class="toc-l2" href="#validation-matrix">Validation Matrix</a><a class="toc-l2" href="#risks-and-mitigations">Risks and Mitigations</a><a class="toc-l2" href="#open-questions">Open Questions</a><a class="toc-l2" href="#recommended-next-step">Recommended Next Step</a></nav></aside>
+    <main>
+      <section class="hero"><div class="eyebrow">Implementation Plan · HTML Doc</div><h1>Specter OpenCode Clone<br/><span style="color:#93c5fd">Implementation Plan</span></h1><p>Build a faithful OpenCode-style coding agent product on top of Specter, using Specter as the durable event/workflow backbone and local adapters for LLMs, tools, permissions, filesystem, shell, LSP, config, and UI/CLI surfaces.</p><div class="stats"><div class="stat"><strong>15</strong><span>Build phases</span></div><div class="stat"><strong>22</strong><span>Major sections</span></div><div class="stat"><strong>4</strong><span>Milestones</span></div><div class="stat"><strong>1,692</strong><span>Source lines</span></div></div></section>
+      <section class="summary"><article class="summary-card"><h2>Architecture</h2><p>Create a new app, `apps/specter-code`, by extracting/reusing the Threadplane reference app&#x27;s workspace/chat/filesystem/agent-run patterns instead of rewriting `@specter-ts/core`. Specter events model every user action, assistant message, tool call, permission decision, file edit, shell run, PTY session, and sync/share action; command/query/reaction slices provide validated state transitions and read models; app-local adapters perform side effects outside pure slices.</p></article><article class="summary-card"><h2>Tech Stack</h2><p>TypeScript, PNPM workspaces, `@specter-ts/core`, Solid/TanStack Start, Zod/Standard Schema, SQLite/libsql, Vitest scenario tests, Playwright, AI SDK-compatible providers, `node-pty`/Bun subprocesses, ripgrep, LSP clients, MCP SDK, SSE/WebSocket streaming.</p></article><div class="milestones"><article class="milestone"><span>A</span><h3>Specter Code MVP</h3><p>New app, sessions, fake streaming runtime, basic tools, and web timeline.</p></article><article class="milestone"><span>B</span><h3>Real local coding assistant</h3><p>Real providers, file edits, shell, approvals, snapshots, and live updates.</p></article><article class="milestone"><span>C</span><h3>OpenCode parity beta</h3><p>CLI/server/config/plugins/LSP/MCP/PTY and common OpenCode route compatibility.</p></article><article class="milestone"><span>D</span><h3>Complete clone</h3><p>Daily-use TUI, closed route parity, durability, hardening, and full regression suite.</p></article></div></section>
+      <article class="content"><h1 id="specter-opencode-clone-implementation-plan" class="doc-title">Specter OpenCode Clone Implementation Plan</h1>
+<blockquote><strong>For Hermes:</strong> Use subagent-driven-development skill to implement this plan task-by-task.</blockquote>
+<p><strong>Goal:</strong> Build a faithful OpenCode-style coding agent product on top of Specter, using Specter as the durable event/workflow backbone and local adapters for LLMs, tools, permissions, filesystem, shell, LSP, config, and UI/CLI surfaces.</p>
+<p><strong>Architecture:</strong> Create a new app, <code>apps/specter-code</code>, by extracting/reusing the Threadplane reference app&#x27;s workspace/chat/filesystem/agent-run patterns instead of rewriting <code>@specter-ts/core</code>. Specter events model every user action, assistant message, tool call, permission decision, file edit, shell run, PTY session, and sync/share action; command/query/reaction slices provide validated state transitions and read models; app-local adapters perform side effects outside pure slices.</p>
+<p><strong>Tech Stack:</strong> TypeScript, PNPM workspaces, <code>@specter-ts/core</code>, Solid/TanStack Start, Zod/Standard Schema, SQLite/libsql, Vitest scenario tests, Playwright, AI SDK-compatible providers, <code>node-pty</code>/Bun subprocesses, ripgrep, LSP clients, MCP SDK, SSE/WebSocket streaming.</p>
+<hr />
+<h2 id="research-summary"><a class="anchor" href="#research-summary">#</a>Research Summary</h2>
+<h3 id="specter-repository"><a class="anchor" href="#specter-repository">#</a>Specter repository</h3>
+<p>Target repo:</p>
+<pre><code class="language-txt">/home/lucifer/work/active/specter</code></pre>
+<p>Current state observed on 2026-06-22:</p>
+<pre><code class="language-txt">branch: threadplane-work
+HEAD: 8ba8053 Refine Threadplane reference UI
+working tree: dirty only in .opencode/agent/*.md plus untracked .hermes/</code></pre>
+<p>Important packages/apps:</p>
+<pre><code class="language-txt">packages/core                         # @specter-ts/core runtime
+packages/create-specter                # create-specter CLI/template
+apps/threadplane-reference             # best current OpenCode-like scaffold
+apps/reference                         # smaller todo reference
+apps/booking-reference                 # booking workflow reference</code></pre>
+<p>Most reusable app:</p>
+<pre><code class="language-txt">apps/threadplane-reference</code></pre>
+<p>Already present and directly relevant:</p>
+<ul>
+<li>Workspaces.</li>
+<li>Chat/posts/replies.</li>
+<li>Filesystem scan/status/tree/read-only preview.</li>
+<li>Agent-run lifecycle.</li>
+<li>Tool-call lifecycle.</li>
+<li>Streamed assistant chunks as events.</li>
+<li>Reaction-driven simulated agent run.</li>
+<li>SQLite event log + slice-state persistence.</li>
+<li>Server-only runtime boundary.</li>
+<li>Solid UI + polling resources.</li>
+<li>Vitest scenario tests and Playwright e2e tests.</li>
+</ul>
+<p>Key Threadplane files to reuse or copy:</p>
+<pre><code class="language-txt">apps/threadplane-reference/src/features/threadplane/events.ts
+apps/threadplane-reference/src/features/threadplane/registry.ts
+apps/threadplane-reference/src/features/threadplane/server-runtime.server.ts
+apps/threadplane-reference/src/features/threadplane/server-functions.ts
+apps/threadplane-reference/src/features/threadplane/simulated-agent-plan.ts
+apps/threadplane-reference/src/features/threadplane/run-requested-agent-run/slice.ts
+apps/threadplane-reference/src/features/threadplane/agent-run-timeline/slice.ts
+apps/threadplane-reference/src/features/threadplane/workspace-chat/slice.ts
+apps/threadplane-reference/src/features/threadplane/workspace-filesystem-tree/slice.ts
+apps/threadplane-reference/src/features/threadplane/filesystem-metadata-adapter.ts
+apps/threadplane-reference/src/db/specter-sqlite.ts
+apps/threadplane-reference/src/testing/*.ts
+apps/threadplane-reference/tests/e2e/*.spec.ts</code></pre>
+<p>Core rules to preserve:</p>
+<ul>
+<li>Events first.</li>
+<li>Slice state is private to each slice.</li>
+<li>Slices must not import sibling slices.</li>
+<li>Effects belong in reaction plugins/adapters, not in pure command/query handlers.</li>
+<li>UI/server functions should not import database details directly.</li>
+<li><code>@specter-ts/core</code> should remain storage/UI/transport agnostic.</li>
+</ul>
+<h3 id="opencode-clone-reference"><a class="anchor" href="#opencode-clone-reference">#</a>OpenCode clone reference</h3>
+<p>Local OpenCode clone inspected:</p>
+<pre><code class="language-txt">/home/lucifer/work/active/harlan/.repos/opencode
+HEAD: ca8f578 ci: skip previously cleaned PRs (#27670)
+status: clean</code></pre>
+<p>OpenCode is a large Bun/TypeScript monorepo. Important packages:</p>
+<pre><code class="language-txt">packages/opencode                   # main CLI/server/runtime
+packages/app                        # Solid web app
+packages/core                       # core provider/session/shared primitives
+packages/llm                        # low-level LLM utilities
+packages/plugin                     # plugin SDK/runtime types
+packages/sdk                        # generated SDK + openapi.json
+packages/ui                         # shared UI package</code></pre>
+<p>Main OpenCode surfaces to clone:</p>
+<ul>
+<li>CLI entrypoint with commands: default TUI, <code>run</code>, <code>serve</code>, <code>web</code>, <code>session</code>, <code>agent</code>, <code>providers</code>, <code>models</code>, <code>mcp</code>, <code>github</code>, <code>pr</code>, <code>import</code>, <code>export</code>, <code>db</code>, <code>debug</code>, <code>upgrade</code>, <code>uninstall</code>, <code>attach</code>, ACP.</li>
+<li>Headless HTTP server with OpenAPI/SDK.</li>
+<li>Event stream/global bus.</li>
+<li>Session/message/part persistence.</li>
+<li>Prompt processing and resumable turns.</li>
+<li>LLM provider/model registry.</li>
+<li>Agents/modes/subagents.</li>
+<li>Tools: read, write, edit, apply_patch, shell, glob, grep, LSP, task/subtask, todo, webfetch, websearch, repo clone/overview, skill, question.</li>
+<li>Permission system: allow/ask/deny rules with wildcard matching and pending requests.</li>
+<li>PTY sessions and terminal streaming.</li>
+<li>File/status/search APIs.</li>
+<li>Git/VCS diff/status/apply/revert/snapshots.</li>
+<li>LSP diagnostics/symbol lookup.</li>
+<li>MCP server support.</li>
+<li>Config loader from global/project <code>.opencode</code> locations with JSONC, plugins, agents, skills, provider definitions.</li>
+<li>Web app/TUI with session transcript, model selection, tool timeline, diffs, approvals, subagent status, prompt queue.</li>
+</ul>
+<p>OpenCode&#x27;s generated OpenAPI endpoints include:</p>
+<pre><code class="language-txt">GET /agent
+GET /command
+GET,PATCH /config
+GET /event
+GET /file
+GET /file/content
+GET /file/status
+GET /find
+GET /find/file
+GET /find/symbol
+GET /formatter
+GET /lsp
+GET,POST /mcp
+GET /permission
+POST /permission/{requestID}/reply
+GET /project
+GET /provider
+GET,POST /pty
+GET,PUT,DELETE /pty/{ptyID}
+GET /question
+GET,POST /session
+GET /session/status
+GET,DELETE,PATCH /session/{sessionID}
+POST /session/{sessionID}/abort
+GET /session/{sessionID}/children
+POST /session/{sessionID}/command
+GET /session/{sessionID}/diff
+POST /session/{sessionID}/fork
+POST /session/{sessionID}/init
+GET,POST /session/{sessionID}/message
+DELETE,PATCH /session/{sessionID}/message/{messageID}/part/{partID}
+POST /session/{sessionID}/prompt_async
+POST /session/{sessionID}/revert
+GET /session/{sessionID}/todo
+POST /session/{sessionID}/summarize
+GET /skill
+POST /sync/*
+POST /tui/*
+GET /vcs
+POST /vcs/apply
+GET /vcs/diff
+GET /vcs/status</code></pre>
+<h3 id="existing-specter-opencode-experiments"><a class="anchor" href="#existing-specter-opencode-experiments">#</a>Existing Specter/OpenCode experiments</h3>
+<p>There is no real OpenCode clone under <code>/home/lucifer/work/active/specter-opencode</code>; it contains Specter experiment branches:</p>
+<pre><code class="language-txt">/home/lucifer/work/active/specter-opencode/booking
+/home/lucifer/work/active/specter-opencode/docs
+/home/lucifer/work/active/specter-opencode/inventory</code></pre>
+<p>Useful reusable experiment sources:</p>
+<pre><code class="language-txt">/home/lucifer/work/active/specter-demo-local             # combined branch through docs/booking/inventory/template fixes
+/home/lucifer/work/active/specter-opencode/inventory     # full inventory reference app scaffold
+/home/lucifer/work/active/specter-opencode/docs/docs/slice-authoring-workflow.md</code></pre>
+<p>Use these as examples only; the OpenCode clone should primarily start from <code>apps/threadplane-reference</code> in the target repo.</p>
+<hr />
+<h2 id="product-scope-and-definition-of-done"><a class="anchor" href="#product-scope-and-definition-of-done">#</a>Product Scope and Definition of Done</h2>
+<p>The clone is considered complete when it can replace a normal OpenCode workflow for local coding work:</p>
+<ol>
+<li>From a project directory, the user can launch an interactive terminal UI or web UI.</li>
+<li>The app can create, resume, fork, rename, delete, import, export, summarize, compact, revert, and share sessions.</li>
+<li>The assistant can stream tokens, call tools, request approvals, run shell commands, edit files, apply patches, inspect git diffs/status, search files, query LSP, use web fetch/search when configured, and spawn subagents/tasks.</li>
+<li>Provider/model/agent/tool/permission/config semantics are compatible enough with OpenCode <code>.opencode</code> projects for practical migration.</li>
+<li>Sessions, messages, parts, tool outputs, permissions, todos, diffs, snapshots, and PTY state are durable in SQLite.</li>
+<li>API routes cover OpenCode&#x27;s important HTTP/SDK surfaces.</li>
+<li>UI/TUI present session history, prompt input, model/agent selection, file references, tool timelines, diffs, approvals, PTY, todos, and subagent status.</li>
+<li>All critical behavior is covered by Specter scenario tests, adapter unit tests, API tests, and Playwright/TUI smoke tests.</li>
+</ol>
+<hr />
+<h2 id="proposed-file-layout"><a class="anchor" href="#proposed-file-layout">#</a>Proposed File Layout</h2>
+<p>Create a new app instead of overloading Threadplane:</p>
+<pre><code class="language-txt">apps/specter-code/
+  package.json
+  tsconfig.json
+  vite.config.ts
+  playwright.config.ts
+  drizzle.config.ts
+  src/
+    client.tsx
+    server.ts
+    router.tsx
+    routeTree.gen.ts
+    routes/
+      index.tsx
+      sessions.$sessionId.tsx
+      settings.tsx
+    db/
+      client.server.ts
+      schema.ts
+      specter-schema.ts
+      specter-sqlite.ts
+      specter-sqlite.test.ts
+    features/specter-code/
+      events.ts
+      registry.ts
+      server-functions.ts
+      server-runtime.server.ts
+      scenarios.test.ts
+      adapters/
+        agent-runtime.ts
+        config-loader.ts
+        event-stream.ts
+        file-index.ts
+        git.ts
+        llm-provider.ts
+        lsp.ts
+        mcp.ts
+        permissions.ts
+        pty.ts
+        shell.ts
+        snapshots.ts
+        tool-registry.ts
+      domain/
+        ids.ts
+        schemas.ts
+        openapi-compat.ts
+      slices/
+        create-session/slice.ts
+        update-session/slice.ts
+        delete-session/slice.ts
+        fork-session/slice.ts
+        submit-prompt/slice.ts
+        run-requested-agent-turn/slice.ts
+        record-assistant-message-started/slice.ts
+        record-assistant-message-streamed/slice.ts
+        record-assistant-message-completed/slice.ts
+        record-assistant-message-failed/slice.ts
+        record-tool-call-started/slice.ts
+        record-tool-call-output-streamed/slice.ts
+        record-tool-call-completed/slice.ts
+        record-tool-call-failed/slice.ts
+        request-tool-approval/slice.ts
+        reply-tool-approval/slice.ts
+        abort-session/slice.ts
+        compact-session/slice.ts
+        summarize-session/slice.ts
+        revert-session/slice.ts
+        record-file-edit/slice.ts
+        record-shell-run/slice.ts
+        record-pty-event/slice.ts
+        update-todo-list/slice.ts
+        session-list/slice.ts
+        session-transcript/slice.ts
+        session-status/slice.ts
+        agent-run-timeline/slice.ts
+        pending-permissions/slice.ts
+        workspace-file-tree/slice.ts
+        workspace-file-content/slice.ts
+        workspace-diff/slice.ts
+        provider-list/slice.ts
+        agent-list/slice.ts
+        tool-list/slice.ts
+      ui/
+        AppShell.tsx
+        SessionView.tsx
+        Transcript.tsx
+        PromptBox.tsx
+        ToolTimeline.tsx
+        ApprovalPanel.tsx
+        DiffPanel.tsx
+        FileExplorer.tsx
+        ModelSelector.tsx
+        AgentSelector.tsx
+        PtyTerminal.tsx
+      cli/
+        index.ts
+        commands/run.ts
+        commands/serve.ts
+        commands/session.ts
+        commands/config.ts
+        commands/models.ts
+        commands/providers.ts
+      tests/
+        openapi-compat.test.ts
+        agent-runtime.test.ts
+        tool-registry.test.ts
+        permissions.test.ts
+        config-loader.test.ts
+        pty.test.ts
+  tests/e2e/
+    chat.spec.ts
+    approval.spec.ts
+    file-edit.spec.ts
+    shell.spec.ts
+    resume.spec.ts</code></pre>
+<p>Add workspace integration:</p>
+<pre><code class="language-txt">package.json                         # root scripts for dev:specter-code, test:specter-code if desired
+pnpm-workspace.yaml                  # already covers apps/*</code></pre>
+<p>Do not move logic into <code>packages/core</code> unless the clone reveals a general Specter runtime need.</p>
+<hr />
+<h2 id="implementation-plan"><a class="anchor" href="#implementation-plan">#</a>Implementation Plan</h2>
+<h3 id="phase-0-guardrails-and-baseline"><a class="anchor" href="#phase-0-guardrails-and-baseline">#</a>Phase 0: Guardrails and baseline</h3>
+<h4 id="task-0-1-snapshot-current-repo-state"><a class="anchor" href="#task-0-1-snapshot-current-repo-state">#</a>Task 0.1: Snapshot current repo state</h4>
+<p><strong>Objective:</strong> Avoid overwriting unrelated local changes.</p>
+<p><strong>Files:</strong> none.</p>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Run:</li>
+</ol>
+<p>``<code>sh cd /home/lucifer/work/active/specter git status --short git branch --show-current git log -1 --oneline </code>``</p>
+<ol>
+<li>Expected current known status:</li>
+</ol>
+<p>``<code>txt M .opencode/agent/intern.md M .opencode/agent/junior.md M .opencode/agent/senior.md ?? .hermes/ </code>``</p>
+<ol>
+<li>If additional changes appear, inspect them before editing.</li>
+</ol>
+<h4 id="task-0-2-establish-verification-commands"><a class="anchor" href="#task-0-2-establish-verification-commands">#</a>Task 0.2: Establish verification commands</h4>
+<p><strong>Objective:</strong> Make a single repeatable check set for the new app.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>package.json</code></li>
+<li>Create later: <code>apps/specter-code/package.json</code></li>
+</ul>
+<p><strong>Commands:</strong></p>
+<pre><code class="language-sh">cd /home/lucifer/work/active/specter
+pnpm install
+pnpm build
+pnpm typecheck
+pnpm test</code></pre>
+<p>After <code>apps/specter-code</code> exists, add:</p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck
+pnpm --filter @specter/specter-code test
+pnpm --filter @specter/specter-code build
+pnpm --filter @specter/specter-code test:e2e</code></pre>
+<hr />
+<h3 id="phase-1-create-the-app-skeleton-from-threadplane"><a class="anchor" href="#phase-1-create-the-app-skeleton-from-threadplane">#</a>Phase 1: Create the app skeleton from Threadplane</h3>
+<h4 id="task-1-1-copy-threadplane-into-apps-specter-code"><a class="anchor" href="#task-1-1-copy-threadplane-into-apps-specter-code">#</a>Task 1.1: Copy Threadplane into <code>apps/specter-code</code></h4>
+<p><strong>Objective:</strong> Start from the closest working Specter-native app.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Copy from: <code>apps/threadplane-reference/**</code></li>
+<li>Create: <code>apps/specter-code/**</code></li>
+</ul>
+<p><strong>Steps:</strong></p>
+<ol>
+<li>Copy app structure.</li>
+<li>Rename package from <code>@specter/threadplane-reference</code> to <code>@specter/specter-code</code>.</li>
+<li>Rename user-facing labels from Threadplane to Specter Code.</li>
+<li>Keep all tests initially passing before domain refactor.</li>
+</ol>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck
+pnpm --filter @specter/specter-code test
+pnpm --filter @specter/specter-code build</code></pre>
+<p>Expected: pass or only package-name/import path failures that are fixed in this task.</p>
+<h4 id="task-1-2-rename-feature-namespace-without-changing-behavior"><a class="anchor" href="#task-1-2-rename-feature-namespace-without-changing-behavior">#</a>Task 1.2: Rename feature namespace without changing behavior</h4>
+<p><strong>Objective:</strong> Move from <code>features/threadplane</code> to <code>features/specter-code</code> while preserving behavior.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Move: <code>apps/specter-code/src/features/threadplane/<strong></code> -&gt; <code>apps/specter-code/src/features/specter-code/</strong></code></li>
+<li>Modify imports in <code>apps/specter-code/src/**</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck
+pnpm --filter @specter/specter-code test</code></pre>
+<h4 id="task-1-3-add-root-dev-script"><a class="anchor" href="#task-1-3-add-root-dev-script">#</a>Task 1.3: Add root dev script</h4>
+<p><strong>Objective:</strong> Make the app easy to launch.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>package.json</code></li>
+</ul>
+<p><strong>Change:</strong></p>
+<p>Add:</p>
+<pre><code class="language-json">{
+  &quot;scripts&quot;: {
+    &quot;dev:specter-code&quot;: &quot;pnpm --filter @specter/specter-code dev&quot;
+  }
+}</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm dev:specter-code</code></pre>
+<p>Expected: app starts on its configured strict port.</p>
+<hr />
+<h3 id="phase-2-domain-schema-and-event-vocabulary"><a class="anchor" href="#phase-2-domain-schema-and-event-vocabulary">#</a>Phase 2: Domain schema and event vocabulary</h3>
+<h4 id="task-2-1-add-stable-id-domain-schema-helpers"><a class="anchor" href="#task-2-1-add-stable-id-domain-schema-helpers">#</a>Task 2.1: Add stable ID/domain schema helpers</h4>
+<p><strong>Objective:</strong> Standardize IDs and shared schemas before adding many slices.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/domain/ids.ts</code></li>
+<li>Create: <code>apps/specter-code/src/features/specter-code/domain/schemas.ts</code></li>
+<li>Modify: <code>apps/specter-code/src/features/specter-code/events.ts</code></li>
+</ul>
+<p><strong>Include IDs:</strong></p>
+<pre><code class="language-ts">export type WorkspaceId = string
+export type SessionId = string
+export type MessageId = string
+export type PartId = string
+export type ToolCallId = string
+export type PermissionRequestId = string
+export type PtyId = string
+export type SnapshotId = string</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck</code></pre>
+<h4 id="task-2-2-replace-threadplane-post-events-with-session-message-events"><a class="anchor" href="#task-2-2-replace-threadplane-post-events-with-session-message-events">#</a>Task 2.2: Replace Threadplane post events with session/message events</h4>
+<p><strong>Objective:</strong> Model OpenCode sessions and message parts.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>apps/specter-code/src/features/specter-code/events.ts</code></li>
+<li>Modify tests that reference <code>postCreated</code> / <code>postReplyCreated</code></li>
+</ul>
+<p><strong>Add event definitions:</strong></p>
+<pre><code class="language-txt">workspaceOpened
+sessionCreated
+sessionUpdated
+sessionDeleted
+sessionForked
+userMessageSubmitted
+assistantMessageStarted
+assistantMessageStreamed
+assistantMessageCompleted
+assistantMessageFailed
+messagePartCreated
+messagePartUpdated
+messagePartDeleted
+sessionAborted
+sessionCompactionRequested
+sessionCompacted
+sessionSummaryRequested
+sessionSummarized</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/scenarios.test.ts</code></pre>
+<h4 id="task-2-3-add-tool-permission-file-shell-events"><a class="anchor" href="#task-2-3-add-tool-permission-file-shell-events">#</a>Task 2.3: Add tool/permission/file/shell events</h4>
+<p><strong>Objective:</strong> Make side-effect execution auditable.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>apps/specter-code/src/features/specter-code/events.ts</code></li>
+</ul>
+<p><strong>Add event definitions:</strong></p>
+<pre><code class="language-txt">toolCallStarted
+toolCallOutputStreamed
+toolCallCompleted
+toolCallFailed
+toolApprovalRequested
+toolApprovalReplied
+fileReadRecorded
+fileEditProposed
+fileEditApplied
+fileEditRejected
+shellCommandStarted
+shellCommandOutputStreamed
+shellCommandCompleted
+shellCommandFailed
+ptyCreated
+ptyDataStreamed
+ptyInputSent
+ptyResized
+ptyExited
+snapshotCreated
+snapshotRestored
+gitStatusRecorded
+gitDiffRecorded
+todoListUpdated</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck</code></pre>
+<hr />
+<h3 id="phase-3-core-session-slices"><a class="anchor" href="#phase-3-core-session-slices">#</a>Phase 3: Core session slices</h3>
+<h4 id="task-3-1-implement-createsession"><a class="anchor" href="#task-3-1-implement-createsession">#</a>Task 3.1: Implement <code>createSession</code></h4>
+<p><strong>Objective:</strong> Create an OpenCode-like session in a workspace.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/slices/create-session/slice.ts</code></li>
+<li>Modify: <code>apps/specter-code/src/features/specter-code/registry.ts</code></li>
+<li>Test: <code>apps/specter-code/src/features/specter-code/scenarios.test.ts</code></li>
+</ul>
+<p><strong>Test first:</strong></p>
+<pre><code class="language-ts">it(&quot;creates a session with title, directory, agent and model&quot;, async () =&gt; {
+  const app = createTestSpecterCodeApp()
+  const result = await app.createSession({
+    workspaceId: &quot;wsp_test&quot;,
+    sessionId: &quot;ses_test&quot;,
+    title: &quot;Fix tests&quot;,
+    directory: &quot;/tmp/project&quot;,
+    agent: &quot;build&quot;,
+    model: { providerId: &quot;anthropic&quot;, modelId: &quot;claude-sonnet-4&quot; },
+  })
+  expect(result.sessionId).toBe(&quot;ses_test&quot;)
+  await expect(app.sessionList({ workspaceId: &quot;wsp_test&quot; })).resolves.toContainEqual(
+    expect.objectContaining({ id: &quot;ses_test&quot;, title: &quot;Fix tests&quot; }),
+  )
+})</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/scenarios.test.ts</code></pre>
+<h4 id="task-3-2-implement-sessionlist-and-sessiontranscript-query-slices"><a class="anchor" href="#task-3-2-implement-sessionlist-and-sessiontranscript-query-slices">#</a>Task 3.2: Implement <code>sessionList</code> and <code>sessionTranscript</code> query slices</h4>
+<p><strong>Objective:</strong> Provide read models for UI/API.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>slices/session-list/slice.ts</code></li>
+<li>Create: <code>slices/session-transcript/slice.ts</code></li>
+<li>Modify: <code>registry.ts</code></li>
+<li>Test: <code>scenarios.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/scenarios.test.ts</code></pre>
+<h4 id="task-3-3-implement-submitprompt"><a class="anchor" href="#task-3-3-implement-submitprompt">#</a>Task 3.3: Implement <code>submitPrompt</code></h4>
+<p><strong>Objective:</strong> Record user messages and request an agent turn.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>slices/submit-prompt/slice.ts</code></li>
+<li>Modify: <code>registry.ts</code></li>
+<li>Test: <code>scenarios.test.ts</code></li>
+</ul>
+<p><strong>Expected events:</strong></p>
+<pre><code class="language-txt">userMessageSubmitted
+agentRunRequested</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/scenarios.test.ts</code></pre>
+<h4 id="task-3-4-implement-run-timeline-query-slices"><a class="anchor" href="#task-3-4-implement-run-timeline-query-slices">#</a>Task 3.4: Implement run/timeline query slices</h4>
+<p><strong>Objective:</strong> Display assistant generation and tools as a chronological timeline.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create/modify: <code>slices/agent-run-timeline/slice.ts</code></li>
+<li>Create: <code>slices/session-status/slice.ts</code></li>
+<li>Test: <code>slices/agent-run-timeline/*.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/slices/agent-run-timeline</code></pre>
+<hr />
+<h3 id="phase-4-agent-runtime-adapter-streaming-and-fake-to-real-replacement"><a class="anchor" href="#phase-4-agent-runtime-adapter-streaming-and-fake-to-real-replacement">#</a>Phase 4: Agent runtime adapter, streaming, and fake-to-real replacement</h3>
+<h4 id="task-4-1-define-the-agent-runtime-adapter-interface"><a class="anchor" href="#task-4-1-define-the-agent-runtime-adapter-interface">#</a>Task 4.1: Define the agent runtime adapter interface</h4>
+<p><strong>Objective:</strong> Keep LLM side effects outside Specter slices.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/adapters/agent-runtime.ts</code></li>
+</ul>
+<p><strong>Interface:</strong></p>
+<pre><code class="language-ts">export interface AgentRuntime {
+  runTurn(input: AgentTurnInput, sink: AgentTurnSink): Promise&lt;AgentTurnResult&gt;
+  abort(runId: string): Promise&lt;void&gt;
+}
+
+export interface AgentTurnSink {
+  assistantStarted(input: { messageId: string }): Promise&lt;void&gt;
+  assistantDelta(input: { messageId: string; text: string }): Promise&lt;void&gt;
+  assistantCompleted(input: { messageId: string }): Promise&lt;void&gt;
+  toolStarted(input: ToolStarted): Promise&lt;void&gt;
+  toolOutput(input: ToolOutputDelta): Promise&lt;void&gt;
+  toolCompleted(input: ToolCompleted): Promise&lt;void&gt;
+  toolFailed(input: ToolFailed): Promise&lt;void&gt;
+  approvalRequested(input: ToolApprovalRequest): Promise&lt;void&gt;
+}</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code typecheck</code></pre>
+<h4 id="task-4-2-replace-simulated-agent-plan-with-adapter-driven-reaction"><a class="anchor" href="#task-4-2-replace-simulated-agent-plan-with-adapter-driven-reaction">#</a>Task 4.2: Replace <code>simulated-agent-plan</code> with adapter-driven reaction</h4>
+<p><strong>Objective:</strong> Turn <code>runRequestedAgentRun</code> into a real orchestration boundary.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>slices/run-requested-agent-turn/slice.ts</code></li>
+<li>Delete or quarantine: <code>simulated-agent-plan.ts</code></li>
+<li>Test: <code>run-requested-agent-turn/scenarios.test.ts</code></li>
+</ul>
+<p><strong>Approach:</strong></p>
+<ul>
+<li>Command emits <code>agentRunRequested</code>.</li>
+<li>Reaction catches request.</li>
+<li>Reaction plugin calls <code>AgentRuntime.runTurn</code>.</li>
+<li>Runtime sink calls app commands to record deltas/tools/failures.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- features/specter-code/slices/run-requested-agent-turn</code></pre>
+<h4 id="task-4-3-add-a-deterministic-fake-runtime-for-tests"><a class="anchor" href="#task-4-3-add-a-deterministic-fake-runtime-for-tests">#</a>Task 4.3: Add a deterministic fake runtime for tests</h4>
+<p><strong>Objective:</strong> Make scenario tests deterministic while real adapters evolve.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/testing/fake-agent-runtime.ts</code></li>
+<li>Modify: <code>testing/create-test-app.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test</code></pre>
+<h4 id="task-4-4-add-ai-sdk-provider-runtime"><a class="anchor" href="#task-4-4-add-ai-sdk-provider-runtime">#</a>Task 4.4: Add AI SDK provider runtime</h4>
+<p><strong>Objective:</strong> Connect real LLM streaming with tool calls.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/llm-provider.ts</code></li>
+<li>Create: <code>adapters/ai-sdk-agent-runtime.ts</code></li>
+<li>Test: <code>tests/agent-runtime.test.ts</code></li>
+</ul>
+<p><strong>Initial provider support:</strong></p>
+<ul>
+<li>OpenAI-compatible.</li>
+<li>Anthropic via AI SDK.</li>
+<li>OpenRouter via AI SDK/OpenAI-compatible.</li>
+<li>Provider/model passed from config.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/agent-runtime.test.ts</code></pre>
+<p>Do not require real API keys in default CI tests; use a mocked stream.</p>
+<hr />
+<h3 id="phase-5-tool-registry-and-core-tools"><a class="anchor" href="#phase-5-tool-registry-and-core-tools">#</a>Phase 5: Tool registry and core tools</h3>
+<h4 id="task-5-1-define-toolregistry-and-toolcontext"><a class="anchor" href="#task-5-1-define-toolregistry-and-toolcontext">#</a>Task 5.1: Define <code>ToolRegistry</code> and <code>ToolContext</code></h4>
+<p><strong>Objective:</strong> Clone OpenCode&#x27;s extensible tool shape in app-local code.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/tool-registry.ts</code></li>
+<li>Create: <code>features/specter-code/tools/tool.ts</code></li>
+<li>Test: <code>tests/tool-registry.test.ts</code></li>
+</ul>
+<p><strong>Required context:</strong></p>
+<pre><code class="language-ts">sessionId
+messageId
+agent
+workspaceRoot
+abortSignal
+ask(permissionRequest)
+metadata(update)</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/tool-registry.test.ts</code></pre>
+<h4 id="task-5-2-implement-read-search-tools"><a class="anchor" href="#task-5-2-implement-read-search-tools">#</a>Task 5.2: Implement read/search tools</h4>
+<p><strong>Objective:</strong> Provide safe inspect-only tooling.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>tools/read.ts</code></li>
+<li>Create: <code>tools/glob.ts</code></li>
+<li>Create: <code>tools/grep.ts</code></li>
+<li>Modify: <code>adapters/file-index.ts</code></li>
+<li>Test: <code>tests/tools-read-search.test.ts</code></li>
+</ul>
+<p><strong>Rules:</strong></p>
+<ul>
+<li>Normalize paths.</li>
+<li>Block path escape.</li>
+<li>Block or carefully handle symlinks.</li>
+<li>Limit output size.</li>
+<li>Mark truncated outputs.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/tools-read-search.test.ts</code></pre>
+<h4 id="task-5-3-implement-write-edit-apply-patch-tools"><a class="anchor" href="#task-5-3-implement-write-edit-apply-patch-tools">#</a>Task 5.3: Implement write/edit/apply_patch tools</h4>
+<p><strong>Objective:</strong> Support coding changes with audit and reversible snapshots.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>tools/write.ts</code></li>
+<li>Create: <code>tools/edit.ts</code></li>
+<li>Create: <code>tools/apply-patch.ts</code></li>
+<li>Modify: <code>adapters/snapshots.ts</code></li>
+<li>Test: <code>tests/tools-edit.test.ts</code></li>
+</ul>
+<p><strong>Rules:</strong></p>
+<ul>
+<li>Create snapshot before mutating.</li>
+<li>Emit <code>fileEditProposed</code> for approval-required policies.</li>
+<li>Emit <code>fileEditApplied</code> only after successful write.</li>
+<li>Surface patch hunks in timeline/UI.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/tools-edit.test.ts</code></pre>
+<h4 id="task-5-4-implement-shell-tool"><a class="anchor" href="#task-5-4-implement-shell-tool">#</a>Task 5.4: Implement shell tool</h4>
+<p><strong>Objective:</strong> Run bounded shell commands with streaming output.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>tools/shell.ts</code></li>
+<li>Create: <code>adapters/shell.ts</code></li>
+<li>Test: <code>tests/tools-shell.test.ts</code></li>
+</ul>
+<p><strong>Rules:</strong></p>
+<ul>
+<li>Use configured shell.</li>
+<li>Enforce working directory containment unless external directory is explicitly allowed.</li>
+<li>Stream stdout/stderr as <code>shellCommandOutputStreamed</code>.</li>
+<li>Enforce timeout and max output.</li>
+<li>Request approval according to permission policy.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/tools-shell.test.ts</code></pre>
+<h4 id="task-5-5-implement-todo-question-webfetch-websearch-task-subagent-tools"><a class="anchor" href="#task-5-5-implement-todo-question-webfetch-websearch-task-subagent-tools">#</a>Task 5.5: Implement todo, question, webfetch/websearch, task/subagent tools</h4>
+<p><strong>Objective:</strong> Reach parity with common OpenCode agent workflows.</p>
+<p><strong>Files:</strong></p>
+<pre><code class="language-txt">tools/todo.ts
+tools/question.ts
+tools/webfetch.ts
+tools/websearch.ts
+tools/task.ts
+tools/task-status.ts</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/tools-*.test.ts</code></pre>
+<hr />
+<h3 id="phase-6-permissions-approvals-and-safety"><a class="anchor" href="#phase-6-permissions-approvals-and-safety">#</a>Phase 6: Permissions, approvals, and safety</h3>
+<h4 id="task-6-1-implement-wildcard-permission-evaluator"><a class="anchor" href="#task-6-1-implement-wildcard-permission-evaluator">#</a>Task 6.1: Implement wildcard permission evaluator</h4>
+<p><strong>Objective:</strong> Clone OpenCode&#x27;s allow/ask/deny policy semantics.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/permissions.ts</code></li>
+<li>Create: <code>slices/request-tool-approval/slice.ts</code></li>
+<li>Create: <code>slices/reply-tool-approval/slice.ts</code></li>
+<li>Create: <code>slices/pending-permissions/slice.ts</code></li>
+<li>Test: <code>tests/permissions.test.ts</code></li>
+</ul>
+<p><strong>Rules:</strong></p>
+<ul>
+<li>Most recent matching rule wins.</li>
+<li>Default action is <code>ask</code>.</li>
+<li>Rules include <code>{ permission, pattern, action }</code>.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/permissions.test.ts</code></pre>
+<h4 id="task-6-2-wire-approvals-into-tool-execution"><a class="anchor" href="#task-6-2-wire-approvals-into-tool-execution">#</a>Task 6.2: Wire approvals into tool execution</h4>
+<p><strong>Objective:</strong> Pause tool execution when policy says <code>ask</code>.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>adapters/tool-registry.ts</code></li>
+<li>Modify: <code>adapters/agent-runtime.ts</code></li>
+<li>Modify: <code>ui/ApprovalPanel.tsx</code></li>
+<li>Test: <code>tests/approval-flow.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/approval-flow.test.ts
+pnpm --filter @specter/specter-code test:e2e -- approval.spec.ts</code></pre>
+<hr />
+<h3 id="phase-7-persistence-and-large-transcript-storage"><a class="anchor" href="#phase-7-persistence-and-large-transcript-storage">#</a>Phase 7: Persistence and large transcript storage</h3>
+<h4 id="task-7-1-extend-sqlite-schema-for-sessions-messages-parts-artifacts"><a class="anchor" href="#task-7-1-extend-sqlite-schema-for-sessions-messages-parts-artifacts">#</a>Task 7.1: Extend SQLite schema for sessions/messages/parts/artifacts</h4>
+<p><strong>Objective:</strong> Avoid keeping huge transcripts only in Specter slice JSON blobs.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>apps/specter-code/src/db/schema.ts</code></li>
+<li>Modify: <code>apps/specter-code/src/db/specter-schema.ts</code></li>
+<li>Modify: <code>apps/specter-code/src/db/specter-sqlite.ts</code></li>
+<li>Add migration(s) under <code>apps/specter-code/drizzle/</code></li>
+<li>Test: <code>apps/specter-code/src/db/specter-sqlite.test.ts</code></li>
+</ul>
+<p><strong>Tables:</strong></p>
+<pre><code class="language-txt">specter_code_sessions
+specter_code_messages
+specter_code_message_parts
+specter_code_tool_calls
+specter_code_permissions
+specter_code_todos
+specter_code_snapshots
+specter_code_artifacts
+specter_code_pty_sessions</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/db/specter-sqlite.test.ts</code></pre>
+<h4 id="task-7-2-add-migration-from-event-only-state-to-table-backed-read-models"><a class="anchor" href="#task-7-2-add-migration-from-event-only-state-to-table-backed-read-models">#</a>Task 7.2: Add migration from event-only state to table-backed read models</h4>
+<p><strong>Objective:</strong> Keep Specter events authoritative while making UI queries fast.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify query slices to hydrate table-backed projections.</li>
+<li>Add projection tests.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code</code></pre>
+<hr />
+<h3 id="phase-8-api-compatibility-layer"><a class="anchor" href="#phase-8-api-compatibility-layer">#</a>Phase 8: API compatibility layer</h3>
+<h4 id="task-8-1-generate-route-inventory-from-opencode-openapi-json"><a class="anchor" href="#task-8-1-generate-route-inventory-from-opencode-openapi-json">#</a>Task 8.1: Generate route inventory from OpenCode <code>openapi.json</code></h4>
+<p><strong>Objective:</strong> Track parity explicitly.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/domain/openapi-compat.ts</code></li>
+<li>Create: <code>apps/specter-code/src/features/specter-code/tests/openapi-compat.test.ts</code></li>
+</ul>
+<p><strong>Data source:</strong></p>
+<pre><code class="language-txt">/home/lucifer/work/active/harlan/.repos/opencode/packages/sdk/openapi.json</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/openapi-compat.test.ts</code></pre>
+<h4 id="task-8-2-implement-core-session-config-provider-file-routes"><a class="anchor" href="#task-8-2-implement-core-session-config-provider-file-routes">#</a>Task 8.2: Implement core session/config/provider/file routes</h4>
+<p><strong>Objective:</strong> Make SDK/web/TUI clients independent from server internals.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>server-functions.ts</code></li>
+<li>Create: <code>server-routes.ts</code> or TanStack Start server route modules as appropriate.</li>
+</ul>
+<p><strong>Initial endpoints:</strong></p>
+<pre><code class="language-txt">GET,POST /session
+GET,DELETE,PATCH /session/:sessionID
+GET,POST /session/:sessionID/message
+POST /session/:sessionID/prompt_async
+POST /session/:sessionID/abort
+GET /session/status
+GET,PATCH /config
+GET /provider
+GET /agent
+GET /file
+GET /file/content
+GET /file/status
+GET /permission
+POST /permission/:requestID/reply</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/api-routes.test.ts</code></pre>
+<h4 id="task-8-3-add-sse-websocket-event-stream"><a class="anchor" href="#task-8-3-add-sse-websocket-event-stream">#</a>Task 8.3: Add SSE/WebSocket event stream</h4>
+<p><strong>Objective:</strong> Replace Threadplane polling with real OpenCode-style streaming.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/event-stream.ts</code></li>
+<li>Modify: <code>server-runtime.server.ts</code></li>
+<li>Modify: UI hooks.</li>
+<li>Test: <code>tests/event-stream.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/event-stream.test.ts</code></pre>
+<hr />
+<h3 id="phase-9-config-providers-agents-skills-plugins"><a class="anchor" href="#phase-9-config-providers-agents-skills-plugins">#</a>Phase 9: Config, providers, agents, skills, plugins</h3>
+<h4 id="task-9-1-implement-jsonc-config-loader"><a class="anchor" href="#task-9-1-implement-jsonc-config-loader">#</a>Task 9.1: Implement JSONC config loader</h4>
+<p><strong>Objective:</strong> Read OpenCode-compatible project/global config.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/config-loader.ts</code></li>
+<li>Create: <code>domain/config-schema.ts</code></li>
+<li>Test: <code>tests/config-loader.test.ts</code></li>
+</ul>
+<p><strong>Support:</strong></p>
+<pre><code class="language-txt">.opencode/opencode.jsonc
+opencode.jsonc
+global config under app data
+provider/model/default_agent/agent/permission/mcp/plugin/skills/reference/formatter/watcher/shell</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/config-loader.test.ts</code></pre>
+<h4 id="task-9-2-implement-provider-model-registry"><a class="anchor" href="#task-9-2-implement-provider-model-registry">#</a>Task 9.2: Implement provider/model registry</h4>
+<p><strong>Objective:</strong> Support model selection and provider auth setup.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/llm-provider.ts</code></li>
+<li>Create: <code>slices/provider-list/slice.ts</code></li>
+<li>Create: <code>ui/ModelSelector.tsx</code></li>
+<li>Test: <code>tests/provider-registry.test.ts</code></li>
+</ul>
+<p><strong>Support initially:</strong></p>
+<ul>
+<li>Environment key discovery.</li>
+<li>Custom OpenAI-compatible providers.</li>
+<li>OpenRouter.</li>
+<li>Anthropic/OpenAI via AI SDK where available.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/provider-registry.test.ts</code></pre>
+<h4 id="task-9-3-implement-agents-modes-subagents"><a class="anchor" href="#task-9-3-implement-agents-modes-subagents">#</a>Task 9.3: Implement agents/modes/subagents</h4>
+<p><strong>Objective:</strong> Clone primary/subagent agent configuration.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>slices/agent-list/slice.ts</code></li>
+<li>Create: <code>ui/AgentSelector.tsx</code></li>
+<li>Modify: <code>adapters/agent-runtime.ts</code></li>
+<li>Test: <code>tests/agents.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/agents.test.ts</code></pre>
+<h4 id="task-9-4-add-plugin-and-custom-tool-loading"><a class="anchor" href="#task-9-4-add-plugin-and-custom-tool-loading">#</a>Task 9.4: Add plugin and custom tool loading</h4>
+<p><strong>Objective:</strong> Support <code>.opencode/tool/*.ts</code> and plugin tool definitions.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/plugin-loader.ts</code></li>
+<li>Modify: <code>adapters/tool-registry.ts</code></li>
+<li>Test: <code>tests/plugins.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/plugins.test.ts</code></pre>
+<hr />
+<h3 id="phase-10-filesystem-git-snapshots-lsp-mcp-pty"><a class="anchor" href="#phase-10-filesystem-git-snapshots-lsp-mcp-pty">#</a>Phase 10: Filesystem, git, snapshots, LSP, MCP, PTY</h3>
+<h4 id="task-10-1-upgrade-filesystem-tree-status-search"><a class="anchor" href="#task-10-1-upgrade-filesystem-tree-status-search">#</a>Task 10.1: Upgrade filesystem tree/status/search</h4>
+<p><strong>Objective:</strong> Match OpenCode file APIs.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>adapters/file-index.ts</code></li>
+<li>Create/modify: <code>slices/workspace-file-tree/slice.ts</code></li>
+<li>Create: <code>slices/workspace-file-content/slice.ts</code></li>
+<li>Test: <code>tests/filesystem.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/filesystem.test.ts</code></pre>
+<h4 id="task-10-2-implement-git-vcs-adapter"><a class="anchor" href="#task-10-2-implement-git-vcs-adapter">#</a>Task 10.2: Implement git/VCS adapter</h4>
+<p><strong>Objective:</strong> Expose status, diff, apply, revert helpers.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/git.ts</code></li>
+<li>Create: <code>slices/workspace-diff/slice.ts</code></li>
+<li>Test: <code>tests/git.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/git.test.ts</code></pre>
+<h4 id="task-10-3-implement-snapshots-and-revert"><a class="anchor" href="#task-10-3-implement-snapshots-and-revert">#</a>Task 10.3: Implement snapshots and revert</h4>
+<p><strong>Objective:</strong> Allow safe undo of agent changes.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/snapshots.ts</code></li>
+<li>Create: <code>slices/revert-session/slice.ts</code></li>
+<li>Test: <code>tests/snapshots.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/snapshots.test.ts</code></pre>
+<h4 id="task-10-4-implement-lsp-adapter-tool"><a class="anchor" href="#task-10-4-implement-lsp-adapter-tool">#</a>Task 10.4: Implement LSP adapter/tool</h4>
+<p><strong>Objective:</strong> Support diagnostics and symbol lookup.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/lsp.ts</code></li>
+<li>Create: <code>tools/lsp.ts</code></li>
+<li>Test: <code>tests/lsp.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/lsp.test.ts</code></pre>
+<h4 id="task-10-5-implement-mcp-adapter-tool-registry-bridge"><a class="anchor" href="#task-10-5-implement-mcp-adapter-tool-registry-bridge">#</a>Task 10.5: Implement MCP adapter/tool registry bridge</h4>
+<p><strong>Objective:</strong> Expose MCP tools/resources/prompts.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/mcp.ts</code></li>
+<li>Modify: <code>adapters/tool-registry.ts</code></li>
+<li>Test: <code>tests/mcp.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/mcp.test.ts</code></pre>
+<h4 id="task-10-6-implement-pty-sessions"><a class="anchor" href="#task-10-6-implement-pty-sessions">#</a>Task 10.6: Implement PTY sessions</h4>
+<p><strong>Objective:</strong> Clone OpenCode terminal process support.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/pty.ts</code></li>
+<li>Create: <code>slices/record-pty-event/slice.ts</code></li>
+<li>Create: <code>ui/PtyTerminal.tsx</code></li>
+<li>Test: <code>tests/pty.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/pty.test.ts</code></pre>
+<hr />
+<h3 id="phase-11-web-ui-parity"><a class="anchor" href="#phase-11-web-ui-parity">#</a>Phase 11: Web UI parity</h3>
+<h4 id="task-11-1-build-app-shell-and-session-list"><a class="anchor" href="#task-11-1-build-app-shell-and-session-list">#</a>Task 11.1: Build app shell and session list</h4>
+<p><strong>Objective:</strong> Replace Threadplane UI copy with coding-agent UI.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create/modify: <code>ui/AppShell.tsx</code></li>
+<li>Create/modify: <code>routes/index.tsx</code></li>
+<li>Create: <code>ui/SessionList.tsx</code></li>
+<li>Test: <code>tests/e2e/chat.spec.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test:e2e -- chat.spec.ts</code></pre>
+<h4 id="task-11-2-build-transcript-and-prompt-box"><a class="anchor" href="#task-11-2-build-transcript-and-prompt-box">#</a>Task 11.2: Build transcript and prompt box</h4>
+<p><strong>Objective:</strong> Support actual conversation flow.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>ui/Transcript.tsx</code></li>
+<li>Create: <code>ui/PromptBox.tsx</code></li>
+<li>Modify: <code>routes/sessions.$sessionId.tsx</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test:e2e -- chat.spec.ts</code></pre>
+<h4 id="task-11-3-build-tool-timeline-approvals-diff-file-panels"><a class="anchor" href="#task-11-3-build-tool-timeline-approvals-diff-file-panels">#</a>Task 11.3: Build tool timeline, approvals, diff/file panels</h4>
+<p><strong>Objective:</strong> Make agent work inspectable and controllable.</p>
+<p><strong>Files:</strong></p>
+<pre><code class="language-txt">ui/ToolTimeline.tsx
+ui/ApprovalPanel.tsx
+ui/DiffPanel.tsx
+ui/FileExplorer.tsx</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test:e2e -- approval.spec.ts file-edit.spec.ts shell.spec.ts</code></pre>
+<h4 id="task-11-4-add-model-agent-config-settings-ui"><a class="anchor" href="#task-11-4-add-model-agent-config-settings-ui">#</a>Task 11.4: Add model/agent/config settings UI</h4>
+<p><strong>Objective:</strong> Match common OpenCode controls.</p>
+<p><strong>Files:</strong></p>
+<pre><code class="language-txt">ui/ModelSelector.tsx
+ui/AgentSelector.tsx
+routes/settings.tsx</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test:e2e -- settings.spec.ts</code></pre>
+<hr />
+<h3 id="phase-12-cli-and-tui-surfaces"><a class="anchor" href="#phase-12-cli-and-tui-surfaces">#</a>Phase 12: CLI and TUI surfaces</h3>
+<h4 id="task-12-1-add-cli-entrypoint"><a class="anchor" href="#task-12-1-add-cli-entrypoint">#</a>Task 12.1: Add CLI entrypoint</h4>
+<p><strong>Objective:</strong> Start cloning OpenCode CLI behavior.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>apps/specter-code/src/features/specter-code/cli/index.ts</code></li>
+<li>Create: <code>apps/specter-code/src/features/specter-code/cli/commands/run.ts</code></li>
+<li>Create: <code>apps/specter-code/src/features/specter-code/cli/commands/serve.ts</code></li>
+<li>Modify: <code>apps/specter-code/package.json</code></li>
+</ul>
+<p><strong>Commands:</strong></p>
+<pre><code class="language-txt">specter-code
+specter-code run [message]
+specter-code serve
+specter-code session list
+specter-code providers
+specter-code models</code></pre>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code build
+node apps/specter-code/dist/cli/index.js --help</code></pre>
+<h4 id="task-12-2-add-non-interactive-run-mode"><a class="anchor" href="#task-12-2-add-non-interactive-run-mode">#</a>Task 12.2: Add non-interactive <code>run</code> mode</h4>
+<p><strong>Objective:</strong> Send one prompt, stream output, exit idle.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>cli/commands/run.ts</code></li>
+<li>Test: <code>tests/cli-run.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">node apps/specter-code/dist/cli/index.js run --format json &quot;say hi&quot;</code></pre>
+<p>With mocked provider: emits JSON events and exits 0.</p>
+<h4 id="task-12-3-add-interactive-tui-mvp"><a class="anchor" href="#task-12-3-add-interactive-tui-mvp">#</a>Task 12.3: Add interactive TUI MVP</h4>
+<p><strong>Objective:</strong> Terminal UI for session transcript + prompt + approvals.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>cli/tui/*</code></li>
+<li>Test: <code>tests/tui-smoke.test.ts</code></li>
+</ul>
+<p><strong>Approach:</strong></p>
+<ul>
+<li>Reuse web/API/domain state.</li>
+<li>Start with Ink/Blessed/OpenTUI depending on dependency decision.</li>
+<li>Mirror OpenCode key flows: prompt, interrupt, approve/reject, switch session/model.</li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">node apps/specter-code/dist/cli/index.js --help
+node apps/specter-code/dist/cli/index.js run --interactive --demo</code></pre>
+<p>Manual smoke: create session, submit prompt, see streamed fake runtime output, approve a fake tool.</p>
+<hr />
+<h3 id="phase-13-opencode-migration-compatibility"><a class="anchor" href="#phase-13-opencode-migration-compatibility">#</a>Phase 13: OpenCode migration compatibility</h3>
+<h4 id="task-13-1-import-opencode-project-config"><a class="anchor" href="#task-13-1-import-opencode-project-config">#</a>Task 13.1: Import <code>.opencode</code> project config</h4>
+<p><strong>Objective:</strong> Let existing OpenCode projects run in Specter Code.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>adapters/config-loader.ts</code></li>
+<li>Add fixture: <code>tests/fixtures/opencode-project/.opencode/opencode.jsonc</code></li>
+<li>Test: <code>tests/opencode-config-compat.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/opencode-config-compat.test.ts</code></pre>
+<h4 id="task-13-2-import-export-sessions"><a class="anchor" href="#task-13-2-import-export-sessions">#</a>Task 13.2: Import/export sessions</h4>
+<p><strong>Objective:</strong> Move session history between OpenCode and Specter Code.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/import-export.ts</code></li>
+<li>Create CLI commands: <code>cli/commands/import.ts</code>, <code>cli/commands/export.ts</code></li>
+<li>Test: <code>tests/import-export.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">node apps/specter-code/dist/cli/index.js export --session ses_test --output /tmp/session.json
+node apps/specter-code/dist/cli/index.js import /tmp/session.json</code></pre>
+<h4 id="task-13-3-route-parity-checklist"><a class="anchor" href="#task-13-3-route-parity-checklist">#</a>Task 13.3: Route parity checklist</h4>
+<p><strong>Objective:</strong> Make endpoint gaps explicit and keep shrinking them.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Modify: <code>domain/openapi-compat.ts</code></li>
+<li>Modify: <code>tests/openapi-compat.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/openapi-compat.test.ts</code></pre>
+<p>Expected initially: allowed known gaps listed in a snapshot. Final: no unplanned gaps.</p>
+<hr />
+<h3 id="phase-14-hardening-performance-and-developer-experience"><a class="anchor" href="#phase-14-hardening-performance-and-developer-experience">#</a>Phase 14: Hardening, performance, and developer experience</h3>
+<h4 id="task-14-1-durable-reaction-queue"><a class="anchor" href="#task-14-1-durable-reaction-queue">#</a>Task 14.1: Durable reaction queue</h4>
+<p><strong>Objective:</strong> Replace in-memory scheduling for long-running agent work.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create/modify: <code>apps/specter-code/src/db/reaction-queue.ts</code></li>
+<li>Modify: <code>server-runtime.server.ts</code></li>
+<li>Test: <code>tests/reaction-queue.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/reaction-queue.test.ts</code></pre>
+<h4 id="task-14-2-output-artifact-truncation"><a class="anchor" href="#task-14-2-output-artifact-truncation">#</a>Task 14.2: Output/artifact truncation</h4>
+<p><strong>Objective:</strong> Keep huge tool outputs usable.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>adapters/artifacts.ts</code></li>
+<li>Modify: <code>tools/*</code></li>
+<li>Test: <code>tests/artifacts.test.ts</code></li>
+</ul>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test -- src/features/specter-code/tests/artifacts.test.ts</code></pre>
+<h4 id="task-14-3-full-smoke-suite"><a class="anchor" href="#task-14-3-full-smoke-suite">#</a>Task 14.3: Full smoke suite</h4>
+<p><strong>Objective:</strong> Prove end-to-end local coding workflow.</p>
+<p><strong>Files:</strong></p>
+<ul>
+<li>Create: <code>tests/e2e/full-coding-flow.spec.ts</code></li>
+</ul>
+<p><strong>Scenario:</strong></p>
+<ol>
+<li>Open temp workspace.</li>
+<li>Create session.</li>
+<li>Submit prompt: &quot;add a passing test and run it&quot;.</li>
+<li>Fake or sandboxed runtime proposes file edit.</li>
+<li>Approval is requested.</li>
+<li>User approves.</li>
+<li>Shell command streams output.</li>
+<li>Transcript shows success.</li>
+<li>Diff panel shows changed file.</li>
+<li>Revert restores snapshot.</li>
+</ol>
+<p><strong>Verification:</strong></p>
+<pre><code class="language-sh">pnpm --filter @specter/specter-code test:e2e -- full-coding-flow.spec.ts</code></pre>
+<hr />
+<h2 id="milestones"><a class="anchor" href="#milestones">#</a>Milestones</h2>
+<h3 id="milestone-a-specter-code-mvp"><a class="anchor" href="#milestone-a-specter-code-mvp">#</a>Milestone A: Specter Code MVP</h3>
+<ul>
+<li>New app exists and passes typecheck/test/build.</li>
+<li>Session create/list/transcript works.</li>
+<li>Fake runtime streams assistant/tool events.</li>
+<li>Web UI shows sessions, transcript, timeline.</li>
+<li>Basic read/search/write/shell tools exist behind approvals.</li>
+</ul>
+<h3 id="milestone-b-real-local-coding-assistant"><a class="anchor" href="#milestone-b-real-local-coding-assistant">#</a>Milestone B: Real local coding assistant</h3>
+<ul>
+<li>Real AI SDK provider streaming.</li>
+<li>File edits, shell, git diff/status, snapshots, revert.</li>
+<li>SSE/WebSocket live updates.</li>
+<li>Permission UI and pending approvals.</li>
+<li>End-to-end coding-flow Playwright test.</li>
+</ul>
+<h3 id="milestone-c-opencode-parity-beta"><a class="anchor" href="#milestone-c-opencode-parity-beta">#</a>Milestone C: OpenCode parity beta</h3>
+<ul>
+<li>CLI <code>run</code>, <code>serve</code>, session commands.</li>
+<li>Config/provider/agent/plugin compatibility.</li>
+<li>LSP, MCP, PTY, task/subagent, web tools.</li>
+<li>OpenAPI route parity for common endpoints.</li>
+<li>Import/export session support.</li>
+</ul>
+<h3 id="milestone-d-complete-clone"><a class="anchor" href="#milestone-d-complete-clone">#</a>Milestone D: Complete clone</h3>
+<ul>
+<li>TUI parity for daily use.</li>
+<li>Route parity checklist closed or intentionally documented.</li>
+<li>Performance hardening for large transcripts and outputs.</li>
+<li>Durable reaction queue and resumable long-running work.</li>
+<li>Full regression suite green.</li>
+</ul>
+<hr />
+<h2 id="files-likely-to-change"><a class="anchor" href="#files-likely-to-change">#</a>Files Likely to Change</h2>
+<p>New primary app:</p>
+<pre><code class="language-txt">apps/specter-code/**</code></pre>
+<p>Root workspace scripts:</p>
+<pre><code class="language-txt">package.json
+pnpm-lock.yaml</code></pre>
+<p>Possible docs:</p>
+<pre><code class="language-txt">README.md
+docs/specter-code.md
+docs/opencode-compatibility.md</code></pre>
+<p>Avoid changing unless a general runtime need is proven:</p>
+<pre><code class="language-txt">packages/core/**</code></pre>
+<hr />
+<h2 id="validation-matrix"><a class="anchor" href="#validation-matrix">#</a>Validation Matrix</h2>
+<p>Run frequently during implementation:</p>
+<pre><code class="language-sh">cd /home/lucifer/work/active/specter
+pnpm --filter @specter/specter-code typecheck
+pnpm --filter @specter/specter-code test
+pnpm --filter @specter/specter-code build</code></pre>
+<p>Before milestone completion:</p>
+<pre><code class="language-sh">pnpm build
+pnpm typecheck
+pnpm test
+pnpm --filter @specter/specter-code test:e2e</code></pre>
+<p>Manual smoke for MVP:</p>
+<pre><code class="language-sh">pnpm dev:specter-code
+# In browser:
+# - create workspace/session
+# - send prompt
+# - observe streamed fake/real response
+# - approve a tool call
+# - inspect file tree/diff/timeline</code></pre>
+<p>Manual CLI smoke after Phase 12:</p>
+<pre><code class="language-sh">node apps/specter-code/dist/cli/index.js --help
+node apps/specter-code/dist/cli/index.js run --format json &quot;summarize this project&quot;
+node apps/specter-code/dist/cli/index.js serve --port 41734</code></pre>
+<hr />
+<h2 id="risks-and-mitigations"><a class="anchor" href="#risks-and-mitigations">#</a>Risks and Mitigations</h2>
+<ol>
+<li><strong>Scope explosion from cloning all of OpenCode.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: implement route/tool parity in milestones; keep an explicit compatibility checklist.</li>
+</ul>
+<ol>
+<li><strong>Specter slice state becoming too large for transcripts/tool outputs.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: keep events authoritative, but project large read models/artifacts into dedicated SQLite tables/files.</li>
+</ul>
+<ol>
+<li><strong>Long-running reaction work lost on process restart.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: add durable reaction queue before beta.</li>
+</ul>
+<ol>
+<li><strong>Unsafe shell/file operations.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: approval-first permissions, path containment, snapshots before mutation, output limits, symlink policy.</li>
+</ul>
+<ol>
+<li><strong>TUI complexity delaying useful product.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: build web + non-interactive CLI first; add TUI after API/event stream stabilizes.</li>
+</ul>
+<ol>
+<li><strong>Provider/config compatibility ambiguity.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: import OpenCode fixtures and test them; intentionally document unsupported keys until implemented.</li>
+</ul>
+<ol>
+<li><strong>Mixing app-specific code into <code>@specter-ts/core</code>.</strong></li>
+</ol>
+<ul>
+<li>Mitigation: keep LLM/tool/PTY/config/plugins in <code>apps/specter-code/src/features/specter-code/adapters</code>.</li>
+</ul>
+<hr />
+<h2 id="open-questions"><a class="anchor" href="#open-questions">#</a>Open Questions</h2>
+<ol>
+<li>Product name: should the app be <code>apps/specter-code</code>, <code>apps/opencode-reference</code>, or another name?</li>
+<li>Should initial UI be web-first, CLI-first, or TUI-first? The plan recommends web + API + non-interactive CLI before full TUI.</li>
+<li>Should compatibility target OpenCode&#x27;s current main branch exactly, or a pinned release/tag?</li>
+<li>Should Specter Code import existing OpenCode session DBs, or only support JSON import/export initially?</li>
+<li>Which providers must work on day one: OpenRouter, Anthropic, OpenAI, local OpenAI-compatible, Gemini, Copilot?</li>
+<li>Should real shell/tool execution run directly on host, inside a sandbox, or through an external worker process?</li>
+</ol>
+<hr />
+<h2 id="recommended-next-step"><a class="anchor" href="#recommended-next-step">#</a>Recommended Next Step</h2>
+<p>Start with Phase 1 through Milestone A using subagents:</p>
+<ol>
+<li>One subagent copies/renames Threadplane into <code>apps/specter-code</code> and gets typecheck/build passing.</li>
+<li>One subagent designs and implements the session/message event vocabulary plus core slices with scenario tests.</li>
+<li>One subagent builds the fake agent runtime + timeline UI bridge.</li>
+<li>Parent agent verifies every subagent claim with <code>pnpm --filter @specter/specter-code typecheck</code>, <code>test</code>, and <code>build</code> before moving to real tool execution.</li>
+</ol></article>
+      <footer class="footer">Generated from /home/lucifer/work/active/specter/.hermes/plans/2026-06-22_192452-specter-opencode-clone-plan.md · 2026-06-22 19:36 · standalone static HTML.</footer>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,4 @@
+data/*.db
+data/*.db-*
+test-results/
+data/specter-code-workspaces/

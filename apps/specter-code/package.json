@@ -1,0 +1,42 @@
+{
+  "name": "@specter/specter-code",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "dev:kill": "fuser -k 41734/tcp || true",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "preview": "vite preview",
+    "test": "vitest run --exclude 'tests/e2e/**'",
+    "test:e2e": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.18",
+    "@libsql/client": "^0.17.3",
+    "@specter-ts/core": "workspace:*",
+    "@tanstack/router-core": "1.168.8",
+    "@tanstack/router-plugin": "1.167.16",
+    "@tanstack/solid-router": "1.168.8",
+    "@tanstack/solid-start": "1.167.14",
+    "solid-js": "^1.9.12",
+    "tailwindcss": "^4.1.18",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@solidjs/testing-library": "^0.8.10",
+    "jsdom": "^28.1.0",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "^2.11.12",
+    "vitest": "^4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  }
+}
