@@ -30,8 +30,10 @@ import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/
 import runRequestedAgentRun from './run-requested-agent-run/slice'
 import runRequestedFilesystemScan from './run-requested-filesystem-scan/slice'
 import sessionTranscript from './session-transcript/slice'
+import sessionTodos from './session-todos/slice'
 import sessionList from './session-list/slice'
 import submitPrompt from './submit-prompt/slice'
+import updateTodoList from './update-todo-list/slice'
 import workspaceAgentRuns from './workspace-agent-runs/slice'
 import workspaceChat from './workspace-chat/slice'
 import workspaceList from './workspace-list/slice'
@@ -70,6 +72,8 @@ export const specterCodeScaffoldRegistrations = [
   requestToolApproval,
   replyToolApproval,
   pendingPermissions,
+  updateTodoList,
+  sessionTodos,
   workspaceAgentRuns,
   agentRunTimeline,
   runRequestedFilesystemScan,

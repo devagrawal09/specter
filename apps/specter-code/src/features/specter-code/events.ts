@@ -327,6 +327,23 @@ export const toolApprovalRepliedEvent = createEventDefinition(
   }),
 )
 
+
+export const todoListUpdatedEvent = createEventDefinition(
+  'todoListUpdated',
+  z.object({
+    sessionId: z.string(),
+    messageId: z.string(),
+    items: z.array(
+      z.object({
+        id: z.string(),
+        content: z.string(),
+        status: z.enum(['pending', 'in_progress', 'completed']),
+        priority: z.enum(['low', 'medium', 'high']).optional(),
+      }),
+    ),
+  }),
+)
+
 export const specterCodeEventDefinitions = [
   workspaceCreatedEvent,
   sessionCreatedEvent,
@@ -351,4 +368,5 @@ export const specterCodeEventDefinitions = [
   toolCallFailedEvent,
   toolApprovalRequestedEvent,
   toolApprovalRepliedEvent,
+  todoListUpdatedEvent,
 ] as const

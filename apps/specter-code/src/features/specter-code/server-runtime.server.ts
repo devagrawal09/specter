@@ -237,3 +237,22 @@ export async function listSpecterCodePendingPermissionsOnServer(data: {
 }) {
   return runWithSpecterCodeReferenceDb(() => app.pendingPermissions(data))
 }
+
+export async function updateSpecterCodeTodoListOnServer(data: {
+  sessionId: string
+  messageId: string
+  items: Array<{
+    id?: string
+    content: string
+    status: 'pending' | 'in_progress' | 'completed'
+    priority?: 'low' | 'medium' | 'high'
+  }>
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.updateTodoList(data))
+}
+
+export async function listSpecterCodeSessionTodosOnServer(data: {
+  sessionId: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.sessionTodos(data))
+}

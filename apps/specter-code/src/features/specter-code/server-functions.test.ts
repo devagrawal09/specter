@@ -16,6 +16,7 @@ import {
   listSpecterCodeAgentRunTimelineOnServer,
   listSpecterCodeFilesystemTreeOnServer,
   listSpecterCodeSessionTranscriptOnServer,
+  listSpecterCodeSessionTodosOnServer,
   listSpecterCodeSessionsOnServer,
   listSpecterCodeWorkspaceAgentRunsOnServer,
   listSpecterCodeWorkspaceChatOnServer,
@@ -25,6 +26,7 @@ import {
   requestSpecterCodeAgentRunOnServer,
   requestSpecterCodeFilesystemScanOnServer,
   submitSpecterCodePromptOnServer,
+  updateSpecterCodeTodoListOnServer,
 } from './server-runtime.server'
 import { specterCodeReferenceSpecterAppConfig } from './registry'
 
@@ -184,6 +186,20 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
         content: 'add a regression test',
         author: { userId: 'user-1', displayName: 'Ada Lovelace' },
       }),
+    ])
+
+    await updateSpecterCodeTodoListOnServer({
+      sessionId: 'session-main',
+      messageId: 'message-1',
+      items: [
+        { id: 'todo-1', content: ' Add failing test ', status: 'completed', priority: 'high' },
+        { id: 'todo-2', content: 'Implement fix', status: 'in_progress' },
+      ],
+    })
+
+    expect(await listSpecterCodeSessionTodosOnServer({ sessionId: 'session-main' })).toEqual([
+      { id: 'todo-1', content: 'Add failing test', status: 'completed', priority: 'high' },
+      { id: 'todo-2', content: 'Implement fix', status: 'in_progress' },
     ])
   })
 })
