@@ -1,6 +1,7 @@
 import { sqliteEventLog } from '../../db/specter-sqlite'
 import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
 import agentRunTimeline from './agent-run-timeline/slice'
+import askQuestion from './ask-question/slice'
 import createPost from './create-post/slice'
 import createSession from './create-session/slice'
 import createWorkspace from './create-workspace/slice'
@@ -18,12 +19,14 @@ import recordToolCallCompleted from './record-tool-call-completed/slice'
 import recordToolCallFailed from './record-tool-call-failed/slice'
 import recordToolCallStarted from './record-tool-call-started/slice'
 import pendingPermissions from './pending-permissions/slice'
+import pendingQuestions from './pending-questions/slice'
 import recordVisibleAgentReply from './record-visible-agent-reply/slice'
 import recordWorkspaceFilesystemScanCompleted from './record-workspace-filesystem-scan-completed/slice'
 import recordWorkspaceFilesystemScanFailed from './record-workspace-filesystem-scan-failed/slice'
 import recordWorkspaceFilesystemScanStarted from './record-workspace-filesystem-scan-started/slice'
 import replyToPost from './reply-to-post/slice'
 import requestAgentRun from './request-agent-run/slice'
+import replyQuestion from './reply-question/slice'
 import replyToolApproval from './reply-tool-approval/slice'
 import requestToolApproval from './request-tool-approval/slice'
 import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/slice'
@@ -74,6 +77,9 @@ export const specterCodeScaffoldRegistrations = [
   pendingPermissions,
   updateTodoList,
   sessionTodos,
+  askQuestion,
+  replyQuestion,
+  pendingQuestions,
   workspaceAgentRuns,
   agentRunTimeline,
   runRequestedFilesystemScan,

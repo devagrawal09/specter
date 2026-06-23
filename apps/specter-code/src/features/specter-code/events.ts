@@ -344,6 +344,38 @@ export const todoListUpdatedEvent = createEventDefinition(
   }),
 )
 
+export const questionAskedEvent = createEventDefinition(
+  'questionAsked',
+  z.object({
+    questionId: z.string(),
+    sessionId: z.string(),
+    messageId: z.string(),
+    prompt: z.string(),
+    options: z.array(
+      z.object({
+        id: z.string(),
+        label: z.string(),
+      }),
+    ),
+    allowFreeform: z.boolean(),
+  }),
+)
+
+export const questionAnsweredEvent = createEventDefinition(
+  'questionAnswered',
+  z.object({
+    questionId: z.string(),
+    sessionId: z.string(),
+    answer: z.string(),
+    answeredBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+  }),
+)
+
 export const specterCodeEventDefinitions = [
   workspaceCreatedEvent,
   sessionCreatedEvent,
@@ -369,4 +401,6 @@ export const specterCodeEventDefinitions = [
   toolApprovalRequestedEvent,
   toolApprovalRepliedEvent,
   todoListUpdatedEvent,
+  questionAskedEvent,
+  questionAnsweredEvent,
 ] as const

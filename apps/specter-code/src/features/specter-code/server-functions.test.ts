@@ -9,12 +9,14 @@ import { expect, test } from 'vitest'
 import { sqliteScenario } from '../../db/scenario-tests'
 import { prepareSpecterSqlite, runWithSqliteDb } from '../../db/specter-sqlite'
 import {
+  askSpecterCodeQuestionOnServer,
   createSpecterCodePostOnServer,
   createSpecterCodeSessionOnServer,
   createSpecterCodeWorkspaceOnServer,
   getSpecterCodeFilesystemStatusOnServer,
   listSpecterCodeAgentRunTimelineOnServer,
   listSpecterCodeFilesystemTreeOnServer,
+  listSpecterCodePendingQuestionsOnServer,
   listSpecterCodeSessionTranscriptOnServer,
   listSpecterCodeSessionTodosOnServer,
   listSpecterCodeSessionsOnServer,
@@ -22,6 +24,7 @@ import {
   listSpecterCodeWorkspaceChatOnServer,
   listSpecterCodeWorkspacesOnServer,
   readSpecterCodeWorkspaceTextFileOnServer,
+  replySpecterCodeQuestionOnServer,
   replyToSpecterCodePostOnServer,
   requestSpecterCodeAgentRunOnServer,
   requestSpecterCodeFilesystemScanOnServer,
@@ -201,6 +204,35 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       { id: 'todo-1', content: 'Add failing test', status: 'completed', priority: 'high' },
       { id: 'todo-2', content: 'Implement fix', status: 'in_progress' },
     ])
+
+    await askSpecterCodeQuestionOnServer({
+      questionId: 'question-1',
+      sessionId: 'session-main',
+      messageId: 'message-1',
+      prompt: ' Which migration should I run? ',
+      options: [{ id: 'safe', label: ' Safe migration ' }],
+      allowFreeform: true,
+    })
+
+    expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([
+      {
+        questionId: 'question-1',
+        sessionId: 'session-main',
+        messageId: 'message-1',
+        prompt: 'Which migration should I run?',
+        options: [{ id: 'safe', label: 'Safe migration' }],
+        allowFreeform: true,
+      },
+    ])
+
+    await replySpecterCodeQuestionOnServer({
+      questionId: 'question-1',
+      sessionId: 'session-main',
+      answer: 'Use the safe migration',
+      answeredBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
+    })
+
+    expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([])
   })
 })
 

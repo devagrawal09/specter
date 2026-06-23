@@ -256,3 +256,29 @@ export async function listSpecterCodeSessionTodosOnServer(data: {
 }) {
   return runWithSpecterCodeReferenceDb(() => app.sessionTodos(data))
 }
+
+export async function askSpecterCodeQuestionOnServer(data: {
+  questionId?: string
+  sessionId: string
+  messageId: string
+  prompt: string
+  options?: Array<{ id?: string; label: string }>
+  allowFreeform?: boolean
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.askQuestion(data))
+}
+
+export async function replySpecterCodeQuestionOnServer(data: {
+  questionId: string
+  sessionId: string
+  answer: string
+  answeredBy?: { userId?: string; displayName: string }
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.replyQuestion(data))
+}
+
+export async function listSpecterCodePendingQuestionsOnServer(data: {
+  sessionId: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.pendingQuestions(data))
+}
