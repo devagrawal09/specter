@@ -17,12 +17,15 @@ import recordFilesystemNodeDiscovered from './record-filesystem-node-discovered/
 import recordToolCallCompleted from './record-tool-call-completed/slice'
 import recordToolCallFailed from './record-tool-call-failed/slice'
 import recordToolCallStarted from './record-tool-call-started/slice'
+import pendingPermissions from './pending-permissions/slice'
 import recordVisibleAgentReply from './record-visible-agent-reply/slice'
 import recordWorkspaceFilesystemScanCompleted from './record-workspace-filesystem-scan-completed/slice'
 import recordWorkspaceFilesystemScanFailed from './record-workspace-filesystem-scan-failed/slice'
 import recordWorkspaceFilesystemScanStarted from './record-workspace-filesystem-scan-started/slice'
 import replyToPost from './reply-to-post/slice'
 import requestAgentRun from './request-agent-run/slice'
+import replyToolApproval from './reply-tool-approval/slice'
+import requestToolApproval from './request-tool-approval/slice'
 import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/slice'
 import runRequestedAgentRun from './run-requested-agent-run/slice'
 import runRequestedFilesystemScan from './run-requested-filesystem-scan/slice'
@@ -64,6 +67,9 @@ export const specterCodeScaffoldRegistrations = [
   recordToolCallStarted,
   recordToolCallCompleted,
   recordToolCallFailed,
+  requestToolApproval,
+  replyToolApproval,
+  pendingPermissions,
   workspaceAgentRuns,
   agentRunTimeline,
   runRequestedFilesystemScan,

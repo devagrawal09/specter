@@ -205,3 +205,35 @@ export async function readSpecterCodeWorkspaceTextFileOnServer(data: {
     throw new Error('Preview file is not valid UTF-8 text')
   }
 }
+
+
+export async function requestSpecterCodeToolApprovalOnServer(data: {
+  requestId?: string
+  sessionId: string
+  messageId: string
+  workspaceId: string
+  agentId: string
+  toolCallId?: string
+  toolName: string
+  permission: string
+  target: string
+  reason?: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.requestToolApproval(data))
+}
+
+export async function replySpecterCodeToolApprovalOnServer(data: {
+  requestId: string
+  sessionId: string
+  action: 'allow' | 'deny'
+  repliedBy?: { userId?: string; displayName: string }
+  reason?: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.replyToolApproval(data))
+}
+
+export async function listSpecterCodePendingPermissionsOnServer(data: {
+  sessionId: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.pendingPermissions(data))
+}

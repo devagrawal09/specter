@@ -17,6 +17,7 @@ import {
   createSpecterCodeWorkspace,
   getSpecterCodeFilesystemStatus,
   listSpecterCodeAgentRunTimeline,
+  listSpecterCodePendingPermissions,
   listSpecterCodeFilesystemTree,
   listSpecterCodeSessionTranscript,
   listSpecterCodeSessions,
@@ -25,6 +26,7 @@ import {
   listSpecterCodeWorkspaces,
   readSpecterCodeWorkspaceTextFile,
   requestSpecterCodeAgentRun,
+  replySpecterCodeToolApproval,
   requestSpecterCodeFilesystemScan,
   submitSpecterCodePrompt,
 } from '../features/specter-code/server-functions'
@@ -252,6 +254,8 @@ function Home() {
   const requestRunFn = useServerFn(requestSpecterCodeAgentRun)
   const listRunsFn = useServerFn(listSpecterCodeWorkspaceAgentRuns)
   const listTimelineFn = useServerFn(listSpecterCodeAgentRunTimeline)
+  const listPendingPermissionsFn = useServerFn(listSpecterCodePendingPermissions)
+  const replyToolApprovalFn = useServerFn(replySpecterCodeToolApproval)
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,
@@ -315,6 +319,13 @@ function Home() {
     (sessionId) => listTranscriptFn({ data: { sessionId } }),
     { intervalMs: POLL_INTERVAL_MS, initialValue: [] },
   )
+
+  const [pendingPermissions, { refetch: refetchPendingPermissions }] =
+    createPollingResource(
+      () => activeSessionId(),
+      (sessionId) => listPendingPermissionsFn({ data: { sessionId } }),
+      { intervalMs: POLL_INTERVAL_MS, initialValue: [] },
+    )
 
   const treeSource = () => {
     const workspaceId = activeWorkspaceId()
@@ -394,6 +405,7 @@ function Home() {
     sessionList().find((session) => session.id === activeSessionId()),
   )
   const visibleTranscript = createMemo(() => transcript()?.filter(Boolean) ?? [])
+  const pendingPermissionList = createMemo(() => pendingPermissions() ?? [])
   const treeNodes = createMemo(() => tree() ?? [])
   const visibleFiles = createMemo(
     () => treeNodes().filter((node) => node.kind === 'file').length,
@@ -429,7 +441,8 @@ function Home() {
       Boolean(status.loading) ||
       runs.loading ||
       sessions.loading ||
-      transcript.loading,
+      transcript.loading ||
+      pendingPermissions.loading,
   )
 
   async function createWorkspace(event: SubmitEvent) {
@@ -546,7 +559,26 @@ function Home() {
       refetchSessions(),
     ])
     if (activeRunId()) await refetchTimeline()
-    if (activeSessionId()) await refetchTranscript()
+    if (activeSessionId()) {
+      await Promise.all([refetchTranscript(), refetchPendingPermissions()])
+    }
+  }
+
+  async function replyToPendingPermission(
+    requestId: string,
+    action: 'allow' | 'deny',
+  ) {
+    const sessionId = activeSessionId()
+    if (!sessionId) return
+    await replyToolApprovalFn({
+      data: {
+        requestId,
+        sessionId,
+        action,
+        repliedBy: { displayName: SPECTER_CODE_USER_DISPLAY_NAME },
+      },
+    })
+    await refetchPendingPermissions()
   }
 
   async function findLatestPostIdByContent(
@@ -1120,7 +1152,7 @@ function Home() {
           </header>
 
           <div class="min-h-0 flex-1 overflow-hidden p-2.5">
-            <div class="grid h-full min-h-0 grid-rows-[1.35fr_0.95fr_1fr] gap-2.5">
+            <div class="grid h-full min-h-0 grid-rows-[1.2fr_0.75fr_0.85fr_1fr] gap-2.5">
               <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-cyan-100/10 bg-slate-950/45 p-3 shadow-inner shadow-black/20">
                 <div class="flex items-start justify-between gap-2">
                   <div class="min-w-0">
@@ -1334,6 +1366,100 @@ function Home() {
                           </pre>
                         </Show>
                       </Show>
+                    </Show>
+                  </Show>
+                </div>
+              </section>
+
+
+              <section
+                role="region"
+                aria-label="Pending approvals"
+                class="flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-amber-100/10 bg-slate-950/45 p-3 shadow-inner shadow-black/20"
+              >
+                <div class="flex items-start justify-between gap-2">
+                  <div class="min-w-0">
+                    <h3 class="flex items-center gap-2 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300">
+                      <Icon name="tasks" class="text-amber-200" />
+                      Pending approvals
+                    </h3>
+                    <p class="mt-0.5 truncate text-[0.68rem] text-slate-500">
+                      Tool execution decisions
+                    </p>
+                  </div>
+                  <span class="shrink-0 rounded-full border border-amber-300/30 bg-amber-300/10 px-2 py-0.5 text-[0.68rem] font-semibold text-amber-100">
+                    {pendingPermissionList().length}
+                  </span>
+                </div>
+
+                <div class="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+                  <Show
+                    when={activeSessionId()}
+                    fallback={
+                      <div class="rounded-xl border border-dashed border-amber-100/15 p-3 text-xs leading-5 text-slate-400">
+                        Select a session to review gated tool calls.
+                      </div>
+                    }
+                  >
+                    <Show
+                      when={pendingPermissionList().length > 0}
+                      fallback={
+                        <div class="rounded-xl border border-dashed border-amber-100/15 p-3 text-xs leading-5 text-slate-400">
+                          No tools are waiting for approval.
+                        </div>
+                      }
+                    >
+                      <div class="space-y-1.5">
+                        <For each={pendingPermissionList()}>
+                          {(request) => (
+                            <article class="rounded-xl border border-amber-300/20 bg-amber-300/10 p-2.5">
+                              <div class="flex items-start justify-between gap-2">
+                                <div class="min-w-0">
+                                  <div class="truncate text-xs font-semibold text-amber-50">
+                                    {request.toolName} · {request.permission}
+                                  </div>
+                                  <p class="mt-0.5 truncate font-mono text-[0.68rem] text-amber-100/80">
+                                    {request.target}
+                                  </p>
+                                  <Show when={request.reason}>
+                                    <p class="mt-1 text-[0.68rem] leading-4 text-slate-400">
+                                      {request.reason}
+                                    </p>
+                                  </Show>
+                                </div>
+                              </div>
+                              <div class="mt-2 flex gap-1.5">
+                                <button
+                                  type="button"
+                                  aria-label={`Allow ${request.permission}`}
+                                  class="rounded-lg bg-emerald-300 px-2 py-1 text-[0.68rem] font-semibold text-slate-950 transition hover:bg-emerald-200"
+                                  onClick={() =>
+                                    void replyToPendingPermission(
+                                      request.requestId,
+                                      'allow',
+                                    )
+                                  }
+                                >
+                                  Allow
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label={`Deny ${request.permission}`}
+                                  class="rounded-lg border border-rose-300/30 bg-rose-300/10 px-2 py-1 text-[0.68rem] font-semibold text-rose-100 transition hover:border-rose-200/50 hover:bg-rose-300/20"
+                                  onClick={() =>
+                                    void replyToPendingPermission(
+                                      request.requestId,
+                                      'deny',
+                                    )
+                                  }
+                                >
+                                  Deny
+                                </button>
+                              </div>
+                            </article>
+                          )}
+                        </For>
+                      </div>
                     </Show>
                   </Show>
                 </div>

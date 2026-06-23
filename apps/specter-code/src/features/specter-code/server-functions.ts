@@ -86,6 +86,57 @@ export const listSpecterCodeSessionTranscript = createServerFn({ method: 'GET' }
     return listSpecterCodeSessionTranscriptOnServer(data)
   })
 
+
+export const requestSpecterCodeToolApproval = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      requestId: z.string().optional(),
+      sessionId: z.string(),
+      messageId: z.string(),
+      workspaceId: z.string(),
+      agentId: z.string(),
+      toolCallId: z.string().optional(),
+      toolName: z.string(),
+      permission: z.string(),
+      target: z.string(),
+      reason: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { requestSpecterCodeToolApprovalOnServer } = await import(
+      './server-runtime.server'
+    )
+    return requestSpecterCodeToolApprovalOnServer(data)
+  })
+
+export const replySpecterCodeToolApproval = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      requestId: z.string(),
+      sessionId: z.string(),
+      action: z.enum(['allow', 'deny']),
+      repliedBy: z
+        .object({ userId: z.string().optional(), displayName: z.string() })
+        .optional(),
+      reason: z.string().optional(),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { replySpecterCodeToolApprovalOnServer } = await import(
+      './server-runtime.server'
+    )
+    return replySpecterCodeToolApprovalOnServer(data)
+  })
+
+export const listSpecterCodePendingPermissions = createServerFn({ method: 'GET' })
+  .inputValidator(sessionIdInput)
+  .handler(async ({ data }) => {
+    const { listSpecterCodePendingPermissionsOnServer } = await import(
+      './server-runtime.server'
+    )
+    return listSpecterCodePendingPermissionsOnServer(data)
+  })
+
 export const createSpecterCodePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({

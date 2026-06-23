@@ -295,6 +295,38 @@ export const toolCallFailedEvent = createEventDefinition(
   }),
 )
 
+export const toolApprovalRequestedEvent = createEventDefinition(
+  'toolApprovalRequested',
+  z.object({
+    requestId: z.string(),
+    sessionId: z.string(),
+    messageId: z.string(),
+    workspaceId: z.string(),
+    agentId: z.string(),
+    toolCallId: z.string().optional(),
+    toolName: z.string(),
+    permission: z.string(),
+    target: z.string(),
+    reason: z.string().optional(),
+  }),
+)
+
+export const toolApprovalRepliedEvent = createEventDefinition(
+  'toolApprovalReplied',
+  z.object({
+    requestId: z.string(),
+    sessionId: z.string(),
+    action: z.enum(['allow', 'deny']),
+    repliedBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+    reason: z.string().optional(),
+  }),
+)
+
 export const specterCodeEventDefinitions = [
   workspaceCreatedEvent,
   sessionCreatedEvent,
@@ -317,4 +349,6 @@ export const specterCodeEventDefinitions = [
   toolCallStartedEvent,
   toolCallCompletedEvent,
   toolCallFailedEvent,
+  toolApprovalRequestedEvent,
+  toolApprovalRepliedEvent,
 ] as const
