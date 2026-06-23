@@ -21,6 +21,7 @@ export type ToolDefinition<Input = unknown, Output = unknown> = {
   name: string
   description?: string
   permission: string
+  permissionTarget?: (input: Input) => string
   execute: (input: Input, context: ToolContext) => Promise<Output> | Output
 }
 
@@ -60,6 +61,12 @@ export class ToolRegistry {
   ): Promise<Output> {
     const tool = this.#tools.get(name)
     if (!tool) throw new Error(`Unknown tool: ${name}`)
+
+    if (tool.permissionTarget) {
+      const target = tool.permissionTarget(input)
+      const decision = await context.ask({ permission: tool.permission, target })
+      if (decision !== "allow") throw new Error(`Tool denied: ${name} for ${target}`)
+    }
 
     return (await tool.execute(input, context)) as Output
   }

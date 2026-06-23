@@ -53,6 +53,10 @@ describe('read/search tools', () => {
       sizeBytes: 57,
       truncated: true,
     })
+    expect(context.ask).toHaveBeenCalledWith({
+      permission: 'file.read',
+      target: 'src/app.ts',
+    })
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'read',
       status: 'completed',
@@ -73,20 +77,28 @@ describe('read/search tools', () => {
   })
 
   it('globs safe workspace files in deterministic order while skipping ignored directories', async () => {
+    const registry = createToolRegistry()
+    registry.register(globTool)
     const context = createContext()
 
-    await expect(globTool.execute({ pattern: '**/*.ts', limit: 5 }, context)).resolves.toEqual({
+    await expect(registry.execute('glob', { pattern: '**/*.ts', limit: 5 }, context)).resolves.toEqual({
       pattern: '**/*.ts',
       matches: ['src/app.ts'],
       truncated: false,
     })
+    expect(context.ask).toHaveBeenCalledWith({
+      permission: 'file.read',
+      target: '**/*.ts',
+    })
   })
 
   it('greps matching lines across globbed files and marks output truncated at the match limit', async () => {
+    const registry = createToolRegistry()
+    registry.register(grepTool)
     const context = createContext()
 
     await expect(
-      grepTool.execute({ pattern: 'TODO|ready', include: '**/*.{md,ts}', maxMatches: 2 }, context),
+      registry.execute('grep', { pattern: 'TODO|ready', include: '**/*.{md,ts}', maxMatches: 2 }, context),
     ).resolves.toEqual({
       pattern: 'TODO|ready',
       include: '**/*.{md,ts}',
@@ -95,6 +107,10 @@ describe('read/search tools', () => {
         { path: 'src/nested/notes.md', lineNumber: 1, line: 'TODO: wire grep' },
       ],
       truncated: true,
+    })
+    expect(context.ask).toHaveBeenCalledWith({
+      permission: 'file.read',
+      target: '**/*.{md,ts}:TODO|ready',
     })
   })
 })

@@ -24,10 +24,14 @@ const normalizeLimit = (value: number | undefined) => {
   return Math.min(Math.floor(value), ABSOLUTE_MAX_BYTES)
 }
 
+const normalizePermissionTarget = (inputPath: string) =>
+  inputPath.trim().replaceAll('\\', '/')
+
 export const readTool: ToolDefinition<ReadToolInput, ReadToolOutput> = {
   name: 'read',
   description: 'Read a file inside the current workspace',
   permission: 'file.read',
+  permissionTarget: (input) => normalizePermissionTarget(input.path),
   async execute(input, context) {
     try {
       const maxBytes = normalizeLimit(input.maxBytes)

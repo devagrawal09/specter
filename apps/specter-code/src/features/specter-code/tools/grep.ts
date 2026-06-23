@@ -44,6 +44,8 @@ export const grepTool: ToolDefinition<GrepToolInput, GrepToolOutput> = {
   name: 'grep',
   description: 'Search workspace files with a JavaScript regular expression',
   permission: 'file.read',
+  permissionTarget: (input) =>
+    `${normalizeWorkspaceGlobPattern(input.include ?? DEFAULT_INCLUDE)}:${input.pattern}`,
   async execute(input, context) {
     const include = normalizeWorkspaceGlobPattern(input.include ?? DEFAULT_INCLUDE)
     const maxMatches = normalizeLimit(input.maxMatches)

@@ -29,6 +29,7 @@ export const globTool: ToolDefinition<GlobToolInput, GlobToolOutput> = {
   name: 'glob',
   description: 'Find files in the workspace by glob pattern',
   permission: 'file.read',
+  permissionTarget: (input) => normalizeWorkspaceGlobPattern(input.pattern),
   async execute(input, context) {
     const pattern = normalizeWorkspaceGlobPattern(input.pattern)
     const limit = normalizeLimit(input.limit)

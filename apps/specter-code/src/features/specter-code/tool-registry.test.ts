@@ -87,6 +87,49 @@ describe('ToolRegistry', () => {
       registry.execute('missing', {}, createContext()),
     ).rejects.toThrow('Unknown tool: missing')
   })
+
+  it('asks permission before executing registry-gated tools', async () => {
+    const registry = createToolRegistry()
+    const execute = vi.fn(async () => ({ ok: true }))
+    const ask = vi.fn(async () => 'allow' as const)
+
+    registry.register({
+      name: 'shell',
+      permission: 'shell.execute',
+      permissionTarget: (input: { command: string }) => input.command,
+      execute,
+    })
+
+    await expect(
+      registry.execute('shell', { command: 'pnpm test' }, createContext({ ask })),
+    ).resolves.toEqual({ ok: true })
+    expect(ask).toHaveBeenCalledWith({
+      permission: 'shell.execute',
+      target: 'pnpm test',
+    })
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
+  it('does not execute registry-gated tools when permission is denied', async () => {
+    const registry = createToolRegistry()
+    const execute = vi.fn(async () => ({ ok: true }))
+
+    registry.register({
+      name: 'write',
+      permission: 'file.write',
+      permissionTarget: (input: { path: string }) => input.path,
+      execute,
+    })
+
+    await expect(
+      registry.execute(
+        'write',
+        { path: 'src/secrets.env' },
+        createContext({ ask: async () => 'deny' }),
+      ),
+    ).rejects.toThrow('Tool denied: write for src/secrets.env')
+    expect(execute).not.toHaveBeenCalled()
+  })
 })
 
 describe('evaluatePermission', () => {
