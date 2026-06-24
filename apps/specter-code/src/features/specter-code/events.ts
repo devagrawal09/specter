@@ -400,6 +400,43 @@ export const questionAnsweredEvent = createEventDefinition(
   }),
 )
 
+
+export const ptySessionStartedEvent = createEventDefinition(
+  'ptySessionStarted',
+  z.object({
+    ptySessionId: z.string(),
+    sessionId: z.string(),
+    workspaceId: z.string(),
+    cwd: z.string(),
+    shell: z.string(),
+    startedAt: z.string(),
+  }),
+)
+
+export const ptySessionOutputEvent = createEventDefinition(
+  'ptySessionOutput',
+  z.object({
+    ptySessionId: z.string(),
+    sessionId: z.string(),
+    stream: z.enum(['stdout', 'stderr']),
+    data: z.string(),
+    sequence: z.number().int().positive(),
+    emittedAt: z.string(),
+  }),
+)
+
+export const ptySessionEndedEvent = createEventDefinition(
+  'ptySessionEnded',
+  z.object({
+    ptySessionId: z.string(),
+    sessionId: z.string(),
+    exitCode: z.number().int().nullable(),
+    signal: z.string().nullable(),
+    status: z.enum(['exited', 'killed']),
+    endedAt: z.string(),
+  }),
+)
+
 export const specterCodeEventDefinitions = [
   workspaceCreatedEvent,
   sessionCreatedEvent,
@@ -428,4 +465,7 @@ export const specterCodeEventDefinitions = [
   todoListUpdatedEvent,
   questionAskedEvent,
   questionAnsweredEvent,
+  ptySessionStartedEvent,
+  ptySessionOutputEvent,
+  ptySessionEndedEvent,
 ] as const

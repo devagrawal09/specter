@@ -20,6 +20,7 @@ import recordToolCallFailed from './record-tool-call-failed/slice'
 import recordToolCallStarted from './record-tool-call-started/slice'
 import pendingPermissions from './pending-permissions/slice'
 import pendingQuestions from './pending-questions/slice'
+import ptySessions from './pty-sessions/slice'
 import recordVisibleAgentReply from './record-visible-agent-reply/slice'
 import recordWorkspaceFilesystemScanCompleted from './record-workspace-filesystem-scan-completed/slice'
 import recordWorkspaceFilesystemScanFailed from './record-workspace-filesystem-scan-failed/slice'
@@ -82,6 +83,7 @@ export const specterCodeScaffoldRegistrations = [
   askQuestion,
   replyQuestion,
   pendingQuestions,
+  ptySessions,
   workspaceAgentRuns,
   agentRunTimeline,
   runRequestedFilesystemScan,
