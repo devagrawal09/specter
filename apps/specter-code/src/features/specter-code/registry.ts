@@ -29,6 +29,7 @@ import requestAgentRun from './request-agent-run/slice'
 import replyQuestion from './reply-question/slice'
 import replyToolApproval from './reply-tool-approval/slice'
 import requestToolApproval from './request-tool-approval/slice'
+import revertSession from './revert-session/slice'
 import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/slice'
 import runRequestedAgentRun from './run-requested-agent-run/slice'
 import runRequestedFilesystemScan from './run-requested-filesystem-scan/slice'
@@ -74,6 +75,7 @@ export const specterCodeScaffoldRegistrations = [
   recordToolCallFailed,
   requestToolApproval,
   replyToolApproval,
+  revertSession,
   pendingPermissions,
   updateTodoList,
   sessionTodos,

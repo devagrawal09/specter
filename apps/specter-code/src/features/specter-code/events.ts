@@ -1,6 +1,12 @@
 import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
+const fileSnapshotSchema = z.object({
+  path: z.string(),
+  existed: z.boolean(),
+  content: z.string().optional(),
+})
+
 export const workspaceCreatedEvent = createEventDefinition(
   'workspaceCreated',
   z.object({
@@ -328,6 +334,24 @@ export const toolApprovalRepliedEvent = createEventDefinition(
 )
 
 
+export const sessionRevertRequestedEvent = createEventDefinition(
+  'sessionRevertRequested',
+  z.object({
+    revertId: z.string(),
+    sessionId: z.string(),
+    workspaceId: z.string(),
+    snapshots: z.array(fileSnapshotSchema).min(1),
+    requestedBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+    reason: z.string().optional(),
+  }),
+)
+
+
 export const todoListUpdatedEvent = createEventDefinition(
   'todoListUpdated',
   z.object({
@@ -400,6 +424,7 @@ export const specterCodeEventDefinitions = [
   toolCallFailedEvent,
   toolApprovalRequestedEvent,
   toolApprovalRepliedEvent,
+  sessionRevertRequestedEvent,
   todoListUpdatedEvent,
   questionAskedEvent,
   questionAnsweredEvent,
