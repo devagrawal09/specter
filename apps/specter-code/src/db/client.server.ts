@@ -7,7 +7,7 @@ import {
   hasSqliteDbBinding,
   prepareSpecterSqlite,
   runWithSqliteDb,
-} from './specter-sqlite'
+} from './specter-sqlite.ts'
 
 const sqlitePath =
   process.env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'

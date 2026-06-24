@@ -13,9 +13,33 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('run [message]')
     expect(result.stdout).toContain('serve')
     expect(result.stdout).toContain('session list')
+    expect(result.stdout).toContain('import <file>')
+    expect(result.stdout).toContain('export --session <id> --output <file>')
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
     expect(result.stderr).toBe('')
+  })
+
+  it('validates import and export session command arguments before touching persistence', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['export', '--session', 'session-main'])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Usage: specter-code export --session <id> --output <file>'),
+    })
+    await expect(cli.run(['import'])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Usage: specter-code import <file>'),
+    })
+  })
+
+  it('ignores a package-manager argument separator before the real command', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['--', 'import'])).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Usage: specter-code import <file>'),
+    })
   })
 
   it('lists providers from OpenCode config and redacts secret values', async () => {

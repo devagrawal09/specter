@@ -27,6 +27,9 @@ Commands:
   run [message]       Run one non-interactive prompt in the current project
   serve               Start the Specter Code HTTP/web server
   session list        List local coding sessions
+  import <file>       Import a Specter Code session export file
+  export --session <id> --output <file>
+                      Export a session and its causal event history
   providers           List configured LLM providers
   models              List available provider models
   agents              List available coding agents
@@ -52,6 +55,10 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return ok(await renderAgents(cwd, env))
           case 'session':
             return runSessionCommand(parsed.rest)
+          case 'import':
+            return runImportCommand(parsed.rest)
+          case 'export':
+            return runExportCommand(parsed.rest)
           case 'run':
             return runSpecterCodePrompt({ argv: parsed.rest, cwd, env })
           case 'serve':
@@ -68,7 +75,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
 }
 
 function parseCommand(argv: readonly string[]): ParsedCommand {
-  const [first = 'help', ...rest] = argv
+  const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
+  const [first = 'help', ...rest] = normalizedArgv
   if (first === '--help' || first === '-h' || first === 'help') {
     return { command: 'help', rest }
   }
@@ -140,6 +148,51 @@ function runSessionCommand(argv: readonly string[]) {
   }
 
   return ok('No persisted session CLI adapter is configured yet. Use the web UI or HTTP API for sessions.\n')
+}
+
+async function runImportCommand(argv: readonly string[]) {
+  const inputPath = argv[0]
+  if (!inputPath || inputPath.startsWith('--') || argv.length > 1) {
+    return fail('Usage: specter-code import <file>\n', 1)
+  }
+
+  const { importSpecterCodeSessionFile } = await import('../adapters/import-export.ts')
+  const result = await importSpecterCodeSessionFile({ inputPath })
+  return ok(`Imported session ${result.sessionId} (${result.eventCount} events)\n`)
+}
+
+async function runExportCommand(argv: readonly string[]) {
+  let sessionId: string | undefined
+  let outputPath: string | undefined
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--session') {
+      sessionId = optionValue(argv, index, '--session')
+      index += 1
+      continue
+    }
+    if (arg === '--output' || arg === '-o') {
+      outputPath = optionValue(argv, index, arg)
+      index += 1
+      continue
+    }
+    return fail('Usage: specter-code export --session <id> --output <file>\n', 1)
+  }
+
+  if (!sessionId || !outputPath) {
+    return fail('Usage: specter-code export --session <id> --output <file>\n', 1)
+  }
+
+  const { exportSpecterCodeSessionFile } = await import('../adapters/import-export.ts')
+  const result = await exportSpecterCodeSessionFile({ sessionId, outputPath })
+  return ok(`Exported session ${result.sessionId} (${result.eventCount} events) to ${result.outputPath}\n`)
+}
+
+function optionValue(argv: readonly string[], index: number, option: string) {
+  const value = argv[index + 1]
+  if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
+  return value
 }
 
 function ok(stdout: string): SpecterCodeCliResult {
