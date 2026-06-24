@@ -1,5 +1,6 @@
 import { createAgentRegistry, type AgentSummary } from './adapters/agent-registry'
 import { loadSpecterCodeConfig, type SpecterCodeConfig } from './adapters/config-loader'
+import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './adapters/event-stream'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
 import type { RouteSpec } from './domain/openapi-compat'
 
@@ -44,11 +45,13 @@ export type SpecterCodeApiRuntime = {
   loadConfig(input: { workspaceRoot: string }): Promise<SpecterCodeConfig>
   listProviders(input?: { workspaceRoot?: string }): Promise<ProviderSummary[] | unknown>
   listAgents(input?: { workspaceRoot?: string }): Promise<AgentSummary[] | unknown>
+  listEvents(input: { afterOrder?: number }): Promise<readonly SpecterCodeStreamEvent[]>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/config' },
+  { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/file' },
   { method: 'GET', normalizedPath: '/file/content' },
   { method: 'GET', normalizedPath: '/file/status' },
@@ -91,6 +94,16 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     return jsonResponse(
       await runtime.listSessions({ workspaceId: requiredQuery(url, 'workspaceId') }),
     )
+  }
+
+  if (method === 'GET' && pathname === '/event') {
+    return createSpecterCodeEventStream({
+      loadEvents: (input) => runtime.listEvents(input),
+    }).open({
+      afterOrder: optionalIntegerQuery(url, 'after'),
+      live: optionalQuery(url, 'live') !== 'false',
+      signal: request.signal,
+    })
   }
 
   if (method === 'POST' && pathname === '/session') {
@@ -254,6 +267,10 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createAgentRegistry({ config }).listAgents()
     },
+    async listEvents(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.listSpecterCodeEventsOnServer(input)
+    },
   }
 }
 
@@ -308,6 +325,16 @@ function requiredQuery(url: URL, name: string) {
 function optionalQuery(url: URL, name: string) {
   const value = url.searchParams.get(name)
   return value && value.trim() ? value : undefined
+}
+
+function optionalIntegerQuery(url: URL, name: string) {
+  const value = optionalQuery(url, name)
+  if (value === undefined) return undefined
+  const parsed = Number(value)
+  if (!Number.isInteger(parsed) || parsed < 0) {
+    throw new Error(`Invalid integer query parameter: ${name}`)
+  }
+  return parsed
 }
 
 function workspaceRootFromQuery(url: URL) {

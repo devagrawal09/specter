@@ -10,6 +10,14 @@ import type {
 
 type SqliteDb = Client | Transaction
 
+export type SpecterSqliteEventRecord = {
+  id: string
+  order: number
+  type: string
+  payload: unknown
+  recordedAt: string
+}
+
 type SliceEntry<TState> = {
   state: TState
   order: number
@@ -195,6 +203,47 @@ export function createSqliteSliceStore<TState>(
         return result
       }),
   }
+}
+
+export async function querySpecterSqliteEvents(input: {
+  afterOrder?: number
+  limit?: number
+  eventTypes?: readonly string[]
+} = {}): Promise<SpecterSqliteEventRecord[]> {
+  const afterOrder = input.afterOrder ?? 0
+  const limit = input.limit ?? 500
+  if (!Number.isInteger(afterOrder) || afterOrder < 0) {
+    throw new Error('afterOrder must be a non-negative integer')
+  }
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error('limit must be a positive integer')
+  }
+
+  const args: Array<string | number> = [afterOrder]
+  const typeClause = input.eventTypes?.length
+    ? `AND type IN (${input.eventTypes.map(() => '?').join(', ')})`
+    : ''
+  if (input.eventTypes?.length) args.push(...input.eventTypes)
+  args.push(limit)
+
+  const result = await getDb().execute({
+    sql: `
+      SELECT id, event_order, type, payload, recorded_at
+      FROM specter_events
+      WHERE event_order > ? ${typeClause}
+      ORDER BY event_order ASC
+      LIMIT ?
+    `,
+    args,
+  })
+
+  return result.rows.map((row) => ({
+    id: toStringValue(row.id),
+    order: toNumber(row.event_order),
+    type: toStringValue(row.type),
+    payload: JSON.parse(toStringValue(row.payload)) as unknown,
+    recordedAt: toStringValue(row.recorded_at),
+  }))
 }
 
 export const sqliteEventLog: EventLogAdapter = {

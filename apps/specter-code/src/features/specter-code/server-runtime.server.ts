@@ -4,6 +4,7 @@ import path from 'node:path'
 import { createSpecterApp } from '@specter-ts/core'
 
 import { runWithSpecterCodeReferenceDb } from '../../db/client.server'
+import { querySpecterSqliteEvents } from '../../db/specter-sqlite'
 import { specterCodeReferenceSpecterAppConfig } from './registry'
 
 const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
@@ -281,4 +282,11 @@ export async function listSpecterCodePendingQuestionsOnServer(data: {
   sessionId: string
 }) {
   return runWithSpecterCodeReferenceDb(() => app.pendingQuestions(data))
+}
+
+
+export async function listSpecterCodeEventsOnServer(data: { afterOrder?: number }) {
+  return runWithSpecterCodeReferenceDb(() =>
+    querySpecterSqliteEvents({ afterOrder: data.afterOrder }),
+  )
 }

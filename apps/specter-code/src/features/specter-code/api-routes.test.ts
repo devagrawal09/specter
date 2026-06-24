@@ -63,6 +63,18 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push('agents')
       return [{ id: 'build', default: true, tools: ['read'] }]
     },
+    async listEvents(input) {
+      calls.push(`events:${input.afterOrder ?? 0}`)
+      return [
+        {
+          id: 'event-2',
+          order: 2,
+          type: 'agentRunCompleted',
+          payload: { runId: 'run-1' },
+          recordedAt: '2026-06-24T12:00:02.000Z',
+        },
+      ]
+    },
   }
 }
 
@@ -86,6 +98,7 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(implementedOpenCodeApiRoutes).toEqual<RouteSpec[]>([
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/config' },
+      { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/file' },
       { method: 'GET', normalizedPath: '/file/content' },
       { method: 'GET', normalizedPath: '/file/status' },
@@ -99,7 +112,7 @@ describe('Specter Code OpenCode API route adapter', () => {
     ])
   })
 
-  it('dispatches session, file, permission, config, provider, and agent requests to runtime handlers', async () => {
+  it('dispatches session, file, permission, config, provider, agent, and event requests to runtime handlers', async () => {
     const runtime = createRuntime()
     const router = createSpecterCodeApiRouter({ runtime })
 
@@ -177,6 +190,14 @@ describe('Specter Code OpenCode API route adapter', () => {
       { id: 'build', default: true, tools: ['read'] },
     ])
 
+    const eventResponse = await router.handle(new Request('http://specter.test/event?after=1&live=false'))
+    expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
+    await expect(eventResponse.text()).resolves.toBe(
+      'id: 2\n' +
+        'event: agentRunCompleted\n' +
+        'data: {"id":"event-2","order":2,"type":"agentRunCompleted","payload":{"runId":"run-1"},"recordedAt":"2026-06-24T12:00:02.000Z"}\n\n',
+    )
+
     expect(runtime.calls).toEqual([
       'listSessions:workspace-main',
       'createSession:session-main:workspace-main:Implement API routes',
@@ -190,6 +211,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       'config:/repo',
       'providers',
       'agents',
+      'events:1',
     ])
   })
 
