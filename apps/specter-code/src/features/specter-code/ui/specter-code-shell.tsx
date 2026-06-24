@@ -5,6 +5,7 @@ import { FilesystemProvider } from './filesystem'
 import { RunsProvider } from './runs'
 import { SpecterCodeSelectionProvider } from './selection-context'
 import { SessionChatPanel, SessionChatProvider, SessionPromptComposer } from './session-chat'
+import { SettingsPanel } from './settings'
 import { WorkspaceProvider, WorkspaceSidebar } from './workspaces'
 
 function SpecterCodeSurface() {
@@ -21,6 +22,9 @@ function SpecterCodeSurface() {
         <SessionPromptComposer />
         <ActivityRail />
         <WorkspaceStatusStrip />
+        <div class="pointer-events-none fixed bottom-4 right-4 z-20 hidden w-80 xl:block">
+          <SettingsPanel />
+        </div>
       </main>
     </div>
   )

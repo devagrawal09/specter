@@ -239,6 +239,29 @@ export async function listSpecterCodePendingPermissionsOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.pendingPermissions(data))
 }
 
+export async function getSpecterCodeSettingsOnServer() {
+  const [{ loadSpecterCodeConfig }, { createProviderRegistry }, { createAgentRegistry }] =
+    await Promise.all([
+      import('./adapters/config-loader'),
+      import('./adapters/llm-provider'),
+      import('./adapters/agent-registry'),
+    ])
+  const config = await loadSpecterCodeConfig({ workspaceRoot: process.cwd() })
+  const providerRegistry = createProviderRegistry({ config })
+  const agentRegistry = createAgentRegistry({ config })
+
+  const agents = agentRegistry.listAgents().map(({ options: _options, ...agent }) => agent)
+  const { options: _defaultOptions, ...defaultAgent } = agentRegistry.resolveDefaultAgent()
+
+  return {
+    sources: config.sources,
+    defaultModel: providerRegistry.resolveDefaultModel(),
+    providers: providerRegistry.listProviders(),
+    defaultAgent,
+    agents,
+  }
+}
+
 export async function updateSpecterCodeTodoListOnServer(data: {
   sessionId: string
   messageId: string

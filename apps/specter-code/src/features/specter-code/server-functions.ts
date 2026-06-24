@@ -137,6 +137,11 @@ export const listSpecterCodePendingPermissions = createServerFn({ method: 'GET' 
     return listSpecterCodePendingPermissionsOnServer(data)
   })
 
+export const getSpecterCodeSettings = createServerFn({ method: 'GET' }).handler(async () => {
+  const { getSpecterCodeSettingsOnServer } = await import('./server-runtime.server')
+  return getSpecterCodeSettingsOnServer()
+})
+
 export const createSpecterCodePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({

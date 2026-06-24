@@ -1334,14 +1334,18 @@ pnpm --filter @specter/specter-code test:e2e -- approval.spec.ts file-edit.spec.
 
 #### Task 11.4: Add model/agent/config settings UI
 
+**Status:** Partially implemented 2026-06-24 as a read-only settings panel backed by live config, provider, model, and agent registries; follow-up remains for editable model/agent controls.
+
 **Objective:** Match common OpenCode controls.
 
 **Files:**
 
 ```txt
-ui/ModelSelector.tsx
-ui/AgentSelector.tsx
-routes/settings.tsx
+ui/settings.tsx
+server-functions.ts
+server-runtime.server.ts
+specter-code-shell.tsx
+tests/e2e/settings.spec.ts
 ```
 
 **Verification:**
