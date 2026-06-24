@@ -1,4 +1,7 @@
-import { sqliteEventLog } from '../../db/specter-sqlite'
+import {
+  setSpecterSqliteEventProjector,
+  sqliteEventLog,
+} from '../../db/specter-sqlite'
 import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
 import agentRunTimeline from './agent-run-timeline/slice'
 import askQuestion from './ask-question/slice'
@@ -43,6 +46,9 @@ import workspaceAgentRuns from './workspace-agent-runs/slice'
 import workspaceChat from './workspace-chat/slice'
 import workspaceList from './workspace-list/slice'
 import { specterCodeEventDefinitions } from './events'
+import { projectSpecterCodeEvent } from './adapters/read-models'
+
+setSpecterSqliteEventProjector(projectSpecterCodeEvent)
 
 export { specterCodeEventDefinitions }
 

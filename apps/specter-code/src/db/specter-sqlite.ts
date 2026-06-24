@@ -8,7 +8,12 @@ import type {
   SliceStoreAdapter,
 } from '@specter-ts/core'
 
-type SqliteDb = Client | Transaction
+export type SqliteDb = Client | Transaction
+
+export type SpecterSqliteEventProjector = (
+  db: SqliteDb,
+  event: SpecterSqliteEventRecord,
+) => Promise<void> | void
 
 export type SpecterSqliteEventRecord = {
   id: string
@@ -24,6 +29,13 @@ type SliceEntry<TState> = {
 }
 
 const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
+let specterSqliteEventProjector: SpecterSqliteEventProjector | undefined
+
+export function setSpecterSqliteEventProjector(
+  projector: SpecterSqliteEventProjector | undefined,
+) {
+  specterSqliteEventProjector = projector
+}
 
 export async function prepareSpecterSqlite(db: Client) {
   await db.batch(
@@ -293,11 +305,22 @@ export const sqliteEventLog: EventLogAdapter = {
         sql: 'SELECT event_order FROM specter_events WHERE id = ?',
         args: [id],
       })
+      const order = toNumber(result.rows[0]?.event_order)
+
+      if (specterSqliteEventProjector) {
+        await specterSqliteEventProjector(getDb(), {
+          id,
+          order,
+          type: eventDraft.type,
+          payload: eventDraft.payload,
+          recordedAt: recordedAt.toISOString(),
+        })
+      }
 
       persistedEvents.push({
         ...eventDraft,
         id,
-        order: toNumber(result.rows[0]?.event_order),
+        order,
         recordedAt,
       })
     }
