@@ -8,6 +8,7 @@
     "build": "vite build",
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",
+    "specter-code": "node --experimental-strip-types src/features/specter-code/cli/index.ts",
     "test": "vitest run --exclude 'tests/e2e/**'",
     "test:e2e": "playwright test",
     "typecheck": "tsc --noEmit"
