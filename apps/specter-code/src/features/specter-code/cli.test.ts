@@ -78,22 +78,7 @@ describe('Specter Code CLI', () => {
   it('runs a non-interactive prompt as JSON events with the mocked local runner', async () => {
     const cli = buildSpecterCodeCli({
       cwd: '/tmp/project',
-      env: {
-        OPENCODE_CONFIG_CONTENT: JSON.stringify({
-          model: 'localai/qwen-code',
-          provider: {
-            localai: {
-              name: 'Local AI',
-              env: 'LOCALAI_TOKEN',
-              models: {
-                'qwen-code': { name: 'Qwen Code' },
-              },
-            },
-          },
-        }),
-        LOCALAI_TOKEN: 'super-secret-token',
-        SPECTER_CODE_SIMULATED_AGENT_MODE: 'test',
-      },
+      env: createConfiguredCliEnv(),
     })
 
     const result = await cli.run(['run', '--format', 'json', 'say', 'hi'])
@@ -140,4 +125,43 @@ describe('Specter Code CLI', () => {
       content: 'I found the issue.',
     })
   })
+
+  it('renders an interactive demo TUI transcript with prompt and approval controls', async () => {
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: createConfiguredCliEnv(),
+    })
+
+    const result = await cli.run(['run', '--interactive', '--demo', 'say', 'hi'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).not.toContain('super-secret-token')
+    expect(result.stdout).toContain('Specter Code TUI')
+    expect(result.stdout).toContain('Session transcript')
+    expect(result.stdout).toContain('You: say hi')
+    expect(result.stdout).toContain('Assistant: I found the issue.')
+    expect(result.stdout).toContain('Approval required')
+    expect(result.stdout).toContain('Approve [a]  Reject [r]')
+    expect(result.stdout).toContain('Prompt: say hi')
+  })
 })
+
+function createConfiguredCliEnv() {
+  return {
+    OPENCODE_CONFIG_CONTENT: JSON.stringify({
+      model: 'localai/qwen-code',
+      provider: {
+        localai: {
+          name: 'Local AI',
+          env: 'LOCALAI_TOKEN',
+          models: {
+            'qwen-code': { name: 'Qwen Code' },
+          },
+        },
+      },
+    }),
+    LOCALAI_TOKEN: 'super-secret-token',
+    SPECTER_CODE_SIMULATED_AGENT_MODE: 'test',
+  }
+}

@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 
+import { renderInteractiveDemoTui } from './tui/demo.ts'
 import { createAgentRegistry, type AgentSummary } from '../adapters/agent-registry.ts'
 import { loadSpecterCodeConfig } from '../adapters/config-loader.ts'
 import { createProviderRegistry } from '../adapters/llm-provider.ts'
@@ -23,6 +24,8 @@ type RunFormat = 'text' | 'json'
 
 type RunArguments = {
   format: RunFormat
+  interactive: boolean
+  demo: boolean
   message: string
   requestedAgentId?: string
   requestedModel?: string
@@ -109,8 +112,12 @@ export async function runSpecterCodePrompt(options: {
   env: SpecterCodeCliEnvironment
 }): Promise<SpecterCodeCliResult> {
   const parsed = parseRunArguments(options.argv)
-  if (!parsed.message) {
-    return fail('Usage: specter-code run [--format text|json] [--agent id] [--model provider/model] <message>\n', 1)
+  const message = parsed.message || (parsed.interactive && parsed.demo ? 'Review this project' : '')
+  if (!message) {
+    return fail('Usage: specter-code run [--format text|json] [--interactive --demo] [--agent id] [--model provider/model] <message>\n', 1)
+  }
+  if (parsed.interactive && !parsed.demo) {
+    return fail('Interactive TUI smoke mode currently requires --demo.\n', 1)
   }
 
   const config = await loadSpecterCodeConfig({
@@ -123,14 +130,18 @@ export async function runSpecterCodePrompt(options: {
     ? agentRegistry.requireAgent(parsed.requestedAgentId)
     : agentRegistry.resolveDefaultAgent()
   const model = resolveRunModel(parsed.requestedModel, agent, providerRegistry)
-  const ids = buildRunIds(options.cwd, parsed.message, agent.id, model)
+  const ids = buildRunIds(options.cwd, message, agent.id, model)
   const events = buildMockedRunEvents({
     cwd: options.cwd,
-    message: parsed.message,
+    message,
     agent,
     ids,
     model,
   })
+
+  if (parsed.interactive) {
+    return ok(renderInteractiveDemoTui(events, { cwd: options.cwd, prompt: message }))
+  }
 
   if (parsed.format === 'json') {
     return ok(`${events.map((event) => JSON.stringify(event)).join('\n')}\n`)
@@ -141,6 +152,8 @@ export async function runSpecterCodePrompt(options: {
 
 function parseRunArguments(argv: readonly string[]): RunArguments {
   let format: RunFormat = 'text'
+  let interactive = false
+  let demo = false
   let requestedAgentId: string | undefined
   let requestedModel: string | undefined
   const messageParts: string[] = []
@@ -158,6 +171,14 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
     }
     if (arg === '--json') {
       format = 'json'
+      continue
+    }
+    if (arg === '--interactive' || arg === '-i') {
+      interactive = true
+      continue
+    }
+    if (arg === '--demo') {
+      demo = true
       continue
     }
     if (arg === '--agent') {
@@ -178,6 +199,8 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
 
   return {
     format,
+    interactive,
+    demo,
     requestedAgentId,
     requestedModel,
     message: messageParts.join(' ').trim(),
