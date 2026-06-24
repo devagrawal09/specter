@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { runSpecterCodePrompt } from './run.ts'
+
 export type SpecterCodeCliEnvironment = Record<string, string | undefined>
 
 export type SpecterCodeCliOptions = {
@@ -51,7 +53,7 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'session':
             return runSessionCommand(parsed.rest)
           case 'run':
-            return ok(renderRunPreview(parsed.rest))
+            return runSpecterCodePrompt({ argv: parsed.rest, cwd, env })
           case 'serve':
             return ok('Start the web server with: pnpm --filter @specter/specter-code dev\n')
           default:
@@ -138,12 +140,6 @@ function runSessionCommand(argv: readonly string[]) {
   }
 
   return ok('No persisted session CLI adapter is configured yet. Use the web UI or HTTP API for sessions.\n')
-}
-
-function renderRunPreview(argv: readonly string[]) {
-  const message = argv.join(' ').trim()
-  if (!message) return 'Usage: specter-code run [message]\n'
-  return `Queued non-interactive prompt preview: ${message}\n`
 }
 
 function ok(stdout: string): SpecterCodeCliResult {

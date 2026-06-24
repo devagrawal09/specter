@@ -1,0 +1,366 @@
+import { createHash } from 'node:crypto'
+
+import { createAgentRegistry, type AgentSummary } from '../adapters/agent-registry.ts'
+import { loadSpecterCodeConfig } from '../adapters/config-loader.ts'
+import { createProviderRegistry } from '../adapters/llm-provider.ts'
+import {
+  buildFailureMessage,
+  buildStreamChunks,
+  getSimulatedAgentPlan,
+  pickToolName,
+  shouldFailRun,
+} from '../simulated-agent-plan.ts'
+
+type SpecterCodeCliEnvironment = Record<string, string | undefined>
+
+type SpecterCodeCliResult = {
+  exitCode: number
+  stdout: string
+  stderr: string
+}
+
+type RunFormat = 'text' | 'json'
+
+type RunArguments = {
+  format: RunFormat
+  message: string
+  requestedAgentId?: string
+  requestedModel?: string
+}
+
+type RunStartedModel = {
+  providerId: string
+  modelId: string
+  configured: boolean
+}
+
+type JsonRunEvent =
+  | {
+      type: 'session.created'
+      sessionId: string
+      title: string
+      directory: string
+    }
+  | {
+      type: 'message.created'
+      messageId: string
+      sessionId: string
+      role: 'user'
+      content: string
+    }
+  | {
+      type: 'run.started'
+      runId: string
+      sessionId: string
+      agentId: string
+      agentName: string
+      model: string
+      modelConfigured: boolean
+    }
+  | {
+      type: 'tool.started'
+      runId: string
+      toolCallId: string
+      toolName: string
+      inputSummary: string
+    }
+  | {
+      type: 'tool.completed'
+      runId: string
+      toolCallId: string
+      toolName: string
+      outputSummary: string
+    }
+  | {
+      type: 'tool.failed'
+      runId: string
+      toolCallId: string
+      toolName: string
+      error: string
+    }
+  | {
+      type: 'assistant.delta'
+      runId: string
+      sequence: number
+      delta: string
+    }
+  | {
+      type: 'assistant.message'
+      messageId: string
+      sessionId: string
+      role: 'assistant'
+      content: string
+    }
+  | {
+      type: 'run.completed'
+      runId: string
+      sessionId: string
+    }
+  | {
+      type: 'run.failed'
+      runId: string
+      sessionId: string
+      error: string
+    }
+
+export async function runSpecterCodePrompt(options: {
+  argv: readonly string[]
+  cwd: string
+  env: SpecterCodeCliEnvironment
+}): Promise<SpecterCodeCliResult> {
+  const parsed = parseRunArguments(options.argv)
+  if (!parsed.message) {
+    return fail('Usage: specter-code run [--format text|json] [--agent id] [--model provider/model] <message>\n', 1)
+  }
+
+  const config = await loadSpecterCodeConfig({
+    workspaceRoot: options.cwd,
+    env: { OPENCODE_CONFIG_CONTENT: options.env.OPENCODE_CONFIG_CONTENT },
+  })
+  const agentRegistry = createAgentRegistry({ config })
+  const providerRegistry = createProviderRegistry({ config, env: options.env })
+  const agent = parsed.requestedAgentId
+    ? agentRegistry.requireAgent(parsed.requestedAgentId)
+    : agentRegistry.resolveDefaultAgent()
+  const model = resolveRunModel(parsed.requestedModel, agent, providerRegistry)
+  const ids = buildRunIds(options.cwd, parsed.message, agent.id, model)
+  const events = buildMockedRunEvents({
+    cwd: options.cwd,
+    message: parsed.message,
+    agent,
+    ids,
+    model,
+  })
+
+  if (parsed.format === 'json') {
+    return ok(`${events.map((event) => JSON.stringify(event)).join('\n')}\n`)
+  }
+
+  return ok(renderTextRun(events))
+}
+
+function parseRunArguments(argv: readonly string[]): RunArguments {
+  let format: RunFormat = 'text'
+  let requestedAgentId: string | undefined
+  let requestedModel: string | undefined
+  const messageParts: string[] = []
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--format') {
+      const value = argv[index + 1]
+      if (value !== 'json' && value !== 'text') {
+        throw new Error('Run format must be text or json')
+      }
+      format = value
+      index += 1
+      continue
+    }
+    if (arg === '--json') {
+      format = 'json'
+      continue
+    }
+    if (arg === '--agent') {
+      requestedAgentId = requireOptionValue(argv, index, '--agent')
+      index += 1
+      continue
+    }
+    if (arg === '--model') {
+      requestedModel = requireOptionValue(argv, index, '--model')
+      index += 1
+      continue
+    }
+    if (arg.startsWith('--')) {
+      throw new Error(`Unknown run option: ${arg}`)
+    }
+    messageParts.push(arg)
+  }
+
+  return {
+    format,
+    requestedAgentId,
+    requestedModel,
+    message: messageParts.join(' ').trim(),
+  }
+}
+
+function requireOptionValue(argv: readonly string[], index: number, option: string) {
+  const value = argv[index + 1]
+  if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
+  return value
+}
+
+function resolveRunModel(
+  requestedModel: string | undefined,
+  agent: AgentSummary,
+  providerRegistry: ReturnType<typeof createProviderRegistry>,
+): RunStartedModel {
+  if (requestedModel) return parseModelSelector(requestedModel)
+  if (agent.model) return { ...agent.model, configured: true }
+
+  const defaultModel = providerRegistry.resolveDefaultModel()
+  return {
+    providerId: defaultModel.providerId,
+    modelId: defaultModel.modelId,
+    configured: defaultModel.configured,
+  }
+}
+
+function parseModelSelector(selector: string): RunStartedModel {
+  const slash = selector.indexOf('/')
+  if (slash <= 0 || slash === selector.length - 1) {
+    throw new Error('Run model must use provider/model format')
+  }
+  return {
+    providerId: selector.slice(0, slash),
+    modelId: selector.slice(slash + 1),
+    configured: true,
+  }
+}
+
+function buildRunIds(
+  cwd: string,
+  message: string,
+  agentId: string,
+  model: RunStartedModel,
+) {
+  const digest = createHash('sha256')
+    .update([cwd, message, agentId, model.providerId, model.modelId].join('\0'))
+    .digest('hex')
+    .slice(0, 12)
+
+  return {
+    sessionId: `cli-session-${digest}`,
+    messageId: `cli-message-${digest}`,
+    assistantMessageId: `cli-assistant-${digest}`,
+    runId: `cli-run-${digest}`,
+    toolCallId: `cli-tool-${digest}`,
+  }
+}
+
+function buildMockedRunEvents(options: {
+  cwd: string
+  message: string
+  agent: AgentSummary
+  ids: ReturnType<typeof buildRunIds>
+  model: RunStartedModel
+}): JsonRunEvent[] {
+  const plan = getSimulatedAgentPlan(options.ids.runId)
+  const toolName = pickToolName(plan.seed, options.ids.runId)
+  const chunks = buildStreamChunks(plan.seed, options.ids.runId)
+  const failure = shouldFailRun(plan.seed, options.ids.runId)
+  const events: JsonRunEvent[] = [
+    {
+      type: 'session.created',
+      sessionId: options.ids.sessionId,
+      title: summarizeTitle(options.message),
+      directory: options.cwd,
+    },
+    {
+      type: 'message.created',
+      messageId: options.ids.messageId,
+      sessionId: options.ids.sessionId,
+      role: 'user',
+      content: options.message,
+    },
+    {
+      type: 'run.started',
+      runId: options.ids.runId,
+      sessionId: options.ids.sessionId,
+      agentId: options.agent.id,
+      agentName: options.agent.name,
+      model: `${options.model.providerId}/${options.model.modelId}`,
+      modelConfigured: options.model.configured,
+    },
+    {
+      type: 'tool.started',
+      runId: options.ids.runId,
+      toolCallId: options.ids.toolCallId,
+      toolName,
+      inputSummary: 'Mocked local workspace inspection',
+    },
+  ]
+
+  if (failure) {
+    const error = buildFailureMessage(toolName)
+    events.push(
+      {
+        type: 'tool.failed',
+        runId: options.ids.runId,
+        toolCallId: options.ids.toolCallId,
+        toolName,
+        error,
+      },
+      {
+        type: 'run.failed',
+        runId: options.ids.runId,
+        sessionId: options.ids.sessionId,
+        error,
+      },
+    )
+    return events
+  }
+
+  events.push({
+    type: 'tool.completed',
+    runId: options.ids.runId,
+    toolCallId: options.ids.toolCallId,
+    toolName,
+    outputSummary: `Mocked ${toolName} output`,
+  })
+
+  chunks.forEach((delta, sequence) => {
+    events.push({
+      type: 'assistant.delta',
+      runId: options.ids.runId,
+      sequence,
+      delta,
+    })
+  })
+
+  events.push(
+    {
+      type: 'assistant.message',
+      messageId: options.ids.assistantMessageId,
+      sessionId: options.ids.sessionId,
+      role: 'assistant',
+      content: chunks.join(''),
+    },
+    {
+      type: 'run.completed',
+      runId: options.ids.runId,
+      sessionId: options.ids.sessionId,
+    },
+  )
+
+  return events
+}
+
+function summarizeTitle(message: string) {
+  const title = message.trim().replaceAll(/\s+/g, ' ')
+  return title.length > 80 ? `${title.slice(0, 77)}...` : title
+}
+
+function renderTextRun(events: readonly JsonRunEvent[]) {
+  const started = events.find((event) => event.type === 'run.started')
+  const message = events.find((event) => event.type === 'assistant.message')
+  const failure = events.find((event) => event.type === 'run.failed')
+
+  if (failure?.type === 'run.failed') {
+    return `Run ${failure.runId} failed: ${failure.error}\n`
+  }
+
+  if (started?.type !== 'run.started' || message?.type !== 'assistant.message') {
+    return 'Run did not produce an assistant message.\n'
+  }
+
+  return `Specter Code run ${started.runId} using ${started.agentId} on ${started.model}\n${message.content}\n`
+}
+
+function ok(stdout: string): SpecterCodeCliResult {
+  return { exitCode: 0, stdout, stderr: '' }
+}
+
+function fail(stderr: string, exitCode: number): SpecterCodeCliResult {
+  return { exitCode, stdout: '', stderr }
+}
