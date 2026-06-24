@@ -1,4 +1,4 @@
-import type { PermissionAction, PermissionRequest } from "./permissions"
+import { evaluatePermission, type PermissionAction, type PermissionRequest, type PermissionRule } from "./permissions"
 
 export type ToolMetadataUpdate = {
   toolName: string
@@ -14,6 +14,7 @@ export type ToolContext = {
   workspaceRoot: string
   abortSignal?: AbortSignal
   ask: (request: PermissionRequest) => Promise<PermissionAction>
+  permissionRules?: readonly PermissionRule[]
   metadata: (update: ToolMetadataUpdate) => void | Promise<void>
 }
 
@@ -64,7 +65,12 @@ export class ToolRegistry {
 
     if (tool.permissionTarget) {
       const target = tool.permissionTarget(input)
-      const decision = await context.ask({ permission: tool.permission, target })
+      const request = { permission: tool.permission, target }
+      const policyDecision = context.permissionRules?.length
+        ? evaluatePermission(context.permissionRules, request).action
+        : "ask"
+      const decision =
+        policyDecision === "ask" ? await context.ask(request) : policyDecision
       if (decision !== "allow") throw new Error(`Tool denied: ${name} for ${target}`)
     }
 

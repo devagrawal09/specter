@@ -130,6 +130,56 @@ describe('ToolRegistry', () => {
     ).rejects.toThrow('Tool denied: write for src/secrets.env')
     expect(execute).not.toHaveBeenCalled()
   })
+
+  it('executes immediately when permission rules allow the gated target', async () => {
+    const registry = createToolRegistry()
+    const execute = vi.fn(async () => ({ ok: true }))
+    const ask = vi.fn(async () => 'deny' as const)
+    const context = createContext({
+      ask,
+      permissionRules: [
+        { permission: 'file.read', pattern: 'src/**', action: 'allow' },
+      ],
+    })
+
+    registry.register({
+      name: 'read',
+      permission: 'file.read',
+      permissionTarget: (input: { path: string }) => input.path,
+      execute,
+    })
+
+    await expect(
+      registry.execute('read', { path: 'src/app.ts' }, context),
+    ).resolves.toEqual({ ok: true })
+    expect(ask).not.toHaveBeenCalled()
+    expect(execute).toHaveBeenCalledOnce()
+  })
+
+  it('does not ask or execute when permission rules deny the gated target', async () => {
+    const registry = createToolRegistry()
+    const execute = vi.fn(async () => ({ ok: true }))
+    const ask = vi.fn(async () => 'allow' as const)
+    const context = createContext({
+      ask,
+      permissionRules: [
+        { permission: 'file.write', pattern: 'src/secrets/**', action: 'deny' },
+      ],
+    })
+
+    registry.register({
+      name: 'write',
+      permission: 'file.write',
+      permissionTarget: (input: { path: string }) => input.path,
+      execute,
+    })
+
+    await expect(
+      registry.execute('write', { path: 'src/secrets/token.env' }, context),
+    ).rejects.toThrow('Tool denied: write for src/secrets/token.env')
+    expect(ask).not.toHaveBeenCalled()
+    expect(execute).not.toHaveBeenCalled()
+  })
 })
 
 describe('evaluatePermission', () => {
