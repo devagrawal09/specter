@@ -34,6 +34,138 @@ export async function prepareSpecterSqlite(db: Client) {
       state_json TEXT NOT NULL,
       last_applied_order INTEGER NOT NULL
     )`,
+      `CREATE TABLE IF NOT EXISTS specter_code_sessions (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      directory TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      provider_id TEXT NOT NULL,
+      model_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_sessions_workspace_idx
+      ON specter_code_sessions(workspace_id, updated_at)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_messages (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      role TEXT NOT NULL,
+      author_json TEXT NOT NULL,
+      content TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_messages_session_idx
+      ON specter_code_messages(session_id, event_order)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_message_parts (
+      id TEXT PRIMARY KEY,
+      message_id TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      part_order INTEGER NOT NULL,
+      type TEXT NOT NULL,
+      content TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(message_id) REFERENCES specter_code_messages(id) ON DELETE CASCADE,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_message_parts_message_idx
+      ON specter_code_message_parts(message_id, part_order)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_tool_calls (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT,
+      tool_name TEXT NOT NULL,
+      status TEXT NOT NULL,
+      input_json TEXT NOT NULL DEFAULT '{}',
+      output_json TEXT,
+      error TEXT,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY(message_id) REFERENCES specter_code_messages(id) ON DELETE SET NULL
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_tool_calls_session_idx
+      ON specter_code_tool_calls(session_id, event_order)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_permissions (
+      request_id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      tool_call_id TEXT,
+      tool_name TEXT NOT NULL,
+      permission TEXT NOT NULL,
+      target TEXT NOT NULL,
+      action TEXT NOT NULL DEFAULT 'ask',
+      status TEXT NOT NULL DEFAULT 'pending',
+      reason TEXT,
+      requested_at TEXT NOT NULL,
+      replied_at TEXT,
+      replied_by_json TEXT,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY(tool_call_id) REFERENCES specter_code_tool_calls(id) ON DELETE SET NULL
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_permissions_session_status_idx
+      ON specter_code_permissions(session_id, status, requested_at)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_todos (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      status TEXT NOT NULL,
+      priority TEXT,
+      position INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY(message_id) REFERENCES specter_code_messages(id) ON DELETE CASCADE
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_todos_session_idx
+      ON specter_code_todos(session_id, position)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_snapshots (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      before_content TEXT,
+      after_content TEXT,
+      created_at TEXT NOT NULL,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_snapshots_session_idx
+      ON specter_code_snapshots(session_id, created_at)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_artifacts (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      message_id TEXT,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      path TEXT,
+      content_json TEXT,
+      created_at TEXT NOT NULL,
+      event_order INTEGER NOT NULL,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE,
+      FOREIGN KEY(message_id) REFERENCES specter_code_messages(id) ON DELETE SET NULL
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_artifacts_session_idx
+      ON specter_code_artifacts(session_id, created_at)`,
+      `CREATE TABLE IF NOT EXISTS specter_code_pty_sessions (
+      id TEXT PRIMARY KEY,
+      session_id TEXT NOT NULL,
+      cwd TEXT NOT NULL,
+      shell TEXT NOT NULL,
+      status TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      ended_at TEXT,
+      last_output_at TEXT,
+      FOREIGN KEY(session_id) REFERENCES specter_code_sessions(id) ON DELETE CASCADE
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_code_pty_sessions_session_idx
+      ON specter_code_pty_sessions(session_id, started_at)`,
     ],
     'write',
   )
