@@ -13,6 +13,8 @@ import {
 import { projectSpecterCodeEvent } from './adapters/read-models'
 import {
   sessionCreatedEvent,
+  sessionDeletedEvent,
+  sessionUpdatedEvent,
   toolApprovalRepliedEvent,
   toolApprovalRequestedEvent,
   userMessageSubmittedEvent,
@@ -44,9 +46,19 @@ describe('Specter Code table-backed read model projection', () => {
           title: 'Read model session',
           directory: '.',
           agent: 'build',
-          model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+          model: {
+            providerId: 'openrouter',
+            modelId: 'anthropic/claude-sonnet-4',
+          },
           createdBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
         }),
+        sessionUpdatedEvent.create({
+          sessionId: 'session-read-model-1',
+          title: 'Renamed read model session',
+          agent: 'senior',
+          model: { providerId: 'anthropic', modelId: 'claude-opus-4.1' },
+        }),
+        sessionDeletedEvent.create({ sessionId: 'session-read-model-1' }),
         userMessageSubmittedEvent.create({
           messageId: 'message-read-model-1',
           sessionId: 'session-read-model-1',
@@ -83,11 +95,11 @@ describe('Specter Code table-backed read model projection', () => {
       {
         id: 'session-read-model-1',
         workspace_id: 'workspace-read-model-1',
-        title: 'Read model session',
-        agent_id: 'build',
-        provider_id: 'openrouter',
-        model_id: 'anthropic/claude-sonnet-4',
-        status: 'active',
+        title: 'Renamed read model session',
+        agent_id: 'senior',
+        provider_id: 'anthropic',
+        model_id: 'claude-opus-4.1',
+        status: 'deleted',
       },
     ])
 
@@ -100,9 +112,12 @@ describe('Specter Code table-backed read model projection', () => {
         id: 'message-read-model-1',
         session_id: 'session-read-model-1',
         role: 'user',
-        author_json: JSON.stringify({ userId: 'user-1', displayName: 'Ada Lovelace' }),
+        author_json: JSON.stringify({
+          userId: 'user-1',
+          displayName: 'Ada Lovelace',
+        }),
         content: 'Please inspect the repository',
-        event_order: 2,
+        event_order: 4,
       },
     ])
 
@@ -122,7 +137,10 @@ describe('Specter Code table-backed read model projection', () => {
         action: 'allow',
         status: 'resolved',
         reason: 'Shell commands require confirmation',
-        replied_by_json: JSON.stringify({ userId: 'user-1', displayName: 'Ada Lovelace' }),
+        replied_by_json: JSON.stringify({
+          userId: 'user-1',
+          displayName: 'Ada Lovelace',
+        }),
       },
     ])
   })

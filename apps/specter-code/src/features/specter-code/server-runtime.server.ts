@@ -111,6 +111,32 @@ export async function listSpecterCodeSessionsOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.sessionList(data))
 }
 
+export async function getSpecterCodeSessionOnServer(data: {
+  sessionId: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.sessionDetail(data))
+}
+
+export async function updateSpecterCodeSessionOnServer(data: {
+  sessionId: string
+  title?: string
+  directory?: string
+  agent?: string
+  model?: { providerId: string; modelId: string }
+  updatedBy?: { userId?: string; displayName: string }
+}) {
+  await runWithSpecterCodeReferenceDb(() => app.updateSession(data))
+  return getSpecterCodeSessionOnServer({ sessionId: data.sessionId })
+}
+
+export async function deleteSpecterCodeSessionOnServer(data: {
+  sessionId: string
+  deletedBy?: { userId?: string; displayName: string }
+}) {
+  await runWithSpecterCodeReferenceDb(() => app.deleteSession(data))
+  return true
+}
+
 export async function submitSpecterCodePromptOnServer(data: {
   messageId?: string
   runId?: string
@@ -207,7 +233,6 @@ export async function readSpecterCodeWorkspaceTextFileOnServer(data: {
   }
 }
 
-
 export async function requestSpecterCodeToolApprovalOnServer(data: {
   requestId?: string
   sessionId: string
@@ -240,18 +265,24 @@ export async function listSpecterCodePendingPermissionsOnServer(data: {
 }
 
 export async function getSpecterCodeSettingsOnServer() {
-  const [{ loadSpecterCodeConfig }, { createProviderRegistry }, { createAgentRegistry }] =
-    await Promise.all([
-      import('./adapters/config-loader'),
-      import('./adapters/llm-provider'),
-      import('./adapters/agent-registry'),
-    ])
+  const [
+    { loadSpecterCodeConfig },
+    { createProviderRegistry },
+    { createAgentRegistry },
+  ] = await Promise.all([
+    import('./adapters/config-loader'),
+    import('./adapters/llm-provider'),
+    import('./adapters/agent-registry'),
+  ])
   const config = await loadSpecterCodeConfig({ workspaceRoot: process.cwd() })
   const providerRegistry = createProviderRegistry({ config })
   const agentRegistry = createAgentRegistry({ config })
 
-  const agents = agentRegistry.listAgents().map(({ options: _options, ...agent }) => agent)
-  const { options: _defaultOptions, ...defaultAgent } = agentRegistry.resolveDefaultAgent()
+  const agents = agentRegistry
+    .listAgents()
+    .map(({ options: _options, ...agent }) => agent)
+  const { options: _defaultOptions, ...defaultAgent } =
+    agentRegistry.resolveDefaultAgent()
 
   return {
     sources: config.sources,
@@ -307,8 +338,9 @@ export async function listSpecterCodePendingQuestionsOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.pendingQuestions(data))
 }
 
-
-export async function listSpecterCodeEventsOnServer(data: { afterOrder?: number }) {
+export async function listSpecterCodeEventsOnServer(data: {
+  afterOrder?: number
+}) {
   return runWithSpecterCodeReferenceDb(() =>
     querySpecterSqliteEvents({ afterOrder: data.afterOrder }),
   )

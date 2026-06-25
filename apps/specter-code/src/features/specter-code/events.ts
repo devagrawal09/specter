@@ -21,7 +21,6 @@ export const workspaceCreatedEvent = createEventDefinition(
   }),
 )
 
-
 export const sessionCreatedEvent = createEventDefinition(
   'sessionCreated',
   z.object({
@@ -35,6 +34,41 @@ export const sessionCreatedEvent = createEventDefinition(
       modelId: z.string(),
     }),
     createdBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+  }),
+)
+
+export const sessionUpdatedEvent = createEventDefinition(
+  'sessionUpdated',
+  z.object({
+    sessionId: z.string(),
+    title: z.string().optional(),
+    directory: z.string().optional(),
+    agent: z.string().optional(),
+    model: z
+      .object({
+        providerId: z.string(),
+        modelId: z.string(),
+      })
+      .optional(),
+    updatedBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+  }),
+)
+
+export const sessionDeletedEvent = createEventDefinition(
+  'sessionDeleted',
+  z.object({
+    sessionId: z.string(),
+    deletedBy: z
       .object({
         userId: z.string().optional(),
         displayName: z.string(),
@@ -184,7 +218,6 @@ export const filesystemNodeDeletedEvent = createEventDefinition(
   }),
 )
 
-
 export const userMessageSubmittedEvent = createEventDefinition(
   'userMessageSubmitted',
   z.object({
@@ -333,7 +366,6 @@ export const toolApprovalRepliedEvent = createEventDefinition(
   }),
 )
 
-
 export const sessionRevertRequestedEvent = createEventDefinition(
   'sessionRevertRequested',
   z.object({
@@ -350,7 +382,6 @@ export const sessionRevertRequestedEvent = createEventDefinition(
     reason: z.string().optional(),
   }),
 )
-
 
 export const todoListUpdatedEvent = createEventDefinition(
   'todoListUpdated',
@@ -400,7 +431,6 @@ export const questionAnsweredEvent = createEventDefinition(
   }),
 )
 
-
 export const ptySessionStartedEvent = createEventDefinition(
   'ptySessionStarted',
   z.object({
@@ -440,6 +470,8 @@ export const ptySessionEndedEvent = createEventDefinition(
 export const specterCodeEventDefinitions = [
   workspaceCreatedEvent,
   sessionCreatedEvent,
+  sessionUpdatedEvent,
+  sessionDeletedEvent,
   postCreatedEvent,
   postReplyCreatedEvent,
   workspaceFilesystemInitializedEvent,

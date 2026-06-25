@@ -1,6 +1,11 @@
-import type { SqliteDb, SpecterSqliteEventRecord } from '../../../db/specter-sqlite'
+import type {
+  SqliteDb,
+  SpecterSqliteEventRecord,
+} from '../../../db/specter-sqlite'
 import {
   sessionCreatedEvent,
+  sessionDeletedEvent,
+  sessionUpdatedEvent,
   toolApprovalRepliedEvent,
   toolApprovalRequestedEvent,
   userMessageSubmittedEvent,
@@ -46,6 +51,46 @@ export async function projectSpecterCodeEvent(
         event.recordedAt,
         event.recordedAt,
       ],
+    })
+    return
+  }
+
+  if (event.type === sessionUpdatedEvent.type) {
+    const payload = await sessionUpdatedEvent.decode(event.payload)
+    await db.execute({
+      sql: `
+        UPDATE specter_code_sessions
+        SET title = COALESCE(?, title),
+            directory = COALESCE(?, directory),
+            agent_id = COALESCE(?, agent_id),
+            provider_id = COALESCE(?, provider_id),
+            model_id = COALESCE(?, model_id),
+            updated_at = ?
+        WHERE id = ?
+      `,
+      args: [
+        payload.title ?? null,
+        payload.directory ?? null,
+        payload.agent ?? null,
+        payload.model?.providerId ?? null,
+        payload.model?.modelId ?? null,
+        event.recordedAt,
+        payload.sessionId,
+      ],
+    })
+    return
+  }
+
+  if (event.type === sessionDeletedEvent.type) {
+    const payload = await sessionDeletedEvent.decode(event.payload)
+    await db.execute({
+      sql: `
+        UPDATE specter_code_sessions
+        SET status = 'deleted',
+            updated_at = ?
+        WHERE id = ?
+      `,
+      args: [event.recordedAt, payload.sessionId],
     })
     return
   }

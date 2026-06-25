@@ -20,12 +20,39 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       return [{ id: 'session-main', title: 'Main session' }]
     },
     async createSession(input) {
-      calls.push(`createSession:${input.sessionId}:${input.workspaceId}:${input.title}`)
+      calls.push(
+        `createSession:${input.sessionId}:${input.workspaceId}:${input.title}`,
+      )
       return { id: input.sessionId ?? 'generated-session', title: input.title }
     },
+    async getSession(input) {
+      calls.push(`getSession:${input.sessionId}`)
+      return {
+        id: input.sessionId,
+        title: 'Main session',
+        workspaceId: 'workspace-main',
+      }
+    },
+    async updateSession(input) {
+      calls.push(`updateSession:${input.sessionId}:${input.title ?? ''}`)
+      return {
+        id: input.sessionId,
+        title: input.title ?? 'Main session',
+        workspaceId: 'workspace-main',
+      }
+    },
+    async deleteSession(input) {
+      calls.push(`deleteSession:${input.sessionId}`)
+      return true
+    },
     async submitPrompt(input) {
-      calls.push(`submitPrompt:${input.sessionId}:${input.workspaceId}:${input.content}`)
-      return { runId: input.runId ?? 'generated-run', messageId: input.messageId ?? 'generated-message' }
+      calls.push(
+        `submitPrompt:${input.sessionId}:${input.workspaceId}:${input.content}`,
+      )
+      return {
+        runId: input.runId ?? 'generated-run',
+        messageId: input.messageId ?? 'generated-message',
+      }
     },
     async listSessionTranscript(input) {
       calls.push(`transcript:${input.sessionId}`)
@@ -45,19 +72,27 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
     },
     async listSessionTodos(input) {
       calls.push(`sessionTodos:${input.sessionId}`)
-      return [{ id: 'todo-1', content: 'Ship API route', status: 'in_progress' }]
+      return [
+        { id: 'todo-1', content: 'Ship API route', status: 'in_progress' },
+      ]
     },
     async listPendingPermissions(input) {
       calls.push(`permissions:${input.sessionId}`)
       return [{ requestId: 'request-1', action: 'ask' }]
     },
     async replyPermission(input) {
-      calls.push(`replyPermission:${input.requestId}:${input.sessionId}:${input.action}`)
+      calls.push(
+        `replyPermission:${input.requestId}:${input.sessionId}:${input.action}`,
+      )
       return { requestId: input.requestId, action: input.action }
     },
     async loadConfig(input) {
       calls.push(`config:${input.workspaceRoot}`)
-      return { sources: [], permissionRules: [], raw: { model: 'openrouter/test' } }
+      return {
+        sources: [],
+        permissionRules: [],
+        raw: { model: 'openrouter/test' },
+      }
     },
     async listProviders() {
       calls.push('providers')
@@ -115,7 +150,9 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       ]
     },
     async findFiles(input) {
-      calls.push(`findFiles:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`)
+      calls.push(
+        `findFiles:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`,
+      )
       return ['src/index.ts']
     },
     async findText(input) {
@@ -131,11 +168,22 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       ]
     },
     async findSymbols(input) {
-      calls.push(`findSymbols:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`)
-      return [{ path: 'src/index.ts', lineNumber: 1, name: 'makeValue', kind: 'function' }]
+      calls.push(
+        `findSymbols:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`,
+      )
+      return [
+        {
+          path: 'src/index.ts',
+          lineNumber: 1,
+          name: 'makeValue',
+          kind: 'function',
+        },
+      ]
     },
     async listLspDiagnostics(input) {
-      calls.push(`lspDiagnostics:${input.workspaceRoot}:${input.include?.join(',') ?? ''}`)
+      calls.push(
+        `lspDiagnostics:${input.workspaceRoot}:${input.include?.join(',') ?? ''}`,
+      )
       return [
         {
           path: 'src/index.ts',
@@ -152,8 +200,12 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       return {}
     },
     async addMcpServer(input) {
-      calls.push(`mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`)
-      return { [input.name]: { name: input.name, status: 'disconnected' as const } }
+      calls.push(
+        `mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`,
+      )
+      return {
+        [input.name]: { name: input.name, status: 'disconnected' as const },
+      }
     },
     async connectMcpServer(input) {
       calls.push(`mcpConnect:${input.workspaceRoot}:${input.name}`)
@@ -165,14 +217,26 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
     },
     async getVcsStatus(input) {
       calls.push(`vcsStatus:${input.workspaceRoot}`)
-      return { branch: 'threadplane-work', clean: false, entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }] }
+      return {
+        branch: 'threadplane-work',
+        clean: false,
+        entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }],
+      }
     },
     async getVcsDiff(input) {
-      calls.push(`vcsDiff:${input.workspaceRoot}:${input.path ?? ''}:${input.staged ? 'staged' : 'unstaged'}`)
-      return { patch: 'diff --git a/src/index.ts b/src/index.ts\n', staged: input.staged ?? false, path: input.path }
+      calls.push(
+        `vcsDiff:${input.workspaceRoot}:${input.path ?? ''}:${input.staged ? 'staged' : 'unstaged'}`,
+      )
+      return {
+        patch: 'diff --git a/src/index.ts b/src/index.ts\n',
+        staged: input.staged ?? false,
+        path: input.path,
+      }
     },
     async applyVcsPatch(input) {
-      calls.push(`vcsApply:${input.workspaceRoot}:${input.staged ? 'staged' : 'unstaged'}`)
+      calls.push(
+        `vcsApply:${input.workspaceRoot}:${input.staged ? 'staged' : 'unstaged'}`,
+      )
       return { paths: ['src/index.ts'], staged: input.staged ?? false }
     },
     async listPtyShells(input) {
@@ -181,19 +245,59 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
     },
     async listPtySessions(input) {
       calls.push(`ptyList:${input.workspaceRoot ?? ''}`)
-      return [{ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' }]
+      return [
+        {
+          id: 'pty-main',
+          sessionId: 'session-main',
+          status: 'running',
+          shell: '/bin/sh',
+          cwd: '.',
+          absoluteCwd: '/repo',
+          startedAt: '2026-06-25T00:00:00.000Z',
+        },
+      ]
     },
     async startPtySession(input) {
-      calls.push(`ptyStart:${input.sessionId}:${input.workspaceRoot}:${input.cwd ?? ''}:${input.shell ?? ''}`)
-      return { id: 'pty-main', sessionId: input.sessionId, status: 'running', shell: input.shell ?? '/bin/sh', cwd: input.cwd ?? '.', absoluteCwd: input.workspaceRoot, startedAt: '2026-06-25T00:00:00.000Z' }
+      calls.push(
+        `ptyStart:${input.sessionId}:${input.workspaceRoot}:${input.cwd ?? ''}:${input.shell ?? ''}`,
+      )
+      return {
+        id: 'pty-main',
+        sessionId: input.sessionId,
+        status: 'running',
+        shell: input.shell ?? '/bin/sh',
+        cwd: input.cwd ?? '.',
+        absoluteCwd: input.workspaceRoot,
+        startedAt: '2026-06-25T00:00:00.000Z',
+      }
     },
     async getPtySession(input) {
       calls.push(`ptyGet:${input.ptySessionId}`)
-      return { id: input.ptySessionId, sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' }
+      return {
+        id: input.ptySessionId,
+        sessionId: 'session-main',
+        status: 'running',
+        shell: '/bin/sh',
+        cwd: '.',
+        absoluteCwd: '/repo',
+        startedAt: '2026-06-25T00:00:00.000Z',
+      }
     },
     async updatePtySession(input) {
-      calls.push(`ptyUpdate:${input.ptySessionId}:${input.title ?? ''}:${input.size?.rows ?? ''}x${input.size?.cols ?? ''}`)
-      return { id: input.ptySessionId, sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', title: input.title, size: input.size, startedAt: '2026-06-25T00:00:00.000Z' }
+      calls.push(
+        `ptyUpdate:${input.ptySessionId}:${input.title ?? ''}:${input.size?.rows ?? ''}x${input.size?.cols ?? ''}`,
+      )
+      return {
+        id: input.ptySessionId,
+        sessionId: 'session-main',
+        status: 'running',
+        shell: '/bin/sh',
+        cwd: '.',
+        absoluteCwd: '/repo',
+        title: input.title,
+        size: input.size,
+        startedAt: '2026-06-25T00:00:00.000Z',
+      }
     },
     async stopPtySession(input) {
       calls.push(`ptyStop:${input.ptySessionId}`)
@@ -259,6 +363,9 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/skill' },
       { method: 'POST', normalizedPath: '/session' },
+      { method: 'GET', normalizedPath: '/session/:sessionID' },
+      { method: 'DELETE', normalizedPath: '/session/:sessionID' },
+      { method: 'PATCH', normalizedPath: '/session/:sessionID' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
       { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
@@ -282,8 +389,14 @@ describe('Specter Code OpenCode API route adapter', () => {
           },
         }
       },
-      async addMcpServer(input: { workspaceRoot: string; name: string; config: unknown }) {
-        this.calls.push(`mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`)
+      async addMcpServer(input: {
+        workspaceRoot: string
+        name: string
+        config: unknown
+      }) {
+        this.calls.push(
+          `mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`,
+        )
         return {
           [input.name]: {
             type: 'local',
@@ -296,14 +409,23 @@ describe('Specter Code OpenCode API route adapter', () => {
         this.calls.push(`mcpConnect:${input.workspaceRoot}:${input.name}`)
         return true
       },
-      async disconnectMcpServer(input: { workspaceRoot: string; name: string }) {
+      async disconnectMcpServer(input: {
+        workspaceRoot: string
+        name: string
+      }) {
         this.calls.push(`mcpDisconnect:${input.workspaceRoot}:${input.name}`)
         return true
       },
     }
     const router = createSpecterCodeApiRouter({ runtime })
 
-    await expect(json(await router.handle(new Request('http://specter.test/mcp?directory=/repo')))).resolves.toEqual({
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/mcp?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual({
       local: { type: 'local', name: 'local', status: 'connected' },
     })
 
@@ -314,7 +436,11 @@ describe('Specter Code OpenCode API route adapter', () => {
             method: 'POST',
             body: JSON.stringify({
               name: 'filesystem',
-              config: { type: 'local', command: ['node', 'mcp-server.js'], enabled: true },
+              config: {
+                type: 'local',
+                command: ['node', 'mcp-server.js'],
+                enabled: true,
+              },
             }),
           }),
         ),
@@ -324,11 +450,25 @@ describe('Specter Code OpenCode API route adapter', () => {
     })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/mcp/filesystem/connect?directory=/repo', { method: 'POST' }))),
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/mcp/filesystem/connect?directory=/repo',
+            { method: 'POST' },
+          ),
+        ),
+      ),
     ).resolves.toBe(true)
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/mcp/filesystem/disconnect?directory=/repo', { method: 'POST' }))),
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/mcp/filesystem/disconnect?directory=/repo',
+            { method: 'POST' },
+          ),
+        ),
+      ),
     ).resolves.toBe(true)
 
     expect(runtime.calls.slice(-4)).toEqual([
@@ -344,7 +484,11 @@ describe('Specter Code OpenCode API route adapter', () => {
     const router = createSpecterCodeApiRouter({ runtime })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/session?workspaceId=workspace-main'))),
+      json(
+        await router.handle(
+          new Request('http://specter.test/session?workspaceId=workspace-main'),
+        ),
+      ),
     ).resolves.toEqual([{ id: 'session-main', title: 'Main session' }])
 
     await expect(
@@ -358,7 +502,10 @@ describe('Specter Code OpenCode API route adapter', () => {
               title: 'Implement API routes',
               directory: '/repo',
               agent: 'build',
-              model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+              model: {
+                providerId: 'openrouter',
+                modelId: 'anthropic/claude-sonnet-4',
+              },
             }),
           }),
         ),
@@ -366,38 +513,116 @@ describe('Specter Code OpenCode API route adapter', () => {
     ).resolves.toEqual({ id: 'session-main', title: 'Implement API routes' })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/session/session-main/message'))),
-    ).resolves.toEqual([{ id: 'message-1', role: 'assistant', content: 'done' }])
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main'),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-main',
+      title: 'Main session',
+      workspaceId: 'workspace-main',
+    })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/session/session-main/todo'))),
-    ).resolves.toEqual([{ id: 'todo-1', content: 'Ship API route', status: 'in_progress' }])
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main', {
+            method: 'PATCH',
+            body: JSON.stringify({ title: 'Renamed session' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-main',
+      title: 'Renamed session',
+      workspaceId: 'workspace-main',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main', {
+            method: 'DELETE',
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/message'),
+        ),
+      ),
+    ).resolves.toEqual([
+      { id: 'message-1', role: 'assistant', content: 'done' },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/todo'),
+        ),
+      ),
+    ).resolves.toEqual([
+      { id: 'todo-1', content: 'Ship API route', status: 'in_progress' },
+    ])
 
     await expect(
       json(
         await router.handle(
           new Request('http://specter.test/session/session-main/prompt_async', {
             method: 'POST',
-            body: JSON.stringify({ workspaceId: 'workspace-main', content: 'ship it', agentId: 'build' }),
+            body: JSON.stringify({
+              workspaceId: 'workspace-main',
+              content: 'ship it',
+              agentId: 'build',
+            }),
           }),
         ),
       ),
-    ).resolves.toEqual({ runId: 'generated-run', messageId: 'generated-message' })
+    ).resolves.toEqual({
+      runId: 'generated-run',
+      messageId: 'generated-message',
+    })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/file?workspaceId=workspace-main&path=src'))),
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/file?workspaceId=workspace-main&path=src',
+          ),
+        ),
+      ),
     ).resolves.toEqual([{ path: 'src/index.ts', type: 'file' }])
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/file/content?workspaceId=workspace-main&path=src/index.ts'))),
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/file/content?workspaceId=workspace-main&path=src/index.ts',
+          ),
+        ),
+      ),
     ).resolves.toEqual({ content: 'export const value = 1\n' })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/file/status?workspaceId=workspace-main'))),
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/file/status?workspaceId=workspace-main',
+          ),
+        ),
+      ),
     ).resolves.toEqual({ initialized: true, latestScan: null })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/permission?sessionId=session-main'))),
+      json(
+        await router.handle(
+          new Request('http://specter.test/permission?sessionId=session-main'),
+        ),
+      ),
     ).resolves.toEqual([{ requestId: 'request-1', action: 'ask' }])
 
     await expect(
@@ -405,23 +630,36 @@ describe('Specter Code OpenCode API route adapter', () => {
         await router.handle(
           new Request('http://specter.test/permission/request-1/reply', {
             method: 'POST',
-            body: JSON.stringify({ sessionId: 'session-main', action: 'allow' }),
+            body: JSON.stringify({
+              sessionId: 'session-main',
+              action: 'allow',
+            }),
           }),
         ),
       ),
     ).resolves.toEqual({ requestId: 'request-1', action: 'allow' })
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/config?workspaceRoot=/repo'))),
-    ).resolves.toEqual({ sources: [], permissionRules: [], raw: { model: 'openrouter/test' } })
-    await expect(json(await router.handle(new Request('http://specter.test/provider')))).resolves.toEqual([
-      { id: 'openrouter', configured: false, models: [] },
-    ])
-    await expect(json(await router.handle(new Request('http://specter.test/agent')))).resolves.toEqual([
-      { id: 'build', default: true, tools: ['read'] },
-    ])
+      json(
+        await router.handle(
+          new Request('http://specter.test/config?workspaceRoot=/repo'),
+        ),
+      ),
+    ).resolves.toEqual({
+      sources: [],
+      permissionRules: [],
+      raw: { model: 'openrouter/test' },
+    })
+    await expect(
+      json(await router.handle(new Request('http://specter.test/provider'))),
+    ).resolves.toEqual([{ id: 'openrouter', configured: false, models: [] }])
+    await expect(
+      json(await router.handle(new Request('http://specter.test/agent'))),
+    ).resolves.toEqual([{ id: 'build', default: true, tools: ['read'] }])
 
-    await expect(json(await router.handle(new Request('http://specter.test/question')))).resolves.toEqual([
+    await expect(
+      json(await router.handle(new Request('http://specter.test/question'))),
+    ).resolves.toEqual([
       {
         questionId: 'question-1',
         sessionId: 'session-main',
@@ -437,7 +675,9 @@ describe('Specter Code OpenCode API route adapter', () => {
         await router.handle(
           new Request('http://specter.test/question/question-1/reply', {
             method: 'POST',
-            body: JSON.stringify({ answers: [['Safe migration', 'Run tests']] }),
+            body: JSON.stringify({
+              answers: [['Safe migration', 'Run tests']],
+            }),
           }),
         ),
       ),
@@ -454,7 +694,13 @@ describe('Specter Code OpenCode API route adapter', () => {
       ),
     ).resolves.toBe(true)
 
-    await expect(json(await router.handle(new Request('http://specter.test/skill?directory=/repo')))).resolves.toEqual([
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/skill?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual([
       {
         name: 'review',
         description: 'Review local code changes',
@@ -466,7 +712,9 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/find/file?directory=/repo&query=index&limit=25'),
+          new Request(
+            'http://specter.test/find/file?directory=/repo&query=index&limit=25',
+          ),
         ),
       ),
     ).resolves.toEqual(['src/index.ts'])
@@ -474,7 +722,9 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/find?directory=/repo&pattern=value&limit=10'),
+          new Request(
+            'http://specter.test/find?directory=/repo&pattern=value&limit=10',
+          ),
         ),
       ),
     ).resolves.toEqual([
@@ -490,17 +740,26 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/find/symbol?directory=/repo&query=value&limit=5'),
+          new Request(
+            'http://specter.test/find/symbol?directory=/repo&query=value&limit=5',
+          ),
         ),
       ),
     ).resolves.toEqual([
-      { path: 'src/index.ts', lineNumber: 1, name: 'makeValue', kind: 'function' },
+      {
+        path: 'src/index.ts',
+        lineNumber: 1,
+        name: 'makeValue',
+        kind: 'function',
+      },
     ])
 
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/lsp?directory=/repo&include=src/index.ts'),
+          new Request(
+            'http://specter.test/lsp?directory=/repo&include=src/index.ts',
+          ),
         ),
       ),
     ).resolves.toEqual([
@@ -515,15 +774,11 @@ describe('Specter Code OpenCode API route adapter', () => {
     ])
 
     await expect(
-      json(await router.handle(new Request('http://specter.test/vcs?workspaceRoot=/repo'))),
-    ).resolves.toEqual({
-      branch: 'threadplane-work',
-      clean: false,
-      entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }],
-    })
-
-    await expect(
-      json(await router.handle(new Request('http://specter.test/vcs/status?workspaceRoot=/repo'))),
+      json(
+        await router.handle(
+          new Request('http://specter.test/vcs?workspaceRoot=/repo'),
+        ),
+      ),
     ).resolves.toEqual({
       branch: 'threadplane-work',
       clean: false,
@@ -533,7 +788,21 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/vcs/diff?workspaceRoot=/repo&path=src/index.ts&staged=true'),
+          new Request('http://specter.test/vcs/status?workspaceRoot=/repo'),
+        ),
+      ),
+    ).resolves.toEqual({
+      branch: 'threadplane-work',
+      clean: false,
+      entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/vcs/diff?workspaceRoot=/repo&path=src/index.ts&staged=true',
+          ),
         ),
       ),
     ).resolves.toEqual({
@@ -547,18 +816,40 @@ describe('Specter Code OpenCode API route adapter', () => {
         await router.handle(
           new Request('http://specter.test/vcs/apply', {
             method: 'POST',
-            body: JSON.stringify({ workspaceRoot: '/repo', patch: 'diff --git a/src/index.ts b/src/index.ts\n', staged: false }),
+            body: JSON.stringify({
+              workspaceRoot: '/repo',
+              patch: 'diff --git a/src/index.ts b/src/index.ts\n',
+              staged: false,
+            }),
           }),
         ),
       ),
     ).resolves.toEqual({ paths: ['src/index.ts'], staged: false })
 
-    await expect(json(await router.handle(new Request('http://specter.test/pty/shells?directory=/repo')))).resolves.toEqual([
-      { path: '/bin/sh', name: 'sh', acceptable: true },
-    ])
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty/shells?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual([{ path: '/bin/sh', name: 'sh', acceptable: true }])
 
-    await expect(json(await router.handle(new Request('http://specter.test/pty?directory=/repo')))).resolves.toEqual([
-      { id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' },
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        id: 'pty-main',
+        sessionId: 'session-main',
+        status: 'running',
+        shell: '/bin/sh',
+        cwd: '.',
+        absoluteCwd: '/repo',
+        startedAt: '2026-06-25T00:00:00.000Z',
+      },
     ])
 
     await expect(
@@ -566,13 +857,29 @@ describe('Specter Code OpenCode API route adapter', () => {
         await router.handle(
           new Request('http://specter.test/pty?directory=/repo', {
             method: 'POST',
-            body: JSON.stringify({ sessionId: 'session-main', command: '/bin/sh', cwd: '.' }),
+            body: JSON.stringify({
+              sessionId: 'session-main',
+              command: '/bin/sh',
+              cwd: '.',
+            }),
           }),
         ),
       ),
-    ).resolves.toEqual({ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' })
+    ).resolves.toEqual({
+      id: 'pty-main',
+      sessionId: 'session-main',
+      status: 'running',
+      shell: '/bin/sh',
+      cwd: '.',
+      absoluteCwd: '/repo',
+      startedAt: '2026-06-25T00:00:00.000Z',
+    })
 
-    await expect(json(await router.handle(new Request('http://specter.test/pty/pty-main')))).resolves.toEqual({
+    await expect(
+      json(
+        await router.handle(new Request('http://specter.test/pty/pty-main')),
+      ),
+    ).resolves.toEqual({
       id: 'pty-main',
       sessionId: 'session-main',
       status: 'running',
@@ -587,26 +894,57 @@ describe('Specter Code OpenCode API route adapter', () => {
         await router.handle(
           new Request('http://specter.test/pty/pty-main', {
             method: 'PUT',
-            body: JSON.stringify({ title: 'Tests', size: { rows: 24, cols: 80 } }),
+            body: JSON.stringify({
+              title: 'Tests',
+              size: { rows: 24, cols: 80 },
+            }),
           }),
         ),
       ),
-    ).resolves.toEqual({ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', title: 'Tests', size: { rows: 24, cols: 80 }, startedAt: '2026-06-25T00:00:00.000Z' })
+    ).resolves.toEqual({
+      id: 'pty-main',
+      sessionId: 'session-main',
+      status: 'running',
+      shell: '/bin/sh',
+      cwd: '.',
+      absoluteCwd: '/repo',
+      title: 'Tests',
+      size: { rows: 24, cols: 80 },
+      startedAt: '2026-06-25T00:00:00.000Z',
+    })
 
     await expect(
       json(
-        await router.handle(new Request('http://specter.test/pty/pty-main/connect-token', { method: 'POST' })),
+        await router.handle(
+          new Request('http://specter.test/pty/pty-main/connect-token', {
+            method: 'POST',
+          }),
+        ),
       ),
     ).resolves.toEqual({ ticket: 'ticket-pty-main', expires_in: 30 })
 
-    await expect(json(await router.handle(new Request('http://specter.test/pty/pty-main/connect')))).resolves.toBe(true)
-
     await expect(
-      json(await router.handle(new Request('http://specter.test/pty/pty-main', { method: 'DELETE' }))),
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty/pty-main/connect'),
+        ),
+      ),
     ).resolves.toBe(true)
 
-    const eventResponse = await router.handle(new Request('http://specter.test/event?after=1&live=false'))
-    expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty/pty-main', { method: 'DELETE' }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    const eventResponse = await router.handle(
+      new Request('http://specter.test/event?after=1&live=false'),
+    )
+    expect(eventResponse.headers.get('content-type')).toBe(
+      'text/event-stream; charset=utf-8',
+    )
     await expect(eventResponse.text()).resolves.toBe(
       'id: 2\n' +
         'event: agentRunCompleted\n' +
@@ -616,6 +954,9 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(runtime.calls).toEqual([
       'listSessions:workspace-main',
       'createSession:session-main:workspace-main:Implement API routes',
+      'getSession:session-main',
+      'updateSession:session-main:Renamed session',
+      'deleteSession:session-main',
       'transcript:session-main',
       'sessionTodos:session-main',
       'submitPrompt:session-main:workspace-main:ship it',
@@ -654,18 +995,28 @@ describe('Specter Code OpenCode API route adapter', () => {
   it('returns JSON errors for unmatched routes, invalid bodies, and missing query parameters', async () => {
     const router = createSpecterCodeApiRouter({ runtime: createRuntime() })
 
-    const missingParam = await router.handle(new Request('http://specter.test/session'))
+    const missingParam = await router.handle(
+      new Request('http://specter.test/session'),
+    )
     expect(missingParam.status).toBe(400)
-    await expect(json(missingParam)).resolves.toEqual({ error: 'Missing required query parameter: workspaceId' })
+    await expect(json(missingParam)).resolves.toEqual({
+      error: 'Missing required query parameter: workspaceId',
+    })
 
     const invalidJson = await router.handle(
       new Request('http://specter.test/session', { method: 'POST', body: '{' }),
     )
     expect(invalidJson.status).toBe(400)
-    await expect(json(invalidJson)).resolves.toEqual({ error: 'Invalid JSON request body' })
+    await expect(json(invalidJson)).resolves.toEqual({
+      error: 'Invalid JSON request body',
+    })
 
-    const notFound = await router.handle(new Request('http://specter.test/session/session-main', { method: 'DELETE' }))
+    const notFound = await router.handle(
+      new Request('http://specter.test/unmatched'),
+    )
     expect(notFound.status).toBe(404)
-    await expect(json(notFound)).resolves.toEqual({ error: 'No OpenCode-compatible route for DELETE /session/session-main' })
+    await expect(json(notFound)).resolves.toEqual({
+      error: 'No OpenCode-compatible route for GET /unmatched',
+    })
   })
 })

@@ -7,6 +7,7 @@ import agentRunTimeline from './agent-run-timeline/slice'
 import askQuestion from './ask-question/slice'
 import createPost from './create-post/slice'
 import createSession from './create-session/slice'
+import deleteSession from './delete-session/slice'
 import createWorkspace from './create-workspace/slice'
 import filesystemTree from './workspace-filesystem-tree/slice'
 import filesystemStatus from './workspace-filesystem-status/slice'
@@ -37,10 +38,12 @@ import revertSession from './revert-session/slice'
 import requestWorkspaceFilesystemScan from './request-workspace-filesystem-scan/slice'
 import runRequestedAgentRun from './run-requested-agent-run/slice'
 import runRequestedFilesystemScan from './run-requested-filesystem-scan/slice'
+import sessionDetail from './session-detail/slice'
 import sessionTranscript from './session-transcript/slice'
 import sessionTodos from './session-todos/slice'
 import sessionList from './session-list/slice'
 import submitPrompt from './submit-prompt/slice'
+import updateSession from './update-session/slice'
 import updateTodoList from './update-todo-list/slice'
 import workspaceAgentRuns from './workspace-agent-runs/slice'
 import workspaceChat from './workspace-chat/slice'
@@ -56,7 +59,10 @@ export const specterCodeScaffoldRegistrations = [
   createWorkspace,
   workspaceList,
   createSession,
+  updateSession,
+  deleteSession,
   sessionList,
+  sessionDetail,
   submitPrompt,
   sessionTranscript,
   createPost,
