@@ -32,11 +32,18 @@ export type ToolSummary = {
   permission: string
 }
 
+export type ToolRegisterOptions = {
+  replace?: boolean
+}
+
 export class ToolRegistry {
   readonly #tools = new Map<string, ToolDefinition>()
 
-  register<Input = unknown, Output = unknown>(tool: ToolDefinition<Input, Output>) {
-    if (this.#tools.has(tool.name)) {
+  register<Input = unknown, Output = unknown>(
+    tool: ToolDefinition<Input, Output>,
+    options: ToolRegisterOptions = {},
+  ) {
+    if (this.#tools.has(tool.name) && !options.replace) {
       throw new Error(`Tool already registered: ${tool.name}`)
     }
 
