@@ -4,6 +4,7 @@ import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './ada
 import { findWorkspaceFiles, findWorkspaceText, type OpenCodeTextMatch } from './adapters/find'
 import { applyGitPatch, getGitDiff, getGitStatus, type GitDiff, type GitStatus } from './adapters/git'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
+import { listSpecterCodeSkills, type SpecterCodeSkillInfo } from './adapters/skills'
 import type { RouteSpec } from './domain/openapi-compat'
 
 export type JsonRecord = Record<string, unknown>
@@ -49,6 +50,7 @@ export type SpecterCodeApiRuntime = {
   listProviders(input?: { workspaceRoot?: string }): Promise<ProviderSummary[] | unknown>
   listAgents(input?: { workspaceRoot?: string }): Promise<AgentSummary[] | unknown>
   listPendingQuestions(input: { sessionId?: string }): Promise<unknown>
+  listSkills(input: { workspaceRoot: string }): Promise<readonly SpecterCodeSkillInfo[] | unknown>
   listEvents(input: { afterOrder?: number }): Promise<readonly SpecterCodeStreamEvent[]>
   findFiles(input: {
     workspaceRoot: string
@@ -88,6 +90,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/provider' },
   { method: 'GET', normalizedPath: '/question' },
   { method: 'GET', normalizedPath: '/session' },
+  { method: 'GET', normalizedPath: '/skill' },
   { method: 'POST', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
@@ -301,6 +304,12 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     )
   }
 
+  if (method === 'GET' && pathname === '/skill') {
+    return jsonResponse(
+      await runtime.listSkills({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/agent') {
     return jsonResponse(
       await runtime.listAgents({ workspaceRoot: optionalQuery(url, 'workspaceRoot') }),
@@ -369,6 +378,9 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listPendingQuestions(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodePendingQuestionsOnServer(input ?? {})
+    },
+    async listSkills(input) {
+      return listSpecterCodeSkills(input)
     },
     async listEvents(input) {
       const runtime = await import('./server-runtime.server')

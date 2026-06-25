@@ -72,6 +72,11 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(questions.headers()['content-type']).toContain('application/json')
   expect(await questions.json()).toEqual(expect.any(Array))
 
+  const skills = await request.get(`/skill?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(skills.status()).toBe(200)
+  expect(skills.headers()['content-type']).toContain('application/json')
+  expect(await skills.json()).toEqual(expect.any(Array))
+
   const todos = await request.get('/session/session-api-smoke/todo')
   expect(todos.status()).toBe(200)
   expect(todos.headers()['content-type']).toContain('application/json')

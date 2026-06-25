@@ -18,6 +18,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/provider',
   '/question',
   '/session',
+  '/skill',
   '/vcs',
   '/vcs/apply',
   '/vcs/diff',

@@ -80,6 +80,17 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async listSkills(input) {
+      calls.push(`skills:${input.workspaceRoot}`)
+      return [
+        {
+          name: 'review',
+          description: 'Review local code changes',
+          location: '/repo/.opencode/skills/review/SKILL.md',
+          content: '# Review\n',
+        },
+      ]
+    },
     async listEvents(input) {
       calls.push(`events:${input.afterOrder ?? 0}`)
       return [
@@ -154,6 +165,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/provider' },
       { method: 'GET', normalizedPath: '/question' },
       { method: 'GET', normalizedPath: '/session' },
+      { method: 'GET', normalizedPath: '/skill' },
       { method: 'POST', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
@@ -258,6 +270,15 @@ describe('Specter Code OpenCode API route adapter', () => {
       },
     ])
 
+    await expect(json(await router.handle(new Request('http://specter.test/skill?directory=/repo')))).resolves.toEqual([
+      {
+        name: 'review',
+        description: 'Review local code changes',
+        location: '/repo/.opencode/skills/review/SKILL.md',
+        content: '# Review\n',
+      },
+    ])
+
     await expect(
       json(
         await router.handle(
@@ -344,6 +365,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       'providers',
       'agents',
       'questions:all',
+      'skills:/repo',
       'findFiles:/repo:index:25',
       'findText:/repo:value',
       'vcsStatus:/repo',
