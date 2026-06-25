@@ -8,6 +8,7 @@ const apiRouter = createSpecterCodeApiRouter()
 const EXACT_OPENCODE_API_PATHS = new Set([
   '/agent',
   '/config',
+  '/command',
   '/event',
   '/formatter',
   '/find',
@@ -44,6 +45,7 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/pty\/[^/]+\/connect$/.test(normalized) ||
     /^\/question\/[^/]+\/reply$/.test(normalized) ||
     /^\/question\/[^/]+\/reject$/.test(normalized) ||
+    /^\/session\/[^/]+\/command$/.test(normalized) ||
     /^\/session\/[^/]+\/diff$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||

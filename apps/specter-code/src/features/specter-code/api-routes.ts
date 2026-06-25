@@ -39,6 +39,11 @@ import {
   type LspSymbol,
 } from './adapters/lsp'
 import {
+  listSpecterCodeCommands,
+  renderSpecterCodeCommandPrompt,
+  type SpecterCodeCommandInfo,
+} from './adapters/command-registry'
+import {
   listSpecterCodeSkills,
   type SpecterCodeSkillInfo,
 } from './adapters/skills'
@@ -177,6 +182,18 @@ export type SpecterCodeApiRuntime = {
   listSkills(input: {
     workspaceRoot: string
   }): Promise<readonly SpecterCodeSkillInfo[] | unknown>
+  listCommands(input: {
+    workspaceRoot: string
+  }): Promise<readonly SpecterCodeCommandInfo[] | unknown>
+  executeSessionCommand(input: {
+    sessionId: string
+    messageId?: string
+    workspaceRoot: string
+    command: string
+    arguments?: string
+    agentId?: string
+    model?: { providerId: string; modelId: string }
+  }): Promise<unknown>
   listEvents(input: {
     afterOrder?: number
   }): Promise<readonly SpecterCodeStreamEvent[]>
@@ -267,6 +284,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/config' },
   { method: 'PATCH', normalizedPath: '/config' },
+  { method: 'GET', normalizedPath: '/command' },
   { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/formatter' },
   { method: 'GET', normalizedPath: '/find' },
@@ -302,6 +320,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/session/:sessionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
   { method: 'GET', normalizedPath: '/session/:sessionID/children' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/command' },
   { method: 'POST', normalizedPath: '/session/:sessionID/message' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
@@ -450,6 +469,22 @@ async function dispatchOpenCodeApiRequest(
   if (method === 'POST' && sessionAbortMatch) {
     return jsonResponse(
       await runtime.abortSession({ sessionId: sessionAbortMatch.sessionID }),
+    )
+  }
+
+  const sessionCommandMatch = matchPath(pathname, '/session/:sessionID/command')
+  if (method === 'POST' && sessionCommandMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.executeSessionCommand({
+        sessionId: sessionCommandMatch.sessionID,
+        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        command: requiredString(body.command ?? body.name, 'command'),
+        arguments: optionalString(body.arguments) ?? optionalString(body.argument),
+        agentId: optionalString(body.agent),
+        model: readOptionalOpenCodeModel(body.model),
+      }),
     )
   }
 
@@ -832,6 +867,14 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  if (method === 'GET' && pathname === '/command') {
+    return jsonResponse(
+      await runtime.listCommands({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/skill') {
     return jsonResponse(
       await runtime.listSkills({
@@ -1042,6 +1085,24 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async listSkills(input) {
       return listSpecterCodeSkills(input)
+    },
+    async listCommands(input) {
+      return listSpecterCodeCommands(input)
+    },
+    async executeSessionCommand(input) {
+      const commands = await listSpecterCodeCommands({ workspaceRoot: input.workspaceRoot })
+      const command = commands.find((candidate) => candidate.name === input.command)
+      if (!command) throw new Error('Unknown command: ' + input.command)
+      const agentId = input.agentId ?? command.agent ?? 'build'
+      return this.createSessionMessage({
+        sessionId: input.sessionId,
+        messageId: input.messageId,
+        content: renderSpecterCodeCommandPrompt(command, input.arguments ?? ''),
+        agentId,
+        agentName: agentId,
+        model: input.model ?? readOptionalCommandModel(command.model),
+        submittedBy: { displayName: 'OpenCode API' },
+      })
     },
     async listEvents(input) {
       const runtime = await import('./server-runtime.server')
@@ -1476,6 +1537,16 @@ function readModel(value: unknown) {
   return {
     providerId: requiredString(value.providerId, 'model.providerId'),
     modelId: requiredString(value.modelId, 'model.modelId'),
+  }
+}
+
+function readOptionalCommandModel(model: string | undefined) {
+  if (!model) return undefined
+  const slash = model.indexOf('/')
+  if (slash <= 0 || slash === model.length - 1) return undefined
+  return {
+    providerId: model.slice(0, slash),
+    modelId: model.slice(slash + 1),
   }
 }
 

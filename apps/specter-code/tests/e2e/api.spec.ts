@@ -159,6 +159,48 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
 })
 
 
+test('serves OpenCode-compatible command routes over HTTP', async ({ request }) => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-command-api-'))
+  try {
+    await mkdir(path.join(workspaceRoot, '.opencode', 'commands'), { recursive: true })
+    await writeFile(
+      path.join(workspaceRoot, '.opencode', 'commands', 'fix.md'),
+      [
+        '---',
+        'description: Fix a target file',
+        'agent: build',
+        '---',
+        'Fix $1 using $ARGUMENTS',
+      ].join('\n'),
+    )
+
+    const commands = await request.get(`/command?directory=${encodeURIComponent(workspaceRoot)}`)
+    expect(commands.status()).toBe(200)
+    expect(commands.headers()['content-type']).toContain('application/json')
+    expect(await commands.json()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'fix',
+          description: 'Fix a target file',
+          source: 'command',
+          hints: ['$1', '$ARGUMENTS'],
+        }),
+      ]),
+    )
+
+    const missingCommand = await request.post(
+      `/session/session-api-smoke/command?directory=${encodeURIComponent(workspaceRoot)}`,
+      { data: { command: 'missing' } },
+    )
+    expect(missingCommand.status()).toBe(400)
+    expect(missingCommand.headers()['content-type']).toContain('application/json')
+    expect(await missingCommand.json()).toEqual({ error: 'Unknown command: missing' })
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
+})
+
+
 test('serves OpenCode-compatible session diff and revert routes over HTTP', async ({ request }) => {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-session-vcs-'))
   try {

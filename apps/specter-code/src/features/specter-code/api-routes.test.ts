@@ -207,6 +207,31 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async listCommands(input) {
+      calls.push(`commands:${input.workspaceRoot}`)
+      return [
+        {
+          name: 'fix',
+          description: 'Fix a file',
+          source: 'command' as const,
+          template: 'Fix $1: $ARGUMENTS',
+          hints: ['$1', '$ARGUMENTS'],
+        },
+      ]
+    },
+    async executeSessionCommand(input) {
+      calls.push(
+        `sessionCommand:${input.sessionId}:${input.messageId ?? ''}:${input.workspaceRoot}:${input.command}:${input.arguments ?? ''}:${input.agentId ?? ''}:${input.model?.providerId ?? ''}/${input.model?.modelId ?? ''}`,
+      )
+      return {
+        info: {
+          id: input.messageId ?? 'generated-command-message',
+          sessionID: input.sessionId,
+          role: 'assistant',
+        },
+        parts: [],
+      }
+    },
     async listEvents(input) {
       calls.push(`events:${input.afterOrder ?? 0}`)
       return [
@@ -409,6 +434,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/config' },
       { method: 'PATCH', normalizedPath: '/config' },
+      { method: 'GET', normalizedPath: '/command' },
       { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/formatter' },
       { method: 'GET', normalizedPath: '/find' },
@@ -444,6 +470,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/session/:sessionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
       { method: 'GET', normalizedPath: '/session/:sessionID/children' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/command' },
       { method: 'POST', normalizedPath: '/session/:sessionID/message' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
@@ -508,6 +535,52 @@ describe('Specter Code OpenCode API route adapter', () => {
       'sessionStatus:/repo',
       'sessionMessage:session-main:msg_api:build:no-reply:hello\n\nworld',
       'abortSession:session-main',
+    ])
+  })
+
+  it('dispatches OpenCode command list and session command routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/command?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        name: 'fix',
+        description: 'Fix a file',
+        source: 'command',
+        template: 'Fix $1: $ARGUMENTS',
+        hints: ['$1', '$ARGUMENTS'],
+      },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/command?directory=/repo', {
+            method: 'POST',
+            body: JSON.stringify({
+              command: 'fix',
+              arguments: 'src/app.ts with tests',
+              messageID: 'msg_cmd',
+              agent: 'plan',
+              model: { providerID: 'openrouter', modelID: 'anthropic/claude-sonnet-4' },
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      info: { id: 'msg_cmd', sessionID: 'session-main', role: 'assistant' },
+      parts: [],
+    })
+
+    expect(runtime.calls.slice(-2)).toEqual([
+      'commands:/repo',
+      'sessionCommand:session-main:msg_cmd:/repo:fix:src/app.ts with tests:plan:openrouter/anthropic/claude-sonnet-4',
     ])
   })
 
