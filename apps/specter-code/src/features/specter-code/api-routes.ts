@@ -4,6 +4,12 @@ import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './ada
 import { findWorkspaceFiles, findWorkspaceText, type OpenCodeTextMatch } from './adapters/find'
 import { applyGitPatch, getGitDiff, getGitStatus, type GitDiff, type GitStatus } from './adapters/git'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
+import {
+  collectTypeScriptDiagnostics,
+  findWorkspaceSymbols,
+  type LspDiagnostic,
+  type LspSymbol,
+} from './adapters/lsp'
 import { listSpecterCodeSkills, type SpecterCodeSkillInfo } from './adapters/skills'
 import type { RouteSpec } from './domain/openapi-compat'
 
@@ -63,6 +69,17 @@ export type SpecterCodeApiRuntime = {
     pattern: string
     limit?: number
   }): Promise<readonly OpenCodeTextMatch[]>
+  findSymbols(input: {
+    workspaceRoot: string
+    query: string
+    include?: string[]
+    limit?: number
+  }): Promise<readonly LspSymbol[]>
+  listLspDiagnostics(input: {
+    workspaceRoot: string
+    include?: string[]
+    limit?: number
+  }): Promise<readonly LspDiagnostic[]>
   getVcsStatus(input: { workspaceRoot: string }): Promise<GitStatus | unknown>
   getVcsDiff(input: {
     workspaceRoot: string
@@ -82,9 +99,11 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/find' },
   { method: 'GET', normalizedPath: '/find/file' },
+  { method: 'GET', normalizedPath: '/find/symbol' },
   { method: 'GET', normalizedPath: '/file' },
   { method: 'GET', normalizedPath: '/file/content' },
   { method: 'GET', normalizedPath: '/file/status' },
+  { method: 'GET', normalizedPath: '/lsp' },
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/provider' },
@@ -210,6 +229,27 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
       await runtime.findText({
         workspaceRoot: workspaceRootFromFindQuery(url),
         pattern: requiredQuery(url, 'pattern'),
+        limit: optionalIntegerQuery(url, 'limit'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/find/symbol') {
+    return jsonResponse(
+      await runtime.findSymbols({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        query: requiredQuery(url, 'query'),
+        include: optionalListQuery(url, 'include'),
+        limit: optionalIntegerQuery(url, 'limit'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/lsp') {
+    return jsonResponse(
+      await runtime.listLspDiagnostics({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        include: optionalListQuery(url, 'include'),
         limit: optionalIntegerQuery(url, 'limit'),
       }),
     )
@@ -392,6 +432,12 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async findText(input) {
       return findWorkspaceText(input)
     },
+    async findSymbols(input) {
+      return limitItems(await findWorkspaceSymbols(input), input.limit)
+    },
+    async listLspDiagnostics(input) {
+      return limitItems(await collectTypeScriptDiagnostics(input), input.limit)
+    },
     async getVcsStatus(input) {
       return getGitStatus(input)
     },
@@ -467,6 +513,15 @@ function optionalIntegerQuery(url: URL, name: string) {
   return parsed
 }
 
+function optionalListQuery(url: URL, name: string) {
+  const values = url.searchParams
+    .getAll(name)
+    .flatMap((value) => value.split(','))
+    .map((value) => value.trim())
+    .filter(Boolean)
+  return values.length ? values : undefined
+}
+
 function optionalBooleanQuery(url: URL, name: string) {
   return optionalBoolean(optionalQuery(url, name))
 }
@@ -528,6 +583,10 @@ function readPermissionAction(value: unknown) {
 
 function jsonResponse(value: unknown, status = 200) {
   return Response.json(value, { status })
+}
+
+function limitItems<T>(items: readonly T[], limit: number | undefined) {
+  return limit === undefined ? items : items.slice(0, limit)
 }
 
 function errorMessage(error: unknown) {

@@ -47,6 +47,27 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     ]),
   )
 
+  const symbols = await request.get(
+    `/find/symbol?directory=${encodeURIComponent(workspaceRoot)}&query=createSpecterCodeApiRouter&limit=5`,
+  )
+  expect(symbols.status()).toBe(200)
+  expect(await symbols.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: 'src/features/specter-code/api-routes.ts',
+        name: 'createSpecterCodeApiRouter',
+        kind: 'function',
+      }),
+    ]),
+  )
+
+  const lsp = await request.get(
+    `/lsp?directory=${encodeURIComponent(workspaceRoot)}&include=src/features/specter-code/api-routes.ts&limit=5`,
+  )
+  expect(lsp.status()).toBe(200)
+  expect(lsp.headers()['content-type']).toContain('application/json')
+  expect(await lsp.json()).toEqual(expect.any(Array))
+
   const vcsStatus = await request.get(`/vcs/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
   expect(vcsStatus.status()).toBe(200)
   expect(vcsStatus.headers()['content-type']).toContain('application/json')

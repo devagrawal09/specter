@@ -119,6 +119,23 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async findSymbols(input) {
+      calls.push(`findSymbols:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`)
+      return [{ path: 'src/index.ts', lineNumber: 1, name: 'makeValue', kind: 'function' }]
+    },
+    async listLspDiagnostics(input) {
+      calls.push(`lspDiagnostics:${input.workspaceRoot}:${input.include?.join(',') ?? ''}`)
+      return [
+        {
+          path: 'src/index.ts',
+          lineNumber: 1,
+          column: 14,
+          category: 'error',
+          code: 2322,
+          message: "Type 'string' is not assignable to type 'number'",
+        },
+      ]
+    },
     async getVcsStatus(input) {
       calls.push(`vcsStatus:${input.workspaceRoot}`)
       return { branch: 'threadplane-work', clean: false, entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }] }
@@ -157,9 +174,11 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/find' },
       { method: 'GET', normalizedPath: '/find/file' },
+      { method: 'GET', normalizedPath: '/find/symbol' },
       { method: 'GET', normalizedPath: '/file' },
       { method: 'GET', normalizedPath: '/file/content' },
       { method: 'GET', normalizedPath: '/file/status' },
+      { method: 'GET', normalizedPath: '/lsp' },
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/provider' },
@@ -304,6 +323,33 @@ describe('Specter Code OpenCode API route adapter', () => {
     ])
 
     await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/find/symbol?directory=/repo&query=value&limit=5'),
+        ),
+      ),
+    ).resolves.toEqual([
+      { path: 'src/index.ts', lineNumber: 1, name: 'makeValue', kind: 'function' },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/lsp?directory=/repo&include=src/index.ts'),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        path: 'src/index.ts',
+        lineNumber: 1,
+        column: 14,
+        category: 'error',
+        code: 2322,
+        message: "Type 'string' is not assignable to type 'number'",
+      },
+    ])
+
+    await expect(
       json(await router.handle(new Request('http://specter.test/vcs?workspaceRoot=/repo'))),
     ).resolves.toEqual({
       branch: 'threadplane-work',
@@ -368,6 +414,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       'skills:/repo',
       'findFiles:/repo:index:25',
       'findText:/repo:value',
+      'findSymbols:/repo:value:5',
+      'lspDiagnostics:/repo:src/index.ts',
       'vcsStatus:/repo',
       'vcsStatus:/repo',
       'vcsDiff:/repo:src/index.ts:staged',
