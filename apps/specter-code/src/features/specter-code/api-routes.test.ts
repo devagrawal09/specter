@@ -148,6 +148,38 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`vcsApply:${input.workspaceRoot}:${input.staged ? 'staged' : 'unstaged'}`)
       return { paths: ['src/index.ts'], staged: input.staged ?? false }
     },
+    async listPtyShells(input) {
+      calls.push(`ptyShells:${input.workspaceRoot ?? ''}`)
+      return [{ path: '/bin/sh', name: 'sh', acceptable: true }]
+    },
+    async listPtySessions(input) {
+      calls.push(`ptyList:${input.workspaceRoot ?? ''}`)
+      return [{ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' }]
+    },
+    async startPtySession(input) {
+      calls.push(`ptyStart:${input.sessionId}:${input.workspaceRoot}:${input.cwd ?? ''}:${input.shell ?? ''}`)
+      return { id: 'pty-main', sessionId: input.sessionId, status: 'running', shell: input.shell ?? '/bin/sh', cwd: input.cwd ?? '.', absoluteCwd: input.workspaceRoot, startedAt: '2026-06-25T00:00:00.000Z' }
+    },
+    async getPtySession(input) {
+      calls.push(`ptyGet:${input.ptySessionId}`)
+      return { id: input.ptySessionId, sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' }
+    },
+    async updatePtySession(input) {
+      calls.push(`ptyUpdate:${input.ptySessionId}:${input.title ?? ''}:${input.size?.rows ?? ''}x${input.size?.cols ?? ''}`)
+      return { id: input.ptySessionId, sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', title: input.title, size: input.size, startedAt: '2026-06-25T00:00:00.000Z' }
+    },
+    async stopPtySession(input) {
+      calls.push(`ptyStop:${input.ptySessionId}`)
+      return true
+    },
+    async createPtyConnectToken(input) {
+      calls.push(`ptyToken:${input.ptySessionId}`)
+      return { ticket: `ticket-${input.ptySessionId}`, expires_in: 30 }
+    },
+    async connectPtySession(input) {
+      calls.push(`ptyConnect:${input.ptySessionId}`)
+      return true
+    },
   }
 }
 
@@ -182,6 +214,14 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/provider' },
+      { method: 'GET', normalizedPath: '/pty' },
+      { method: 'POST', normalizedPath: '/pty' },
+      { method: 'GET', normalizedPath: '/pty/shells' },
+      { method: 'GET', normalizedPath: '/pty/:ptyID' },
+      { method: 'PUT', normalizedPath: '/pty/:ptyID' },
+      { method: 'DELETE', normalizedPath: '/pty/:ptyID' },
+      { method: 'POST', normalizedPath: '/pty/:ptyID/connect-token' },
+      { method: 'GET', normalizedPath: '/pty/:ptyID/connect' },
       { method: 'GET', normalizedPath: '/question' },
       { method: 'GET', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/skill' },
@@ -388,6 +428,58 @@ describe('Specter Code OpenCode API route adapter', () => {
       ),
     ).resolves.toEqual({ paths: ['src/index.ts'], staged: false })
 
+    await expect(json(await router.handle(new Request('http://specter.test/pty/shells?directory=/repo')))).resolves.toEqual([
+      { path: '/bin/sh', name: 'sh', acceptable: true },
+    ])
+
+    await expect(json(await router.handle(new Request('http://specter.test/pty?directory=/repo')))).resolves.toEqual([
+      { id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty?directory=/repo', {
+            method: 'POST',
+            body: JSON.stringify({ sessionId: 'session-main', command: '/bin/sh', cwd: '.' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', startedAt: '2026-06-25T00:00:00.000Z' })
+
+    await expect(json(await router.handle(new Request('http://specter.test/pty/pty-main')))).resolves.toEqual({
+      id: 'pty-main',
+      sessionId: 'session-main',
+      status: 'running',
+      shell: '/bin/sh',
+      cwd: '.',
+      absoluteCwd: '/repo',
+      startedAt: '2026-06-25T00:00:00.000Z',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/pty/pty-main', {
+            method: 'PUT',
+            body: JSON.stringify({ title: 'Tests', size: { rows: 24, cols: 80 } }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ id: 'pty-main', sessionId: 'session-main', status: 'running', shell: '/bin/sh', cwd: '.', absoluteCwd: '/repo', title: 'Tests', size: { rows: 24, cols: 80 }, startedAt: '2026-06-25T00:00:00.000Z' })
+
+    await expect(
+      json(
+        await router.handle(new Request('http://specter.test/pty/pty-main/connect-token', { method: 'POST' })),
+      ),
+    ).resolves.toEqual({ ticket: 'ticket-pty-main', expires_in: 30 })
+
+    await expect(json(await router.handle(new Request('http://specter.test/pty/pty-main/connect')))).resolves.toBe(true)
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/pty/pty-main', { method: 'DELETE' }))),
+    ).resolves.toBe(true)
+
     const eventResponse = await router.handle(new Request('http://specter.test/event?after=1&live=false'))
     expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
     await expect(eventResponse.text()).resolves.toBe(
@@ -420,6 +512,14 @@ describe('Specter Code OpenCode API route adapter', () => {
       'vcsStatus:/repo',
       'vcsDiff:/repo:src/index.ts:staged',
       'vcsApply:/repo:unstaged',
+      'ptyShells:/repo',
+      'ptyList:/repo',
+      'ptyStart:session-main:/repo:.:/bin/sh',
+      'ptyGet:pty-main',
+      'ptyUpdate:pty-main:Tests:24x80',
+      'ptyToken:pty-main',
+      'ptyConnect:pty-main',
+      'ptyStop:pty-main',
       'events:1',
     ])
   })

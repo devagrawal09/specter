@@ -1,9 +1,12 @@
+import { randomUUID } from 'node:crypto'
+
 import { createAgentRegistry, type AgentSummary } from './adapters/agent-registry'
 import { loadSpecterCodeConfig, type SpecterCodeConfig } from './adapters/config-loader'
 import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './adapters/event-stream'
 import { findWorkspaceFiles, findWorkspaceText, type OpenCodeTextMatch } from './adapters/find'
 import { applyGitPatch, getGitDiff, getGitStatus, type GitDiff, type GitStatus } from './adapters/git'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
+import { createPtySessionManager, type PtySession } from './adapters/pty'
 import {
   collectTypeScriptDiagnostics,
   findWorkspaceSymbols,
@@ -14,6 +17,15 @@ import { listSpecterCodeSkills, type SpecterCodeSkillInfo } from './adapters/ski
 import type { RouteSpec } from './domain/openapi-compat'
 
 export type JsonRecord = Record<string, unknown>
+
+export type PtyShellSummary = {
+  path: string
+  name: string
+  acceptable: boolean
+}
+
+export type PtySize = { rows: number; cols: number }
+export type ApiPtySession = PtySession & { title?: string; size?: PtySize }
 
 export type SpecterCodeApiRuntime = {
   listSessions(input: { workspaceId: string }): Promise<unknown>
@@ -91,6 +103,25 @@ export type SpecterCodeApiRuntime = {
     patch: string
     staged?: boolean
   }): Promise<{ paths: string[]; staged: boolean } | unknown>
+  listPtyShells(input: { workspaceRoot?: string }): Promise<readonly PtyShellSummary[] | unknown>
+  listPtySessions(input: { workspaceRoot?: string }): Promise<readonly ApiPtySession[] | unknown>
+  startPtySession(input: {
+    sessionId: string
+    workspaceRoot: string
+    cwd?: string
+    shell?: string
+    title?: string
+    size?: PtySize
+  }): Promise<ApiPtySession | unknown>
+  getPtySession(input: { ptySessionId: string }): Promise<ApiPtySession | unknown>
+  updatePtySession(input: {
+    ptySessionId: string
+    title?: string
+    size?: PtySize
+  }): Promise<ApiPtySession | unknown>
+  stopPtySession(input: { ptySessionId: string }): Promise<boolean | unknown>
+  createPtyConnectToken(input: { ptySessionId: string }): Promise<{ ticket: string; expires_in: number } | unknown>
+  connectPtySession(input: { ptySessionId: string }): Promise<boolean | unknown>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
@@ -107,6 +138,14 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/provider' },
+  { method: 'GET', normalizedPath: '/pty' },
+  { method: 'POST', normalizedPath: '/pty' },
+  { method: 'GET', normalizedPath: '/pty/shells' },
+  { method: 'GET', normalizedPath: '/pty/:ptyID' },
+  { method: 'PUT', normalizedPath: '/pty/:ptyID' },
+  { method: 'DELETE', normalizedPath: '/pty/:ptyID' },
+  { method: 'POST', normalizedPath: '/pty/:ptyID/connect-token' },
+  { method: 'GET', normalizedPath: '/pty/:ptyID/connect' },
   { method: 'GET', normalizedPath: '/question' },
   { method: 'GET', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/skill' },
@@ -344,6 +383,64 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     )
   }
 
+  if (method === 'GET' && pathname === '/pty/shells') {
+    return jsonResponse(
+      await runtime.listPtyShells({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/pty') {
+    return jsonResponse(
+      await runtime.listPtySessions({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/pty') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.startPtySession({
+        sessionId: optionalString(body.sessionId) ?? 'opencode-pty-session',
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        cwd: optionalString(body.cwd),
+        shell: optionalString(body.command) ?? optionalString(body.shell),
+        title: optionalString(body.title),
+        size: readPtySize(body.size),
+      }),
+    )
+  }
+
+  const ptyConnectTokenMatch = matchPath(pathname, '/pty/:ptyID/connect-token')
+  if (method === 'POST' && ptyConnectTokenMatch) {
+    return jsonResponse(
+      await runtime.createPtyConnectToken({ ptySessionId: ptyConnectTokenMatch.ptyID }),
+    )
+  }
+
+  const ptyConnectMatch = matchPath(pathname, '/pty/:ptyID/connect')
+  if (method === 'GET' && ptyConnectMatch) {
+    return jsonResponse(await runtime.connectPtySession({ ptySessionId: ptyConnectMatch.ptyID }))
+  }
+
+  const ptySessionMatch = matchPath(pathname, '/pty/:ptyID')
+  if (method === 'GET' && ptySessionMatch) {
+    return jsonResponse(await runtime.getPtySession({ ptySessionId: ptySessionMatch.ptyID }))
+  }
+
+  if (method === 'PUT' && ptySessionMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.updatePtySession({
+        ptySessionId: ptySessionMatch.ptyID,
+        title: optionalString(body.title),
+        size: readPtySize(body.size),
+      }),
+    )
+  }
+
+  if (method === 'DELETE' && ptySessionMatch) {
+    return jsonResponse(await runtime.stopPtySession({ ptySessionId: ptySessionMatch.ptyID }))
+  }
+
   if (method === 'GET' && pathname === '/skill') {
     return jsonResponse(
       await runtime.listSkills({ workspaceRoot: workspaceRootFromFindQuery(url) }),
@@ -361,6 +458,9 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     404,
   )
 }
+
+const livePtyManager = createPtySessionManager()
+const livePtyMetadata = new Map<string, { title?: string; size?: PtySize }>()
 
 function createLiveRuntime(): SpecterCodeApiRuntime {
   return {
@@ -447,7 +547,67 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async applyVcsPatch(input) {
       return applyGitPatch(input)
     },
+    async listPtyShells() {
+      return listAvailableShells()
+    },
+    async listPtySessions() {
+      return livePtyManager.list().map(withPtyMetadata)
+    },
+    async startPtySession(input) {
+      const session = await livePtyManager.start({
+        sessionId: input.sessionId,
+        workspaceRoot: input.workspaceRoot,
+        cwd: input.cwd,
+        shell: input.shell,
+      })
+      if (input.title || input.size) livePtyMetadata.set(session.id, { title: input.title, size: input.size })
+      return withPtyMetadata(session)
+    },
+    async getPtySession(input) {
+      return getLivePtySession(input.ptySessionId)
+    },
+    async updatePtySession(input) {
+      getLivePtySession(input.ptySessionId)
+      const previous = livePtyMetadata.get(input.ptySessionId) ?? {}
+      livePtyMetadata.set(input.ptySessionId, {
+        title: input.title ?? previous.title,
+        size: input.size ?? previous.size,
+      })
+      return getLivePtySession(input.ptySessionId)
+    },
+    async stopPtySession(input) {
+      await livePtyManager.stop(input.ptySessionId)
+      livePtyMetadata.delete(input.ptySessionId)
+      return true
+    },
+    async createPtyConnectToken(input) {
+      getLivePtySession(input.ptySessionId)
+      return { ticket: `pty-${input.ptySessionId}-${randomUUID()}`, expires_in: 30 }
+    },
+    async connectPtySession(input) {
+      getLivePtySession(input.ptySessionId)
+      return true
+    },
   }
+}
+
+function withPtyMetadata(session: PtySession): ApiPtySession {
+  return { ...session, ...livePtyMetadata.get(session.id) }
+}
+
+function getLivePtySession(ptySessionId: string) {
+  const session = livePtyManager.list().find((candidate) => candidate.id === ptySessionId)
+  if (!session) throw new Error('Unknown PTY session: ' + ptySessionId)
+  return withPtyMetadata(session)
+}
+
+function listAvailableShells(): PtyShellSummary[] {
+  const paths = new Set([process.env.SHELL, '/bin/bash', '/bin/sh'].filter(Boolean) as string[])
+  return [...paths].map((shellPath) => ({
+    path: shellPath,
+    name: shellPath.split('/').filter(Boolean).at(-1) ?? shellPath,
+    acceptable: true,
+  }))
 }
 
 async function loadConfigForRegistry(workspaceRoot?: string) {
@@ -556,6 +716,17 @@ function requiredString(value: unknown, name: string) {
 
 function optionalString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function readPtySize(value: unknown) {
+  if (value === undefined || value === null) return undefined
+  if (!isRecord(value)) throw new Error('Invalid PTY size')
+  const rows = Number(value.rows)
+  const cols = Number(value.cols)
+  if (!Number.isInteger(rows) || rows <= 0 || !Number.isInteger(cols) || cols <= 0) {
+    throw new Error('Invalid PTY size')
+  }
+  return { rows, cols }
 }
 
 function readModel(value: unknown) {

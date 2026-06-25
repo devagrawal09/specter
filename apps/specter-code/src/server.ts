@@ -18,6 +18,8 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/lsp',
   '/permission',
   '/provider',
+  '/pty',
+  '/pty/shells',
   '/question',
   '/session',
   '/skill',
@@ -32,6 +34,9 @@ function isOpenCodeApiPath(pathname: string) {
   if (EXACT_OPENCODE_API_PATHS.has(normalized)) return true
   return (
     /^\/permission\/[^/]+\/reply$/.test(normalized) ||
+    /^\/pty\/[^/]+$/.test(normalized) ||
+    /^\/pty\/[^/]+\/connect-token$/.test(normalized) ||
+    /^\/pty\/[^/]+\/connect$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
     /^\/session\/[^/]+\/todo$/.test(normalized)

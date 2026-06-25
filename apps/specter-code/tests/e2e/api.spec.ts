@@ -88,6 +88,18 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     }),
   )
 
+  const ptyShells = await request.get(`/pty/shells?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(ptyShells.status()).toBe(200)
+  expect(ptyShells.headers()['content-type']).toContain('application/json')
+  expect(await ptyShells.json()).toEqual(
+    expect.arrayContaining([expect.objectContaining({ path: expect.any(String), acceptable: true })]),
+  )
+
+  const ptySessions = await request.get(`/pty?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(ptySessions.status()).toBe(200)
+  expect(ptySessions.headers()['content-type']).toContain('application/json')
+  expect(await ptySessions.json()).toEqual(expect.any(Array))
+
   const questions = await request.get('/question')
   expect(questions.status()).toBe(200)
   expect(questions.headers()['content-type']).toContain('application/json')
