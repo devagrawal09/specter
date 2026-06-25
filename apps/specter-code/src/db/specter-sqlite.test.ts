@@ -111,6 +111,23 @@ describe('prepareSpecterSqlite', () => {
       db.close()
     }
   })
+
+  it('enables WAL journaling and a busy timeout for concurrent server and test clients', async () => {
+    const db = createClient({ url: `file:${join(tempDir, 'concurrent.db')}` })
+
+    try {
+      await prepareSpecterSqlite(db)
+
+      const journal = await db.execute({ sql: 'PRAGMA journal_mode', args: [] })
+      const busyTimeout = await db.execute({ sql: 'PRAGMA busy_timeout', args: [] })
+
+      expect(String(journal.rows[0]?.journal_mode).toLowerCase()).toBe('wal')
+      expect(Number(busyTimeout.rows[0]?.timeout)).toBeGreaterThanOrEqual(5_000)
+    } finally {
+      db.close()
+    }
+  })
+
 })
 
 async function expectColumns(

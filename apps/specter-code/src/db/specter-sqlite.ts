@@ -38,6 +38,9 @@ export function setSpecterSqliteEventProjector(
 }
 
 export async function prepareSpecterSqlite(db: Client) {
+  await db.execute({ sql: 'PRAGMA journal_mode = WAL', args: [] })
+  await db.execute({ sql: 'PRAGMA busy_timeout = 5000', args: [] })
+
   await db.batch(
     [
       `CREATE TABLE IF NOT EXISTS specter_events (
@@ -54,6 +57,16 @@ export async function prepareSpecterSqlite(db: Client) {
       state_json TEXT NOT NULL,
       last_applied_order INTEGER NOT NULL
     )`,
+      `CREATE TABLE IF NOT EXISTS specter_reaction_queue (
+      id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      requested_at TEXT NOT NULL,
+      started_at TEXT,
+      completed_at TEXT,
+      error TEXT
+    )`,
+      `CREATE INDEX IF NOT EXISTS specter_reaction_queue_status_idx
+      ON specter_reaction_queue(status, requested_at)`,
       `CREATE TABLE IF NOT EXISTS specter_code_sessions (
       id TEXT PRIMARY KEY,
       workspace_id TEXT NOT NULL,
@@ -328,6 +341,10 @@ export const sqliteEventLog: EventLogAdapter = {
     return persistedEvents
   },
   transaction: (run) => runInTransaction(() => run(sqliteEventLog)),
+}
+
+export function getBoundSqliteDb() {
+  return getDb()
 }
 
 function getDb() {

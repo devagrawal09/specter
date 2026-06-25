@@ -2,7 +2,7 @@ import {
   setSpecterSqliteEventProjector,
   sqliteEventLog,
 } from '../../db/specter-sqlite'
-import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
+import { createSqliteReactionScheduler } from '../../db/reaction-queue'
 import agentRunTimeline from './agent-run-timeline/slice'
 import askQuestion from './ask-question/slice'
 import createPost from './create-post/slice'
@@ -102,6 +102,6 @@ export const specterCodeSliceSkeletons = specterCodeScaffoldRegistrations
 export const specterCodeReferenceSpecterAppConfig = {
   events: specterCodeEventDefinitions,
   eventLog: sqliteEventLog,
-  schedule: memoryReactionScheduler,
+  schedule: createSqliteReactionScheduler(),
   slices: specterCodeScaffoldRegistrations,
 } as const
