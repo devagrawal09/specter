@@ -17,6 +17,10 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/permission',
   '/provider',
   '/session',
+  '/vcs',
+  '/vcs/apply',
+  '/vcs/diff',
+  '/vcs/status',
 ])
 
 function isOpenCodeApiPath(pathname: string) {

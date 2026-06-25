@@ -47,6 +47,26 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     ]),
   )
 
+  const vcsStatus = await request.get(`/vcs/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
+  expect(vcsStatus.status()).toBe(200)
+  expect(vcsStatus.headers()['content-type']).toContain('application/json')
+  expect(await vcsStatus.json()).toEqual(
+    expect.objectContaining({
+      clean: expect.any(Boolean),
+      entries: expect.any(Array),
+    }),
+  )
+
+  const vcsDiff = await request.get(`/vcs/diff?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
+  expect(vcsDiff.status()).toBe(200)
+  expect(vcsDiff.headers()['content-type']).toContain('application/json')
+  expect(await vcsDiff.json()).toEqual(
+    expect.objectContaining({
+      patch: expect.any(String),
+      staged: false,
+    }),
+  )
+
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')

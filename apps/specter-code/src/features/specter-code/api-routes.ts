@@ -2,6 +2,7 @@ import { createAgentRegistry, type AgentSummary } from './adapters/agent-registr
 import { loadSpecterCodeConfig, type SpecterCodeConfig } from './adapters/config-loader'
 import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './adapters/event-stream'
 import { findWorkspaceFiles, findWorkspaceText, type OpenCodeTextMatch } from './adapters/find'
+import { applyGitPatch, getGitDiff, getGitStatus, type GitDiff, type GitStatus } from './adapters/git'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
 import type { RouteSpec } from './domain/openapi-compat'
 
@@ -58,6 +59,17 @@ export type SpecterCodeApiRuntime = {
     pattern: string
     limit?: number
   }): Promise<readonly OpenCodeTextMatch[]>
+  getVcsStatus(input: { workspaceRoot: string }): Promise<GitStatus | unknown>
+  getVcsDiff(input: {
+    workspaceRoot: string
+    path?: string
+    staged?: boolean
+  }): Promise<GitDiff | unknown>
+  applyVcsPatch(input: {
+    workspaceRoot: string
+    patch: string
+    staged?: boolean
+  }): Promise<{ paths: string[]; staged: boolean } | unknown>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
@@ -76,6 +88,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+  { method: 'GET', normalizedPath: '/vcs' },
+  { method: 'POST', normalizedPath: '/vcs/apply' },
+  { method: 'GET', normalizedPath: '/vcs/diff' },
+  { method: 'GET', normalizedPath: '/vcs/status' },
 ] satisfies RouteSpec[]
 
 export const implementedOpenCodeApiRoutes = INITIAL_OPENCODE_API_ROUTES
@@ -179,6 +195,31 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
         workspaceRoot: workspaceRootFromFindQuery(url),
         pattern: requiredQuery(url, 'pattern'),
         limit: optionalIntegerQuery(url, 'limit'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && (pathname === '/vcs' || pathname === '/vcs/status')) {
+    return jsonResponse(await runtime.getVcsStatus({ workspaceRoot: workspaceRootFromQuery(url) }))
+  }
+
+  if (method === 'GET' && pathname === '/vcs/diff') {
+    return jsonResponse(
+      await runtime.getVcsDiff({
+        workspaceRoot: workspaceRootFromQuery(url),
+        path: optionalQuery(url, 'path'),
+        staged: optionalBooleanQuery(url, 'staged'),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/vcs/apply') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.applyVcsPatch({
+        workspaceRoot: optionalString(body.workspaceRoot) ?? process.cwd(),
+        patch: requiredString(body.patch, 'patch'),
+        staged: optionalBoolean(body.staged),
       }),
     )
   }
@@ -312,6 +353,15 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async findText(input) {
       return findWorkspaceText(input)
     },
+    async getVcsStatus(input) {
+      return getGitStatus(input)
+    },
+    async getVcsDiff(input) {
+      return getGitDiff(input)
+    },
+    async applyVcsPatch(input) {
+      return applyGitPatch(input)
+    },
   }
 }
 
@@ -376,6 +426,17 @@ function optionalIntegerQuery(url: URL, name: string) {
     throw new Error(`Invalid integer query parameter: ${name}`)
   }
   return parsed
+}
+
+function optionalBooleanQuery(url: URL, name: string) {
+  return optionalBoolean(optionalQuery(url, name))
+}
+
+function optionalBoolean(value: unknown) {
+  if (value === undefined) return undefined
+  if (value === true || value === 'true') return true
+  if (value === false || value === 'false') return false
+  throw new Error('Invalid boolean value')
 }
 
 function workspaceRootFromQuery(url: URL) {

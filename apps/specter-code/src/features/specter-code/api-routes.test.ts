@@ -91,6 +91,18 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async getVcsStatus(input) {
+      calls.push(`vcsStatus:${input.workspaceRoot}`)
+      return { branch: 'threadplane-work', clean: false, entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }] }
+    },
+    async getVcsDiff(input) {
+      calls.push(`vcsDiff:${input.workspaceRoot}:${input.path ?? ''}:${input.staged ? 'staged' : 'unstaged'}`)
+      return { patch: 'diff --git a/src/index.ts b/src/index.ts\n', staged: input.staged ?? false, path: input.path }
+    },
+    async applyVcsPatch(input) {
+      calls.push(`vcsApply:${input.workspaceRoot}:${input.staged ? 'staged' : 'unstaged'}`)
+      return { paths: ['src/index.ts'], staged: input.staged ?? false }
+    },
   }
 }
 
@@ -127,6 +139,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+      { method: 'GET', normalizedPath: '/vcs' },
+      { method: 'POST', normalizedPath: '/vcs/apply' },
+      { method: 'GET', normalizedPath: '/vcs/diff' },
+      { method: 'GET', normalizedPath: '/vcs/status' },
     ])
   })
 
@@ -232,6 +248,45 @@ describe('Specter Code OpenCode API route adapter', () => {
       },
     ])
 
+    await expect(
+      json(await router.handle(new Request('http://specter.test/vcs?workspaceRoot=/repo'))),
+    ).resolves.toEqual({
+      branch: 'threadplane-work',
+      clean: false,
+      entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }],
+    })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/vcs/status?workspaceRoot=/repo'))),
+    ).resolves.toEqual({
+      branch: 'threadplane-work',
+      clean: false,
+      entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/vcs/diff?workspaceRoot=/repo&path=src/index.ts&staged=true'),
+        ),
+      ),
+    ).resolves.toEqual({
+      patch: 'diff --git a/src/index.ts b/src/index.ts\n',
+      staged: true,
+      path: 'src/index.ts',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/vcs/apply', {
+            method: 'POST',
+            body: JSON.stringify({ workspaceRoot: '/repo', patch: 'diff --git a/src/index.ts b/src/index.ts\n', staged: false }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ paths: ['src/index.ts'], staged: false })
+
     const eventResponse = await router.handle(new Request('http://specter.test/event?after=1&live=false'))
     expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
     await expect(eventResponse.text()).resolves.toBe(
@@ -255,6 +310,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       'agents',
       'findFiles:/repo:index:25',
       'findText:/repo:value',
+      'vcsStatus:/repo',
+      'vcsStatus:/repo',
+      'vcsDiff:/repo:src/index.ts:staged',
+      'vcsApply:/repo:unstaged',
       'events:1',
     ])
   })
