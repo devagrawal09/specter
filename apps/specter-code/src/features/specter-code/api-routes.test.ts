@@ -135,6 +135,35 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         raw: { model: 'openrouter/test' },
       }
     },
+    async updateConfig(input) {
+      calls.push(`configPatch:${input.workspaceRoot}:${JSON.stringify(input.patch)}`)
+      return {
+        sources: [`${input.workspaceRoot}/.opencode/opencode.jsonc`],
+        permissionRules: [],
+        raw: input.patch,
+      }
+    },
+    async listProjects(input) {
+      calls.push(`projects:${input.workspaceRoot}`)
+      return [
+        {
+          id: input.workspaceRoot,
+          directory: input.workspaceRoot,
+          name: 'repo',
+          configSources: [`${input.workspaceRoot}/.opencode/opencode.jsonc`],
+        },
+      ]
+    },
+    async listFormatterStatus(input) {
+      calls.push(`formatters:${input.workspaceRoot}`)
+      return [
+        {
+          name: 'prettier',
+          command: 'pnpm prettier --check .',
+          enabled: true,
+        },
+      ]
+    },
     async listProviders() {
       calls.push('providers')
       return [{ id: 'openrouter', configured: false, models: [] }]
@@ -379,7 +408,9 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(implementedOpenCodeApiRoutes).toEqual<RouteSpec[]>([
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/config' },
+      { method: 'PATCH', normalizedPath: '/config' },
       { method: 'GET', normalizedPath: '/event' },
+      { method: 'GET', normalizedPath: '/formatter' },
       { method: 'GET', normalizedPath: '/find' },
       { method: 'GET', normalizedPath: '/find/file' },
       { method: 'GET', normalizedPath: '/find/symbol' },
@@ -393,6 +424,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
+      { method: 'GET', normalizedPath: '/project' },
       { method: 'GET', normalizedPath: '/provider' },
       { method: 'GET', normalizedPath: '/pty' },
       { method: 'POST', normalizedPath: '/pty' },
@@ -1156,6 +1188,57 @@ describe('Specter Code OpenCode API route adapter', () => {
       'ptyConnect:pty-main',
       'ptyStop:pty-main',
       'events:1',
+    ])
+  })
+
+
+  it('dispatches OpenCode project, formatter, and config update routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/project?directory=/repo'))),
+    ).resolves.toEqual([
+      {
+        id: '/repo',
+        directory: '/repo',
+        name: 'repo',
+        configSources: ['/repo/.opencode/opencode.jsonc'],
+      },
+    ])
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/formatter?workspace=/repo'))),
+    ).resolves.toEqual([
+      {
+        name: 'prettier',
+        command: 'pnpm prettier --check .',
+        enabled: true,
+      },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/config?directory=/repo', {
+            method: 'PATCH',
+            body: JSON.stringify({
+              model: 'openrouter/test-model',
+              default_agent: 'build',
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      sources: ['/repo/.opencode/opencode.jsonc'],
+      permissionRules: [],
+      raw: { model: 'openrouter/test-model', default_agent: 'build' },
+    })
+
+    expect(runtime.calls.slice(-3)).toEqual([
+      'projects:/repo',
+      'formatters:/repo',
+      'configPatch:/repo:{"model":"openrouter/test-model","default_agent":"build"}',
     ])
   })
 

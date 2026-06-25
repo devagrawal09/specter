@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -201,6 +201,70 @@ test('serves OpenCode-compatible session diff and revert routes over HTTP', asyn
     expect(sessionRevert.headers()['content-type']).toContain('application/json')
     expect(await sessionRevert.json()).toEqual({ paths: ['note.txt'] })
     await expect(readFile(path.join(workspaceRoot, 'note.txt'), 'utf8')).resolves.toBe('original\n')
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
+})
+
+
+test('serves OpenCode-compatible project, formatter, and config update routes over HTTP', async ({ request }) => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-config-api-'))
+  try {
+    await mkdir(path.join(workspaceRoot, '.opencode'), { recursive: true })
+    await writeFile(
+      path.join(workspaceRoot, '.opencode', 'opencode.jsonc'),
+      JSON.stringify(
+        {
+          formatter: {
+            prettier: { command: 'pnpm prettier --check .' },
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    const projects = await request.get(`/project?directory=${encodeURIComponent(workspaceRoot)}`)
+    expect(projects.status()).toBe(200)
+    expect(projects.headers()['content-type']).toContain('application/json')
+    expect(await projects.json()).toEqual([
+      expect.objectContaining({
+        id: workspaceRoot,
+        directory: workspaceRoot,
+        name: path.basename(workspaceRoot),
+      }),
+    ])
+
+    const formatter = await request.get(`/formatter?directory=${encodeURIComponent(workspaceRoot)}`)
+    expect(formatter.status()).toBe(200)
+    expect(formatter.headers()['content-type']).toContain('application/json')
+    expect(await formatter.json()).toEqual([
+      expect.objectContaining({
+        name: 'prettier',
+        command: 'pnpm prettier --check .',
+        enabled: true,
+      }),
+    ])
+
+    const updatedConfig = await request.patch(`/config?directory=${encodeURIComponent(workspaceRoot)}`, {
+      data: { model: 'openrouter/test-model', default_agent: 'build' },
+    })
+    expect(updatedConfig.status()).toBe(200)
+    expect(updatedConfig.headers()['content-type']).toContain('application/json')
+    expect(await updatedConfig.json()).toEqual(
+      expect.objectContaining({
+        model: { providerId: 'openrouter', modelId: 'test-model' },
+        defaultAgent: 'build',
+        raw: expect.objectContaining({
+          model: 'openrouter/test-model',
+          default_agent: 'build',
+        }),
+      }),
+    )
+
+    await expect(readFile(path.join(workspaceRoot, '.opencode', 'opencode.jsonc'), 'utf8')).resolves.toContain(
+      'openrouter/test-model',
+    )
   } finally {
     await rm(workspaceRoot, { recursive: true, force: true })
   }

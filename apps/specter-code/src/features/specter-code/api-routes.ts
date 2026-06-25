@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { mkdir, writeFile } from 'node:fs/promises'
+import path from 'node:path'
 
 import {
   createAgentRegistry,
@@ -58,6 +60,20 @@ export type ApiMcpStatus = {
   status: 'connected' | 'disconnected' | 'disabled' | 'failed'
   error?: string
   config?: unknown
+}
+
+export type ProjectSummary = {
+  id: string
+  directory: string
+  name: string
+  configSources: string[]
+}
+
+export type FormatterStatus = {
+  name: string
+  command?: string
+  enabled: boolean
+  status?: 'configured' | 'disabled' | 'unsupported'
 }
 
 export type SpecterCodeApiRuntime = {
@@ -133,6 +149,16 @@ export type SpecterCodeApiRuntime = {
     reason?: string
   }): Promise<unknown>
   loadConfig(input: { workspaceRoot: string }): Promise<SpecterCodeConfig>
+  updateConfig(input: {
+    workspaceRoot: string
+    patch: JsonRecord
+  }): Promise<SpecterCodeConfig | unknown>
+  listProjects(input: {
+    workspaceRoot: string
+  }): Promise<readonly ProjectSummary[] | unknown>
+  listFormatterStatus(input: {
+    workspaceRoot: string
+  }): Promise<readonly FormatterStatus[] | unknown>
   listProviders(input?: {
     workspaceRoot?: string
   }): Promise<ProviderSummary[] | unknown>
@@ -240,7 +266,9 @@ export type SpecterCodeApiRuntime = {
 export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/config' },
+  { method: 'PATCH', normalizedPath: '/config' },
   { method: 'GET', normalizedPath: '/event' },
+  { method: 'GET', normalizedPath: '/formatter' },
   { method: 'GET', normalizedPath: '/find' },
   { method: 'GET', normalizedPath: '/find/file' },
   { method: 'GET', normalizedPath: '/find/symbol' },
@@ -254,6 +282,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
+  { method: 'GET', normalizedPath: '/project' },
   { method: 'GET', normalizedPath: '/provider' },
   { method: 'GET', normalizedPath: '/pty' },
   { method: 'POST', normalizedPath: '/pty' },
@@ -665,7 +694,33 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/config') {
     return jsonResponse(
-      await runtime.loadConfig({ workspaceRoot: workspaceRootFromQuery(url) }),
+      await runtime.loadConfig({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
+  if (method === 'PATCH' && pathname === '/config') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.updateConfig({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        patch: body,
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/project') {
+    return jsonResponse(
+      await runtime.listProjects({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/formatter') {
+    return jsonResponse(
+      await runtime.listFormatterStatus({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
     )
   }
 
@@ -935,6 +990,18 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async loadConfig(input) {
       return loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
     },
+    async updateConfig(input) {
+      return updateWorkspaceConfig(input)
+    },
+    async listProjects(input) {
+      return listWorkspaceProjects(input)
+    },
+    async listFormatterStatus(input) {
+      const config = await loadSpecterCodeConfig({
+        workspaceRoot: input.workspaceRoot,
+      })
+      return listFormatterStatuses(config)
+    },
     async listProviders(input) {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createProviderRegistry({ config }).listProviders()
@@ -1133,6 +1200,89 @@ async function loadConfigForRegistry(workspaceRoot?: string) {
   })
 }
 
+
+
+async function updateWorkspaceConfig(input: {
+  workspaceRoot: string
+  patch: JsonRecord
+}) {
+  const current = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+  const nextRaw = mergeConfigPatch(current.raw, input.patch)
+  const configDir = path.join(input.workspaceRoot, '.opencode')
+  await mkdir(configDir, { recursive: true })
+  await writeFile(
+    path.join(configDir, 'opencode.jsonc'),
+    `${JSON.stringify(nextRaw, null, 2)}\n`,
+    'utf8',
+  )
+  return loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+}
+
+function mergeConfigPatch(current: JsonRecord, patch: JsonRecord): JsonRecord {
+  const next: JsonRecord = { ...current }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) {
+      delete next[key]
+      continue
+    }
+    next[key] = value
+  }
+  return next
+}
+
+async function listWorkspaceProjects(input: {
+  workspaceRoot: string
+}): Promise<ProjectSummary[]> {
+  const config = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+  return [
+    {
+      id: input.workspaceRoot,
+      directory: input.workspaceRoot,
+      name: path.basename(input.workspaceRoot) || input.workspaceRoot,
+      configSources: config.sources,
+    },
+  ]
+}
+
+function listFormatterStatuses(config: SpecterCodeConfig): FormatterStatus[] {
+  return formatterStatusesFromValue(config.formatter, 'default')
+}
+
+function formatterStatusesFromValue(
+  value: unknown,
+  fallbackName: string,
+): FormatterStatus[] {
+  if (value === undefined || value === null || value === false) return []
+  if (typeof value === 'string') {
+    return [{ name: fallbackName, command: value, enabled: true, status: 'configured' }]
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) =>
+      formatterStatusesFromValue(entry, `${fallbackName}-${index + 1}`),
+    )
+  }
+  if (!isRecord(value)) {
+    return [{ name: fallbackName, enabled: true, status: 'unsupported' }]
+  }
+
+  const command = optionalString(value.command)
+  const enabled = value.enabled !== false
+  if (command || value.enabled !== undefined) {
+    return [
+      {
+        name: optionalString(value.name) ?? fallbackName,
+        command,
+        enabled,
+        status: enabled ? 'configured' : 'disabled',
+      },
+    ]
+  }
+
+  return Object.entries(value).flatMap(([name, entry]) =>
+    formatterStatusesFromValue(entry, name),
+  )
+}
+
 function normalizeRequestPath(pathname: string) {
   const normalized = pathname.replace(/\/+$/, '')
   return normalized || '/'
@@ -1224,6 +1374,7 @@ function workspaceRootFromFindQuery(url: URL) {
   return (
     optionalQuery(url, 'directory') ??
     optionalQuery(url, 'workspace') ??
+    optionalQuery(url, 'workspaceRoot') ??
     process.cwd()
   )
 }
