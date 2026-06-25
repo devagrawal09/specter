@@ -68,14 +68,12 @@ export const writeTool: ToolDefinition<WriteToolInput, WriteToolOutput> = {
   name: 'write',
   description: 'Write a complete file inside the current workspace after approval',
   permission: 'file.write',
+  permissionTarget: (input) => normalizeWorkspacePath(input.path),
   async execute(input, context) {
     let targetPath = input.path
     try {
       const target = await resolveWritableWorkspaceFile(context.workspaceRoot, input.path)
       targetPath = target.path
-      const decision = await context.ask({ permission: 'file.write', target: target.path })
-      if (decision !== 'allow') throw new Error('Write denied for ' + target.path)
-
       const snapshot = await createFileSnapshot(target)
       await mkdir(path.dirname(target.absolutePath), { recursive: true })
       await writeFile(target.absolutePath, input.content, 'utf8')

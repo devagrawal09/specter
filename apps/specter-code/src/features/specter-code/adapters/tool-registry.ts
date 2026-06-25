@@ -23,6 +23,7 @@ export type ToolDefinition<Input = unknown, Output = unknown> = {
   description?: string
   permission: string
   permissionTarget?: (input: Input) => string
+  permissionTargets?: (input: Input) => readonly string[]
   execute: (input: Input, context: ToolContext) => Promise<Output> | Output
 }
 
@@ -70,8 +71,12 @@ export class ToolRegistry {
     const tool = this.#tools.get(name)
     if (!tool) throw new Error(`Unknown tool: ${name}`)
 
-    if (tool.permissionTarget) {
-      const target = tool.permissionTarget(input)
+    const targets = [
+      ...(tool.permissionTarget ? [tool.permissionTarget(input)] : []),
+      ...(tool.permissionTargets ? tool.permissionTargets(input) : []),
+    ]
+    const uniqueTargets = [...new Set(targets)]
+    for (const target of uniqueTargets) {
       const request = { permission: tool.permission, target }
       const policyDecision = context.permissionRules?.length
         ? evaluatePermission(context.permissionRules, request).action

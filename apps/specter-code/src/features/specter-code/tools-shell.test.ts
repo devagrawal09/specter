@@ -1,10 +1,10 @@
-import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, rm } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { PermissionAction, PermissionRequest } from './adapters/permissions'
-import type { ToolContext } from './adapters/tool-registry'
+import { createToolRegistry, type ToolContext } from './adapters/tool-registry'
 import { shellTool } from './tools/shell'
 
 let workspaceRoot: string
@@ -33,9 +33,12 @@ describe('shell tool', () => {
   it('runs an approved command inside a workspace subdirectory and streams output metadata', async () => {
     const ask = vi.fn(async (_request: PermissionRequest) => 'allow' as PermissionAction)
     const context = createContext({ ask })
+    const registry = createToolRegistry()
+    registry.register(shellTool)
 
     await expect(
-      shellTool.execute(
+      registry.execute(
+        'shell',
         { command: 'printf hello; printf warn >&2', cwd: 'src', timeoutMs: 1000, maxOutputBytes: 1000 },
         context,
       ),
@@ -76,6 +79,45 @@ describe('shell tool', () => {
       status: 'completed',
       summary: 'Shell exited 0',
     })
+  })
+
+  it('honors allow permission rules through the registry without prompting', async () => {
+    const ask = vi.fn(async (_request: PermissionRequest) => 'deny' as PermissionAction)
+    const context = createContext({
+      ask,
+      permissionRules: [
+        { permission: 'shell.execute', pattern: 'printf rule-ok', action: 'allow' },
+      ],
+    })
+    const registry = createToolRegistry()
+    registry.register(shellTool)
+
+    await expect(
+      registry.execute('shell', { command: 'printf rule-ok', timeoutMs: 1000 }, context),
+    ).resolves.toMatchObject({
+      stdout: 'rule-ok',
+      exitCode: 0,
+      timedOut: false,
+    })
+    expect(ask).not.toHaveBeenCalled()
+  })
+
+  it('honors deny permission rules through the registry without running the command', async () => {
+    const ask = vi.fn(async (_request: PermissionRequest) => 'allow' as PermissionAction)
+    const context = createContext({
+      ask,
+      permissionRules: [
+        { permission: 'shell.execute', pattern: 'printf denied > src/denied.txt', action: 'deny' },
+      ],
+    })
+    const registry = createToolRegistry()
+    registry.register(shellTool)
+
+    await expect(
+      registry.execute('shell', { command: 'printf denied > src/denied.txt', timeoutMs: 1000 }, context),
+    ).rejects.toThrow('Tool denied: shell for printf denied > src/denied.txt')
+    expect(ask).not.toHaveBeenCalled()
+    await expect(readFile(path.join(workspaceRoot, 'src', 'denied.txt'), 'utf8')).rejects.toThrow()
   })
 
   it('blocks shell working directory escapes before asking for approval', async () => {

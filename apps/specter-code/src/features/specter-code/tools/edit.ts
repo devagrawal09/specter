@@ -1,5 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
+import { normalizeWorkspacePath } from '../adapters/file-index'
 import { createFileSnapshot, type FileSnapshot } from '../adapters/snapshots'
 import type { ToolDefinition } from '../adapters/tool-registry'
 import { resolveWritableWorkspaceFile } from './write'
@@ -20,6 +21,7 @@ export const editTool: ToolDefinition<EditToolInput, EditToolOutput> = {
   name: 'edit',
   description: 'Replace an exact string in a workspace file after approval',
   permission: 'file.write',
+  permissionTarget: (input) => normalizeWorkspacePath(input.path),
   async execute(input, context) {
     let targetPath = input.path
     try {
@@ -27,9 +29,6 @@ export const editTool: ToolDefinition<EditToolInput, EditToolOutput> = {
       const target = await resolveWritableWorkspaceFile(context.workspaceRoot, input.path)
       targetPath = target.path
       if (!target.existed) throw new Error('Workspace path must be an existing file')
-      const decision = await context.ask({ permission: 'file.write', target: target.path })
-      if (decision !== 'allow') throw new Error('Edit denied for ' + target.path)
-
       const content = await readFile(target.absolutePath, 'utf8')
       if (!content.includes(input.oldString)) {
         throw new Error('Edit oldString was not found in ' + target.path)

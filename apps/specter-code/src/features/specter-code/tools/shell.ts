@@ -22,13 +22,11 @@ export const shellTool: ToolDefinition<ShellToolInput, ShellToolOutput> = {
   name: 'shell',
   description: 'Run a bounded shell command inside the current workspace after approval',
   permission: 'shell.execute',
+  permissionTarget: (input) => input.command.trim(),
   async execute(input, context) {
     const command = input.command.trim()
     try {
       const cwd = await resolveShellWorkingDirectory(context.workspaceRoot, input.cwd)
-      const decision = await context.ask({ permission: 'shell.execute', target: command })
-      if (decision !== 'allow') throw new Error('Shell denied for ' + command)
-
       await context.metadata({
         toolName: 'shell',
         status: 'started',

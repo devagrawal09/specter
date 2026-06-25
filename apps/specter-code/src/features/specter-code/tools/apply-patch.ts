@@ -114,6 +114,7 @@ export const applyPatchTool: ToolDefinition<ApplyPatchToolInput, ApplyPatchToolO
   name: 'apply_patch',
   description: 'Apply a unified patch inside the current workspace after approval',
   permission: 'file.write',
+  permissionTargets: (input) => parseUnifiedPatch(input.patch).map((file) => file.path),
   async execute(input, context) {
     try {
       const parsedFiles = parseUnifiedPatch(input.patch)
@@ -122,9 +123,6 @@ export const applyPatchTool: ToolDefinition<ApplyPatchToolInput, ApplyPatchToolO
       for (const parsedFile of parsedFiles) {
         const target = await resolveWritableWorkspaceFile(context.workspaceRoot, parsedFile.path)
         if (!target.existed) throw new Error('Patch target must be an existing file: ' + target.path)
-        const decision = await context.ask({ permission: 'file.write', target: target.path })
-        if (decision !== 'allow') throw new Error('Patch denied for ' + target.path)
-
         const originalContent = await readFile(target.absolutePath, 'utf8')
         const snapshot = await createFileSnapshot(target)
         const applied = applyLinePatch(originalContent, parsedFile.hunkLines)
