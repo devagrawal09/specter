@@ -147,6 +147,22 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async listMcpStatus(input) {
+      calls.push(`mcpStatus:${input.workspaceRoot}`)
+      return {}
+    },
+    async addMcpServer(input) {
+      calls.push(`mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`)
+      return { [input.name]: { name: input.name, status: 'disconnected' as const } }
+    },
+    async connectMcpServer(input) {
+      calls.push(`mcpConnect:${input.workspaceRoot}:${input.name}`)
+      return true
+    },
+    async disconnectMcpServer(input) {
+      calls.push(`mcpDisconnect:${input.workspaceRoot}:${input.name}`)
+      return true
+    },
     async getVcsStatus(input) {
       calls.push(`vcsStatus:${input.workspaceRoot}`)
       return { branch: 'threadplane-work', clean: false, entries: [{ path: 'src/index.ts', index: ' ', workingTree: 'M' }] }
@@ -222,6 +238,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/file/content' },
       { method: 'GET', normalizedPath: '/file/status' },
       { method: 'GET', normalizedPath: '/lsp' },
+      { method: 'GET', normalizedPath: '/mcp' },
+      { method: 'POST', normalizedPath: '/mcp' },
+      { method: 'POST', normalizedPath: '/mcp/:name/connect' },
+      { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/provider' },
@@ -246,6 +266,76 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/vcs/apply' },
       { method: 'GET', normalizedPath: '/vcs/diff' },
       { method: 'GET', normalizedPath: '/vcs/status' },
+    ])
+  })
+
+  it('dispatches OpenCode MCP status, add, connect, and disconnect routes to runtime handlers', async () => {
+    const runtime = {
+      ...createRuntime(),
+      async listMcpStatus(input: { workspaceRoot: string }) {
+        this.calls.push(`mcpStatus:${input.workspaceRoot}`)
+        return {
+          local: {
+            type: 'local',
+            name: 'local',
+            status: 'connected',
+          },
+        }
+      },
+      async addMcpServer(input: { workspaceRoot: string; name: string; config: unknown }) {
+        this.calls.push(`mcpAdd:${input.workspaceRoot}:${input.name}:${JSON.stringify(input.config)}`)
+        return {
+          [input.name]: {
+            type: 'local',
+            name: input.name,
+            status: 'disconnected',
+          },
+        }
+      },
+      async connectMcpServer(input: { workspaceRoot: string; name: string }) {
+        this.calls.push(`mcpConnect:${input.workspaceRoot}:${input.name}`)
+        return true
+      },
+      async disconnectMcpServer(input: { workspaceRoot: string; name: string }) {
+        this.calls.push(`mcpDisconnect:${input.workspaceRoot}:${input.name}`)
+        return true
+      },
+    }
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(json(await router.handle(new Request('http://specter.test/mcp?directory=/repo')))).resolves.toEqual({
+      local: { type: 'local', name: 'local', status: 'connected' },
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/mcp?workspace=/repo', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: 'filesystem',
+              config: { type: 'local', command: ['node', 'mcp-server.js'], enabled: true },
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      filesystem: { type: 'local', name: 'filesystem', status: 'disconnected' },
+    })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/mcp/filesystem/connect?directory=/repo', { method: 'POST' }))),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/mcp/filesystem/disconnect?directory=/repo', { method: 'POST' }))),
+    ).resolves.toBe(true)
+
+    expect(runtime.calls.slice(-4)).toEqual([
+      'mcpStatus:/repo',
+      'mcpAdd:/repo:filesystem:{"type":"local","command":["node","mcp-server.js"],"enabled":true}',
+      'mcpConnect:/repo:filesystem',
+      'mcpDisconnect:/repo:filesystem',
     ])
   })
 

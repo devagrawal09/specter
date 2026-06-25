@@ -16,6 +16,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/file/content',
   '/file/status',
   '/lsp',
+  '/mcp',
   '/permission',
   '/provider',
   '/pty',
@@ -33,6 +34,8 @@ function isOpenCodeApiPath(pathname: string) {
   const normalized = pathname.replace(/\/+$/, '') || '/'
   if (EXACT_OPENCODE_API_PATHS.has(normalized)) return true
   return (
+    /^\/mcp\/[^/]+\/connect$/.test(normalized) ||
+    /^\/mcp\/[^/]+\/disconnect$/.test(normalized) ||
     /^\/permission\/[^/]+\/reply$/.test(normalized) ||
     /^\/pty\/[^/]+$/.test(normalized) ||
     /^\/pty\/[^/]+\/connect-token$/.test(normalized) ||

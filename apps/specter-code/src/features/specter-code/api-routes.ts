@@ -26,6 +26,13 @@ export type PtyShellSummary = {
 
 export type PtySize = { rows: number; cols: number }
 export type ApiPtySession = PtySession & { title?: string; size?: PtySize }
+export type ApiMcpStatus = {
+  type?: string
+  name: string
+  status: 'connected' | 'disconnected' | 'disabled' | 'failed'
+  error?: string
+  config?: unknown
+}
 
 export type SpecterCodeApiRuntime = {
   listSessions(input: { workspaceId: string }): Promise<unknown>
@@ -94,6 +101,14 @@ export type SpecterCodeApiRuntime = {
     include?: string[]
     limit?: number
   }): Promise<readonly LspDiagnostic[]>
+  listMcpStatus(input: { workspaceRoot: string }): Promise<Record<string, ApiMcpStatus> | unknown>
+  addMcpServer(input: {
+    workspaceRoot: string
+    name: string
+    config: unknown
+  }): Promise<Record<string, ApiMcpStatus> | unknown>
+  connectMcpServer(input: { workspaceRoot: string; name: string }): Promise<boolean | unknown>
+  disconnectMcpServer(input: { workspaceRoot: string; name: string }): Promise<boolean | unknown>
   getVcsStatus(input: { workspaceRoot: string }): Promise<GitStatus | unknown>
   getVcsDiff(input: {
     workspaceRoot: string
@@ -137,6 +152,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/file/content' },
   { method: 'GET', normalizedPath: '/file/status' },
   { method: 'GET', normalizedPath: '/lsp' },
+  { method: 'GET', normalizedPath: '/mcp' },
+  { method: 'POST', normalizedPath: '/mcp' },
+  { method: 'POST', normalizedPath: '/mcp/:name/connect' },
+  { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/provider' },
@@ -294,6 +313,41 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
         workspaceRoot: workspaceRootFromFindQuery(url),
         include: optionalListQuery(url, 'include'),
         limit: optionalIntegerQuery(url, 'limit'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/mcp') {
+    return jsonResponse(await runtime.listMcpStatus({ workspaceRoot: workspaceRootFromFindQuery(url) }))
+  }
+
+  if (method === 'POST' && pathname === '/mcp') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.addMcpServer({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: requiredString(body.name, 'name'),
+        config: requiredRecord(body.config, 'config'),
+      }),
+    )
+  }
+
+  const mcpConnectMatch = matchPath(pathname, '/mcp/:name/connect')
+  if (method === 'POST' && mcpConnectMatch) {
+    return jsonResponse(
+      await runtime.connectMcpServer({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpConnectMatch.name,
+      }),
+    )
+  }
+
+  const mcpDisconnectMatch = matchPath(pathname, '/mcp/:name/disconnect')
+  if (method === 'POST' && mcpDisconnectMatch) {
+    return jsonResponse(
+      await runtime.disconnectMcpServer({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpDisconnectMatch.name,
       }),
     )
   }
@@ -487,6 +541,7 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
 
 const livePtyManager = createPtySessionManager()
 const livePtyMetadata = new Map<string, { title?: string; size?: PtySize }>()
+const liveMcpServers = new Map<string, Map<string, ApiMcpStatus>>()
 
 function createLiveRuntime(): SpecterCodeApiRuntime {
   return {
@@ -590,6 +645,30 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listLspDiagnostics(input) {
       return limitItems(await collectTypeScriptDiagnostics(input), input.limit)
     },
+    async listMcpStatus(input) {
+      return liveMcpStatus(input.workspaceRoot)
+    },
+    async addMcpServer(input) {
+      const servers = liveMcpServersFor(input.workspaceRoot)
+      servers.set(input.name, {
+        type: readMcpConfigType(input.config),
+        name: input.name,
+        status: 'disconnected',
+        config: input.config,
+      })
+      return liveMcpStatus(input.workspaceRoot)
+    },
+    async connectMcpServer(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      server.status = 'connected'
+      server.error = undefined
+      return true
+    },
+    async disconnectMcpServer(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      server.status = 'disconnected'
+      return true
+    },
     async getVcsStatus(input) {
       return getGitStatus(input)
     },
@@ -660,6 +739,31 @@ function listAvailableShells(): PtyShellSummary[] {
     name: shellPath.split('/').filter(Boolean).at(-1) ?? shellPath,
     acceptable: true,
   }))
+}
+
+function liveMcpServersFor(workspaceRoot: string) {
+  const key = workspaceRoot || process.cwd()
+  let servers = liveMcpServers.get(key)
+  if (!servers) {
+    servers = new Map()
+    liveMcpServers.set(key, servers)
+  }
+  return servers
+}
+
+function liveMcpStatus(workspaceRoot: string) {
+  return Object.fromEntries(liveMcpServersFor(workspaceRoot).entries())
+}
+
+function requireLiveMcpServer(workspaceRoot: string, name: string) {
+  const server = liveMcpServersFor(workspaceRoot).get(name)
+  if (!server) throw new Error('Unknown MCP server: ' + name)
+  return server
+}
+
+function readMcpConfigType(config: unknown) {
+  if (!isRecord(config)) return undefined
+  return optionalString(config.type)
 }
 
 async function loadConfigForRegistry(workspaceRoot?: string) {
@@ -803,6 +907,11 @@ function requiredString(value: unknown, name: string) {
   if (typeof value !== 'string' || !value.trim()) {
     throw new Error(`Missing required field: ${name}`)
   }
+  return value
+}
+
+function requiredRecord(value: unknown, name: string) {
+  if (!isRecord(value)) throw new Error(`Missing required field: ${name}`)
   return value
 }
 

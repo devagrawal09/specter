@@ -68,6 +68,29 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(lsp.headers()['content-type']).toContain('application/json')
   expect(await lsp.json()).toEqual(expect.any(Array))
 
+  const mcpBeforeAdd = await request.get(`/mcp?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(mcpBeforeAdd.status()).toBe(200)
+  expect(mcpBeforeAdd.headers()['content-type']).toContain('application/json')
+  expect(await mcpBeforeAdd.json()).toEqual(expect.any(Object))
+
+  const mcpAdd = await request.post(`/mcp?directory=${encodeURIComponent(workspaceRoot)}`, {
+    data: { name: 'api-smoke', config: { type: 'local', command: ['node', 'server.js'] } },
+  })
+  expect(mcpAdd.status()).toBe(200)
+  expect(await mcpAdd.json()).toEqual(
+    expect.objectContaining({
+      'api-smoke': expect.objectContaining({ name: 'api-smoke', status: 'disconnected' }),
+    }),
+  )
+
+  const mcpConnect = await request.post(`/mcp/api-smoke/connect?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(mcpConnect.status()).toBe(200)
+  expect(await mcpConnect.json()).toBe(true)
+
+  const mcpDisconnect = await request.post(`/mcp/api-smoke/disconnect?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(mcpDisconnect.status()).toBe(200)
+  expect(await mcpDisconnect.json()).toBe(true)
+
   const vcsStatus = await request.get(`/vcs/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
   expect(vcsStatus.status()).toBe(200)
   expect(vcsStatus.headers()['content-type']).toContain('application/json')
