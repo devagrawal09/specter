@@ -68,6 +68,8 @@ export type SpecterCodeApiRuntime = {
   listProviders(input?: { workspaceRoot?: string }): Promise<ProviderSummary[] | unknown>
   listAgents(input?: { workspaceRoot?: string }): Promise<AgentSummary[] | unknown>
   listPendingQuestions(input: { sessionId?: string }): Promise<unknown>
+  replyQuestion(input: { requestId: string; answers: string[][] }): Promise<boolean | unknown>
+  rejectQuestion(input: { requestId: string; reason?: string }): Promise<boolean | unknown>
   listSkills(input: { workspaceRoot: string }): Promise<readonly SpecterCodeSkillInfo[] | unknown>
   listEvents(input: { afterOrder?: number }): Promise<readonly SpecterCodeStreamEvent[]>
   findFiles(input: {
@@ -147,6 +149,8 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/pty/:ptyID/connect-token' },
   { method: 'GET', normalizedPath: '/pty/:ptyID/connect' },
   { method: 'GET', normalizedPath: '/question' },
+  { method: 'POST', normalizedPath: '/question/:requestID/reply' },
+  { method: 'POST', normalizedPath: '/question/:requestID/reject' },
   { method: 'GET', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/skill' },
   { method: 'POST', normalizedPath: '/session' },
@@ -377,6 +381,28 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     )
   }
 
+  const questionReplyMatch = matchPath(pathname, '/question/:requestID/reply')
+  if (method === 'POST' && questionReplyMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.replyQuestion({
+        requestId: questionReplyMatch.requestID,
+        answers: readQuestionAnswers(body.answers),
+      }),
+    )
+  }
+
+  const questionRejectMatch = matchPath(pathname, '/question/:requestID/reject')
+  if (method === 'POST' && questionRejectMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.rejectQuestion({
+        requestId: questionRejectMatch.requestID,
+        reason: optionalString(body.reason),
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/provider') {
     return jsonResponse(
       await runtime.listProviders({ workspaceRoot: optionalQuery(url, 'workspaceRoot') }),
@@ -518,6 +544,32 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listPendingQuestions(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodePendingQuestionsOnServer(input ?? {})
+    },
+    async replyQuestion(input) {
+      const runtime = await import('./server-runtime.server')
+      const question = await findPendingQuestion(
+        input.requestId,
+        runtime.listSpecterCodePendingQuestionsOnServer,
+      )
+      await runtime.replySpecterCodeQuestionOnServer({
+        questionId: input.requestId,
+        sessionId: question.sessionId,
+        answer: formatQuestionAnswers(input.answers),
+      })
+      return true
+    },
+    async rejectQuestion(input) {
+      const runtime = await import('./server-runtime.server')
+      const question = await findPendingQuestion(
+        input.requestId,
+        runtime.listSpecterCodePendingQuestionsOnServer,
+      )
+      await runtime.replySpecterCodeQuestionOnServer({
+        questionId: input.requestId,
+        sessionId: question.sessionId,
+        answer: input.reason ? `Rejected: ${input.reason}` : 'Rejected',
+      })
+      return true
     },
     async listSkills(input) {
       return listSpecterCodeSkills(input)
@@ -705,6 +757,46 @@ function readFindFileType(value: string | undefined) {
   if (value === undefined) return undefined
   if (value === 'file' || value === 'directory') return value
   throw new Error('Invalid find file type')
+}
+
+function readQuestionAnswers(value: unknown) {
+  if (!Array.isArray(value)) throw new Error('Missing required field: answers')
+  const answers = value.map((answer) => {
+    if (!Array.isArray(answer)) throw new Error('Invalid question answer')
+    return answer
+      .map((label) => {
+        if (typeof label !== 'string') throw new Error('Invalid question answer')
+        return label.trim()
+      })
+      .filter(Boolean)
+  })
+  if (!answers.length || !answers.some((answer) => answer.length > 0)) {
+    throw new Error('Question answer is required')
+  }
+  return answers
+}
+
+function formatQuestionAnswers(answers: string[][]) {
+  return answers.map((answer) => answer.join(', ')).filter(Boolean).join(' | ')
+}
+
+type PendingQuestionSummary = { questionId: string; sessionId: string }
+
+async function findPendingQuestion(
+  questionId: string,
+  listQuestions: (input: { sessionId?: string }) => Promise<unknown>,
+) {
+  const questions = await listQuestions({})
+  if (!Array.isArray(questions)) throw new Error('Pending question list is unavailable')
+  const question = questions.find((candidate): candidate is PendingQuestionSummary => {
+    return (
+      isRecord(candidate) &&
+      candidate.questionId === questionId &&
+      typeof candidate.sessionId === 'string'
+    )
+  })
+  if (!question) throw new Error(`Pending question not found: ${questionId}`)
+  return question
 }
 
 function requiredString(value: unknown, name: string) {

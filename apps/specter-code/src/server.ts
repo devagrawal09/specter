@@ -37,6 +37,8 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/pty\/[^/]+$/.test(normalized) ||
     /^\/pty\/[^/]+\/connect-token$/.test(normalized) ||
     /^\/pty\/[^/]+\/connect$/.test(normalized) ||
+    /^\/question\/[^/]+\/reply$/.test(normalized) ||
+    /^\/question\/[^/]+\/reject$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
     /^\/session\/[^/]+\/todo$/.test(normalized)

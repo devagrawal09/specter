@@ -105,6 +105,13 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(questions.headers()['content-type']).toContain('application/json')
   expect(await questions.json()).toEqual(expect.any(Array))
 
+  const missingQuestionReject = await request.post('/question/question-api-smoke/reject')
+  expect(missingQuestionReject.status()).toBe(400)
+  expect(missingQuestionReject.headers()['content-type']).toContain('application/json')
+  expect(await missingQuestionReject.json()).toEqual({
+    error: 'Pending question not found: question-api-smoke',
+  })
+
   const skills = await request.get(`/skill?directory=${encodeURIComponent(workspaceRoot)}`)
   expect(skills.status()).toBe(200)
   expect(skills.headers()['content-type']).toContain('application/json')

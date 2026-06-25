@@ -80,6 +80,17 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async replyQuestion(input) {
+      const serializedAnswers = input.answers
+        .map((answer) => answer.join(','))
+        .join('|')
+      calls.push(`replyQuestion:${input.requestId}:${serializedAnswers}`)
+      return true
+    },
+    async rejectQuestion(input) {
+      calls.push(`rejectQuestion:${input.requestId}:${input.reason ?? ''}`)
+      return true
+    },
     async listSkills(input) {
       calls.push(`skills:${input.workspaceRoot}`)
       return [
@@ -223,6 +234,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/pty/:ptyID/connect-token' },
       { method: 'GET', normalizedPath: '/pty/:ptyID/connect' },
       { method: 'GET', normalizedPath: '/question' },
+      { method: 'POST', normalizedPath: '/question/:requestID/reply' },
+      { method: 'POST', normalizedPath: '/question/:requestID/reject' },
       { method: 'GET', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/skill' },
       { method: 'POST', normalizedPath: '/session' },
@@ -328,6 +341,28 @@ describe('Specter Code OpenCode API route adapter', () => {
         allowFreeform: true,
       },
     ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/question/question-1/reply', {
+            method: 'POST',
+            body: JSON.stringify({ answers: [['Safe migration', 'Run tests']] }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/question/question-2/reject', {
+            method: 'POST',
+            body: JSON.stringify({ reason: 'Need manual review' }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
 
     await expect(json(await router.handle(new Request('http://specter.test/skill?directory=/repo')))).resolves.toEqual([
       {
@@ -503,6 +538,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       'providers',
       'agents',
       'questions:all',
+      'replyQuestion:question-1:Safe migration,Run tests',
+      'rejectQuestion:question-2:Need manual review',
       'skills:/repo',
       'findFiles:/repo:index:25',
       'findText:/repo:value',
