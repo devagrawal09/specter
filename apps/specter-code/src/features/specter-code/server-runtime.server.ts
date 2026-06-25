@@ -117,6 +117,27 @@ export async function getSpecterCodeSessionOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.sessionDetail(data))
 }
 
+
+export async function forkSpecterCodeSessionOnServer(data: {
+  sessionId: string
+  newSessionId: string
+  workspaceId: string
+  title: string
+  directory: string
+  agent: string
+  model: { providerId: string; modelId: string }
+  createdBy?: { userId?: string; displayName: string }
+}) {
+  await runWithSpecterCodeReferenceDb(() => app.forkSession(data))
+  return getSpecterCodeSessionOnServer({ sessionId: data.newSessionId })
+}
+
+export async function listSpecterCodeSessionChildrenOnServer(data: {
+  sessionId: string
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.sessionChildren(data))
+}
+
 export async function updateSpecterCodeSessionOnServer(data: {
   sessionId: string
   title?: string

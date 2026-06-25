@@ -117,6 +117,13 @@ export type SpecterCodeApiRuntime = {
   }): Promise<unknown>
   getFileStatus(input: { workspaceId: string }): Promise<unknown>
   listSessionTodos(input: { sessionId: string }): Promise<unknown>
+  listSessionChildren(input: { sessionId: string }): Promise<unknown>
+  forkSession(input: {
+    sessionId: string
+    newSessionId?: string
+    title?: string
+    createdBy?: { userId?: string; displayName: string }
+  }): Promise<unknown>
   listPendingPermissions(input: { sessionId: string }): Promise<unknown>
   replyPermission(input: {
     requestId: string
@@ -265,8 +272,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/session/:sessionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
+  { method: 'GET', normalizedPath: '/session/:sessionID/children' },
   { method: 'POST', normalizedPath: '/session/:sessionID/message' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
   { method: 'PATCH', normalizedPath: '/session/:sessionID' },
   { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
@@ -420,6 +429,28 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.listSessionTodos({
         sessionId: sessionTodoMatch.sessionID,
+      }),
+    )
+  }
+
+  const sessionChildrenMatch = matchPath(pathname, '/session/:sessionID/children')
+  if (method === 'GET' && sessionChildrenMatch) {
+    return jsonResponse(
+      await runtime.listSessionChildren({
+        sessionId: sessionChildrenMatch.sessionID,
+      }),
+    )
+  }
+
+  const forkSessionMatch = matchPath(pathname, '/session/:sessionID/fork')
+  if (method === 'POST' && forkSessionMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.forkSession({
+        sessionId: forkSessionMatch.sessionID,
+        newSessionId: optionalString(body.sessionId) ?? optionalString(body.newSessionId),
+        title: optionalString(body.title),
+        createdBy: readActor(body.createdBy),
       }),
     )
   }
@@ -868,6 +899,30 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listSessionTodos(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeSessionTodosOnServer(input)
+    },
+    async listSessionChildren(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.listSpecterCodeSessionChildrenOnServer(input)
+    },
+    async forkSession(input) {
+      const runtime = await import('./server-runtime.server')
+      const parent = await runtime.getSpecterCodeSessionOnServer({
+        sessionId: input.sessionId,
+      })
+      if (!isRecord(parent)) throw new Error('Parent session is unavailable')
+      const newSessionId = input.newSessionId ?? randomUUID()
+      const parentTitle = requiredString(parent.title, 'session.title')
+      await runtime.forkSpecterCodeSessionOnServer({
+        sessionId: input.sessionId,
+        newSessionId,
+        workspaceId: requiredString(parent.workspaceId, 'session.workspaceId'),
+        title: input.title ?? `Fork of ${parentTitle}`,
+        directory: requiredString(parent.directory, 'session.directory'),
+        agent: requiredString(parent.agent, 'session.agent'),
+        model: readModel(parent.model),
+        createdBy: input.createdBy,
+      })
+      return runtime.getSpecterCodeSessionOnServer({ sessionId: newSessionId })
     },
     async listPendingPermissions(input) {
       const runtime = await import('./server-runtime.server')

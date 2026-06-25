@@ -25,6 +25,7 @@ export const sessionCreatedEvent = createEventDefinition(
   'sessionCreated',
   z.object({
     sessionId: z.string(),
+    parentSessionId: z.string().optional(),
     workspaceId: z.string(),
     title: z.string(),
     directory: z.string(),

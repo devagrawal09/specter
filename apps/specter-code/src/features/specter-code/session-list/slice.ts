@@ -11,6 +11,7 @@ import {
 type SessionListItem = {
   id: string
   workspaceId: string
+  parentSessionId?: string
   title: string
   directory: string
   agent: string
@@ -45,6 +46,7 @@ const sessionList = createQuerySlice(
       state.sessions.push({
         id: payload.sessionId,
         workspaceId: payload.workspaceId,
+        parentSessionId: payload.parentSessionId,
         title: payload.title,
         directory: payload.directory,
         agent: payload.agent,

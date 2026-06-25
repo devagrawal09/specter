@@ -97,6 +97,26 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         { id: 'todo-1', content: 'Ship API route', status: 'in_progress' },
       ]
     },
+    async listSessionChildren(input) {
+      calls.push(`sessionChildren:${input.sessionId}`)
+      return [
+        {
+          id: 'session-child',
+          parentSessionId: input.sessionId,
+          title: 'Child session',
+        },
+      ]
+    },
+    async forkSession(input) {
+      calls.push(
+        `forkSession:${input.sessionId}:${input.newSessionId ?? ''}:${input.title ?? ''}`,
+      )
+      return {
+        id: input.newSessionId ?? 'session-child',
+        parentSessionId: input.sessionId,
+        title: input.title ?? 'Fork of Main session',
+      }
+    },
     async listPendingPermissions(input) {
       calls.push(`permissions:${input.sessionId}`)
       return [{ requestId: 'request-1', action: 'ask' }]
@@ -391,8 +411,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/session/:sessionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
+      { method: 'GET', normalizedPath: '/session/:sessionID/children' },
       { method: 'POST', normalizedPath: '/session/:sessionID/message' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
       { method: 'PATCH', normalizedPath: '/session/:sessionID' },
       { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
@@ -649,6 +671,38 @@ describe('Specter Code OpenCode API route adapter', () => {
     ).resolves.toEqual([
       { id: 'todo-1', content: 'Ship API route', status: 'in_progress' },
     ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/children'),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        id: 'session-child',
+        parentSessionId: 'session-main',
+        title: 'Child session',
+      },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/fork', {
+            method: 'POST',
+            body: JSON.stringify({
+              sessionId: 'session-child',
+              title: 'Investigate in child',
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-child',
+      parentSessionId: 'session-main',
+      title: 'Investigate in child',
+    })
 
     await expect(
       json(
@@ -1068,6 +1122,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       'deleteSession:session-main',
       'transcript:session-main',
       'sessionTodos:session-main',
+      'sessionChildren:session-main',
+      'forkSession:session-main:session-child:Investigate in child',
       'submitPrompt:session-main:workspace-main:ship it',
       'fileTree:workspace-main:src',
       'readFile:workspace-main:src/index.ts',
