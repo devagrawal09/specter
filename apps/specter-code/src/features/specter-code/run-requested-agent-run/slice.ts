@@ -7,9 +7,12 @@ import {
   agentRunRequestedEvent,
   agentRunStartedEvent,
   agentRunStreamedEvent,
+  toolApprovalRepliedEvent,
+  toolApprovalRequestedEvent,
   toolCallCompletedEvent,
   toolCallFailedEvent,
   toolCallStartedEvent,
+  userMessageSubmittedEvent,
 } from '../events'
 import {
   buildFailureMessage,
@@ -70,6 +73,21 @@ type RunRequestedAgentRunCommand =
       }
     }
   | {
+      type: 'requestToolApproval'
+      payload: {
+        requestId: string
+        sessionId: string
+        messageId: string
+        workspaceId: string
+        agentId: string
+        toolCallId: string
+        toolName: string
+        permission: string
+        target: string
+        reason: string
+      }
+    }
+  | {
       type: 'recordAgentRunStreamed'
       payload: {
         runId: string
@@ -111,8 +129,12 @@ type RunRequestedAgentRunState = {
       toolStarted: boolean
       toolCompleted: boolean
       streamIndex: number
+      approvalRequestId?: string
+      approvalStatus?: 'pending' | 'allow' | 'deny'
     }
   >
+  messageSessions: Record<string, string>
+  approvalRequests: Record<string, string>
   startedRunIds: Set<string>
   terminalRunIds: Set<string>
 }
@@ -121,110 +143,176 @@ export function createRunRequestedAgentRunState(): RunRequestedAgentRunState {
   return {
     requestedRuns: [],
     runPlans: {},
+    messageSessions: {},
+    approvalRequests: {},
     startedRunIds: new Set(),
     terminalRunIds: new Set(),
   }
 }
 
+function toolCallIdForRun(runId: string) {
+  return `${runId}-tool-1`
+}
+
+function approvalRequestIdForToolCall(toolCallId: string) {
+  return `${toolCallId}-approval`
+}
+
+function permissionForSimulatedTool(toolName: string) {
+  if (toolName === 'readFile' || toolName === 'inspectWorkspace') {
+    return { permission: 'file.read', target: 'workspace' }
+  }
+
+  if (toolName === 'searchFiles') {
+    return { permission: 'file.grep', target: '**/*' }
+  }
+
+  return { permission: `tool.${toolName}`, target: toolName }
+}
+
 export function nextRunRequestedAgentRunCommand(
   state: RunRequestedAgentRunState,
 ): RunRequestedAgentRunCommand | undefined {
-  const nextRun = state.requestedRuns.find(
-    (run) => !state.terminalRunIds.has(run.runId),
-  )
+  for (const nextRun of state.requestedRuns) {
+    if (state.terminalRunIds.has(nextRun.runId)) continue
 
-  if (!nextRun) return undefined
+    const plan = state.runPlans[nextRun.runId]
+    if (!plan) continue
 
-  const plan = state.runPlans[nextRun.runId]
-  if (!plan) return undefined
-
-  if (!state.startedRunIds.has(nextRun.runId)) {
-    return {
-      type: 'recordAgentRunStarted',
-      payload: {
-        runId: nextRun.runId,
-        workspaceId: nextRun.workspaceId,
-        agentId: nextRun.agentId,
-      },
-    }
-  }
-
-  if (!plan.toolStarted) {
-    return {
-      type: 'recordToolCallStarted',
-      payload: {
-        toolCallId: `${nextRun.runId}-tool-1`,
-        runId: nextRun.runId,
-        workspaceId: nextRun.workspaceId,
-        agentId: nextRun.agentId,
-        toolName: plan.toolName,
-        inputSummary: 'Simulated workspace inspection',
-      },
-    }
-  }
-
-  if (!plan.toolCompleted) {
-    if (plan.shouldFail && !plan.failed) {
+    if (!state.startedRunIds.has(nextRun.runId)) {
       return {
-        type: 'recordToolCallFailed',
+        type: 'recordAgentRunStarted',
         payload: {
-          toolCallId: `${nextRun.runId}-tool-1`,
+          runId: nextRun.runId,
+          workspaceId: nextRun.workspaceId,
+          agentId: nextRun.agentId,
+        },
+      }
+    }
+
+    if (!plan.toolStarted) {
+      return {
+        type: 'recordToolCallStarted',
+        payload: {
+          toolCallId: toolCallIdForRun(nextRun.runId),
           runId: nextRun.runId,
           workspaceId: nextRun.workspaceId,
           agentId: nextRun.agentId,
           toolName: plan.toolName,
+          inputSummary: 'Simulated workspace inspection',
+        },
+      }
+    }
+
+    if (!plan.toolCompleted) {
+      const toolCallId = toolCallIdForRun(nextRun.runId)
+      const promptMessageId = nextRun.postId
+      const promptSessionId = promptMessageId
+        ? state.messageSessions[promptMessageId]
+        : undefined
+
+      if (promptMessageId && promptSessionId) {
+        if (!plan.approvalRequestId) {
+          const requestId = approvalRequestIdForToolCall(toolCallId)
+          const { permission, target } = permissionForSimulatedTool(plan.toolName)
+          return {
+            type: 'requestToolApproval',
+            payload: {
+              requestId,
+              sessionId: promptSessionId,
+              messageId: promptMessageId,
+              workspaceId: nextRun.workspaceId,
+              agentId: nextRun.agentId,
+              toolCallId,
+              toolName: plan.toolName,
+              permission,
+              target,
+              reason: `Agent wants to run ${plan.toolName} for this prompt.`,
+            },
+          }
+        }
+
+        if (plan.approvalStatus === 'pending') continue
+
+        if (plan.approvalStatus === 'deny') {
+          return {
+            type: 'recordToolCallFailed',
+            payload: {
+              toolCallId,
+              runId: nextRun.runId,
+              workspaceId: nextRun.workspaceId,
+              agentId: nextRun.agentId,
+              toolName: plan.toolName,
+              error: `Tool denied by user approval: ${plan.toolName}.`,
+            },
+          }
+        }
+      }
+
+      if (plan.shouldFail && !plan.failed) {
+        return {
+          type: 'recordToolCallFailed',
+          payload: {
+            toolCallId,
+            runId: nextRun.runId,
+            workspaceId: nextRun.workspaceId,
+            agentId: nextRun.agentId,
+            toolName: plan.toolName,
+            error: buildFailureMessage(plan.toolName),
+          },
+        }
+      }
+
+      return {
+        type: 'recordToolCallCompleted',
+        payload: {
+          toolCallId,
+          runId: nextRun.runId,
+          workspaceId: nextRun.workspaceId,
+          agentId: nextRun.agentId,
+          toolName: plan.toolName,
+          outputSummary: `Simulated ${plan.toolName} output`,
+        },
+      }
+    }
+
+    if (plan.shouldFail || plan.failed) {
+      return {
+        type: 'recordAgentRunFailed',
+        payload: {
+          runId: nextRun.runId,
+          workspaceId: nextRun.workspaceId,
+          agentId: nextRun.agentId,
           error: buildFailureMessage(plan.toolName),
         },
       }
     }
 
+    if (plan.streamIndex < plan.chunks.length) {
+      return {
+        type: 'recordAgentRunStreamed',
+        payload: {
+          chunkId: `${nextRun.runId}-chunk-${plan.streamIndex + 1}`,
+          runId: nextRun.runId,
+          workspaceId: nextRun.workspaceId,
+          agentId: nextRun.agentId,
+          sequence: plan.streamIndex,
+          delta: plan.chunks[plan.streamIndex],
+        },
+      }
+    }
+
     return {
-      type: 'recordToolCallCompleted',
+      type: 'recordAgentRunCompleted',
       payload: {
-        toolCallId: `${nextRun.runId}-tool-1`,
         runId: nextRun.runId,
         workspaceId: nextRun.workspaceId,
         agentId: nextRun.agentId,
-        toolName: plan.toolName,
-        outputSummary: `Simulated ${plan.toolName} output`,
       },
     }
   }
 
-  if (plan.shouldFail || plan.failed) {
-    return {
-      type: 'recordAgentRunFailed',
-      payload: {
-        runId: nextRun.runId,
-        workspaceId: nextRun.workspaceId,
-        agentId: nextRun.agentId,
-        error: buildFailureMessage(plan.toolName),
-      },
-    }
-  }
-
-  if (plan.streamIndex < plan.chunks.length) {
-    return {
-      type: 'recordAgentRunStreamed',
-      payload: {
-        chunkId: `${nextRun.runId}-chunk-${plan.streamIndex + 1}`,
-        runId: nextRun.runId,
-        workspaceId: nextRun.workspaceId,
-        agentId: nextRun.agentId,
-        sequence: plan.streamIndex,
-        delta: plan.chunks[plan.streamIndex],
-      },
-    }
-  }
-
-  return {
-    type: 'recordAgentRunCompleted',
-    payload: {
-      runId: nextRun.runId,
-      workspaceId: nextRun.workspaceId,
-      agentId: nextRun.agentId,
-    },
-  }
+  return undefined
 }
 
 const runRequestedAgentRun = createReactionSlice(
@@ -241,6 +329,10 @@ const runRequestedAgentRun = createReactionSlice(
     ),
   )
   .apply({
+    [userMessageSubmittedEvent.type]: async (event, state) => {
+      const payload = await userMessageSubmittedEvent.decode(event.payload)
+      state.messageSessions[payload.messageId] = payload.sessionId
+    },
     [agentRunRequestedEvent.type]: async (event, state) => {
       const payload = await agentRunRequestedEvent.decode(event.payload)
       const plan = getSimulatedAgentPlan(payload.runId)
@@ -265,6 +357,26 @@ const runRequestedAgentRun = createReactionSlice(
       const payload = await toolCallStartedEvent.decode(event.payload)
       const plan = state.runPlans[payload.runId]
       if (plan) plan.toolStarted = true
+    },
+    [toolApprovalRequestedEvent.type]: async (event, state) => {
+      const payload = await toolApprovalRequestedEvent.decode(event.payload)
+      if (!payload.toolCallId) return
+      const run = state.requestedRuns.find(
+        (candidate) => toolCallIdForRun(candidate.runId) === payload.toolCallId,
+      )
+      if (!run) return
+      const plan = state.runPlans[run.runId]
+      if (!plan) return
+      plan.approvalRequestId = payload.requestId
+      plan.approvalStatus = 'pending'
+      state.approvalRequests[payload.requestId] = run.runId
+    },
+    [toolApprovalRepliedEvent.type]: async (event, state) => {
+      const payload = await toolApprovalRepliedEvent.decode(event.payload)
+      const runId = state.approvalRequests[payload.requestId]
+      if (!runId) return
+      const plan = state.runPlans[runId]
+      if (plan) plan.approvalStatus = payload.action
     },
     [toolCallCompletedEvent.type]: async (event, state) => {
       const payload = await toolCallCompletedEvent.decode(event.payload)

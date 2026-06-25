@@ -84,6 +84,10 @@ test('creates a workspace, prompts a session, scans, previews a file, and shows 
   await page.getByRole('button', { name: 'Send' }).click()
   const transcriptLog = page.getByRole('log', { name: 'Session transcript' })
   await expect(transcriptLog.getByText(prompt, { exact: false })).toBeVisible()
+  const pendingApprovals = page.getByRole('region', { name: 'Pending approvals' })
+  const allowPromptTool = pendingApprovals.getByRole('button', { name: /Allow / }).first()
+  await expect(allowPromptTool).toBeVisible()
+  await allowPromptTool.click()
   await expect
     .poll(async () => {
       return listSpecterCodeSessionTranscriptOnServer({ sessionId: session!.id })
