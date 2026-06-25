@@ -95,6 +95,18 @@ export type SpecterCodeApiRuntime = {
     submittedBy: { userId?: string; displayName: string }
   }): Promise<unknown>
   listSessionTranscript(input: { sessionId: string }): Promise<unknown>
+  listSessionStatus(input: { workspaceRoot?: string }): Promise<unknown>
+  createSessionMessage(input: {
+    sessionId: string
+    messageId?: string
+    content: string
+    agentId: string
+    agentName?: string
+    model?: { providerId: string; modelId: string }
+    noReply?: boolean
+    submittedBy?: { userId?: string; displayName: string }
+  }): Promise<unknown>
+  abortSession(input: { sessionId: string }): Promise<boolean | unknown>
   listFileTree(input: {
     workspaceId: string
     parentPath?: string | null
@@ -248,9 +260,12 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/question/:requestID/reply' },
   { method: 'POST', normalizedPath: '/question/:requestID/reject' },
   { method: 'GET', normalizedPath: '/session' },
+  { method: 'GET', normalizedPath: '/session/status' },
   { method: 'GET', normalizedPath: '/skill' },
   { method: 'POST', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/session/:sessionID' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/message' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID' },
   { method: 'PATCH', normalizedPath: '/session/:sessionID' },
   { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
@@ -328,6 +343,14 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  if (method === 'GET' && pathname === '/session/status') {
+    return jsonResponse(
+      await runtime.listSessionStatus({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
   const sessionMatch = matchPath(pathname, '/session/:sessionID')
   if (method === 'GET' && sessionMatch) {
     return jsonResponse(
@@ -365,6 +388,30 @@ async function dispatchOpenCodeApiRequest(
       await runtime.listSessionTranscript({
         sessionId: sessionMessageMatch.sessionID,
       }),
+    )
+  }
+
+  if (method === 'POST' && sessionMessageMatch) {
+    const body = await readJsonBody(request)
+    const agentId = optionalString(body.agent) ?? 'build'
+    return jsonResponse(
+      await runtime.createSessionMessage({
+        sessionId: sessionMessageMatch.sessionID,
+        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        content: readMessagePartsText(body.parts),
+        agentId,
+        agentName: optionalString(body.agentName) ?? agentId,
+        model: readOptionalOpenCodeModel(body.model),
+        noReply: optionalBoolean(body.noReply),
+        submittedBy: readActor(body.submittedBy) ?? { displayName: 'OpenCode API' },
+      }),
+    )
+  }
+
+  const sessionAbortMatch = matchPath(pathname, '/session/:sessionID/abort')
+  if (method === 'POST' && sessionAbortMatch) {
+    return jsonResponse(
+      await runtime.abortSession({ sessionId: sessionAbortMatch.sessionID }),
     )
   }
 
@@ -724,6 +771,10 @@ async function dispatchOpenCodeApiRequest(
 const livePtyManager = createPtySessionManager()
 const livePtyMetadata = new Map<string, { title?: string; size?: PtySize }>()
 const liveMcpServers = new Map<string, Map<string, ApiMcpStatus>>()
+const liveSessionStatuses = new Map<
+  string,
+  { sessionId: string; status: 'idle' | 'running' | 'aborted'; updatedAt: string }
+>()
 
 function createLiveRuntime(): SpecterCodeApiRuntime {
   return {
@@ -749,11 +800,58 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async submitPrompt(input) {
       const runtime = await import('./server-runtime.server')
+      liveSessionStatuses.set(input.sessionId, {
+        sessionId: input.sessionId,
+        status: 'running',
+        updatedAt: new Date().toISOString(),
+      })
       return runtime.submitSpecterCodePromptOnServer(input)
     },
     async listSessionTranscript(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeSessionTranscriptOnServer(input)
+    },
+    async listSessionStatus() {
+      return Object.fromEntries(liveSessionStatuses.entries())
+    },
+    async createSessionMessage(input) {
+      const runtime = await import('./server-runtime.server')
+      const session = await runtime.getSpecterCodeSessionOnServer({
+        sessionId: input.sessionId,
+      })
+      if (!isRecord(session)) throw new Error('Session is unavailable')
+      liveSessionStatuses.set(input.sessionId, {
+        sessionId: input.sessionId,
+        status: input.noReply ? 'idle' : 'running',
+        updatedAt: new Date().toISOString(),
+      })
+      const workspaceId = requiredString(session.workspaceId, 'session.workspaceId')
+      if (input.noReply) {
+        return runtime.recordSpecterCodeSessionMessageOnServer({
+          messageId: input.messageId,
+          sessionId: input.sessionId,
+          workspaceId,
+          content: input.content,
+          submittedBy: input.submittedBy ?? { displayName: 'OpenCode API' },
+        })
+      }
+      return runtime.submitSpecterCodePromptOnServer({
+        messageId: input.messageId,
+        sessionId: input.sessionId,
+        workspaceId,
+        content: input.content,
+        agentId: input.agentId,
+        agentName: input.agentName ?? input.agentId,
+        submittedBy: input.submittedBy ?? { displayName: 'OpenCode API' },
+      })
+    },
+    async abortSession(input) {
+      liveSessionStatuses.set(input.sessionId, {
+        sessionId: input.sessionId,
+        status: 'aborted',
+        updatedAt: new Date().toISOString(),
+      })
+      return true
     },
     async listFileTree(input) {
       const runtime = await import('./server-runtime.server')
@@ -1173,6 +1271,30 @@ function readModel(value: unknown) {
     providerId: requiredString(value.providerId, 'model.providerId'),
     modelId: requiredString(value.modelId, 'model.modelId'),
   }
+}
+
+function readOptionalOpenCodeModel(value: unknown) {
+  if (value === undefined || value === null) return undefined
+  if (!isRecord(value)) throw new Error('Invalid model')
+  return {
+    providerId:
+      optionalString(value.providerId) ??
+      requiredString(value.providerID, 'model.providerID'),
+    modelId:
+      optionalString(value.modelId) ?? requiredString(value.modelID, 'model.modelID'),
+  }
+}
+
+function readMessagePartsText(value: unknown) {
+  if (!Array.isArray(value)) throw new Error('Missing required field: parts')
+  const chunks = value.map((part) => {
+    if (!isRecord(part)) throw new Error('Invalid message part')
+    if (part.type !== 'text') throw new Error('Only text message parts are supported')
+    return requiredString(part.text, 'parts.text')
+  })
+  const content = chunks.join('\n\n').trim()
+  if (!content) throw new Error('Message content is required')
+  return content
 }
 
 function readActor(value: unknown) {

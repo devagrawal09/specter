@@ -150,6 +150,16 @@ export async function submitSpecterCodePromptOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.submitPrompt(data))
 }
 
+export async function recordSpecterCodeSessionMessageOnServer(data: {
+  messageId?: string
+  sessionId: string
+  workspaceId: string
+  content: string
+  submittedBy: { userId?: string; displayName: string }
+}) {
+  return runWithSpecterCodeReferenceDb(() => app.recordSessionMessage(data))
+}
+
 export async function listSpecterCodeSessionTranscriptOnServer(data: {
   sessionId: string
 }) {

@@ -16,6 +16,7 @@ import recordAgentRunCompleted from './record-agent-run-completed/slice'
 import recordAgentRunFailed from './record-agent-run-failed/slice'
 import recordAgentRunStarted from './record-agent-run-started/slice'
 import recordAgentRunStreamed from './record-agent-run-streamed/slice'
+import recordSessionMessage from './record-session-message/slice'
 import recordFilesystemNodeChanged from './record-filesystem-node-changed/slice'
 import recordFilesystemNodeDeleted from './record-filesystem-node-deleted/slice'
 import recordFilesystemNodeDiscovered from './record-filesystem-node-discovered/slice'
@@ -64,6 +65,7 @@ export const specterCodeScaffoldRegistrations = [
   sessionList,
   sessionDetail,
   submitPrompt,
+  recordSessionMessage,
   sessionTranscript,
   createPost,
   replyToPost,

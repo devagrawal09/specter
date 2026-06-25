@@ -58,6 +58,27 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`transcript:${input.sessionId}`)
       return [{ id: 'message-1', role: 'assistant', content: 'done' }]
     },
+    async listSessionStatus(input) {
+      calls.push(`sessionStatus:${input.workspaceRoot ?? ''}`)
+      return { 'session-main': { status: 'idle', sessionId: 'session-main' } }
+    },
+    async createSessionMessage(input) {
+      calls.push(
+        `sessionMessage:${input.sessionId}:${input.messageId ?? ''}:${input.agentId}:${input.noReply ? 'no-reply' : 'reply'}:${input.content}`,
+      )
+      return {
+        info: {
+          id: input.messageId ?? 'generated-message',
+          sessionID: input.sessionId,
+          role: 'assistant',
+        },
+        parts: [],
+      }
+    },
+    async abortSession(input) {
+      calls.push(`abortSession:${input.sessionId}`)
+      return true
+    },
     async listFileTree(input) {
       calls.push(`fileTree:${input.workspaceId}:${input.parentPath ?? ''}`)
       return [{ path: 'src/index.ts', type: 'file' }]
@@ -365,9 +386,12 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/question/:requestID/reply' },
       { method: 'POST', normalizedPath: '/question/:requestID/reject' },
       { method: 'GET', normalizedPath: '/session' },
+      { method: 'GET', normalizedPath: '/session/status' },
       { method: 'GET', normalizedPath: '/skill' },
       { method: 'POST', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/session/:sessionID' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/abort' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/message' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID' },
       { method: 'PATCH', normalizedPath: '/session/:sessionID' },
       { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
@@ -379,6 +403,57 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/vcs/apply' },
       { method: 'GET', normalizedPath: '/vcs/diff' },
       { method: 'GET', normalizedPath: '/vcs/status' },
+    ])
+  })
+
+  it('dispatches OpenCode session status, prompt message, and abort routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/session/status?directory=/repo'))),
+    ).resolves.toEqual({
+      'session-main': { status: 'idle', sessionId: 'session-main' },
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/message', {
+            method: 'POST',
+            body: JSON.stringify({
+              messageID: 'msg_api',
+              agent: 'build',
+              noReply: true,
+              model: {
+                providerID: 'openrouter',
+                modelID: 'anthropic/claude-sonnet-4',
+              },
+              parts: [
+                { type: 'text', text: 'hello' },
+                { type: 'text', text: 'world' },
+              ],
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      info: { id: 'msg_api', sessionID: 'session-main', role: 'assistant' },
+      parts: [],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/abort', { method: 'POST' }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    expect(runtime.calls.slice(-3)).toEqual([
+      'sessionStatus:/repo',
+      'sessionMessage:session-main:msg_api:build:no-reply:hello\n\nworld',
+      'abortSession:session-main',
     ])
   })
 
