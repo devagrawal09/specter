@@ -20,6 +20,7 @@ import {
 import {
   applyGitPatch,
   getGitDiff,
+  revertWorkspacePaths,
   getGitStatus,
   type GitDiff,
   type GitStatus,
@@ -183,6 +184,11 @@ export type SpecterCodeApiRuntime = {
     patch: string
     staged?: boolean
   }): Promise<{ paths: string[]; staged: boolean } | unknown>
+  revertSession(input: {
+    sessionId: string
+    workspaceRoot: string
+    paths: string[]
+  }): Promise<{ paths: string[] } | unknown>
   listPtyShells(input: {
     workspaceRoot?: string
   }): Promise<readonly PtyShellSummary[] | unknown>
@@ -247,8 +253,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/session/:sessionID' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID' },
   { method: 'PATCH', normalizedPath: '/session/:sessionID' },
+  { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
   { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -498,6 +506,29 @@ async function dispatchOpenCodeApiRequest(
         workspaceRoot: optionalString(body.workspaceRoot) ?? process.cwd(),
         patch: requiredString(body.patch, 'patch'),
         staged: optionalBoolean(body.staged),
+      }),
+    )
+  }
+
+  const sessionDiffMatch = matchPath(pathname, '/session/:sessionID/diff')
+  if (method === 'GET' && sessionDiffMatch) {
+    return jsonResponse(
+      await runtime.getVcsDiff({
+        workspaceRoot: workspaceRootFromQuery(url),
+        path: optionalQuery(url, 'path'),
+        staged: optionalBooleanQuery(url, 'staged'),
+      }),
+    )
+  }
+
+  const sessionRevertMatch = matchPath(pathname, '/session/:sessionID/revert')
+  if (method === 'POST' && sessionRevertMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.revertSession({
+        sessionId: sessionRevertMatch.sessionID,
+        workspaceRoot: optionalString(body.workspaceRoot) ?? process.cwd(),
+        paths: readRequiredStringArray(body.paths, 'paths'),
       }),
     )
   }
@@ -841,6 +872,9 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async applyVcsPatch(input) {
       return applyGitPatch(input)
     },
+    async revertSession(input) {
+      return revertWorkspacePaths(input)
+    },
     async listPtyShells() {
       return listAvailableShells()
     },
@@ -1104,6 +1138,13 @@ function requiredString(value: unknown, name: string) {
 function requiredRecord(value: unknown, name: string) {
   if (!isRecord(value)) throw new Error(`Missing required field: ${name}`)
   return value
+}
+
+function readRequiredStringArray(value: unknown, name: string) {
+  if (!Array.isArray(value)) throw new Error(`Missing required field: ${name}`)
+  const values = value.map((item) => requiredString(item, name))
+  if (values.length === 0) throw new Error(`Missing required field: ${name}`)
+  return values
 }
 
 function optionalString(value: unknown) {

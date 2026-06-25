@@ -1,4 +1,12 @@
+import { execFile } from 'node:child_process'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+import { promisify } from 'node:util'
+
 import { expect, test } from '@playwright/test'
+
+const execFileAsync = promisify(execFile)
 
 test('serves OpenCode-compatible provider, agent, config, and event endpoints over HTTP', async ({ request }) => {
   const providers = await request.get('/provider')
@@ -148,4 +156,52 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')
+})
+
+
+test('serves OpenCode-compatible session diff and revert routes over HTTP', async ({ request }) => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-session-vcs-'))
+  try {
+    await execFileAsync('git', ['init'], { cwd: workspaceRoot })
+    await writeFile(path.join(workspaceRoot, 'note.txt'), 'original\n')
+    await execFileAsync('git', ['add', 'note.txt'], { cwd: workspaceRoot })
+    await execFileAsync(
+      'git',
+      [
+        '-c',
+        'user.email=specter@example.test',
+        '-c',
+        'user.name=Specter Test',
+        'commit',
+        '-m',
+        'initial',
+      ],
+      { cwd: workspaceRoot },
+    )
+
+    await writeFile(path.join(workspaceRoot, 'note.txt'), 'changed\n')
+
+    const sessionDiff = await request.get(
+      `/session/session-api-smoke/diff?workspaceRoot=${encodeURIComponent(workspaceRoot)}&path=note.txt`,
+    )
+    expect(sessionDiff.status()).toBe(200)
+    expect(sessionDiff.headers()['content-type']).toContain('application/json')
+    expect(await sessionDiff.json()).toEqual(
+      expect.objectContaining({
+        path: 'note.txt',
+        staged: false,
+        patch: expect.stringContaining('+changed'),
+      }),
+    )
+
+    const sessionRevert = await request.post('/session/session-api-smoke/revert', {
+      data: { workspaceRoot, paths: ['note.txt'] },
+    })
+    expect(sessionRevert.status()).toBe(200)
+    expect(sessionRevert.headers()['content-type']).toContain('application/json')
+    expect(await sessionRevert.json()).toEqual({ paths: ['note.txt'] })
+    await expect(readFile(path.join(workspaceRoot, 'note.txt'), 'utf8')).resolves.toBe('original\n')
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
 })

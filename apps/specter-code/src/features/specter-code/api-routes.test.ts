@@ -239,6 +239,10 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       )
       return { paths: ['src/index.ts'], staged: input.staged ?? false }
     },
+    async revertSession(input) {
+      calls.push(`sessionRevert:${input.sessionId}:${input.workspaceRoot}:${input.paths.join(',')}`)
+      return { paths: input.paths }
+    },
     async listPtyShells(input) {
       calls.push(`ptyShells:${input.workspaceRoot ?? ''}`)
       return [{ path: '/bin/sh', name: 'sh', acceptable: true }]
@@ -366,8 +370,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/session/:sessionID' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID' },
       { method: 'PATCH', normalizedPath: '/session/:sessionID' },
+      { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
       { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
       { method: 'GET', normalizedPath: '/vcs' },
       { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -829,6 +835,34 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(
         await router.handle(
+          new Request(
+            'http://specter.test/session/session-main/diff?workspaceRoot=/repo&path=src/index.ts&staged=true',
+          ),
+        ),
+      ),
+    ).resolves.toEqual({
+      patch: 'diff --git a/src/index.ts b/src/index.ts\n',
+      staged: true,
+      path: 'src/index.ts',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/revert', {
+            method: 'POST',
+            body: JSON.stringify({
+              workspaceRoot: '/repo',
+              paths: ['src/index.ts'],
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ paths: ['src/index.ts'] })
+
+    await expect(
+      json(
+        await router.handle(
           new Request('http://specter.test/pty/shells?directory=/repo'),
         ),
       ),
@@ -980,6 +1014,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       'vcsStatus:/repo',
       'vcsDiff:/repo:src/index.ts:staged',
       'vcsApply:/repo:unstaged',
+      'vcsDiff:/repo:src/index.ts:staged',
+      'sessionRevert:session-main:/repo:src/index.ts',
       'ptyShells:/repo',
       'ptyList:/repo',
       'ptyStart:session-main:/repo:.:/bin/sh',
