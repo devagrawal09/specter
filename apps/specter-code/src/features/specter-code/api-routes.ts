@@ -1,6 +1,7 @@
 import { createAgentRegistry, type AgentSummary } from './adapters/agent-registry'
 import { loadSpecterCodeConfig, type SpecterCodeConfig } from './adapters/config-loader'
 import { createSpecterCodeEventStream, type SpecterCodeStreamEvent } from './adapters/event-stream'
+import { findWorkspaceFiles, findWorkspaceText, type OpenCodeTextMatch } from './adapters/find'
 import { createProviderRegistry, type ProviderSummary } from './adapters/llm-provider'
 import type { RouteSpec } from './domain/openapi-compat'
 
@@ -46,12 +47,25 @@ export type SpecterCodeApiRuntime = {
   listProviders(input?: { workspaceRoot?: string }): Promise<ProviderSummary[] | unknown>
   listAgents(input?: { workspaceRoot?: string }): Promise<AgentSummary[] | unknown>
   listEvents(input: { afterOrder?: number }): Promise<readonly SpecterCodeStreamEvent[]>
+  findFiles(input: {
+    workspaceRoot: string
+    query: string
+    limit?: number
+    type?: 'file' | 'directory'
+  }): Promise<readonly string[]>
+  findText(input: {
+    workspaceRoot: string
+    pattern: string
+    limit?: number
+  }): Promise<readonly OpenCodeTextMatch[]>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/config' },
   { method: 'GET', normalizedPath: '/event' },
+  { method: 'GET', normalizedPath: '/find' },
+  { method: 'GET', normalizedPath: '/find/file' },
   { method: 'GET', normalizedPath: '/file' },
   { method: 'GET', normalizedPath: '/file/content' },
   { method: 'GET', normalizedPath: '/file/status' },
@@ -144,6 +158,27 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
         agentId,
         agentName: optionalString(body.agentName) ?? agentId,
         submittedBy: readActor(body.submittedBy) ?? { displayName: 'OpenCode API' },
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/find/file') {
+    return jsonResponse(
+      await runtime.findFiles({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        query: requiredQuery(url, 'query'),
+        limit: optionalIntegerQuery(url, 'limit'),
+        type: readFindFileType(optionalQuery(url, 'type')),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/find') {
+    return jsonResponse(
+      await runtime.findText({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        pattern: requiredQuery(url, 'pattern'),
+        limit: optionalIntegerQuery(url, 'limit'),
       }),
     )
   }
@@ -271,6 +306,12 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeEventsOnServer(input)
     },
+    async findFiles(input) {
+      return findWorkspaceFiles(input)
+    },
+    async findText(input) {
+      return findWorkspaceText(input)
+    },
   }
 }
 
@@ -339,6 +380,16 @@ function optionalIntegerQuery(url: URL, name: string) {
 
 function workspaceRootFromQuery(url: URL) {
   return optionalQuery(url, 'workspaceRoot') ?? process.cwd()
+}
+
+function workspaceRootFromFindQuery(url: URL) {
+  return optionalQuery(url, 'directory') ?? optionalQuery(url, 'workspace') ?? process.cwd()
+}
+
+function readFindFileType(value: string | undefined) {
+  if (value === undefined) return undefined
+  if (value === 'file' || value === 'directory') return value
+  throw new Error('Invalid find file type')
 }
 
 function requiredString(value: unknown, name: string) {

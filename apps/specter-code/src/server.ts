@@ -9,6 +9,8 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/agent',
   '/config',
   '/event',
+  '/find',
+  '/find/file',
   '/file',
   '/file/content',
   '/file/status',

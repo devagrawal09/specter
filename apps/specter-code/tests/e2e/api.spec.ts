@@ -27,6 +27,26 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     }),
   )
 
+  const findFiles = await request.get(
+    `/find/file?directory=${encodeURIComponent(workspaceRoot)}&query=api-routes.ts&limit=5`,
+  )
+  expect(findFiles.status()).toBe(200)
+  expect(await findFiles.json()).toEqual(
+    expect.arrayContaining(['src/features/specter-code/api-routes.ts']),
+  )
+
+  const findText = await request.get(
+    `/find?directory=${encodeURIComponent(workspaceRoot)}&pattern=workspaceRootFromFindQuery&limit=5`,
+  )
+  expect(findText.status()).toBe(200)
+  expect(await findText.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        path: { text: 'src/features/specter-code/api-routes.ts' },
+      }),
+    ]),
+  )
+
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')

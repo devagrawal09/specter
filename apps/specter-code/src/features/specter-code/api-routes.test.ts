@@ -75,6 +75,22 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         },
       ]
     },
+    async findFiles(input) {
+      calls.push(`findFiles:${input.workspaceRoot}:${input.query}:${input.limit ?? ''}`)
+      return ['src/index.ts']
+    },
+    async findText(input) {
+      calls.push(`findText:${input.workspaceRoot}:${input.pattern}`)
+      return [
+        {
+          path: { text: 'src/index.ts' },
+          lines: { text: 'export const value = 1' },
+          line_number: 1,
+          absolute_offset: 0,
+          submatches: [{ match: { text: 'value' }, start: 13, end: 18 }],
+        },
+      ]
+    },
   }
 }
 
@@ -99,6 +115,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/config' },
       { method: 'GET', normalizedPath: '/event' },
+      { method: 'GET', normalizedPath: '/find' },
+      { method: 'GET', normalizedPath: '/find/file' },
       { method: 'GET', normalizedPath: '/file' },
       { method: 'GET', normalizedPath: '/file/content' },
       { method: 'GET', normalizedPath: '/file/status' },
@@ -190,6 +208,30 @@ describe('Specter Code OpenCode API route adapter', () => {
       { id: 'build', default: true, tools: ['read'] },
     ])
 
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/find/file?directory=/repo&query=index&limit=25'),
+        ),
+      ),
+    ).resolves.toEqual(['src/index.ts'])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/find?directory=/repo&pattern=value&limit=10'),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        path: { text: 'src/index.ts' },
+        lines: { text: 'export const value = 1' },
+        line_number: 1,
+        absolute_offset: 0,
+        submatches: [{ match: { text: 'value' }, start: 13, end: 18 }],
+      },
+    ])
+
     const eventResponse = await router.handle(new Request('http://specter.test/event?after=1&live=false'))
     expect(eventResponse.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
     await expect(eventResponse.text()).resolves.toBe(
@@ -211,6 +253,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       'config:/repo',
       'providers',
       'agents',
+      'findFiles:/repo:index:25',
+      'findText:/repo:value',
       'events:1',
     ])
   })
