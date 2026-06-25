@@ -67,6 +67,16 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     }),
   )
 
+  const questions = await request.get('/question')
+  expect(questions.status()).toBe(200)
+  expect(questions.headers()['content-type']).toContain('application/json')
+  expect(await questions.json()).toEqual(expect.any(Array))
+
+  const todos = await request.get('/session/session-api-smoke/todo')
+  expect(todos.status()).toBe(200)
+  expect(todos.headers()['content-type']).toContain('application/json')
+  expect(await todos.json()).toEqual(expect.any(Array))
+
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')

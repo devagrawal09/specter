@@ -36,6 +36,7 @@ export type SpecterCodeApiRuntime = {
   }): Promise<unknown>
   readFileContent(input: { workspaceId: string; path: string }): Promise<unknown>
   getFileStatus(input: { workspaceId: string }): Promise<unknown>
+  listSessionTodos(input: { sessionId: string }): Promise<unknown>
   listPendingPermissions(input: { sessionId: string }): Promise<unknown>
   replyPermission(input: {
     requestId: string
@@ -47,6 +48,7 @@ export type SpecterCodeApiRuntime = {
   loadConfig(input: { workspaceRoot: string }): Promise<SpecterCodeConfig>
   listProviders(input?: { workspaceRoot?: string }): Promise<ProviderSummary[] | unknown>
   listAgents(input?: { workspaceRoot?: string }): Promise<AgentSummary[] | unknown>
+  listPendingQuestions(input: { sessionId?: string }): Promise<unknown>
   listEvents(input: { afterOrder?: number }): Promise<readonly SpecterCodeStreamEvent[]>
   findFiles(input: {
     workspaceRoot: string
@@ -84,10 +86,12 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/provider' },
+  { method: 'GET', normalizedPath: '/question' },
   { method: 'GET', normalizedPath: '/session' },
   { method: 'POST', normalizedPath: '/session' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+  { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
   { method: 'GET', normalizedPath: '/vcs/diff' },
@@ -156,6 +160,15 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     return jsonResponse(
       await runtime.listSessionTranscript({
         sessionId: sessionMessageMatch.sessionID,
+      }),
+    )
+  }
+
+  const sessionTodoMatch = matchPath(pathname, '/session/:sessionID/todo')
+  if (method === 'GET' && sessionTodoMatch) {
+    return jsonResponse(
+      await runtime.listSessionTodos({
+        sessionId: sessionTodoMatch.sessionID,
       }),
     )
   }
@@ -276,6 +289,12 @@ async function dispatchOpenCodeApiRequest(request: Request, runtime: SpecterCode
     )
   }
 
+  if (method === 'GET' && pathname === '/question') {
+    return jsonResponse(
+      await runtime.listPendingQuestions({ sessionId: optionalQuery(url, 'sessionId') }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/provider') {
     return jsonResponse(
       await runtime.listProviders({ workspaceRoot: optionalQuery(url, 'workspaceRoot') }),
@@ -324,6 +343,10 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       const runtime = await import('./server-runtime.server')
       return runtime.getSpecterCodeFilesystemStatusOnServer(input)
     },
+    async listSessionTodos(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.listSpecterCodeSessionTodosOnServer(input)
+    },
     async listPendingPermissions(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodePendingPermissionsOnServer(input)
@@ -342,6 +365,10 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listAgents(input) {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createAgentRegistry({ config }).listAgents()
+    },
+    async listPendingQuestions(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.listSpecterCodePendingQuestionsOnServer(input ?? {})
     },
     async listEvents(input) {
       const runtime = await import('./server-runtime.server')

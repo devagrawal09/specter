@@ -302,7 +302,7 @@ export async function replySpecterCodeQuestionOnServer(data: {
 }
 
 export async function listSpecterCodePendingQuestionsOnServer(data: {
-  sessionId: string
+  sessionId?: string
 }) {
   return runWithSpecterCodeReferenceDb(() => app.pendingQuestions(data))
 }

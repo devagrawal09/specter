@@ -24,11 +24,11 @@ type PendingQuestionsState = {
 
 const pendingQuestions = createQuerySlice(
   'pendingQuestions',
-  'Lists unresolved OpenCode-style questions for a session.',
+  'Lists unresolved OpenCode-style questions for a session or all sessions.',
 )
   .schema(
     z.object({
-      sessionId: z.string(),
+      sessionId: z.string().optional(),
     }),
   )
   .store(createMemorySliceStore<PendingQuestionsState>(() => ({ pending: {} })))
@@ -99,9 +99,9 @@ const pendingQuestions = createQuerySlice(
     ],
   })
   .handle(async (query, state): Promise<PendingQuestion[]> => {
-    return Object.values(state.pending).filter(
-      (question) => question.sessionId === query.sessionId,
-    )
+    const questions = Object.values(state.pending)
+    if (!query.sessionId) return questions
+    return questions.filter((question) => question.sessionId === query.sessionId)
   })
 
 export default pendingQuestions

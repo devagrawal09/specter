@@ -16,6 +16,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/file/status',
   '/permission',
   '/provider',
+  '/question',
   '/session',
   '/vcs',
   '/vcs/apply',
@@ -29,7 +30,8 @@ function isOpenCodeApiPath(pathname: string) {
   return (
     /^\/permission\/[^/]+\/reply$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
-    /^\/session\/[^/]+\/prompt_async$/.test(normalized)
+    /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
+    /^\/session\/[^/]+\/todo$/.test(normalized)
   )
 }
 

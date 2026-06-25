@@ -43,6 +43,10 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`fileStatus:${input.workspaceId}`)
       return { initialized: true, latestScan: null }
     },
+    async listSessionTodos(input) {
+      calls.push(`sessionTodos:${input.sessionId}`)
+      return [{ id: 'todo-1', content: 'Ship API route', status: 'in_progress' }]
+    },
     async listPendingPermissions(input) {
       calls.push(`permissions:${input.sessionId}`)
       return [{ requestId: 'request-1', action: 'ask' }]
@@ -62,6 +66,19 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
     async listAgents() {
       calls.push('agents')
       return [{ id: 'build', default: true, tools: ['read'] }]
+    },
+    async listPendingQuestions(input) {
+      calls.push(`questions:${input.sessionId ?? 'all'}`)
+      return [
+        {
+          questionId: 'question-1',
+          sessionId: 'session-main',
+          messageId: 'message-1',
+          prompt: 'Run tests?',
+          options: [],
+          allowFreeform: true,
+        },
+      ]
     },
     async listEvents(input) {
       calls.push(`events:${input.afterOrder ?? 0}`)
@@ -135,10 +152,12 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/provider' },
+      { method: 'GET', normalizedPath: '/question' },
       { method: 'GET', normalizedPath: '/session' },
       { method: 'POST', normalizedPath: '/session' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
+      { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
       { method: 'GET', normalizedPath: '/vcs' },
       { method: 'POST', normalizedPath: '/vcs/apply' },
       { method: 'GET', normalizedPath: '/vcs/diff' },
@@ -175,6 +194,10 @@ describe('Specter Code OpenCode API route adapter', () => {
     await expect(
       json(await router.handle(new Request('http://specter.test/session/session-main/message'))),
     ).resolves.toEqual([{ id: 'message-1', role: 'assistant', content: 'done' }])
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/session/session-main/todo'))),
+    ).resolves.toEqual([{ id: 'todo-1', content: 'Ship API route', status: 'in_progress' }])
 
     await expect(
       json(
@@ -222,6 +245,17 @@ describe('Specter Code OpenCode API route adapter', () => {
     ])
     await expect(json(await router.handle(new Request('http://specter.test/agent')))).resolves.toEqual([
       { id: 'build', default: true, tools: ['read'] },
+    ])
+
+    await expect(json(await router.handle(new Request('http://specter.test/question')))).resolves.toEqual([
+      {
+        questionId: 'question-1',
+        sessionId: 'session-main',
+        messageId: 'message-1',
+        prompt: 'Run tests?',
+        options: [],
+        allowFreeform: true,
+      },
     ])
 
     await expect(
@@ -299,6 +333,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       'listSessions:workspace-main',
       'createSession:session-main:workspace-main:Implement API routes',
       'transcript:session-main',
+      'sessionTodos:session-main',
       'submitPrompt:session-main:workspace-main:ship it',
       'fileTree:workspace-main:src',
       'readFile:workspace-main:src/index.ts',
@@ -308,6 +343,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       'config:/repo',
       'providers',
       'agents',
+      'questions:all',
       'findFiles:/repo:index:25',
       'findText:/repo:value',
       'vcsStatus:/repo',

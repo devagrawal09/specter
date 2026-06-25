@@ -214,6 +214,34 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       allowFreeform: true,
     })
 
+    await askSpecterCodeQuestionOnServer({
+      questionId: 'question-other',
+      sessionId: 'session-other',
+      messageId: 'message-other',
+      prompt: ' Run lint too? ',
+      options: [],
+      allowFreeform: false,
+    })
+
+    expect(await listSpecterCodePendingQuestionsOnServer({})).toEqual([
+      {
+        questionId: 'question-1',
+        sessionId: 'session-main',
+        messageId: 'message-1',
+        prompt: 'Which migration should I run?',
+        options: [{ id: 'safe', label: 'Safe migration' }],
+        allowFreeform: true,
+      },
+      {
+        questionId: 'question-other',
+        sessionId: 'session-other',
+        messageId: 'message-other',
+        prompt: 'Run lint too?',
+        options: [],
+        allowFreeform: false,
+      },
+    ])
+
     expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([
       {
         questionId: 'question-1',
@@ -233,6 +261,16 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
     })
 
     expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([])
+    expect(await listSpecterCodePendingQuestionsOnServer({})).toEqual([
+      {
+        questionId: 'question-other',
+        sessionId: 'session-other',
+        messageId: 'message-other',
+        prompt: 'Run lint too?',
+        options: [],
+        allowFreeform: false,
+      },
+    ])
   })
 })
 
