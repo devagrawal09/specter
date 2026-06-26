@@ -79,9 +79,11 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/session\/[^/]+\/permissions\/[^/]+$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
     /^\/session\/[^/]+\/revert$/.test(normalized) ||
+    /^\/session\/[^/]+\/share$/.test(normalized) ||
     /^\/session\/[^/]+\/shell$/.test(normalized) ||
     /^\/session\/[^/]+\/summarize$/.test(normalized) ||
-    /^\/session\/[^/]+\/todo$/.test(normalized)
+    /^\/session\/[^/]+\/todo$/.test(normalized) ||
+    /^\/session\/[^/]+\/unrevert$/.test(normalized)
   )
 }
 

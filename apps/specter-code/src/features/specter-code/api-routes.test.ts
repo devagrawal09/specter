@@ -460,6 +460,22 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`sessionRevert:${input.sessionId}:${input.workspaceRoot}:${input.paths.join(',')}`)
       return { paths: input.paths }
     },
+    async shareSession(input) {
+      calls.push(`sessionShare:${input.sessionId}`)
+      return {
+        id: input.sessionId,
+        title: 'Main session',
+        share: { url: `https://share.specter.test/${input.sessionId}` },
+      }
+    },
+    async unshareSession(input) {
+      calls.push(`sessionUnshare:${input.sessionId}`)
+      return { id: input.sessionId, title: 'Main session' }
+    },
+    async unrevertSession(input) {
+      calls.push(`sessionUnrevert:${input.sessionId}`)
+      return { id: input.sessionId, title: 'Main session', reverted: false }
+    },
     async listPtyShells(input) {
       calls.push(`ptyShells:${input.workspaceRoot ?? ''}`)
       return [{ path: '/bin/sh', name: 'sh', acceptable: true }]
@@ -627,8 +643,11 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/session/:sessionID/permissions/:permissionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
       { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/share' },
+      { method: 'DELETE', normalizedPath: '/session/:sessionID/share' },
       { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
       { method: 'POST', normalizedPath: '/session/:sessionID/summarize' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/unrevert' },
       { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
       { method: 'GET', normalizedPath: '/vcs' },
       { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -748,6 +767,52 @@ describe('Specter Code OpenCode API route adapter', () => {
       'sessionStatus:/repo',
       'sessionMessage:session-main:msg_api:build:no-reply:hello\n\nworld',
       'abortSession:session-main',
+    ])
+  })
+
+  it('dispatches OpenCode session share, unshare, and unrevert routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/share', { method: 'POST' }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-main',
+      title: 'Main session',
+      share: { url: 'https://share.specter.test/session-main' },
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/share', { method: 'DELETE' }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-main',
+      title: 'Main session',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/unrevert', { method: 'POST' }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'session-main',
+      title: 'Main session',
+      reverted: false,
+    })
+
+    expect(runtime.calls.slice(-3)).toEqual([
+      'sessionShare:session-main',
+      'sessionUnshare:session-main',
+      'sessionUnrevert:session-main',
     ])
   })
 

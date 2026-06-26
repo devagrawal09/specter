@@ -322,6 +322,9 @@ export type SpecterCodeApiRuntime = {
     workspaceRoot: string
     paths: string[]
   }): Promise<{ paths: string[] } | unknown>
+  shareSession(input: { sessionId: string }): Promise<unknown>
+  unshareSession(input: { sessionId: string }): Promise<unknown>
+  unrevertSession(input: { sessionId: string }): Promise<unknown>
   listPtyShells(input: {
     workspaceRoot?: string
   }): Promise<readonly PtyShellSummary[] | unknown>
@@ -426,8 +429,11 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/session/:sessionID/permissions/:permissionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
   { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/share' },
+  { method: 'DELETE', normalizedPath: '/session/:sessionID/share' },
   { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
   { method: 'POST', normalizedPath: '/session/:sessionID/summarize' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/unrevert' },
   { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -977,6 +983,26 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  const sessionShareMatch = matchPath(pathname, '/session/:sessionID/share')
+  if (method === 'POST' && sessionShareMatch) {
+    return jsonResponse(
+      await runtime.shareSession({ sessionId: sessionShareMatch.sessionID }),
+    )
+  }
+
+  if (method === 'DELETE' && sessionShareMatch) {
+    return jsonResponse(
+      await runtime.unshareSession({ sessionId: sessionShareMatch.sessionID }),
+    )
+  }
+
+  const sessionUnrevertMatch = matchPath(pathname, '/session/:sessionID/unrevert')
+  if (method === 'POST' && sessionUnrevertMatch) {
+    return jsonResponse(
+      await runtime.unrevertSession({ sessionId: sessionUnrevertMatch.sessionID }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/file') {
     return jsonResponse(
       await runtime.listFileTree({
@@ -1249,6 +1275,7 @@ async function dispatchOpenCodeApiRequest(
 const livePtyManager = createPtySessionManager()
 const livePtyMetadata = new Map<string, { title?: string; size?: PtySize }>()
 const liveMcpServers = new Map<string, Map<string, ApiMcpStatus>>()
+const liveSessionShares = new Map<string, { url: string }>()
 const liveSessionStatuses = new Map<
   string,
   { sessionId: string; status: 'idle' | 'running' | 'aborted'; updatedAt: string }
@@ -1612,6 +1639,26 @@ ${input.command}
     async revertSession(input) {
       return revertWorkspacePaths(input)
     },
+    async shareSession(input) {
+      const session = await this.getSession({ sessionId: input.sessionId })
+      if (!isRecord(session)) throw new Error('Session is unavailable')
+      const share = liveSessionShares.get(input.sessionId) ?? {
+        url: createSessionShareUrl(input.sessionId),
+      }
+      liveSessionShares.set(input.sessionId, share)
+      return { ...session, share }
+    },
+    async unshareSession(input) {
+      const session = await this.getSession({ sessionId: input.sessionId })
+      if (!isRecord(session)) throw new Error('Session is unavailable')
+      liveSessionShares.delete(input.sessionId)
+      return { ...session, share: undefined }
+    },
+    async unrevertSession(input) {
+      const session = await this.getSession({ sessionId: input.sessionId })
+      if (!isRecord(session)) throw new Error('Session is unavailable')
+      return { ...session, reverted: false }
+    },
     async listPtyShells() {
       return listAvailableShells()
     },
@@ -1717,7 +1764,13 @@ async function loadConfigForRegistry(workspaceRoot?: string) {
   })
 }
 
-
+function createSessionShareUrl(sessionId: string) {
+  const configuredBase = process.env.SPECTER_CODE_SHARE_BASE_URL
+  const base = configuredBase && configuredBase.trim().length > 0
+    ? configuredBase
+    : 'specter-code://share'
+  return `${base.replace(/\/$/, '')}/${encodeURIComponent(sessionId)}`
+}
 
 async function updateWorkspaceConfig(input: {
   workspaceRoot: string

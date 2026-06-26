@@ -360,6 +360,28 @@ test('serves OpenCode-compatible session lifecycle and status routes over HTTP',
     expect.objectContaining({ id: sessionId, title: 'Lifecycle API updated' }),
   )
 
+  const shared = await request.post(`/session/${sessionId}/share`)
+  expect(shared.status()).toBe(200)
+  expect(shared.headers()['content-type']).toContain('application/json')
+  expect(await shared.json()).toEqual(
+    expect.objectContaining({
+      id: sessionId,
+      share: { url: expect.stringContaining(encodeURIComponent(sessionId)) },
+    }),
+  )
+
+  const unshared = await request.delete(`/session/${sessionId}/share`)
+  expect(unshared.status()).toBe(200)
+  expect(await unshared.json()).toEqual(
+    expect.objectContaining({ id: sessionId, title: 'Lifecycle API updated' }),
+  )
+
+  const unreverted = await request.post(`/session/${sessionId}/unrevert`)
+  expect(unreverted.status()).toBe(200)
+  expect(await unreverted.json()).toEqual(
+    expect.objectContaining({ id: sessionId, title: 'Lifecycle API updated', reverted: false }),
+  )
+
   const forked = await request.post(`/session/${sessionId}/fork`, {
     data: { sessionId: forkedSessionId, title: 'Lifecycle API fork' },
   })
