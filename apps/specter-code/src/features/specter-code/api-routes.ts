@@ -123,6 +123,28 @@ export type FormatterStatus = {
   status?: 'configured' | 'disabled' | 'unsupported'
 }
 
+export type ExperimentalWorkspaceAdapter = {
+  id: string
+  name: string
+  primary?: boolean
+}
+
+export type ExperimentalWorkspaceSummary = {
+  id: string
+  type: string
+  name: string
+  directory: string
+  branch?: string
+  metadata?: JsonRecord
+}
+
+export type ExperimentalWorkspaceStatus = {
+  id: string
+  status: 'ready' | 'syncing' | 'missing'
+  directory?: string
+  branch?: string
+}
+
 export type TuiEventPayload = {
   type: string
   properties: JsonRecord
@@ -280,6 +302,34 @@ export type SpecterCodeApiRuntime = {
     providerId: string
     modelId: string
   }): Promise<readonly OpenCodeToolListItem[] | unknown>
+  listExperimentalWorkspaceAdapters?(input: {
+    workspaceRoot: string
+  }): Promise<readonly ExperimentalWorkspaceAdapter[] | unknown>
+  listExperimentalWorkspaces?(input: {
+    workspaceRoot: string
+  }): Promise<readonly ExperimentalWorkspaceSummary[] | unknown>
+  createExperimentalWorkspace?(input: {
+    workspaceRoot: string
+    workspaceId?: string
+    type?: string
+    branch?: string
+    metadata?: JsonRecord
+  }): Promise<ExperimentalWorkspaceSummary | unknown>
+  deleteExperimentalWorkspace?(input: {
+    workspaceRoot: string
+    workspaceId: string
+  }): Promise<boolean | unknown>
+  syncExperimentalWorkspaceList?(input: {
+    workspaceRoot: string
+  }): Promise<void>
+  getExperimentalWorkspaceStatus?(input: {
+    workspaceRoot: string
+    workspaceId: string
+  }): Promise<ExperimentalWorkspaceStatus | unknown>
+  warpExperimentalWorkspace?(input: {
+    workspaceRoot: string
+    workspaceId: string
+  }): Promise<void>
   listPendingQuestions(input: { sessionId?: string }): Promise<unknown>
   replyQuestion(input: {
     requestId: string
@@ -481,6 +531,13 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/experimental/tool' },
   { method: 'GET', normalizedPath: '/experimental/tool/ids' },
+  { method: 'GET', normalizedPath: '/experimental/workspace' },
+  { method: 'POST', normalizedPath: '/experimental/workspace' },
+  { method: 'GET', normalizedPath: '/experimental/workspace/adapter' },
+  { method: 'POST', normalizedPath: '/experimental/workspace/sync-list' },
+  { method: 'DELETE', normalizedPath: '/experimental/workspace/:workspaceID' },
+  { method: 'GET', normalizedPath: '/experimental/workspace/:workspaceID/status' },
+  { method: 'POST', normalizedPath: '/experimental/workspace/:workspaceID/warp' },
   { method: 'GET', normalizedPath: '/formatter' },
   { method: 'GET', normalizedPath: '/global/config' },
   { method: 'PATCH', normalizedPath: '/global/config' },
@@ -716,6 +773,74 @@ async function dispatchOpenCodeApiRequest(
         modelId: requiredQuery(url, 'model'),
       }),
     )
+  }
+
+  if (method === 'GET' && pathname === '/experimental/workspace/adapter') {
+    return jsonResponse(
+      await experimentalWorkspaceRuntime(runtime).listExperimentalWorkspaceAdapters({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/experimental/workspace') {
+    return jsonResponse(
+      await experimentalWorkspaceRuntime(runtime).listExperimentalWorkspaces({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/experimental/workspace') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await experimentalWorkspaceRuntime(runtime).createExperimentalWorkspace({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        workspaceId:
+          optionalString(body.id) ??
+          optionalString(body.workspaceID) ??
+          optionalString(body.workspaceId),
+        type: optionalString(body.type),
+        branch: optionalString(body.branch),
+        metadata: optionalJsonRecord(body.metadata),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/experimental/workspace/sync-list') {
+    await experimentalWorkspaceRuntime(runtime).syncExperimentalWorkspaceList({
+      workspaceRoot: workspaceRootFromFindQuery(url),
+    })
+    return noContentResponse()
+  }
+
+  const experimentalWorkspaceMatch = matchPath(pathname, '/experimental/workspace/:workspaceID')
+  if (method === 'DELETE' && experimentalWorkspaceMatch) {
+    return jsonResponse(
+      await experimentalWorkspaceRuntime(runtime).deleteExperimentalWorkspace({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        workspaceId: experimentalWorkspaceMatch.workspaceID,
+      }),
+    )
+  }
+
+  const experimentalWorkspaceStatusMatch = matchPath(pathname, '/experimental/workspace/:workspaceID/status')
+  if (method === 'GET' && experimentalWorkspaceStatusMatch) {
+    return jsonResponse(
+      await experimentalWorkspaceRuntime(runtime).getExperimentalWorkspaceStatus({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        workspaceId: experimentalWorkspaceStatusMatch.workspaceID,
+      }),
+    )
+  }
+
+  const experimentalWorkspaceWarpMatch = matchPath(pathname, '/experimental/workspace/:workspaceID/warp')
+  if (method === 'POST' && experimentalWorkspaceWarpMatch) {
+    await experimentalWorkspaceRuntime(runtime).warpExperimentalWorkspace({
+      workspaceRoot: workspaceRootFromFindQuery(url),
+      workspaceId: experimentalWorkspaceWarpMatch.workspaceID,
+    })
+    return noContentResponse()
   }
 
   if (method === 'GET' && (pathname === '/api/provider' || pathname === '/api/model')) {
@@ -1591,6 +1716,8 @@ const liveSessionStatuses = new Map<
   string,
   { sessionId: string; status: 'idle' | 'running' | 'aborted'; updatedAt: string }
 >()
+const liveExperimentalWorkspaces = new Map<string, ExperimentalWorkspaceSummary[]>()
+const liveExperimentalWorkspaceActive = new Map<string, string>()
 const liveTuiEvents = new Map<string, TuiEventPayload[]>()
 const liveTuiControlQueues = new Map<
   string,
@@ -1772,6 +1899,27 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async initializeProjectGit(input) {
       return initializeWorkspaceGitProject(input)
+    },
+    async listExperimentalWorkspaceAdapters(input) {
+      return listExperimentalWorkspaceAdapters(input)
+    },
+    async listExperimentalWorkspaces(input) {
+      return listExperimentalWorkspaces(input)
+    },
+    async createExperimentalWorkspace(input) {
+      return createExperimentalWorkspace(input)
+    },
+    async deleteExperimentalWorkspace(input) {
+      return deleteExperimentalWorkspace(input)
+    },
+    async syncExperimentalWorkspaceList(input) {
+      await syncExperimentalWorkspaceList(input)
+    },
+    async getExperimentalWorkspaceStatus(input) {
+      return getExperimentalWorkspaceStatus(input)
+    },
+    async warpExperimentalWorkspace(input) {
+      await warpExperimentalWorkspace(input)
     },
     async listFormatterStatus(input) {
       const config = await loadSpecterCodeConfig({
@@ -2369,6 +2517,149 @@ function mergeConfigPatch(current: JsonRecord, patch: JsonRecord): JsonRecord {
     next[key] = value
   }
   return next
+}
+
+function experimentalWorkspaceRuntime(runtime: SpecterCodeApiRuntime) {
+  if (
+    !runtime.listExperimentalWorkspaceAdapters ||
+    !runtime.listExperimentalWorkspaces ||
+    !runtime.createExperimentalWorkspace ||
+    !runtime.deleteExperimentalWorkspace ||
+    !runtime.syncExperimentalWorkspaceList ||
+    !runtime.getExperimentalWorkspaceStatus ||
+    !runtime.warpExperimentalWorkspace
+  ) {
+    throw new Error('Experimental workspace runtime is unavailable')
+  }
+  return {
+    listExperimentalWorkspaceAdapters: runtime.listExperimentalWorkspaceAdapters.bind(runtime),
+    listExperimentalWorkspaces: runtime.listExperimentalWorkspaces.bind(runtime),
+    createExperimentalWorkspace: runtime.createExperimentalWorkspace.bind(runtime),
+    deleteExperimentalWorkspace: runtime.deleteExperimentalWorkspace.bind(runtime),
+    syncExperimentalWorkspaceList: runtime.syncExperimentalWorkspaceList.bind(runtime),
+    getExperimentalWorkspaceStatus: runtime.getExperimentalWorkspaceStatus.bind(runtime),
+    warpExperimentalWorkspace: runtime.warpExperimentalWorkspace.bind(runtime),
+  }
+}
+
+async function listExperimentalWorkspaceAdapters(input: {
+  workspaceRoot: string
+}): Promise<ExperimentalWorkspaceAdapter[]> {
+  const gitReady = await hasGitDirectory(input.workspaceRoot)
+  return [
+    { id: 'local', name: 'Local workspace', primary: true },
+    ...(gitReady ? [{ id: 'git-worktree', name: 'Git worktree' }] : []),
+  ]
+}
+
+async function listExperimentalWorkspaces(input: {
+  workspaceRoot: string
+}): Promise<ExperimentalWorkspaceSummary[]> {
+  const key = experimentalWorkspaceKey(input.workspaceRoot)
+  const existing = liveExperimentalWorkspaces.get(key)
+  if (existing) return existing
+  const projects = await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot })
+  const workspaces = projects.map(projectToExperimentalWorkspace)
+  liveExperimentalWorkspaces.set(key, workspaces)
+  return workspaces
+}
+
+async function createExperimentalWorkspace(input: {
+  workspaceRoot: string
+  workspaceId?: string
+  type?: string
+  branch?: string
+  metadata?: JsonRecord
+}): Promise<ExperimentalWorkspaceSummary> {
+  const key = experimentalWorkspaceKey(input.workspaceRoot)
+  const workspaces = [...(await listExperimentalWorkspaces(input))]
+  const workspace: ExperimentalWorkspaceSummary = {
+    id: input.workspaceId ?? nextExperimentalWorkspaceId(input.workspaceRoot),
+    type: input.type ?? 'local',
+    name: input.branch ?? (path.basename(input.workspaceRoot) || input.workspaceRoot),
+    directory: input.workspaceRoot,
+  }
+  if (input.branch) workspace.branch = input.branch
+  if (input.metadata) workspace.metadata = input.metadata
+  liveExperimentalWorkspaces.set(
+    key,
+    [...workspaces.filter((item) => item.id !== workspace.id), workspace],
+  )
+  liveExperimentalWorkspaceActive.set(key, workspace.id)
+  return workspace
+}
+
+async function deleteExperimentalWorkspace(input: {
+  workspaceRoot: string
+  workspaceId: string
+}): Promise<boolean> {
+  const key = experimentalWorkspaceKey(input.workspaceRoot)
+  const workspaces = await listExperimentalWorkspaces(input)
+  const next = workspaces.filter((workspace) => workspace.id !== input.workspaceId)
+  liveExperimentalWorkspaces.set(key, next)
+  if (liveExperimentalWorkspaceActive.get(key) === input.workspaceId) {
+    liveExperimentalWorkspaceActive.delete(key)
+  }
+  return next.length !== workspaces.length
+}
+
+async function syncExperimentalWorkspaceList(input: { workspaceRoot: string }) {
+  const key = experimentalWorkspaceKey(input.workspaceRoot)
+  const projects = await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot })
+  const existing = liveExperimentalWorkspaces.get(key) ?? []
+  const projectWorkspaces = projects.map(projectToExperimentalWorkspace)
+  liveExperimentalWorkspaces.set(key, [
+    ...projectWorkspaces,
+    ...existing.filter(
+      (workspace) => !projectWorkspaces.some((project) => project.id === workspace.id),
+    ),
+  ])
+}
+
+async function getExperimentalWorkspaceStatus(input: {
+  workspaceRoot: string
+  workspaceId: string
+}): Promise<ExperimentalWorkspaceStatus> {
+  const workspace = (await listExperimentalWorkspaces(input)).find(
+    (item) => item.id === input.workspaceId,
+  )
+  if (!workspace) return { id: input.workspaceId, status: 'missing' }
+  return {
+    id: workspace.id,
+    status: 'ready',
+    directory: workspace.directory,
+    branch: workspace.branch,
+  }
+}
+
+async function warpExperimentalWorkspace(input: {
+  workspaceRoot: string
+  workspaceId: string
+}) {
+  const key = experimentalWorkspaceKey(input.workspaceRoot)
+  const status = await getExperimentalWorkspaceStatus(input)
+  if (status.status === 'missing') throw new Error(`Workspace not found: ${input.workspaceId}`)
+  liveExperimentalWorkspaceActive.set(key, input.workspaceId)
+}
+
+function projectToExperimentalWorkspace(project: ProjectSummary): ExperimentalWorkspaceSummary {
+  const workspace: ExperimentalWorkspaceSummary = {
+    id: project.id === project.directory ? nextExperimentalWorkspaceId(project.directory) : project.id,
+    type: project.vcs === 'git' ? 'git-worktree' : 'local',
+    name: project.name,
+    directory: project.directory,
+  }
+  if (project.worktree) workspace.branch = path.basename(project.worktree)
+  return workspace
+}
+
+function experimentalWorkspaceKey(workspaceRoot: string) {
+  return path.resolve(workspaceRoot)
+}
+
+function nextExperimentalWorkspaceId(workspaceRoot: string) {
+  const name = path.basename(workspaceRoot) || 'workspace'
+  return `wrk_${name.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'workspace'}`
 }
 
 async function updateWorkspaceProject(input: {

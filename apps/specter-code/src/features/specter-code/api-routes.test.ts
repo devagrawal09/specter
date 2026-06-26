@@ -673,6 +673,13 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/experimental/tool' },
       { method: 'GET', normalizedPath: '/experimental/tool/ids' },
+      { method: 'GET', normalizedPath: '/experimental/workspace' },
+      { method: 'POST', normalizedPath: '/experimental/workspace' },
+      { method: 'GET', normalizedPath: '/experimental/workspace/adapter' },
+      { method: 'POST', normalizedPath: '/experimental/workspace/sync-list' },
+      { method: 'DELETE', normalizedPath: '/experimental/workspace/:workspaceID' },
+      { method: 'GET', normalizedPath: '/experimental/workspace/:workspaceID/status' },
+      { method: 'POST', normalizedPath: '/experimental/workspace/:workspaceID/warp' },
       { method: 'GET', normalizedPath: '/formatter' },
       { method: 'GET', normalizedPath: '/global/config' },
       { method: 'PATCH', normalizedPath: '/global/config' },
@@ -1527,6 +1534,120 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(runtime.calls.slice(-2)).toEqual([
       'toolIds:/repo',
       'tools:/repo:openrouter/test-model',
+    ])
+  })
+
+
+  it('dispatches OpenCode experimental workspace routes to runtime handlers', async () => {
+    const runtime = {
+      ...createRuntime(),
+      async listExperimentalWorkspaceAdapters(input: { workspaceRoot: string }) {
+        this.calls.push(`workspaceAdapters:${input.workspaceRoot}`)
+        return [{ id: 'local', name: 'Local workspace', primary: true }]
+      },
+      async listExperimentalWorkspaces(input: { workspaceRoot: string }) {
+        this.calls.push(`workspaces:${input.workspaceRoot}`)
+        return [
+          {
+            id: 'wrk_repo',
+            type: 'local',
+            name: 'repo',
+            directory: input.workspaceRoot,
+            branch: 'main',
+          },
+        ]
+      },
+      async createExperimentalWorkspace(input: {
+        workspaceRoot: string
+        workspaceId?: string
+        type?: string
+        branch?: string
+        metadata?: Record<string, unknown>
+      }) {
+        this.calls.push(
+          `workspaceCreate:${input.workspaceRoot}:${input.workspaceId ?? ''}:${input.type ?? ''}:${input.branch ?? ''}`,
+        )
+        return {
+          id: input.workspaceId ?? 'wrk_created',
+          type: input.type ?? 'local',
+          name: 'created',
+          directory: input.workspaceRoot,
+          branch: input.branch,
+          metadata: input.metadata,
+        }
+      },
+      async deleteExperimentalWorkspace(input: { workspaceRoot: string; workspaceId: string }) {
+        this.calls.push(`workspaceDelete:${input.workspaceRoot}:${input.workspaceId}`)
+        return true
+      },
+      async syncExperimentalWorkspaceList(input: { workspaceRoot: string }) {
+        this.calls.push(`workspaceSync:${input.workspaceRoot}`)
+      },
+      async getExperimentalWorkspaceStatus(input: { workspaceRoot: string; workspaceId: string }) {
+        this.calls.push(`workspaceStatus:${input.workspaceRoot}:${input.workspaceId}`)
+        return { id: input.workspaceId, status: 'ready', branch: 'main' }
+      },
+      async warpExperimentalWorkspace(input: { workspaceRoot: string; workspaceId: string }) {
+        this.calls.push(`workspaceWarp:${input.workspaceRoot}:${input.workspaceId}`)
+      },
+    }
+    const router = createSpecterCodeApiRouter({ runtime })
+    const directory = encodeURIComponent('/repo')
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/workspace/adapter?directory=${directory}`))),
+    ).resolves.toEqual([{ id: 'local', name: 'Local workspace', primary: true }])
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/workspace?directory=${directory}`))),
+    ).resolves.toEqual([
+      { id: 'wrk_repo', type: 'local', name: 'repo', directory: '/repo', branch: 'main' },
+    ])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(`http://specter.test/experimental/workspace?directory=${directory}`, {
+            method: 'POST',
+            body: JSON.stringify({ id: 'wrk_feature', type: 'local', branch: 'feature/api', metadata: { ticket: 42 } }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      id: 'wrk_feature',
+      type: 'local',
+      name: 'created',
+      directory: '/repo',
+      branch: 'feature/api',
+      metadata: { ticket: 42 },
+    })
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/workspace/wrk_feature/status?directory=${directory}`))),
+    ).resolves.toEqual({ id: 'wrk_feature', status: 'ready', branch: 'main' })
+
+    const syncResponse = await router.handle(
+      new Request(`http://specter.test/experimental/workspace/sync-list?directory=${directory}`, { method: 'POST' }),
+    )
+    expect(syncResponse.status).toBe(204)
+
+    const warpResponse = await router.handle(
+      new Request(`http://specter.test/experimental/workspace/wrk_feature/warp?directory=${directory}`, { method: 'POST' }),
+    )
+    expect(warpResponse.status).toBe(204)
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/workspace/wrk_feature?directory=${directory}`, { method: 'DELETE' }))),
+    ).resolves.toBe(true)
+
+    expect(runtime.calls.slice(-7)).toEqual([
+      'workspaceAdapters:/repo',
+      'workspaces:/repo',
+      'workspaceCreate:/repo:wrk_feature:local:feature/api',
+      'workspaceStatus:/repo:wrk_feature',
+      'workspaceSync:/repo',
+      'workspaceWarp:/repo:wrk_feature',
+      'workspaceDelete:/repo:wrk_feature',
     ])
   })
 

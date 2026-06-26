@@ -105,6 +105,62 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     ]),
   )
 
+  const workspaceAdapters = await request.get(
+    `/experimental/workspace/adapter?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceAdapters.status()).toBe(200)
+  expect(workspaceAdapters.headers()['content-type']).toContain('application/json')
+  expect(await workspaceAdapters.json()).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 'local', primary: true })]),
+  )
+
+  const workspaceList = await request.get(
+    `/experimental/workspace?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceList.status()).toBe(200)
+  expect(await workspaceList.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: expect.stringMatching(/^wrk_/),
+        directory: workspaceRoot,
+        type: expect.any(String),
+      }),
+    ]),
+  )
+
+  const createdWorkspace = await request.post(
+    `/experimental/workspace?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { id: 'wrk_e2e', type: 'local', branch: 'feature/e2e' } },
+  )
+  expect(createdWorkspace.status()).toBe(200)
+  expect(await createdWorkspace.json()).toEqual(
+    expect.objectContaining({ id: 'wrk_e2e', directory: workspaceRoot, branch: 'feature/e2e' }),
+  )
+
+  const workspaceStatus = await request.get(
+    `/experimental/workspace/wrk_e2e/status?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceStatus.status()).toBe(200)
+  expect(await workspaceStatus.json()).toEqual(
+    expect.objectContaining({ id: 'wrk_e2e', status: 'ready', directory: workspaceRoot }),
+  )
+
+  const workspaceSync = await request.post(
+    `/experimental/workspace/sync-list?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceSync.status()).toBe(204)
+
+  const workspaceWarp = await request.post(
+    `/experimental/workspace/wrk_e2e/warp?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceWarp.status()).toBe(204)
+
+  const workspaceDelete = await request.delete(
+    `/experimental/workspace/wrk_e2e?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(workspaceDelete.status()).toBe(200)
+  expect(await workspaceDelete.json()).toBe(true)
+
   const mcpAdd = await request.post(`/mcp?directory=${encodeURIComponent(workspaceRoot)}`, {
     data: { name: 'api-smoke', config: { type: 'local', command: ['node', 'server.js'] } },
   })

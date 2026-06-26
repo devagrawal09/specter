@@ -17,6 +17,9 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/event',
   '/experimental/tool',
   '/experimental/tool/ids',
+  '/experimental/workspace',
+  '/experimental/workspace/adapter',
+  '/experimental/workspace/sync-list',
   '/formatter',
   '/global/config',
   '/global/event',
@@ -76,6 +79,8 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/api\/provider\/[^/]+$/.test(normalized) ||
     /^\/auth\/[^/]+$/.test(normalized) ||
     /^\/provider\/[^/]+\/oauth\/(authorize|callback)$/.test(normalized) ||
+    /^\/experimental\/workspace\/[^/]+$/.test(normalized) ||
+    /^\/experimental\/workspace\/[^/]+\/(status|warp)$/.test(normalized) ||
     /^\/mcp\/[^/]+\/connect$/.test(normalized) ||
     /^\/mcp\/[^/]+\/disconnect$/.test(normalized) ||
     /^\/mcp\/[^/]+\/auth$/.test(normalized) ||
