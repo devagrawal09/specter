@@ -123,6 +123,60 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(mcpDisconnect.status()).toBe(200)
   expect(await mcpDisconnect.json()).toBe(true)
 
+  const providerAuth = await request.get(`/provider/auth?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(providerAuth.status()).toBe(200)
+  expect(providerAuth.headers()['content-type']).toContain('application/json')
+  expect(await providerAuth.json()).toEqual(
+    expect.objectContaining({
+      openrouter: expect.arrayContaining([expect.objectContaining({ type: 'api' })]),
+    }),
+  )
+
+  const authSet = await request.put('/auth/openrouter', {
+    data: { type: 'api', key: 'e2e-placeholder-key' },
+  })
+  expect(authSet.status()).toBe(200)
+  expect(await authSet.json()).toBe(true)
+
+  const authRemove = await request.delete('/auth/openrouter')
+  expect(authRemove.status()).toBe(200)
+  expect(await authRemove.json()).toBe(true)
+
+  const providerAuthorize = await request.post(
+    `/provider/openrouter/oauth/authorize?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { method: 0, inputs: { account: 'default' } } },
+  )
+  expect(providerAuthorize.status()).toBe(200)
+  expect(await providerAuthorize.json()).toEqual(
+    expect.objectContaining({ url: expect.any(String), method: expect.stringMatching(/^(auto|code)$/) }),
+  )
+
+  const providerCallback = await request.post(
+    `/provider/openrouter/oauth/callback?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { method: 0, code: 'provider-code' } },
+  )
+  expect(providerCallback.status()).toBe(200)
+  expect(await providerCallback.json()).toBe(true)
+
+  const mcpAuthStart = await request.post(`/mcp/api-smoke/auth?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(mcpAuthStart.status()).toBe(200)
+  expect(await mcpAuthStart.json()).toEqual(
+    expect.objectContaining({ authorizationUrl: expect.any(String), oauthState: expect.any(String) }),
+  )
+
+  const mcpAuthCallback = await request.post(
+    `/mcp/api-smoke/auth/callback?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { code: 'mcp-code' } },
+  )
+  expect(mcpAuthCallback.status()).toBe(200)
+  expect(await mcpAuthCallback.json()).toEqual(
+    expect.objectContaining({ name: 'api-smoke', status: 'connected' }),
+  )
+
+  const mcpAuthRemove = await request.delete(`/mcp/api-smoke/auth?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(mcpAuthRemove.status()).toBe(200)
+  expect(await mcpAuthRemove.json()).toEqual({ success: true })
+
   const vcsStatus = await request.get(`/vcs/status?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
   expect(vcsStatus.status()).toBe(200)
   expect(vcsStatus.headers()['content-type']).toContain('application/json')

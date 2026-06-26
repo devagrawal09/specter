@@ -88,6 +88,23 @@ export type ApiMcpStatus = {
   config?: unknown
 }
 
+export type ProviderAuthMethod = {
+  type: 'oauth' | 'api'
+  label: string
+  prompts?: readonly JsonRecord[]
+}
+
+export type ProviderAuthAuthorization = {
+  url: string
+  method: 'auto' | 'code'
+  instructions: string
+}
+
+export type McpAuthStart = {
+  authorizationUrl: string
+  oauthState: string
+}
+
 export type ProjectSummary = {
   id: string
   directory: string
@@ -232,6 +249,26 @@ export type SpecterCodeApiRuntime = {
   listProviders(input?: {
     workspaceRoot?: string
   }): Promise<ProviderSummary[] | unknown>
+  listProviderAuthMethods(input: {
+    workspaceRoot?: string
+  }): Promise<Record<string, readonly ProviderAuthMethod[]> | unknown>
+  authorizeProviderOAuth(input: {
+    providerId: string
+    workspaceRoot?: string
+    method: number
+    inputs?: Record<string, string>
+  }): Promise<ProviderAuthAuthorization | unknown>
+  completeProviderOAuth(input: {
+    providerId: string
+    workspaceRoot?: string
+    method: number
+    code?: string
+  }): Promise<boolean | unknown>
+  setProviderAuth(input: {
+    providerId: string
+    auth: JsonRecord
+  }): Promise<boolean | unknown>
+  removeProviderAuth(input: { providerId: string }): Promise<boolean | unknown>
   listAgents(input?: {
     workspaceRoot?: string
   }): Promise<AgentSummary[] | unknown>
@@ -331,6 +368,23 @@ export type SpecterCodeApiRuntime = {
     workspaceRoot: string
     name: string
   }): Promise<boolean | unknown>
+  startMcpAuth(input: {
+    workspaceRoot: string
+    name: string
+  }): Promise<McpAuthStart | unknown>
+  authenticateMcp(input: {
+    workspaceRoot: string
+    name: string
+  }): Promise<ApiMcpStatus | unknown>
+  completeMcpAuth(input: {
+    workspaceRoot: string
+    name: string
+    code: string
+  }): Promise<ApiMcpStatus | unknown>
+  removeMcpAuth(input: {
+    workspaceRoot: string
+    name: string
+  }): Promise<{ success: true } | unknown>
   getVcsStatus(input: { workspaceRoot: string }): Promise<GitStatus | unknown>
   getVcsDiff(input: {
     workspaceRoot: string
@@ -408,6 +462,8 @@ export type SpecterCodeApiRuntime = {
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
+  { method: 'DELETE', normalizedPath: '/auth/:providerID' },
+  { method: 'PUT', normalizedPath: '/auth/:providerID' },
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/api/model' },
   { method: 'GET', normalizedPath: '/api/provider' },
@@ -449,6 +505,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/mcp' },
   { method: 'POST', normalizedPath: '/mcp/:name/connect' },
   { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
+  { method: 'DELETE', normalizedPath: '/mcp/:name/auth' },
+  { method: 'POST', normalizedPath: '/mcp/:name/auth' },
+  { method: 'POST', normalizedPath: '/mcp/:name/auth/authenticate' },
+  { method: 'POST', normalizedPath: '/mcp/:name/auth/callback' },
   { method: 'GET', normalizedPath: '/path' },
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
@@ -457,6 +517,9 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/project/git/init' },
   { method: 'PATCH', normalizedPath: '/project/:projectID' },
   { method: 'GET', normalizedPath: '/provider' },
+  { method: 'GET', normalizedPath: '/provider/auth' },
+  { method: 'POST', normalizedPath: '/provider/:providerID/oauth/authorize' },
+  { method: 'POST', normalizedPath: '/provider/:providerID/oauth/callback' },
   { method: 'GET', normalizedPath: '/pty' },
   { method: 'POST', normalizedPath: '/pty' },
   { method: 'GET', normalizedPath: '/pty/shells' },
@@ -549,6 +612,21 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/global/health') {
     return jsonResponse({ ok: true })
+  }
+
+  const authMatch = matchPath(pathname, '/auth/:providerID')
+  if (method === 'PUT' && authMatch) {
+    return jsonResponse(
+      await runtime.setProviderAuth({
+        providerId: authMatch.providerID,
+        auth: await readJsonBody(request),
+      }),
+    )
+  }
+  if (method === 'DELETE' && authMatch) {
+    return jsonResponse(
+      await runtime.removeProviderAuth({ providerId: authMatch.providerID }),
+    )
   }
 
   if (method === 'POST' && pathname === '/global/dispose') {
@@ -1052,6 +1130,46 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  const mcpAuthMatch = matchPath(pathname, '/mcp/:name/auth')
+  if (method === 'POST' && mcpAuthMatch) {
+    return jsonResponse(
+      await runtime.startMcpAuth({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpAuthMatch.name,
+      }),
+    )
+  }
+  if (method === 'DELETE' && mcpAuthMatch) {
+    return jsonResponse(
+      await runtime.removeMcpAuth({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpAuthMatch.name,
+      }),
+    )
+  }
+
+  const mcpAuthAuthenticateMatch = matchPath(pathname, '/mcp/:name/auth/authenticate')
+  if (method === 'POST' && mcpAuthAuthenticateMatch) {
+    return jsonResponse(
+      await runtime.authenticateMcp({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpAuthAuthenticateMatch.name,
+      }),
+    )
+  }
+
+  const mcpAuthCallbackMatch = matchPath(pathname, '/mcp/:name/auth/callback')
+  if (method === 'POST' && mcpAuthCallbackMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.completeMcpAuth({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        name: mcpAuthCallbackMatch.name,
+        code: requiredString(body.code, 'code'),
+      }),
+    )
+  }
+
   if (method === 'GET' && (pathname === '/vcs' || pathname === '/vcs/status')) {
     return jsonResponse(
       await runtime.getVcsStatus({
@@ -1294,6 +1412,40 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  if (method === 'GET' && pathname === '/provider/auth') {
+    return jsonResponse(
+      await runtime.listProviderAuthMethods({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  const providerAuthorizeMatch = matchPath(pathname, '/provider/:providerID/oauth/authorize')
+  if (method === 'POST' && providerAuthorizeMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.authorizeProviderOAuth({
+        providerId: providerAuthorizeMatch.providerID,
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        method: requiredNumber(body.method, 'method'),
+        inputs: optionalStringRecord(body.inputs),
+      }),
+    )
+  }
+
+  const providerCallbackMatch = matchPath(pathname, '/provider/:providerID/oauth/callback')
+  if (method === 'POST' && providerCallbackMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.completeProviderOAuth({
+        providerId: providerCallbackMatch.providerID,
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        method: requiredNumber(body.method, 'method'),
+        code: optionalString(body.code),
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/provider') {
     return jsonResponse(
       await runtime.listProviders({
@@ -1433,6 +1585,7 @@ async function dispatchOpenCodeApiRequest(
 const livePtyManager = createPtySessionManager()
 const livePtyMetadata = new Map<string, { title?: string; size?: PtySize }>()
 const liveMcpServers = new Map<string, Map<string, ApiMcpStatus>>()
+const liveProviderAuth = new Map<string, JsonRecord>()
 const liveSessionShares = new Map<string, { url: string }>()
 const liveSessionStatuses = new Map<
   string,
@@ -1630,6 +1783,34 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createProviderRegistry({ config }).listProviders()
     },
+    async listProviderAuthMethods(input) {
+      const providers = await this.listProviders({ workspaceRoot: input.workspaceRoot })
+      return providerAuthMethodsFor(providers)
+    },
+    async authorizeProviderOAuth(input) {
+      return {
+        url: createProviderOauthUrl(input.providerId, input.method, input.inputs),
+        method: 'code',
+        instructions: 'Open the URL, authorize the provider, then paste the returned code.',
+      }
+    },
+    async completeProviderOAuth(input) {
+      liveProviderAuth.set(input.providerId, {
+        type: 'oauth',
+        method: input.method,
+        code: input.code ?? '',
+        updatedAt: new Date().toISOString(),
+      })
+      return true
+    },
+    async setProviderAuth(input) {
+      liveProviderAuth.set(input.providerId, input.auth)
+      return true
+    },
+    async removeProviderAuth(input) {
+      liveProviderAuth.delete(input.providerId)
+      return true
+    },
     async listAgents(input) {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createAgentRegistry({ config }).listAgents()
@@ -1823,6 +2004,35 @@ ${input.command}
       const server = requireLiveMcpServer(input.workspaceRoot, input.name)
       server.status = 'disconnected'
       return true
+    },
+    async startMcpAuth(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      server.status = 'disconnected'
+      return {
+        authorizationUrl: createMcpOauthUrl(input.name),
+        oauthState: `specter-mcp-${input.name}`,
+      }
+    },
+    async authenticateMcp(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      server.status = 'connected'
+      server.error = undefined
+      return server
+    },
+    async completeMcpAuth(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      server.status = 'connected'
+      server.error = undefined
+      server.config = { ...(isRecord(server.config) ? server.config : {}), oauthCode: input.code }
+      return server
+    },
+    async removeMcpAuth(input) {
+      const server = requireLiveMcpServer(input.workspaceRoot, input.name)
+      if (isRecord(server.config)) {
+        const { oauthCode: _removed, ...rest } = server.config
+        server.config = rest
+      }
+      return { success: true }
     },
     async getVcsStatus(input) {
       return getGitStatus(input)
@@ -2075,6 +2285,54 @@ function requireLiveMcpServer(workspaceRoot: string, name: string) {
 function readMcpConfigType(config: unknown) {
   if (!isRecord(config)) return undefined
   return optionalString(config.type)
+}
+
+function providerAuthMethodsFor(providers: unknown): Record<string, ProviderAuthMethod[]> {
+  if (!Array.isArray(providers)) return {}
+  return Object.fromEntries(
+    providers
+      .map((provider) => providerAuthMethodEntry(provider))
+      .filter((entry): entry is [string, ProviderAuthMethod[]] => entry !== undefined),
+  )
+}
+
+function providerAuthMethodEntry(provider: unknown): [string, ProviderAuthMethod[]] | undefined {
+  if (!isRecord(provider)) return undefined
+  const id = optionalString(provider.id)
+  if (!id) return undefined
+  const methods: ProviderAuthMethod[] = [
+    {
+      type: 'api',
+      label: 'API key',
+      prompts: [
+        {
+          type: 'text',
+          key: 'key',
+          message: `${id} API key`,
+          placeholder: 'API key',
+        },
+      ],
+    },
+  ]
+  methods.push({ type: 'oauth', label: 'OAuth' })
+  return [id, methods]
+}
+
+function createProviderOauthUrl(
+  providerId: string,
+  method: number,
+  inputs: Record<string, string> | undefined,
+) {
+  const url = new URL(`specter-code://provider/${encodeURIComponent(providerId)}/oauth`)
+  url.searchParams.set('method', String(method))
+  for (const [key, value] of Object.entries(inputs ?? {})) {
+    url.searchParams.set(key, value)
+  }
+  return url.toString()
+}
+
+function createMcpOauthUrl(name: string) {
+  return `specter-code://mcp/${encodeURIComponent(name)}/oauth`
 }
 
 async function loadConfigForRegistry(workspaceRoot?: string) {
@@ -2453,6 +2711,13 @@ function requiredRecord(value: unknown, name: string) {
   return value
 }
 
+function requiredNumber(value: unknown, name: string) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`Missing required field: ${name}`)
+  }
+  return value
+}
+
 function readRequiredStringArray(value: unknown, name: string) {
   if (!Array.isArray(value)) throw new Error(`Missing required field: ${name}`)
   const values = value.map((item) => requiredString(item, name))
@@ -2466,6 +2731,14 @@ function optionalString(value: unknown) {
 
 function optionalJsonRecord(value: unknown): JsonRecord | undefined {
   return isRecord(value) ? value : undefined
+}
+
+function optionalStringRecord(value: unknown): Record<string, string> | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!isRecord(value)) throw new Error('Invalid string record')
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, requiredString(item, key)]),
+  )
 }
 
 function readPtySize(value: unknown) {

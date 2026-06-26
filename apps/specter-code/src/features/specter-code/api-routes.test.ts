@@ -227,6 +227,44 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push('providers')
       return [{ id: 'openrouter', configured: false, models: [] }]
     },
+    async listProviderAuthMethods(input) {
+      calls.push(`providerAuth:${input.workspaceRoot ?? ''}`)
+      return {
+        openrouter: [
+          {
+            type: 'api' as const,
+            label: 'API key',
+            prompts: [
+              { type: 'text', key: 'key', message: 'OpenRouter API key', placeholder: 'sk-or-...' },
+            ],
+          },
+        ],
+      }
+    },
+    async authorizeProviderOAuth(input) {
+      calls.push(
+        `providerOauthAuthorize:${input.providerId}:${input.workspaceRoot ?? ''}:${input.method}:${input.inputs?.account ?? ''}`,
+      )
+      return {
+        url: `https://auth.specter.test/${input.providerId}?method=${input.method}`,
+        method: 'code' as const,
+        instructions: 'Paste authorization code',
+      }
+    },
+    async completeProviderOAuth(input) {
+      calls.push(
+        `providerOauthCallback:${input.providerId}:${input.workspaceRoot ?? ''}:${input.method}:${input.code ?? ''}`,
+      )
+      return true
+    },
+    async setProviderAuth(input) {
+      calls.push(`authSet:${input.providerId}:${String(input.auth.type ?? '')}`)
+      return true
+    },
+    async removeProviderAuth(input) {
+      calls.push(`authRemove:${input.providerId}`)
+      return true
+    },
     async listAgents() {
       calls.push('agents')
       return [{ id: 'build', default: true, tools: ['read'] }]
@@ -432,6 +470,25 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`mcpDisconnect:${input.workspaceRoot}:${input.name}`)
       return true
     },
+    async startMcpAuth(input) {
+      calls.push(`mcpAuthStart:${input.workspaceRoot}:${input.name}`)
+      return {
+        authorizationUrl: `https://mcp-auth.specter.test/${input.name}`,
+        oauthState: `state-${input.name}`,
+      }
+    },
+    async authenticateMcp(input) {
+      calls.push(`mcpAuthAuthenticate:${input.workspaceRoot}:${input.name}`)
+      return { name: input.name, status: 'connected' as const }
+    },
+    async completeMcpAuth(input) {
+      calls.push(`mcpAuthCallback:${input.workspaceRoot}:${input.name}:${input.code}`)
+      return { name: input.name, status: 'connected' as const }
+    },
+    async removeMcpAuth(input) {
+      calls.push(`mcpAuthRemove:${input.workspaceRoot}:${input.name}`)
+      return { success: true as const }
+    },
     async getVcsStatus(input) {
       calls.push(`vcsStatus:${input.workspaceRoot}`)
       return {
@@ -597,6 +654,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       missing: 0,
     })
     expect(implementedOpenCodeApiRoutes).toEqual<RouteSpec[]>([
+      { method: 'DELETE', normalizedPath: '/auth/:providerID' },
+      { method: 'PUT', normalizedPath: '/auth/:providerID' },
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/api/model' },
       { method: 'GET', normalizedPath: '/api/provider' },
@@ -638,6 +697,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/mcp' },
       { method: 'POST', normalizedPath: '/mcp/:name/connect' },
       { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
+      { method: 'DELETE', normalizedPath: '/mcp/:name/auth' },
+      { method: 'POST', normalizedPath: '/mcp/:name/auth' },
+      { method: 'POST', normalizedPath: '/mcp/:name/auth/authenticate' },
+      { method: 'POST', normalizedPath: '/mcp/:name/auth/callback' },
       { method: 'GET', normalizedPath: '/path' },
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
@@ -646,6 +709,9 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/project/git/init' },
       { method: 'PATCH', normalizedPath: '/project/:projectID' },
       { method: 'GET', normalizedPath: '/provider' },
+      { method: 'GET', normalizedPath: '/provider/auth' },
+      { method: 'POST', normalizedPath: '/provider/:providerID/oauth/authorize' },
+      { method: 'POST', normalizedPath: '/provider/:providerID/oauth/callback' },
       { method: 'GET', normalizedPath: '/pty' },
       { method: 'POST', normalizedPath: '/pty' },
       { method: 'GET', normalizedPath: '/pty/shells' },
@@ -704,6 +770,116 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/vcs/diff/raw' },
       { method: 'GET', normalizedPath: '/vcs/status' },
     ])
+  })
+
+  it('dispatches OpenCode provider and MCP auth compatibility routes', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+    const workspaceRoot = '/repo/auth-smoke'
+
+    const providerAuth = await router.handle(
+      new Request(`http://specter.test/provider/auth?directory=${encodeURIComponent(workspaceRoot)}`),
+    )
+    expect(providerAuth.status).toBe(200)
+    await expect(json(providerAuth)).resolves.toEqual({
+      openrouter: [
+        expect.objectContaining({ type: 'api', label: 'API key' }),
+      ],
+    })
+
+    const providerAuthorize = await router.handle(
+      new Request(
+        `http://specter.test/provider/openrouter/oauth/authorize?directory=${encodeURIComponent(workspaceRoot)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ method: 0, inputs: { account: 'default' } }),
+        },
+      ),
+    )
+    expect(providerAuthorize.status).toBe(200)
+    await expect(json(providerAuthorize)).resolves.toEqual({
+      url: 'https://auth.specter.test/openrouter?method=0',
+      method: 'code',
+      instructions: 'Paste authorization code',
+    })
+
+    const providerCallback = await router.handle(
+      new Request(
+        `http://specter.test/provider/openrouter/oauth/callback?directory=${encodeURIComponent(workspaceRoot)}`,
+        {
+          method: 'POST',
+          body: JSON.stringify({ method: 0, code: 'provider-code' }),
+        },
+      ),
+    )
+    expect(providerCallback.status).toBe(200)
+    await expect(json(providerCallback)).resolves.toBe(true)
+
+    const authSet = await router.handle(
+      new Request('http://specter.test/auth/openrouter', {
+        method: 'PUT',
+        body: JSON.stringify({ type: 'api', key: 'placeholder-api-key' }),
+      }),
+    )
+    expect(authSet.status).toBe(200)
+    await expect(json(authSet)).resolves.toBe(true)
+
+    const authRemove = await router.handle(
+      new Request('http://specter.test/auth/openrouter', { method: 'DELETE' }),
+    )
+    expect(authRemove.status).toBe(200)
+    await expect(json(authRemove)).resolves.toBe(true)
+
+    const mcpStart = await router.handle(
+      new Request(`http://specter.test/mcp/linear/auth?directory=${encodeURIComponent(workspaceRoot)}`, {
+        method: 'POST',
+      }),
+    )
+    expect(mcpStart.status).toBe(200)
+    await expect(json(mcpStart)).resolves.toEqual({
+      authorizationUrl: 'https://mcp-auth.specter.test/linear',
+      oauthState: 'state-linear',
+    })
+
+    const mcpAuthenticate = await router.handle(
+      new Request(
+        `http://specter.test/mcp/linear/auth/authenticate?directory=${encodeURIComponent(workspaceRoot)}`,
+        { method: 'POST' },
+      ),
+    )
+    expect(mcpAuthenticate.status).toBe(200)
+    await expect(json(mcpAuthenticate)).resolves.toEqual({ name: 'linear', status: 'connected' })
+
+    const mcpCallback = await router.handle(
+      new Request(`http://specter.test/mcp/linear/auth/callback?directory=${encodeURIComponent(workspaceRoot)}`, {
+        method: 'POST',
+        body: JSON.stringify({ code: 'mcp-code' }),
+      }),
+    )
+    expect(mcpCallback.status).toBe(200)
+    await expect(json(mcpCallback)).resolves.toEqual({ name: 'linear', status: 'connected' })
+
+    const mcpRemove = await router.handle(
+      new Request(`http://specter.test/mcp/linear/auth?directory=${encodeURIComponent(workspaceRoot)}`, {
+        method: 'DELETE',
+      }),
+    )
+    expect(mcpRemove.status).toBe(200)
+    await expect(json(mcpRemove)).resolves.toEqual({ success: true })
+
+    expect(runtime.calls).toEqual(
+      expect.arrayContaining([
+        `providerAuth:${workspaceRoot}`,
+        `providerOauthAuthorize:openrouter:${workspaceRoot}:0:default`,
+        `providerOauthCallback:openrouter:${workspaceRoot}:0:provider-code`,
+        'authSet:openrouter:api',
+        'authRemove:openrouter',
+        `mcpAuthStart:${workspaceRoot}:linear`,
+        `mcpAuthAuthenticate:${workspaceRoot}:linear`,
+        `mcpAuthCallback:${workspaceRoot}:linear:mcp-code`,
+        `mcpAuthRemove:${workspaceRoot}:linear`,
+      ]),
+    )
   })
 
   it('updates project metadata and initializes git through OpenCode project mutation routes', async () => {
