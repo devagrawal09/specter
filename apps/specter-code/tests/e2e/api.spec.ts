@@ -177,6 +177,39 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(todos.headers()['content-type']).toContain('application/json')
   expect(await todos.json()).toEqual(expect.any(Array))
 
+  const log = await request.post('/log', {
+    data: { service: 'e2e', level: 'info', message: 'api smoke' },
+  })
+  expect(log.status()).toBe(200)
+  expect(log.headers()['content-type']).toContain('application/json')
+  expect(await log.json()).toBe(true)
+
+  const syncStart = await request.post(`/sync/start?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(syncStart.status()).toBe(200)
+  expect(await syncStart.json()).toBe(true)
+
+  const syncHistory = await request.post('/sync/history', { data: {} })
+  expect(syncHistory.status()).toBe(200)
+  expect(await syncHistory.json()).toEqual(expect.any(Array))
+
+  const syncSteal = await request.post('/sync/steal', { data: { sessionID: 'session-api-smoke' } })
+  expect(syncSteal.status()).toBe(200)
+  expect(await syncSteal.json()).toEqual({ sessionID: 'session-api-smoke' })
+
+  const globalUpgrade = await request.post('/global/upgrade', { data: { target: 'latest' } })
+  expect(globalUpgrade.status()).toBe(200)
+  expect(await globalUpgrade.json()).toEqual(
+    expect.objectContaining({ success: false, error: expect.stringContaining('managed externally') }),
+  )
+
+  const globalDispose = await request.post('/global/dispose')
+  expect(globalDispose.status()).toBe(200)
+  expect(await globalDispose.json()).toBe(true)
+
+  const instanceDispose = await request.post(`/instance/dispose?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(instanceDispose.status()).toBe(200)
+  expect(await instanceDispose.json()).toBe(true)
+
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')

@@ -56,6 +56,21 @@ import {
 import type { RouteSpec } from './domain/openapi-compat'
 
 export type JsonRecord = Record<string, unknown>
+export type OpenCodeLogLevel = 'debug' | 'info' | 'warn' | 'error'
+export type OpenCodeSyncEvent = {
+  id: string
+  aggregate_id: string
+  seq: number
+  type: string
+  data: JsonRecord
+}
+export type OpenCodeReplaySyncEvent = {
+  id: string
+  aggregateID: string
+  seq: number
+  type: string
+  data: JsonRecord
+}
 
 export type PtyShellSummary = {
   path: string
@@ -373,6 +388,23 @@ export type SpecterCodeApiRuntime = {
     workspaceRoot: string
     response: unknown
   }): Promise<boolean | unknown>
+  disposeGlobal(input: { workspaceRoot?: string }): Promise<boolean | unknown>
+  upgradeGlobal(input: {
+    target?: string
+  }): Promise<{ success: true; version: string } | { success: false; error: string } | unknown>
+  writeLogEntry(input: {
+    service: string
+    level: OpenCodeLogLevel
+    message: string
+    extra?: JsonRecord
+  }): Promise<boolean | unknown>
+  listSyncHistory(input: Record<string, number>): Promise<readonly OpenCodeSyncEvent[] | unknown>
+  replaySyncEvents(input: {
+    directory: string
+    events: OpenCodeReplaySyncEvent[]
+  }): Promise<{ sessionID: string } | unknown>
+  startSync(input: { workspaceRoot: string }): Promise<boolean | unknown>
+  stealSyncSession(input: { sessionId: string }): Promise<{ sessionID: string } | unknown>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
@@ -398,6 +430,14 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'PATCH', normalizedPath: '/global/config' },
   { method: 'GET', normalizedPath: '/global/event' },
   { method: 'GET', normalizedPath: '/global/health' },
+  { method: 'POST', normalizedPath: '/global/dispose' },
+  { method: 'POST', normalizedPath: '/global/upgrade' },
+  { method: 'POST', normalizedPath: '/instance/dispose' },
+  { method: 'POST', normalizedPath: '/log' },
+  { method: 'POST', normalizedPath: '/sync/history' },
+  { method: 'POST', normalizedPath: '/sync/replay' },
+  { method: 'POST', normalizedPath: '/sync/start' },
+  { method: 'POST', normalizedPath: '/sync/steal' },
   { method: 'GET', normalizedPath: '/find' },
   { method: 'GET', normalizedPath: '/find/file' },
   { method: 'GET', normalizedPath: '/find/symbol' },
@@ -509,6 +549,62 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/global/health') {
     return jsonResponse({ ok: true })
+  }
+
+  if (method === 'POST' && pathname === '/global/dispose') {
+    return jsonResponse(await runtime.disposeGlobal({}))
+  }
+
+  if (method === 'POST' && pathname === '/instance/dispose') {
+    return jsonResponse(
+      await runtime.disposeGlobal({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/global/upgrade') {
+    const body = await readJsonBody(request)
+    return jsonResponse(await runtime.upgradeGlobal({ target: optionalString(body.target) }))
+  }
+
+  if (method === 'POST' && pathname === '/log') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.writeLogEntry({
+        service: requiredString(body.service, 'service'),
+        level: readLogLevel(body.level),
+        message: requiredString(body.message, 'message'),
+        extra: optionalJsonRecord(body.extra),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/sync/history') {
+    return jsonResponse(await runtime.listSyncHistory(readSyncHistoryCursor(await readJsonBody(request))))
+  }
+
+  if (method === 'POST' && pathname === '/sync/replay') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.replaySyncEvents({
+        directory: requiredString(body.directory, 'directory'),
+        events: readReplaySyncEvents(body.events),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/sync/start') {
+    return jsonResponse(
+      await runtime.startSync({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/sync/steal') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.stealSyncSession({
+        sessionId: requiredString(body.sessionID, 'sessionID'),
+      }),
+    )
   }
 
   if (method === 'GET' && pathname === '/global/event') {
@@ -1658,6 +1754,36 @@ ${input.command}
         submittedBy: { displayName: 'OpenCode API' },
       })
     },
+    async disposeGlobal() {
+      return true
+    },
+    async upgradeGlobal(input) {
+      return {
+        success: false,
+        error: input.target
+          ? `Specter Code is managed externally; cannot upgrade to ${input.target}`
+          : 'Specter Code is managed externally; cannot self-upgrade',
+      }
+    },
+    async writeLogEntry(input) {
+      const writer = input.level === 'error' ? console.error : input.level === 'warn' ? console.warn : console.log
+      writer(`[${input.service}] ${input.level}: ${input.message}`, input.extra ?? {})
+      return true
+    },
+    async listSyncHistory(input) {
+      const events = await this.listEvents({ afterOrder: smallestSyncCursor(input) })
+      return events.map(toOpenCodeSyncEvent)
+    },
+    async replaySyncEvents(input) {
+      const sessionId = input.events.find((event) => event.aggregateID)?.aggregateID
+      return { sessionID: sessionId ?? input.directory }
+    },
+    async startSync() {
+      return true
+    },
+    async stealSyncSession(input) {
+      return { sessionID: input.sessionId }
+    },
     async listEvents(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeEventsOnServer(input)
@@ -2224,6 +2350,73 @@ function formatQuestionAnswers(answers: string[][]) {
     .map((answer) => answer.join(', '))
     .filter(Boolean)
     .join(' | ')
+}
+
+function readLogLevel(value: unknown): OpenCodeLogLevel {
+  if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
+    return value
+  }
+  throw new Error('Invalid log level')
+}
+
+function readSyncHistoryCursor(body: JsonRecord): Record<string, number> {
+  const cursor: Record<string, number> = {}
+  for (const [aggregateId, seq] of Object.entries(body)) {
+    if (typeof seq !== 'number' || !Number.isInteger(seq) || seq < 0) {
+      throw new Error('Invalid sync history cursor')
+    }
+    cursor[aggregateId] = seq
+  }
+  return cursor
+}
+
+function readReplaySyncEvents(value: unknown): OpenCodeReplaySyncEvent[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error('Missing required field: events')
+  }
+  return value.map((event) => {
+    if (!isRecord(event)) throw new Error('Invalid sync event')
+    return {
+      id: requiredString(event.id, 'event.id'),
+      aggregateID: requiredString(event.aggregateID, 'event.aggregateID'),
+      seq: readNonNegativeInteger(event.seq, 'event.seq'),
+      type: requiredString(event.type, 'event.type'),
+      data: requiredRecord(event.data, 'event.data'),
+    }
+  })
+}
+
+function readNonNegativeInteger(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw new Error(`Invalid ${name}`)
+  }
+  return value
+}
+
+function smallestSyncCursor(input: Record<string, number>) {
+  const values = Object.values(input)
+  if (values.length === 0) return undefined
+  return Math.min(...values)
+}
+
+function toOpenCodeSyncEvent(event: SpecterCodeStreamEvent): OpenCodeSyncEvent {
+  return {
+    id: event.id,
+    aggregate_id: readSyncAggregateId(event),
+    seq: event.order,
+    type: event.type,
+    data: isRecord(event.payload) ? event.payload : {},
+  }
+}
+
+function readSyncAggregateId(event: SpecterCodeStreamEvent) {
+  const payload = isRecord(event.payload) ? event.payload : {}
+  return (
+    optionalString(payload.sessionId) ??
+    optionalString(payload.workspaceId) ??
+    optionalString(payload.runId) ??
+    event.id
+  )
 }
 
 type PendingQuestionSummary = { questionId: string; sessionId: string }

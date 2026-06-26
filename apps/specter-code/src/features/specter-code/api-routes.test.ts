@@ -548,6 +548,34 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`ptyConnect:${input.ptySessionId}`)
       return true
     },
+    async disposeGlobal(input) {
+      calls.push(`dispose:${input.workspaceRoot ?? ''}`)
+      return true
+    },
+    async upgradeGlobal(input) {
+      calls.push(`upgrade:${input.target ?? ''}`)
+      return { success: false as const, error: 'managed externally' }
+    },
+    async writeLogEntry(input) {
+      calls.push(`log:${input.service}:${input.level}:${input.message}:${JSON.stringify(input.extra ?? {})}`)
+      return true
+    },
+    async listSyncHistory(input) {
+      calls.push(`syncHistory:${JSON.stringify(input)}`)
+      return [{ id: 'evt-1', aggregate_id: 'session-main', seq: 1, type: 'session.updated', data: {} }]
+    },
+    async replaySyncEvents(input) {
+      calls.push(`syncReplay:${input.directory}:${input.events[0]?.aggregateID ?? ''}`)
+      return { sessionID: input.events[0]?.aggregateID ?? 'session-main' }
+    },
+    async startSync(input) {
+      calls.push(`syncStart:${input.workspaceRoot}`)
+      return true
+    },
+    async stealSyncSession(input) {
+      calls.push(`syncSteal:${input.sessionId}`)
+      return { sessionID: input.sessionId }
+    },
   }
 }
 
@@ -591,6 +619,14 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'PATCH', normalizedPath: '/global/config' },
       { method: 'GET', normalizedPath: '/global/event' },
       { method: 'GET', normalizedPath: '/global/health' },
+      { method: 'POST', normalizedPath: '/global/dispose' },
+      { method: 'POST', normalizedPath: '/global/upgrade' },
+      { method: 'POST', normalizedPath: '/instance/dispose' },
+      { method: 'POST', normalizedPath: '/log' },
+      { method: 'POST', normalizedPath: '/sync/history' },
+      { method: 'POST', normalizedPath: '/sync/replay' },
+      { method: 'POST', normalizedPath: '/sync/start' },
+      { method: 'POST', normalizedPath: '/sync/steal' },
       { method: 'GET', normalizedPath: '/find' },
       { method: 'GET', normalizedPath: '/find/file' },
       { method: 'GET', normalizedPath: '/find/symbol' },
@@ -730,6 +766,109 @@ describe('Specter Code OpenCode API route adapter', () => {
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true })
     }
+  })
+
+
+  it('dispatches OpenCode lifecycle, log, and sync routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/global/dispose', { method: 'POST' }),
+        ),
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/global/upgrade', {
+            method: 'POST',
+            body: JSON.stringify({ target: 'latest' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ success: false, error: 'managed externally' })
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/instance/dispose?directory=/repo', {
+            method: 'POST',
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/log', {
+            method: 'POST',
+            body: JSON.stringify({
+              service: 'tui',
+              level: 'warn',
+              message: 'slow render',
+              extra: { route: '/session' },
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/sync/history', {
+            method: 'POST',
+            body: JSON.stringify({ 'session-main': 1 }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual([
+      { id: 'evt-1', aggregate_id: 'session-main', seq: 1, type: 'session.updated', data: {} },
+    ])
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/sync/replay', {
+            method: 'POST',
+            body: JSON.stringify({
+              directory: '/repo',
+              events: [
+                { id: 'evt-2', aggregateID: 'session-replay', seq: 2, type: 'session.updated', data: {} },
+              ],
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ sessionID: 'session-replay' })
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/sync/start?directory=/repo', { method: 'POST' }),
+        ),
+      ),
+    ).resolves.toBe(true)
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/sync/steal', {
+            method: 'POST',
+            body: JSON.stringify({ sessionID: 'session-main' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ sessionID: 'session-main' })
+
+    expect(runtime.calls.slice(-8)).toEqual([
+      'dispose:',
+      'upgrade:latest',
+      'dispose:/repo',
+      'log:tui:warn:slow render:{"route":"/session"}',
+      'syncHistory:{"session-main":1}',
+      'syncReplay:/repo:session-replay',
+      'syncStart:/repo',
+      'syncSteal:session-main',
+    ])
   })
 
   it('dispatches OpenCode session status, prompt message, and abort routes to runtime handlers', async () => {
