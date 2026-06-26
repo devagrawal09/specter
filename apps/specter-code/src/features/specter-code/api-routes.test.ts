@@ -580,6 +580,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID' },
       { method: 'PATCH', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/permissions/:permissionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
       { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
       { method: 'POST', normalizedPath: '/session/:sessionID/shell' },

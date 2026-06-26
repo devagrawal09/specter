@@ -159,6 +159,18 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
 })
 
 
+test('serves deprecated OpenCode session permission responses over HTTP', async ({ request }) => {
+  const suffix = Math.random().toString(36).slice(2)
+  const response = await request.post(
+    `/session/session-permission-api-${suffix}/permissions/permission-api-${suffix}`,
+    { data: { response: 'once' } },
+  )
+
+  expect(response.status()).toBe(200)
+  expect(response.headers()['content-type']).toContain('application/json')
+  expect(await response.json()).toBe(true)
+})
+
 test('serves OpenCode-compatible session message detail and mutation routes over HTTP', async ({ request }) => {
   const suffix = Math.random().toString(36).slice(2)
   const sessionId = `session-message-api-${suffix}`

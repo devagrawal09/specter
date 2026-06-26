@@ -391,6 +391,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID' },
   { method: 'PATCH', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/permissions/:permissionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
   { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
   { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
@@ -978,6 +979,24 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  const sessionPermissionReplyMatch = matchPath(
+    pathname,
+    '/session/:sessionID/permissions/:permissionID',
+  )
+  if (method === 'POST' && sessionPermissionReplyMatch) {
+    const body = await readJsonBody(request)
+    const response = readOpenCodePermissionResponse(body.response)
+    return jsonResponse(
+      await runtime.replyPermission({
+        requestId: sessionPermissionReplyMatch.permissionID,
+        sessionId: sessionPermissionReplyMatch.sessionID,
+        action: response === 'reject' ? 'deny' : 'allow',
+        repliedBy: { displayName: 'OpenCode API' },
+        reason: `OpenCode permission response: ${response}`,
+      }),
+    )
+  }
+
   if (method === 'GET' && (pathname === '/config' || pathname === '/global/config')) {
     return jsonResponse(
       await runtime.loadConfig({ workspaceRoot: workspaceRootFromFindQuery(url) }),
@@ -1317,7 +1336,8 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async replyPermission(input) {
       const runtime = await import('./server-runtime.server')
-      return runtime.replySpecterCodeToolApprovalOnServer(input)
+      await runtime.replySpecterCodeToolApprovalOnServer(input)
+      return true
     },
     async loadConfig(input) {
       return loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
@@ -1983,6 +2003,11 @@ function readActor(value: unknown) {
 function readPermissionAction(value: unknown) {
   if (value === 'allow' || value === 'deny') return value
   throw new Error('Missing required field: action')
+}
+
+function readOpenCodePermissionResponse(value: unknown) {
+  if (value === 'once' || value === 'always' || value === 'reject') return value
+  throw new Error('Missing required field: response')
 }
 
 function jsonResponse(value: unknown, status = 200) {
