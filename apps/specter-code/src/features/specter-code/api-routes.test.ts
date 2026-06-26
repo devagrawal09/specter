@@ -58,6 +58,10 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`transcript:${input.sessionId}`)
       return [{ id: 'message-1', role: 'assistant', content: 'done' }]
     },
+    async listSessionContext(input) {
+      calls.push(`context:${input.sessionId}`)
+      return [{ id: 'message-1', role: 'user', content: 'active prompt' }]
+    },
     async listSessionStatus(input) {
       calls.push(`sessionStatus:${input.workspaceRoot ?? ''}`)
       return { 'session-main': { status: 'idle', sessionId: 'session-main' } }
@@ -515,6 +519,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/api/provider/:providerID' },
       { method: 'GET', normalizedPath: '/api/session' },
       { method: 'POST', normalizedPath: '/api/session/:sessionID/compact' },
+      { method: 'GET', normalizedPath: '/api/session/:sessionID/context' },
       { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
       { method: 'POST', normalizedPath: '/api/session/:sessionID/wait' },
@@ -852,12 +857,17 @@ describe('Specter Code OpenCode API route adapter', () => {
     )
     expect(wait.status).toBe(204)
 
-    expect(runtime.calls.slice(-5)).toEqual([
+    await expect(
+      json(await router.handle(new Request('http://specter.test/api/session/session-main/context'))),
+    ).resolves.toEqual([{ id: 'message-1', role: 'user', content: 'active prompt' }])
+
+    expect(runtime.calls.slice(-6)).toEqual([
       'sessionInit:session-main:msg_init:/repo:openrouter/anthropic/claude-sonnet-4',
       'sessionSummarize:session-main:/repo:openrouter/anthropic/claude-sonnet-4:auto',
       'sessionShell:session-main:msg_shell:/repo:build:pnpm test:openrouter/anthropic/claude-sonnet-4',
       'sessionCompact:session-main:/repo',
       'sessionWait:session-main:/repo',
+      'context:session-main',
     ])
   })
 

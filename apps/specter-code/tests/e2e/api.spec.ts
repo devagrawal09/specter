@@ -195,6 +195,15 @@ test('serves OpenCode-compatible session message detail and mutation routes over
     parts: [{ id: 'part_text', type: 'text', text: 'original message' }],
   })
 
+  const context = await request.get(`/api/session/${sessionId}/context`)
+  expect(context.status()).toBe(200)
+  expect(context.headers()['content-type']).toContain('application/json')
+  expect(await context.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ id: messageId, sessionId, role: 'user', content: 'original message' }),
+    ]),
+  )
+
   const patched = await request.patch(`/session/${sessionId}/message/${messageId}/part/part_text`, {
     data: { text: 'updated message' },
   })

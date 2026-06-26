@@ -116,6 +116,7 @@ export type SpecterCodeApiRuntime = {
     submittedBy: { userId?: string; displayName: string }
   }): Promise<unknown>
   listSessionTranscript(input: { sessionId: string }): Promise<unknown>
+  listSessionContext(input: { sessionId: string }): Promise<unknown>
   listSessionStatus(input: { workspaceRoot?: string }): Promise<unknown>
   createSessionMessage(input: {
     sessionId: string
@@ -329,6 +330,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/api/provider/:providerID' },
   { method: 'GET', normalizedPath: '/api/session' },
   { method: 'POST', normalizedPath: '/api/session/:sessionID/compact' },
+  { method: 'GET', normalizedPath: '/api/session/:sessionID/context' },
   { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
   { method: 'POST', normalizedPath: '/api/session/:sessionID/wait' },
@@ -715,6 +717,13 @@ async function dispatchOpenCodeApiRequest(
       workspaceRoot: workspaceRootFromFindQuery(url),
     })
     return noContentResponse()
+  }
+
+  const apiContextMatch = matchPath(pathname, '/api/session/:sessionID/context')
+  if (method === 'GET' && apiContextMatch) {
+    return jsonResponse(
+      await runtime.listSessionContext({ sessionId: apiContextMatch.sessionID }),
+    )
   }
 
   const sessionTodoMatch = matchPath(pathname, '/session/:sessionID/todo')
@@ -1188,6 +1197,10 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       return runtime.submitSpecterCodePromptOnServer(input)
     },
     async listSessionTranscript(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.listSpecterCodeSessionTranscriptOnServer(input)
+    },
+    async listSessionContext(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeSessionTranscriptOnServer(input)
     },
