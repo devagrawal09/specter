@@ -14,6 +14,8 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/config/providers',
   '/command',
   '/event',
+  '/experimental/tool',
+  '/experimental/tool/ids',
   '/formatter',
   '/global/config',
   '/global/event',

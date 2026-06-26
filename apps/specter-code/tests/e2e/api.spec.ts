@@ -81,6 +81,30 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   expect(mcpBeforeAdd.headers()['content-type']).toContain('application/json')
   expect(await mcpBeforeAdd.json()).toEqual(expect.any(Object))
 
+  const toolIds = await request.get(
+    `/experimental/tool/ids?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(toolIds.status()).toBe(200)
+  expect(toolIds.headers()['content-type']).toContain('application/json')
+  expect(await toolIds.json()).toEqual(
+    expect.arrayContaining(['grep', 'read', 'write']),
+  )
+
+  const tools = await request.get(
+    `/experimental/tool?directory=${encodeURIComponent(workspaceRoot)}&provider=openrouter&model=test-model`,
+  )
+  expect(tools.status()).toBe(200)
+  expect(tools.headers()['content-type']).toContain('application/json')
+  expect(await tools.json()).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: 'read',
+        description: 'Read a file inside the current workspace',
+        parameters: expect.any(Object),
+      }),
+    ]),
+  )
+
   const mcpAdd = await request.post(`/mcp?directory=${encodeURIComponent(workspaceRoot)}`, {
     data: { name: 'api-smoke', config: { type: 'local', command: ['node', 'server.js'] } },
   })

@@ -47,6 +47,11 @@ import {
   listSpecterCodeSkills,
   type SpecterCodeSkillInfo,
 } from './adapters/skills'
+import {
+  listSpecterCodeToolIds,
+  listSpecterCodeTools,
+  type OpenCodeToolListItem,
+} from './adapters/tool-catalog'
 import type { RouteSpec } from './domain/openapi-compat'
 
 export type JsonRecord = Record<string, unknown>
@@ -190,6 +195,14 @@ export type SpecterCodeApiRuntime = {
   listAgents(input?: {
     workspaceRoot?: string
   }): Promise<AgentSummary[] | unknown>
+  listToolIds(input: {
+    workspaceRoot: string
+  }): Promise<readonly string[] | unknown>
+  listTools(input: {
+    workspaceRoot: string
+    providerId: string
+    modelId: string
+  }): Promise<readonly OpenCodeToolListItem[] | unknown>
   listPendingQuestions(input: { sessionId?: string }): Promise<unknown>
   replyQuestion(input: {
     requestId: string
@@ -339,6 +352,8 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/config/providers' },
   { method: 'GET', normalizedPath: '/command' },
   { method: 'GET', normalizedPath: '/event' },
+  { method: 'GET', normalizedPath: '/experimental/tool' },
+  { method: 'GET', normalizedPath: '/experimental/tool/ids' },
   { method: 'GET', normalizedPath: '/formatter' },
   { method: 'GET', normalizedPath: '/global/config' },
   { method: 'PATCH', normalizedPath: '/global/config' },
@@ -452,6 +467,24 @@ async function dispatchOpenCodeApiRequest(
   if (method === 'GET' && pathname === '/path') {
     const directory = workspaceRootFromFindQuery(url)
     return jsonResponse({ path: directory, directory })
+  }
+
+  if (method === 'GET' && pathname === '/experimental/tool/ids') {
+    return jsonResponse(
+      await runtime.listToolIds({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/experimental/tool') {
+    return jsonResponse(
+      await runtime.listTools({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        providerId: requiredQuery(url, 'provider'),
+        modelId: requiredQuery(url, 'model'),
+      }),
+    )
   }
 
   if (method === 'GET' && (pathname === '/api/provider' || pathname === '/api/model')) {
@@ -1361,6 +1394,12 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listAgents(input) {
       const config = await loadConfigForRegistry(input?.workspaceRoot)
       return createAgentRegistry({ config }).listAgents()
+    },
+    async listToolIds() {
+      return listSpecterCodeToolIds()
+    },
+    async listTools() {
+      return listSpecterCodeTools()
     },
     async listPendingQuestions(input) {
       const runtime = await import('./server-runtime.server')

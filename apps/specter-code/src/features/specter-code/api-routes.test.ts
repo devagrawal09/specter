@@ -205,6 +205,20 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push('agents')
       return [{ id: 'build', default: true, tools: ['read'] }]
     },
+    async listToolIds(input) {
+      calls.push(`toolIds:${input.workspaceRoot}`)
+      return ['read']
+    },
+    async listTools(input) {
+      calls.push(`tools:${input.workspaceRoot}:${input.providerId}/${input.modelId}`)
+      return [
+        {
+          id: 'read',
+          description: 'Read a file inside the current workspace',
+          parameters: { type: 'object' },
+        },
+      ]
+    },
     async listPendingQuestions(input) {
       calls.push(`questions:${input.sessionId ?? 'all'}`)
       return [
@@ -528,6 +542,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/config/providers' },
       { method: 'GET', normalizedPath: '/command' },
       { method: 'GET', normalizedPath: '/event' },
+      { method: 'GET', normalizedPath: '/experimental/tool' },
+      { method: 'GET', normalizedPath: '/experimental/tool/ids' },
       { method: 'GET', normalizedPath: '/formatter' },
       { method: 'GET', normalizedPath: '/global/config' },
       { method: 'PATCH', normalizedPath: '/global/config' },
@@ -972,6 +988,62 @@ describe('Specter Code OpenCode API route adapter', () => {
       'mcpAdd:/repo:filesystem:{"type":"local","command":["node","mcp-server.js"],"enabled":true}',
       'mcpConnect:/repo:filesystem',
       'mcpDisconnect:/repo:filesystem',
+    ])
+  })
+
+  it('dispatches OpenCode experimental tool list routes to runtime handlers', async () => {
+    const runtime = {
+      ...createRuntime(),
+      async listToolIds(input: { workspaceRoot: string }) {
+        this.calls.push(`toolIds:${input.workspaceRoot}`)
+        return ['grep', 'read']
+      },
+      async listTools(input: {
+        workspaceRoot: string
+        providerId: string
+        modelId: string
+      }) {
+        this.calls.push(
+          `tools:${input.workspaceRoot}:${input.providerId}/${input.modelId}`,
+        )
+        return [
+          {
+            id: 'read',
+            description: 'Read a file inside the current workspace',
+            parameters: { type: 'object' },
+          },
+        ]
+      },
+    }
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/experimental/tool/ids?directory=/repo'),
+        ),
+      ),
+    ).resolves.toEqual(['grep', 'read'])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(
+            'http://specter.test/experimental/tool?directory=/repo&provider=openrouter&model=test-model',
+          ),
+        ),
+      ),
+    ).resolves.toEqual([
+      {
+        id: 'read',
+        description: 'Read a file inside the current workspace',
+        parameters: { type: 'object' },
+      },
+    ])
+
+    expect(runtime.calls.slice(-2)).toEqual([
+      'toolIds:/repo',
+      'tools:/repo:openrouter/test-model',
     ])
   })
 
