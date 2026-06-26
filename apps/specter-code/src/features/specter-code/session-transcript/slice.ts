@@ -5,6 +5,9 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunRequestedEvent,
   postReplyCreatedEvent,
+  sessionMessageDeletedEvent,
+  sessionMessagePartDeletedEvent,
+  sessionMessagePartUpdatedEvent,
   userMessageSubmittedEvent,
 } from '../events'
 
@@ -87,6 +90,32 @@ const sessionTranscript = createQuerySlice(
           displayName: payload.author.displayName,
         },
       })
+    },
+    [sessionMessagePartUpdatedEvent.type]: async (event, state) => {
+      const payload = await sessionMessagePartUpdatedEvent.decode(event.payload)
+      const item = state.items.find(
+        (candidate) =>
+          candidate.sessionId === payload.sessionId &&
+          candidate.id === payload.messageId,
+      )
+      if (item) item.content = payload.content
+    },
+    [sessionMessagePartDeletedEvent.type]: async (event, state) => {
+      const payload = await sessionMessagePartDeletedEvent.decode(event.payload)
+      const item = state.items.find(
+        (candidate) =>
+          candidate.sessionId === payload.sessionId &&
+          candidate.id === payload.messageId,
+      )
+      if (item) item.content = ''
+    },
+    [sessionMessageDeletedEvent.type]: async (event, state) => {
+      const payload = await sessionMessageDeletedEvent.decode(event.payload)
+      state.items = state.items.filter(
+        (item) =>
+          item.sessionId !== payload.sessionId || item.id !== payload.messageId,
+      )
+      delete state.messageSessions[payload.messageId]
     },
   })
   .scenarios(
@@ -181,6 +210,81 @@ const sessionTranscript = createQuerySlice(
           author: { agentId: 'build', displayName: 'Build Agent' },
         },
       ],
+    },
+    {
+      description: 'Applies a text part update to an existing transcript message.',
+      given: [
+        userMessageSubmittedEvent.create({
+          messageId: 'message-update-1',
+          sessionId: 'session-update',
+          workspaceId: 'workspace-1',
+          content: 'old prompt',
+          submittedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
+        }),
+        sessionMessagePartUpdatedEvent.create({
+          sessionId: 'session-update',
+          messageId: 'message-update-1',
+          partId: 'part_text',
+          content: 'updated prompt',
+        }),
+      ],
+      when: { sessionId: 'session-update' },
+      expect: [
+        {
+          id: 'message-update-1',
+          sessionId: 'session-update',
+          workspaceId: 'workspace-1',
+          role: 'user',
+          content: 'updated prompt',
+          author: { userId: 'user-1', displayName: 'Ada Lovelace' },
+        },
+      ],
+    },
+    {
+      description: 'Clears content when a transcript text part is deleted.',
+      given: [
+        userMessageSubmittedEvent.create({
+          messageId: 'message-part-delete-1',
+          sessionId: 'session-part-delete',
+          workspaceId: 'workspace-1',
+          content: 'temporary prompt',
+          submittedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
+        }),
+        sessionMessagePartDeletedEvent.create({
+          sessionId: 'session-part-delete',
+          messageId: 'message-part-delete-1',
+          partId: 'part_text',
+        }),
+      ],
+      when: { sessionId: 'session-part-delete' },
+      expect: [
+        {
+          id: 'message-part-delete-1',
+          sessionId: 'session-part-delete',
+          workspaceId: 'workspace-1',
+          role: 'user',
+          content: '',
+          author: { userId: 'user-1', displayName: 'Ada Lovelace' },
+        },
+      ],
+    },
+    {
+      description: 'Removes a transcript message after session message deletion.',
+      given: [
+        userMessageSubmittedEvent.create({
+          messageId: 'message-delete-1',
+          sessionId: 'session-delete',
+          workspaceId: 'workspace-1',
+          content: 'remove me',
+          submittedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
+        }),
+        sessionMessageDeletedEvent.create({
+          sessionId: 'session-delete',
+          messageId: 'message-delete-1',
+        }),
+      ],
+      when: { sessionId: 'session-delete' },
+      expect: [],
     },
   )
   .handle(async (query, state) =>

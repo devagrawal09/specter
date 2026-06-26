@@ -8,6 +8,8 @@ import askQuestion from './ask-question/slice'
 import createPost from './create-post/slice'
 import createSession from './create-session/slice'
 import deleteSession from './delete-session/slice'
+import deleteSessionMessage from './delete-session-message/slice'
+import deleteSessionMessagePart from './delete-session-message-part/slice'
 import forkSession from './fork-session/slice'
 import createWorkspace from './create-workspace/slice'
 import filesystemTree from './workspace-filesystem-tree/slice'
@@ -47,6 +49,7 @@ import sessionTodos from './session-todos/slice'
 import sessionList from './session-list/slice'
 import submitPrompt from './submit-prompt/slice'
 import updateSession from './update-session/slice'
+import updateSessionMessagePart from './update-session-message-part/slice'
 import updateTodoList from './update-todo-list/slice'
 import workspaceAgentRuns from './workspace-agent-runs/slice'
 import workspaceChat from './workspace-chat/slice'
@@ -70,6 +73,9 @@ export const specterCodeScaffoldRegistrations = [
   sessionChildren,
   submitPrompt,
   recordSessionMessage,
+  updateSessionMessagePart,
+  deleteSessionMessagePart,
+  deleteSessionMessage,
   sessionTranscript,
   createPost,
   replyToPost,

@@ -195,6 +195,57 @@ export async function listSpecterCodeSessionTranscriptOnServer(data: {
   return runWithSpecterCodeReferenceDb(() => app.sessionTranscript(data))
 }
 
+export async function getSpecterCodeSessionMessageOnServer(data: {
+  sessionId: string
+  messageId: string
+}) {
+  return runWithSpecterCodeReferenceDb(async () => {
+    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const message = transcript.find((item) => item.id === data.messageId)
+    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    return message
+  })
+}
+
+export async function updateSpecterCodeSessionMessagePartOnServer(data: {
+  sessionId: string
+  messageId: string
+  partId: string
+  text: string
+}) {
+  return runWithSpecterCodeReferenceDb(async () => {
+    await app.updateSessionMessagePart(data)
+    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const message = transcript.find((item) => item.id === data.messageId)
+    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    return message
+  })
+}
+
+export async function deleteSpecterCodeSessionMessagePartOnServer(data: {
+  sessionId: string
+  messageId: string
+  partId: string
+}) {
+  return runWithSpecterCodeReferenceDb(async () => {
+    await app.deleteSessionMessagePart(data)
+    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const message = transcript.find((item) => item.id === data.messageId)
+    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    return message
+  })
+}
+
+export async function deleteSpecterCodeSessionMessageOnServer(data: {
+  sessionId: string
+  messageId: string
+}) {
+  return runWithSpecterCodeReferenceDb(async () => {
+    await app.deleteSessionMessage(data)
+    return true
+  })
+}
+
 export async function requestSpecterCodeFilesystemScanOnServer(data: {
   workspaceId: string
   reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'

@@ -159,6 +159,67 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
 })
 
 
+test('serves OpenCode-compatible session message detail and mutation routes over HTTP', async ({ request }) => {
+  const suffix = Math.random().toString(36).slice(2)
+  const sessionId = `session-message-api-${suffix}`
+  const messageId = `message-api-${suffix}`
+  const workspaceId = `workspace-api-${suffix}`
+  const directory = process.cwd()
+
+  const session = await request.post('/session', {
+    data: {
+      sessionId,
+      workspaceId,
+      title: 'Message API smoke',
+      directory,
+      agent: 'build',
+      model: { providerId: 'openrouter', modelId: 'test-model' },
+    },
+  })
+  expect(session.status()).toBe(200)
+
+  const message = await request.post(`/session/${sessionId}/message`, {
+    data: {
+      messageID: messageId,
+      parts: [{ type: 'text', text: 'original message' }],
+      noReply: true,
+    },
+  })
+  expect(message.status()).toBe(200)
+
+  const detail = await request.get(`/session/${sessionId}/message/${messageId}`)
+  expect(detail.status()).toBe(200)
+  expect(detail.headers()['content-type']).toContain('application/json')
+  expect(await detail.json()).toEqual({
+    info: { id: messageId, sessionID: sessionId, role: 'user' },
+    parts: [{ id: 'part_text', type: 'text', text: 'original message' }],
+  })
+
+  const patched = await request.patch(`/session/${sessionId}/message/${messageId}/part/part_text`, {
+    data: { text: 'updated message' },
+  })
+  expect(patched.status()).toBe(200)
+  expect(await patched.json()).toEqual({
+    info: { id: messageId, sessionID: sessionId, role: 'user' },
+    parts: [{ id: 'part_text', type: 'text', text: 'updated message' }],
+  })
+
+  const deletedPart = await request.delete(`/session/${sessionId}/message/${messageId}/part/part_text`)
+  expect(deletedPart.status()).toBe(200)
+  expect(await deletedPart.json()).toEqual({
+    info: { id: messageId, sessionID: sessionId, role: 'user' },
+    parts: [],
+  })
+
+  const deletedMessage = await request.delete(`/session/${sessionId}/message/${messageId}`)
+  expect(deletedMessage.status()).toBe(200)
+  expect(await deletedMessage.json()).toBe(true)
+
+  const missingDetail = await request.get(`/session/${sessionId}/message/${messageId}`)
+  expect(missingDetail.status()).toBe(400)
+})
+
+
 test('serves OpenCode-compatible /api aliases and raw diff endpoints over HTTP', async ({ request }) => {
   const workspaceRoot = process.cwd()
 

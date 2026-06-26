@@ -233,6 +233,40 @@ export const userMessageSubmittedEvent = createEventDefinition(
   }),
 )
 
+export const sessionMessagePartUpdatedEvent = createEventDefinition(
+  'sessionMessagePartUpdated',
+  z.object({
+    sessionId: z.string(),
+    messageId: z.string(),
+    partId: z.string(),
+    content: z.string(),
+  }),
+)
+
+export const sessionMessagePartDeletedEvent = createEventDefinition(
+  'sessionMessagePartDeleted',
+  z.object({
+    sessionId: z.string(),
+    messageId: z.string(),
+    partId: z.string(),
+  }),
+)
+
+export const sessionMessageDeletedEvent = createEventDefinition(
+  'sessionMessageDeleted',
+  z.object({
+    sessionId: z.string(),
+    messageId: z.string(),
+    deletedBy: z
+      .object({
+        userId: z.string().optional(),
+        displayName: z.string(),
+      })
+      .optional(),
+    reason: z.string().optional(),
+  }),
+)
+
 export const agentRunRequestedEvent = createEventDefinition(
   'agentRunRequested',
   z.object({
@@ -484,6 +518,9 @@ export const specterCodeEventDefinitions = [
   filesystemNodeChangedEvent,
   filesystemNodeDeletedEvent,
   userMessageSubmittedEvent,
+  sessionMessagePartUpdatedEvent,
+  sessionMessagePartDeletedEvent,
+  sessionMessageDeletedEvent,
   agentRunRequestedEvent,
   agentRunStartedEvent,
   agentRunStreamedEvent,

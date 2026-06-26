@@ -128,6 +128,25 @@ export type SpecterCodeApiRuntime = {
     submittedBy?: { userId?: string; displayName: string }
   }): Promise<unknown>
   abortSession(input: { sessionId: string }): Promise<boolean | unknown>
+  getSessionMessage(input: {
+    sessionId: string
+    messageId: string
+  }): Promise<unknown>
+  updateSessionMessagePart(input: {
+    sessionId: string
+    messageId: string
+    partId: string
+    text: string
+  }): Promise<unknown>
+  deleteSessionMessagePart(input: {
+    sessionId: string
+    messageId: string
+    partId: string
+  }): Promise<unknown>
+  deleteSessionMessage(input: {
+    sessionId: string
+    messageId: string
+  }): Promise<unknown>
   listFileTree(input: {
     workspaceId: string
     parentPath?: string | null
@@ -366,6 +385,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'PATCH', normalizedPath: '/session/:sessionID' },
   { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
+  { method: 'GET', normalizedPath: '/session/:sessionID/message/:messageID' },
+  { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID' },
+  { method: 'PATCH', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
+  { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
   { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
   { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
@@ -539,6 +562,54 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.listSessionTranscript({
         sessionId: transcriptMatch.sessionID,
+      }),
+    )
+  }
+
+  const sessionMessageDetailMatch = matchPath(
+    pathname,
+    '/session/:sessionID/message/:messageID',
+  )
+  if (method === 'GET' && sessionMessageDetailMatch) {
+    return jsonResponse(
+      await runtime.getSessionMessage({
+        sessionId: sessionMessageDetailMatch.sessionID,
+        messageId: sessionMessageDetailMatch.messageID,
+      }),
+    )
+  }
+
+  if (method === 'DELETE' && sessionMessageDetailMatch) {
+    return jsonResponse(
+      await runtime.deleteSessionMessage({
+        sessionId: sessionMessageDetailMatch.sessionID,
+        messageId: sessionMessageDetailMatch.messageID,
+      }),
+    )
+  }
+
+  const sessionMessagePartMatch = matchPath(
+    pathname,
+    '/session/:sessionID/message/:messageID/part/:partID',
+  )
+  if (method === 'PATCH' && sessionMessagePartMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.updateSessionMessagePart({
+        sessionId: sessionMessagePartMatch.sessionID,
+        messageId: sessionMessagePartMatch.messageID,
+        partId: sessionMessagePartMatch.partID,
+        text: readMessagePartPatchText(body),
+      }),
+    )
+  }
+
+  if (method === 'DELETE' && sessionMessagePartMatch) {
+    return jsonResponse(
+      await runtime.deleteSessionMessagePart({
+        sessionId: sessionMessagePartMatch.sessionID,
+        messageId: sessionMessagePartMatch.messageID,
+        partId: sessionMessagePartMatch.partID,
       }),
     )
   }
@@ -1091,7 +1162,9 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async createSession(input) {
       const runtime = await import('./server-runtime.server')
-      return runtime.createSpecterCodeSessionOnServer(input)
+      const sessionId = input.sessionId ?? randomUUID()
+      await runtime.createSpecterCodeSessionOnServer({ ...input, sessionId })
+      return runtime.getSpecterCodeSessionOnServer({ sessionId })
     },
     async getSession(input) {
       const runtime = await import('./server-runtime.server')
@@ -1134,13 +1207,19 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       })
       const workspaceId = requiredString(session.workspaceId, 'session.workspaceId')
       if (input.noReply) {
-        return runtime.recordSpecterCodeSessionMessageOnServer({
-          messageId: input.messageId,
+        const messageId = input.messageId ?? randomUUID()
+        await runtime.recordSpecterCodeSessionMessageOnServer({
+          messageId,
           sessionId: input.sessionId,
           workspaceId,
           content: input.content,
           submittedBy: input.submittedBy ?? { displayName: 'OpenCode API' },
         })
+        const message = await runtime.getSpecterCodeSessionMessageOnServer({
+          sessionId: input.sessionId,
+          messageId,
+        })
+        return toOpenCodeMessageDetail(message)
       }
       return runtime.submitSpecterCodePromptOnServer({
         messageId: input.messageId,
@@ -1151,6 +1230,25 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
         agentName: input.agentName ?? input.agentId,
         submittedBy: input.submittedBy ?? { displayName: 'OpenCode API' },
       })
+    },
+    async getSessionMessage(input) {
+      const runtime = await import('./server-runtime.server')
+      const message = await runtime.getSpecterCodeSessionMessageOnServer(input)
+      return toOpenCodeMessageDetail(message)
+    },
+    async updateSessionMessagePart(input) {
+      const runtime = await import('./server-runtime.server')
+      const message = await runtime.updateSpecterCodeSessionMessagePartOnServer(input)
+      return toOpenCodeMessageDetail(message)
+    },
+    async deleteSessionMessagePart(input) {
+      const runtime = await import('./server-runtime.server')
+      const message = await runtime.deleteSpecterCodeSessionMessagePartOnServer(input)
+      return toOpenCodeMessageDetail(message)
+    },
+    async deleteSessionMessage(input) {
+      const runtime = await import('./server-runtime.server')
+      return runtime.deleteSpecterCodeSessionMessageOnServer(input)
     },
     async abortSession(input) {
       liveSessionStatuses.set(input.sessionId, {
@@ -1811,6 +1909,39 @@ function readOptionalOpenCodeModel(value: unknown) {
       requiredString(value.providerID, 'model.providerID'),
     modelId:
       optionalString(value.modelId) ?? requiredString(value.modelID, 'model.modelID'),
+  }
+}
+
+function readMessagePartPatchText(body: JsonRecord) {
+  const directText = optionalString(body.text) ?? optionalString(body.content)
+  if (directText !== undefined) return directText
+  const part = isRecord(body.part) ? body.part : undefined
+  const partText = part ? optionalString(part.text) : undefined
+  if (partText !== undefined) return partText
+  throw new Error('Missing required field: text')
+}
+
+function toOpenCodeMessageDetail(message: unknown) {
+  if (!isRecord(message)) throw new Error('Session message is unavailable')
+  const id = requiredString(message.id, 'message.id')
+  const sessionId = requiredString(message.sessionId, 'message.sessionId')
+  const role = requiredString(message.role, 'message.role')
+  const content = typeof message.content === 'string' ? message.content : ''
+  return {
+    info: {
+      id,
+      sessionID: sessionId,
+      role,
+    },
+    parts: content
+      ? [
+          {
+            id: 'part_text',
+            type: 'text',
+            text: content,
+          },
+        ]
+      : [],
   }
 }
 

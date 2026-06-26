@@ -79,6 +79,35 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
       calls.push(`abortSession:${input.sessionId}`)
       return true
     },
+    async getSessionMessage(input) {
+      calls.push(`messageGet:${input.sessionId}:${input.messageId}`)
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [{ id: 'part_text', type: 'text', text: 'hello' }],
+      }
+    },
+    async updateSessionMessagePart(input) {
+      calls.push(
+        `partPatch:${input.sessionId}:${input.messageId}:${input.partId}:${input.text}`,
+      )
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [{ id: input.partId, type: 'text', text: input.text }],
+      }
+    },
+    async deleteSessionMessagePart(input) {
+      calls.push(
+        `partDelete:${input.sessionId}:${input.messageId}:${input.partId}`,
+      )
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [],
+      }
+    },
+    async deleteSessionMessage(input) {
+      calls.push(`messageDelete:${input.sessionId}:${input.messageId}`)
+      return true
+    },
     async listFileTree(input) {
       calls.push(`fileTree:${input.workspaceId}:${input.parentPath ?? ''}`)
       return [{ path: 'src/index.ts', type: 'file' }]
@@ -542,6 +571,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'PATCH', normalizedPath: '/session/:sessionID' },
       { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
+      { method: 'GET', normalizedPath: '/session/:sessionID/message/:messageID' },
+      { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID' },
+      { method: 'PATCH', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
+      { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
       { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
       { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
@@ -603,6 +636,105 @@ describe('Specter Code OpenCode API route adapter', () => {
       'sessionStatus:/repo',
       'sessionMessage:session-main:msg_api:build:no-reply:hello\n\nworld',
       'abortSession:session-main',
+    ])
+  })
+
+  it('dispatches OpenCode session message detail and message-part mutation routes to runtime handlers', async () => {
+    const runtime = createRuntime() as ReturnType<typeof createRuntime> & {
+      getSessionMessage(input: { sessionId: string; messageId: string }): Promise<unknown>
+      deleteSessionMessage(input: { sessionId: string; messageId: string }): Promise<unknown>
+      updateSessionMessagePart(input: {
+        sessionId: string
+        messageId: string
+        partId: string
+        text: string
+      }): Promise<unknown>
+      deleteSessionMessagePart(input: {
+        sessionId: string
+        messageId: string
+        partId: string
+      }): Promise<unknown>
+    }
+    runtime.getSessionMessage = async (input) => {
+      runtime.calls.push(`messageGet:${input.sessionId}:${input.messageId}`)
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [{ id: 'part_text', type: 'text', text: 'hello' }],
+      }
+    }
+    runtime.deleteSessionMessage = async (input) => {
+      runtime.calls.push(`messageDelete:${input.sessionId}:${input.messageId}`)
+      return true
+    }
+    runtime.updateSessionMessagePart = async (input) => {
+      runtime.calls.push(
+        `partPatch:${input.sessionId}:${input.messageId}:${input.partId}:${input.text}`,
+      )
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [{ id: input.partId, type: 'text', text: input.text }],
+      }
+    }
+    runtime.deleteSessionMessagePart = async (input) => {
+      runtime.calls.push(
+        `partDelete:${input.sessionId}:${input.messageId}:${input.partId}`,
+      )
+      return {
+        info: { id: input.messageId, sessionID: input.sessionId, role: 'user' },
+        parts: [],
+      }
+    }
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/session/session-main/message/msg_1'))),
+    ).resolves.toEqual({
+      info: { id: 'msg_1', sessionID: 'session-main', role: 'user' },
+      parts: [{ id: 'part_text', type: 'text', text: 'hello' }],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/message/msg_1/part/part_text', {
+            method: 'PATCH',
+            body: JSON.stringify({ text: 'updated text' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      info: { id: 'msg_1', sessionID: 'session-main', role: 'user' },
+      parts: [{ id: 'part_text', type: 'text', text: 'updated text' }],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/message/msg_1/part/part_text', {
+            method: 'DELETE',
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      info: { id: 'msg_1', sessionID: 'session-main', role: 'user' },
+      parts: [],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/message/msg_1', {
+            method: 'DELETE',
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    expect(runtime.calls.slice(-4)).toEqual([
+      'messageGet:session-main:msg_1',
+      'partPatch:session-main:msg_1:part_text:updated text',
+      'partDelete:session-main:msg_1:part_text',
+      'messageDelete:session-main:msg_1',
     ])
   })
 

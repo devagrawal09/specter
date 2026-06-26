@@ -5,6 +5,9 @@ import type {
 import {
   sessionCreatedEvent,
   sessionDeletedEvent,
+  sessionMessageDeletedEvent,
+  sessionMessagePartDeletedEvent,
+  sessionMessagePartUpdatedEvent,
   sessionUpdatedEvent,
   toolApprovalRepliedEvent,
   toolApprovalRequestedEvent,
@@ -130,6 +133,79 @@ export async function projectSpecterCodeEvent(
         WHERE id = ?
       `,
       args: [event.recordedAt, payload.sessionId],
+    })
+    return
+  }
+
+  if (event.type === sessionMessagePartUpdatedEvent.type) {
+    const payload = await sessionMessagePartUpdatedEvent.decode(event.payload)
+    await db.execute({
+      sql: `
+        UPDATE specter_code_messages
+        SET content = ?,
+            event_order = ?
+        WHERE id = ? AND session_id = ?
+      `,
+      args: [payload.content, event.order, payload.messageId, payload.sessionId],
+    })
+    await db.execute({
+      sql: `
+        INSERT INTO specter_code_message_parts (
+          id,
+          message_id,
+          session_id,
+          part_order,
+          type,
+          content,
+          metadata_json,
+          created_at,
+          event_order
+        ) VALUES (?, ?, ?, 0, 'text', ?, '{}', ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          content = excluded.content,
+          event_order = excluded.event_order
+      `,
+      args: [
+        payload.partId,
+        payload.messageId,
+        payload.sessionId,
+        payload.content,
+        event.recordedAt,
+        event.order,
+      ],
+    })
+    return
+  }
+
+  if (event.type === sessionMessagePartDeletedEvent.type) {
+    const payload = await sessionMessagePartDeletedEvent.decode(event.payload)
+    await db.execute({
+      sql: `
+        DELETE FROM specter_code_message_parts
+        WHERE id = ? AND message_id = ? AND session_id = ?
+      `,
+      args: [payload.partId, payload.messageId, payload.sessionId],
+    })
+    await db.execute({
+      sql: `
+        UPDATE specter_code_messages
+        SET content = '',
+            event_order = ?
+        WHERE id = ? AND session_id = ?
+      `,
+      args: [event.order, payload.messageId, payload.sessionId],
+    })
+    return
+  }
+
+  if (event.type === sessionMessageDeletedEvent.type) {
+    const payload = await sessionMessageDeletedEvent.decode(event.payload)
+    await db.execute({
+      sql: `
+        DELETE FROM specter_code_messages
+        WHERE id = ? AND session_id = ?
+      `,
+      args: [payload.messageId, payload.sessionId],
     })
     return
   }

@@ -64,6 +64,8 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/session\/[^/]+\/diff$/.test(normalized) ||
     /^\/session\/[^/]+\/init$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
+    /^\/session\/[^/]+\/message\/[^/]+$/.test(normalized) ||
+    /^\/session\/[^/]+\/message\/[^/]+\/part\/[^/]+$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
     /^\/session\/[^/]+\/revert$/.test(normalized) ||
     /^\/session\/[^/]+\/shell$/.test(normalized) ||
