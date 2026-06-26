@@ -432,11 +432,18 @@ describe('Specter Code OpenCode API route adapter', () => {
     })
     expect(implementedOpenCodeApiRoutes).toEqual<RouteSpec[]>([
       { method: 'GET', normalizedPath: '/agent' },
+      { method: 'GET', normalizedPath: '/api/model' },
+      { method: 'GET', normalizedPath: '/api/provider' },
+      { method: 'GET', normalizedPath: '/api/session' },
+      { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
+      { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
       { method: 'GET', normalizedPath: '/config' },
       { method: 'PATCH', normalizedPath: '/config' },
+      { method: 'GET', normalizedPath: '/config/providers' },
       { method: 'GET', normalizedPath: '/command' },
       { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/formatter' },
+      { method: 'GET', normalizedPath: '/global/health' },
       { method: 'GET', normalizedPath: '/find' },
       { method: 'GET', normalizedPath: '/find/file' },
       { method: 'GET', normalizedPath: '/find/symbol' },
@@ -448,9 +455,11 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/mcp' },
       { method: 'POST', normalizedPath: '/mcp/:name/connect' },
       { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
+      { method: 'GET', normalizedPath: '/path' },
       { method: 'GET', normalizedPath: '/permission' },
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/project' },
+      { method: 'GET', normalizedPath: '/project/current' },
       { method: 'GET', normalizedPath: '/provider' },
       { method: 'GET', normalizedPath: '/pty' },
       { method: 'POST', normalizedPath: '/pty' },
@@ -483,6 +492,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/vcs' },
       { method: 'POST', normalizedPath: '/vcs/apply' },
       { method: 'GET', normalizedPath: '/vcs/diff' },
+      { method: 'GET', normalizedPath: '/vcs/diff/raw' },
       { method: 'GET', normalizedPath: '/vcs/status' },
     ])
   })
@@ -1261,6 +1271,89 @@ describe('Specter Code OpenCode API route adapter', () => {
       'ptyConnect:pty-main',
       'ptyStop:pty-main',
       'events:1',
+    ])
+  })
+
+  it('dispatches OpenCode API alias, project-current, path, health, config providers, and raw diff routes', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/api/provider'))),
+    ).resolves.toEqual([{ id: 'openrouter', configured: false, models: [] }])
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/api/model'))),
+    ).resolves.toEqual([{ id: 'openrouter', configured: false, models: [] }])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/api/session?workspaceId=workspace-main'),
+        ),
+      ),
+    ).resolves.toEqual([{ id: 'session-main', title: 'Main session' }])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/api/session/session-main/message'),
+        ),
+      ),
+    ).resolves.toEqual([{ id: 'message-1', role: 'assistant', content: 'done' }])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/api/session/session-main/prompt', {
+            method: 'POST',
+            body: JSON.stringify({
+              workspaceId: 'workspace-main',
+              messageID: 'message-api-prompt',
+              parts: [{ type: 'text', text: 'run the focused tests' }],
+              agent: 'build',
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({ runId: 'generated-run', messageId: 'message-api-prompt' })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/config/providers?directory=/repo'))),
+    ).resolves.toEqual([{ id: 'openrouter', configured: false, models: [] }])
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/project/current?directory=/repo'))),
+    ).resolves.toEqual({
+      id: '/repo',
+      directory: '/repo',
+      name: 'repo',
+      configSources: ['/repo/.opencode/opencode.jsonc'],
+    })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/path?directory=/repo/src'))),
+    ).resolves.toEqual({ path: '/repo/src', directory: '/repo/src' })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/global/health'))),
+    ).resolves.toEqual({ ok: true })
+
+    const rawDiff = await router.handle(
+      new Request('http://specter.test/vcs/diff/raw?workspaceRoot=/repo&path=src/index.ts&staged=true'),
+    )
+    expect(rawDiff.headers.get('content-type')).toContain('text/plain')
+    await expect(rawDiff.text()).resolves.toBe('diff --git a/src/index.ts b/src/index.ts\n')
+
+    expect(runtime.calls).toEqual([
+      'providers',
+      'providers',
+      'listSessions:workspace-main',
+      'transcript:session-main',
+      'submitPrompt:session-main:workspace-main:run the focused tests',
+      'providers',
+      'projects:/repo',
+      'vcsDiff:/repo:src/index.ts:staged',
     ])
   })
 

@@ -7,10 +7,15 @@ const apiRouter = createSpecterCodeApiRouter()
 
 const EXACT_OPENCODE_API_PATHS = new Set([
   '/agent',
+  '/api/model',
+  '/api/provider',
+  '/api/session',
   '/config',
+  '/config/providers',
   '/command',
   '/event',
   '/formatter',
+  '/global/health',
   '/find',
   '/find/file',
   '/find/symbol',
@@ -19,8 +24,10 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/file/status',
   '/lsp',
   '/mcp',
+  '/path',
   '/permission',
   '/project',
+  '/project/current',
   '/provider',
   '/pty',
   '/pty/shells',
@@ -30,6 +37,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/vcs',
   '/vcs/apply',
   '/vcs/diff',
+  '/vcs/diff/raw',
   '/vcs/status',
 ])
 
@@ -45,6 +53,8 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/pty\/[^/]+\/connect$/.test(normalized) ||
     /^\/question\/[^/]+\/reply$/.test(normalized) ||
     /^\/question\/[^/]+\/reject$/.test(normalized) ||
+    /^\/api\/session\/[^/]+\/message$/.test(normalized) ||
+    /^\/api\/session\/[^/]+\/prompt$/.test(normalized) ||
     /^\/session\/[^/]+\/command$/.test(normalized) ||
     /^\/session\/[^/]+\/diff$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||

@@ -282,11 +282,18 @@ export type SpecterCodeApiRuntime = {
 
 export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
+  { method: 'GET', normalizedPath: '/api/model' },
+  { method: 'GET', normalizedPath: '/api/provider' },
+  { method: 'GET', normalizedPath: '/api/session' },
+  { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
+  { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
   { method: 'GET', normalizedPath: '/config' },
   { method: 'PATCH', normalizedPath: '/config' },
+  { method: 'GET', normalizedPath: '/config/providers' },
   { method: 'GET', normalizedPath: '/command' },
   { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/formatter' },
+  { method: 'GET', normalizedPath: '/global/health' },
   { method: 'GET', normalizedPath: '/find' },
   { method: 'GET', normalizedPath: '/find/file' },
   { method: 'GET', normalizedPath: '/find/symbol' },
@@ -298,9 +305,11 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/mcp' },
   { method: 'POST', normalizedPath: '/mcp/:name/connect' },
   { method: 'POST', normalizedPath: '/mcp/:name/disconnect' },
+  { method: 'GET', normalizedPath: '/path' },
   { method: 'GET', normalizedPath: '/permission' },
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/project' },
+  { method: 'GET', normalizedPath: '/project/current' },
   { method: 'GET', normalizedPath: '/provider' },
   { method: 'GET', normalizedPath: '/pty' },
   { method: 'POST', normalizedPath: '/pty' },
@@ -333,6 +342,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
   { method: 'GET', normalizedPath: '/vcs/diff' },
+  { method: 'GET', normalizedPath: '/vcs/diff/raw' },
   { method: 'GET', normalizedPath: '/vcs/status' },
 ] satisfies RouteSpec[]
 
@@ -367,7 +377,40 @@ async function dispatchOpenCodeApiRequest(
   const method = request.method.toUpperCase()
   const pathname = normalizeRequestPath(url.pathname)
 
+  if (method === 'GET' && pathname === '/global/health') {
+    return jsonResponse({ ok: true })
+  }
+
+  if (method === 'GET' && pathname === '/path') {
+    const directory = workspaceRootFromFindQuery(url)
+    return jsonResponse({ path: directory, directory })
+  }
+
+  if (method === 'GET' && (pathname === '/api/provider' || pathname === '/api/model')) {
+    return jsonResponse(
+      await runtime.listProviders({
+        workspaceRoot: optionalQuery(url, 'workspaceRoot'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/config/providers') {
+    return jsonResponse(
+      await runtime.listProviders({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/session') {
+    return jsonResponse(
+      await runtime.listSessions({
+        workspaceId: requiredQuery(url, 'workspaceId'),
+      }),
+    )
+  }
+
+  if (method === 'GET' && pathname === '/api/session') {
     return jsonResponse(
       await runtime.listSessions({
         workspaceId: requiredQuery(url, 'workspaceId'),
@@ -440,10 +483,12 @@ async function dispatchOpenCodeApiRequest(
   }
 
   const sessionMessageMatch = matchPath(pathname, '/session/:sessionID/message')
-  if (method === 'GET' && sessionMessageMatch) {
+  const apiSessionMessageMatch = matchPath(pathname, '/api/session/:sessionID/message')
+  const transcriptMatch = sessionMessageMatch ?? apiSessionMessageMatch
+  if (method === 'GET' && transcriptMatch) {
     return jsonResponse(
       await runtime.listSessionTranscript({
-        sessionId: sessionMessageMatch.sessionID,
+        sessionId: transcriptMatch.sessionID,
       }),
     )
   }
@@ -523,16 +568,20 @@ async function dispatchOpenCodeApiRequest(
     pathname,
     '/session/:sessionID/prompt_async',
   )
-  if (method === 'POST' && promptAsyncMatch) {
+  const apiPromptMatch = matchPath(pathname, '/api/session/:sessionID/prompt')
+  const promptMatch = promptAsyncMatch ?? apiPromptMatch
+  if (method === 'POST' && promptMatch) {
     const body = await readJsonBody(request)
-    const agentId = requiredString(body.agentId, 'agentId')
+    const agentId =
+      optionalString(body.agentId) ?? optionalString(body.agent) ?? 'build'
     return jsonResponse(
       await runtime.submitPrompt({
-        messageId: optionalString(body.messageId),
+        messageId:
+          optionalString(body.messageId) ?? optionalString(body.messageID),
         runId: optionalString(body.runId),
-        sessionId: promptAsyncMatch.sessionID,
+        sessionId: promptMatch.sessionID,
         workspaceId: requiredString(body.workspaceId, 'workspaceId'),
-        content: requiredString(body.content, 'content'),
+        content: optionalString(body.content) ?? readMessagePartsText(body.parts),
         agentId,
         agentName: optionalString(body.agentName) ?? agentId,
         submittedBy: readActor(body.submittedBy) ?? {
@@ -639,6 +688,15 @@ async function dispatchOpenCodeApiRequest(
         staged: optionalBooleanQuery(url, 'staged'),
       }),
     )
+  }
+
+  if (method === 'GET' && pathname === '/vcs/diff/raw') {
+    const diff = await runtime.getVcsDiff({
+      workspaceRoot: workspaceRootFromQuery(url),
+      path: optionalQuery(url, 'path'),
+      staged: optionalBooleanQuery(url, 'staged'),
+    })
+    return textResponse(gitDiffPatch(diff))
   }
 
   if (method === 'POST' && pathname === '/vcs/apply') {
@@ -749,6 +807,13 @@ async function dispatchOpenCodeApiRequest(
         workspaceRoot: workspaceRootFromFindQuery(url),
       }),
     )
+  }
+
+  if (method === 'GET' && pathname === '/project/current') {
+    const projects = await runtime.listProjects({
+      workspaceRoot: workspaceRootFromFindQuery(url),
+    })
+    return jsonResponse(firstProject(projects))
   }
 
   if (method === 'GET' && pathname === '/formatter') {
@@ -1591,6 +1656,23 @@ function readPermissionAction(value: unknown) {
 
 function jsonResponse(value: unknown, status = 200) {
   return Response.json(value, { status })
+}
+
+function textResponse(value: string, status = 200) {
+  return new Response(value, {
+    status,
+    headers: { 'content-type': 'text/plain; charset=utf-8' },
+  })
+}
+
+function gitDiffPatch(value: unknown) {
+  if (isRecord(value) && typeof value.patch === 'string') return value.patch
+  return typeof value === 'string' ? value : ''
+}
+
+function firstProject(value: unknown) {
+  if (Array.isArray(value)) return value[0] ?? null
+  return value
 }
 
 function limitItems<T>(items: readonly T[], limit: number | undefined) {

@@ -159,6 +159,50 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
 })
 
 
+test('serves OpenCode-compatible /api aliases and raw diff endpoints over HTTP', async ({ request }) => {
+  const workspaceRoot = process.cwd()
+
+  const apiProviders = await request.get('/api/provider')
+  expect(apiProviders.status()).toBe(200)
+  expect(apiProviders.headers()['content-type']).toContain('application/json')
+  expect(await apiProviders.json()).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 'openrouter' })]),
+  )
+
+  const apiModels = await request.get('/api/model')
+  expect(apiModels.status()).toBe(200)
+  expect(apiModels.headers()['content-type']).toContain('application/json')
+  expect(await apiModels.json()).toEqual(expect.any(Array))
+
+  const configProviders = await request.get(`/config/providers?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(configProviders.status()).toBe(200)
+  expect(configProviders.headers()['content-type']).toContain('application/json')
+  expect(await configProviders.json()).toEqual(expect.any(Array))
+
+  const currentProject = await request.get(`/project/current?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(currentProject.status()).toBe(200)
+  expect(currentProject.headers()['content-type']).toContain('application/json')
+  expect(await currentProject.json()).toEqual(
+    expect.objectContaining({ directory: workspaceRoot, name: path.basename(workspaceRoot) }),
+  )
+
+  const resolvedPath = await request.get(`/path?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(resolvedPath.status()).toBe(200)
+  expect(resolvedPath.headers()['content-type']).toContain('application/json')
+  expect(await resolvedPath.json()).toEqual({ path: workspaceRoot, directory: workspaceRoot })
+
+  const health = await request.get('/global/health')
+  expect(health.status()).toBe(200)
+  expect(health.headers()['content-type']).toContain('application/json')
+  expect(await health.json()).toEqual({ ok: true })
+
+  const rawDiff = await request.get(`/vcs/diff/raw?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
+  expect(rawDiff.status()).toBe(200)
+  expect(rawDiff.headers()['content-type']).toContain('text/plain')
+  await expect(rawDiff.text()).resolves.toEqual(expect.any(String))
+})
+
+
 test('serves OpenCode-compatible command routes over HTTP', async ({ request }) => {
   const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-command-api-'))
   try {
