@@ -91,6 +91,16 @@ export type FormatterStatus = {
   status?: 'configured' | 'disabled' | 'unsupported'
 }
 
+export type TuiEventPayload = {
+  type: string
+  properties: JsonRecord
+}
+
+export type TuiControlRequest = {
+  path: string
+  body: unknown
+}
+
 export type SpecterCodeApiRuntime = {
   listSessions(input: { workspaceId: string }): Promise<unknown>
   createSession(input: {
@@ -352,6 +362,17 @@ export type SpecterCodeApiRuntime = {
     ptySessionId: string
   }): Promise<{ ticket: string; expires_in: number } | unknown>
   connectPtySession(input: { ptySessionId: string }): Promise<boolean | unknown>
+  publishTuiEvent?(input: {
+    workspaceRoot: string
+    event: TuiEventPayload
+  }): Promise<boolean | unknown>
+  nextTuiControlRequest?(input: {
+    workspaceRoot: string
+  }): Promise<TuiControlRequest | unknown>
+  submitTuiControlResponse?(input: {
+    workspaceRoot: string
+    response: unknown
+  }): Promise<boolean | unknown>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
@@ -435,6 +456,19 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/session/:sessionID/summarize' },
   { method: 'POST', normalizedPath: '/session/:sessionID/unrevert' },
   { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
+  { method: 'POST', normalizedPath: '/tui/append-prompt' },
+  { method: 'POST', normalizedPath: '/tui/clear-prompt' },
+  { method: 'GET', normalizedPath: '/tui/control/next' },
+  { method: 'POST', normalizedPath: '/tui/control/response' },
+  { method: 'POST', normalizedPath: '/tui/execute-command' },
+  { method: 'POST', normalizedPath: '/tui/open-help' },
+  { method: 'POST', normalizedPath: '/tui/open-models' },
+  { method: 'POST', normalizedPath: '/tui/open-sessions' },
+  { method: 'POST', normalizedPath: '/tui/open-themes' },
+  { method: 'POST', normalizedPath: '/tui/publish' },
+  { method: 'POST', normalizedPath: '/tui/select-session' },
+  { method: 'POST', normalizedPath: '/tui/show-toast' },
+  { method: 'POST', normalizedPath: '/tui/submit-prompt' },
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
   { method: 'GET', normalizedPath: '/vcs/diff' },
@@ -1242,6 +1276,34 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
+  if (method === 'GET' && pathname === '/tui/control/next') {
+    return jsonResponse(
+      await requireTuiRuntime(runtime).nextTuiControlRequest({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  if (method === 'POST' && pathname === '/tui/control/response') {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await requireTuiRuntime(runtime).submitTuiControlResponse({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        response: body,
+      }),
+    )
+  }
+
+  const tuiEvent = await readTuiEventRoute(method, pathname, request)
+  if (tuiEvent) {
+    return jsonResponse(
+      await requireTuiRuntime(runtime).publishTuiEvent({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        event: tuiEvent,
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/command') {
     return jsonResponse(
       await runtime.listCommands({
@@ -1279,6 +1341,15 @@ const liveSessionShares = new Map<string, { url: string }>()
 const liveSessionStatuses = new Map<
   string,
   { sessionId: string; status: 'idle' | 'running' | 'aborted'; updatedAt: string }
+>()
+const liveTuiEvents = new Map<string, TuiEventPayload[]>()
+const liveTuiControlQueues = new Map<
+  string,
+  {
+    requests: TuiControlRequest[]
+    requestWaiters: ((request: TuiControlRequest) => void)[]
+    responses: unknown[]
+  }
 >()
 
 function createLiveRuntime(): SpecterCodeApiRuntime {
@@ -1707,7 +1778,129 @@ ${input.command}
       getLivePtySession(input.ptySessionId)
       return true
     },
+    async publishTuiEvent(input) {
+      liveTuiEventsFor(input.workspaceRoot).push(input.event)
+      return true
+    },
+    async nextTuiControlRequest(input) {
+      return nextLiveTuiControlRequest(input.workspaceRoot)
+    },
+    async submitTuiControlResponse(input) {
+      liveTuiControlQueueFor(input.workspaceRoot).responses.push(input.response)
+      return true
+    },
   }
+}
+
+const tuiCommandAliases: Record<string, string> = {
+  session_new: 'session.new',
+  session_share: 'session.share',
+  session_interrupt: 'session.interrupt',
+  session_compact: 'session.compact',
+  messages_page_up: 'session.page.up',
+  messages_page_down: 'session.page.down',
+  messages_line_up: 'session.line.up',
+  messages_line_down: 'session.line.down',
+  messages_half_page_up: 'session.half.page.up',
+  messages_half_page_down: 'session.half.page.down',
+  messages_first: 'session.first',
+  messages_last: 'session.last',
+  agent_cycle: 'agent.cycle',
+}
+
+async function readTuiEventRoute(
+  method: string,
+  pathname: string,
+  request: Request,
+): Promise<TuiEventPayload | undefined> {
+  if (method !== 'POST') return undefined
+  if (pathname === '/tui/open-help') return tuiCommandEvent('help.show')
+  if (pathname === '/tui/open-sessions') return tuiCommandEvent('session.list')
+  if (pathname === '/tui/open-themes') return tuiCommandEvent('session.list')
+  if (pathname === '/tui/open-models') return tuiCommandEvent('model.list')
+  if (pathname === '/tui/submit-prompt') return tuiCommandEvent('prompt.submit')
+  if (pathname === '/tui/clear-prompt') return tuiCommandEvent('prompt.clear')
+  const body = await readJsonBody(request)
+  if (pathname === '/tui/append-prompt') {
+    return { type: 'tui.prompt.append', properties: body }
+  }
+  if (pathname === '/tui/execute-command') {
+    return tuiCommandEvent(tuiCommandAliases[requiredString(body.command, 'command')])
+  }
+  if (pathname === '/tui/show-toast') {
+    return { type: 'tui.toast.show', properties: body }
+  }
+  if (pathname === '/tui/select-session') {
+    return { type: 'tui.session.select', properties: body }
+  }
+  if (pathname === '/tui/publish') {
+    return {
+      type: requiredString(body.type, 'type'),
+      properties: readTuiProperties(body.properties),
+    }
+  }
+  return undefined
+}
+
+function tuiCommandEvent(command: string | undefined): TuiEventPayload {
+  const properties: JsonRecord = {}
+  if (command !== undefined) properties.command = command
+  return { type: 'tui.command.execute', properties }
+}
+
+function readTuiProperties(value: unknown): JsonRecord {
+  if (value === undefined) return {}
+  if (!isRecord(value)) throw new Error('Invalid TUI event properties')
+  return value
+}
+
+function requireTuiRuntime(runtime: SpecterCodeApiRuntime): Required<
+  Pick<
+    SpecterCodeApiRuntime,
+    'publishTuiEvent' | 'nextTuiControlRequest' | 'submitTuiControlResponse'
+  >
+> {
+  if (
+    !runtime.publishTuiEvent ||
+    !runtime.nextTuiControlRequest ||
+    !runtime.submitTuiControlResponse
+  ) {
+    throw new Error('TUI runtime is unavailable')
+  }
+  return {
+    publishTuiEvent: runtime.publishTuiEvent.bind(runtime),
+    nextTuiControlRequest: runtime.nextTuiControlRequest.bind(runtime),
+    submitTuiControlResponse: runtime.submitTuiControlResponse.bind(runtime),
+  }
+}
+
+function liveTuiEventsFor(workspaceRoot: string) {
+  const key = workspaceRoot || process.cwd()
+  let events = liveTuiEvents.get(key)
+  if (!events) {
+    events = []
+    liveTuiEvents.set(key, events)
+  }
+  return events
+}
+
+function liveTuiControlQueueFor(workspaceRoot: string) {
+  const key = workspaceRoot || process.cwd()
+  let queue = liveTuiControlQueues.get(key)
+  if (!queue) {
+    queue = { requests: [], requestWaiters: [], responses: [] }
+    liveTuiControlQueues.set(key, queue)
+  }
+  return queue
+}
+
+function nextLiveTuiControlRequest(workspaceRoot: string) {
+  const queue = liveTuiControlQueueFor(workspaceRoot)
+  const request = queue.requests.shift()
+  if (request) return Promise.resolve(request)
+  return new Promise<TuiControlRequest>((resolve) => {
+    queue.requestWaiters.push(resolve)
+  })
 }
 
 function withPtyMetadata(session: PtySession): ApiPtySession {

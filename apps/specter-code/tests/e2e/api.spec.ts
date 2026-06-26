@@ -624,3 +624,32 @@ test('serves OpenCode-compatible project, formatter, and config update routes ov
     await rm(workspaceRoot, { recursive: true, force: true })
   }
 })
+
+
+test('serves OpenCode-compatible TUI event routes over HTTP', async ({ request }) => {
+  const workspaceRoot = process.cwd()
+
+  const appendPrompt = await request.post(
+    `/tui/append-prompt?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { text: 'hello from HTTP' } },
+  )
+  expect(appendPrompt.status()).toBe(200)
+  expect(appendPrompt.headers()['content-type']).toContain('application/json')
+  await expect(appendPrompt.json()).resolves.toBe(true)
+
+  const openHelp = await request.post(`/tui/open-help?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(openHelp.status()).toBe(200)
+  await expect(openHelp.json()).resolves.toBe(true)
+
+  const publishToast = await request.post(
+    `/tui/publish?directory=${encodeURIComponent(workspaceRoot)}`,
+    {
+      data: {
+        type: 'tui.toast.show',
+        properties: { message: 'Saved', variant: 'success' },
+      },
+    },
+  )
+  expect(publishToast.status()).toBe(200)
+  await expect(publishToast.json()).resolves.toBe(true)
+})
