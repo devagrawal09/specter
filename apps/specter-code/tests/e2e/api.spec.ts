@@ -265,6 +265,77 @@ test('serves OpenCode-compatible session message detail and mutation routes over
 })
 
 
+test('serves OpenCode-compatible session lifecycle and status routes over HTTP', async ({ request }) => {
+  const suffix = Math.random().toString(36).slice(2)
+  const sessionId = `session-lifecycle-api-${suffix}`
+  const forkedSessionId = `session-lifecycle-fork-${suffix}`
+  const workspaceId = `workspace-lifecycle-api-${suffix}`
+  const directory = process.cwd()
+
+  const initialStatus = await request.get('/session/status')
+  expect(initialStatus.status()).toBe(200)
+  expect(initialStatus.headers()['content-type']).toContain('application/json')
+  expect(await initialStatus.json()).toEqual(expect.any(Object))
+
+  const created = await request.post('/session', {
+    data: {
+      sessionId,
+      workspaceId,
+      title: 'Lifecycle API smoke',
+      directory,
+      agent: 'build',
+      model: { providerId: 'openrouter', modelId: 'test-model' },
+    },
+  })
+  expect(created.status()).toBe(200)
+
+  const detail = await request.get(`/session/${sessionId}`)
+  expect(detail.status()).toBe(200)
+  expect(detail.headers()['content-type']).toContain('application/json')
+  expect(await detail.json()).toEqual(
+    expect.objectContaining({ id: sessionId, title: 'Lifecycle API smoke', workspaceId }),
+  )
+
+  const updated = await request.patch(`/session/${sessionId}`, {
+    data: { title: 'Lifecycle API updated' },
+  })
+  expect(updated.status()).toBe(200)
+  expect(await updated.json()).toEqual(
+    expect.objectContaining({ id: sessionId, title: 'Lifecycle API updated' }),
+  )
+
+  const forked = await request.post(`/session/${sessionId}/fork`, {
+    data: { sessionId: forkedSessionId, title: 'Lifecycle API fork' },
+  })
+  expect(forked.status()).toBe(200)
+  expect(await forked.json()).toEqual(
+    expect.objectContaining({ id: forkedSessionId, title: 'Lifecycle API fork' }),
+  )
+
+  const children = await request.get(`/session/${sessionId}/children`)
+  expect(children.status()).toBe(200)
+  expect(await children.json()).toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: forkedSessionId })]),
+  )
+
+  const abort = await request.post(`/session/${sessionId}/abort`)
+  expect(abort.status()).toBe(200)
+  expect(await abort.json()).toBe(true)
+
+  const statusAfterAbort = await request.get('/session/status')
+  expect(statusAfterAbort.status()).toBe(200)
+  expect(await statusAfterAbort.json()).toEqual(
+    expect.objectContaining({
+      [sessionId]: expect.objectContaining({ sessionId, status: 'aborted' }),
+    }),
+  )
+
+  const deleted = await request.delete(`/session/${forkedSessionId}`)
+  expect(deleted.status()).toBe(200)
+  expect(await deleted.json()).toBe(true)
+})
+
+
 test('serves OpenCode-compatible /api aliases and raw diff endpoints over HTTP', async ({ request }) => {
   const workspaceRoot = process.cwd()
 

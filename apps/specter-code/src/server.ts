@@ -37,6 +37,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/pty/shells',
   '/question',
   '/session',
+  '/session/status',
   '/skill',
   '/vcs',
   '/vcs/apply',
@@ -63,8 +64,12 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/api\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(normalized) ||
     /^\/api\/session\/[^/]+\/wait$/.test(normalized) ||
+    /^\/session\/[^/]+$/.test(normalized) ||
+    /^\/session\/[^/]+\/abort$/.test(normalized) ||
+    /^\/session\/[^/]+\/children$/.test(normalized) ||
     /^\/session\/[^/]+\/command$/.test(normalized) ||
     /^\/session\/[^/]+\/diff$/.test(normalized) ||
+    /^\/session\/[^/]+\/fork$/.test(normalized) ||
     /^\/session\/[^/]+\/init$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/session\/[^/]+\/message\/[^/]+$/.test(normalized) ||
