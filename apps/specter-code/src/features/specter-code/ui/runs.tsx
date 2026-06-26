@@ -220,7 +220,7 @@ export function AgentTimelinePanel() {
   const runs = useRuns()
 
   return (
-    <section class="flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-emerald-100/10 bg-slate-950/45 p-2.5 shadow-inner shadow-black/20">
+    <section role="region" aria-label="Agent timeline" class="flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-emerald-100/10 bg-slate-950/45 p-2.5 shadow-inner shadow-black/20">
       <div class="flex items-start justify-between gap-2">
         <div class="min-w-0">
           <h3 class="flex items-center gap-2 font-mono text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-slate-300">

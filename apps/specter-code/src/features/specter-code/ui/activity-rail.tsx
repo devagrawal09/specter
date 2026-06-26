@@ -1,4 +1,5 @@
 import { PendingApprovalsPanel } from './approvals'
+import { WorkspaceDiffPanel } from './diff'
 import { FilePreviewPanel, FilesystemPanel, useFilesystem } from './filesystem'
 import { AgentRunsPanel, AgentTimelinePanel, useRuns } from './runs'
 import { useSpecterCodeSelection } from './selection-context'
@@ -42,10 +43,11 @@ export function ActivityRail() {
         </div>
       </header>
 
-      <div class="min-h-0 flex-1 overflow-hidden p-2.5">
-        <div class="grid h-full min-h-0 grid-rows-[1.2fr_0.75fr_0.85fr_1fr] gap-2.5">
+      <div class="min-h-0 flex-1 overflow-y-auto p-2.5">
+        <div class="grid min-h-full grid-rows-[1.05fr_0.68fr_minmax(9rem,auto)_minmax(10rem,auto)_1fr] gap-2.5">
           <FilesystemPanel />
           <FilePreviewPanel />
+          <WorkspaceDiffPanel />
           <PendingApprovalsPanel />
           <div class="grid min-h-0 grid-cols-1 gap-2.5 sm:grid-cols-2">
             <AgentRunsPanel />

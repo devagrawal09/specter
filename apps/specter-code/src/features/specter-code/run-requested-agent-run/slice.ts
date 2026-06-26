@@ -159,6 +159,10 @@ function approvalRequestIdForToolCall(toolCallId: string) {
 }
 
 function permissionForSimulatedTool(toolName: string) {
+  if (toolName === 'shell') {
+    return { permission: 'shell.execute', target: 'pnpm test' }
+  }
+
   if (toolName === 'readFile' || toolName === 'inspectWorkspace') {
     return { permission: 'file.read', target: 'workspace' }
   }

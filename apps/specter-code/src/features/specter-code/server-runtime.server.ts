@@ -37,17 +37,25 @@ const normalizeWorkspaceId = (input: string) => {
   return normalized
 }
 
-const resolvePreviewPath = (workspaceId: string, filePath: string) => {
+const resolveWorkspaceRoot = (workspaceId: string) => {
   const baseRoot =
     process.env.SPECTER_CODE_WORKSPACE_ROOT ??
     path.join(process.cwd(), 'data', 'specter-code-workspaces')
   const safeWorkspaceId = normalizeWorkspaceId(workspaceId)
-  const resolved = path.resolve(
-    baseRoot,
-    safeWorkspaceId,
-    normalizeRelativePath(filePath),
-  )
   const workspaceRoot = path.resolve(baseRoot, safeWorkspaceId)
+  const resolvedBaseRoot = path.resolve(baseRoot)
+  if (
+    workspaceRoot !== resolvedBaseRoot &&
+    !workspaceRoot.startsWith(`${resolvedBaseRoot}${path.sep}`)
+  ) {
+    throw new Error('Workspace root escapes base directory')
+  }
+  return workspaceRoot
+}
+
+const resolvePreviewPath = (workspaceId: string, filePath: string) => {
+  const workspaceRoot = resolveWorkspaceRoot(workspaceId)
+  const resolved = path.resolve(workspaceRoot, normalizeRelativePath(filePath))
   if (
     resolved !== workspaceRoot &&
     !resolved.startsWith(`${workspaceRoot}${path.sep}`)
@@ -213,6 +221,29 @@ export async function getSpecterCodeFilesystemStatusOnServer(data: {
   return runWithSpecterCodeReferenceDb(() =>
     app.workspaceFilesystemStatus(data),
   )
+}
+
+export async function getSpecterCodeWorkspaceDiffOnServer(data: {
+  workspaceId: string
+}) {
+  const { getGitDiff, getGitStatus } = await import('./adapters/git')
+  const workspaceRoot = resolveWorkspaceRoot(data.workspaceId)
+  const [status, diff] = await Promise.all([
+    getGitStatus({ workspaceRoot }),
+    getGitDiff({ workspaceRoot }),
+  ])
+  return { workspaceRoot, status, diff }
+}
+
+export async function revertSpecterCodeWorkspaceChangesOnServer(data: {
+  workspaceId: string
+  paths: string[]
+}) {
+  const { revertWorkspacePaths } = await import('./adapters/git')
+  return revertWorkspacePaths({
+    workspaceRoot: resolveWorkspaceRoot(data.workspaceId),
+    paths: data.paths,
+  })
 }
 
 export async function requestSpecterCodeAgentRunOnServer(data: {

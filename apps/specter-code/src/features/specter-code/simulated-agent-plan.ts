@@ -29,6 +29,7 @@ export function shouldFailRun(_seed: number, runId: string) {
 }
 
 export function pickToolName(seed: number, runId: string) {
+  if (runId.includes('shell')) return 'shell'
   if (isTestMode()) return 'searchFiles'
   return DEFAULT_TOOL_NAMES[pick(seed, runId, 1) % DEFAULT_TOOL_NAMES.length]
 }

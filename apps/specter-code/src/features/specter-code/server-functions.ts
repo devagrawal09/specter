@@ -240,6 +240,29 @@ export const getSpecterCodeFilesystemStatus = createServerFn({ method: 'GET' })
     return getSpecterCodeFilesystemStatusOnServer(data)
   })
 
+export const getSpecterCodeWorkspaceDiff = createServerFn({ method: 'GET' })
+  .inputValidator(workspaceIdInput)
+  .handler(async ({ data }) => {
+    const { getSpecterCodeWorkspaceDiffOnServer } = await import(
+      './server-runtime.server'
+    )
+    return getSpecterCodeWorkspaceDiffOnServer(data)
+  })
+
+export const revertSpecterCodeWorkspaceChanges = createServerFn({ method: 'POST' })
+  .inputValidator(
+    z.object({
+      workspaceId: z.string(),
+      paths: z.array(z.string()),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { revertSpecterCodeWorkspaceChangesOnServer } = await import(
+      './server-runtime.server'
+    )
+    return revertSpecterCodeWorkspaceChangesOnServer(data)
+  })
+
 export const requestSpecterCodeAgentRun = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
