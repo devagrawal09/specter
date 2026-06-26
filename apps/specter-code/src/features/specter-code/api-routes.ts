@@ -194,6 +194,29 @@ export type SpecterCodeApiRuntime = {
     agentId?: string
     model?: { providerId: string; modelId: string }
   }): Promise<unknown>
+  initializeSession(input: {
+    sessionId: string
+    messageId: string
+    workspaceRoot: string
+    model: { providerId: string; modelId: string }
+  }): Promise<boolean | unknown>
+  summarizeSession(input: {
+    sessionId: string
+    workspaceRoot: string
+    providerId: string
+    modelId: string
+    auto?: boolean
+  }): Promise<boolean | unknown>
+  compactSession(input: { sessionId: string; workspaceRoot: string }): Promise<void>
+  waitForSession(input: { sessionId: string; workspaceRoot: string }): Promise<void>
+  runSessionShell(input: {
+    sessionId: string
+    messageId?: string
+    workspaceRoot: string
+    agentId: string
+    command: string
+    model?: { providerId: string; modelId: string }
+  }): Promise<unknown>
   listEvents(input: {
     afterOrder?: number
   }): Promise<readonly SpecterCodeStreamEvent[]>
@@ -286,8 +309,10 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/api/provider' },
   { method: 'GET', normalizedPath: '/api/provider/:providerID' },
   { method: 'GET', normalizedPath: '/api/session' },
+  { method: 'POST', normalizedPath: '/api/session/:sessionID/compact' },
   { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
+  { method: 'POST', normalizedPath: '/api/session/:sessionID/wait' },
   { method: 'GET', normalizedPath: '/config' },
   { method: 'PATCH', normalizedPath: '/config' },
   { method: 'GET', normalizedPath: '/config/providers' },
@@ -337,11 +362,14 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/session/:sessionID/message' },
   { method: 'DELETE', normalizedPath: '/session/:sessionID' },
   { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/init' },
   { method: 'PATCH', normalizedPath: '/session/:sessionID' },
   { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
   { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
+  { method: 'POST', normalizedPath: '/session/:sessionID/summarize' },
   { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
   { method: 'GET', normalizedPath: '/vcs' },
   { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -553,6 +581,69 @@ async function dispatchOpenCodeApiRequest(
         model: readOptionalOpenCodeModel(body.model),
       }),
     )
+  }
+
+  const sessionInitMatch = matchPath(pathname, '/session/:sessionID/init')
+  if (method === 'POST' && sessionInitMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.initializeSession({
+        sessionId: sessionInitMatch.sessionID,
+        messageId:
+          optionalString(body.messageID) ??
+          requiredString(body.messageId, 'messageID'),
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        model: readOpenCodeBodyModel(body),
+      }),
+    )
+  }
+
+  const sessionSummarizeMatch = matchPath(pathname, '/session/:sessionID/summarize')
+  if (method === 'POST' && sessionSummarizeMatch) {
+    const body = await readJsonBody(request)
+    const model = readOpenCodeBodyModel(body)
+    return jsonResponse(
+      await runtime.summarizeSession({
+        sessionId: sessionSummarizeMatch.sessionID,
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        providerId: model.providerId,
+        modelId: model.modelId,
+        auto: optionalBoolean(body.auto),
+      }),
+    )
+  }
+
+  const sessionShellMatch = matchPath(pathname, '/session/:sessionID/shell')
+  if (method === 'POST' && sessionShellMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.runSessionShell({
+        sessionId: sessionShellMatch.sessionID,
+        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        agentId: requiredString(body.agent, 'agent'),
+        command: requiredString(body.command, 'command'),
+        model: readOptionalOpenCodeModel(body.model),
+      }),
+    )
+  }
+
+  const apiCompactMatch = matchPath(pathname, '/api/session/:sessionID/compact')
+  if (method === 'POST' && apiCompactMatch) {
+    await runtime.compactSession({
+      sessionId: apiCompactMatch.sessionID,
+      workspaceRoot: workspaceRootFromFindQuery(url),
+    })
+    return noContentResponse()
+  }
+
+  const apiWaitMatch = matchPath(pathname, '/api/session/:sessionID/wait')
+  if (method === 'POST' && apiWaitMatch) {
+    await runtime.waitForSession({
+      sessionId: apiWaitMatch.sessionID,
+      workspaceRoot: workspaceRootFromFindQuery(url),
+    })
+    return noContentResponse()
   }
 
   const sessionTodoMatch = matchPath(pathname, '/session/:sessionID/todo')
@@ -1191,6 +1282,69 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
         submittedBy: { displayName: 'OpenCode API' },
       })
     },
+    async initializeSession(input) {
+      await this.createSessionMessage({
+        sessionId: input.sessionId,
+        messageId: input.messageId,
+        content: [
+          'Initialize this project for Specter Code.',
+          `Analyze the workspace at ${input.workspaceRoot}.`,
+          'Create or update AGENTS.md with project-specific build, test, and coding-agent guidance.',
+        ].join('\n\n'),
+        agentId: 'build',
+        agentName: 'build',
+        model: input.model,
+        submittedBy: { displayName: 'OpenCode API' },
+      })
+      return true
+    },
+    async summarizeSession(input) {
+      await this.createSessionMessage({
+        sessionId: input.sessionId,
+        content: input.auto
+          ? 'Automatically compact and summarize this session, preserving goals, decisions, changed files, commands, and next steps.'
+          : 'Summarize this session, preserving goals, decisions, changed files, commands, and next steps.',
+        agentId: 'build',
+        agentName: 'build',
+        model: { providerId: input.providerId, modelId: input.modelId },
+        submittedBy: { displayName: 'OpenCode API' },
+      })
+      return true
+    },
+    async compactSession(input) {
+      const session = await this.getSession({ sessionId: input.sessionId })
+      if (!isRecord(session)) throw new Error('Session is unavailable')
+      const model = readModel(session.model)
+      await this.summarizeSession({
+        sessionId: input.sessionId,
+        workspaceRoot: input.workspaceRoot,
+        providerId: model.providerId,
+        modelId: model.modelId,
+        auto: true,
+      })
+    },
+    async waitForSession(input) {
+      liveSessionStatuses.set(input.sessionId, {
+        sessionId: input.sessionId,
+        status: 'idle',
+        updatedAt: new Date().toISOString(),
+      })
+    },
+    async runSessionShell(input) {
+      return this.createSessionMessage({
+        sessionId: input.sessionId,
+        messageId: input.messageId,
+        content: `Run this shell command and report the result:
+
+\`\`\`sh
+${input.command}
+\`\`\``,
+        agentId: input.agentId,
+        agentName: input.agentId,
+        model: input.model,
+        submittedBy: { displayName: 'OpenCode API' },
+      })
+    },
     async listEvents(input) {
       const runtime = await import('./server-runtime.server')
       return runtime.listSpecterCodeEventsOnServer(input)
@@ -1637,6 +1791,17 @@ function readOptionalCommandModel(model: string | undefined) {
   }
 }
 
+function readOpenCodeBodyModel(value: unknown) {
+  if (!isRecord(value)) throw new Error('Missing request body')
+  return {
+    providerId:
+      optionalString(value.providerId) ??
+      requiredString(value.providerID, 'providerID'),
+    modelId:
+      optionalString(value.modelId) ?? requiredString(value.modelID, 'modelID'),
+  }
+}
+
 function readOptionalOpenCodeModel(value: unknown) {
   if (value === undefined || value === null) return undefined
   if (!isRecord(value)) throw new Error('Invalid model')
@@ -1678,6 +1843,10 @@ function readPermissionAction(value: unknown) {
 
 function jsonResponse(value: unknown, status = 200) {
   return Response.json(value, { status })
+}
+
+function noContentResponse() {
+  return new Response(null, { status: 204 })
 }
 
 function textResponse(value: string, status = 200) {

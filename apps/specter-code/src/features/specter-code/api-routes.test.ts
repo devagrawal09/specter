@@ -232,6 +232,55 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         parts: [],
       }
     },
+    async initializeSession(input: {
+      sessionId: string
+      messageId: string
+      workspaceRoot: string
+      model: { providerId: string; modelId: string }
+    }) {
+      calls.push(
+        `sessionInit:${input.sessionId}:${input.messageId}:${input.workspaceRoot}:${input.model.providerId}/${input.model.modelId}`,
+      )
+      return true
+    },
+    async summarizeSession(input: {
+      sessionId: string
+      workspaceRoot: string
+      providerId: string
+      modelId: string
+      auto?: boolean
+    }) {
+      calls.push(
+        `sessionSummarize:${input.sessionId}:${input.workspaceRoot}:${input.providerId}/${input.modelId}:${input.auto ? 'auto' : 'manual'}`,
+      )
+      return true
+    },
+    async compactSession(input: { sessionId: string; workspaceRoot: string }) {
+      calls.push(`sessionCompact:${input.sessionId}:${input.workspaceRoot}`)
+    },
+    async waitForSession(input: { sessionId: string; workspaceRoot: string }) {
+      calls.push(`sessionWait:${input.sessionId}:${input.workspaceRoot}`)
+    },
+    async runSessionShell(input: {
+      sessionId: string
+      messageId?: string
+      workspaceRoot: string
+      agentId: string
+      command: string
+      model?: { providerId: string; modelId: string }
+    }) {
+      calls.push(
+        `sessionShell:${input.sessionId}:${input.messageId ?? ''}:${input.workspaceRoot}:${input.agentId}:${input.command}:${input.model?.providerId ?? ''}/${input.model?.modelId ?? ''}`,
+      )
+      return {
+        info: {
+          id: input.messageId ?? 'generated-shell-message',
+          sessionID: input.sessionId,
+          role: 'assistant',
+        },
+        parts: [],
+      }
+    },
     async listEvents(input) {
       calls.push(`events:${input.afterOrder ?? 0}`)
       return [
@@ -436,8 +485,10 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/api/provider' },
       { method: 'GET', normalizedPath: '/api/provider/:providerID' },
       { method: 'GET', normalizedPath: '/api/session' },
+      { method: 'POST', normalizedPath: '/api/session/:sessionID/compact' },
       { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
+      { method: 'POST', normalizedPath: '/api/session/:sessionID/wait' },
       { method: 'GET', normalizedPath: '/config' },
       { method: 'PATCH', normalizedPath: '/config' },
       { method: 'GET', normalizedPath: '/config/providers' },
@@ -487,11 +538,14 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/session/:sessionID/message' },
       { method: 'DELETE', normalizedPath: '/session/:sessionID' },
       { method: 'POST', normalizedPath: '/session/:sessionID/fork' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/init' },
       { method: 'PATCH', normalizedPath: '/session/:sessionID' },
       { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
       { method: 'GET', normalizedPath: '/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
       { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/shell' },
+      { method: 'POST', normalizedPath: '/session/:sessionID/summarize' },
       { method: 'GET', normalizedPath: '/session/:sessionID/todo' },
       { method: 'GET', normalizedPath: '/vcs' },
       { method: 'POST', normalizedPath: '/vcs/apply' },
@@ -595,6 +649,83 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(runtime.calls.slice(-2)).toEqual([
       'commands:/repo',
       'sessionCommand:session-main:msg_cmd:/repo:fix:src/app.ts with tests:plan:openrouter/anthropic/claude-sonnet-4',
+    ])
+  })
+
+
+  it('dispatches OpenCode session action routes to runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/init?directory=/repo', {
+            method: 'POST',
+            body: JSON.stringify({
+              messageID: 'msg_init',
+              providerID: 'openrouter',
+              modelID: 'anthropic/claude-sonnet-4',
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/summarize?directory=/repo', {
+            method: 'POST',
+            body: JSON.stringify({
+              providerID: 'openrouter',
+              modelID: 'anthropic/claude-sonnet-4',
+              auto: true,
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(
+        await router.handle(
+          new Request('http://specter.test/session/session-main/shell?directory=/repo', {
+            method: 'POST',
+            body: JSON.stringify({
+              messageID: 'msg_shell',
+              agent: 'build',
+              command: 'pnpm test',
+              model: { providerID: 'openrouter', modelID: 'anthropic/claude-sonnet-4' },
+            }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      info: { id: 'msg_shell', sessionID: 'session-main', role: 'assistant' },
+      parts: [],
+    })
+
+    const compact = await router.handle(
+      new Request('http://specter.test/api/session/session-main/compact?directory=/repo', {
+        method: 'POST',
+      }),
+    )
+    expect(compact.status).toBe(204)
+
+    const wait = await router.handle(
+      new Request('http://specter.test/api/session/session-main/wait?directory=/repo', {
+        method: 'POST',
+      }),
+    )
+    expect(wait.status).toBe(204)
+
+    expect(runtime.calls.slice(-5)).toEqual([
+      'sessionInit:session-main:msg_init:/repo:openrouter/anthropic/claude-sonnet-4',
+      'sessionSummarize:session-main:/repo:openrouter/anthropic/claude-sonnet-4:auto',
+      'sessionShell:session-main:msg_shell:/repo:build:pnpm test:openrouter/anthropic/claude-sonnet-4',
+      'sessionCompact:session-main:/repo',
+      'sessionWait:session-main:/repo',
     ])
   })
 

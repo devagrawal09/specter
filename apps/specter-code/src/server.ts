@@ -56,13 +56,18 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/pty\/[^/]+\/connect$/.test(normalized) ||
     /^\/question\/[^/]+\/reply$/.test(normalized) ||
     /^\/question\/[^/]+\/reject$/.test(normalized) ||
+    /^\/api\/session\/[^/]+\/compact$/.test(normalized) ||
     /^\/api\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/api\/session\/[^/]+\/prompt$/.test(normalized) ||
+    /^\/api\/session\/[^/]+\/wait$/.test(normalized) ||
     /^\/session\/[^/]+\/command$/.test(normalized) ||
     /^\/session\/[^/]+\/diff$/.test(normalized) ||
+    /^\/session\/[^/]+\/init$/.test(normalized) ||
     /^\/session\/[^/]+\/message$/.test(normalized) ||
     /^\/session\/[^/]+\/prompt_async$/.test(normalized) ||
     /^\/session\/[^/]+\/revert$/.test(normalized) ||
+    /^\/session\/[^/]+\/shell$/.test(normalized) ||
+    /^\/session\/[^/]+\/summarize$/.test(normalized) ||
     /^\/session\/[^/]+\/todo$/.test(normalized)
   )
 }
