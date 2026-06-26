@@ -1,6 +1,22 @@
-import { describe, expect, it } from 'vitest'
+import { createClient } from '@libsql/client/sqlite3'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+
+import { prepareSpecterSqlite } from '../../db/specter-sqlite'
 import { buildSpecterCodeCli } from './cli/index'
+
+let tempDir: string
+
+beforeEach(() => {
+  tempDir = mkdtempSync(join(tmpdir(), 'specterCode-cli-'))
+})
+
+afterEach(() => {
+  rmSync(tempDir, { recursive: true, force: true })
+})
 
 describe('Specter Code CLI', () => {
   it('prints OpenCode-compatible top-level help', async () => {
@@ -18,6 +34,91 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
     expect(result.stderr).toBe('')
+  })
+
+  it('lists persisted active sessions from the configured CLI database', async () => {
+    const dbPath = join(tempDir, 'sessions.db')
+    const db = createClient({ url: `file:${dbPath}` })
+
+    try {
+      await prepareSpecterSqlite(db)
+      await db.batch(
+        [
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-main',
+              'workspace-main',
+              'Fix tests',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'active',
+              '2026-06-25T10:00:00.000Z',
+              '2026-06-25T10:05:00.000Z',
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-deleted',
+              'workspace-main',
+              'Deleted session',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'deleted',
+              '2026-06-25T09:00:00.000Z',
+              '2026-06-25T10:10:00.000Z',
+            ],
+          },
+        ],
+        'write',
+      )
+    } finally {
+      db.close()
+    }
+
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    const result = await cli.run(['session', 'list'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('session-main\tFix tests\tbuild\tlocalai/qwen-code\t/tmp/project')
+    expect(result.stdout).not.toContain('session-deleted')
+    expect(result.stdout).not.toContain('No persisted session CLI adapter is configured yet')
   })
 
   it('validates import and export session command arguments before touching persistence', async () => {

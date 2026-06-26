@@ -54,7 +54,7 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'agents':
             return ok(await renderAgents(cwd, env))
           case 'session':
-            return runSessionCommand(parsed.rest)
+            return runSessionCommand(parsed.rest, env)
           case 'import':
             return runImportCommand(parsed.rest)
           case 'export':
@@ -142,12 +142,58 @@ async function renderAgents(cwd: string, env: SpecterCodeCliEnvironment) {
   return `${lines.join('\n')}\n`
 }
 
-function runSessionCommand(argv: readonly string[]) {
-  if (argv[0] !== 'list') {
+async function runSessionCommand(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+) {
+  if (argv[0] !== 'list' || argv.length > 1) {
     return fail(`Unknown session command: ${argv[0] ?? ''}\n\nUsage: specter-code session list\n`, 1)
   }
 
-  return ok('No persisted session CLI adapter is configured yet. Use the web UI or HTTP API for sessions.\n')
+  return ok(await renderSessionList(env))
+}
+
+async function renderSessionList(env: SpecterCodeCliEnvironment) {
+  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
+    await Promise.all([
+      import('node:fs'),
+      import('node:path'),
+      import('@libsql/client/sqlite3'),
+      import('../../../db/specter-sqlite.ts'),
+    ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const result = await sqlite.execute({
+      sql: `
+        SELECT id, title, directory, agent_id, provider_id, model_id
+        FROM specter_code_sessions
+        WHERE status != 'deleted'
+        ORDER BY updated_at DESC, created_at DESC, id ASC
+        LIMIT 100
+      `,
+      args: [],
+    })
+
+    if (result.rows.length === 0) return 'No sessions found.\n'
+
+    return result.rows
+      .map((row) => {
+        const id = String(row.id)
+        const title = String(row.title)
+        const agent = String(row.agent_id)
+        const model = `${String(row.provider_id)}/${String(row.model_id)}`
+        const directory = String(row.directory)
+        return `${id}\t${title}\t${agent}\t${model}\t${directory}`
+      })
+      .join('\n') + '\n'
+  } finally {
+    sqlite.close()
+  }
 }
 
 async function runImportCommand(argv: readonly string[]) {
