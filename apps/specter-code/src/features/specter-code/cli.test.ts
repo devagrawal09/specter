@@ -1,5 +1,5 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -249,6 +249,41 @@ describe('Specter Code CLI', () => {
       role: 'assistant',
       content: 'I found the issue.',
     })
+  })
+
+  it('executes grep prompts through the real built-in tool registry', async () => {
+    mkdirSync(join(tempDir, 'src'), { recursive: true })
+    writeFileSync(join(tempDir, 'src', 'app.ts'), 'export const needle = true\n')
+    writeFileSync(join(tempDir, 'README.md'), 'nothing to see here\n')
+    const cli = buildSpecterCodeCli({
+      cwd: tempDir,
+      env: createConfiguredCliEnv(),
+    })
+
+    const result = await cli.run(['run', '--format', 'json', 'grep', 'needle'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    const events = result.stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+    expect(events[3]).toMatchObject({
+      type: 'tool.started',
+      toolName: 'grep',
+      inputSummary: 'grep needle in **/*',
+    })
+    expect(events[4]).toMatchObject({
+      type: 'tool.completed',
+      toolName: 'grep',
+      outputSummary: 'src/app.ts:1: export const needle = true',
+    })
+    expect(events[7]).toMatchObject({
+      type: 'assistant.message',
+      role: 'assistant',
+      content: 'Found 1 match for "needle".\nsrc/app.ts:1: export const needle = true',
+    })
+    expect(result.stdout).not.toContain('Mocked')
   })
 
   it('renders an interactive demo TUI transcript with prompt and approval controls', async () => {

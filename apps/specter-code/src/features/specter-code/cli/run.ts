@@ -4,6 +4,7 @@ import { renderInteractiveDemoTui } from './tui/demo.ts'
 import { createAgentRegistry, type AgentSummary } from '../adapters/agent-registry.ts'
 import { loadSpecterCodeConfig } from '../adapters/config-loader.ts'
 import { createProviderRegistry } from '../adapters/llm-provider.ts'
+import { createSpecterCodeBuiltInToolRegistry } from '../adapters/tool-catalog.ts'
 import {
   buildFailureMessage,
   buildStreamChunks,
@@ -131,13 +132,16 @@ export async function runSpecterCodePrompt(options: {
     : agentRegistry.resolveDefaultAgent()
   const model = resolveRunModel(parsed.requestedModel, agent, providerRegistry)
   const ids = buildRunIds(options.cwd, message, agent.id, model)
-  const events = buildMockedRunEvents({
+  const eventOptions = {
     cwd: options.cwd,
     message,
     agent,
     ids,
     model,
-  })
+  }
+  const events = parsed.interactive
+    ? buildMockedRunEvents(eventOptions)
+    : await buildRunEvents(eventOptions)
 
   if (parsed.interactive) {
     return ok(renderInteractiveDemoTui(events, { cwd: options.cwd, prompt: message }))
@@ -357,6 +361,197 @@ function buildMockedRunEvents(options: {
   )
 
   return events
+}
+
+async function buildRunEvents(options: {
+  cwd: string
+  message: string
+  agent: AgentSummary
+  ids: ReturnType<typeof buildRunIds>
+  model: RunStartedModel
+}): Promise<JsonRunEvent[]> {
+  const localToolPlan = buildLocalToolPlan(options.message)
+  if (!localToolPlan) return buildMockedRunEvents(options)
+
+  const events = buildRunStartEvents(options)
+  events.push({
+    type: 'tool.started',
+    runId: options.ids.runId,
+    toolCallId: options.ids.toolCallId,
+    toolName: localToolPlan.toolName,
+    inputSummary: localToolPlan.inputSummary,
+  })
+
+  try {
+    const registry = createSpecterCodeBuiltInToolRegistry()
+    const output = await registry.execute(localToolPlan.toolName, localToolPlan.input, {
+      sessionId: options.ids.sessionId,
+      messageId: options.ids.messageId,
+      agent: options.agent.id,
+      workspaceRoot: options.cwd,
+      ask: async () => 'allow',
+      metadata: () => {},
+    })
+    const outputSummary = summarizeToolOutput(localToolPlan, output)
+    events.push({
+      type: 'tool.completed',
+      runId: options.ids.runId,
+      toolCallId: options.ids.toolCallId,
+      toolName: localToolPlan.toolName,
+      outputSummary,
+    })
+    const assistantContent = renderToolAssistantMessage(localToolPlan, output)
+    chunkAssistantContent(assistantContent).forEach((delta, sequence) => {
+      events.push({
+        type: 'assistant.delta',
+        runId: options.ids.runId,
+        sequence,
+        delta,
+      })
+    })
+    events.push(
+      {
+        type: 'assistant.message',
+        messageId: options.ids.assistantMessageId,
+        sessionId: options.ids.sessionId,
+        role: 'assistant',
+        content: assistantContent,
+      },
+      {
+        type: 'run.completed',
+        runId: options.ids.runId,
+        sessionId: options.ids.sessionId,
+      },
+    )
+    return events
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Tool execution failed'
+    events.push(
+      {
+        type: 'tool.failed',
+        runId: options.ids.runId,
+        toolCallId: options.ids.toolCallId,
+        toolName: localToolPlan.toolName,
+        error: message,
+      },
+      {
+        type: 'run.failed',
+        runId: options.ids.runId,
+        sessionId: options.ids.sessionId,
+        error: message,
+      },
+    )
+    return events
+  }
+}
+
+function buildRunStartEvents(options: {
+  cwd: string
+  message: string
+  agent: AgentSummary
+  ids: ReturnType<typeof buildRunIds>
+  model: RunStartedModel
+}): JsonRunEvent[] {
+  return [
+    {
+      type: 'session.created',
+      sessionId: options.ids.sessionId,
+      title: summarizeTitle(options.message),
+      directory: options.cwd,
+    },
+    {
+      type: 'message.created',
+      messageId: options.ids.messageId,
+      sessionId: options.ids.sessionId,
+      role: 'user',
+      content: options.message,
+    },
+    {
+      type: 'run.started',
+      runId: options.ids.runId,
+      sessionId: options.ids.sessionId,
+      agentId: options.agent.id,
+      agentName: options.agent.name,
+      model: `${options.model.providerId}/${options.model.modelId}`,
+      modelConfigured: options.model.configured,
+    },
+  ]
+}
+
+type LocalToolPlan = {
+  toolName: string
+  input: unknown
+  inputSummary: string
+  kind: 'grep'
+  pattern: string
+}
+
+function buildLocalToolPlan(message: string): LocalToolPlan | undefined {
+  const grepMatch = /^grep\s+(.+)$/i.exec(message.trim())
+  if (!grepMatch) return undefined
+
+  const pattern = grepMatch[1]?.trim()
+  if (!pattern) return undefined
+  return {
+    toolName: 'grep',
+    input: { pattern, include: '**/*', maxMatches: 10 },
+    inputSummary: `grep ${pattern} in **/*`,
+    kind: 'grep',
+    pattern,
+  }
+}
+
+function summarizeToolOutput(plan: LocalToolPlan, output: unknown) {
+  if (plan.kind === 'grep') {
+    const matches = readGrepMatches(output)
+    if (matches.length === 0) return `No matches for ${plan.pattern}`
+    return formatGrepMatch(matches[0])
+  }
+  return 'Tool completed'
+}
+
+function renderToolAssistantMessage(plan: LocalToolPlan, output: unknown) {
+  if (plan.kind === 'grep') {
+    const matches = readGrepMatches(output)
+    if (matches.length === 0) return `No matches for "${plan.pattern}".`
+    const count = matches.length
+    return [
+      `Found ${count} match${count === 1 ? '' : 'es'} for "${plan.pattern}".`,
+      ...matches.map(formatGrepMatch),
+    ].join('\n')
+  }
+  return summarizeToolOutput(plan, output)
+}
+
+type CliGrepMatch = { path: string; lineNumber: number; line: string }
+
+function readGrepMatches(output: unknown): CliGrepMatch[] {
+  if (!output || typeof output !== 'object') return []
+  const matches = (output as { matches?: unknown }).matches
+  if (!Array.isArray(matches)) return []
+  return matches.flatMap((match) => {
+    if (!match || typeof match !== 'object') return []
+    const candidate = match as Partial<CliGrepMatch>
+    if (
+      typeof candidate.path !== 'string' ||
+      typeof candidate.lineNumber !== 'number' ||
+      typeof candidate.line !== 'string'
+    ) {
+      return []
+    }
+    return [{ path: candidate.path, lineNumber: candidate.lineNumber, line: candidate.line }]
+  })
+}
+
+function formatGrepMatch(match: CliGrepMatch) {
+  return `${match.path}:${match.lineNumber}: ${match.line}`
+}
+
+function chunkAssistantContent(content: string) {
+  const newline = content.indexOf('\n')
+  if (newline >= 0) return [content.slice(0, newline + 1), content.slice(newline + 1)]
+  const midpoint = Math.max(1, Math.floor(content.length / 2))
+  return [content.slice(0, midpoint), content.slice(midpoint)]
 }
 
 function summarizeTitle(message: string) {
