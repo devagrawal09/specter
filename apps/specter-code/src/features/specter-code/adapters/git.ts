@@ -130,6 +130,12 @@ function parseStatusEntry(line: string): GitStatusEntry | undefined {
   return { path: rawPath, index, workingTree }
 }
 
+export async function initGitRepository(input: { workspaceRoot: string }): Promise<{ workspaceRoot: string }> {
+  const workspaceRoot = await assertWorkspaceRoot(input.workspaceRoot)
+  await runGit({ workspaceRoot, args: ['init'] })
+  return { workspaceRoot }
+}
+
 export async function getGitStatus(input: { workspaceRoot: string }): Promise<GitStatus> {
   const stdout = await runGit({
     workspaceRoot: input.workspaceRoot,

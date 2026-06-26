@@ -32,6 +32,7 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/permission',
   '/project',
   '/project/current',
+  '/project/git/init',
   '/provider',
   '/pty',
   '/pty/shells',
@@ -54,6 +55,7 @@ function isOpenCodeApiPath(pathname: string) {
     /^\/mcp\/[^/]+\/connect$/.test(normalized) ||
     /^\/mcp\/[^/]+\/disconnect$/.test(normalized) ||
     /^\/permission\/[^/]+\/reply$/.test(normalized) ||
+    /^\/project\/[^/]+$/.test(normalized) ||
     /^\/pty\/[^/]+$/.test(normalized) ||
     /^\/pty\/[^/]+\/connect-token$/.test(normalized) ||
     /^\/pty\/[^/]+\/connect$/.test(normalized) ||

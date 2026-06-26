@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { mkdir, writeFile } from 'node:fs/promises'
+import { lstat, mkdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import {
@@ -21,6 +21,7 @@ import {
 } from './adapters/find'
 import {
   applyGitPatch,
+  initGitRepository,
   getGitDiff,
   revertWorkspacePaths,
   getGitStatus,
@@ -77,6 +78,10 @@ export type ProjectSummary = {
   directory: string
   name: string
   configSources: string[]
+  icon?: string
+  commands?: JsonRecord
+  vcs?: 'git'
+  worktree?: string
 }
 
 export type FormatterStatus = {
@@ -186,6 +191,16 @@ export type SpecterCodeApiRuntime = {
   listProjects(input: {
     workspaceRoot: string
   }): Promise<readonly ProjectSummary[] | unknown>
+  updateProject(input: {
+    workspaceRoot: string
+    projectId: string
+    name?: string
+    icon?: string
+    commands?: JsonRecord
+  }): Promise<ProjectSummary | unknown>
+  initializeProjectGit(input: {
+    workspaceRoot: string
+  }): Promise<ProjectSummary | unknown>
   listFormatterStatus(input: {
     workspaceRoot: string
   }): Promise<readonly FormatterStatus[] | unknown>
@@ -375,6 +390,8 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
   { method: 'GET', normalizedPath: '/project' },
   { method: 'GET', normalizedPath: '/project/current' },
+  { method: 'POST', normalizedPath: '/project/git/init' },
+  { method: 'PATCH', normalizedPath: '/project/:projectID' },
   { method: 'GET', normalizedPath: '/provider' },
   { method: 'GET', normalizedPath: '/pty' },
   { method: 'POST', normalizedPath: '/pty' },
@@ -1061,6 +1078,28 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(firstProject(projects))
   }
 
+  if (method === 'POST' && pathname === '/project/git/init') {
+    return jsonResponse(
+      await runtime.initializeProjectGit({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
+    )
+  }
+
+  const projectUpdateMatch = matchPath(pathname, '/project/:projectID')
+  if (method === 'PATCH' && projectUpdateMatch) {
+    const body = await readJsonBody(request)
+    return jsonResponse(
+      await runtime.updateProject({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+        projectId: projectUpdateMatch.projectID,
+        name: optionalString(body.name),
+        icon: optionalString(body.icon),
+        commands: optionalJsonRecord(body.commands),
+      }),
+    )
+  }
+
   if (method === 'GET' && pathname === '/formatter') {
     return jsonResponse(
       await runtime.listFormatterStatus({
@@ -1381,6 +1420,12 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     async listProjects(input) {
       return listWorkspaceProjects(input)
     },
+    async updateProject(input) {
+      return updateWorkspaceProject(input)
+    },
+    async initializeProjectGit(input) {
+      return initializeWorkspaceGitProject(input)
+    },
     async listFormatterStatus(input) {
       const config = await loadSpecterCodeConfig({
         workspaceRoot: input.workspaceRoot,
@@ -1680,13 +1725,7 @@ async function updateWorkspaceConfig(input: {
 }) {
   const current = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
   const nextRaw = mergeConfigPatch(current.raw, input.patch)
-  const configDir = path.join(input.workspaceRoot, '.opencode')
-  await mkdir(configDir, { recursive: true })
-  await writeFile(
-    path.join(configDir, 'opencode.jsonc'),
-    `${JSON.stringify(nextRaw, null, 2)}\n`,
-    'utf8',
-  )
+  await writeWorkspaceConfig(input.workspaceRoot, nextRaw)
   return loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
 }
 
@@ -1702,18 +1741,77 @@ function mergeConfigPatch(current: JsonRecord, patch: JsonRecord): JsonRecord {
   return next
 }
 
+async function updateWorkspaceProject(input: {
+  workspaceRoot: string
+  projectId: string
+  name?: string
+  icon?: string
+  commands?: JsonRecord
+}): Promise<ProjectSummary> {
+  if (input.projectId !== input.workspaceRoot && input.projectId !== path.basename(input.workspaceRoot)) {
+    throw new Error(`Project not found: ${input.projectId}`)
+  }
+  const current = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+  const currentProject = isRecord(current.raw.project) ? current.raw.project : {}
+  const nextProject: JsonRecord = { ...currentProject }
+  if (input.name !== undefined) nextProject.name = input.name
+  if (input.icon !== undefined) nextProject.icon = input.icon
+  if (input.commands !== undefined) nextProject.commands = input.commands
+
+  await writeWorkspaceConfig(input.workspaceRoot, {
+    ...current.raw,
+    project: nextProject,
+  })
+  return firstProject(await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }))
+}
+
+async function initializeWorkspaceGitProject(input: {
+  workspaceRoot: string
+}): Promise<ProjectSummary> {
+  await initGitRepository({ workspaceRoot: input.workspaceRoot })
+  return firstProject(await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }))
+}
+
 async function listWorkspaceProjects(input: {
   workspaceRoot: string
 }): Promise<ProjectSummary[]> {
   const config = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
-  return [
-    {
-      id: input.workspaceRoot,
-      directory: input.workspaceRoot,
-      name: path.basename(input.workspaceRoot) || input.workspaceRoot,
-      configSources: config.sources,
-    },
-  ]
+  const projectConfig = isRecord(config.raw.project) ? config.raw.project : {}
+  const gitReady = await hasGitDirectory(input.workspaceRoot)
+  const summary: ProjectSummary = {
+    id: input.workspaceRoot,
+    directory: input.workspaceRoot,
+    name: optionalString(projectConfig.name) ?? (path.basename(input.workspaceRoot) || input.workspaceRoot),
+    configSources: config.sources,
+  }
+  const icon = optionalString(projectConfig.icon)
+  if (icon) summary.icon = icon
+  const commands = optionalJsonRecord(projectConfig.commands)
+  if (commands) summary.commands = commands
+  if (gitReady) {
+    summary.vcs = 'git'
+    summary.worktree = input.workspaceRoot
+  }
+  return [summary]
+}
+
+async function hasGitDirectory(workspaceRoot: string) {
+  try {
+    const stat = await lstat(path.join(workspaceRoot, '.git'))
+    return stat.isDirectory()
+  } catch {
+    return false
+  }
+}
+
+async function writeWorkspaceConfig(workspaceRoot: string, raw: JsonRecord) {
+  const configDir = path.join(workspaceRoot, '.opencode')
+  await mkdir(configDir, { recursive: true })
+  await writeFile(
+    path.join(configDir, 'opencode.jsonc'),
+    `${JSON.stringify(raw, null, 2)}\n`,
+    'utf8',
+  )
 }
 
 function listFormatterStatuses(config: SpecterCodeConfig): FormatterStatus[] {
@@ -1925,6 +2023,10 @@ function readRequiredStringArray(value: unknown, name: string) {
 
 function optionalString(value: unknown) {
   return typeof value === 'string' && value.trim() ? value : undefined
+}
+
+function optionalJsonRecord(value: unknown): JsonRecord | undefined {
+  return isRecord(value) ? value : undefined
 }
 
 function readPtySize(value: unknown) {

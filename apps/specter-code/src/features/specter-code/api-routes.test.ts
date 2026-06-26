@@ -1,3 +1,7 @@
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises'
+import os from 'node:os'
+import path from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -186,6 +190,28 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
           configSources: [`${input.workspaceRoot}/.opencode/opencode.jsonc`],
         },
       ]
+    },
+    async updateProject(input) {
+      calls.push(`projectUpdate:${input.projectId}:${input.workspaceRoot}:${input.name ?? ''}`)
+      return {
+        id: input.projectId,
+        directory: input.workspaceRoot,
+        name: input.name ?? 'repo',
+        icon: input.icon,
+        commands: input.commands,
+        configSources: [`${input.workspaceRoot}/.opencode/opencode.jsonc`],
+      }
+    },
+    async initializeProjectGit(input) {
+      calls.push(`projectGitInit:${input.workspaceRoot}`)
+      return {
+        id: input.workspaceRoot,
+        directory: input.workspaceRoot,
+        name: 'repo',
+        vcs: 'git',
+        worktree: input.workspaceRoot,
+        configSources: [`${input.workspaceRoot}/.opencode/opencode.jsonc`],
+      }
     },
     async listFormatterStatus(input) {
       calls.push(`formatters:${input.workspaceRoot}`)
@@ -565,6 +591,8 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'POST', normalizedPath: '/permission/:requestID/reply' },
       { method: 'GET', normalizedPath: '/project' },
       { method: 'GET', normalizedPath: '/project/current' },
+      { method: 'POST', normalizedPath: '/project/git/init' },
+      { method: 'PATCH', normalizedPath: '/project/:projectID' },
       { method: 'GET', normalizedPath: '/provider' },
       { method: 'GET', normalizedPath: '/pty' },
       { method: 'POST', normalizedPath: '/pty' },
@@ -608,6 +636,68 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/vcs/diff/raw' },
       { method: 'GET', normalizedPath: '/vcs/status' },
     ])
+  })
+
+  it('updates project metadata and initializes git through OpenCode project mutation routes', async () => {
+    const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-project-api-'))
+    try {
+      const router = createSpecterCodeApiRouter()
+      const projectUrl = `http://specter.test/project/${encodeURIComponent(workspaceRoot)}?directory=${encodeURIComponent(workspaceRoot)}`
+
+      const patchResponse = await router.handle(
+        new Request(projectUrl, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: 'Renamed Project',
+            icon: '🚀',
+            commands: { test: 'pnpm test' },
+          }),
+        }),
+      )
+
+      expect(patchResponse.status).toBe(200)
+      await expect(json(patchResponse)).resolves.toEqual(
+        expect.objectContaining({
+          id: workspaceRoot,
+          directory: workspaceRoot,
+          name: 'Renamed Project',
+          icon: '🚀',
+          commands: { test: 'pnpm test' },
+        }),
+      )
+      await expect(
+        readFile(path.join(workspaceRoot, '.opencode', 'opencode.jsonc'), 'utf8').then(JSON.parse),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          project: {
+            name: 'Renamed Project',
+            icon: '🚀',
+            commands: { test: 'pnpm test' },
+          },
+        }),
+      )
+
+      const initResponse = await router.handle(
+        new Request(
+          `http://specter.test/project/git/init?directory=${encodeURIComponent(workspaceRoot)}`,
+          { method: 'POST' },
+        ),
+      )
+
+      expect(initResponse.status).toBe(200)
+      await expect(json(initResponse)).resolves.toEqual(
+        expect.objectContaining({
+          id: workspaceRoot,
+          directory: workspaceRoot,
+          name: 'Renamed Project',
+          vcs: 'git',
+          worktree: workspaceRoot,
+        }),
+      )
+      await expect(access(path.join(workspaceRoot, '.git'))).resolves.toBeUndefined()
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true })
+    }
   })
 
   it('dispatches OpenCode session status, prompt message, and abort routes to runtime handlers', async () => {

@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -180,6 +180,62 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
   const events = await request.get('/event?after=0&live=false')
   expect(events.status()).toBe(200)
   expect(events.headers()['content-type']).toContain('text/event-stream')
+})
+
+
+test('serves OpenCode project mutation routes over HTTP', async ({ request }) => {
+  const workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-project-http-'))
+  try {
+    const projectPath = `/project/${encodeURIComponent(workspaceRoot)}?directory=${encodeURIComponent(workspaceRoot)}`
+    const update = await request.patch(projectPath, {
+      data: {
+        name: 'HTTP Project',
+        icon: '🛰️',
+        commands: { test: 'pnpm test' },
+      },
+    })
+
+    expect(update.status()).toBe(200)
+    expect(update.headers()['content-type']).toContain('application/json')
+    expect(await update.json()).toEqual(
+      expect.objectContaining({
+        id: workspaceRoot,
+        directory: workspaceRoot,
+        name: 'HTTP Project',
+        icon: '🛰️',
+        commands: { test: 'pnpm test' },
+      }),
+    )
+    await expect(
+      readFile(path.join(workspaceRoot, '.opencode', 'opencode.jsonc'), 'utf8').then(JSON.parse),
+    ).resolves.toEqual(
+      expect.objectContaining({
+        project: {
+          name: 'HTTP Project',
+          icon: '🛰️',
+          commands: { test: 'pnpm test' },
+        },
+      }),
+    )
+
+    const initGit = await request.post(
+      `/project/git/init?directory=${encodeURIComponent(workspaceRoot)}`,
+    )
+    expect(initGit.status()).toBe(200)
+    expect(initGit.headers()['content-type']).toContain('application/json')
+    expect(await initGit.json()).toEqual(
+      expect.objectContaining({
+        id: workspaceRoot,
+        directory: workspaceRoot,
+        name: 'HTTP Project',
+        vcs: 'git',
+        worktree: workspaceRoot,
+      }),
+    )
+    await expect(access(path.join(workspaceRoot, '.git'))).resolves.toBeUndefined()
+  } finally {
+    await rm(workspaceRoot, { recursive: true, force: true })
+  }
 })
 
 
