@@ -284,6 +284,7 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/agent' },
   { method: 'GET', normalizedPath: '/api/model' },
   { method: 'GET', normalizedPath: '/api/provider' },
+  { method: 'GET', normalizedPath: '/api/provider/:providerID' },
   { method: 'GET', normalizedPath: '/api/session' },
   { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
   { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
@@ -293,6 +294,9 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/command' },
   { method: 'GET', normalizedPath: '/event' },
   { method: 'GET', normalizedPath: '/formatter' },
+  { method: 'GET', normalizedPath: '/global/config' },
+  { method: 'PATCH', normalizedPath: '/global/config' },
+  { method: 'GET', normalizedPath: '/global/event' },
   { method: 'GET', normalizedPath: '/global/health' },
   { method: 'GET', normalizedPath: '/find' },
   { method: 'GET', normalizedPath: '/find/file' },
@@ -381,6 +385,16 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse({ ok: true })
   }
 
+  if (method === 'GET' && pathname === '/global/event') {
+    return createSpecterCodeEventStream({
+      loadEvents: (input) => runtime.listEvents(input),
+    }).open({
+      afterOrder: optionalIntegerQuery(url, 'after'),
+      live: optionalQuery(url, 'live') !== 'false',
+      signal: request.signal,
+    })
+  }
+
   if (method === 'GET' && pathname === '/path') {
     const directory = workspaceRootFromFindQuery(url)
     return jsonResponse({ path: directory, directory })
@@ -392,6 +406,14 @@ async function dispatchOpenCodeApiRequest(
         workspaceRoot: optionalQuery(url, 'workspaceRoot'),
       }),
     )
+  }
+
+  const apiProviderMatch = matchPath(pathname, '/api/provider/:providerID')
+  if (method === 'GET' && apiProviderMatch) {
+    const providers = await runtime.listProviders({
+      workspaceRoot: optionalQuery(url, 'workspaceRoot'),
+    })
+    return jsonResponse(providerById(providers, apiProviderMatch.providerID))
   }
 
   if (method === 'GET' && pathname === '/config/providers') {
@@ -785,13 +807,13 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  if (method === 'GET' && pathname === '/config') {
+  if (method === 'GET' && (pathname === '/config' || pathname === '/global/config')) {
     return jsonResponse(
       await runtime.loadConfig({ workspaceRoot: workspaceRootFromFindQuery(url) }),
     )
   }
 
-  if (method === 'PATCH' && pathname === '/config') {
+  if (method === 'PATCH' && (pathname === '/config' || pathname === '/global/config')) {
     const body = await readJsonBody(request)
     return jsonResponse(
       await runtime.updateConfig({
@@ -1673,6 +1695,15 @@ function gitDiffPatch(value: unknown) {
 function firstProject(value: unknown) {
   if (Array.isArray(value)) return value[0] ?? null
   return value
+}
+
+function providerById(value: unknown, providerId: string) {
+  if (!Array.isArray(value)) return value
+  const provider = value.find(
+    (item) => isRecord(item) && item.id === providerId,
+  )
+  if (!provider) throw new Error('Unknown provider: ' + providerId)
+  return provider
 }
 
 function limitItems<T>(items: readonly T[], limit: number | undefined) {

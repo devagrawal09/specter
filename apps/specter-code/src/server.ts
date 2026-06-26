@@ -15,6 +15,8 @@ const EXACT_OPENCODE_API_PATHS = new Set([
   '/command',
   '/event',
   '/formatter',
+  '/global/config',
+  '/global/event',
   '/global/health',
   '/find',
   '/find/file',
@@ -45,6 +47,7 @@ function isOpenCodeApiPath(pathname: string) {
   const normalized = pathname.replace(/\/+$/, '') || '/'
   if (EXACT_OPENCODE_API_PATHS.has(normalized)) return true
   return (
+    /^\/api\/provider\/[^/]+$/.test(normalized) ||
     /^\/mcp\/[^/]+\/connect$/.test(normalized) ||
     /^\/mcp\/[^/]+\/disconnect$/.test(normalized) ||
     /^\/permission\/[^/]+\/reply$/.test(normalized) ||

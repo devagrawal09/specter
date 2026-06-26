@@ -434,6 +434,7 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/agent' },
       { method: 'GET', normalizedPath: '/api/model' },
       { method: 'GET', normalizedPath: '/api/provider' },
+      { method: 'GET', normalizedPath: '/api/provider/:providerID' },
       { method: 'GET', normalizedPath: '/api/session' },
       { method: 'GET', normalizedPath: '/api/session/:sessionID/message' },
       { method: 'POST', normalizedPath: '/api/session/:sessionID/prompt' },
@@ -443,6 +444,9 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/command' },
       { method: 'GET', normalizedPath: '/event' },
       { method: 'GET', normalizedPath: '/formatter' },
+      { method: 'GET', normalizedPath: '/global/config' },
+      { method: 'PATCH', normalizedPath: '/global/config' },
+      { method: 'GET', normalizedPath: '/global/event' },
       { method: 'GET', normalizedPath: '/global/health' },
       { method: 'GET', normalizedPath: '/find' },
       { method: 'GET', normalizedPath: '/find/file' },
@@ -1384,9 +1388,17 @@ describe('Specter Code OpenCode API route adapter', () => {
     ])
 
     await expect(
+      json(await router.handle(new Request('http://specter.test/global/config?directory=/repo'))),
+    ).resolves.toEqual({
+      sources: [],
+      permissionRules: [],
+      raw: { model: 'openrouter/test' },
+    })
+
+    await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/config?directory=/repo', {
+          new Request('http://specter.test/global/config?directory=/repo', {
             method: 'PATCH',
             body: JSON.stringify({
               model: 'openrouter/test-model',
@@ -1401,11 +1413,30 @@ describe('Specter Code OpenCode API route adapter', () => {
       raw: { model: 'openrouter/test-model', default_agent: 'build' },
     })
 
-    expect(runtime.calls.slice(-3)).toEqual([
+    expect(runtime.calls.slice(-4)).toEqual([
       'projects:/repo',
       'formatters:/repo',
+      'config:/repo',
       'configPatch:/repo:{"model":"openrouter/test-model","default_agent":"build"}',
     ])
+  })
+
+  it('dispatches OpenCode global event and provider detail aliases to existing runtime handlers', async () => {
+    const runtime = createRuntime()
+    const router = createSpecterCodeApiRouter({ runtime })
+
+    await expect(
+      json(await router.handle(new Request('http://specter.test/api/provider/openrouter'))),
+    ).resolves.toEqual({ id: 'openrouter', configured: false, models: [] })
+
+    const eventStream = await router.handle(
+      new Request('http://specter.test/global/event?after=1&live=false'),
+    )
+    expect(eventStream.status).toBe(200)
+    expect(eventStream.headers.get('content-type')).toContain('text/event-stream')
+    await expect(eventStream.text()).resolves.toContain('agentRunCompleted')
+
+    expect(runtime.calls.slice(-2)).toEqual(['providers', 'events:1'])
   })
 
   it('returns JSON errors for unmatched routes, invalid bodies, and missing query parameters', async () => {

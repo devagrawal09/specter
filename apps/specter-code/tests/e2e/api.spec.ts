@@ -196,6 +196,20 @@ test('serves OpenCode-compatible /api aliases and raw diff endpoints over HTTP',
   expect(health.headers()['content-type']).toContain('application/json')
   expect(await health.json()).toEqual({ ok: true })
 
+  const providerDetail = await request.get('/api/provider/openrouter')
+  expect(providerDetail.status()).toBe(200)
+  expect(providerDetail.headers()['content-type']).toContain('application/json')
+  expect(await providerDetail.json()).toEqual(expect.objectContaining({ id: 'openrouter' }))
+
+  const globalConfig = await request.get(`/global/config?directory=${encodeURIComponent(workspaceRoot)}`)
+  expect(globalConfig.status()).toBe(200)
+  expect(globalConfig.headers()['content-type']).toContain('application/json')
+  expect(await globalConfig.json()).toEqual(expect.objectContaining({ raw: expect.any(Object) }))
+
+  const globalEvent = await request.get('/global/event?after=0&live=false')
+  expect(globalEvent.status()).toBe(200)
+  expect(globalEvent.headers()['content-type']).toContain('text/event-stream')
+
   const rawDiff = await request.get(`/vcs/diff/raw?workspaceRoot=${encodeURIComponent(workspaceRoot)}`)
   expect(rawDiff.status()).toBe(200)
   expect(rawDiff.headers()['content-type']).toContain('text/plain')
