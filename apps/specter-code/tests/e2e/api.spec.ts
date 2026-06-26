@@ -128,6 +128,49 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     ]),
   )
 
+  const consoleState = await request.get(
+    `/experimental/console?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(consoleState.status()).toBe(200)
+  expect(consoleState.headers()['content-type']).toContain('application/json')
+  expect(await consoleState.json()).toEqual(
+    expect.objectContaining({
+      consoleManagedProviders: expect.any(Array),
+      switchableOrgCount: expect.any(Number),
+    }),
+  )
+
+  const consoleOrgs = await request.get(
+    `/experimental/console/orgs?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(consoleOrgs.status()).toBe(200)
+  expect(await consoleOrgs.json()).toEqual({ orgs: expect.any(Array) })
+
+  const consoleSwitch = await request.post(
+    `/experimental/console/switch?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { accountID: 'acct_e2e', orgID: 'org_e2e' } },
+  )
+  expect(consoleSwitch.status()).toBe(200)
+  expect(await consoleSwitch.json()).toBe(true)
+
+  const experimentalSessions = await request.get(
+    `/experimental/session?workspace=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(experimentalSessions.status()).toBe(200)
+  expect(await experimentalSessions.json()).toEqual(expect.any(Array))
+
+  const experimentalResources = await request.get(
+    `/experimental/resource?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(experimentalResources.status()).toBe(200)
+  expect(await experimentalResources.json()).toEqual(expect.any(Object))
+
+  const worktrees = await request.get(
+    `/experimental/worktree?directory=${encodeURIComponent(workspaceRoot)}`,
+  )
+  expect(worktrees.status()).toBe(200)
+  expect(await worktrees.json()).toEqual(expect.any(Array))
+
   const createdWorkspace = await request.post(
     `/experimental/workspace?directory=${encodeURIComponent(workspaceRoot)}`,
     { data: { id: 'wrk_e2e', type: 'local', branch: 'feature/e2e' } },
@@ -145,6 +188,14 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     expect.objectContaining({ id: 'wrk_e2e', status: 'ready', directory: workspaceRoot }),
   )
 
+  const workspaceStatusAlias = await request.get(
+    `/experimental/workspace/status?directory=${encodeURIComponent(workspaceRoot)}&workspace=wrk_e2e`,
+  )
+  expect(workspaceStatusAlias.status()).toBe(200)
+  expect(await workspaceStatusAlias.json()).toEqual(
+    expect.objectContaining({ id: 'wrk_e2e', status: 'ready', directory: workspaceRoot }),
+  )
+
   const workspaceSync = await request.post(
     `/experimental/workspace/sync-list?directory=${encodeURIComponent(workspaceRoot)}`,
   )
@@ -154,6 +205,12 @@ test('serves OpenCode-compatible provider, agent, config, and event endpoints ov
     `/experimental/workspace/wrk_e2e/warp?directory=${encodeURIComponent(workspaceRoot)}`,
   )
   expect(workspaceWarp.status()).toBe(204)
+
+  const workspaceWarpAlias = await request.post(
+    `/experimental/workspace/warp?directory=${encodeURIComponent(workspaceRoot)}`,
+    { data: { id: 'wrk_e2e', sessionID: 'ses_e2e', copyChanges: false } },
+  )
+  expect(workspaceWarpAlias.status()).toBe(204)
 
   const workspaceDelete = await request.delete(
     `/experimental/workspace/wrk_e2e?directory=${encodeURIComponent(workspaceRoot)}`,

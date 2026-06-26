@@ -671,15 +671,26 @@ describe('Specter Code OpenCode API route adapter', () => {
       { method: 'GET', normalizedPath: '/config/providers' },
       { method: 'GET', normalizedPath: '/command' },
       { method: 'GET', normalizedPath: '/event' },
+      { method: 'GET', normalizedPath: '/experimental/console' },
+      { method: 'GET', normalizedPath: '/experimental/console/orgs' },
+      { method: 'POST', normalizedPath: '/experimental/console/switch' },
+      { method: 'GET', normalizedPath: '/experimental/resource' },
+      { method: 'GET', normalizedPath: '/experimental/session' },
       { method: 'GET', normalizedPath: '/experimental/tool' },
       { method: 'GET', normalizedPath: '/experimental/tool/ids' },
       { method: 'GET', normalizedPath: '/experimental/workspace' },
       { method: 'POST', normalizedPath: '/experimental/workspace' },
       { method: 'GET', normalizedPath: '/experimental/workspace/adapter' },
+      { method: 'GET', normalizedPath: '/experimental/workspace/status' },
       { method: 'POST', normalizedPath: '/experimental/workspace/sync-list' },
-      { method: 'DELETE', normalizedPath: '/experimental/workspace/:workspaceID' },
-      { method: 'GET', normalizedPath: '/experimental/workspace/:workspaceID/status' },
-      { method: 'POST', normalizedPath: '/experimental/workspace/:workspaceID/warp' },
+      { method: 'DELETE', normalizedPath: '/experimental/workspace/:id' },
+      { method: 'GET', normalizedPath: '/experimental/workspace/:id/status' },
+      { method: 'POST', normalizedPath: '/experimental/workspace/:id/warp' },
+      { method: 'POST', normalizedPath: '/experimental/workspace/warp' },
+      { method: 'GET', normalizedPath: '/experimental/worktree' },
+      { method: 'POST', normalizedPath: '/experimental/worktree' },
+      { method: 'DELETE', normalizedPath: '/experimental/worktree' },
+      { method: 'POST', normalizedPath: '/experimental/worktree/reset' },
       { method: 'GET', normalizedPath: '/formatter' },
       { method: 'GET', normalizedPath: '/global/config' },
       { method: 'PATCH', normalizedPath: '/global/config' },
@@ -1534,6 +1545,190 @@ describe('Specter Code OpenCode API route adapter', () => {
     expect(runtime.calls.slice(-2)).toEqual([
       'toolIds:/repo',
       'tools:/repo:openrouter/test-model',
+    ])
+  })
+
+
+  it('dispatches remaining OpenCode experimental console, session, resource, worktree, and workspace alias routes', async () => {
+    const runtime = {
+      ...createRuntime(),
+      async listExperimentalConsole(input: { workspaceRoot: string }) {
+        this.calls.push(`console:${input.workspaceRoot}`)
+        return {
+          consoleManagedProviders: ['openrouter'],
+          activeOrgName: 'Specter',
+          switchableOrgCount: 1,
+        }
+      },
+      async listExperimentalConsoleOrgs(input: { workspaceRoot: string }) {
+        this.calls.push(`consoleOrgs:${input.workspaceRoot}`)
+        return {
+          orgs: [
+            {
+              accountID: 'acct_1',
+              accountEmail: 'dev@specter.test',
+              accountUrl: 'https://console.specter.test/acct_1',
+              orgID: 'org_1',
+              orgName: 'Specter',
+              active: true,
+            },
+          ],
+        }
+      },
+      async switchExperimentalConsoleOrg(input: { workspaceRoot: string; accountId: string; orgId: string }) {
+        this.calls.push(`consoleSwitch:${input.workspaceRoot}:${input.accountId}:${input.orgId}`)
+        return true
+      },
+      async listExperimentalResources(input: { workspaceRoot: string }) {
+        this.calls.push(`resources:${input.workspaceRoot}`)
+        return {
+          docs: {
+            name: 'Docs',
+            uri: 'file:///repo/README.md',
+            client: 'specter',
+          },
+        }
+      },
+      async listExperimentalWorktrees(input: { workspaceRoot: string }) {
+        this.calls.push(`worktrees:${input.workspaceRoot}`)
+        return ['/repo/.worktrees/feature-api']
+      },
+      async createExperimentalWorktree(input: { workspaceRoot: string; name?: string; startCommand?: string }) {
+        this.calls.push(`worktreeCreate:${input.workspaceRoot}:${input.name ?? ''}:${input.startCommand ?? ''}`)
+        return {
+          name: input.name ?? 'feature-api',
+          branch: input.name ?? 'feature-api',
+          directory: `${input.workspaceRoot}/.worktrees/${input.name ?? 'feature-api'}`,
+        }
+      },
+      async removeExperimentalWorktree(input: { workspaceRoot: string; directory: string }) {
+        this.calls.push(`worktreeRemove:${input.workspaceRoot}:${input.directory}`)
+        return true
+      },
+      async resetExperimentalWorktree(input: { workspaceRoot: string; directory: string }) {
+        this.calls.push(`worktreeReset:${input.workspaceRoot}:${input.directory}`)
+        return true
+      },
+      async getExperimentalWorkspaceStatus(input: { workspaceRoot: string; workspaceId: string }) {
+        this.calls.push(`workspaceStatus:${input.workspaceRoot}:${input.workspaceId}`)
+        return { id: input.workspaceId, status: 'ready' as const, directory: input.workspaceRoot }
+      },
+      async warpExperimentalWorkspace(input: { workspaceRoot: string; workspaceId: string; sessionId?: string; copyChanges?: boolean }) {
+        this.calls.push(`workspaceWarp:${input.workspaceRoot}:${input.workspaceId}:${input.sessionId ?? ''}:${input.copyChanges ? 'copy' : 'nocopy'}`)
+      },
+    }
+    const router = createSpecterCodeApiRouter({ runtime })
+    const directory = encodeURIComponent('/repo')
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/console?directory=${directory}`))),
+    ).resolves.toEqual({
+      consoleManagedProviders: ['openrouter'],
+      activeOrgName: 'Specter',
+      switchableOrgCount: 1,
+    })
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/console/orgs?directory=${directory}`))),
+    ).resolves.toEqual({
+      orgs: [
+        {
+          accountID: 'acct_1',
+          accountEmail: 'dev@specter.test',
+          accountUrl: 'https://console.specter.test/acct_1',
+          orgID: 'org_1',
+          orgName: 'Specter',
+          active: true,
+        },
+      ],
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(`http://specter.test/experimental/console/switch?directory=${directory}`, {
+            method: 'POST',
+            body: JSON.stringify({ accountID: 'acct_1', orgID: 'org_1' }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/session?workspace=workspace-main`))),
+    ).resolves.toEqual([{ id: 'session-main', title: 'Main session' }])
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/resource?directory=${directory}`))),
+    ).resolves.toEqual({
+      docs: { name: 'Docs', uri: 'file:///repo/README.md', client: 'specter' },
+    })
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/worktree?directory=${directory}`))),
+    ).resolves.toEqual(['/repo/.worktrees/feature-api'])
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(`http://specter.test/experimental/worktree?directory=${directory}`, {
+            method: 'POST',
+            body: JSON.stringify({ name: 'feature-api', startCommand: 'pnpm dev' }),
+          }),
+        ),
+      ),
+    ).resolves.toEqual({
+      name: 'feature-api',
+      branch: 'feature-api',
+      directory: '/repo/.worktrees/feature-api',
+    })
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(`http://specter.test/experimental/worktree?directory=${directory}`, {
+            method: 'DELETE',
+            body: JSON.stringify({ directory: '/repo/.worktrees/feature-api' }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(
+        await router.handle(
+          new Request(`http://specter.test/experimental/worktree/reset?directory=${directory}`, {
+            method: 'POST',
+            body: JSON.stringify({ directory: '/repo/.worktrees/feature-api' }),
+          }),
+        ),
+      ),
+    ).resolves.toBe(true)
+
+    await expect(
+      json(await router.handle(new Request(`http://specter.test/experimental/workspace/status?directory=${directory}&workspace=wrk_feature`))),
+    ).resolves.toEqual({ id: 'wrk_feature', status: 'ready', directory: '/repo' })
+
+    const warpResponse = await router.handle(
+      new Request(`http://specter.test/experimental/workspace/warp?directory=${directory}`, {
+        method: 'POST',
+        body: JSON.stringify({ id: 'wrk_feature', sessionID: 'ses_1', copyChanges: true }),
+      }),
+    )
+    expect(warpResponse.status).toBe(204)
+
+    expect(runtime.calls.slice(-11)).toEqual([
+      'console:/repo',
+      'consoleOrgs:/repo',
+      'consoleSwitch:/repo:acct_1:org_1',
+      'listSessions:workspace-main',
+      'resources:/repo',
+      'worktrees:/repo',
+      'worktreeCreate:/repo:feature-api:pnpm dev',
+      'worktreeRemove:/repo:/repo/.worktrees/feature-api',
+      'worktreeReset:/repo:/repo/.worktrees/feature-api',
+      'workspaceStatus:/repo:wrk_feature',
+      'workspaceWarp:/repo:wrk_feature:ses_1:copy',
     ])
   })
 
