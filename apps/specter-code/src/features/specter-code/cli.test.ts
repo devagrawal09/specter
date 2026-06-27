@@ -34,6 +34,7 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('export --session <id> --output <file>')
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
+    expect(result.stdout).toContain('mcp list')
     expect(result.stderr).toBe('')
   })
 
@@ -573,6 +574,29 @@ describe('Specter Code CLI', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain('* localai/qwen-code')
     expect(result.stdout).toContain('Qwen Code')
+  })
+
+  it('lists MCP servers from OpenCode config without starting them', async () => {
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: {
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({
+          mcp: {
+            docs: { type: 'local', command: ['node', 'server.js'] },
+            remoteDocs: { type: 'remote', url: 'https://mcp.example.test/sse' },
+            disabled: { type: 'local', command: ['python', 'server.py'], enabled: false },
+          },
+        }),
+      },
+    })
+
+    const result = await cli.run(['mcp', 'list'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('docs\tlocal\tenabled\tnode server.js')
+    expect(result.stdout).toContain('remoteDocs\tremote\tenabled\thttps://mcp.example.test/sse')
+    expect(result.stdout).toContain('disabled\tlocal\tdisabled\tpython server.py')
   })
 
   it('runs a non-interactive prompt as JSON events with the mocked local runner', async () => {

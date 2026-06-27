@@ -55,6 +55,7 @@ Commands:
   providers           List configured LLM providers
   models              List available provider models
   agents              List available coding agents
+  mcp list            List configured MCP servers without starting them
   --help, help        Show this help
 `
 
@@ -77,6 +78,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return ok(await renderModels(cwd, env))
           case 'agents':
             return ok(await renderAgents(cwd, env))
+          case 'mcp':
+            return runMcpCommand(parsed.rest, { cwd, env })
           case 'session':
             return runSessionCommand(parsed.rest, { cwd, env })
           case 'import':
@@ -211,6 +214,46 @@ async function renderAgents(cwd: string, env: SpecterCodeCliEnvironment) {
   })
 
   return `${lines.join('\n')}\n`
+}
+
+async function runMcpCommand(
+  argv: readonly string[],
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
+) {
+  if ((argv[0] === 'list' && argv.length === 1) || argv[0] === undefined) {
+    return ok(await renderMcpServers(options.cwd, options.env))
+  }
+  if (argv[0] === '--help' || argv[0] === '-h') {
+    return ok('Usage: specter-code mcp list\n')
+  }
+  return fail(`Unknown mcp command: ${argv[0]}\n\nUsage: specter-code mcp list\n`, 1)
+}
+
+async function renderMcpServers(cwd: string, env: SpecterCodeCliEnvironment) {
+  const config = await loadCliConfig(cwd, env)
+  const entries = Object.entries(config.mcp ?? {})
+  if (entries.length === 0) return 'No MCP servers configured\n'
+
+  const lines = entries.map(([name, value]) => {
+    const server = isRecord(value) ? value : {}
+    const type = typeof server.type === 'string' ? server.type : 'local'
+    const status = server.enabled === false ? 'disabled' : 'enabled'
+    return `${name}\t${type}\t${status}\t${mcpServerTarget(server)}`
+  })
+  return `${lines.join('\n')}\n`
+}
+
+function mcpServerTarget(server: Record<string, unknown>) {
+  if (Array.isArray(server.command)) {
+    return server.command.map((part) => String(part)).join(' ')
+  }
+  if (typeof server.command === 'string') return server.command
+  if (typeof server.url === 'string') return server.url
+  return '-'
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
 async function runSessionCommand(
