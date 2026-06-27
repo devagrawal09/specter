@@ -30,6 +30,7 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('specter-code          Start the interactive TUI')
     expect(result.stdout).toContain('run [message]')
     expect(result.stdout).toContain('serve')
+    expect(result.stdout).toContain('web                 Start the Specter Code web UI')
     expect(result.stdout).toContain('session list')
     expect(result.stdout).toContain('import <file>')
     expect(result.stdout).toContain('export --session <id> --output <file>')
@@ -961,6 +962,47 @@ describe('Specter Code CLI', () => {
         ],
         cwd: tempDir,
         env: { SPECTER_CODE_DB_PATH: join(tempDir, 'serve.db') },
+      },
+    ])
+  })
+
+  it('opens the web UI through an OpenCode-compatible web command', async () => {
+    const processCalls: unknown[] = []
+    const cli = buildSpecterCodeCli({
+      cwd: tempDir,
+      env: { SPECTER_CODE_DB_PATH: join(tempDir, 'web.db') },
+      runProcess: async (input) => {
+        processCalls.push(input)
+        return {
+          exitCode: 0,
+          stdout: 'VITE ready at http://127.0.0.1:42001\n',
+          stderr: '',
+        }
+      },
+    })
+
+    const result = await cli.run(['web', '--host', '127.0.0.1', '--port', '42001'])
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: 'VITE ready at http://127.0.0.1:42001\n',
+      stderr: '',
+    })
+    expect(processCalls).toEqual([
+      {
+        command: 'pnpm',
+        args: [
+          '--filter',
+          '@specter/specter-code',
+          'dev',
+          '--open',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '42001',
+        ],
+        cwd: tempDir,
+        env: { SPECTER_CODE_DB_PATH: join(tempDir, 'web.db') },
       },
     ])
   })

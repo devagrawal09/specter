@@ -42,6 +42,7 @@ Commands:
   specter-code          Start the interactive TUI
   run [message]       Run one non-interactive prompt in the current project
   serve               Start the Specter Code HTTP/web server
+  web                 Start the Specter Code web UI
   session list        List local coding sessions
   session show <id>   Show a session transcript from local persistence
   session new --title <title> [--id <id>] [--workspace <id>]
@@ -128,6 +129,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return runPromptCommand(parsed.rest, { cwd, env, fetch })
           case 'serve':
             return runServeCommand(parsed.rest, { cwd, env, runProcess })
+          case 'web':
+            return runWebCommand(parsed.rest, { cwd, env, runProcess })
           default:
             return fail(`Unknown command: ${parsed.command}\n\n${HELP_TEXT}`, 1)
         }
@@ -170,7 +173,31 @@ async function runServeCommand(
   argv: readonly string[],
   options: ServeCommandOptions,
 ) {
+  return runDevServerCommand(argv, options, {
+    commandName: 'serve',
+    usage: 'Usage: specter-code serve [--host <host>] [--port <port>]\n',
+    open: false,
+  })
+}
+
+async function runWebCommand(
+  argv: readonly string[],
+  options: ServeCommandOptions,
+) {
+  return runDevServerCommand(argv, options, {
+    commandName: 'web',
+    usage: 'Usage: specter-code web [--host <host>] [--port <port>]\n',
+    open: true,
+  })
+}
+
+async function runDevServerCommand(
+  argv: readonly string[],
+  options: ServeCommandOptions,
+  command: { commandName: string; usage: string; open: boolean },
+) {
   const args = ['--filter', '@specter/specter-code', 'dev']
+  if (command.open) args.push('--open')
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
@@ -185,9 +212,9 @@ async function runServeCommand(
       continue
     }
     if (arg === '--help' || arg === '-h') {
-      return ok('Usage: specter-code serve [--host <host>] [--port <port>]\n')
+      return ok(command.usage)
     }
-    return fail(`Unknown serve option: ${arg}\n\nUsage: specter-code serve [--host <host>] [--port <port>]\n`, 1)
+    return fail(`Unknown ${command.commandName} option: ${arg}\n\n${command.usage}`, 1)
   }
 
   return options.runProcess({
