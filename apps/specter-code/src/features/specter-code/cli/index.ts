@@ -60,6 +60,7 @@ Commands:
   db path             Print the Specter Code SQLite database path
   db query <sql>      Run a readonly SQL query against local persistence
   mcp list            List configured MCP servers without starting them
+  plugin <module>     Register an OpenCode plugin module in config
   --help, help        Show this help
 `
 
@@ -100,6 +101,9 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return runDbCommand(parsed.rest, env)
           case 'mcp':
             return runMcpCommand(parsed.rest, { cwd, env })
+          case 'plugin':
+          case 'plug':
+            return runPluginCommand(parsed.rest, { cwd, env })
           case 'session':
             return runSessionCommand(parsed.rest, { cwd, env })
           case 'import':
@@ -496,6 +500,148 @@ function mcpServerTarget(server: Record<string, unknown>) {
   if (typeof server.command === 'string') return server.command
   if (typeof server.url === 'string') return server.url
   return '-'
+}
+
+const PLUGIN_USAGE = 'Usage: specter-code plugin <module> [--global] [--force]\n'
+
+async function runPluginCommand(
+  argv: readonly string[],
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
+) {
+  if (argv.length === 0 || isHelpArg(argv[0])) return ok(PLUGIN_USAGE)
+
+  const parsed = parsePluginArgs(argv)
+  const result = await registerPluginModule({
+    module: parsed.module,
+    global: parsed.global,
+    force: parsed.force,
+    cwd: options.cwd,
+    env: options.env,
+  })
+  const verb = result.alreadyConfigured ? 'Plugin already configured' : 'Registered plugin'
+  return ok(`${verb} ${parsed.module} in ${result.configPath}\n`)
+}
+
+function parsePluginArgs(argv: readonly string[]) {
+  let moduleName: string | undefined
+  let global = false
+  let force = false
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--global' || arg === '-g') {
+      global = true
+      continue
+    }
+    if (arg === '--force' || arg === '-f') {
+      force = true
+      continue
+    }
+    if (isHelpArg(arg)) throw new Error(PLUGIN_USAGE.trimEnd())
+    if (!moduleName && !arg.startsWith('--')) {
+      moduleName = arg
+      continue
+    }
+    throw new Error(PLUGIN_USAGE.trimEnd())
+  }
+
+  const normalizedModule = moduleName?.trim()
+  if (!normalizedModule) throw new Error(PLUGIN_USAGE.trimEnd())
+  return { module: normalizedModule, global, force }
+}
+
+type RegisterPluginInput = {
+  module: string
+  global: boolean
+  force: boolean
+  cwd: string
+  env: SpecterCodeCliEnvironment
+}
+
+async function registerPluginModule(input: RegisterPluginInput) {
+  const [{ mkdir, readFile, writeFile }, { dirname, join }] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:path'),
+  ])
+  const configPath = input.global
+    ? join(input.env.OPENCODE_CONFIG_DIR ?? join(input.env.HOME ?? input.cwd, '.config', 'opencode'), 'opencode.jsonc')
+    : join(input.cwd, '.opencode', 'opencode.jsonc')
+
+  let config: Record<string, unknown> = {}
+  try {
+    const text = await readFile(configPath, 'utf8')
+    config = parseCliJsonc(text, configPath)
+  } catch (error) {
+    if (!isNodeErrorCode(error, 'ENOENT')) throw error
+  }
+
+  const existing = Array.isArray(config.plugin)
+    ? config.plugin.filter((item): item is string => typeof item === 'string')
+    : []
+  const alreadyConfigured = existing.includes(input.module)
+  const nextPlugins = input.force
+    ? [...existing.filter((item) => item !== input.module), input.module]
+    : alreadyConfigured
+      ? existing
+      : [...existing, input.module]
+
+  await mkdir(dirname(configPath), { recursive: true })
+  await writeFile(configPath, `${JSON.stringify({ ...config, plugin: nextPlugins }, null, 2)}\n`)
+  return { configPath, alreadyConfigured }
+}
+
+function parseCliJsonc(text: string, source: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(stripCliJsonComments(text).replace(/,\s*([}\]])/g, '$1'))
+    if (!isRecord(parsed)) throw new Error('Config root must be an object')
+    return parsed
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`Failed to parse OpenCode config ${source}: ${message}`)
+  }
+}
+
+function stripCliJsonComments(text: string) {
+  let output = ''
+  let inString = false
+  let escaped = false
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index] ?? ''
+    const next = text[index + 1] ?? ''
+    if (inString) {
+      output += character
+      if (escaped) {
+        escaped = false
+      } else if (character === '\\') {
+        escaped = true
+      } else if (character === '"') {
+        inString = false
+      }
+      continue
+    }
+    if (character === '"') {
+      inString = true
+      output += character
+      continue
+    }
+    if (character === '/' && next === '/') {
+      while (index < text.length && text[index] !== '\n') index += 1
+      output += '\n'
+      continue
+    }
+    if (character === '/' && next === '*') {
+      index += 2
+      while (index < text.length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
+      index += 1
+      continue
+    }
+    output += character
+  }
+  return output
+}
+
+function isNodeErrorCode(error: unknown, code: string) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === code)
 }
 
 function isHelpArg(value: string | undefined) {

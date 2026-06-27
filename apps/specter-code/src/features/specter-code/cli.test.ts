@@ -1,6 +1,6 @@
 import { createClient } from '@libsql/client/sqlite3'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -201,6 +201,16 @@ describe('Specter Code CLI', () => {
     await expect(cli.run(['mcp', 'list', '--help'])).resolves.toEqual({
       exitCode: 0,
       stdout: 'Usage: specter-code mcp list\n',
+      stderr: '',
+    })
+    await expect(cli.run(['plugin', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code plugin <module> [--global] [--force]\n',
+      stderr: '',
+    })
+    await expect(cli.run(['plug', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code plugin <module> [--global] [--force]\n',
       stderr: '',
     })
   })
@@ -962,6 +972,25 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('docs\tlocal\tenabled\tnode server.js')
     expect(result.stdout).toContain('remoteDocs\tremote\tenabled\thttps://mcp.example.test/sse')
     expect(result.stdout).toContain('disabled\tlocal\tdisabled\tpython server.py')
+  })
+
+  it('registers plugin modules in project OpenCode config through plugin and plug aliases', async () => {
+    const cli = buildSpecterCodeCli({ cwd: tempDir, env: {} })
+
+    const result = await cli.run(['plugin', '@acme/opencode-plugin'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe(`Registered plugin @acme/opencode-plugin in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`)
+
+    const aliasResult = await cli.run(['plug', './plugins/local-plugin.ts'])
+
+    expect(aliasResult.exitCode).toBe(0)
+    expect(aliasResult.stderr).toBe('')
+    expect(aliasResult.stdout).toBe(`Registered plugin ./plugins/local-plugin.ts in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`)
+    expect(JSON.parse(readFileSync(join(tempDir, '.opencode', 'opencode.jsonc'), 'utf8'))).toMatchObject({
+      plugin: ['@acme/opencode-plugin', './plugins/local-plugin.ts'],
+    })
   })
 
   it('runs a non-interactive prompt as JSON events with the mocked local runner', async () => {
