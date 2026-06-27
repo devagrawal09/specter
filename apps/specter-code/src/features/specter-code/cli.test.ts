@@ -38,6 +38,51 @@ describe('Specter Code CLI', () => {
     expect(result.stderr).toBe('')
   })
 
+  it('prints session help for the session command and its read-only subcommands', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['session', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: expect.stringContaining('Usage: specter-code session list'),
+      stderr: '',
+    })
+    await expect(cli.run(['session', 'list', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code session list\n',
+      stderr: '',
+    })
+    await expect(cli.run(['session', 'show', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code session show <id>\n',
+      stderr: '',
+    })
+  })
+
+  it('prints help for catalog-style CLI commands without loading catalog adapters', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['providers', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code providers\n',
+      stderr: '',
+    })
+    await expect(cli.run(['models', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code models\n',
+      stderr: '',
+    })
+    await expect(cli.run(['agents', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code agents\n',
+      stderr: '',
+    })
+    await expect(cli.run(['mcp', 'list', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code mcp list\n',
+      stderr: '',
+    })
+  })
+
   it('lists persisted active sessions from the configured CLI database', async () => {
     const dbPath = join(tempDir, 'sessions.db')
     const db = createClient({ url: `file:${dbPath}` })

@@ -59,6 +59,13 @@ Commands:
   --help, help        Show this help
 `
 
+const SESSION_USAGE = `Usage: specter-code session list
+       specter-code session show <id>
+       specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]
+       specter-code session rename <id> <title>
+       specter-code session delete <id>
+`
+
 export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
   const env = options.env ?? process.env
@@ -73,11 +80,11 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
       try {
         switch (parsed.command) {
           case 'providers':
-            return ok(await renderProviders(cwd, env))
+            return runCatalogCommand(parsed.rest, 'providers', () => renderProviders(cwd, env))
           case 'models':
-            return ok(await renderModels(cwd, env))
+            return runCatalogCommand(parsed.rest, 'models', () => renderModels(cwd, env))
           case 'agents':
-            return ok(await renderAgents(cwd, env))
+            return runCatalogCommand(parsed.rest, 'agents', () => renderAgents(cwd, env))
           case 'mcp':
             return runMcpCommand(parsed.rest, { cwd, env })
           case 'session':
@@ -216,6 +223,16 @@ async function renderAgents(cwd: string, env: SpecterCodeCliEnvironment) {
   return `${lines.join('\n')}\n`
 }
 
+async function runCatalogCommand(
+  argv: readonly string[],
+  command: string,
+  render: () => Promise<string>,
+) {
+  if (argv.length === 0) return ok(await render())
+  if (argv.length === 1 && isHelpArg(argv[0])) return ok(`Usage: specter-code ${command}\n`)
+  return fail(`Unknown ${command} option: ${argv[0]}\n\nUsage: specter-code ${command}\n`, 1)
+}
+
 async function runMcpCommand(
   argv: readonly string[],
   options: { cwd: string; env: SpecterCodeCliEnvironment },
@@ -223,7 +240,7 @@ async function runMcpCommand(
   if ((argv[0] === 'list' && argv.length === 1) || argv[0] === undefined) {
     return ok(await renderMcpServers(options.cwd, options.env))
   }
-  if (argv[0] === '--help' || argv[0] === '-h') {
+  if (isHelpArg(argv[0]) || (argv[0] === 'list' && isHelpArg(argv[1]))) {
     return ok('Usage: specter-code mcp list\n')
   }
   return fail(`Unknown mcp command: ${argv[0]}\n\nUsage: specter-code mcp list\n`, 1)
@@ -252,6 +269,10 @@ function mcpServerTarget(server: Record<string, unknown>) {
   return '-'
 }
 
+function isHelpArg(value: string | undefined) {
+  return value === '--help' || value === '-h'
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -260,8 +281,17 @@ async function runSessionCommand(
   argv: readonly string[],
   options: { cwd: string; env: SpecterCodeCliEnvironment },
 ) {
+  if (argv[0] === '--help' || argv[0] === '-h' || argv[0] === undefined) {
+    return ok(SESSION_USAGE)
+  }
   if (argv[0] === 'list' && argv.length === 1) {
     return ok(await renderSessionList(options.env))
+  }
+  if (argv[0] === 'list' && (argv[1] === '--help' || argv[1] === '-h')) {
+    return ok('Usage: specter-code session list\n')
+  }
+  if (argv[0] === 'show' && (argv[1] === '--help' || argv[1] === '-h')) {
+    return ok('Usage: specter-code session show <id>\n')
   }
   if (argv[0] === 'show' && argv[1] && argv.length === 2) {
     return ok(await renderSessionDetail(argv[1], options.env))
@@ -276,17 +306,7 @@ async function runSessionCommand(
     return runSessionDeleteCommand(argv.slice(1), options)
   }
 
-  return fail(
-    `Unknown session command: ${argv[0] ?? ''}
-
-Usage: specter-code session list
-       specter-code session show <id>
-       specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]
-       specter-code session rename <id> <title>
-       specter-code session delete <id>
-`,
-    1,
-  )
+  return fail(`Unknown session command: ${argv[0] ?? ''}\n\n${SESSION_USAGE}`, 1)
 }
 
 type SessionCreateInput = {
