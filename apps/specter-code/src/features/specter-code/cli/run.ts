@@ -118,10 +118,7 @@ export async function runSpecterCodePrompt(options: {
   const parsed = parseRunArguments(options.argv)
   const message = parsed.message || (parsed.interactive && parsed.demo ? 'Review this project' : '')
   if (!message) {
-    return fail('Usage: specter-code run [--live] [--format text|json] [--interactive --demo] [--agent id] [--model provider/model] <message>\n', 1)
-  }
-  if (parsed.interactive && !parsed.demo) {
-    return fail('Interactive TUI smoke mode currently requires --demo.\n', 1)
+    return fail('Usage: specter-code run [--live] [--format text|json] [--interactive] [--demo] [--agent id] [--model provider/model] <message>\n', 1)
   }
   if (parsed.live && parsed.interactive) {
     return fail('Live provider runs are only supported in non-interactive mode.\n', 1)

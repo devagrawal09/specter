@@ -1265,6 +1265,25 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('Prompt: say hi')
   })
 
+  it('renders the interactive TUI for an explicit prompt without requiring demo mode', async () => {
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: createConfiguredCliEnv(),
+    })
+
+    const result = await cli.run(['run', '--interactive', 'inspect', 'the', 'repo'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).not.toContain('Interactive TUI smoke mode currently requires --demo')
+    expect(result.stdout).toContain('Specter Code TUI')
+    expect(result.stdout).toContain('Session transcript')
+    expect(result.stdout).toContain('You: inspect the repo')
+    expect(result.stdout).toContain('Assistant: I found the issue.')
+    expect(result.stdout).toContain('Tool timeline')
+    expect(result.stdout).toContain('Prompt: inspect the repo')
+  })
+
   it('launches the OpenCode-style TUI smoke screen when no command is provided', async () => {
     const cli = buildSpecterCodeCli({
       cwd: '/tmp/project',
