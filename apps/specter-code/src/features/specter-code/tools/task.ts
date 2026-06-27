@@ -1,5 +1,5 @@
-import type { TaskRunner } from '../adapters/task-runner'
-import type { ToolDefinition } from '../adapters/tool-registry'
+import type { TaskRunner } from '../adapters/task-runner.ts'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type TaskToolInput = {
   taskId?: string

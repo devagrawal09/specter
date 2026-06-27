@@ -1,23 +1,23 @@
-import { createTaskRunner } from './task-runner'
+import { createTaskRunner } from './task-runner.ts'
 import {
   createToolRegistry,
   type ToolDefinition,
   type ToolSummary,
-} from './tool-registry'
-import { applyPatchTool } from '../tools/apply-patch'
-import { editTool } from '../tools/edit'
-import { globTool } from '../tools/glob'
-import { grepTool } from '../tools/grep'
-import { lspTool } from '../tools/lsp'
-import { questionTool } from '../tools/question'
-import { readTool } from '../tools/read'
-import { shellTool } from '../tools/shell'
-import { createTaskStatusTool } from '../tools/task-status'
-import { createTaskTool } from '../tools/task'
-import { todoTool } from '../tools/todo'
-import { webfetchTool } from '../tools/webfetch'
-import { websearchTool } from '../tools/websearch'
-import { writeTool } from '../tools/write'
+} from './tool-registry.ts'
+import { applyPatchTool } from '../tools/apply-patch.ts'
+import { editTool } from '../tools/edit.ts'
+import { globTool } from '../tools/glob.ts'
+import { grepTool } from '../tools/grep.ts'
+import { lspTool } from '../tools/lsp.ts'
+import { questionTool } from '../tools/question.ts'
+import { readTool } from '../tools/read.ts'
+import { shellTool } from '../tools/shell.ts'
+import { createTaskStatusTool } from '../tools/task-status.ts'
+import { createTaskTool } from '../tools/task.ts'
+import { todoTool } from '../tools/todo.ts'
+import { webfetchTool } from '../tools/webfetch.ts'
+import { websearchTool } from '../tools/websearch.ts'
+import { writeTool } from '../tools/write.ts'
 
 export type OpenCodeToolListItem = {
   id: string

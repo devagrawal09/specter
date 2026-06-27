@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client/sqlite3'
+import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -134,6 +135,56 @@ describe('Specter Code CLI', () => {
     })
   })
 
+  it('serves the web app through the package dev command with OpenCode-style host and port flags', async () => {
+    const processCalls: unknown[] = []
+    const cli = buildSpecterCodeCli({
+      cwd: tempDir,
+      env: { SPECTER_CODE_DB_PATH: join(tempDir, 'serve.db') },
+      runProcess: async (input) => {
+        processCalls.push(input)
+        return {
+          exitCode: 0,
+          stdout: 'VITE ready at http://127.0.0.1:41999\n',
+          stderr: '',
+        }
+      },
+    })
+
+    const result = await cli.run(['serve', '--host', '127.0.0.1', '--port', '41999'])
+
+    expect(result).toEqual({
+      exitCode: 0,
+      stdout: 'VITE ready at http://127.0.0.1:41999\n',
+      stderr: '',
+    })
+    expect(processCalls).toEqual([
+      {
+        command: 'pnpm',
+        args: [
+          '--filter',
+          '@specter/specter-code',
+          'dev',
+          '--host',
+          '127.0.0.1',
+          '--port',
+          '41999',
+        ],
+        cwd: tempDir,
+        env: { SPECTER_CODE_DB_PATH: join(tempDir, 'serve.db') },
+      },
+    ])
+  })
+
+  it('can render serve help from the Node CLI entrypoint without loading run-only adapters', () => {
+    const stdout = execFileSync(
+      process.execPath,
+      ['--experimental-strip-types', 'src/features/specter-code/cli/index.ts', '--', 'serve', '--help'],
+      { cwd: process.cwd(), encoding: 'utf8' },
+    )
+
+    expect(stdout).toBe('Usage: specter-code serve [--host <host>] [--port <port>]\n')
+  })
+
   it('ignores a package-manager argument separator before the real command', async () => {
     const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
 
@@ -249,6 +300,36 @@ describe('Specter Code CLI', () => {
       role: 'assistant',
       content: 'I found the issue.',
     })
+  })
+
+  it('runs a non-interactive prompt through the Node CLI entrypoint', () => {
+    const stdout = execFileSync(
+      process.execPath,
+      ['--experimental-strip-types', 'src/features/specter-code/cli/index.ts', '--', 'run', '--format', 'json', 'say', 'hi'],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, ...createConfiguredCliEnv() },
+      },
+    )
+
+    const events = stdout
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+    expect(events.map((event) => event.type)).toEqual([
+      'session.created',
+      'message.created',
+      'run.started',
+      'tool.started',
+      'tool.completed',
+      'assistant.delta',
+      'assistant.delta',
+      'assistant.message',
+      'run.completed',
+    ])
+    expect(events[2]).toMatchObject({ agentId: 'build', model: 'localai/qwen-code' })
+    expect(stdout).not.toContain('super-secret-token')
   })
 
   it('executes grep prompts through the real built-in tool registry', async () => {

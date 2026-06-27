@@ -1,11 +1,23 @@
 #!/usr/bin/env node
-import { runSpecterCodePrompt } from './run.ts'
+import { spawn } from 'node:child_process'
 
 export type SpecterCodeCliEnvironment = Record<string, string | undefined>
+
+export type SpecterCodeProcessRequest = {
+  command: string
+  args: string[]
+  cwd: string
+  env: SpecterCodeCliEnvironment
+}
+
+export type SpecterCodeProcessRunner = (
+  input: SpecterCodeProcessRequest,
+) => Promise<SpecterCodeCliResult>
 
 export type SpecterCodeCliOptions = {
   cwd?: string
   env?: SpecterCodeCliEnvironment
+  runProcess?: SpecterCodeProcessRunner
 }
 
 export type SpecterCodeCliResult = {
@@ -39,6 +51,7 @@ Commands:
 export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
   const env = options.env ?? process.env
+  const runProcess = options.runProcess ?? runLocalProcess
 
   return {
     async run(argv: readonly string[] = []): Promise<SpecterCodeCliResult> {
@@ -60,9 +73,9 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'export':
             return runExportCommand(parsed.rest)
           case 'run':
-            return runSpecterCodePrompt({ argv: parsed.rest, cwd, env })
+            return runPromptCommand(parsed.rest, { cwd, env })
           case 'serve':
-            return ok('Start the web server with: pnpm --filter @specter/specter-code dev\n')
+            return runServeCommand(parsed.rest, { cwd, env, runProcess })
           default:
             return fail(`Unknown command: ${parsed.command}\n\n${HELP_TEXT}`, 1)
         }
@@ -82,6 +95,53 @@ function parseCommand(argv: readonly string[]): ParsedCommand {
   }
   return { command: first, rest }
 }
+
+type ServeCommandOptions = {
+  cwd: string
+  env: SpecterCodeCliEnvironment
+  runProcess: SpecterCodeProcessRunner
+}
+
+async function runPromptCommand(
+  argv: readonly string[],
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
+) {
+  const { runSpecterCodePrompt } = await import('./run.ts')
+  return runSpecterCodePrompt({ argv, cwd: options.cwd, env: options.env })
+}
+
+async function runServeCommand(
+  argv: readonly string[],
+  options: ServeCommandOptions,
+) {
+  const args = ['--filter', '@specter/specter-code', 'dev']
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--host') {
+      args.push('--host', optionValue(argv, index, '--host'))
+      index += 1
+      continue
+    }
+    if (arg === '--port' || arg === '-p') {
+      args.push('--port', optionValue(argv, index, arg))
+      index += 1
+      continue
+    }
+    if (arg === '--help' || arg === '-h') {
+      return ok('Usage: specter-code serve [--host <host>] [--port <port>]\n')
+    }
+    return fail(`Unknown serve option: ${arg}\n\nUsage: specter-code serve [--host <host>] [--port <port>]\n`, 1)
+  }
+
+  return options.runProcess({
+    command: 'pnpm',
+    args,
+    cwd: options.cwd,
+    env: options.env,
+  })
+}
+
 
 async function loadCliConfig(cwd: string, env: SpecterCodeCliEnvironment) {
   const { loadSpecterCodeConfig } = await import('../adapters/config-loader.ts')
@@ -239,6 +299,34 @@ function optionValue(argv: readonly string[], index: number, option: string) {
   const value = argv[index + 1]
   if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
   return value
+}
+
+
+async function runLocalProcess(
+  input: SpecterCodeProcessRequest,
+): Promise<SpecterCodeCliResult> {
+  return new Promise((resolve) => {
+    const child = spawn(input.command, input.args, {
+      cwd: input.cwd,
+      env: { ...process.env, ...input.env },
+      shell: process.platform === 'win32',
+    })
+    let stdout = ''
+    let stderr = ''
+
+    child.stdout?.on('data', (chunk) => {
+      stdout += String(chunk)
+    })
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk)
+    })
+    child.on('error', (error) => {
+      resolve({ exitCode: 1, stdout, stderr: `${stderr}${error.message}\n` })
+    })
+    child.on('close', (code) => {
+      resolve({ exitCode: code ?? 0, stdout, stderr })
+    })
+  })
 }
 
 function ok(stdout: string): SpecterCodeCliResult {

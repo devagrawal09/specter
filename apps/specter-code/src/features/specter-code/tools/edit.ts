@@ -1,9 +1,9 @@
 import { readFile, writeFile } from 'node:fs/promises'
 
-import { normalizeWorkspacePath } from '../adapters/file-index'
-import { createFileSnapshot, type FileSnapshot } from '../adapters/snapshots'
-import type { ToolDefinition } from '../adapters/tool-registry'
-import { resolveWritableWorkspaceFile } from './write'
+import { normalizeWorkspacePath } from '../adapters/file-index.ts'
+import { createFileSnapshot, type FileSnapshot } from '../adapters/snapshots.ts'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
+import { resolveWritableWorkspaceFile } from './write.ts'
 
 export type EditToolInput = {
   path: string

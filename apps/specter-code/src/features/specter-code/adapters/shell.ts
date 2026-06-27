@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process'
 import { lstat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { normalizeWorkspacePath } from './file-index'
+import { normalizeWorkspacePath } from './file-index.ts'
 
 export type ShellOutputStream = 'stdout' | 'stderr'
 

@@ -4,7 +4,7 @@ import {
   listWorkspaceFiles,
   normalizeWorkspacePath,
   resolveWorkspaceFile,
-} from './file-index'
+} from './file-index.ts'
 
 export type LspDiagnosticCategory = 'warning' | 'error' | 'suggestion' | 'message'
 

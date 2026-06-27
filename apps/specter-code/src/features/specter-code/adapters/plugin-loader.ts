@@ -3,8 +3,8 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import type { SpecterCodeConfig } from './config-loader'
-import type { ToolContext, ToolDefinition, ToolRegistry } from './tool-registry'
+import type { SpecterCodeConfig } from './config-loader.ts'
+import type { ToolContext, ToolDefinition, ToolRegistry } from './tool-registry.ts'
 
 export type ToolExtensionLoadResult = {
   kind: 'custom-tool' | 'plugin-tool'

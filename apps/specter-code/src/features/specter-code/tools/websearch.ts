@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '../adapters/tool-registry'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type WebSearchToolInput = {
   query: string

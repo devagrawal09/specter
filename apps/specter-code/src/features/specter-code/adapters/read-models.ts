@@ -1,7 +1,7 @@
 import type {
   SqliteDb,
   SpecterSqliteEventRecord,
-} from '../../../db/specter-sqlite'
+} from '../../../db/specter-sqlite.ts'
 import {
   sessionCreatedEvent,
   sessionDeletedEvent,
@@ -12,7 +12,7 @@ import {
   toolApprovalRepliedEvent,
   toolApprovalRequestedEvent,
   userMessageSubmittedEvent,
-} from '../events'
+} from '../events.ts'
 
 export async function projectSpecterCodeEvent(
   db: SqliteDb,

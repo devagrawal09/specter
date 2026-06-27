@@ -1,7 +1,7 @@
 import { access, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import type { PermissionAction, PermissionRule } from './permissions'
+import type { PermissionAction, PermissionRule } from './permissions.ts'
 
 export type SpecterCodeModelConfig = {
   providerId: string

@@ -1,9 +1,9 @@
 import { mkdir, lstat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { normalizeWorkspacePath } from '../adapters/file-index'
-import { createFileSnapshot, type FileSnapshot } from '../adapters/snapshots'
-import type { ToolDefinition } from '../adapters/tool-registry'
+import { normalizeWorkspacePath } from '../adapters/file-index.ts'
+import { createFileSnapshot, type FileSnapshot } from '../adapters/snapshots.ts'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type WriteToolInput = {
   path: string

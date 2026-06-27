@@ -1,4 +1,4 @@
-import type { ProviderModelRef } from './llm-provider'
+import type { ProviderModelRef } from './llm-provider.ts'
 
 export type AgentMode = 'primary' | 'subagent' | 'all'
 

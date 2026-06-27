@@ -3,8 +3,8 @@ import {
   findWorkspaceSymbols,
   type LspDiagnostic,
   type LspSymbol,
-} from '../adapters/lsp'
-import type { ToolDefinition } from '../adapters/tool-registry'
+} from '../adapters/lsp.ts'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type LspToolInput =
   | {

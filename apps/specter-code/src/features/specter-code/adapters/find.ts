@@ -6,7 +6,7 @@ import {
   matchesWorkspaceGlob,
   normalizeWorkspacePath,
   resolveWorkspacePath,
-} from './file-index'
+} from './file-index.ts'
 
 export type FindWorkspaceFilesInput = {
   workspaceRoot: string

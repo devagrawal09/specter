@@ -1,7 +1,7 @@
 import { open } from 'node:fs/promises'
 
-import type { ToolDefinition } from '../adapters/tool-registry'
-import { resolveWorkspaceFile } from '../adapters/file-index'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
+import { resolveWorkspaceFile } from '../adapters/file-index.ts'
 
 export type ReadToolInput = {
   path: string

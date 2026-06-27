@@ -1,4 +1,4 @@
-import type { ToolDefinition } from '../adapters/tool-registry'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type TodoStatus = 'pending' | 'in_progress' | 'completed'
 export type TodoPriority = 'low' | 'medium' | 'high'

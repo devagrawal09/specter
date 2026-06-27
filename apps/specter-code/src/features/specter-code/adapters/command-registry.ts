@@ -1,8 +1,8 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader'
-import { listSpecterCodeSkills } from './skills'
+import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader.ts'
+import { listSpecterCodeSkills } from './skills.ts'
 
 export type SpecterCodeCommandSource = 'command' | 'mcp' | 'skill'
 

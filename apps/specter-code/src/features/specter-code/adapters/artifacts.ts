@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getBoundSqliteDb } from '../../../db/specter-sqlite'
+import { getBoundSqliteDb } from '../../../db/specter-sqlite.ts'
 
 export type FileArtifactStore = {
   rootDir: string

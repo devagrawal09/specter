@@ -2,8 +2,8 @@ import {
   resolveShellWorkingDirectory,
   runShellCommand,
   type ShellRunResult,
-} from '../adapters/shell'
-import type { ToolDefinition } from '../adapters/tool-registry'
+} from '../adapters/shell.ts'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 
 export type ShellToolInput = {
   command: string

@@ -1,4 +1,4 @@
-import { evaluatePermission, type PermissionAction, type PermissionRequest, type PermissionRule } from "./permissions"
+import { evaluatePermission, type PermissionAction, type PermissionRequest, type PermissionRule } from "./permissions.ts"
 
 export type ToolMetadataUpdate = {
   toolName: string

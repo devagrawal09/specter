@@ -1,7 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 
-import { resolveShellWorkingDirectory } from './shell'
+import { resolveShellWorkingDirectory } from './shell.ts'
 
 export type PtySessionStatus = 'running' | 'exited' | 'killed'
 

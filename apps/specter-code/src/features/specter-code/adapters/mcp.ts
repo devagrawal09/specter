@@ -1,4 +1,4 @@
-import type { ToolDefinition, ToolRegistry } from './tool-registry'
+import type { ToolDefinition, ToolRegistry } from './tool-registry.ts'
 
 export type McpToolDefinition = {
   name: string

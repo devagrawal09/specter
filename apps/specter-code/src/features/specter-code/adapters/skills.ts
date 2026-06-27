@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader'
+import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader.ts'
 
 export type SpecterCodeSkillInfo = {
   name: string

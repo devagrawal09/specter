@@ -1,9 +1,9 @@
-import type { ToolDefinition } from '../adapters/tool-registry'
+import type { ToolDefinition } from '../adapters/tool-registry.ts'
 import {
   listWorkspaceFiles,
   matchesWorkspaceGlob,
   normalizeWorkspaceGlobPattern,
-} from '../adapters/file-index'
+} from '../adapters/file-index.ts'
 
 export type GlobToolInput = {
   pattern: string
