@@ -27,6 +27,7 @@ describe('Specter Code CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain('Usage: specter-code [command]')
+    expect(result.stdout).toContain('specter-code          Start the interactive TUI')
     expect(result.stdout).toContain('run [message]')
     expect(result.stdout).toContain('serve')
     expect(result.stdout).toContain('session list')
@@ -1082,6 +1083,22 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('Approval required')
     expect(result.stdout).toContain('Approve [a]  Reject [r]')
     expect(result.stdout).toContain('Prompt: say hi')
+  })
+
+  it('launches the OpenCode-style TUI smoke screen when no command is provided', async () => {
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: createConfiguredCliEnv(),
+    })
+
+    const result = await cli.run([])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).not.toContain('Usage: specter-code [command]')
+    expect(result.stdout).toContain('Specter Code TUI')
+    expect(result.stdout).toContain('You: Review this project')
+    expect(result.stdout).toContain('Prompt: Review this project')
   })
 })
 

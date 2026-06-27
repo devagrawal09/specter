@@ -39,6 +39,7 @@ const HELP_TEXT = `Specter Code — OpenCode-compatible local coding assistant
 Usage: specter-code [command]
 
 Commands:
+  specter-code          Start the interactive TUI
   run [message]       Run one non-interactive prompt in the current project
   serve               Start the Specter Code HTTP/web server
   session list        List local coding sessions
@@ -119,7 +120,11 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
 
 function parseCommand(argv: readonly string[]): ParsedCommand {
   const normalizedArgv = argv[0] === '--' ? argv.slice(1) : argv
-  const [first = 'help', ...rest] = normalizedArgv
+  if (normalizedArgv.length === 0) {
+    return { command: 'run', rest: ['--interactive', '--demo'] }
+  }
+
+  const [first, ...rest] = normalizedArgv
   if (first === '--help' || first === '-h' || first === 'help') {
     return { command: 'help', rest }
   }
