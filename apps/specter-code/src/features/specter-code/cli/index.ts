@@ -55,6 +55,7 @@ Commands:
   providers           List configured LLM providers
   models              List available provider models
   agents              List available coding agents
+  stats               Show local usage and persistence statistics
   mcp list            List configured MCP servers without starting them
   --help, help        Show this help
 `
@@ -85,6 +86,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return runCatalogCommand(parsed.rest, 'models', () => renderModels(cwd, env))
           case 'agents':
             return runCatalogCommand(parsed.rest, 'agents', () => renderAgents(cwd, env))
+          case 'stats':
+            return runStatsCommand(parsed.rest, env)
           case 'mcp':
             return runMcpCommand(parsed.rest, { cwd, env })
           case 'session':
@@ -231,6 +234,110 @@ async function runCatalogCommand(
   if (argv.length === 0) return ok(await render())
   if (argv.length === 1 && isHelpArg(argv[0])) return ok(`Usage: specter-code ${command}\n`)
   return fail(`Unknown ${command} option: ${argv[0]}\n\nUsage: specter-code ${command}\n`, 1)
+}
+
+async function runStatsCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+  if (argv.length === 0) return ok(await renderStats(env))
+  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code stats\n')
+  return fail(`Unknown stats option: ${argv[0]}\n\nUsage: specter-code stats\n`, 1)
+}
+
+async function renderStats(env: SpecterCodeCliEnvironment) {
+  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
+    await Promise.all([
+      import('node:fs'),
+      import('node:path'),
+      import('@libsql/client/sqlite3'),
+      import('../../../db/specter-sqlite.ts'),
+    ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const [sessionResult, messageResult, toolResult, permissionResult, topToolResult, topModelResult] =
+      await Promise.all([
+        sqlite.execute({
+          sql: `
+            SELECT
+              COUNT(*) AS total,
+              SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS active
+            FROM specter_code_sessions
+          `,
+          args: [],
+        }),
+        sqlite.execute({ sql: 'SELECT COUNT(*) AS total FROM specter_code_messages', args: [] }),
+        sqlite.execute({ sql: 'SELECT COUNT(*) AS total FROM specter_code_tool_calls', args: [] }),
+        sqlite.execute({
+          sql: "SELECT COUNT(*) AS total FROM specter_code_permissions WHERE status = 'pending'",
+          args: [],
+        }),
+        sqlite.execute({
+          sql: `
+            SELECT tool_name, COUNT(*) AS total
+            FROM specter_code_tool_calls
+            GROUP BY tool_name
+            ORDER BY total DESC, tool_name ASC
+            LIMIT 5
+          `,
+          args: [],
+        }),
+        sqlite.execute({
+          sql: `
+            SELECT provider_id, model_id, COUNT(*) AS total
+            FROM specter_code_sessions
+            WHERE status != 'deleted'
+            GROUP BY provider_id, model_id
+            ORDER BY total DESC, provider_id ASC, model_id ASC
+            LIMIT 5
+          `,
+          args: [],
+        }),
+      ])
+
+    const totalSessions = numberCell(sessionResult.rows[0]?.total)
+    const activeSessions = numberCell(sessionResult.rows[0]?.active)
+    const totalMessages = numberCell(messageResult.rows[0]?.total)
+    const totalToolCalls = numberCell(toolResult.rows[0]?.total)
+    const pendingApprovals = numberCell(permissionResult.rows[0]?.total)
+    const topTools = formatNameCounts(
+      topToolResult.rows.map((row) => ({
+        name: String(row.tool_name),
+        total: numberCell(row.total),
+      })),
+    )
+    const topModels = formatNameCounts(
+      topModelResult.rows.map((row) => ({
+        name: `${String(row.provider_id)}/${String(row.model_id)}`,
+        total: numberCell(row.total),
+      })),
+    )
+
+    return [
+      'Specter Code stats',
+      `Database: ${sqlitePath}`,
+      `Sessions: ${activeSessions} active / ${totalSessions} total`,
+      `Messages: ${totalMessages}`,
+      `Tool calls: ${totalToolCalls}`,
+      `Pending approvals: ${pendingApprovals}`,
+      `Top tools: ${topTools}`,
+      `Top models: ${topModels}`,
+    ].join('\n') + '\n'
+  } finally {
+    sqlite.close()
+  }
+}
+
+function numberCell(value: unknown) {
+  const numberValue = Number(value ?? 0)
+  return Number.isFinite(numberValue) ? numberValue : 0
+}
+
+function formatNameCounts(entries: Array<{ name: string; total: number }>) {
+  if (entries.length === 0) return '-'
+  return entries.map((entry) => `${entry.name}=${entry.total}`).join(', ')
 }
 
 async function runMcpCommand(

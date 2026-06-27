@@ -34,6 +34,7 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('export --session <id> --output <file>')
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
+    expect(result.stdout).toContain('stats')
     expect(result.stdout).toContain('mcp list')
     expect(result.stderr).toBe('')
   })
@@ -457,6 +458,204 @@ describe('Specter Code CLI', () => {
       exitCode: 1,
       stderr: expect.stringContaining('Usage: specter-code import <file>'),
     })
+  })
+
+  it('renders persisted usage statistics from the configured CLI database', async () => {
+    const dbPath = join(tempDir, 'stats.db')
+    const db = createClient({ url: `file:${dbPath}` })
+
+    try {
+      await prepareSpecterSqlite(db)
+      await db.batch(
+        [
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-active',
+              'workspace-main',
+              'Active session',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'active',
+              '2026-06-25T10:00:00.000Z',
+              '2026-06-25T10:05:00.000Z',
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-deleted',
+              'workspace-main',
+              'Deleted session',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'deleted',
+              '2026-06-25T09:00:00.000Z',
+              '2026-06-25T09:05:00.000Z',
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_messages (
+                id,
+                session_id,
+                role,
+                author_json,
+                content,
+                created_at,
+                event_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'message-user',
+              'session-active',
+              'user',
+              JSON.stringify({ displayName: 'Dev' }),
+              'Please inspect the repo',
+              '2026-06-25T10:01:00.000Z',
+              1,
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_messages (
+                id,
+                session_id,
+                role,
+                author_json,
+                content,
+                created_at,
+                event_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'message-assistant',
+              'session-active',
+              'assistant',
+              JSON.stringify({ displayName: 'Build Agent' }),
+              'I found one issue.',
+              '2026-06-25T10:02:00.000Z',
+              2,
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_tool_calls (
+                id,
+                session_id,
+                message_id,
+                tool_name,
+                status,
+                input_json,
+                output_json,
+                error,
+                started_at,
+                completed_at,
+                event_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'tool-read-1',
+              'session-active',
+              'message-assistant',
+              'read',
+              'completed',
+              JSON.stringify({ path: 'src/app.ts' }),
+              JSON.stringify({ preview: 'content preview' }),
+              null,
+              '2026-06-25T10:02:10.000Z',
+              '2026-06-25T10:02:11.000Z',
+              3,
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_permissions (
+                request_id,
+                session_id,
+                message_id,
+                tool_call_id,
+                tool_name,
+                permission,
+                target,
+                action,
+                status,
+                reason,
+                requested_at,
+                replied_at,
+                replied_by_json
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'permission-1',
+              'session-active',
+              'message-assistant',
+              'tool-read-1',
+              'read',
+              'file.read',
+              'src/app.ts',
+              'ask',
+              'pending',
+              'Inspect file',
+              '2026-06-25T10:02:09.000Z',
+              null,
+              null,
+            ],
+          },
+        ],
+        'write',
+      )
+    } finally {
+      db.close()
+    }
+
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    const result = await cli.run(['stats'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Specter Code stats')
+    expect(result.stdout).toContain('Database: ' + dbPath)
+    expect(result.stdout).toContain('Sessions: 1 active / 2 total')
+    expect(result.stdout).toContain('Messages: 2')
+    expect(result.stdout).toContain('Tool calls: 1')
+    expect(result.stdout).toContain('Pending approvals: 1')
+    expect(result.stdout).toContain('Top tools: read=1')
+    expect(result.stdout).toContain('Top models: localai/qwen-code=1')
   })
 
   it('serves the web app through the package dev command with OpenCode-style host and port flags', async () => {
