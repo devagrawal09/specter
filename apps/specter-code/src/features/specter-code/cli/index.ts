@@ -56,6 +56,8 @@ Commands:
   models              List available provider models
   agents              List available coding agents
   stats               Show local usage and persistence statistics
+  db path             Print the Specter Code SQLite database path
+  db query <sql>      Run a readonly SQL query against local persistence
   mcp list            List configured MCP servers without starting them
   --help, help        Show this help
 `
@@ -66,6 +68,8 @@ const SESSION_USAGE = `Usage: specter-code session list
        specter-code session rename <id> <title>
        specter-code session delete <id>
 `
+
+const DB_USAGE = 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n'
 
 export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
@@ -88,6 +92,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
             return runCatalogCommand(parsed.rest, 'agents', () => renderAgents(cwd, env))
           case 'stats':
             return runStatsCommand(parsed.rest, env)
+          case 'db':
+            return runDbCommand(parsed.rest, env)
           case 'mcp':
             return runMcpCommand(parsed.rest, { cwd, env })
           case 'session':
@@ -242,6 +248,114 @@ async function runStatsCommand(argv: readonly string[], env: SpecterCodeCliEnvir
   return fail(`Unknown stats option: ${argv[0]}\n\nUsage: specter-code stats\n`, 1)
 }
 
+async function runDbCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+  if (argv.length === 0 || isHelpArg(argv[0])) return ok(DB_USAGE)
+
+  if (argv[0] === 'path') {
+    if (argv.length === 1) return ok(`${cliSqlitePath(env)}\n`)
+    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code db path\n')
+    return fail(`Unknown db path option: ${argv[1]}\n\nUsage: specter-code db path\n`, 1)
+  }
+
+  if (argv[0] === 'query') {
+    if (argv.length === 2 && isHelpArg(argv[1])) {
+      return ok('Usage: specter-code db query <sql> [--format json|tsv]\n')
+    }
+    return runDbQueryCommand(argv.slice(1), env)
+  }
+
+  return fail(`Unknown db command: ${argv[0]}\n\n${DB_USAGE}`, 1)
+}
+
+type DbQueryFormat = 'json' | 'tsv'
+
+async function runDbQueryCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+  const parsed = parseDbQueryArgs(argv)
+  const sql = parsed.sql.trim()
+  if (!isReadonlySelect(sql)) {
+    return fail('Only readonly SELECT queries are supported by specter-code db query\n', 1)
+  }
+
+  return ok(await renderDbQuery(env, sql, parsed.format))
+}
+
+function parseDbQueryArgs(argv: readonly string[]): { sql: string; format: DbQueryFormat } {
+  let format: DbQueryFormat = 'tsv'
+  const sqlParts: string[] = []
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--format') {
+      const value = optionValue(argv, index, '--format')
+      if (value !== 'json' && value !== 'tsv') throw new Error('DB query format must be json or tsv')
+      format = value
+      index += 1
+      continue
+    }
+    if (arg === '--help' || arg === '-h') {
+      throw new Error('Usage: specter-code db query <sql> [--format json|tsv]')
+    }
+    sqlParts.push(arg)
+  }
+
+  const sql = sqlParts.join(' ').trim()
+  if (!sql) throw new Error('Usage: specter-code db query <sql> [--format json|tsv]')
+  return { sql, format }
+}
+
+function isReadonlySelect(sql: string) {
+  const normalized = sql
+    .trim()
+    .replace(/^\s*--.*$/gm, '')
+    .trim()
+    .replace(/;\s*$/, '')
+    .trim()
+    .toLowerCase()
+  if (normalized.includes(';')) return false
+  if (normalized.startsWith('select')) return true
+  if (!normalized.startsWith('with')) return false
+  return /\)\s*select\b/.test(normalized)
+}
+
+async function renderDbQuery(
+  env: SpecterCodeCliEnvironment,
+  sql: string,
+  format: DbQueryFormat,
+) {
+  const [{ createClient }, { prepareSpecterSqlite }] = await Promise.all([
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+  ])
+  const sqlite = createClient({ url: `file:${cliSqlitePath(env)}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const result = await sqlite.execute({ sql, args: [] })
+    const rows = result.rows.map((row) => ({ ...row }))
+    if (format === 'json') return `${JSON.stringify(rows, null, 2)}\n`
+    if (rows.length === 0) return ''
+
+    const columns = result.columns.length > 0 ? result.columns : Object.keys(rows[0] ?? {})
+    const lines = [columns.join('\t')]
+    for (const row of rows) {
+      lines.push(columns.map((column) => formatDbCell(row[column])).join('\t'))
+    }
+    return `${lines.join('\n')}\n`
+  } finally {
+    sqlite.close()
+  }
+}
+
+function formatDbCell(value: unknown) {
+  if (value === null || value === undefined) return ''
+  if (value instanceof Uint8Array) return Buffer.from(value).toString('base64')
+  return String(value)
+}
+
+function cliSqlitePath(env: SpecterCodeCliEnvironment) {
+  return env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+}
+
 async function renderStats(env: SpecterCodeCliEnvironment) {
   const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
     await Promise.all([
@@ -250,7 +364,7 @@ async function renderStats(env: SpecterCodeCliEnvironment) {
       import('@libsql/client/sqlite3'),
       import('../../../db/specter-sqlite.ts'),
     ])
-  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+  const sqlitePath = cliSqlitePath(env)
 
   mkdirSync(dirname(sqlitePath), { recursive: true })
   const sqlite = createClient({ url: `file:${sqlitePath}` })

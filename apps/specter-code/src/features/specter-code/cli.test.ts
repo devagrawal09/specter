@@ -35,8 +35,113 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
     expect(result.stdout).toContain('stats')
+    expect(result.stdout).toContain('db path')
     expect(result.stdout).toContain('mcp list')
     expect(result.stderr).toBe('')
+  })
+
+  it('prints help for OpenCode-compatible database commands without opening SQLite', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['db', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n',
+      stderr: '',
+    })
+    await expect(cli.run(['db', 'path', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code db path\n',
+      stderr: '',
+    })
+    await expect(cli.run(['db', 'query', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code db query <sql> [--format json|tsv]\n',
+      stderr: '',
+    })
+  })
+
+  it('prints the configured database path and runs readonly SQL queries', async () => {
+    const dbPath = join(tempDir, 'cli-query.db')
+    const db = createClient({ url: `file:${dbPath}` })
+
+    try {
+      await prepareSpecterSqlite(db)
+      await db.batch(
+        [
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-query',
+              'workspace-query',
+              'Query me',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'active',
+              '2026-06-25T10:00:00.000Z',
+              '2026-06-25T10:05:00.000Z',
+            ],
+          },
+        ],
+        'write',
+      )
+    } finally {
+      db.close()
+    }
+
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: { SPECTER_CODE_DB_PATH: dbPath } })
+
+    await expect(cli.run(['db', 'path'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: `${dbPath}\n`,
+      stderr: '',
+    })
+    await expect(
+      cli.run(['db', 'query', 'SELECT id, title FROM specter_code_sessions ORDER BY id']),
+    ).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'id\ttitle\nsession-query\tQuery me\n',
+      stderr: '',
+    })
+    await expect(
+      cli.run([
+        'db',
+        'query',
+        'SELECT id, title FROM specter_code_sessions ORDER BY id',
+        '--format',
+        'json',
+      ]),
+    ).resolves.toEqual({
+      exitCode: 0,
+      stdout: '[\n  {\n    "id": "session-query",\n    "title": "Query me"\n  }\n]\n',
+      stderr: '',
+    })
+    await expect(
+      cli.run(['db', 'query', 'DELETE FROM specter_code_sessions']),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Only readonly SELECT queries are supported'),
+    })
+    await expect(
+      cli.run(['db', 'query', 'WITH stale AS (SELECT 1) DELETE FROM specter_code_sessions']),
+    ).resolves.toMatchObject({
+      exitCode: 1,
+      stderr: expect.stringContaining('Only readonly SELECT queries are supported'),
+    })
   })
 
   it('prints session help for the session command and its read-only subcommands', async () => {
