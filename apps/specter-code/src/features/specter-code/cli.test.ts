@@ -38,7 +38,56 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('stats')
     expect(result.stdout).toContain('db path')
     expect(result.stdout).toContain('mcp list')
+    expect(result.stdout).toContain('debug info')
     expect(result.stderr).toBe('')
+  })
+
+  it('prints OpenCode-compatible debug info and paths without leaking secrets', async () => {
+    const dbPath = join(tempDir, 'debug.db')
+    const cli = buildSpecterCodeCli({
+      cwd: tempDir,
+      env: {
+        ...createConfiguredCliEnv(),
+        SPECTER_CODE_DB_PATH: dbPath,
+        OPENCODE_CONFIG_CONTENT: JSON.stringify({
+          plugin: ['@acme/debug-plugin'],
+          provider: {
+            localai: {
+              name: 'Local AI',
+              env: 'LOCALAI_TOKEN',
+              models: { 'qwen-code': { name: 'Qwen Code' } },
+            },
+          },
+        }),
+      },
+    })
+
+    await expect(cli.run(['debug', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code debug info\n       specter-code debug paths\n',
+      stderr: '',
+    })
+
+    const info = await cli.run(['debug', 'info'])
+
+    expect(info.exitCode).toBe(0)
+    expect(info.stderr).toBe('')
+    expect(info.stdout).toContain('Specter Code debug info')
+    expect(info.stdout).toContain(`cwd: ${tempDir}`)
+    expect(info.stdout).toContain(`database: ${dbPath}`)
+    expect(info.stdout).toContain(`node: ${process.version}`)
+    expect(info.stdout).toContain('config sources: OPENCODE_CONFIG_CONTENT')
+    expect(info.stdout).toContain('plugins: @acme/debug-plugin')
+    expect(info.stdout).toContain('providers: localai(configured)')
+    expect(info.stdout).not.toContain('super-secret-token')
+
+    const paths = await cli.run(['debug', 'paths'])
+
+    expect(paths.exitCode).toBe(0)
+    expect(paths.stderr).toBe('')
+    expect(paths.stdout).toContain(`cwd\t${tempDir}`)
+    expect(paths.stdout).toContain(`database\t${dbPath}`)
+    expect(paths.stdout).toContain(`project config\t${join(tempDir, '.opencode', 'opencode.jsonc')}`)
   })
 
   it('prints help for OpenCode-compatible database commands without opening SQLite', async () => {

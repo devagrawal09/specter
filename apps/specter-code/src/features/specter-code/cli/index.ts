@@ -61,6 +61,8 @@ Commands:
   db query <sql>      Run a readonly SQL query against local persistence
   mcp list            List configured MCP servers without starting them
   plugin <module>     Register an OpenCode plugin module in config
+  debug info          Show troubleshooting diagnostics
+  debug paths         Show resolved project/config/database paths
   --help, help        Show this help
 `
 
@@ -72,6 +74,7 @@ const SESSION_USAGE = `Usage: specter-code session list
 `
 
 const DB_USAGE = 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n'
+const DEBUG_USAGE = 'Usage: specter-code debug info\n       specter-code debug paths\n'
 
 export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
@@ -104,6 +107,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'plugin':
           case 'plug':
             return runPluginCommand(parsed.rest, { cwd, env })
+          case 'debug':
+            return runDebugCommand(parsed.rest, { cwd, env })
           case 'session':
             return runSessionCommand(parsed.rest, { cwd, env })
           case 'import':
@@ -366,6 +371,78 @@ function formatDbCell(value: unknown) {
 
 function cliSqlitePath(env: SpecterCodeCliEnvironment) {
   return env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+}
+
+async function runDebugCommand(
+  argv: readonly string[],
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
+) {
+  if (argv.length === 0 || isHelpArg(argv[0])) return ok(DEBUG_USAGE)
+
+  if (argv[0] === 'info') {
+    if (argv.length === 1) return ok(await renderDebugInfo(options.cwd, options.env))
+    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code debug info\n')
+    return fail(`Unknown debug info option: ${argv[1]}\n\nUsage: specter-code debug info\n`, 1)
+  }
+
+  if (argv[0] === 'paths') {
+    if (argv.length === 1) return ok(await renderDebugPaths(options.cwd, options.env))
+    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code debug paths\n')
+    return fail(`Unknown debug paths option: ${argv[1]}\n\nUsage: specter-code debug paths\n`, 1)
+  }
+
+  return fail(`Unknown debug command: ${argv[0]}\n\n${DEBUG_USAGE}`, 1)
+}
+
+async function renderDebugInfo(cwd: string, env: SpecterCodeCliEnvironment) {
+  const [{ createProviderRegistry }, config] = await Promise.all([
+    import('../adapters/llm-provider.ts'),
+    loadCliConfig(cwd, env),
+  ])
+  const registry = createProviderRegistry({ config, env })
+  const providers = registry
+    .listProviders()
+    .slice()
+    .sort((left, right) => {
+      if (left.configured !== right.configured) return left.configured ? -1 : 1
+      return left.id.localeCompare(right.id)
+    })
+    .map((provider) => `${provider.id}(${provider.configured ? 'configured' : 'missing key'})`)
+    .join(', ')
+
+  return [
+    'Specter Code debug info',
+    `cwd: ${cwd}`,
+    `database: ${cliSqlitePath(env)}`,
+    `node: ${process.version}`,
+    `platform: ${process.platform} ${process.arch}`,
+    `config sources: ${formatConfigSources(config.sources)}`,
+    `plugins: ${formatPluginList(config.plugin)}`,
+    `providers: ${providers || 'none'}`,
+  ].join('\n') + '\n'
+}
+
+async function renderDebugPaths(cwd: string, env: SpecterCodeCliEnvironment) {
+  const { join } = await import('node:path')
+  return [
+    ['cwd', cwd],
+    ['database', cliSqlitePath(env)],
+    ['project config', join(cwd, '.opencode', 'opencode.jsonc')],
+    ['project config json', join(cwd, '.opencode', 'opencode.json')],
+    ['workspace opencode.jsonc', join(cwd, 'opencode.jsonc')],
+    ['workspace opencode.json', join(cwd, 'opencode.json')],
+  ]
+    .map(([name, value]) => `${name}	${value}`)
+    .join('\n') + '\n'
+}
+
+function formatConfigSources(sources: readonly string[]) {
+  return sources.length > 0 ? sources.join(', ') : 'none'
+}
+
+function formatPluginList(plugins: readonly (string | [string, Record<string, unknown>])[] | undefined) {
+  if (!plugins || plugins.length === 0) return 'none'
+  return plugins.map((plugin) => (typeof plugin === 'string' ? plugin : plugin[0])).join(', ')
 }
 
 async function renderStats(env: SpecterCodeCliEnvironment) {
