@@ -173,14 +173,29 @@ describe('Specter Code CLI', () => {
       stdout: 'Usage: specter-code providers\n',
       stderr: '',
     })
+    await expect(cli.run(['provider', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code provider\n',
+      stderr: '',
+    })
     await expect(cli.run(['models', '--help'])).resolves.toEqual({
       exitCode: 0,
       stdout: 'Usage: specter-code models\n',
       stderr: '',
     })
+    await expect(cli.run(['model', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code model\n',
+      stderr: '',
+    })
     await expect(cli.run(['agents', '--help'])).resolves.toEqual({
       exitCode: 0,
       stdout: 'Usage: specter-code agents\n',
+      stderr: '',
+    })
+    await expect(cli.run(['agent', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code agent\n',
       stderr: '',
     })
     await expect(cli.run(['mcp', 'list', '--help'])).resolves.toEqual({

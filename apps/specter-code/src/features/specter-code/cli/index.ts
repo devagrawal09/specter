@@ -53,9 +53,9 @@ Commands:
   import <file>       Import a Specter Code session export file
   export --session <id> --output <file>
                       Export a session and its causal event history
-  providers           List configured LLM providers
-  models              List available provider models
-  agents              List available coding agents
+  provider, providers List configured LLM providers
+  model, models       List available provider models
+  agent, agents       List available coding agents
   stats               Show local usage and persistence statistics
   db path             Print the Specter Code SQLite database path
   db query <sql>      Run a readonly SQL query against local persistence
@@ -86,11 +86,14 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
       try {
         switch (parsed.command) {
           case 'providers':
-            return runCatalogCommand(parsed.rest, 'providers', () => renderProviders(cwd, env))
+          case 'provider':
+            return runCatalogCommand(parsed.rest, parsed.command, () => renderProviders(cwd, env))
           case 'models':
-            return runCatalogCommand(parsed.rest, 'models', () => renderModels(cwd, env))
+          case 'model':
+            return runCatalogCommand(parsed.rest, parsed.command, () => renderModels(cwd, env))
           case 'agents':
-            return runCatalogCommand(parsed.rest, 'agents', () => renderAgents(cwd, env))
+          case 'agent':
+            return runCatalogCommand(parsed.rest, parsed.command, () => renderAgents(cwd, env))
           case 'stats':
             return runStatsCommand(parsed.rest, env)
           case 'db':
