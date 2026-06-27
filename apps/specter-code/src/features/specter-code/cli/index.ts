@@ -40,6 +40,8 @@ Commands:
   serve               Start the Specter Code HTTP/web server
   session list        List local coding sessions
   session show <id>   Show a session transcript from local persistence
+  session new --title <title> [--id <id>] [--workspace <id>]
+                      Create a persisted coding session
   import <file>       Import a Specter Code session export file
   export --session <id> --output <file>
                       Export a session and its causal event history
@@ -68,7 +70,7 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'agents':
             return ok(await renderAgents(cwd, env))
           case 'session':
-            return runSessionCommand(parsed.rest, env)
+            return runSessionCommand(parsed.rest, { cwd, env })
           case 'import':
             return runImportCommand(parsed.rest)
           case 'export':
@@ -205,13 +207,16 @@ async function renderAgents(cwd: string, env: SpecterCodeCliEnvironment) {
 
 async function runSessionCommand(
   argv: readonly string[],
-  env: SpecterCodeCliEnvironment,
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
 ) {
   if (argv[0] === 'list' && argv.length === 1) {
-    return ok(await renderSessionList(env))
+    return ok(await renderSessionList(options.env))
   }
   if (argv[0] === 'show' && argv[1] && argv.length === 2) {
-    return ok(await renderSessionDetail(argv[1], env))
+    return ok(await renderSessionDetail(argv[1], options.env))
+  }
+  if (argv[0] === 'new') {
+    return runSessionNewCommand(argv.slice(1), options)
   }
 
   return fail(
@@ -219,9 +224,198 @@ async function runSessionCommand(
 
 Usage: specter-code session list
        specter-code session show <id>
+       specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]
 `,
     1,
   )
+}
+
+type SessionCreateInput = {
+  sessionId?: string
+  workspaceId: string
+  title: string
+  directory: string
+  agent: string
+  model: { providerId: string; modelId: string }
+  createdBy: { displayName: string }
+}
+
+async function runSessionNewCommand(
+  argv: readonly string[],
+  options: { cwd: string; env: SpecterCodeCliEnvironment },
+) {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    return ok(
+      'Usage: specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]\n',
+    )
+  }
+
+  const config = await loadCliConfig(options.cwd, options.env)
+  const defaults = {
+    workspaceId: 'default',
+    directory: options.cwd,
+    agent: config.defaultAgent ?? 'build',
+    model: config.model ?? { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+  }
+  const parsed = parseSessionNewOptions(argv, defaults)
+  const sessionId = parsed.sessionId ?? crypto.randomUUID()
+
+  await createCliSession(options.env, {
+    sessionId,
+    workspaceId: parsed.workspaceId,
+    title: parsed.title,
+    directory: parsed.directory,
+    agent: parsed.agent,
+    model: parsed.model,
+    createdBy: { displayName: 'Specter Code CLI' },
+  })
+
+  return ok(
+    `Created session ${sessionId}\t${parsed.title}\t${parsed.agent}\t${parsed.model.providerId}/${parsed.model.modelId}\t${parsed.directory}\n`,
+  )
+}
+
+function parseSessionNewOptions(
+  argv: readonly string[],
+  defaults: Omit<SessionCreateInput, 'title' | 'createdBy'>,
+): Omit<SessionCreateInput, 'createdBy'> {
+  let sessionId: string | undefined
+  let workspaceId = defaults.workspaceId
+  let title: string | undefined
+  let directory = defaults.directory
+  let agent = defaults.agent
+  let model = defaults.model
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--id') {
+      sessionId = optionValue(argv, index, '--id')
+      index += 1
+      continue
+    }
+    if (arg === '--workspace') {
+      workspaceId = optionValue(argv, index, '--workspace')
+      index += 1
+      continue
+    }
+    if (arg === '--title') {
+      title = optionValue(argv, index, '--title')
+      index += 1
+      continue
+    }
+    if (arg === '--directory' || arg === '--cwd') {
+      directory = optionValue(argv, index, arg)
+      index += 1
+      continue
+    }
+    if (arg === '--agent') {
+      agent = optionValue(argv, index, '--agent')
+      index += 1
+      continue
+    }
+    if (arg === '--model') {
+      model = parseCliModelRef(optionValue(argv, index, '--model'))
+      index += 1
+      continue
+    }
+    return failWithUsage(`Unknown session new option: ${arg}`)
+  }
+
+  const normalizedTitle = title?.trim()
+  if (!normalizedTitle) return failWithUsage('Session title is required')
+  const normalizedWorkspaceId = workspaceId.trim()
+  if (!normalizedWorkspaceId) return failWithUsage('Workspace id is required')
+  const normalizedAgent = agent.trim()
+  if (!normalizedAgent) return failWithUsage('Agent is required')
+  const normalizedDirectory = directory.trim()
+  if (!normalizedDirectory) return failWithUsage('Directory is required')
+
+  return {
+    sessionId: sessionId?.trim() || undefined,
+    workspaceId: normalizedWorkspaceId,
+    title: normalizedTitle,
+    directory: normalizedDirectory,
+    agent: normalizedAgent,
+    model,
+  }
+}
+
+function parseCliModelRef(value: string) {
+  const slash = value.indexOf('/')
+  if (slash <= 0 || slash === value.length - 1) {
+    throw new Error('Model must use provider/model syntax')
+  }
+  return { providerId: value.slice(0, slash), modelId: value.slice(slash + 1) }
+}
+
+function failWithUsage(message: string): never {
+  throw new Error(
+    `${message}\n\nUsage: specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]`,
+  )
+}
+
+async function createCliSession(
+  env: SpecterCodeCliEnvironment,
+  input: SessionCreateInput & { sessionId: string },
+) {
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+    { sessionCreatedEvent },
+    { projectSpecterCodeEvent },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+    import('../events.ts'),
+    import('../adapters/read-models.ts'),
+  ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const eventDraft = sessionCreatedEvent.create({
+      sessionId: input.sessionId,
+      workspaceId: input.workspaceId,
+      title: input.title,
+      directory: input.directory,
+      agent: input.agent,
+      model: input.model,
+      createdBy: input.createdBy,
+    })
+    const eventId = crypto.randomUUID()
+    const recordedAt = new Date().toISOString()
+
+    await sqlite.execute({
+      sql: `
+        INSERT INTO specter_events (id, type, payload, recorded_at)
+        VALUES (?, ?, ?, ?)
+      `,
+      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+    })
+    const orderResult = await sqlite.execute({
+      sql: 'SELECT event_order FROM specter_events WHERE id = ?',
+      args: [eventId],
+    })
+    const order = Number(orderResult.rows[0]?.event_order)
+    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+
+    await projectSpecterCodeEvent(sqlite, {
+      id: eventId,
+      order,
+      type: eventDraft.type,
+      payload: eventDraft.payload,
+      recordedAt,
+    })
+  } finally {
+    sqlite.close()
+  }
 }
 
 async function renderSessionList(env: SpecterCodeCliEnvironment) {

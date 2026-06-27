@@ -229,6 +229,72 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('assistant: Done — tests pass.')
   })
 
+  it('creates a persisted session through the Specter command pipeline', async () => {
+    const dbPath = join(tempDir, 'session-new.db')
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { ...createConfiguredCliEnv(), SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    const result = await cli.run([
+      'session',
+      'new',
+      '--id',
+      'session-cli-new',
+      '--workspace',
+      'workspace-cli',
+      '--title',
+      'Fix from CLI',
+      '--directory',
+      '/tmp/project',
+      '--agent',
+      'build',
+      '--model',
+      'localai/qwen-code',
+    ])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe('Created session session-cli-new\tFix from CLI\tbuild\tlocalai/qwen-code\t/tmp/project\n')
+
+    const db = createClient({ url: `file:${dbPath}` })
+    try {
+      const sessionRows = await db.execute({
+        sql: `
+          SELECT id, workspace_id, title, directory, agent_id, provider_id, model_id, status
+          FROM specter_code_sessions
+          WHERE id = ?
+        `,
+        args: ['session-cli-new'],
+      })
+      expect(sessionRows.rows).toEqual([
+        expect.objectContaining({
+          id: 'session-cli-new',
+          workspace_id: 'workspace-cli',
+          title: 'Fix from CLI',
+          directory: '/tmp/project',
+          agent_id: 'build',
+          provider_id: 'localai',
+          model_id: 'qwen-code',
+          status: 'active',
+        }),
+      ])
+
+      const eventRows = await db.execute({
+        sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
+        args: [],
+      })
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated'])
+      expect(JSON.parse(String(eventRows.rows[0]?.payload))).toMatchObject({
+        sessionId: 'session-cli-new',
+        workspaceId: 'workspace-cli',
+        title: 'Fix from CLI',
+      })
+    } finally {
+      db.close()
+    }
+  })
+
   it('validates import and export session command arguments before touching persistence', async () => {
     const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
 
@@ -290,6 +356,52 @@ describe('Specter Code CLI', () => {
     )
 
     expect(stdout).toBe('Usage: specter-code serve [--host <host>] [--port <port>]\n')
+  })
+
+  it('creates a session through the Node CLI entrypoint', async () => {
+    const dbPath = join(tempDir, 'session-new-entrypoint.db')
+    const stdout = execFileSync(
+      process.execPath,
+      [
+        '--experimental-strip-types',
+        'src/features/specter-code/cli/index.ts',
+        '--',
+        'session',
+        'new',
+        '--id',
+        'session-entrypoint',
+        '--workspace',
+        'workspace-entrypoint',
+        '--title',
+        'Entry point session',
+        '--directory',
+        '/tmp/project',
+        '--agent',
+        'build',
+        '--model',
+        'localai/qwen-code',
+      ],
+      {
+        cwd: process.cwd(),
+        encoding: 'utf8',
+        env: { ...process.env, ...createConfiguredCliEnv(), SPECTER_CODE_DB_PATH: dbPath },
+      },
+    )
+
+    expect(stdout).toBe('Created session session-entrypoint\tEntry point session\tbuild\tlocalai/qwen-code\t/tmp/project\n')
+
+    const db = createClient({ url: `file:${dbPath}` })
+    try {
+      const result = await db.execute({
+        sql: 'SELECT id, title FROM specter_code_sessions WHERE id = ?',
+        args: ['session-entrypoint'],
+      })
+      expect(result.rows).toEqual([
+        expect.objectContaining({ id: 'session-entrypoint', title: 'Entry point session' }),
+      ])
+    } finally {
+      db.close()
+    }
   })
 
   it('ignores a package-manager argument separator before the real command', async () => {
