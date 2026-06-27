@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { renderInteractiveDemoTui } from './tui/demo.ts'
 import { createAgentRegistry, type AgentSummary } from '../adapters/agent-registry.ts'
 import { loadSpecterCodeConfig } from '../adapters/config-loader.ts'
+import { runOpenAICompatibleChatCompletion, type SpecterCodeFetch } from '../adapters/chat-completions.ts'
 import { createProviderRegistry } from '../adapters/llm-provider.ts'
 import { createSpecterCodeBuiltInToolRegistry } from '../adapters/tool-catalog.ts'
 import {
@@ -27,6 +28,7 @@ type RunArguments = {
   format: RunFormat
   interactive: boolean
   demo: boolean
+  live: boolean
   message: string
   requestedAgentId?: string
   requestedModel?: string
@@ -111,14 +113,18 @@ export async function runSpecterCodePrompt(options: {
   argv: readonly string[]
   cwd: string
   env: SpecterCodeCliEnvironment
+  fetch?: SpecterCodeFetch
 }): Promise<SpecterCodeCliResult> {
   const parsed = parseRunArguments(options.argv)
   const message = parsed.message || (parsed.interactive && parsed.demo ? 'Review this project' : '')
   if (!message) {
-    return fail('Usage: specter-code run [--format text|json] [--interactive --demo] [--agent id] [--model provider/model] <message>\n', 1)
+    return fail('Usage: specter-code run [--live] [--format text|json] [--interactive --demo] [--agent id] [--model provider/model] <message>\n', 1)
   }
   if (parsed.interactive && !parsed.demo) {
     return fail('Interactive TUI smoke mode currently requires --demo.\n', 1)
+  }
+  if (parsed.live && parsed.interactive) {
+    return fail('Live provider runs are only supported in non-interactive mode.\n', 1)
   }
 
   const config = await loadSpecterCodeConfig({
@@ -141,7 +147,14 @@ export async function runSpecterCodePrompt(options: {
   }
   const events = parsed.interactive
     ? buildMockedRunEvents(eventOptions)
-    : await buildRunEvents(eventOptions)
+    : parsed.live
+      ? await buildLiveRunEvents({
+          ...eventOptions,
+          providerRegistry,
+          env: options.env,
+          fetchImpl: options.fetch,
+        })
+      : await buildRunEvents(eventOptions)
 
   if (parsed.interactive) {
     return ok(renderInteractiveDemoTui(events, { cwd: options.cwd, prompt: message }))
@@ -158,6 +171,7 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
   let format: RunFormat = 'text'
   let interactive = false
   let demo = false
+  let live = false
   let requestedAgentId: string | undefined
   let requestedModel: string | undefined
   const messageParts: string[] = []
@@ -185,6 +199,10 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
       demo = true
       continue
     }
+    if (arg === '--live') {
+      live = true
+      continue
+    }
     if (arg === '--agent') {
       requestedAgentId = requireOptionValue(argv, index, '--agent')
       index += 1
@@ -205,6 +223,7 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
     format,
     interactive,
     demo,
+    live,
     requestedAgentId,
     requestedModel,
     message: messageParts.join(' ').trim(),
@@ -476,6 +495,65 @@ function buildRunStartEvents(options: {
       modelConfigured: options.model.configured,
     },
   ]
+}
+
+async function buildLiveRunEvents(options: {
+  cwd: string
+  message: string
+  agent: AgentSummary
+  ids: ReturnType<typeof buildRunIds>
+  model: RunStartedModel
+  providerRegistry: ReturnType<typeof createProviderRegistry>
+  env: SpecterCodeCliEnvironment
+  fetchImpl?: SpecterCodeFetch
+}): Promise<JsonRunEvent[]> {
+  const events = buildRunStartEvents(options)
+  let sequence = 0
+
+  try {
+    const provider = options.providerRegistry.requireProvider(options.model.providerId)
+    const result = await runOpenAICompatibleChatCompletion({
+      provider,
+      env: options.env,
+      modelId: options.model.modelId,
+      messages: [{ role: 'user', content: options.message }],
+      fetchImpl: options.fetchImpl,
+      onDelta: (delta) => {
+        events.push({
+          type: 'assistant.delta',
+          runId: options.ids.runId,
+          sequence,
+          delta,
+        })
+        sequence += 1
+      },
+    })
+
+    events.push(
+      {
+        type: 'assistant.message',
+        messageId: options.ids.assistantMessageId,
+        sessionId: options.ids.sessionId,
+        role: 'assistant',
+        content: result.content,
+      },
+      {
+        type: 'run.completed',
+        runId: options.ids.runId,
+        sessionId: options.ids.sessionId,
+      },
+    )
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Live provider run failed'
+    events.push({
+      type: 'run.failed',
+      runId: options.ids.runId,
+      sessionId: options.ids.sessionId,
+      error: message,
+    })
+  }
+
+  return events
 }
 
 type LocalToolPlan = {

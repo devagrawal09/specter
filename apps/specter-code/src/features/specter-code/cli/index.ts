@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
 
+import type { SpecterCodeFetch } from '../adapters/chat-completions.ts'
+
 export type SpecterCodeCliEnvironment = Record<string, string | undefined>
 
 export type SpecterCodeProcessRequest = {
@@ -18,6 +20,7 @@ export type SpecterCodeCliOptions = {
   cwd?: string
   env?: SpecterCodeCliEnvironment
   runProcess?: SpecterCodeProcessRunner
+  fetch?: SpecterCodeFetch
 }
 
 export type SpecterCodeCliResult = {
@@ -59,6 +62,7 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
   const env = options.env ?? process.env
   const runProcess = options.runProcess ?? runLocalProcess
+  const fetch = options.fetch
 
   return {
     async run(argv: readonly string[] = []): Promise<SpecterCodeCliResult> {
@@ -80,7 +84,7 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'export':
             return runExportCommand(parsed.rest)
           case 'run':
-            return runPromptCommand(parsed.rest, { cwd, env })
+            return runPromptCommand(parsed.rest, { cwd, env, fetch })
           case 'serve':
             return runServeCommand(parsed.rest, { cwd, env, runProcess })
           default:
@@ -111,10 +115,10 @@ type ServeCommandOptions = {
 
 async function runPromptCommand(
   argv: readonly string[],
-  options: { cwd: string; env: SpecterCodeCliEnvironment },
+  options: { cwd: string; env: SpecterCodeCliEnvironment; fetch?: SpecterCodeFetch },
 ) {
   const { runSpecterCodePrompt } = await import('./run.ts')
-  return runSpecterCodePrompt({ argv, cwd: options.cwd, env: options.env })
+  return runSpecterCodePrompt({ argv, cwd: options.cwd, env: options.env, fetch: options.fetch })
 }
 
 async function runServeCommand(
