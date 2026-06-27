@@ -171,4 +171,51 @@ describe('OpenCode-compatible tool extension loading', () => {
       `hello Ada from ${workspaceRoot}`,
     )
   })
+
+  it('loads OpenCode v1 default server plugins with configured options', async () => {
+    const configuredPlugin = await writeModule(
+      'server-plugin.mjs',
+      `export default {
+        id: 'specter-plugin-options',
+        async server(input, options) {
+          return {
+            tool: {
+              configured: {
+                description: 'Show plugin options and context',
+                execute(args, context) {
+                  return {
+                    flag: options.flag,
+                    label: options.nested.label,
+                    cwd: input.directory,
+                    sessionID: context.sessionID,
+                    text: args.text,
+                  }
+                },
+              },
+            },
+          }
+        },
+      }`,
+    )
+    const registry = createToolRegistry()
+
+    const loaded = await loadOpenCodeToolExtensionsIntoRegistry({
+      registry,
+      workspaceRoot,
+      config: { plugin: [[configuredPlugin, { flag: true, nested: { label: 'from-config' } }]] },
+    })
+
+    expect(loaded).toEqual([
+      expect.objectContaining({ kind: 'plugin-tool', name: 'configured', source: configuredPlugin }),
+    ])
+    await expect(
+      registry.execute('configured', { text: 'hello' }, createContext()),
+    ).resolves.toEqual({
+      flag: true,
+      label: 'from-config',
+      cwd: workspaceRoot,
+      sessionID: 'session-plugin-1',
+      text: 'hello',
+    })
+  })
 })

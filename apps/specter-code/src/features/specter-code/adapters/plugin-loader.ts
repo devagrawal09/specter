@@ -3,7 +3,7 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-import type { SpecterCodeConfig } from './config-loader.ts'
+import type { SpecterCodeConfig, SpecterCodePluginEntry } from './config-loader.ts'
 import type { ToolContext, ToolDefinition, ToolRegistry } from './tool-registry.ts'
 
 export type ToolExtensionLoadResult = {
@@ -40,6 +40,17 @@ type OpenCodePluginInput = {
   worktree: string
   project: { directory: string }
   client: Record<string, never>
+}
+
+type OpenCodePluginOptions = Record<string, unknown>
+
+type OpenCodeV1ServerPlugin = {
+  server: (input: OpenCodePluginInput, options?: OpenCodePluginOptions) => unknown | Promise<unknown>
+}
+
+type PluginFileSpec = {
+  filePath: string
+  options?: OpenCodePluginOptions
 }
 
 const TOOL_EXTENSIONS = new Set(['.js', '.mjs', '.cjs', '.ts', '.mts', '.cts'])
@@ -116,6 +127,10 @@ function isOpenCodeToolShape(value: unknown): value is OpenCodeToolShape {
   return isRecord(value) && typeof value.execute === 'function'
 }
 
+function isOpenCodeV1ServerPlugin(value: unknown): value is OpenCodeV1ServerPlugin {
+  return isRecord(value) && typeof value.server === 'function'
+}
+
 function toolNameForExport(filePath: string, exportName: string) {
   const baseName = path.basename(filePath, path.extname(filePath))
   return exportName === 'default' ? baseName : `${baseName}_${exportName}`
@@ -183,15 +198,23 @@ async function loadPluginFile(input: {
   filePath: string
   moduleLoader: (filePath: string) => Promise<Record<string, unknown>>
   pluginInput: OpenCodePluginInput
+  pluginOptions?: OpenCodePluginOptions
 }) {
   const mod = await input.moduleLoader(input.filePath)
   const loaded: ToolExtensionLoadResult[] = []
   const seenFactories = new Set<unknown>()
 
+  if (isOpenCodeV1ServerPlugin(mod.default)) {
+    const hooks = await mod.default.server(input.pluginInput, input.pluginOptions)
+    for (const [name, tool] of Object.entries(readPluginTools(hooks))) {
+      loaded.push(registerTool(input.registry, name, tool, 'plugin-tool', input.filePath))
+    }
+  }
+
   for (const value of Object.values(mod)) {
     if (typeof value !== 'function' || seenFactories.has(value)) continue
     seenFactories.add(value)
-    const hooks = await value(input.pluginInput)
+    const hooks = await value(input.pluginInput, input.pluginOptions)
     for (const [name, tool] of Object.entries(readPluginTools(hooks))) {
       loaded.push(registerTool(input.registry, name, tool, 'plugin-tool', input.filePath))
     }
@@ -210,15 +233,27 @@ async function discoverCustomToolFiles(options: LoadOpenCodeToolExtensionsOption
   return groups.flat()
 }
 
+function pluginFileSpec(entry: SpecterCodePluginEntry): PluginFileSpec | undefined {
+  const filePath = Array.isArray(entry) ? entry[0] : entry
+  const options = Array.isArray(entry) ? entry[1] : undefined
+  if (!isLoadableModuleFile(filePath)) return undefined
+  return { filePath, options }
+}
+
 async function discoverPluginFiles(options: LoadOpenCodeToolExtensionsOptions) {
-  const configured = options.config?.plugin ?? []
+  const configured = (options.config?.plugin ?? [])
+    .map(pluginFileSpec)
+    .filter((value): value is PluginFileSpec => value !== undefined)
   const directories = [
     options.globalConfigDir ? path.join(options.globalConfigDir, 'plugins') : undefined,
     path.join(options.workspaceRoot, '.opencode', 'plugins'),
   ].filter((value): value is string => typeof value === 'string')
 
   const groups = await Promise.all(directories.map((directory) => readLoadableFiles(directory)))
-  return [...configured, ...groups.flat()].filter(isLoadableModuleFile)
+  return [
+    ...configured,
+    ...groups.flat().map((filePath): PluginFileSpec => ({ filePath })),
+  ]
 }
 
 export async function loadOpenCodeToolExtensionsIntoRegistry(
@@ -237,13 +272,14 @@ export async function loadOpenCodeToolExtensionsIntoRegistry(
     project: { directory: options.workspaceRoot },
     client: {},
   }
-  for (const filePath of await discoverPluginFiles(options)) {
+  for (const pluginFile of await discoverPluginFiles(options)) {
     loaded.push(
       ...(await loadPluginFile({
         registry: options.registry,
-        filePath,
+        filePath: pluginFile.filePath,
         moduleLoader,
         pluginInput,
+        pluginOptions: pluginFile.options,
       })),
     )
   }

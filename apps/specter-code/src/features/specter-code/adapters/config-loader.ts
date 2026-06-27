@@ -8,6 +8,8 @@ export type SpecterCodeModelConfig = {
   modelId: string
 }
 
+export type SpecterCodePluginEntry = string | [string, Record<string, unknown>]
+
 export type SpecterCodeConfig = {
   sources: string[]
   permissionRules: PermissionRule[]
@@ -16,7 +18,7 @@ export type SpecterCodeConfig = {
   defaultAgent?: string
   provider?: Record<string, unknown>
   agent?: Record<string, unknown>
-  plugin?: string[]
+  plugin?: SpecterCodePluginEntry[]
   skills?: string[]
   mcp?: Record<string, unknown>
   watcher?: Record<string, unknown>
@@ -182,21 +184,40 @@ function permissionRulesFromConfig(permission: unknown): PermissionRule[] {
   return rules
 }
 
+function normalizeRelativePathValue(item: string, sourceDir: string | undefined) {
+  if (path.isAbsolute(item)) return path.normalize(item)
+  if (!sourceDir || !item.startsWith('.')) return item
+  return path.resolve(sourceDir, item)
+}
+
 function normalizePathList(value: unknown, sourcePath: string) {
   if (!Array.isArray(value)) return value
   const sourceDir = sourcePath === 'OPENCODE_CONFIG_CONTENT' ? undefined : path.dirname(sourcePath)
   return value.map((item) => {
     if (typeof item !== 'string') return item
-    if (path.isAbsolute(item)) return path.normalize(item)
-    if (!sourceDir || !item.startsWith('.')) return item
-    return path.resolve(sourceDir, item)
+    return normalizeRelativePathValue(item, sourceDir)
   })
+}
+
+function normalizePluginList(value: unknown, sourcePath: string) {
+  if (!Array.isArray(value)) return value
+  const sourceDir = sourcePath === 'OPENCODE_CONFIG_CONTENT' ? undefined : path.dirname(sourcePath)
+  return value.map((item) => {
+    if (typeof item === 'string') return normalizeRelativePathValue(item, sourceDir)
+    if (!Array.isArray(item) || typeof item[0] !== 'string' || !isRecord(item[1])) return item
+    return [normalizeRelativePathValue(item[0], sourceDir), item[1]]
+  })
+}
+
+function isPluginEntry(value: unknown): value is SpecterCodePluginEntry {
+  if (typeof value === 'string') return true
+  return Array.isArray(value) && typeof value[0] === 'string' && isRecord(value[1])
 }
 
 function normalizeSourceConfig(config: JsonObject, sourcePath: string): JsonObject {
   return {
     ...config,
-    plugin: normalizePathList(config.plugin, sourcePath),
+    plugin: normalizePluginList(config.plugin, sourcePath),
     skills: normalizePathList(config.skills, sourcePath),
   }
 }
@@ -228,7 +249,7 @@ function toSpecterCodeConfig(raw: JsonObject, sources: string[], permissionRules
     defaultAgent: typeof raw.default_agent === 'string' ? raw.default_agent : undefined,
     provider: isRecord(raw.provider) ? raw.provider : undefined,
     agent: isRecord(raw.agent) ? raw.agent : undefined,
-    plugin: Array.isArray(raw.plugin) ? raw.plugin.filter((item): item is string => typeof item === 'string') : undefined,
+    plugin: Array.isArray(raw.plugin) ? raw.plugin.filter(isPluginEntry) : undefined,
     skills: Array.isArray(raw.skills) ? raw.skills.filter((item): item is string => typeof item === 'string') : undefined,
     mcp: isRecord(raw.mcp) ? raw.mcp : undefined,
     watcher: isRecord(raw.watcher) ? raw.watcher : undefined,

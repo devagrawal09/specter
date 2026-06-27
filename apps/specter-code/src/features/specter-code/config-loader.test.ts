@@ -91,6 +91,25 @@ describe('loadSpecterCodeConfig', () => {
     })
   })
 
+  it('preserves plugin option tuples and resolves relative tuple specifiers', async () => {
+    await writeJsonc(
+      path.join(workspaceRoot, '.opencode', 'opencode.jsonc'),
+      `{
+        "plugin": [
+          "@acme/opencode-server-plugin",
+          ["./local-server.mjs", { "mode": "strict", "theme": "dark" }]
+        ]
+      }`,
+    )
+
+    const config = await loadSpecterCodeConfig({ workspaceRoot, globalConfigDir })
+
+    expect(config.plugin).toEqual([
+      '@acme/opencode-server-plugin',
+      [path.join(workspaceRoot, '.opencode', 'local-server.mjs'), { mode: 'strict', theme: 'dark' }],
+    ])
+  })
+
   it('normalizes OpenCode permission config to ordered Specter Code rules', async () => {
     await writeJsonc(
       path.join(globalConfigDir, 'opencode.jsonc'),
