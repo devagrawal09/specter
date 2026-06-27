@@ -53,6 +53,9 @@ Commands:
   import <file>       Import a Specter Code session export file
   export --session <id> --output <file>
                       Export a session and its causal event history
+  auth login         Store an OpenCode-compatible provider API credential
+  auth list          List authenticated providers
+  auth logout <id>   Remove provider credentials
   provider, providers List configured LLM providers
   model, models       List available provider models
   agent, agents       List available coding agents
@@ -73,6 +76,10 @@ const SESSION_USAGE = `Usage: specter-code session list
        specter-code session delete <id>
 `
 
+const AUTH_USAGE = `Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]
+       specter-code auth list
+       specter-code auth logout <provider>
+`
 const DB_USAGE = 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n'
 const DEBUG_USAGE = 'Usage: specter-code debug info\n       specter-code debug paths\n'
 
@@ -98,6 +105,8 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
           case 'agents':
           case 'agent':
             return runCatalogCommand(parsed.rest, parsed.command, () => renderAgents(cwd, env))
+          case 'auth':
+            return runAuthCommand(parsed.rest, env)
           case 'stats':
             return runStatsCommand(parsed.rest, env)
           case 'db':
@@ -1237,6 +1246,242 @@ async function renderSessionDetail(sessionId: string, env: SpecterCodeCliEnviron
   } finally {
     sqlite.close()
   }
+}
+
+type AuthCredential =
+  | { type: 'api'; key: string; metadata?: Record<string, string> }
+  | { type: 'oauth'; refresh?: string; access?: string; expires?: number }
+
+type AuthAccount = {
+  id: string
+  serviceID: string
+  description: string
+  credential: AuthCredential
+}
+
+type AuthFile = {
+  version: 2
+  accounts: Record<string, AuthAccount>
+  active: Record<string, string>
+}
+
+async function runAuthCommand(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+): Promise<SpecterCodeCliResult> {
+  if (argv.length === 0 || isHelpArg(argv[0])) return ok(AUTH_USAGE)
+
+  const [subcommand, ...rest] = argv
+  if (subcommand === 'login') return authLogin(rest, env)
+  if (subcommand === 'list') return authList(rest, env)
+  if (subcommand === 'logout') return authLogout(rest, env)
+  return fail(`Unknown auth command: ${subcommand}\n\n${AUTH_USAGE}`, 1)
+}
+
+async function authLogin(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+): Promise<SpecterCodeCliResult> {
+  if (argv.length === 1 && isHelpArg(argv[0])) {
+    return ok('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n')
+  }
+
+  let providerId: string | undefined
+  let key: string | undefined
+  let description: string | undefined
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index]
+    if (arg === '--provider' || arg === '--provider-id' || arg === '--service') {
+      providerId = optionValue(argv, index, arg)
+      index += 1
+      continue
+    }
+    if (arg === '--key' || arg === '--api-key') {
+      key = optionValue(argv, index, arg)
+      index += 1
+      continue
+    }
+    if (arg === '--description' || arg === '--label') {
+      description = optionValue(argv, index, arg)
+      index += 1
+      continue
+    }
+    return fail('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n', 1)
+  }
+
+  if (!providerId || !key) {
+    return fail('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n', 1)
+  }
+
+  const label = description ?? 'default'
+  const file = await loadAuthFile(env)
+  const accountId = `${sanitizeAuthAccountId(providerId)}-default`
+  const account: AuthAccount = {
+    id: accountId,
+    serviceID: providerId,
+    description: label,
+    credential: { type: 'api', key },
+  }
+  file.accounts = Object.fromEntries(
+    Object.entries(file.accounts).filter(
+      ([id, existing]) => id === accountId || existing.serviceID !== providerId,
+    ),
+  )
+  file.accounts[accountId] = account
+  file.active[providerId] = accountId
+  await writeAuthFile(env, file)
+  return ok(`Authenticated ${providerId} as ${label}\n`)
+}
+
+async function authList(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+): Promise<SpecterCodeCliResult> {
+  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code auth list\n')
+  if (argv.length > 0) return fail('Usage: specter-code auth list\n', 1)
+
+  const file = await loadAuthFile(env)
+  const accounts = Object.values(file.accounts).sort((left, right) =>
+    left.serviceID.localeCompare(right.serviceID) || left.description.localeCompare(right.description),
+  )
+  if (accounts.length === 0) return ok('No authenticated providers\n')
+
+  const lines = accounts.map((account) => {
+    const status = file.active[account.serviceID] === account.id ? 'active' : '-'
+    return `${account.serviceID}\t${account.description}\t${account.credential.type}\t${status}`
+  })
+  return ok(`${lines.join('\n')}\n`)
+}
+
+async function authLogout(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+): Promise<SpecterCodeCliResult> {
+  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code auth logout <provider>\n')
+  if (argv.length !== 1 || argv[0].startsWith('--')) {
+    return fail('Usage: specter-code auth logout <provider>\n', 1)
+  }
+
+  const providerId = argv[0]
+  const file = await loadAuthFile(env)
+  file.accounts = Object.fromEntries(
+    Object.entries(file.accounts).filter(
+      ([accountId, account]) => accountId !== providerId && account.serviceID !== providerId,
+    ),
+  )
+  delete file.active[providerId]
+  for (const [serviceID, accountId] of Object.entries(file.active)) {
+    if (!file.accounts[accountId]) delete file.active[serviceID]
+  }
+  await writeAuthFile(env, file)
+  return ok(`Logged out ${providerId}\n`)
+}
+
+async function loadAuthFile(env: SpecterCodeCliEnvironment): Promise<AuthFile> {
+  const content = env.OPENCODE_AUTH_CONTENT
+  if (content) return normalizeAuthFile(JSON.parse(content))
+
+  const [{ readFile }] = await Promise.all([import('node:fs/promises')])
+  try {
+    return normalizeAuthFile(JSON.parse(await readFile(await authFilePath(env), 'utf8')))
+  } catch (error) {
+    if (isMissingFileError(error)) return { version: 2, accounts: {}, active: {} }
+    throw error
+  }
+}
+
+async function writeAuthFile(env: SpecterCodeCliEnvironment, file: AuthFile) {
+  const [{ mkdir, writeFile }, { dirname }] = await Promise.all([
+    import('node:fs/promises'),
+    import('node:path'),
+  ])
+  const filePath = await authFilePath(env)
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 })
+}
+
+async function authFilePath(env: SpecterCodeCliEnvironment) {
+  if (env.SPECTER_CODE_AUTH_PATH) return env.SPECTER_CODE_AUTH_PATH
+  if (env.OPENCODE_AUTH_PATH) return env.OPENCODE_AUTH_PATH
+  const [{ join }, { homedir }] = await Promise.all([import('node:path'), import('node:os')])
+  const dataHome = env.XDG_DATA_HOME ?? join(env.HOME ?? homedir(), '.local', 'share')
+  return join(dataHome, 'opencode', 'auth-v2.json')
+}
+
+function normalizeAuthFile(value: unknown): AuthFile {
+  if (!isRecord(value)) return { version: 2, accounts: {}, active: {} }
+  if (value.version === 2) {
+    return {
+      version: 2,
+      accounts: normalizeAuthAccounts(value.accounts),
+      active: normalizeAuthActive(value.active),
+    }
+  }
+  return migrateLegacyAuthFile(value)
+}
+
+function normalizeAuthAccounts(value: unknown): Record<string, AuthAccount> {
+  if (!isRecord(value)) return {}
+  const accounts: Record<string, AuthAccount> = {}
+  for (const [id, raw] of Object.entries(value)) {
+    if (!isRecord(raw)) continue
+    const serviceID = typeof raw.serviceID === 'string' ? raw.serviceID : undefined
+    const credential = normalizeAuthCredential(raw.credential)
+    if (!serviceID || !credential) continue
+    accounts[id] = {
+      id: typeof raw.id === 'string' ? raw.id : id,
+      serviceID,
+      description: typeof raw.description === 'string' ? raw.description : 'default',
+      credential,
+    }
+  }
+  return accounts
+}
+
+function normalizeAuthActive(value: unknown): Record<string, string> {
+  if (!isRecord(value)) return {}
+  return Object.fromEntries(
+    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+  )
+}
+
+function normalizeAuthCredential(value: unknown): AuthCredential | undefined {
+  if (!isRecord(value) || typeof value.type !== 'string') return undefined
+  if (value.type === 'api' && typeof value.key === 'string') return { type: 'api', key: value.key }
+  if (value.type === 'oauth') {
+    const credential: AuthCredential = { type: 'oauth' }
+    if (typeof value.refresh === 'string') credential.refresh = value.refresh
+    if (typeof value.access === 'string') credential.access = value.access
+    if (typeof value.expires === 'number') credential.expires = value.expires
+    return credential
+  }
+  return undefined
+}
+
+function migrateLegacyAuthFile(value: Record<string, unknown>): AuthFile {
+  const migrated: AuthFile = { version: 2, accounts: {}, active: {} }
+  for (const [providerId, credentialValue] of Object.entries(value)) {
+    const credential = normalizeAuthCredential(credentialValue)
+    if (!credential) continue
+    const accountId = `${sanitizeAuthAccountId(providerId)}-default`
+    migrated.accounts[accountId] = {
+      id: accountId,
+      serviceID: providerId,
+      description: 'default',
+      credential,
+    }
+    migrated.active[providerId] = accountId
+  }
+  return migrated
+}
+
+function sanitizeAuthAccountId(providerId: string) {
+  return providerId.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'provider'
+}
+
+function isMissingFileError(error: unknown) {
+  return isRecord(error) && error.code === 'ENOENT'
 }
 
 async function runImportCommand(argv: readonly string[]) {

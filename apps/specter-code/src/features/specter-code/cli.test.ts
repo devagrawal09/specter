@@ -33,6 +33,8 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).toContain('session list')
     expect(result.stdout).toContain('import <file>')
     expect(result.stdout).toContain('export --session <id> --output <file>')
+    expect(result.stdout).toContain('auth login')
+    expect(result.stdout).toContain('auth list')
     expect(result.stdout).toContain('providers')
     expect(result.stdout).toContain('models')
     expect(result.stdout).toContain('stats')
@@ -260,6 +262,91 @@ describe('Specter Code CLI', () => {
     await expect(cli.run(['plug', '--help'])).resolves.toEqual({
       exitCode: 0,
       stdout: 'Usage: specter-code plugin <module> [--global] [--force]\n',
+      stderr: '',
+    })
+  })
+
+  it('prints help for OpenCode-compatible auth commands without touching credentials', async () => {
+    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
+
+    await expect(cli.run(['auth', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout:
+        'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n       specter-code auth list\n       specter-code auth logout <provider>\n',
+      stderr: '',
+    })
+    await expect(cli.run(['auth', 'login', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
+      stderr: '',
+    })
+    await expect(cli.run(['auth', 'list', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code auth list\n',
+      stderr: '',
+    })
+    await expect(cli.run(['auth', 'logout', '--help'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Usage: specter-code auth logout <provider>\n',
+      stderr: '',
+    })
+  })
+
+  it('stores, lists, and removes OpenCode-compatible provider API credentials', async () => {
+    const authPath = join(tempDir, 'auth-v2.json')
+    const cli = buildSpecterCodeCli({ cwd: tempDir, env: { SPECTER_CODE_AUTH_PATH: authPath } })
+
+    await expect(cli.run(['auth', 'list'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'No authenticated providers\n',
+      stderr: '',
+    })
+
+    const login = await cli.run([
+      'auth',
+      'login',
+      '--provider',
+      'openrouter',
+      '--key',
+      'sk-or-secret-value',
+      '--description',
+      'OpenRouter CI key',
+    ])
+
+    expect(login).toEqual({
+      exitCode: 0,
+      stdout: 'Authenticated openrouter as OpenRouter CI key\n',
+      stderr: '',
+    })
+    const stored = JSON.parse(readFileSync(authPath, 'utf8'))
+    expect(stored).toMatchObject({
+      version: 2,
+      active: { openrouter: 'openrouter-default' },
+      accounts: {
+        'openrouter-default': {
+          id: 'openrouter-default',
+          serviceID: 'openrouter',
+          description: 'OpenRouter CI key',
+          credential: { type: 'api', key: 'sk-or-secret-value' },
+        },
+      },
+    })
+
+    const listed = await cli.run(['auth', 'list'])
+
+    expect(listed.exitCode).toBe(0)
+    expect(listed.stderr).toBe('')
+    expect(listed.stdout).toContain('openrouter\tOpenRouter CI key\tapi\tactive')
+    expect(listed.stdout).not.toContain('sk-or-secret-value')
+
+    await expect(cli.run(['auth', 'logout', 'openrouter'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'Logged out openrouter\n',
+      stderr: '',
+    })
+    await expect(cli.run(['auth', 'list'])).resolves.toEqual({
+      exitCode: 0,
+      stdout: 'No authenticated providers\n',
       stderr: '',
     })
   })
