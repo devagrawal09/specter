@@ -3,6 +3,7 @@ import { For, Show, createContext, createEffect, createMemo, createSignal, on, s
 
 import {
   createSpecterCodeSession,
+  getSpecterCodeSettings,
   listSpecterCodeSessionTranscript,
   listSpecterCodeSessions,
   submitSpecterCodePrompt,
@@ -30,6 +31,7 @@ function createSessionChatModel() {
   const { activeWorkspaceId, activeSessionId, setActiveSessionId } = useSpecterCodeSelection()
 
   const createSessionFn = useServerFn(createSpecterCodeSession)
+  const getSettingsFn = useServerFn(getSpecterCodeSettings)
   const listSessionsFn = useServerFn(listSpecterCodeSessions)
   const submitPromptFn = useServerFn(submitSpecterCodePrompt)
   const listTranscriptFn = useServerFn(listSpecterCodeSessionTranscript)
@@ -74,15 +76,20 @@ function createSessionChatModel() {
     if (!title || !workspaceId || isCreatingSession()) return
     setIsCreatingSession(true)
     try {
+      const settings = await getSettingsFn()
+      const model = settings.defaultModel ?? {
+        providerId: 'openrouter',
+        modelId: 'anthropic/claude-sonnet-4',
+      }
       await createSessionFn({
         data: {
           workspaceId,
           title,
           directory: '.',
-          agent: 'build',
+          agent: settings.defaultAgent?.id ?? 'build',
           model: {
-            providerId: 'openrouter',
-            modelId: 'anthropic/claude-sonnet-4',
+            providerId: model.providerId,
+            modelId: model.modelId,
           },
           createdBy: { displayName: SPECTER_CODE_USER_DISPLAY_NAME },
         },

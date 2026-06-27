@@ -1,3 +1,5 @@
+import { Show, createSignal } from 'solid-js'
+
 import { ActivityRail } from './activity-rail'
 import { ApprovalsProvider } from './approvals'
 import { SpecterCodeHeader, WorkspaceStatusStrip } from './app-chrome'
@@ -9,6 +11,8 @@ import { SettingsPanel } from './settings'
 import { WorkspaceProvider, WorkspaceSidebar } from './workspaces'
 
 function SpecterCodeSurface() {
+  const [settingsOpen, setSettingsOpen] = createSignal(false)
+
   return (
     <div class="min-h-screen bg-[#05070d] text-slate-100">
       <div class="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_8%_8%,rgba(34,211,238,0.16),transparent_30%),radial-gradient(circle_at_88%_12%,rgba(16,185,129,0.13),transparent_26%),linear-gradient(135deg,#030712_0%,#07111f_50%,#0b1020_100%)]" />
@@ -22,8 +26,20 @@ function SpecterCodeSurface() {
         <SessionPromptComposer />
         <ActivityRail />
         <WorkspaceStatusStrip />
-        <div class="pointer-events-none fixed bottom-4 right-4 z-20 hidden w-80 xl:block">
-          <SettingsPanel />
+        <div class="fixed bottom-4 right-4 z-20 hidden xl:block">
+          <button
+            type="button"
+            aria-label={settingsOpen() ? 'Close model and agent settings' : 'Open model and agent settings'}
+            class="rounded-2xl border border-violet-200/25 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-violet-50 shadow-2xl shadow-black/40 ring-1 ring-white/10 backdrop-blur-xl transition hover:border-violet-100/50 hover:bg-slate-900"
+            onClick={() => setSettingsOpen((open) => !open)}
+          >
+            Settings
+          </button>
+          <Show when={settingsOpen()}>
+            <div class="mt-2 w-80">
+              <SettingsPanel />
+            </div>
+          </Show>
         </div>
       </main>
     </div>
