@@ -122,6 +122,113 @@ describe('Specter Code CLI', () => {
     expect(result.stdout).not.toContain('No persisted session CLI adapter is configured yet')
   })
 
+  it('renders persisted session details and transcript from the configured CLI database', async () => {
+    const dbPath = join(tempDir, 'session-show.db')
+    const db = createClient({ url: `file:${dbPath}` })
+
+    try {
+      await prepareSpecterSqlite(db)
+      await db.batch(
+        [
+          {
+            sql: `
+              INSERT INTO specter_code_sessions (
+                id,
+                workspace_id,
+                title,
+                directory,
+                agent_id,
+                provider_id,
+                model_id,
+                status,
+                created_at,
+                updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'session-main',
+              'workspace-main',
+              'Fix tests',
+              '/tmp/project',
+              'build',
+              'localai',
+              'qwen-code',
+              'active',
+              '2026-06-25T10:00:00.000Z',
+              '2026-06-25T10:05:00.000Z',
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_messages (
+                id,
+                session_id,
+                role,
+                author_json,
+                content,
+                created_at,
+                event_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'message-user',
+              'session-main',
+              'user',
+              JSON.stringify({ displayName: 'Dev' }),
+              'Please fix the failing tests',
+              '2026-06-25T10:01:00.000Z',
+              1,
+            ],
+          },
+          {
+            sql: `
+              INSERT INTO specter_code_messages (
+                id,
+                session_id,
+                role,
+                author_json,
+                content,
+                created_at,
+                event_order
+              ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            `,
+            args: [
+              'message-assistant',
+              'session-main',
+              'assistant',
+              JSON.stringify({ displayName: 'Build Agent' }),
+              'Done — tests pass.',
+              '2026-06-25T10:02:00.000Z',
+              2,
+            ],
+          },
+        ],
+        'write',
+      )
+    } finally {
+      db.close()
+    }
+
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    const result = await cli.run(['session', 'show', 'session-main'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toContain('Session: session-main')
+    expect(result.stdout).toContain('Title: Fix tests')
+    expect(result.stdout).toContain('Directory: /tmp/project')
+    expect(result.stdout).toContain('Agent: build')
+    expect(result.stdout).toContain('Model: localai/qwen-code')
+    expect(result.stdout).toContain('Status: active')
+    expect(result.stdout).toContain('Transcript:')
+    expect(result.stdout).toContain('user: Please fix the failing tests')
+    expect(result.stdout).toContain('assistant: Done — tests pass.')
+  })
+
   it('validates import and export session command arguments before touching persistence', async () => {
     const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
 

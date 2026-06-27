@@ -39,6 +39,7 @@ Commands:
   run [message]       Run one non-interactive prompt in the current project
   serve               Start the Specter Code HTTP/web server
   session list        List local coding sessions
+  session show <id>   Show a session transcript from local persistence
   import <file>       Import a Specter Code session export file
   export --session <id> --output <file>
                       Export a session and its causal event history
@@ -206,11 +207,21 @@ async function runSessionCommand(
   argv: readonly string[],
   env: SpecterCodeCliEnvironment,
 ) {
-  if (argv[0] !== 'list' || argv.length > 1) {
-    return fail(`Unknown session command: ${argv[0] ?? ''}\n\nUsage: specter-code session list\n`, 1)
+  if (argv[0] === 'list' && argv.length === 1) {
+    return ok(await renderSessionList(env))
+  }
+  if (argv[0] === 'show' && argv[1] && argv.length === 2) {
+    return ok(await renderSessionDetail(argv[1], env))
   }
 
-  return ok(await renderSessionList(env))
+  return fail(
+    `Unknown session command: ${argv[0] ?? ''}
+
+Usage: specter-code session list
+       specter-code session show <id>
+`,
+    1,
+  )
 }
 
 async function renderSessionList(env: SpecterCodeCliEnvironment) {
@@ -251,6 +262,68 @@ async function renderSessionList(env: SpecterCodeCliEnvironment) {
         return `${id}\t${title}\t${agent}\t${model}\t${directory}`
       })
       .join('\n') + '\n'
+  } finally {
+    sqlite.close()
+  }
+}
+
+async function renderSessionDetail(sessionId: string, env: SpecterCodeCliEnvironment) {
+  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
+    await Promise.all([
+      import('node:fs'),
+      import('node:path'),
+      import('@libsql/client/sqlite3'),
+      import('../../../db/specter-sqlite.ts'),
+    ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const sessionResult = await sqlite.execute({
+      sql: `
+        SELECT id, title, directory, agent_id, provider_id, model_id, status
+        FROM specter_code_sessions
+        WHERE id = ? AND status != 'deleted'
+        LIMIT 1
+      `,
+      args: [sessionId],
+    })
+    const session = sessionResult.rows[0]
+    if (!session) throw new Error(`Session not found: ${sessionId}`)
+
+    const messageResult = await sqlite.execute({
+      sql: `
+        SELECT role, content
+        FROM specter_code_messages
+        WHERE session_id = ?
+        ORDER BY event_order ASC, created_at ASC, id ASC
+      `,
+      args: [sessionId],
+    })
+
+    const lines = [
+      `Session: ${String(session.id)}`,
+      `Title: ${String(session.title)}`,
+      `Directory: ${String(session.directory)}`,
+      `Agent: ${String(session.agent_id)}`,
+      `Model: ${String(session.provider_id)}/${String(session.model_id)}`,
+      `Status: ${String(session.status)}`,
+      '',
+      'Transcript:',
+    ]
+
+    if (messageResult.rows.length === 0) {
+      lines.push('(empty)')
+    } else {
+      for (const message of messageResult.rows) {
+        lines.push(`${String(message.role)}: ${String(message.content)}`)
+      }
+    }
+
+    return `${lines.join('\n')}\n`
   } finally {
     sqlite.close()
   }
