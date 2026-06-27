@@ -295,6 +295,111 @@ describe('Specter Code CLI', () => {
     }
   })
 
+  it('renames a persisted session through the CLI event log', async () => {
+    const dbPath = join(tempDir, 'session-rename.db')
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { ...createConfiguredCliEnv(), SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    await expect(
+      cli.run([
+        'session',
+        'new',
+        '--id',
+        'session-cli-rename',
+        '--title',
+        'Before rename',
+        '--directory',
+        '/tmp/project',
+      ]),
+    ).resolves.toMatchObject({ exitCode: 0 })
+
+    const result = await cli.run(['session', 'rename', 'session-cli-rename', 'After rename'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe('Renamed session session-cli-rename\tAfter rename\n')
+
+    const db = createClient({ url: `file:${dbPath}` })
+    try {
+      const sessionRows = await db.execute({
+        sql: 'SELECT id, title FROM specter_code_sessions WHERE id = ?',
+        args: ['session-cli-rename'],
+      })
+      expect(sessionRows.rows).toEqual([
+        expect.objectContaining({ id: 'session-cli-rename', title: 'After rename' }),
+      ])
+
+      const eventRows = await db.execute({
+        sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
+        args: [],
+      })
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated', 'sessionUpdated'])
+      expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
+        sessionId: 'session-cli-rename',
+        title: 'After rename',
+        updatedBy: { displayName: 'Specter Code CLI' },
+      })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('deletes a persisted session through the CLI event log', async () => {
+    const dbPath = join(tempDir, 'session-delete.db')
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { ...createConfiguredCliEnv(), SPECTER_CODE_DB_PATH: dbPath },
+    })
+
+    await expect(
+      cli.run([
+        'session',
+        'new',
+        '--id',
+        'session-cli-delete',
+        '--title',
+        'Delete me',
+        '--directory',
+        '/tmp/project',
+      ]),
+    ).resolves.toMatchObject({ exitCode: 0 })
+
+    const result = await cli.run(['session', 'delete', 'session-cli-delete'])
+
+    expect(result.exitCode).toBe(0)
+    expect(result.stderr).toBe('')
+    expect(result.stdout).toBe('Deleted session session-cli-delete\n')
+
+    const listResult = await cli.run(['session', 'list'])
+    expect(listResult.exitCode).toBe(0)
+    expect(listResult.stdout).not.toContain('session-cli-delete')
+
+    const db = createClient({ url: `file:${dbPath}` })
+    try {
+      const sessionRows = await db.execute({
+        sql: 'SELECT id, status FROM specter_code_sessions WHERE id = ?',
+        args: ['session-cli-delete'],
+      })
+      expect(sessionRows.rows).toEqual([
+        expect.objectContaining({ id: 'session-cli-delete', status: 'deleted' }),
+      ])
+
+      const eventRows = await db.execute({
+        sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
+        args: [],
+      })
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated', 'sessionDeleted'])
+      expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
+        sessionId: 'session-cli-delete',
+        deletedBy: { displayName: 'Specter Code CLI' },
+      })
+    } finally {
+      db.close()
+    }
+  })
+
   it('validates import and export session command arguments before touching persistence', async () => {
     const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
 

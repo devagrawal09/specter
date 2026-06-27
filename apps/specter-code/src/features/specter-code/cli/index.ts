@@ -42,6 +42,10 @@ Commands:
   session show <id>   Show a session transcript from local persistence
   session new --title <title> [--id <id>] [--workspace <id>]
                       Create a persisted coding session
+  session rename <id> <title>
+                      Rename a persisted coding session
+  session delete <id>
+                      Delete a persisted coding session
   import <file>       Import a Specter Code session export file
   export --session <id> --output <file>
                       Export a session and its causal event history
@@ -218,6 +222,12 @@ async function runSessionCommand(
   if (argv[0] === 'new') {
     return runSessionNewCommand(argv.slice(1), options)
   }
+  if (argv[0] === 'rename') {
+    return runSessionRenameCommand(argv.slice(1), options)
+  }
+  if (argv[0] === 'delete' || argv[0] === 'rm') {
+    return runSessionDeleteCommand(argv.slice(1), options)
+  }
 
   return fail(
     `Unknown session command: ${argv[0] ?? ''}
@@ -225,6 +235,8 @@ async function runSessionCommand(
 Usage: specter-code session list
        specter-code session show <id>
        specter-code session new --title <title> [--id <id>] [--workspace <id>] [--directory <path>] [--agent <agent>] [--model <provider/model>]
+       specter-code session rename <id> <title>
+       specter-code session delete <id>
 `,
     1,
   )
@@ -354,6 +366,52 @@ function failWithUsage(message: string): never {
   )
 }
 
+
+async function runSessionRenameCommand(
+  argv: readonly string[],
+  options: { env: SpecterCodeCliEnvironment },
+) {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    return ok('Usage: specter-code session rename <id> <title>\n')
+  }
+
+  const sessionId = argv[0]?.trim()
+  const title = argv.slice(1).join(' ').trim()
+  if (!sessionId || !title) {
+    return fail('Usage: specter-code session rename <id> <title>\n', 1)
+  }
+
+  await renameCliSession(options.env, {
+    sessionId,
+    title,
+    updatedBy: { displayName: 'Specter Code CLI' },
+  })
+
+  return ok(`Renamed session ${sessionId}\t${title}\n`)
+}
+
+
+async function runSessionDeleteCommand(
+  argv: readonly string[],
+  options: { env: SpecterCodeCliEnvironment },
+) {
+  if (argv.includes('--help') || argv.includes('-h')) {
+    return ok('Usage: specter-code session delete <id>\n')
+  }
+
+  const sessionId = argv[0]?.trim()
+  if (!sessionId || argv.length !== 1) {
+    return fail('Usage: specter-code session delete <id>\n', 1)
+  }
+
+  await deleteCliSession(options.env, {
+    sessionId,
+    deletedBy: { displayName: 'Specter Code CLI' },
+  })
+
+  return ok(`Deleted session ${sessionId}\n`)
+}
+
 async function createCliSession(
   env: SpecterCodeCliEnvironment,
   input: SessionCreateInput & { sessionId: string },
@@ -388,6 +446,145 @@ async function createCliSession(
       agent: input.agent,
       model: input.model,
       createdBy: input.createdBy,
+    })
+    const eventId = crypto.randomUUID()
+    const recordedAt = new Date().toISOString()
+
+    await sqlite.execute({
+      sql: `
+        INSERT INTO specter_events (id, type, payload, recorded_at)
+        VALUES (?, ?, ?, ?)
+      `,
+      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+    })
+    const orderResult = await sqlite.execute({
+      sql: 'SELECT event_order FROM specter_events WHERE id = ?',
+      args: [eventId],
+    })
+    const order = Number(orderResult.rows[0]?.event_order)
+    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+
+    await projectSpecterCodeEvent(sqlite, {
+      id: eventId,
+      order,
+      type: eventDraft.type,
+      payload: eventDraft.payload,
+      recordedAt,
+    })
+  } finally {
+    sqlite.close()
+  }
+}
+
+async function renameCliSession(
+  env: SpecterCodeCliEnvironment,
+  input: {
+    sessionId: string
+    title: string
+    updatedBy: { displayName: string }
+  },
+) {
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+    { sessionUpdatedEvent },
+    { projectSpecterCodeEvent },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+    import('../events.ts'),
+    import('../adapters/read-models.ts'),
+  ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const existing = await sqlite.execute({
+      sql: "SELECT id FROM specter_code_sessions WHERE id = ? AND status != 'deleted' LIMIT 1",
+      args: [input.sessionId],
+    })
+    if (!existing.rows[0]) throw new Error(`Session not found: ${input.sessionId}`)
+
+    const eventDraft = sessionUpdatedEvent.create({
+      sessionId: input.sessionId,
+      title: input.title,
+      updatedBy: input.updatedBy,
+    })
+    const eventId = crypto.randomUUID()
+    const recordedAt = new Date().toISOString()
+
+    await sqlite.execute({
+      sql: `
+        INSERT INTO specter_events (id, type, payload, recorded_at)
+        VALUES (?, ?, ?, ?)
+      `,
+      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+    })
+    const orderResult = await sqlite.execute({
+      sql: 'SELECT event_order FROM specter_events WHERE id = ?',
+      args: [eventId],
+    })
+    const order = Number(orderResult.rows[0]?.event_order)
+    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+
+    await projectSpecterCodeEvent(sqlite, {
+      id: eventId,
+      order,
+      type: eventDraft.type,
+      payload: eventDraft.payload,
+      recordedAt,
+    })
+  } finally {
+    sqlite.close()
+  }
+}
+
+
+async function deleteCliSession(
+  env: SpecterCodeCliEnvironment,
+  input: {
+    sessionId: string
+    deletedBy: { displayName: string }
+  },
+) {
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+    { sessionDeletedEvent },
+    { projectSpecterCodeEvent },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+    import('../events.ts'),
+    import('../adapters/read-models.ts'),
+  ])
+  const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+
+  mkdirSync(dirname(sqlitePath), { recursive: true })
+  const sqlite = createClient({ url: `file:${sqlitePath}` })
+
+  try {
+    await prepareSpecterSqlite(sqlite)
+    const existing = await sqlite.execute({
+      sql: "SELECT id FROM specter_code_sessions WHERE id = ? AND status != 'deleted' LIMIT 1",
+      args: [input.sessionId],
+    })
+    if (!existing.rows[0]) throw new Error(`Session not found: ${input.sessionId}`)
+
+    const eventDraft = sessionDeletedEvent.create({
+      sessionId: input.sessionId,
+      deletedBy: input.deletedBy,
     })
     const eventId = crypto.randomUUID()
     const recordedAt = new Date().toISOString()
