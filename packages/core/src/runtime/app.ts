@@ -70,15 +70,45 @@ type QueryMethods<TSlices extends readonly SliceRegistration[]> = {
   ) => Promise<QueryOutput<TSlice>>
 }
 
+export type QuerySubscriptionOptions = {
+  readonly signal?: AbortSignal
+}
+
+type QuerySubscribeMethods<TSlices extends readonly SliceRegistration[]> = {
+  [TSlice in Extract<TSlices[number], { kind: 'query' }> as TSlice['name']]: (
+    input: QueryInput<TSlice>,
+    options?: QuerySubscriptionOptions,
+  ) => AsyncIterable<QueryOutput<TSlice>>
+}
+
 export type SpecterApp<TConfig extends SpecterAppConfig> = CommandMethods<
   TConfig['slices']
 > &
-  QueryMethods<TConfig['slices']>
+  QueryMethods<TConfig['slices']> & {
+    readonly subscribe: QuerySubscribeMethods<TConfig['slices']>
+  }
 
 type PreparedReactionEffect = {
   readonly reaction: ReactionSlice<string, unknown>
   readonly exec: ReactionExec
   readonly effect: unknown
+}
+
+type PendingSubscriptionNext = {
+  readonly resolve: (result: IteratorResult<unknown>) => void
+  readonly reject: (cause: unknown) => void
+}
+
+type QuerySubscriptionState = {
+  readonly queryName: string
+  readonly input: unknown
+  readonly abortSignal?: AbortSignal
+  readonly abortListener: () => void
+  closed: boolean
+  hasBufferedValue: boolean
+  bufferedValue: unknown
+  pendingNext?: PendingSubscriptionNext
+  pendingError?: unknown
 }
 
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
@@ -160,6 +190,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   }
 
   const requestReactions = config.schedule(runReactions)
+  const subscriptions = new Set<QuerySubscriptionState>()
   const app: Record<string, unknown> = {}
 
   for (const command of Object.values(slicesByKind.commands)) {
@@ -167,11 +198,20 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
       await runCommand(command, input)
       const waitForReactionsIdle = requestReactions()
       await waitForReactionsIdle()
+      await invalidateSubscriptions()
     }
   }
 
   for (const query of Object.values(slicesByKind.queries)) {
     app[query.name] = (input: unknown) => runQuery(query, input)
+  }
+
+  app.subscribe = {}
+  for (const query of Object.values(slicesByKind.queries)) {
+    ;(app.subscribe as Record<string, unknown>)[query.name] = (
+      input: unknown,
+      options?: QuerySubscriptionOptions,
+    ) => subscribeQuery(query, input, options)
   }
 
   return app as SpecterApp<TConfig>
@@ -299,5 +339,156 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     if (failures.length) {
       throw new ReactionRunFailure(failures)
     }
+  }
+
+  function subscribeQuery(
+    query: QuerySlice,
+    input: unknown,
+    options: QuerySubscriptionOptions = {},
+  ): AsyncIterable<unknown> {
+    let state: QuerySubscriptionState | undefined
+
+    function close() {
+      if (!state || state.closed) return
+
+      state.closed = true
+      subscriptions.delete(state)
+      state.abortSignal?.removeEventListener("abort", state.abortListener)
+
+      if (state.pendingNext) {
+        const pending = state.pendingNext
+        state.pendingNext = undefined
+        pending.resolve({ done: true, value: undefined })
+      }
+    }
+
+    async function enqueueInitialValue(subscription: QuerySubscriptionState) {
+      try {
+        const value = await runQuery(query, input)
+        enqueueSubscriptionValue(subscription, value)
+      } catch (cause) {
+        enqueueSubscriptionError(subscription, cause)
+      }
+    }
+
+    return {
+      [Symbol.asyncIterator]() {
+        if (!state) {
+          state = {
+            queryName: query.name,
+            input,
+            abortSignal: options.signal,
+            abortListener: close,
+            closed: false,
+            hasBufferedValue: false,
+            bufferedValue: undefined,
+          }
+
+          subscriptions.add(state)
+          options.signal?.addEventListener("abort", close, { once: true })
+          void enqueueInitialValue(state)
+        }
+
+        return {
+          next() {
+            if (!state || state.closed) {
+              return Promise.resolve({ done: true, value: undefined })
+            }
+
+            if (state.pendingError !== undefined) {
+              const cause = state.pendingError
+              state.pendingError = undefined
+              return Promise.reject(cause)
+            }
+
+            if (state.hasBufferedValue) {
+              const value = state.bufferedValue
+              state.hasBufferedValue = false
+              state.bufferedValue = undefined
+              return Promise.resolve({ done: false, value })
+            }
+
+            return new Promise<IteratorResult<unknown>>((resolve, reject) => {
+              if (!state || state.closed) {
+                resolve({ done: true, value: undefined })
+                return
+              }
+
+              state.pendingNext = { resolve, reject }
+            })
+          },
+          return() {
+            close()
+            return Promise.resolve({ done: true, value: undefined })
+          },
+          throw(cause?: unknown) {
+            close()
+            return Promise.reject(cause)
+          },
+          [Symbol.asyncIterator]() {
+            return this
+          },
+        } satisfies AsyncIterator<unknown> & AsyncIterable<unknown>
+      },
+    }
+  }
+
+  function enqueueSubscriptionValue(
+    subscription: QuerySubscriptionState,
+    value: unknown,
+  ) {
+    if (subscription.closed) return
+
+    if (subscription.pendingNext) {
+      const pending = subscription.pendingNext
+      subscription.pendingNext = undefined
+      pending.resolve({ done: false, value })
+      return
+    }
+
+    subscription.bufferedValue = value
+    subscription.hasBufferedValue = true
+  }
+
+  function enqueueSubscriptionError(
+    subscription: QuerySubscriptionState,
+    cause: unknown,
+  ) {
+    if (subscription.closed) return
+
+    if (subscription.pendingNext) {
+      const pending = subscription.pendingNext
+      subscription.pendingNext = undefined
+      pending.reject(cause)
+      return
+    }
+
+    subscription.pendingError = cause
+  }
+
+  async function invalidateSubscriptions() {
+    await Promise.all(
+      [...subscriptions].map(async (subscription) => {
+        if (subscription.closed) return
+
+        const query = slicesByKind.queries[subscription.queryName]
+        if (!query) return
+
+        try {
+          const value = await query.store.transaction(query.name, async (store) => {
+            const parsedInput = await decodeSchema(query.schema, subscription.input)
+            const { advanced } = await catchUpSlice(query, store)
+
+            if (!advanced) return undefined
+
+            return query.handle(parsedInput, store.read)
+          })
+
+          if (value !== undefined) enqueueSubscriptionValue(subscription, value)
+        } catch (cause) {
+          enqueueSubscriptionError(subscription, cause)
+        }
+      }),
+    )
   }
 }
