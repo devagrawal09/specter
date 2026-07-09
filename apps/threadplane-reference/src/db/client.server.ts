@@ -17,9 +17,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 const sqlite = createClient({ url: sqliteUrl })
 let prepared: Promise<void> | undefined
 
-export async function runWithThreadplaneReferenceDb<T>(
-  run: () => Promise<T>,
-) {
+export async function runWithThreadplaneReferenceDb<T>(run: () => Promise<T>) {
   if (hasSqliteDbBinding()) return run()
 
   prepared ??= prepareSpecterSqlite(sqlite)

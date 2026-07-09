@@ -14,10 +14,7 @@ type WorkspacesState = {
   workspaces: Workspace[]
 }
 
-const workspacesQuery = createQuerySlice(
-  'workspacesQuery',
-  'Lists workspaces.',
-)
+const workspacesQuery = createQuerySlice('workspacesQuery', 'Lists workspaces.')
   .schema(z.object({}))
   .store(createSqliteSliceStore<WorkspacesState>(() => ({ workspaces: [] })))
   .apply({
