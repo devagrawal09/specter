@@ -2,6 +2,7 @@
   "name": "specter-starter",
   "private": true,
   "type": "module",
+  "license": "MIT",
   "scripts": {
     "predev": "npm run db:migrate",
     "dev": "vite dev",

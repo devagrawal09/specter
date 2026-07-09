@@ -1,17 +1,37 @@
-node_modules
-.DS_Store
-dist
-dist-ssr
-*.local
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs and generated caches
+dist/
+dist-ssr/
+.output/
+.nitro/
+.vinxi/
+.tanstack/
+.wrangler/
+.turbo/
+.cache/
+coverage/
+playwright-report/
+test-results/
+
+# Local environment and secrets
 .env
-.nitro
-.tanstack
-.wrangler
-.output
-.vinxi
-__unconfig*
-data/*.db
-data/*.db-*
-data/slice-state
-data/test-slice-state
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Local runtime data
+**/data/*.db
+**/data/*.db-*
+**/data/*.sqlite
+**/data/*.sqlite-*
+**/data/slice-state/
+**/data/test-slice-state/
+
+# OS/editor noise
+.DS_Store
 .reference
+__unconfig*
