@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["**/*.ts", "**/*.tsx"],
+  "exclude": ["dist", "node_modules"],
+  "compilerOptions": {
+    "jsxImportSource": "solid-js",
+    "noEmit": true,
+    "types": ["vite/client"]
+  }
+}
