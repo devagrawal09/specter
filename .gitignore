@@ -28,8 +28,8 @@ test-results/
 **/data/*.db-*
 **/data/*.sqlite
 **/data/*.sqlite-*
-**/data/slice-state/
-**/data/test-slice-state/
+**/data/slice-state
+**/data/test-slice-state
 
 # OS/editor noise
 .DS_Store
