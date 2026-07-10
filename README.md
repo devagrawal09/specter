@@ -1,8 +1,10 @@
 # Specter
 
-Specter is a TypeScript framework for vertically sliced event-sourced applications.
+Specter is a TypeScript framework for vertically sliced event-sourced applications, with first-party reference apps that show how app developers and coding agents can build against the same domain model.
 
-This repository is a pnpm workspace:
+> **Public status:** Specter is being prepared in public. The framework, initializer, and reference apps are MIT-licensed; deeper public docs are being added through focused pull requests.
+
+## Repository Map
 
 ```txt
 packages/core/             @specter-ts/core framework/runtime package
@@ -10,6 +12,17 @@ packages/create-specter/   create-specter initializer CLI
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
 apps/threadplane-reference/ Threadplane-style workspace Reference application
+```
+
+## Prerequisites
+
+- Node.js 24 or newer
+- pnpm 11.1.3, matching the root `packageManager` field
+
+```sh
+corepack enable
+corepack prepare pnpm@11.1.3 --activate
+pnpm install
 ```
 
 ## Create A Project
@@ -36,9 +49,11 @@ SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-spec
 
 ```sh
 pnpm install
-pnpm build
+pnpm check
+pnpm lint
 pnpm typecheck
 pnpm test
+pnpm build
 pnpm dev
 pnpm dev:booking
 pnpm dev:threadplane
@@ -53,10 +68,18 @@ Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@spec
 Slices are created with a stable name and a human-readable description:
 
 ```ts
-createCommandSlice("addTodo", "Adds a todo to the list.");
+createCommandSlice('addTodo', 'Adds a todo to the list.')
 ```
 
 Every scenario also has a `description`. `testScenarios` uses slice descriptions for suite names and scenario descriptions for test names.
+
+## Agent-Friendly Development
+
+Specter apps are organized so people and coding agents can work feature-by-feature. Keep changes small, prefer executable scenarios, and document the Specter concept an app or package demonstrates.
+
+## Contributing
+
+This repo uses pull requests instead of GitHub issues for work tracking. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
 
 ## Release
 

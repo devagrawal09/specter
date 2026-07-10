@@ -48,5 +48,25 @@
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"
+  },
+  "keywords": [
+    "specter",
+    "typescript",
+    "event-sourcing",
+    "vertical-slice",
+    "application-framework",
+    "agents"
+  ],
+  "homepage": "https://github.com/devagrawal09/specter#readme",
+  "bugs": {
+    "url": "https://github.com/devagrawal09/specter/pulls"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devagrawal09/specter.git",
+    "directory": "packages/core"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

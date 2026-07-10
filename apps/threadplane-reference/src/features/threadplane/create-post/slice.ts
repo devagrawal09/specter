@@ -1,11 +1,11 @@
-import { createCommandSlice } from "@specter-ts/core";
-import { z } from "zod";
+import { createCommandSlice } from '@specter-ts/core'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 
 const createPost = createCommandSlice(
-  "createPost",
-  "Creates a top-level post in a workspace chat.",
+  'createPost',
+  'Creates a top-level post in a workspace chat.',
 )
   .schema(
     z.object({
@@ -14,6 +14,6 @@ const createPost = createCommandSlice(
       content: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})));
+  .store(createMemorySliceStore(() => ({})))
 
-export default createPost;
+export default createPost

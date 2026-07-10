@@ -103,10 +103,14 @@ function Home() {
           </h1>
 
           <form onSubmit={submitWorkspace} class="mt-5 space-y-2">
-            <label class="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <label
+              for="new-workspace-name"
+              class="text-xs font-semibold uppercase tracking-wide text-zinc-500"
+            >
               New Workspace
             </label>
             <input
+              id="new-workspace-name"
               class="w-full rounded-2xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none transition focus:border-cyan-400"
               value={workspaceDraft()}
               onInput={(event) => setWorkspaceDraft(event.currentTarget.value)}

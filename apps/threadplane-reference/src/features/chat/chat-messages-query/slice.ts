@@ -88,7 +88,9 @@ const chatMessagesQuery = createQuerySlice(
     ],
   })
   .handle(async (query, state) =>
-    state.messages.filter((message) => message.workspaceId === query.workspaceId),
+    state.messages.filter(
+      (message) => message.workspaceId === query.workspaceId,
+    ),
   )
 
 export default chatMessagesQuery
