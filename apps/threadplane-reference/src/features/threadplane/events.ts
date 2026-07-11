@@ -1,8 +1,8 @@
-import { createEventDefinition } from '@specter-ts/core'
-import { z } from 'zod'
+import { createEventDefinition } from "@specter-ts/core";
+import { z } from "zod";
 
 export const workspaceCreatedEvent = createEventDefinition(
-  'workspaceCreated',
+  "workspace-created",
   z.object({
     workspaceId: z.string(),
     name: z.string(),
@@ -13,21 +13,21 @@ export const workspaceCreatedEvent = createEventDefinition(
       })
       .optional(),
   }),
-)
+);
 
 export const postCreatedEvent = createEventDefinition(
-  'postCreated',
+  "post-created",
   z.object({
     postId: z.string(),
     workspaceId: z.string(),
-    author: z.discriminatedUnion('type', [
+    author: z.discriminatedUnion("type", [
       z.object({
-        type: z.literal('user'),
+        type: z.literal("user"),
         userId: z.string().optional(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('agent'),
+        type: z.literal("agent"),
         agentId: z.string(),
         displayName: z.string(),
       }),
@@ -35,22 +35,22 @@ export const postCreatedEvent = createEventDefinition(
     content: z.string(),
     sourceRunId: z.string().optional(),
   }),
-)
+);
 
 export const postReplyCreatedEvent = createEventDefinition(
-  'postReplyCreated',
+  "post-reply-created",
   z.object({
     replyId: z.string(),
     workspaceId: z.string(),
     parentPostId: z.string(),
-    author: z.discriminatedUnion('type', [
+    author: z.discriminatedUnion("type", [
       z.object({
-        type: z.literal('user'),
+        type: z.literal("user"),
         userId: z.string().optional(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('agent'),
+        type: z.literal("agent"),
         agentId: z.string(),
         displayName: z.string(),
       }),
@@ -58,49 +58,49 @@ export const postReplyCreatedEvent = createEventDefinition(
     content: z.string(),
     sourceRunId: z.string().optional(),
   }),
-)
+);
 
 export const workspaceFilesystemInitializedEvent = createEventDefinition(
-  'workspaceFilesystemInitialized',
+  "workspace-filesystem-initialized",
   z.object({
     workspaceId: z.string(),
   }),
-)
+);
 
 export const workspaceFilesystemScanRequestedEvent = createEventDefinition(
-  'workspaceFilesystemScanRequested',
+  "workspace-filesystem-scan-requested",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
-    reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
-    requestedBy: z.discriminatedUnion('type', [
+    reason: z.enum(["workspaceCreated", "userRequested", "agentToolChanged"]),
+    requestedBy: z.discriminatedUnion("type", [
       z.object({
-        type: z.literal('user'),
+        type: z.literal("user"),
         userId: z.string().optional(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('agent'),
+        type: z.literal("agent"),
         agentId: z.string(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('system'),
+        type: z.literal("system"),
       }),
     ]),
   }),
-)
+);
 
 export const workspaceFilesystemScanStartedEvent = createEventDefinition(
-  'workspaceFilesystemScanStarted',
+  "workspace-filesystem-scan-started",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
   }),
-)
+);
 
 export const workspaceFilesystemScanCompletedEvent = createEventDefinition(
-  'workspaceFilesystemScanCompleted',
+  "workspace-filesystem-scan-completed",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -108,91 +108,91 @@ export const workspaceFilesystemScanCompletedEvent = createEventDefinition(
     changedNodeCount: z.number().int().nonnegative(),
     deletedNodeCount: z.number().int().nonnegative(),
   }),
-)
+);
 
 export const workspaceFilesystemScanFailedEvent = createEventDefinition(
-  'workspaceFilesystemScanFailed',
+  "workspace-filesystem-scan-failed",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
     error: z.string(),
   }),
-)
+);
 
 export const filesystemNodeDiscoveredEvent = createEventDefinition(
-  'filesystemNodeDiscovered',
+  "filesystem-node-discovered",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
     path: z.string(),
     parentPath: z.string().nullable(),
     name: z.string(),
-    kind: z.enum(['file', 'directory']),
+    kind: z.enum(["file", "directory"]),
     sizeBytes: z.number().int().nonnegative().nullable(),
     modifiedAt: z.string().optional(),
   }),
-)
+);
 
 export const filesystemNodeChangedEvent = createEventDefinition(
-  'filesystemNodeChanged',
+  "filesystem-node-changed",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
     path: z.string(),
     parentPath: z.string().nullable(),
     name: z.string(),
-    kind: z.enum(['file', 'directory']),
+    kind: z.enum(["file", "directory"]),
     sizeBytes: z.number().int().nonnegative().nullable(),
     modifiedAt: z.string().optional(),
   }),
-)
+);
 
 export const filesystemNodeDeletedEvent = createEventDefinition(
-  'filesystemNodeDeleted',
+  "filesystem-node-deleted",
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
     path: z.string(),
   }),
-)
+);
 
 export const agentRunRequestedEvent = createEventDefinition(
-  'agentRunRequested',
+  "agent-run-requested",
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
     postId: z.string().optional(),
     agentId: z.string(),
     agentName: z.string(),
-    requestedBy: z.discriminatedUnion('type', [
+    requestedBy: z.discriminatedUnion("type", [
       z.object({
-        type: z.literal('user'),
+        type: z.literal("user"),
         userId: z.string().optional(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('agent'),
+        type: z.literal("agent"),
         agentId: z.string(),
         displayName: z.string(),
       }),
       z.object({
-        type: z.literal('system'),
+        type: z.literal("system"),
       }),
     ]),
   }),
-)
+);
 
 export const agentRunStartedEvent = createEventDefinition(
-  'agentRunStarted',
+  "agent-run-started",
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
     agentId: z.string(),
   }),
-)
+);
 
 export const agentRunStreamedEvent = createEventDefinition(
-  'agentRunStreamed',
+  "agent-run-streamed",
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -201,29 +201,29 @@ export const agentRunStreamedEvent = createEventDefinition(
     sequence: z.number().int().nonnegative(),
     delta: z.string(),
   }),
-)
+);
 
 export const agentRunCompletedEvent = createEventDefinition(
-  'agentRunCompleted',
+  "agent-run-completed",
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
     agentId: z.string(),
   }),
-)
+);
 
 export const agentRunFailedEvent = createEventDefinition(
-  'agentRunFailed',
+  "agent-run-failed",
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
     agentId: z.string(),
     error: z.string(),
   }),
-)
+);
 
 export const toolCallStartedEvent = createEventDefinition(
-  'toolCallStarted',
+  "tool-call-started",
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -232,10 +232,10 @@ export const toolCallStartedEvent = createEventDefinition(
     toolName: z.string(),
     inputSummary: z.string().optional(),
   }),
-)
+);
 
 export const toolCallCompletedEvent = createEventDefinition(
-  'toolCallCompleted',
+  "tool-call-completed",
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -244,10 +244,10 @@ export const toolCallCompletedEvent = createEventDefinition(
     toolName: z.string(),
     outputSummary: z.string().optional(),
   }),
-)
+);
 
 export const toolCallFailedEvent = createEventDefinition(
-  'toolCallFailed',
+  "tool-call-failed",
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -256,7 +256,7 @@ export const toolCallFailedEvent = createEventDefinition(
     toolName: z.string(),
     error: z.string(),
   }),
-)
+);
 
 export const threadplaneEventDefinitions = [
   workspaceCreatedEvent,
@@ -278,4 +278,4 @@ export const threadplaneEventDefinitions = [
   toolCallStartedEvent,
   toolCallCompletedEvent,
   toolCallFailedEvent,
-] as const
+] as const;

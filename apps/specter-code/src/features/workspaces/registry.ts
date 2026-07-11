@@ -1,6 +1,6 @@
-import createWorkspace from './create-workspace/slice'
+import createWorkspace from './create-workspace/impl'
 import { workspaceEventDefinitions } from './events'
-import workspacesQuery from './workspaces-query/slice'
+import workspacesQuery from './workspaces-query/impl'
 
 export const workspaceRegistrations = [createWorkspace, workspacesQuery] as const
 

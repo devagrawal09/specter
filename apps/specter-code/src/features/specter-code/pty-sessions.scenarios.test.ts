@@ -1,10 +1,17 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import ptySessions from './pty-sessions/slice'
+import { eventsForSliceImplementations } from '../../testing/scenario-events'
+import { specterCodeEventDefinitions } from './registry'
+import ptySessions from './pty-sessions/impl'
 
 const ptyRegistrations = [ptySessions] as const
+const events = eventsForSliceImplementations(
+  ptyRegistrations,
+  specterCodeEventDefinitions,
+)
 
-testScenarios(ptyRegistrations, {
+testSliceImplementations(ptyRegistrations, {
+  events,
   runScenario: sqliteScenario,
 })

@@ -6,9 +6,10 @@ import { chatSpecterAppConfig } from './registry'
 
 test('posting a Specter mention records a simulated agent reply', async () => {
   await sqliteScenario(async () => {
-    const app = createSpecterApp(chatSpecterAppConfig)
+    const app = await createSpecterApp(chatSpecterAppConfig)
 
     await app.postMessage({
+      messageId: 'message-1',
       workspaceId: 'workspace-1',
       authorName: 'Ada Lovelace',
       content: 'Can @specter help with this?',

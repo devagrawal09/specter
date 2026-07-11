@@ -1,13 +1,15 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import createSession from './create-session/slice'
-import deleteSession from './delete-session/slice'
-import forkSession from './fork-session/slice'
-import sessionChildren from './session-children/slice'
-import sessionDetail from './session-detail/slice'
-import sessionList from './session-list/slice'
-import updateSession from './update-session/slice'
+import { eventsForSliceImplementations } from '../../testing/scenario-events'
+import { specterCodeEventDefinitions } from './registry'
+import createSession from './create-session/impl'
+import deleteSession from './delete-session/impl'
+import forkSession from './fork-session/impl'
+import sessionChildren from './session-children/impl'
+import sessionDetail from './session-detail/impl'
+import sessionList from './session-list/impl'
+import updateSession from './update-session/impl'
 
 const sessionRegistrations = [
   createSession,
@@ -18,7 +20,12 @@ const sessionRegistrations = [
   sessionDetail,
   sessionChildren,
 ] as const
+const events = eventsForSliceImplementations(
+  sessionRegistrations,
+  specterCodeEventDefinitions,
+)
 
-testScenarios(sessionRegistrations, {
+testSliceImplementations(sessionRegistrations, {
+  events,
   runScenario: sqliteScenario,
 })

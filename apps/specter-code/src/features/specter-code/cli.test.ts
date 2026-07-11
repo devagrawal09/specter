@@ -599,7 +599,7 @@ describe('Specter Code CLI', () => {
         sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
         args: [],
       })
-      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated'])
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['session-created'])
       expect(JSON.parse(String(eventRows.rows[0]?.payload))).toMatchObject({
         sessionId: 'session-cli-new',
         workspaceId: 'workspace-cli',
@@ -650,7 +650,7 @@ describe('Specter Code CLI', () => {
         sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
         args: [],
       })
-      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated', 'sessionUpdated'])
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['session-created', 'session-updated'])
       expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
         sessionId: 'session-cli-rename',
         title: 'After rename',
@@ -705,7 +705,7 @@ describe('Specter Code CLI', () => {
         sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
         args: [],
       })
-      expect(eventRows.rows.map((row) => row.type)).toEqual(['sessionCreated', 'sessionDeleted'])
+      expect(eventRows.rows.map((row) => row.type)).toEqual(['session-created', 'session-deleted'])
       expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
         sessionId: 'session-cli-delete',
         deletedBy: { displayName: 'Specter Code CLI' },

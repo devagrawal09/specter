@@ -106,13 +106,14 @@ test('SQLite event log and slice states survive app and database reopen', async 
     try {
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
-        const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
+        const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
 
         await app.createWorkspace({
           workspaceId: 'workspace-durable',
           name: 'Durable Lab',
         })
         await app.postMessage({
+          messageId: 'message-durable',
           workspaceId: 'workspace-durable',
           authorName: 'Ada Lovelace',
           content: 'Durable @specter message',
@@ -146,7 +147,7 @@ test('SQLite event log and slice states survive app and database reopen', async 
       ])
 
       await runWithSqliteDb(secondSqlite, async () => {
-        const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
+        const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
         const workspaces = await app.workspacesQuery({})
         const messages = await app.chatMessagesQuery({
           workspaceId: 'workspace-durable',

@@ -1,8 +1,17 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../../db/scenario-tests'
-import publishAgentRunReply from './slice'
+import { eventsForSliceImplementations } from '../../../testing/scenario-events'
+import { specterCodeEventDefinitions } from '../registry'
+import publishAgentRunReply from './impl'
 
-testScenarios([publishAgentRunReply], {
+const registrations = [publishAgentRunReply] as const
+const events = eventsForSliceImplementations(
+  registrations,
+  specterCodeEventDefinitions,
+)
+
+testSliceImplementations(registrations, {
+  events,
   runScenario: sqliteScenario,
 })

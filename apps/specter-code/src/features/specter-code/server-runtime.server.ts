@@ -7,7 +7,7 @@ import { runWithSpecterCodeReferenceDb } from '../../db/client.server'
 import { querySpecterSqliteEvents } from '../../db/specter-sqlite'
 import { specterCodeReferenceSpecterAppConfig } from './registry'
 
-const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
+const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
 
 const SPECTER_CODE_PREVIEW_MAX_BYTES = 256 * 1024
 
@@ -73,7 +73,11 @@ export async function createSpecterCodeWorkspaceOnServer(data: {
   name: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    await app.createWorkspace({ name: data.name })
+    await app.createWorkspace({
+      name: data.name,
+      workspaceId: crypto.randomUUID(),
+      scanId: crypto.randomUUID(),
+    })
     return app.workspaceList({})
   })
 }
@@ -83,7 +87,9 @@ export async function createSpecterCodePostOnServer(data: {
   author: { userId?: string; displayName: string }
   content: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.createPost(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.createPost({ ...data, postId: crypto.randomUUID() }),
+  )
 }
 
 export async function replyToSpecterCodePostOnServer(data: {
@@ -92,7 +98,9 @@ export async function replyToSpecterCodePostOnServer(data: {
   author: { userId?: string; displayName: string }
   content: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.replyToPost(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.replyToPost({ ...data, replyId: crypto.randomUUID() }),
+  )
 }
 
 export async function listSpecterCodeWorkspaceChatOnServer(data: {
@@ -110,7 +118,9 @@ export async function createSpecterCodeSessionOnServer(data: {
   model: { providerId: string; modelId: string }
   createdBy?: { userId?: string; displayName: string }
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.createSession(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.createSession({ ...data, sessionId: data.sessionId ?? crypto.randomUUID() }),
+  )
 }
 
 export async function listSpecterCodeSessionsOnServer(data: {
@@ -176,7 +186,13 @@ export async function submitSpecterCodePromptOnServer(data: {
   agentName: string
   submittedBy: { userId?: string; displayName: string }
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.submitPrompt(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.submitPrompt({
+      ...data,
+      messageId: data.messageId ?? crypto.randomUUID(),
+      runId: data.runId ?? crypto.randomUUID(),
+    }),
+  )
 }
 
 export async function recordSpecterCodeSessionMessageOnServer(data: {
@@ -186,7 +202,12 @@ export async function recordSpecterCodeSessionMessageOnServer(data: {
   content: string
   submittedBy: { userId?: string; displayName: string }
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.recordSessionMessage(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.recordSessionMessage({
+      ...data,
+      messageId: data.messageId ?? crypto.randomUUID(),
+    }),
+  )
 }
 
 export async function listSpecterCodeSessionTranscriptOnServer(data: {
@@ -255,7 +276,7 @@ export async function requestSpecterCodeFilesystemScanOnServer(data: {
     | { type: 'system' }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.requestWorkspaceFilesystemScan(data),
+    app.requestWorkspaceFilesystemScan({ ...data, scanId: crypto.randomUUID() }),
   )
 }
 
@@ -307,7 +328,9 @@ export async function requestSpecterCodeAgentRunOnServer(data: {
     | { type: 'agent'; agentId: string; displayName: string }
     | { type: 'system' }
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.requestAgentRun(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.requestAgentRun({ ...data, runId: crypto.randomUUID() }),
+  )
 }
 
 export async function listSpecterCodeWorkspaceAgentRunsOnServer(data: {
@@ -358,7 +381,12 @@ export async function requestSpecterCodeToolApprovalOnServer(data: {
   target: string
   reason?: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.requestToolApproval(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.requestToolApproval({
+      ...data,
+      requestId: data.requestId ?? crypto.randomUUID(),
+    }),
+  )
 }
 
 export async function replySpecterCodeToolApprovalOnServer(data: {
@@ -416,7 +444,15 @@ export async function updateSpecterCodeTodoListOnServer(data: {
     priority?: 'low' | 'medium' | 'high'
   }>
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.updateTodoList(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.updateTodoList({
+      ...data,
+      items: data.items.map((item) => ({
+        ...item,
+        id: item.id ?? crypto.randomUUID(),
+      })),
+    }),
+  )
 }
 
 export async function listSpecterCodeSessionTodosOnServer(data: {
@@ -433,7 +469,16 @@ export async function askSpecterCodeQuestionOnServer(data: {
   options?: Array<{ id?: string; label: string }>
   allowFreeform?: boolean
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.askQuestion(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.askQuestion({
+      ...data,
+      questionId: data.questionId ?? crypto.randomUUID(),
+      options: data.options?.map((option) => ({
+        ...option,
+        id: option.id ?? crypto.randomUUID(),
+      })),
+    }),
+  )
 }
 
 export async function replySpecterCodeQuestionOnServer(data: {

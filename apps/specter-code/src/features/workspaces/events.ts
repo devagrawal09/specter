@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const workspaceCreatedEvent = createEventDefinition(
-  'workspaceCreated',
+  'workspace-created',
   z.object({
     workspaceId: z.string(),
     name: z.string(),

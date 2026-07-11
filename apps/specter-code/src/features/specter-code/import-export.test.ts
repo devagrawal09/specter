@@ -16,8 +16,8 @@ describe('Specter Code session import/export', () => {
       sessionId: 'session-main',
       exportedAt: '2026-06-24T00:00:00.000Z',
       events: [
-        event('workspaceCreated', { workspaceId: 'workspace-main', name: 'Main workspace' }),
-        event('sessionCreated', {
+        event('workspace-created', { workspaceId: 'workspace-main', name: 'Main workspace' }),
+        event('session-created', {
           sessionId: 'session-main',
           workspaceId: 'workspace-main',
           title: 'Fix bug',
@@ -25,7 +25,7 @@ describe('Specter Code session import/export', () => {
           agent: 'build',
           model: { providerId: 'localai', modelId: 'qwen-code' },
         }),
-        event('sessionCreated', {
+        event('session-created', {
           sessionId: 'session-other',
           workspaceId: 'workspace-main',
           title: 'Other',
@@ -33,14 +33,14 @@ describe('Specter Code session import/export', () => {
           agent: 'build',
           model: { providerId: 'localai', modelId: 'qwen-code' },
         }),
-        event('userMessageSubmitted', {
+        event('user-message-submitted', {
           messageId: 'message-main',
           sessionId: 'session-main',
           workspaceId: 'workspace-main',
           content: 'add a regression test',
           submittedBy: { displayName: 'Ada' },
         }),
-        event('agentRunRequested', {
+        event('agent-run-requested', {
           runId: 'run-main',
           workspaceId: 'workspace-main',
           postId: 'message-main',
@@ -48,14 +48,14 @@ describe('Specter Code session import/export', () => {
           agentName: 'Build Agent',
           requestedBy: { type: 'user', displayName: 'Ada' },
         }),
-        event('toolCallStarted', {
+        event('tool-call-started', {
           toolCallId: 'tool-main',
           runId: 'run-main',
           workspaceId: 'workspace-main',
           agentId: 'build',
           toolName: 'grep',
         }),
-        event('toolApprovalRequested', {
+        event('tool-approval-requested', {
           requestId: 'approval-main',
           sessionId: 'session-main',
           messageId: 'message-main',
@@ -66,12 +66,12 @@ describe('Specter Code session import/export', () => {
           permission: 'shell.execute',
           target: 'pnpm test',
         }),
-        event('todoListUpdated', {
+        event('todo-list-updated', {
           sessionId: 'session-main',
           messageId: 'message-main',
           items: [{ id: 'todo-1', content: 'Add test', status: 'completed' }],
         }),
-        event('questionAsked', {
+        event('question-asked', {
           questionId: 'question-main',
           sessionId: 'session-main',
           messageId: 'message-main',
@@ -79,7 +79,7 @@ describe('Specter Code session import/export', () => {
           options: [{ id: 'yes', label: 'Yes' }],
           allowFreeform: false,
         }),
-        event('ptySessionStarted', {
+        event('pty-session-started', {
           ptySessionId: 'pty-main',
           sessionId: 'session-main',
           workspaceId: 'workspace-main',
@@ -87,7 +87,7 @@ describe('Specter Code session import/export', () => {
           shell: '/bin/bash',
           startedAt: '2026-06-24T00:00:01.000Z',
         }),
-        event('agentRunStreamed', {
+        event('agent-run-streamed', {
           runId: 'run-main',
           workspaceId: 'workspace-main',
           agentId: 'build',
@@ -95,7 +95,7 @@ describe('Specter Code session import/export', () => {
           sequence: 0,
           delta: 'Done.',
         }),
-        event('postReplyCreated', {
+        event('post-reply-created', {
           replyId: 'reply-main',
           workspaceId: 'workspace-main',
           parentPostId: 'message-main',
@@ -103,7 +103,7 @@ describe('Specter Code session import/export', () => {
           content: 'Done.',
           sourceRunId: 'run-main',
         }),
-        event('agentRunRequested', {
+        event('agent-run-requested', {
           runId: 'run-other',
           workspaceId: 'workspace-main',
           postId: 'message-other',
@@ -127,17 +127,17 @@ describe('Specter Code session import/export', () => {
       },
     })
     expect(exported.events.map((item) => item.type)).toEqual([
-      'workspaceCreated',
-      'sessionCreated',
-      'userMessageSubmitted',
-      'agentRunRequested',
-      'toolCallStarted',
-      'toolApprovalRequested',
-      'todoListUpdated',
-      'questionAsked',
-      'ptySessionStarted',
-      'agentRunStreamed',
-      'postReplyCreated',
+      'workspace-created',
+      'session-created',
+      'user-message-submitted',
+      'agent-run-requested',
+      'tool-call-started',
+      'tool-approval-requested',
+      'todo-list-updated',
+      'question-asked',
+      'pty-session-started',
+      'agent-run-streamed',
+      'post-reply-created',
     ])
   })
 
@@ -154,7 +154,7 @@ describe('Specter Code session import/export', () => {
         model: { providerId: 'localai', modelId: 'qwen-code' },
       },
       events: [
-        event('sessionCreated', {
+        event('session-created', {
           sessionId: 'session-import',
           workspaceId: 'workspace-main',
           title: 'Imported',

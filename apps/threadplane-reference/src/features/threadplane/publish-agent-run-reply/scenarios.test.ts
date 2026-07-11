@@ -1,8 +1,22 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from "@specter-ts/core/testing";
 
-import { sqliteScenario } from '../../../db/scenario-tests'
-import publishAgentRunReply from './slice'
+import { sqliteScenario } from "../../../db/scenario-tests";
+import publishAgentRunReply from "./impl";
+import {
+  agentRunCompletedEvent,
+  agentRunFailedEvent,
+  agentRunRequestedEvent,
+  agentRunStreamedEvent,
+  postReplyCreatedEvent,
+} from "../events";
 
-testScenarios([publishAgentRunReply], {
+testSliceImplementations([publishAgentRunReply], {
+  events: [
+    agentRunRequestedEvent,
+    agentRunStreamedEvent,
+    agentRunCompletedEvent,
+    agentRunFailedEvent,
+    postReplyCreatedEvent,
+  ],
   runScenario: sqliteScenario,
-})
+});

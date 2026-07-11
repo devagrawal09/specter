@@ -10,14 +10,14 @@ describe('Specter Code event stream adapter', () => {
           {
             id: 'event-1',
             order: 1,
-            type: 'userMessageSubmitted',
+            type: 'user-message-submitted',
             payload: { content: 'ignored before cursor' },
             recordedAt: '2026-06-24T12:00:00.000Z',
           },
           {
             id: 'event-2',
             order: 2,
-            type: 'agentRunStreamed',
+            type: 'agent-run-streamed',
             payload: { delta: 'hello' },
             recordedAt: '2026-06-24T12:00:01.000Z',
           },
@@ -31,8 +31,8 @@ describe('Specter Code event stream adapter', () => {
     expect(response.headers.get('cache-control')).toBe('no-cache, no-transform')
     await expect(response.text()).resolves.toBe(
       'id: 2\n' +
-        'event: agentRunStreamed\n' +
-        'data: {"id":"event-2","order":2,"type":"agentRunStreamed","payload":{"delta":"hello"},"recordedAt":"2026-06-24T12:00:01.000Z"}\n\n',
+        'event: agent-run-streamed\n' +
+        'data: {"id":"event-2","order":2,"type":"agent-run-streamed","payload":{"delta":"hello"},"recordedAt":"2026-06-24T12:00:01.000Z"}\n\n',
     )
   })
 
@@ -46,7 +46,7 @@ describe('Specter Code event stream adapter', () => {
     stream.publish({
       id: 'event-live-1',
       order: 7,
-      type: 'toolCallCompleted',
+      type: 'tool-call-completed',
       payload: { toolName: 'read' },
       recordedAt: '2026-06-24T12:00:07.000Z',
     })
@@ -54,8 +54,8 @@ describe('Specter Code event stream adapter', () => {
     const chunk = await reader!.read()
     expect(new TextDecoder().decode(chunk.value)).toBe(
       'id: 7\n' +
-        'event: toolCallCompleted\n' +
-        'data: {"id":"event-live-1","order":7,"type":"toolCallCompleted","payload":{"toolName":"read"},"recordedAt":"2026-06-24T12:00:07.000Z"}\n\n',
+        'event: tool-call-completed\n' +
+        'data: {"id":"event-live-1","order":7,"type":"tool-call-completed","payload":{"toolName":"read"},"recordedAt":"2026-06-24T12:00:07.000Z"}\n\n',
     )
 
     abort.abort()

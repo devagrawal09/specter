@@ -8,7 +8,7 @@ const fileSnapshotSchema = z.object({
 })
 
 export const workspaceCreatedEvent = createEventDefinition(
-  'workspaceCreated',
+  'workspace-created',
   z.object({
     workspaceId: z.string(),
     name: z.string(),
@@ -22,7 +22,7 @@ export const workspaceCreatedEvent = createEventDefinition(
 )
 
 export const sessionCreatedEvent = createEventDefinition(
-  'sessionCreated',
+  'session-created',
   z.object({
     sessionId: z.string(),
     parentSessionId: z.string().optional(),
@@ -44,7 +44,7 @@ export const sessionCreatedEvent = createEventDefinition(
 )
 
 export const sessionUpdatedEvent = createEventDefinition(
-  'sessionUpdated',
+  'session-updated',
   z.object({
     sessionId: z.string(),
     title: z.string().optional(),
@@ -66,7 +66,7 @@ export const sessionUpdatedEvent = createEventDefinition(
 )
 
 export const sessionDeletedEvent = createEventDefinition(
-  'sessionDeleted',
+  'session-deleted',
   z.object({
     sessionId: z.string(),
     deletedBy: z
@@ -79,7 +79,7 @@ export const sessionDeletedEvent = createEventDefinition(
 )
 
 export const postCreatedEvent = createEventDefinition(
-  'postCreated',
+  'post-created',
   z.object({
     postId: z.string(),
     workspaceId: z.string(),
@@ -101,7 +101,7 @@ export const postCreatedEvent = createEventDefinition(
 )
 
 export const postReplyCreatedEvent = createEventDefinition(
-  'postReplyCreated',
+  'post-reply-created',
   z.object({
     replyId: z.string(),
     workspaceId: z.string(),
@@ -124,14 +124,14 @@ export const postReplyCreatedEvent = createEventDefinition(
 )
 
 export const workspaceFilesystemInitializedEvent = createEventDefinition(
-  'workspaceFilesystemInitialized',
+  'workspace-filesystem-initialized',
   z.object({
     workspaceId: z.string(),
   }),
 )
 
 export const workspaceFilesystemScanRequestedEvent = createEventDefinition(
-  'workspaceFilesystemScanRequested',
+  'workspace-filesystem-scan-requested',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -155,7 +155,7 @@ export const workspaceFilesystemScanRequestedEvent = createEventDefinition(
 )
 
 export const workspaceFilesystemScanStartedEvent = createEventDefinition(
-  'workspaceFilesystemScanStarted',
+  'workspace-filesystem-scan-started',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -163,7 +163,7 @@ export const workspaceFilesystemScanStartedEvent = createEventDefinition(
 )
 
 export const workspaceFilesystemScanCompletedEvent = createEventDefinition(
-  'workspaceFilesystemScanCompleted',
+  'workspace-filesystem-scan-completed',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -174,7 +174,7 @@ export const workspaceFilesystemScanCompletedEvent = createEventDefinition(
 )
 
 export const workspaceFilesystemScanFailedEvent = createEventDefinition(
-  'workspaceFilesystemScanFailed',
+  'workspace-filesystem-scan-failed',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -183,7 +183,7 @@ export const workspaceFilesystemScanFailedEvent = createEventDefinition(
 )
 
 export const filesystemNodeDiscoveredEvent = createEventDefinition(
-  'filesystemNodeDiscovered',
+  'filesystem-node-discovered',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -197,7 +197,7 @@ export const filesystemNodeDiscoveredEvent = createEventDefinition(
 )
 
 export const filesystemNodeChangedEvent = createEventDefinition(
-  'filesystemNodeChanged',
+  'filesystem-node-changed',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -211,7 +211,7 @@ export const filesystemNodeChangedEvent = createEventDefinition(
 )
 
 export const filesystemNodeDeletedEvent = createEventDefinition(
-  'filesystemNodeDeleted',
+  'filesystem-node-deleted',
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
@@ -220,7 +220,7 @@ export const filesystemNodeDeletedEvent = createEventDefinition(
 )
 
 export const userMessageSubmittedEvent = createEventDefinition(
-  'userMessageSubmitted',
+  'user-message-submitted',
   z.object({
     messageId: z.string(),
     sessionId: z.string(),
@@ -234,7 +234,7 @@ export const userMessageSubmittedEvent = createEventDefinition(
 )
 
 export const sessionMessagePartUpdatedEvent = createEventDefinition(
-  'sessionMessagePartUpdated',
+  'session-message-part-updated',
   z.object({
     sessionId: z.string(),
     messageId: z.string(),
@@ -244,7 +244,7 @@ export const sessionMessagePartUpdatedEvent = createEventDefinition(
 )
 
 export const sessionMessagePartDeletedEvent = createEventDefinition(
-  'sessionMessagePartDeleted',
+  'session-message-part-deleted',
   z.object({
     sessionId: z.string(),
     messageId: z.string(),
@@ -253,7 +253,7 @@ export const sessionMessagePartDeletedEvent = createEventDefinition(
 )
 
 export const sessionMessageDeletedEvent = createEventDefinition(
-  'sessionMessageDeleted',
+  'session-message-deleted',
   z.object({
     sessionId: z.string(),
     messageId: z.string(),
@@ -268,7 +268,7 @@ export const sessionMessageDeletedEvent = createEventDefinition(
 )
 
 export const agentRunRequestedEvent = createEventDefinition(
-  'agentRunRequested',
+  'agent-run-requested',
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -294,7 +294,7 @@ export const agentRunRequestedEvent = createEventDefinition(
 )
 
 export const agentRunStartedEvent = createEventDefinition(
-  'agentRunStarted',
+  'agent-run-started',
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -303,7 +303,7 @@ export const agentRunStartedEvent = createEventDefinition(
 )
 
 export const agentRunStreamedEvent = createEventDefinition(
-  'agentRunStreamed',
+  'agent-run-streamed',
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -315,7 +315,7 @@ export const agentRunStreamedEvent = createEventDefinition(
 )
 
 export const agentRunCompletedEvent = createEventDefinition(
-  'agentRunCompleted',
+  'agent-run-completed',
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -324,7 +324,7 @@ export const agentRunCompletedEvent = createEventDefinition(
 )
 
 export const agentRunFailedEvent = createEventDefinition(
-  'agentRunFailed',
+  'agent-run-failed',
   z.object({
     runId: z.string(),
     workspaceId: z.string(),
@@ -334,7 +334,7 @@ export const agentRunFailedEvent = createEventDefinition(
 )
 
 export const toolCallStartedEvent = createEventDefinition(
-  'toolCallStarted',
+  'tool-call-started',
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -346,7 +346,7 @@ export const toolCallStartedEvent = createEventDefinition(
 )
 
 export const toolCallCompletedEvent = createEventDefinition(
-  'toolCallCompleted',
+  'tool-call-completed',
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -358,7 +358,7 @@ export const toolCallCompletedEvent = createEventDefinition(
 )
 
 export const toolCallFailedEvent = createEventDefinition(
-  'toolCallFailed',
+  'tool-call-failed',
   z.object({
     toolCallId: z.string(),
     runId: z.string(),
@@ -370,7 +370,7 @@ export const toolCallFailedEvent = createEventDefinition(
 )
 
 export const toolApprovalRequestedEvent = createEventDefinition(
-  'toolApprovalRequested',
+  'tool-approval-requested',
   z.object({
     requestId: z.string(),
     sessionId: z.string(),
@@ -386,7 +386,7 @@ export const toolApprovalRequestedEvent = createEventDefinition(
 )
 
 export const toolApprovalRepliedEvent = createEventDefinition(
-  'toolApprovalReplied',
+  'tool-approval-replied',
   z.object({
     requestId: z.string(),
     sessionId: z.string(),
@@ -402,7 +402,7 @@ export const toolApprovalRepliedEvent = createEventDefinition(
 )
 
 export const sessionRevertRequestedEvent = createEventDefinition(
-  'sessionRevertRequested',
+  'session-revert-requested',
   z.object({
     revertId: z.string(),
     sessionId: z.string(),
@@ -419,7 +419,7 @@ export const sessionRevertRequestedEvent = createEventDefinition(
 )
 
 export const todoListUpdatedEvent = createEventDefinition(
-  'todoListUpdated',
+  'todo-list-updated',
   z.object({
     sessionId: z.string(),
     messageId: z.string(),
@@ -435,7 +435,7 @@ export const todoListUpdatedEvent = createEventDefinition(
 )
 
 export const questionAskedEvent = createEventDefinition(
-  'questionAsked',
+  'question-asked',
   z.object({
     questionId: z.string(),
     sessionId: z.string(),
@@ -452,7 +452,7 @@ export const questionAskedEvent = createEventDefinition(
 )
 
 export const questionAnsweredEvent = createEventDefinition(
-  'questionAnswered',
+  'question-answered',
   z.object({
     questionId: z.string(),
     sessionId: z.string(),
@@ -467,7 +467,7 @@ export const questionAnsweredEvent = createEventDefinition(
 )
 
 export const ptySessionStartedEvent = createEventDefinition(
-  'ptySessionStarted',
+  'pty-session-started',
   z.object({
     ptySessionId: z.string(),
     sessionId: z.string(),
@@ -479,7 +479,7 @@ export const ptySessionStartedEvent = createEventDefinition(
 )
 
 export const ptySessionOutputEvent = createEventDefinition(
-  'ptySessionOutput',
+  'pty-session-output',
   z.object({
     ptySessionId: z.string(),
     sessionId: z.string(),
@@ -491,7 +491,7 @@ export const ptySessionOutputEvent = createEventDefinition(
 )
 
 export const ptySessionEndedEvent = createEventDefinition(
-  'ptySessionEnded',
+  'pty-session-ended',
   z.object({
     ptySessionId: z.string(),
     sessionId: z.string(),

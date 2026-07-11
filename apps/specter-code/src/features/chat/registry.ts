@@ -1,9 +1,9 @@
 import { sqliteEventLog } from '../../db/specter-sqlite'
 import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
-import chatMessagesQuery from './chat-messages-query/slice'
-import postMessage from './post-message/slice'
-import recordAgentReply from './record-agent-reply/slice'
-import simulatedAgentReplyReaction from './simulated-agent-reply-reaction/slice'
+import chatMessagesQuery from './chat-messages-query/impl'
+import postMessage from './post-message/impl'
+import recordAgentReply from './record-agent-reply/impl'
+import simulatedAgentReplyReaction from './simulated-agent-reply-reaction/impl'
 import { chatEventDefinitions } from './events'
 import {
   workspaceEventDefinitions,
@@ -16,6 +16,8 @@ export const chatRegistrations = [
   simulatedAgentReplyReaction,
   chatMessagesQuery,
 ] as const
+
+export { chatEventDefinitions }
 
 export const specterCodeReferenceRegistrations = [
   ...workspaceRegistrations,

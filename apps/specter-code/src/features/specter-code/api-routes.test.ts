@@ -398,7 +398,7 @@ function createRuntime(): SpecterCodeApiRuntime & { calls: string[] } {
         {
           id: 'event-2',
           order: 2,
-          type: 'agentRunCompleted',
+          type: 'agent-run-completed',
           payload: { runId: 'run-1' },
           recordedAt: '2026-06-24T12:00:02.000Z',
         },
@@ -2374,8 +2374,8 @@ describe('Specter Code OpenCode API route adapter', () => {
     )
     await expect(eventResponse.text()).resolves.toBe(
       'id: 2\n' +
-        'event: agentRunCompleted\n' +
-        'data: {"id":"event-2","order":2,"type":"agentRunCompleted","payload":{"runId":"run-1"},"recordedAt":"2026-06-24T12:00:02.000Z"}\n\n',
+        'event: agent-run-completed\n' +
+        'data: {"id":"event-2","order":2,"type":"agent-run-completed","payload":{"runId":"run-1"},"recordedAt":"2026-06-24T12:00:02.000Z"}\n\n',
     )
 
     expect(runtime.calls).toEqual([
@@ -2579,7 +2579,7 @@ describe('Specter Code OpenCode API route adapter', () => {
     )
     expect(eventStream.status).toBe(200)
     expect(eventStream.headers.get('content-type')).toContain('text/event-stream')
-    await expect(eventStream.text()).resolves.toContain('agentRunCompleted')
+    await expect(eventStream.text()).resolves.toContain('agent-run-completed')
 
     expect(runtime.calls.slice(-2)).toEqual(['providers', 'events:1'])
   })

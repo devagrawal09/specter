@@ -3,7 +3,7 @@ import { createSpecterApp } from '@specter-ts/core'
 import { runWithSpecterCodeReferenceDb } from '../../db/client.server'
 import { specterCodeReferenceSpecterAppConfig } from './registry'
 
-const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
+const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
 
 const defaultWorkspace = {
   workspaceId: 'workspace-main',
@@ -25,7 +25,9 @@ export async function postChatMessageOnServer(data: {
   authorName: string
   content: string
 }) {
-  await runWithSpecterCodeReferenceDb(() => app.postMessage(data))
+  await runWithSpecterCodeReferenceDb(() =>
+    app.postMessage({ ...data, messageId: crypto.randomUUID() }),
+  )
 }
 
 export async function listWorkspaceMessagesOnServer(data: { workspaceId: string }) {
@@ -35,7 +37,7 @@ export async function listWorkspaceMessagesOnServer(data: { workspaceId: string 
 export async function createWorkspaceOnServer(data: { name: string }) {
   return runWithSpecterCodeReferenceDb(async () => {
     await ensureDefaultWorkspace()
-    await app.createWorkspace(data)
+    await app.createWorkspace({ ...data, workspaceId: crypto.randomUUID() })
     return app.workspacesQuery({})
   })
 }

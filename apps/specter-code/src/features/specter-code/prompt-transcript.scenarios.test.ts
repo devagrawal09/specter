@@ -1,12 +1,14 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import recordSessionMessage from './record-session-message/slice'
-import deleteSessionMessage from './delete-session-message/slice'
-import deleteSessionMessagePart from './delete-session-message-part/slice'
-import sessionTranscript from './session-transcript/slice'
-import submitPrompt from './submit-prompt/slice'
-import updateSessionMessagePart from './update-session-message-part/slice'
+import { eventsForSliceImplementations } from '../../testing/scenario-events'
+import { specterCodeEventDefinitions } from './registry'
+import recordSessionMessage from './record-session-message/impl'
+import deleteSessionMessage from './delete-session-message/impl'
+import deleteSessionMessagePart from './delete-session-message-part/impl'
+import sessionTranscript from './session-transcript/impl'
+import submitPrompt from './submit-prompt/impl'
+import updateSessionMessagePart from './update-session-message-part/impl'
 
 const promptTranscriptRegistrations = [
   submitPrompt,
@@ -16,7 +18,12 @@ const promptTranscriptRegistrations = [
   deleteSessionMessage,
   sessionTranscript,
 ] as const
+const events = eventsForSliceImplementations(
+  promptTranscriptRegistrations,
+  specterCodeEventDefinitions,
+)
 
-testScenarios(promptTranscriptRegistrations, {
+testSliceImplementations(promptTranscriptRegistrations, {
+  events,
   runScenario: sqliteScenario,
 })

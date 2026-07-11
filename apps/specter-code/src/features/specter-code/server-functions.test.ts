@@ -363,8 +363,12 @@ test('specterCode server functions preserve database state across app reopen', a
     try {
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
-        const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
-        await app.createWorkspace({ name: 'Durable Lab' })
+        const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
+        await app.createWorkspace({
+          workspaceId: 'workspace-durable',
+          scanId: 'scan-durable',
+          name: 'Durable Lab',
+        })
         await app.workspaceList({})
       })
     } finally {

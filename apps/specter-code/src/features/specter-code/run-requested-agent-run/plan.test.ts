@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import {
   createRunRequestedAgentRunState,
   nextRunRequestedAgentRunCommand,
-} from './slice'
+} from './impl'
 
 describe('nextRunRequestedAgentRunCommand', () => {
   it('starts a requested run before tool work', () => {

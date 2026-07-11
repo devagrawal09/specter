@@ -118,10 +118,14 @@ describe('SQLite reaction queue scheduler', () => {
 
     try {
       await prepareSpecterSqlite(db)
-      const app = createSpecterApp(specterCodeReferenceSpecterAppConfig)
+      const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
 
       await runWithSqliteDb(db, async () => {
-        await app.createWorkspace({ name: 'Durable queue workspace' })
+        await app.createWorkspace({
+          workspaceId: 'workspace-queue-1',
+          scanId: 'scan-queue-1',
+          name: 'Durable queue workspace',
+        })
       })
 
       const rows = await db.execute({

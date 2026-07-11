@@ -34,7 +34,7 @@ export function buildSpecterCodeSessionExport(input: {
   exportedAt?: string
 }): SpecterCodeSessionExport {
   const sessionEvent = input.events.find(
-    (event) => event.type === 'sessionCreated' && event.payload.sessionId === input.sessionId,
+    (event) => event.type === 'session-created' && event.payload.sessionId === input.sessionId,
   )
   if (!sessionEvent) throw new Error(`Cannot export unknown session: ${input.sessionId}`)
 
@@ -67,7 +67,7 @@ export function normalizeSpecterCodeSessionExport(input: unknown): SpecterCodeSe
   })
 
   const hasSessionCreated = events.some(
-    (event) => event.type === 'sessionCreated' && event.payload.sessionId === session.sessionId,
+    (event) => event.type === 'session-created' && event.payload.sessionId === session.sessionId,
   )
   if (!hasSessionCreated) throw new Error('Session export must include its sessionCreated event')
 
@@ -157,7 +157,7 @@ function isSessionRelatedEvent(
   ptySessionIds: ReadonlySet<string>,
 ) {
   const payload = event.payload
-  if (event.type === 'workspaceCreated' && payload.workspaceId === session.workspaceId) return true
+  if (event.type === 'workspace-created' && payload.workspaceId === session.workspaceId) return true
   if (payload.sessionId === session.sessionId) return true
   if (payload.messageId && messageIds.has(String(payload.messageId))) return true
   if (payload.parentPostId && messageIds.has(String(payload.parentPostId))) return true

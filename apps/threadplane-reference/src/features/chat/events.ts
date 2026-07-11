@@ -1,19 +1,19 @@
-import { createEventDefinition } from '@specter-ts/core'
-import { z } from 'zod'
+import { createEventDefinition } from "@specter-ts/core";
+import { z } from "zod";
 
 export const messagePostedEvent = createEventDefinition(
-  'messagePosted',
+  "message-posted",
   z.object({
     messageId: z.string(),
     workspaceId: z.string(),
     author: z.object({
-      type: z.enum(['user', 'agent']),
+      type: z.enum(["user", "agent"]),
       displayName: z.string(),
       agentId: z.string().optional(),
     }),
     content: z.string(),
     parentMessageId: z.string().optional(),
   }),
-)
+);
 
-export const chatEventDefinitions = [messagePostedEvent] as const
+export const chatEventDefinitions = [messagePostedEvent] as const;
