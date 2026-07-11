@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { createQuerySlice } from '@specter-ts/core'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { eventSortOrder } from '../event-sort-order'
 import {
   assistantReplyGeneratedEvent,
   twilioInboundMessageRecordedEvent,
@@ -37,7 +38,7 @@ const conversationMessagesQuery = createQuerySlice(
       const payload = await twilioInboundMessageRecordedEvent.decode(
         event.payload,
       )
-      const sortOrder = (event as unknown as { order: number }).order
+      const sortOrder = eventSortOrder(event)
 
       await db
         .insert(narayanConversationMessages)
@@ -57,7 +58,7 @@ const conversationMessagesQuery = createQuerySlice(
     },
     [assistantReplyGeneratedEvent.type]: async (event, db) => {
       const payload = await assistantReplyGeneratedEvent.decode(event.payload)
-      const sortOrder = (event as unknown as { order: number }).order
+      const sortOrder = eventSortOrder(event)
 
       await db
         .insert(narayanConversationMessages)
@@ -96,6 +97,57 @@ const conversationMessagesQuery = createQuerySlice(
         .where(eq(narayanConversationMessages.id, payload.outboundMessageId))
         .run()
     },
+  })
+  .scenarios({
+    description: 'Lists inbound and outbound messages in order.',
+    given: [
+      twilioInboundMessageRecordedEvent.create({
+        inboundMessageId: 'inbound-message-scenario-1',
+        twilioMessageSid: 'SM-message-scenario-1',
+        from: 'whatsapp:+155****0001',
+        to: 'whatsapp:+141****8886',
+        body: 'Can I order sweets?',
+        receivedAt: '2026-06-29T10:00:00.000Z',
+      }),
+      assistantReplyGeneratedEvent.create({
+        inboundMessageId: 'inbound-message-scenario-1',
+        outboundMessageId: 'outbound-message-scenario-1',
+        to: 'whatsapp:+155****0001',
+        body: 'Yes, what quantity?',
+        generatedAt: '2026-06-29T10:00:05.000Z',
+      }),
+      twilioOutboundMessageSentEvent.create({
+        outboundMessageId: 'outbound-message-scenario-1',
+        twilioMessageSid: 'SM-outbound-message-scenario-1',
+        status: 'delivered',
+        sentAt: '2026-06-29T10:00:06.000Z',
+      }),
+    ],
+    when: { phoneNumber: 'whatsapp:+155****0001' },
+    expect: [
+      {
+        id: 'inbound-message-scenario-1',
+        phoneNumber: 'whatsapp:+155****0001',
+        direction: 'inbound',
+        body: 'Can I order sweets?',
+        status: 'received',
+        twilioMessageSid: 'SM-message-scenario-1',
+        relatedMessageId: null,
+        createdAt: '2026-06-29T10:00:00.000Z',
+        sortOrder: 1,
+      },
+      {
+        id: 'outbound-message-scenario-1',
+        phoneNumber: 'whatsapp:+155****0001',
+        direction: 'outbound',
+        body: 'Yes, what quantity?',
+        status: 'delivered',
+        twilioMessageSid: 'SM-outbound-message-scenario-1',
+        relatedMessageId: 'inbound-message-scenario-1',
+        createdAt: '2026-06-29T10:00:05.000Z',
+        sortOrder: 2,
+      },
+    ],
   })
   .handle(async (query, db) =>
     db

@@ -31,6 +31,58 @@ const recordIncomingTwilioMessage = createCommandSlice(
     }),
   )
   .store(sqliteSliceStore)
+  .scenarios(
+    {
+      description: 'Records a new inbound Twilio message.',
+      given: [],
+      when: {
+        twilioMessageSid: 'SM-inbound-scenario-1',
+        from: 'whatsapp:+155****0001',
+        to: 'whatsapp:+141****8886',
+        body: 'Namaste',
+        receivedAt: '2026-06-29T10:00:00.000Z',
+      },
+      expect: [
+        twilioInboundMessageRecordedEvent.create({
+          inboundMessageId: 'generated',
+          twilioMessageSid: 'SM-inbound-scenario-1',
+          from: 'whatsapp:+155****0001',
+          to: 'whatsapp:+141****8886',
+          body: 'Namaste',
+          receivedAt: '2026-06-29T10:00:00.000Z',
+        }),
+      ],
+    },
+    {
+      description: 'Ignores duplicate Twilio message SIDs.',
+      given: [
+        twilioInboundMessageRecordedEvent.create({
+          inboundMessageId: 'inbound-duplicate-scenario-1',
+          twilioMessageSid: 'SM-duplicate-scenario-1',
+          from: 'whatsapp:+155****0001',
+          to: 'whatsapp:+141****8886',
+          body: 'Namaste',
+          receivedAt: '2026-06-29T10:00:00.000Z',
+        }),
+      ],
+      when: {
+        twilioMessageSid: 'SM-duplicate-scenario-1',
+        from: 'whatsapp:+155****0001',
+        to: 'whatsapp:+141****8886',
+        body: 'Namaste again',
+        receivedAt: '2026-06-29T10:01:00.000Z',
+      },
+      expect: [
+        twilioInboundDuplicateIgnoredEvent.create({
+          twilioMessageSid: 'SM-duplicate-scenario-1',
+          from: 'whatsapp:+155****0001',
+          to: 'whatsapp:+141****8886',
+          body: 'Namaste again',
+          receivedAt: '2026-06-29T10:01:00.000Z',
+        }),
+      ],
+    },
+  )
   .apply({
     [twilioInboundMessageRecordedEvent.type]: async (event, db) => {
       const payload = await twilioInboundMessageRecordedEvent.decode(

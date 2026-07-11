@@ -33,6 +33,25 @@ const sendTwilioOutboundReaction = createReactionSlice(
   .payload<SendTwilioOutboundEffect>()
   .plugin(twilioOutboundPlugin)
   .store(sqliteSliceStore)
+  .scenarios({
+    description: 'Requests the oldest pending Twilio outbound send.',
+    given: [
+      twilioOutboundMessageRequestedEvent.create({
+        outboundMessageId: 'outbound-send-scenario-1',
+        inboundMessageId: 'inbound-send-scenario-1',
+        to: 'whatsapp:+155****0001',
+        body: 'Yes, we can help.',
+        requestedAt: '2026-06-29T10:01:00.000Z',
+      }),
+    ],
+    expect: [
+      {
+        outboundMessageId: 'outbound-send-scenario-1',
+        to: 'whatsapp:+155****0001',
+        body: 'Yes, we can help.',
+      },
+    ],
+  })
   .apply({
     [twilioOutboundMessageRequestedEvent.type]: async (event, db) => {
       const payload = await twilioOutboundMessageRequestedEvent.decode(

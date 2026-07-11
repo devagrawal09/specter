@@ -45,13 +45,13 @@ async function validateTwilioSignature(request: Request, form: FormData) {
   const signature = request.headers.get('x-twilio-signature') ?? ''
   if (!authToken || !signature) return false
 
-  const { validateRequest } = await import('twilio')
+  const twilio = (await import('twilio')).default
   const params: Record<string, string> = {}
   for (const [key, item] of form.entries()) {
     if (typeof item === 'string') params[key] = item
   }
 
-  return validateRequest(authToken, signature, publicValidationUrl(request), params)
+  return twilio.validateRequest(authToken, signature, publicValidationUrl(request), params)
 }
 
 function publicValidationUrl(request: Request) {

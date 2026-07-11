@@ -5,6 +5,7 @@ import { createQuerySlice } from '@specter-ts/core'
 
 import type { ScopedSqliteDb } from '../../../db/specter-sqlite'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { eventSortOrder } from '../event-sort-order'
 import {
   assistantReplyGeneratedEvent,
   twilioInboundMessageRecordedEvent,
@@ -35,7 +36,7 @@ const conversationsQuery = createQuerySlice(
       const payload = await twilioInboundMessageRecordedEvent.decode(
         event.payload,
       )
-      const sortOrder = (event as unknown as { order: number }).order
+      const sortOrder = eventSortOrder(event)
       await upsertConversation(db, {
         phoneNumber: payload.from,
         body: payload.body,
@@ -47,7 +48,7 @@ const conversationsQuery = createQuerySlice(
     },
     [assistantReplyGeneratedEvent.type]: async (event, db) => {
       const payload = await assistantReplyGeneratedEvent.decode(event.payload)
-      const sortOrder = (event as unknown as { order: number }).order
+      const sortOrder = eventSortOrder(event)
       await upsertConversation(db, {
         phoneNumber: payload.to,
         body: payload.body,
@@ -91,6 +92,38 @@ const conversationsQuery = createQuerySlice(
         .where(eq(narayanConversations.phoneNumber, conversation.phoneNumber))
         .run()
     },
+  })
+  .scenarios({
+    description: 'Lists conversations with the latest message first.',
+    given: [
+      twilioInboundMessageRecordedEvent.create({
+        inboundMessageId: 'inbound-conversation-scenario-1',
+        twilioMessageSid: 'SM-conversation-scenario-1',
+        from: 'whatsapp:+155****0001',
+        to: 'whatsapp:+141****8886',
+        body: 'Can I order sweets?',
+        receivedAt: '2026-06-29T10:00:00.000Z',
+      }),
+      assistantReplyGeneratedEvent.create({
+        inboundMessageId: 'inbound-conversation-scenario-1',
+        outboundMessageId: 'outbound-conversation-scenario-1',
+        to: 'whatsapp:+155****0001',
+        body: 'Yes, what quantity?',
+        generatedAt: '2026-06-29T10:00:05.000Z',
+      }),
+    ],
+    when: {},
+    expect: [
+      {
+        phoneNumber: 'whatsapp:+155****0001',
+        lastMessageBody: 'Yes, what quantity?',
+        lastMessageDirection: 'outbound',
+        lastMessageStatus: 'requested',
+        lastMessageAt: '2026-06-29T10:00:05.000Z',
+        messageCount: 2,
+        sortOrder: 2,
+      },
+    ],
   })
   .handle(async (_query, db) =>
     db

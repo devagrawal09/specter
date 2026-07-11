@@ -1,4 +1,5 @@
 import type { ReactionPlugin } from '@specter-ts/core'
+import type { CoreMessageV4 } from '@mastra/core/agent/message-list'
 
 import type { GenerateAssistantReplyEffect } from './slice'
 
@@ -43,12 +44,25 @@ async function generateReply(effect: GenerateAssistantReplyEffect) {
         'You are Narayan AI, a concise WhatsApp commerce assistant for Kashi local shops. Help customers with product availability, prices, delivery timing, order details, and polite next steps. Keep replies under 700 characters and do not invent exact prices or inventory.',
       model: openrouter(modelName),
     })
-    const response = await agent.generate([
+    const recentMessages = effect.recentMessages.length
+      ? effect.recentMessages
+      : [{ role: 'user' as const, body: effect.body }]
+    const messages: CoreMessageV4[] = [
       {
         role: 'user',
-        content: `Customer WhatsApp message from ${effect.from}: ${effect.body}`,
+        content: `Customer WhatsApp conversation from ${effect.from}. You are Narayan AI, a concise WhatsApp commerce assistant for Kashi local shops. Use the following messages as context before replying. Help with product availability, prices, delivery timing, order details, and polite next steps. Keep replies under 700 characters and do not invent exact prices or inventory.`,
       },
-    ])
+      ...recentMessages.map((item): CoreMessageV4 =>
+        item.role === 'assistant'
+          ? { role: 'assistant', content: item.body }
+          : { role: 'user', content: item.body },
+      ),
+      {
+        role: 'user',
+        content: 'Reply to the latest customer message.',
+      },
+    ]
+    const response = await agent.generate(messages)
 
     return String(response.text || '').trim() || fallbackReply(effect.body)
   } catch (cause) {
