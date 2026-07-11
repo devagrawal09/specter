@@ -16,7 +16,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 const productionDb = drizzle(createClient({ url: `file:${sqlitePath}` }), {
   schema,
 })
-const specterApp = createSpecterApp(todoSpecterAppConfig)
+const specterApp = await createSpecterApp(todoSpecterAppConfig)
 
 const app = new Hono()
 

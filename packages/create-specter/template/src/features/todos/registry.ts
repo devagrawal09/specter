@@ -1,36 +1,34 @@
-import addTodoSql from './add-todo/slice'
-import changeTodoCompletionSql from './change-todo-completion/slice'
-import createTodoCheerSql from './create-todo-cheer/slice'
-import removeTodoSql from './remove-todo/slice'
-import todoSqlCheers from './todo-cheers/slice'
-import todoCompletionCheerSql from './todo-completion-cheer-reaction/slice'
-import todosSqlQuery from './todos-query/slice'
+import addTodo from './add-todo/impl'
+import changeTodoCompletion from './change-todo-completion/impl'
+import createTodoCheer from './create-todo-cheer/impl'
+import removeTodo from './remove-todo/impl'
+import todoCheers from './todo-cheers/impl'
+import todoCompletionCheer from './todo-completion-cheer-reaction/impl'
+import todosQuery from './todos-query/impl'
 import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { sqliteEventLog } from '../../db/specter-sqlite'
 import { reactionScheduler } from '../../reaction-scheduler'
 import { todoEventDefinitions } from './events'
 
-export const todoSqlRegistrations = [
-  addTodoSql,
-  changeTodoCompletionSql,
-  removeTodoSql,
-  createTodoCheerSql,
-  todoCompletionCheerSql,
-  todosSqlQuery,
-  todoSqlCheers,
+export const todoRegistrations = [
+  addTodo,
+  changeTodoCompletion,
+  removeTodo,
+  createTodoCheer,
+  todoCompletionCheer,
+  todosQuery,
+  todoCheers,
 ] as const
 
 export const todoSpecterAppConfig = {
   events: todoEventDefinitions,
   eventLog: sqliteEventLog,
   schedule: reactionScheduler,
-  slices: todoSqlRegistrations,
+  slices: todoRegistrations,
 } as const
 
-export type TodosSqlQueryRef = QueryRef<typeof todosSqlQuery>
-export type TodoSqlCheersRef = QueryRef<typeof todoSqlCheers>
-export type AddTodoSqlRef = CommandRef<typeof addTodoSql>
-export type RemoveTodoSqlRef = CommandRef<typeof removeTodoSql>
-export type ChangeTodoCompletionSqlRef = CommandRef<
-  typeof changeTodoCompletionSql
->
+export type TodosQueryRef = QueryRef<typeof todosQuery>
+export type TodoCheersRef = QueryRef<typeof todoCheers>
+export type AddTodoRef = CommandRef<typeof addTodo>
+export type RemoveTodoRef = CommandRef<typeof removeTodo>
+export type ChangeTodoCompletionRef = CommandRef<typeof changeTodoCompletion>
