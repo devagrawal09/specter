@@ -1,40 +1,22 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
-
-import type { SliceRegistration } from '../definition'
+import type {
+  CommandInputOf,
+  QueryInputOf,
+  QueryOutputOf,
+  SliceRegistration,
+} from '../definition'
 import type { SpecterAppConfig } from '../runtime'
 
 const specterClientBrand: unique symbol = Symbol('SpecterClient')
 const specterClientBrandValue: true = true
 
-type CommandInput<TSlice> = TSlice extends {
-  kind: 'command'
-  schema: infer TSchema extends StandardSchemaV1
-}
-  ? StandardSchemaV1.InferOutput<TSchema>
-  : never
-
-type QueryInput<TSlice> = TSlice extends {
-  kind: 'query'
-  schema: infer TSchema extends StandardSchemaV1
-}
-  ? StandardSchemaV1.InferOutput<TSchema>
-  : never
-
-type QueryOutput<TSlice> = TSlice extends {
-  kind: 'query'
-  handle: (...args: readonly never[]) => Promise<infer TResult>
-}
-  ? TResult
-  : never
-
 type ClientMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'command' }> as TSlice['name']]: (
-    input: CommandInput<TSlice>,
+    input: CommandInputOf<TSlice>,
   ) => Promise<void>
 } & {
   [TSlice in Extract<TSlices[number], { kind: 'query' }> as TSlice['name']]: (
-    input: QueryInput<TSlice>,
-  ) => Promise<QueryOutput<TSlice>>
+    input: QueryInputOf<TSlice>,
+  ) => Promise<QueryOutputOf<TSlice>>
 }
 
 export type SpecterClient<TConfig extends SpecterAppConfig> = ClientMethods<

@@ -3,17 +3,19 @@ import { describe, expect, test } from 'vitest'
 
 import type {
   CommandEnvelope,
-  CommandSlice,
   EventLogAdapter,
   PersistedEvent,
-  QuerySlice,
   ReactionScheduler,
-  ReactionSlice,
   SliceStoreAdapter,
 } from '..'
+import {
+  createCommandSlice,
+  createEventDefinition,
+  createQuerySlice,
+  createReactionSlice,
+  event,
+} from '..'
 import { createSpecterApp } from './app'
-
-type MutableState = { count: number }
 
 const anySchema = {
   '~standard': {
@@ -121,55 +123,60 @@ function createMemoryStore<TState extends object>(
 
 function addCommand(
   name: string,
-  eventType: string,
-): CommandSlice<string, StandardSchemaV1, Record<string, never>, Record<string, never>> {
-  return {
-    kind: 'command',
-    name,
-    description: name,
-    schema: anySchema,
-    store: createMemoryStore({}),
-    apply: {},
-    handle: async (input) => [
-      {
-        type: eventType,
-        payload: typeof input === 'number' ? input : 1,
-      },
-    ],
-  }
+  definition: ReturnType<typeof eventDefinition>,
+) {
+  const specification = createCommandSlice(name)
+    .description(name)
+    .scenarios({
+      description: `Emits ${definition.type}.`,
+      given: [],
+      when: 1,
+      expect: [event(definition.type, 1)],
+    })
+
+  return specification
+    .inputSchema<unknown>()
+    .store(createMemoryStore({}))
+    .handle(async (input) => [
+      definition.create(typeof input === 'number' ? input : 1),
+    ])
 }
 
 function countQuery(
   name: string,
   handleCalls: { count: number },
-  applyEventType = 'item.added',
-): QuerySlice<string, StandardSchemaV1, number, MutableState, MutableState> {
-  return {
-    kind: 'query',
-    name,
-    description: 'count items',
-    schema: anySchema,
-    store: createMemoryStore({ count: 0 }),
-    apply: {
-      [applyEventType]: async (event, state) => {
-        state.count += Number(event.payload)
-      },
-    },
-    handle: async (_input, state) => {
+  definition = eventDefinition('item-added'),
+) {
+  const specification = createQuerySlice(name)
+    .description('count items')
+    .scenarios({
+      description: `Counts ${definition.type}.`,
+      given: [event(definition.type, 1)],
+      when: {},
+      expect: 1,
+    })
+
+  return specification
+    .inputSchema<unknown>()
+    .outputSchema<number>()
+    .store(createMemoryStore({ count: 0 }))
+    .apply(definition, async (event, state) => {
+      state.count += Number(event.payload)
+    })
+    .handle(async (_input, state) => {
       handleCalls.count += 1
       return state.count
-    },
-  }
+    })
 }
 
 function eventDefinition(type: string) {
-  return {
-    type,
-    decode: async (payload: unknown) => payload,
-  }
+  return createEventDefinition(type, anySchema)
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms = 25): Promise<T | 'timeout'> {
+async function withTimeout<T>(
+  promise: Promise<T>,
+  ms = 25,
+): Promise<T | 'timeout'> {
   let timeout: ReturnType<typeof setTimeout> | undefined
   try {
     return await Promise.race([
@@ -186,11 +193,15 @@ async function withTimeout<T>(promise: Promise<T>, ms = 25): Promise<T | 'timeou
 describe('createSpecterApp query subscriptions', () => {
   test('exposes subscribe.<queryName>() and emits the initial query result by default', async () => {
     const queryCalls = { count: 0 }
-    const app = createSpecterApp({
-      events: [eventDefinition('item.added')],
+    const itemAdded = eventDefinition('item-added')
+    const app = await createSpecterApp({
+      events: [itemAdded],
       eventLog: createMemoryEventLog(),
       schedule: immediateReactionScheduler,
-      slices: [addCommand('addItem', 'item.added'), countQuery('countItems', queryCalls)],
+      slices: [
+        addCommand('addItem', itemAdded),
+        countQuery('countItems', queryCalls, itemAdded),
+      ],
     })
 
     const iterator = app.subscribe.countItems({})[Symbol.asyncIterator]()
@@ -204,48 +215,48 @@ describe('createSpecterApp query subscriptions', () => {
   test('invalidates matching query subscriptions after commands and reactions settle', async () => {
     const derivedQueryCalls = { count: 0 }
     const unrelatedQueryCalls = { count: 0 }
-    const derivedQuery = countQuery('countDerived', derivedQueryCalls, 'derived.added')
+    const itemAdded = eventDefinition('item-added')
+    const derivedAdded = eventDefinition('derived-added')
+    const unrelatedAdded = eventDefinition('unrelated-added')
+    const derivedQuery = countQuery(
+      'countDerived',
+      derivedQueryCalls,
+      derivedAdded,
+    )
     const unrelatedQuery = countQuery(
       'countUnrelated',
       unrelatedQueryCalls,
-      'unrelated.added',
+      unrelatedAdded,
     )
 
     const reactionState = createMemoryStore({ shouldEmitDerived: false })
-    const deriveReaction: ReactionSlice<
-      string,
-      CommandEnvelope,
-      { shouldEmitDerived: boolean },
-      { shouldEmitDerived: boolean }
-    > = {
-      kind: 'reaction',
-      name: 'derive',
-      description: 'derive item',
-      store: reactionState,
-      apply: {
-        'item.added': async (_event, state) => {
-          state.shouldEmitDerived = true
-        },
-      },
-      plugin: async (dispatch) => async (command) => dispatch(command as CommandEnvelope),
-      handle: async (state) => {
+    const deriveSpec = createReactionSlice('derive')
+      .description('derive item')
+      .scenarios({
+        description: 'Requests a derived item after an item is added.',
+        given: [event('item-added', 1)],
+        expect: [{ type: 'addDerived', payload: 10 }],
+      })
+    const deriveReaction = deriveSpec
+      .outputSchema<CommandEnvelope>()
+      .plugin(async (dispatch) => async (command) => dispatch(command))
+      .store(reactionState)
+      .apply(itemAdded, async (_event, state) => {
+        state.shouldEmitDerived = true
+      })
+      .handle(async (state) => {
         if (!state.shouldEmitDerived) return undefined
         state.shouldEmitDerived = false
         return { type: 'addDerived', payload: 10 }
-      },
-    }
+      })
 
-    const app = createSpecterApp({
-      events: [
-        eventDefinition('item.added'),
-        eventDefinition('derived.added'),
-        eventDefinition('unrelated.added'),
-      ],
+    const app = await createSpecterApp({
+      events: [itemAdded, derivedAdded, unrelatedAdded],
       eventLog: createMemoryEventLog(),
       schedule: immediateReactionScheduler,
       slices: [
-        addCommand('addItem', 'item.added'),
-        addCommand('addDerived', 'derived.added'),
+        addCommand('addItem', itemAdded),
+        addCommand('addDerived', derivedAdded),
         derivedQuery,
         unrelatedQuery,
         deriveReaction,
@@ -270,11 +281,15 @@ describe('createSpecterApp query subscriptions', () => {
 
   test('keeps only the latest buffered value when a subscriber is not waiting', async () => {
     const queryCalls = { count: 0 }
-    const app = createSpecterApp({
-      events: [eventDefinition('item.added')],
+    const itemAdded = eventDefinition('item-added')
+    const app = await createSpecterApp({
+      events: [itemAdded],
       eventLog: createMemoryEventLog(),
       schedule: immediateReactionScheduler,
-      slices: [addCommand('addItem', 'item.added'), countQuery('countItems', queryCalls)],
+      slices: [
+        addCommand('addItem', itemAdded),
+        countQuery('countItems', queryCalls, itemAdded),
+      ],
     })
 
     const iterator = app.subscribe.countItems({})[Symbol.asyncIterator]()
@@ -292,14 +307,23 @@ describe('createSpecterApp query subscriptions', () => {
   test('cleans up subscriptions on return and when an AbortSignal aborts', async () => {
     const returnedQueryCalls = { count: 0 }
     const abortedQueryCalls = { count: 0 }
-    const returnedQuery = countQuery('returnedCount', returnedQueryCalls)
-    const abortedQuery = countQuery('abortedCount', abortedQueryCalls)
+    const itemAdded = eventDefinition('item-added')
+    const returnedQuery = countQuery(
+      'returnedCount',
+      returnedQueryCalls,
+      itemAdded,
+    )
+    const abortedQuery = countQuery(
+      'abortedCount',
+      abortedQueryCalls,
+      itemAdded,
+    )
 
-    const app = createSpecterApp({
-      events: [eventDefinition('item.added')],
+    const app = await createSpecterApp({
+      events: [itemAdded],
       eventLog: createMemoryEventLog(),
       schedule: immediateReactionScheduler,
-      slices: [addCommand('addItem', 'item.added'), returnedQuery, abortedQuery],
+      slices: [addCommand('addItem', itemAdded), returnedQuery, abortedQuery],
     })
 
     const returned = app.subscribe.returnedCount({})[Symbol.asyncIterator]()
@@ -307,16 +331,22 @@ describe('createSpecterApp query subscriptions', () => {
     await returned.return?.()
 
     const abortController = new AbortController()
-    const aborted = app.subscribe.abortedCount({}, { signal: abortController.signal })[
-      Symbol.asyncIterator
-    ]()
+    const aborted = app.subscribe
+      .abortedCount({}, { signal: abortController.signal })
+      [Symbol.asyncIterator]()
     await aborted.next()
     abortController.abort()
 
     await app.addItem(1)
 
-    await expect(returned.next()).resolves.toEqual({ done: true, value: undefined })
-    await expect(aborted.next()).resolves.toEqual({ done: true, value: undefined })
+    await expect(returned.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
+    await expect(aborted.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
     expect(returnedQueryCalls.count).toBe(1)
     expect(abortedQueryCalls.count).toBe(1)
   })

@@ -1,11 +1,20 @@
-import type { StandardSchemaV1 } from '@standard-schema/spec'
-
 import type {
   EventLogAdapter,
   ReactionScheduler,
   SliceStore,
 } from '../adapters'
-import { decodeSchema, type EventDraft } from '../definition'
+import {
+  assertConforms,
+  commandScenarioEventTypes,
+  decodeOptionalSchema,
+  type ApplyEventDefinition,
+  type ApplyRegistration,
+  type CommandInputOf,
+  type EventDraft,
+  type QueryInputOf,
+  type QueryOutputOf,
+  valuesEqual,
+} from '../definition'
 import type {
   CommandEnvelope,
   CommandSlice,
@@ -17,57 +26,22 @@ import type {
 import { ReactionRunFailure, type ReactionRunFailureDetail } from './errors'
 
 export type SpecterAppConfig = {
-  readonly events: readonly {
-    readonly type: string
-    readonly decode: (payload: unknown) => Promise<unknown>
-  }[]
+  readonly events: readonly ApplyEventDefinition[]
   readonly eventLog: EventLogAdapter
   readonly schedule: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
 }
 
-type CommandInput<TSlice> =
-  TSlice extends CommandSlice<
-    string,
-    infer TSchema,
-    infer _TWrite,
-    infer _TRead
-  >
-    ? StandardSchemaV1.InferOutput<TSchema>
-    : never
-
-type QueryInput<TSlice> =
-  TSlice extends QuerySlice<
-    string,
-    infer TSchema,
-    infer _TResult,
-    infer _TWrite,
-    infer _TRead
-  >
-    ? StandardSchemaV1.InferOutput<TSchema>
-    : never
-
-type QueryOutput<TSlice> =
-  TSlice extends QuerySlice<
-    string,
-    infer _TSchema,
-    infer TResult,
-    infer _TWrite,
-    infer _TRead
-  >
-    ? TResult
-    : never
-
 type CommandMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'command' }> as TSlice['name']]: (
-    input: CommandInput<TSlice>,
+    input: CommandInputOf<TSlice>,
   ) => Promise<void>
 }
 
 type QueryMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'query' }> as TSlice['name']]: (
-    input: QueryInput<TSlice>,
-  ) => Promise<QueryOutput<TSlice>>
+    input: QueryInputOf<TSlice>,
+  ) => Promise<QueryOutputOf<TSlice>>
 }
 
 export type QuerySubscriptionOptions = {
@@ -76,9 +50,9 @@ export type QuerySubscriptionOptions = {
 
 type QuerySubscribeMethods<TSlices extends readonly SliceRegistration[]> = {
   [TSlice in Extract<TSlices[number], { kind: 'query' }> as TSlice['name']]: (
-    input: QueryInput<TSlice>,
+    input: QueryInputOf<TSlice>,
     options?: QuerySubscriptionOptions,
-  ) => AsyncIterable<QueryOutput<TSlice>>
+  ) => AsyncIterable<QueryOutputOf<TSlice>>
 }
 
 export type SpecterApp<TConfig extends SpecterAppConfig> = CommandMethods<
@@ -113,20 +87,18 @@ type QuerySubscriptionState = {
 
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   config: TConfig,
-): SpecterApp<TConfig> {
-  const eventDefinitions: Record<
-    string,
-    {
-      readonly type: string
-      readonly decode: (payload: unknown) => Promise<unknown>
-    }
-  > = {}
+): Promise<SpecterApp<TConfig>> {
+  return createValidatedSpecterApp(config)
+}
+
+async function createValidatedSpecterApp<
+  const TConfig extends SpecterAppConfig,
+>(config: TConfig): Promise<SpecterApp<TConfig>> {
+  await assertConforms(config)
+
+  const eventDefinitions: Record<string, ApplyEventDefinition> = {}
 
   for (const eventDefinition of config.events) {
-    if (eventDefinitions[eventDefinition.type]) {
-      throw new Error(`Duplicate event type: ${eventDefinition.type}`)
-    }
-
     eventDefinitions[eventDefinition.type] = eventDefinition
   }
 
@@ -135,15 +107,8 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     queries: Record<string, QuerySlice>
     reactions: Record<string, ReactionSlice<string, unknown>>
   } = { commands: {}, queries: {}, reactions: {} }
-  const sliceNames = new Set<string>()
 
   for (const registration of config.slices) {
-    if (sliceNames.has(registration.name)) {
-      throw new Error(`Duplicate slice name: ${registration.name}`)
-    }
-
-    sliceNames.add(registration.name)
-
     switch (registration.kind) {
       case 'command':
         slicesByKind.commands[registration.name] = registration
@@ -157,16 +122,22 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     }
   }
 
-  if (Object.keys(slicesByKind.commands).length === 0) {
-    throw new Error('At least one command slice must be registered')
+  const applyBySlice = new Map<
+    SliceRegistration,
+    ReadonlyMap<string, ApplyRegistration>
+  >()
+  for (const registration of config.slices) {
+    applyBySlice.set(
+      registration,
+      new Map(
+        registration.apply.map((apply) => [apply.event.type, apply] as const),
+      ),
+    )
   }
 
-  for (const registration of config.slices) {
-    for (const eventType of Object.keys(registration.apply ?? {})) {
-      if (!eventDefinitions[eventType]) {
-        throw new Error(`Unknown event type: ${eventType}`)
-      }
-    }
+  const allowedCommandEvents = new Map<CommandSlice, ReadonlySet<string>>()
+  for (const command of Object.values(slicesByKind.commands)) {
+    allowedCommandEvents.set(command, commandScenarioEventTypes(command))
   }
 
   const reactionExecs = new Map<string, ReactionExec>()
@@ -221,6 +192,11 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     if (!eventDefinition) throw new Error(`Unknown event type: ${event.type}`)
 
     const payload = await eventDefinition.decode(event.payload)
+    if (!valuesEqual(payload, event.payload)) {
+      throw new Error(
+        `Event schema transformed payload for "${event.type}". Event payload validation must preserve data one-to-one.`,
+      )
+    }
 
     return {
       ...event,
@@ -233,7 +209,8 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     store: SliceStore,
     eventLog: EventLogAdapter = config.eventLog,
   ) {
-    const eventTypes = Object.keys(slice.apply ?? {})
+    const handlers = applyBySlice.get(slice)
+    const eventTypes = [...(handlers?.keys() ?? [])]
 
     if (!eventTypes.length) return { store, advanced: false } as const
 
@@ -246,6 +223,11 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
           throw new Error(`Unknown event type: ${event.type}`)
 
         const payload = await eventDefinition.decode(event.payload)
+        if (!valuesEqual(payload, event.payload)) {
+          throw new Error(
+            `Event schema transformed persisted payload for "${event.type}". Event payload validation must preserve data one-to-one.`,
+          )
+        }
 
         return { ...event, payload }
       }),
@@ -256,8 +238,8 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
     }
 
     for (const event of unappliedEvents) {
-      const apply = slice.apply[event.type]
-      if (apply) await apply(event, store.write)
+      const apply = handlers?.get(event.type)
+      if (apply) await apply.handle(event, store.write)
     }
 
     const lastEvent = unappliedEvents[unappliedEvents.length - 1]
@@ -269,13 +251,25 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   function runCommand(commandSlice: CommandSlice, input: unknown) {
     return commandSlice.store.transaction(commandSlice.name, (store) =>
       config.eventLog.transaction(async (eventLog) => {
-        const parsedCommand = await decodeSchema(commandSlice.schema, input)
+        const parsedCommand = await decodeOptionalSchema(
+          commandSlice.inputSchema,
+          input,
+        )
 
         await catchUpSlice(commandSlice, store, eventLog)
 
         const events = await commandSlice.handle(parsedCommand, store.read)
         if (events.length === 0) {
           throw new Error(`Command emitted no events: ${commandSlice.name}`)
+        }
+
+        const allowedEventTypes = allowedCommandEvents.get(commandSlice)
+        for (const [index, event] of events.entries()) {
+          if (!allowedEventTypes?.has(event.type)) {
+            throw new Error(
+              `Command "${commandSlice.name}" emitted unauthorized Event "${event.type}" at index ${index}. Add that Event type to an accepted scenario outcome before the command may emit it.`,
+            )
+          }
         }
 
         const decodedEvents = await Promise.all(events.map(decodeEventDraft))
@@ -287,11 +281,13 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
   function runQuery(query: QuerySlice, input: unknown) {
     return query.store.transaction(query.name, async (store) => {
-      const parsedInput = await decodeSchema(query.schema, input)
+      const parsedInput = await decodeOptionalSchema(query.inputSchema, input)
 
       await catchUpSlice(query, store)
 
-      return query.handle(parsedInput, store.read)
+      const result = await query.handle(parsedInput, store.read)
+
+      return decodeOptionalSchema(query.outputSchema, result)
     })
   }
 
@@ -308,9 +304,14 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
             if (!advanced) return undefined
 
-            const effect = await reaction.handle(store.read)
+            const result = await reaction.handle(store.read)
 
-            if (effect === undefined) return undefined
+            if (result === undefined) return undefined
+
+            const effect = await decodeOptionalSchema(
+              reaction.outputSchema,
+              result,
+            )
 
             const exec = await getReactionExec(reaction)
 
@@ -353,7 +354,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
 
       state.closed = true
       subscriptions.delete(state)
-      state.abortSignal?.removeEventListener("abort", state.abortListener)
+      state.abortSignal?.removeEventListener('abort', state.abortListener)
 
       if (state.pendingNext) {
         const pending = state.pendingNext
@@ -385,7 +386,7 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
           }
 
           subscriptions.add(state)
-          options.signal?.addEventListener("abort", close, { once: true })
+          options.signal?.addEventListener('abort', close, { once: true })
           void enqueueInitialValue(state)
         }
 
@@ -475,14 +476,22 @@ export function createSpecterApp<const TConfig extends SpecterAppConfig>(
         if (!query) return
 
         try {
-          const value = await query.store.transaction(query.name, async (store) => {
-            const parsedInput = await decodeSchema(query.schema, subscription.input)
-            const { advanced } = await catchUpSlice(query, store)
+          const value = await query.store.transaction(
+            query.name,
+            async (store) => {
+              const parsedInput = await decodeOptionalSchema(
+                query.inputSchema,
+                subscription.input,
+              )
+              const { advanced } = await catchUpSlice(query, store)
 
-            if (!advanced) return undefined
+              if (!advanced) return undefined
 
-            return query.handle(parsedInput, store.read)
-          })
+              const result = await query.handle(parsedInput, store.read)
+
+              return decodeOptionalSchema(query.outputSchema, result)
+            },
+          )
 
           if (value !== undefined) enqueueSubscriptionValue(subscription, value)
         } catch (cause) {
