@@ -1,126 +1,40 @@
-Welcome to your new TanStack Start app! 
+# Threadplane Reference
 
-# Getting Started
+Threadplane Reference is a Specter reference app for workspace-oriented chat. It demonstrates how a richer app can model workspaces, messages, deterministic agent replies, server functions, and durable SQLite-backed slice state on top of `@specter-ts/core`.
 
-To run this application:
+## What it demonstrates
 
-```bash
+- A multi-workspace app built from vertical Specter features.
+- Command/query/reaction slices for chat and workspace behavior.
+- TanStack Start + Solid UI integrated with Specter server functions.
+- A durable local SQLite runtime for reference-app development.
+- Scenario tests that document expected event and read-model behavior.
+
+## Run locally
+
+From the repo root:
+
+```sh
 pnpm install
-pnpm dev
+pnpm dev:threadplane
 ```
 
-# Building For Production
+The app uses fixed port `41732`. If the port is already occupied, stop the conflicting process instead of letting Vite fall back to another port.
 
-To build this application for production:
+## Validate
 
-```bash
-pnpm build
+```sh
+pnpm --filter @specter/threadplane-reference typecheck
+pnpm --filter @specter/threadplane-reference test
+pnpm --filter @specter/threadplane-reference build
 ```
 
-## Styling
+End-to-end tests are separate:
 
-This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
-
-### Removing Tailwind CSS
-
-If you prefer not to use Tailwind CSS:
-
-1. Remove the demo pages in `src/routes/demo/`
-2. Replace the Tailwind import in `src/styles.css` with your own styles
-3. Remove `tailwindcss()` from the plugins array in `vite.config.ts`
-4. Uninstall the packages: `pnpm add @tailwindcss/vite tailwindcss --dev`
-
-
-
-## Routing
-
-This project uses [TanStack Router](https://tanstack.com/router) with file-based routing. Routes are managed as files in `src/routes`.
-
-### Adding A Route
-
-To add a new route to your application just add a new file in the `./src/routes` directory.
-
-TanStack will automatically generate the content of the route file for you.
-
-Now that you have two routes you can use a `Link` component to navigate between them.
-
-### Adding Links
-
-To use SPA (Single Page Application) navigation you will need to import the `Link` component from `@tanstack/solid-router`.
-
-```tsx
-import { Link } from "@tanstack/solid-router";
+```sh
+pnpm --filter @specter/threadplane-reference test:e2e
 ```
 
-Then anywhere in your JSX you can use it like so:
+## Public status
 
-```tsx
-<Link to="/about">About</Link>
-```
-
-This will create a link that will navigate to the `/about` route.
-
-More information on the `Link` component can be found in the [Link documentation](https://tanstack.com/router/v1/docs/framework/solid/api/router/linkComponent).
-
-### Using A Layout
-
-In the File Based Routing setup the layout is located in `src/routes/__root.tsx`. Anything you add to the root route will appear in all the routes.
-
-More information on layouts can be found in the [Layouts documentation](https://tanstack.com/router/latest/docs/framework/solid/guide/routing-concepts#layouts).
-
-## Server Functions
-
-TanStack Start provides server functions that allow you to write server-side code that seamlessly integrates with your client components.
-
-```tsx
-import { createServerFn } from '@tanstack/solid-start'
-
-const getServerTime = createServerFn({
-  method: 'GET',
-}).handler(async () => {
-  return new Date().toISOString()
-})
-```
-
-## Data Fetching
-
-There are multiple ways to fetch data in your application. You can use TanStack Query to fetch data from a server. But you can also use the `loader` functionality built into TanStack Router to load the data for a route before it's rendered.
-
-For example:
-
-```tsx
-import { createFileRoute } from '@tanstack/solid-router'
-
-export const Route = createFileRoute('/people')({
-  loader: async () => {
-    const response = await fetch('https://swapi.dev/api/people')
-    return response.json()
-  },
-  component: PeopleComponent,
-})
-
-function PeopleComponent() {
-  const data = Route.useLoaderData()
-  return (
-    <ul>
-      <For each={data().results}>
-        {(person) => <li>{person.name}</li>}
-      </For>
-    </ul>
-  )
-}
-```
-
-Loaders simplify your data fetching logic dramatically. Check out more information in the [Loader documentation](https://tanstack.com/router/latest/docs/framework/solid/guide/data-loading#loader-parameters).
-
-# Demo files
-
-Files prefixed with `demo` can be safely deleted. They are there to provide a starting point for you to play around with the features you've installed.
-
-
-
-# Learn More
-
-You can learn more about all of the offerings from TanStack in the [TanStack documentation](https://tanstack.com).
-
-For TanStack Start specific documentation, visit [TanStack Start](https://tanstack.com/start).
+This app is a reference/dogfood surface for Specter patterns, not a polished end-user product. App-specific walkthrough docs will be expanded in follow-up PRs.

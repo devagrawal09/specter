@@ -7,7 +7,10 @@
   "bin": {
     "create-specter": "dist/index.js"
   },
-  "files": ["dist", "template"],
+  "files": [
+    "dist",
+    "template"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -20,5 +23,22 @@
   "devDependencies": {
     "@types/node": "^24.10.1",
     "typescript": "^6.0.2"
+  },
+  "keywords": [
+    "create-specter",
+    "specter",
+    "starter",
+    "typescript",
+    "event-sourcing",
+    "agents"
+  ],
+  "homepage": "https://github.com/devagrawal09/specter#readme",
+  "bugs": {
+    "url": "https://github.com/devagrawal09/specter/pulls"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/devagrawal09/specter.git",
+    "directory": "packages/create-specter"
   }
 }
