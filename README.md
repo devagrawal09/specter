@@ -46,17 +46,37 @@ pnpm dev:threadplane
 
 The existing Reference applications use fixed port `41731`; the Threadplane Reference application uses fixed port `41732`.
 
-Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
+Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/spec`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
 
-## Slice Scenarios
+## Slice Specifications And Implementations
 
-Slices are created with a stable name and a human-readable description:
+Each Slice separates its immutable specification from its executable implementation:
 
 ```ts
-createCommandSlice("addTodo", "Adds a todo to the list.");
+// add-todo/spec.ts
+import { createCommandSlice, event } from '@specter-ts/core/spec'
+
+export const addTodoSpec = createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
+  .scenarios({
+    description: 'Adds the supplied todo.',
+    given: [],
+    when: { todoId: 'todo-1', title: 'Ship it' },
+    expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
+  })
 ```
 
-Every scenario also has a `description`. `testScenarios` uses slice descriptions for suite names and scenario descriptions for test names.
+```ts
+// add-todo/impl.ts
+export const addTodo = addTodoSpec
+  .inputSchema(addTodoInputSchema)
+  .store(todoStore)
+  .handle(async (command) => [todoAddedEvent.create(command)])
+```
+
+Query implementations add `.outputSchema(...)`; Reaction implementations add `.outputSchema(...)` and `.plugin(...)`. After `.store(...)`, implementations may register typed handlers with `.apply(eventDefinition, handler)` before terminating with `.handle(...)`.
+
+Specifications use exact `event(type, payload)` examples and ship with the application. `createSpecterApp(...)` is asynchronous because construction validates all specifications, Event schemas, and selected implementations before exposing the app.
 
 ## Release
 
