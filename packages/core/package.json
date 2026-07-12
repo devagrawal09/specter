@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/core",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "TypeScript framework for vertically sliced event-sourced applications.",
   "type": "module",
   "license": "MIT",
@@ -25,6 +25,11 @@
       "types": "./dist/testing-entry.d.ts",
       "import": "./dist/testing.js",
       "default": "./dist/testing.js"
+    },
+    "./spec": {
+      "types": "./dist/spec-entry.d.ts",
+      "import": "./dist/spec.js",
+      "default": "./dist/spec.js"
     }
   },
   "scripts": {

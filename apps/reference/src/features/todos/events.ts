@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const todoAddedEvent = createEventDefinition(
-  'todoAdded',
+  'todo-added',
   z.object({
     todoId: z.string(),
     title: z.string(),
@@ -10,7 +10,7 @@ export const todoAddedEvent = createEventDefinition(
 )
 
 export const todoCompletionChangedEvent = createEventDefinition(
-  'todoCompletionChanged',
+  'todo-completion-changed',
   z.object({
     todoId: z.string(),
     completed: z.boolean(),
@@ -18,14 +18,14 @@ export const todoCompletionChangedEvent = createEventDefinition(
 )
 
 export const todoRemovedEvent = createEventDefinition(
-  'todoRemoved',
+  'todo-removed',
   z.object({
     todoId: z.string(),
   }),
 )
 
 export const todoCheerCreatedEvent = createEventDefinition(
-  'todoCheerCreated',
+  'todo-cheer-created',
   z.object({
     milestone: z.number().int().positive(),
     message: z.string(),

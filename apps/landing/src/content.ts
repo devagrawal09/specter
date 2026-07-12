@@ -1,4 +1,4 @@
-export type SliceCard = {
+export type WorkbenchCard = {
   tag: string
   name: string
   kind: string
@@ -6,86 +6,114 @@ export type SliceCard = {
   context: string
 }
 
-export const sliceCards: SliceCard[] = [
+export const sliceCards: WorkbenchCard[] = [
   {
     tag: 'command',
     name: 'requestBooking',
     kind: 'Command Slice',
-    summary: 'Decides which events a command should emit, or rejects it.',
-    context: 'Owns one command + its decision state. Nothing else.',
+    summary: 'Decides whether a Command may append domain Events.',
+    context: 'Owns private decision state derived from relevant Events.',
   },
   {
-    tag: 'state',
+    tag: 'query',
     name: 'roomScheduleQuery',
     kind: 'Query Slice',
-    summary: 'Answers one query from an event-derived read model.',
-    context: 'Reads its own state built from the log. Never mutates.',
+    summary: 'Answers one Query from its own event-derived state.',
+    context: 'Applies relevant Events; its Query handler only reads.',
   },
   {
     tag: 'reaction',
-    name: 'approvalNotification',
+    name: 'approvalNotificationReaction',
     kind: 'Reaction Slice',
-    summary: 'Observes new events and may emit one reaction effect.',
-    context: 'Runs after command success through an explicit plugin.',
-  },
-  {
-    tag: 'test',
-    name: 'scenarios',
-    kind: 'Executable Spec',
-    summary: 'Given events, when input, expect events or rejection.',
-    context: 'Each scenario is the local test for its own slice.',
-  },
-  {
-    tag: 'external',
-    name: 'calendarAdapter',
-    kind: 'Reaction Plugin',
-    summary: 'Interprets a reaction effect against an outside API.',
-    context: 'Swap the plugin; the slice specification is unchanged.',
+    summary: 'Observes committed Events and may produce one typed output.',
+    context: 'A Reaction Plugin interprets the output after validation.',
   },
 ]
 
-export const installCommand = 'npm create specter'
+export const supportCards: WorkbenchCard[] = [
+  {
+    tag: 'spec',
+    name: 'requestBookingSpec',
+    kind: 'Slice Specification',
+    summary: 'Records the immutable name, description, and exact scenarios.',
+    context: 'Imports only the specification API and domain constants.',
+  },
+  {
+    tag: 'plugin',
+    name: 'notificationPlugin',
+    kind: 'Reaction Plugin',
+    summary: 'Interprets a Reaction output against another boundary.',
+    context: 'Can dispatch a Command or call an external service.',
+  },
+]
 
-export const commandSliceCode = `import { z } from 'zod'
-import { createCommandSlice } from '@specter-ts/core'
-import { bookingRequestedEvent } from '../events'
+export const workbenchCards = [...sliceCards, ...supportCards]
 
-const requestBooking = createCommandSlice(
-  'requestBooking',
-  'Requests a room for a guest and time range.',
-)
-  .schema(
+export const installCommand = 'npm create specter@latest my-app'
+
+export const commandSpecCode = `import { createCommandSlice, event } from '@specter-ts/core/spec'
+
+const requestBookingSpec = createCommandSlice('requestBooking')
+  .description('Requests a room booking for approval.')
+  .scenarios({
+    description: 'Requests a booking for an available room.',
+    given: [
+      event('room-created', {
+        roomId: 'room-1',
+        name: 'Library',
+        capacity: 6,
+        location: 'Floor 1',
+      }),
+    ],
+    when: {
+      bookingId: 'booking-1',
+      roomId: 'room-1',
+      requesterEmail: 'ada@example.com',
+      requesterName: 'Ada',
+      purpose: 'Planning',
+      startsAt: '2026-06-01T09:00:00.000Z',
+      endsAt: '2026-06-01T10:00:00.000Z',
+    },
+    expect: [
+      event('booking-requested', {
+        bookingId: 'booking-1',
+        roomId: 'room-1',
+        requesterEmail: 'ada@example.com',
+        requesterName: 'Ada',
+        purpose: 'Planning',
+        startsAt: '2026-06-01T09:00:00.000Z',
+        endsAt: '2026-06-01T10:00:00.000Z',
+      }),
+    ],
+  })
+
+export default requestBookingSpec`
+
+export const commandImplementationCode = `import { z } from 'zod'
+
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { bookingRequestedEvent, roomCreatedEvent } from '../events'
+import requestBookingSpec from './spec'
+
+const requestBooking = requestBookingSpec
+  .inputSchema(
     z.object({
-      roomId: z.string(),
-      guest: z.string(),
-      nights: z.number().int().positive(),
+      bookingId: z.string().min(1),
+      roomId: z.string().min(1),
+      requesterEmail: z.string().email(),
+      requesterName: z.string(),
+      purpose: z.string(),
+      startsAt: z.string(),
+      endsAt: z.string(),
     }),
   )
   .store(sqliteSliceStore)
-  .scenarios(
-    {
-      description: 'Requests an available room.',
-      given: [],
-      when: { roomId: 'r-1', guest: 'Ada', nights: 2 },
-      expect: [
-        bookingRequestedEvent.create({
-          roomId: 'r-1',
-          guest: 'Ada',
-          nights: 2,
-        }),
-      ],
-    },
-    {
-      description: 'Rejects a room that is already held.',
-      given: [bookingRequestedEvent.create({ roomId: 'r-1', guest: 'Bo', nights: 1 })],
-      when: { roomId: 'r-1', guest: 'Ada', nights: 2 },
-      expect: [],
-      reject: { reason: 'Room is already requested' },
-    },
-  )
-  .handle(async (command, state) => {
-    if (state.isHeld(command.roomId)) {
-      throw new Error('Room is already requested')
+  .apply(roomCreatedEvent, async (event, db) => {
+    await rememberRoom(db, event.payload)
+  })
+  .handle(async (command, db) => {
+    if (!(await roomIsAvailable(db, command.roomId))) {
+      throw new Error('Room is not available')
     }
 
     return [bookingRequestedEvent.create(command)]
@@ -93,23 +121,28 @@ const requestBooking = createCommandSlice(
 
 export default requestBooking`
 
-export const scenarioTestCode = `import { testScenarios } from '@specter-ts/core/testing'
+export const scenarioTestCode = `import { testSliceImplementations } from '@specter-ts/core/testing'
+
 import { sqliteScenario } from '../../db/scenario-tests'
+import { bookingEventDefinitions } from './events'
 import { bookingRegistrations } from './registry'
 
-// Every scenario attached to a slice runs as a behavior test.
-testScenarios(bookingRegistrations, {
+testSliceImplementations(bookingRegistrations, {
+  events: bookingEventDefinitions,
   runScenario: sqliteScenario({}),
 })`
 
-export const scenarioTestOutput = `✓ requestBooking > Requests an available room
-✓ requestBooking > Rejects a room that is already held
-✓ roomScheduleQuery > Returns rooms held for a date
-✓ approvalNotification > Notifies once per approval
+export const scenarioTestOutput = `✓ Requests a booking for an available room.
+✓ Returns rooms with bookings for the requested day.
+✓ Requests notification recording for an approved booking.
 
-  4 slices · 11 scenarios · 0 unspecified paths`
+Scenario descriptions are reported as the implementation tests.`
 
-export const eventLogCode = `bookingRequested   { roomId: 'r-1', guest: 'Ada', nights: 2 }
-bookingApproved    { roomId: 'r-1' }
-roomCheckedIn      { roomId: 'r-1' }
-// append-only · ordered · replayable — state is derived, never overwritten`
+export const eventLogCode = `order  recorded              type                            payload
+─────  ────────────────────  ──────────────────────────────  ─────────────────────────
+    1  2026-06-01T08:00:00Z  room-created                    { roomId: 'room-1', … }
+    2  2026-06-01T08:04:12Z  booking-requested               { bookingId: 'booking-1', … }
+    3  2026-06-01T08:09:41Z  booking-approved                { bookingId: 'booking-1', … }
+    4  2026-06-01T08:09:42Z  approval-notification-recorded  { bookingId: 'booking-1', … }
+
+Log IDs, order, and recorded timestamps are metadata outside Event payloads.`

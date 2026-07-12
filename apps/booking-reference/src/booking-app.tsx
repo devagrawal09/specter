@@ -56,6 +56,7 @@ export function BookingApp() {
   const createRoom = action(function* () {
     setIsBusy(true)
     yield specterClient.createRoom({
+      roomId: crypto.randomUUID(),
       name: roomName(),
       capacity: capacity(),
       location: location(),
@@ -67,6 +68,7 @@ export function BookingApp() {
   const requestBooking = action(function* () {
     setIsBusy(true)
     yield specterClient.requestBooking({
+      bookingId: crypto.randomUUID(),
       roomId: selectedRoomId(),
       requesterName: requesterName(),
       requesterEmail: requesterEmail(),

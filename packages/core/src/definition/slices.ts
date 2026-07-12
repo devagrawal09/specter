@@ -2,6 +2,13 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { SliceStoreAdapter } from '../adapters/slice-store'
 import type { Event, EventDefinition, EventDraft } from './events'
+import type {
+  CommandScenario,
+  NonEmptyScenarios,
+  QueryScenario,
+  ReactionScenario,
+} from './scenario-types'
+
 export type {
   EventLogAdapter,
   ReactionScheduler,
@@ -9,10 +16,34 @@ export type {
   SliceStoreAdapter,
 } from '../adapters'
 
-export type ApplyEventDefinition<
-  TType extends string = string,
-  TPayload = unknown,
-> = Pick<EventDefinition<TType, TPayload>, 'type' | 'decode'>
+export type ApplyEventDefinition = {
+  readonly type: string
+  readonly schema: StandardSchemaV1
+  readonly decode: (payload: unknown) => Promise<unknown>
+}
+
+export type EventForDefinition<TDefinition> =
+  TDefinition extends EventDefinition<
+    infer TType extends string,
+    infer TPayload
+  >
+    ? Event<TType, TPayload>
+    : TDefinition extends {
+          readonly type: infer TType extends string
+          readonly decode: (payload: unknown) => Promise<infer TPayload>
+        }
+      ? Event<TType, TPayload>
+      : never
+
+type ApplyHandler<TEvent extends Event, TState> = {
+  bivarianceHack(event: TEvent, state: TState): Promise<void>
+}['bivarianceHack']
+
+export type ApplyRegistration<TState = unknown> = {
+  readonly event: ApplyEventDefinition
+  readonly handle: ApplyHandler<Event, TState>
+}
+
 export type RejectedCommand = {
   readonly reason: string
 }
@@ -25,165 +56,182 @@ export type CommandEnvelope<
   payload: TPayload
 }
 
-type EventType<TEventDefinition> = TEventDefinition extends {
-  type: infer TType extends string
+type SliceBase<
+  TName extends string,
+  TScenarios extends NonEmptyScenarios<
+    CommandScenario | QueryScenario | ReactionScenario<unknown>
+  >,
+> = {
+  readonly stage: 'implementation'
+  readonly name: TName
+  readonly description: string
+  readonly scenarios: TScenarios
 }
-  ? TType
-  : never
-
-type EventPayloadForType<TEventDefinition, TType extends string> =
-  TEventDefinition extends ApplyEventDefinition<TType, infer TPayload>
-    ? TPayload
-    : never
-
-type EventForType<
-  TEventDefinitions extends readonly ApplyEventDefinition[],
-  TType extends string,
-> = Event<TType, EventPayloadForType<TEventDefinitions[number], TType>>
-
-type ApplyHandler<TEvent extends Event, TState = unknown> = {
-  bivarianceHack(event: TEvent, state: TState): Promise<void>
-}['bivarianceHack']
-
-export type ApplyHandlers<
-  TEventDefinitions extends
-    readonly ApplyEventDefinition[] = readonly ApplyEventDefinition[],
-  TState = unknown,
-> = Partial<{
-  [TType in EventType<TEventDefinitions[number]>]: ApplyHandler<
-    EventForType<TEventDefinitions, TType>,
-    TState
-  >
-}>
-
-export function defineApplyHandlers<
-  const TEventDefinitions extends readonly ApplyEventDefinition[],
->(
-  _eventDefinitions: TEventDefinitions,
-  apply: ApplyHandlers<TEventDefinitions>,
-): ApplyHandlers<TEventDefinitions> {
-  return apply
-}
-
-type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
-  readonly ApplyEventDefinition[],
-  TState
->
 
 export type CommandSlice<
   TName extends string = string,
-  TSchema extends StandardSchemaV1 = StandardSchemaV1,
+  TInput = unknown,
+  TCommand = TInput,
   TWriteState = unknown,
   TReadState = TWriteState,
-> = {
-  kind: 'command'
-  name: TName
-  description: string
-  schema: TSchema
-  store: SliceStoreAdapter<TWriteState, TReadState>
-  apply: AnyApplyHandlers<TWriteState>
-  scenarios?: readonly unknown[]
-  handle: (
-    command: StandardSchemaV1.InferOutput<TSchema>,
+  TScenarios extends
+    NonEmptyScenarios<CommandScenario> = NonEmptyScenarios<CommandScenario>,
+> = SliceBase<TName, TScenarios> & {
+  readonly kind: 'command'
+  readonly inputSchema?: StandardSchemaV1<TInput, TCommand>
+  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly apply: readonly ApplyRegistration<TWriteState>[]
+  readonly handle: (
+    command: TCommand,
     state: TReadState,
-  ) => Promise<EventDraft[]>
+  ) => Promise<readonly EventDraft[]>
 }
 
 export type QuerySlice<
   TName extends string = string,
-  TSchema extends StandardSchemaV1 = StandardSchemaV1,
+  TInput = unknown,
+  TQuery = TInput,
   TResult = unknown,
+  TOutput = TResult,
   TWriteState = unknown,
   TReadState = TWriteState,
-> = {
-  kind: 'query'
-  name: TName
-  description: string
-  schema: TSchema
-  store: SliceStoreAdapter<TWriteState, TReadState>
-  apply: AnyApplyHandlers<TWriteState>
-  scenarios?: readonly unknown[]
-  handle: (
-    query: StandardSchemaV1.InferOutput<TSchema>,
-    state: TReadState,
-  ) => Promise<TResult>
+  TScenarios extends
+    NonEmptyScenarios<QueryScenario> = NonEmptyScenarios<QueryScenario>,
+> = SliceBase<TName, TScenarios> & {
+  readonly kind: 'query'
+  readonly inputSchema?: StandardSchemaV1<TInput, TQuery>
+  readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
+  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly apply: readonly ApplyRegistration<TWriteState>[]
+  readonly handle: (query: TQuery, state: TReadState) => Promise<TResult>
 }
 
 export type QueryRef<TRegistration> =
   TRegistration extends QuerySlice<
     infer TName,
-    infer TSchema,
-    infer TResult,
+    infer TInput,
+    infer _TQuery,
+    infer _TResult,
+    infer TOutput,
     infer _TWrite,
-    infer _TRead
+    infer _TRead,
+    infer _TScenarios
   >
     ? {
         name: TName
-        result?: TResult
-        input?: StandardSchemaV1.InferOutput<TSchema>
+        result?: TOutput
+        input?: TInput
       }
     : never
 
 export type CommandRef<TRegistration> =
   TRegistration extends CommandSlice<
     infer TName,
-    infer TSchema,
+    infer TInput,
+    infer _TCommand,
     infer _TWrite,
-    infer _TRead
+    infer _TRead,
+    infer _TScenarios
   >
-    ? { name: TName; payload?: StandardSchemaV1.InferOutput<TSchema> }
+    ? { name: TName; payload?: TInput }
     : never
 
 export type CommandDispatch = (command: CommandEnvelope) => Promise<void>
 
-export type ReactionExec = (reaction: unknown) => Promise<unknown>
+export type ReactionExec<TOutput = unknown> = (
+  reaction: TOutput,
+) => Promise<unknown>
 
-export type ReactionPlugin = (command: CommandDispatch) => Promise<ReactionExec>
+export type ReactionPlugin<TOutput = unknown> = (
+  command: CommandDispatch,
+) => Promise<ReactionExec<TOutput>>
 
 export type ReactionSlice<
   TName extends string = string,
-  TPayload = CommandEnvelope,
+  TResult = CommandEnvelope,
+  TOutput = TResult,
   TWriteState = unknown,
   TReadState = TWriteState,
-> = {
-  kind: 'reaction'
-  name: TName
-  description: string
-  store: SliceStoreAdapter<TWriteState, TReadState>
-  apply: AnyApplyHandlers<TWriteState>
-  plugin: ReactionPlugin
-  scenarios?: readonly unknown[]
-  handle: (state: TReadState) => Promise<TPayload | undefined>
+  TScenarios extends
+    NonEmptyScenarios<ReactionScenario> = NonEmptyScenarios<ReactionScenario>,
+> = SliceBase<TName, TScenarios> & {
+  readonly kind: 'reaction'
+  readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
+  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly apply: readonly ApplyRegistration<TWriteState>[]
+  readonly plugin: ReactionPlugin<TOutput>
+  readonly handle: (state: TReadState) => Promise<TResult | undefined>
 }
 
-type AnyCommandSlice = Omit<
-  CommandSlice<string, StandardSchemaV1, unknown, unknown>,
-  'handle'
-> & {
-  handle: {
-    bivarianceHack(command: unknown, state: unknown): Promise<EventDraft[]>
-  }['bivarianceHack']
-}
-
-type AnyQuerySlice = Omit<
-  QuerySlice<string, StandardSchemaV1, unknown, unknown, unknown>,
-  'handle'
-> & {
-  handle: {
-    bivarianceHack(query: unknown, state: unknown): Promise<unknown>
-  }['bivarianceHack']
-}
-
-type AnyReactionSlice = Omit<
-  ReactionSlice<string, unknown, unknown, unknown>,
-  'handle'
-> & {
-  handle: {
-    bivarianceHack(state: unknown): Promise<unknown | undefined>
-  }['bivarianceHack']
-}
+// A heterogeneous app registry is an existential type: each Slice keeps its
+// own input, output, and state types even though the runtime stores them together.
+// biome-ignore lint/suspicious/noExplicitAny: any is the intentional erasure boundary for that existential type.
+type ErasedSliceType = any
 
 export type SliceRegistration =
-  | AnyCommandSlice
-  | AnyQuerySlice
-  | AnyReactionSlice
+  | CommandSlice<
+      string,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType
+    >
+  | QuerySlice<
+      string,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType
+    >
+  | ReactionSlice<
+      string,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType,
+      ErasedSliceType
+    >
+
+export type CommandInputOf<TSlice> =
+  TSlice extends CommandSlice<
+    infer _TName,
+    infer TInput,
+    infer _TCommand,
+    infer _TWrite,
+    infer _TRead,
+    infer _TScenarios
+  >
+    ? TInput
+    : never
+
+export type QueryInputOf<TSlice> =
+  TSlice extends QuerySlice<
+    infer _TName,
+    infer TInput,
+    infer _TQuery,
+    infer _TResult,
+    infer _TOutput,
+    infer _TWrite,
+    infer _TRead,
+    infer _TScenarios
+  >
+    ? TInput
+    : never
+
+export type QueryOutputOf<TSlice> =
+  TSlice extends QuerySlice<
+    infer _TName,
+    infer _TInput,
+    infer _TQuery,
+    infer _TResult,
+    infer TOutput,
+    infer _TWrite,
+    infer _TRead,
+    infer _TScenarios
+  >
+    ? TOutput
+    : never

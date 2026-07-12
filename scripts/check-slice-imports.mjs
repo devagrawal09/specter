@@ -1,79 +1,142 @@
-import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import path from 'node:path'
 import ts from 'typescript'
 
 const repoRoot = process.cwd()
-const sourceRoot = path.join(repoRoot, 'src', 'features')
 const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts']
-
+const featureRoots = findFeatureRoots()
+const files = featureRoots.flatMap(walk)
 const violations = []
+const sliceDirectories = new Map()
 
-for (const filePath of walk(sourceRoot)) {
-  if (!isCheckedSliceSource(filePath)) {
-    continue
+for (const filePath of files) {
+  const slice = getSliceInfo(filePath)
+  if (slice) {
+    const filenames = sliceDirectories.get(slice.directory) ?? new Set()
+    filenames.add(path.basename(filePath))
+    sliceDirectories.set(slice.directory, filenames)
   }
 
-  checkFile(filePath)
+  if (isTypeScriptSource(filePath)) checkFile(filePath)
+}
+
+for (const [directory, filenames] of sliceDirectories) {
+  if (!hasSliceContractFile(filenames)) continue
+
+  if (filenames.has('slice.ts')) {
+    addViolation(
+      path.join(directory, 'slice.ts'),
+      'legacy slice.ts must be split into spec.ts and impl.ts',
+    )
+  }
+  if (!filenames.has('spec.ts')) {
+    addViolation(directory, 'Slice directory is missing spec.ts')
+  }
+  if (!filenames.has('impl.ts')) {
+    addViolation(directory, 'Slice directory is missing impl.ts')
+  }
 }
 
 if (violations.length > 0) {
   console.error('Slice import boundary violations found:')
-
   for (const violation of violations) {
-    console.error(
-      `- ${relative(violation.importer)} imports sibling slice ` +
-        `${violation.targetSlice} via ${violation.specifier}`,
-    )
+    console.error(`- ${relative(violation.filePath)}: ${violation.message}`)
   }
-
   process.exitCode = 1
 }
 
 function checkFile(filePath) {
   const importerSlice = getSliceInfo(filePath)
+  const sourceFile = parse(filePath)
+  const imports = getImports(sourceFile)
+  const basename = path.basename(filePath)
 
-  if (!importerSlice) {
+  for (const imported of imports) {
+    const targetPath = imported.specifier.startsWith('.')
+      ? resolveRelativeImport(filePath, imported.specifier)
+      : undefined
+    const targetSlice = targetPath ? getSliceInfo(targetPath) : undefined
+
+    if (
+      importerSlice &&
+      targetSlice &&
+      targetSlice.featureRoot === importerSlice.featureRoot &&
+      targetSlice.name !== importerSlice.name
+    ) {
+      addViolation(
+        filePath,
+        `imports sibling Slice "${targetSlice.name}" via ${imported.specifier}`,
+      )
+    }
+
+    if (basename === 'spec.ts') {
+      checkSpecificationImport(filePath, imported.specifier, targetPath)
+    }
+
+    if (
+      basename === 'registry.ts' &&
+      targetPath &&
+      path.basename(targetPath) === 'spec.ts'
+    ) {
+      addViolation(
+        filePath,
+        `registries must import completed implementations, not ${imported.specifier}`,
+      )
+    }
+  }
+
+  if (
+    basename === 'impl.ts' &&
+    !imports.some(({ specifier }) => {
+      if (!specifier.startsWith('.')) return false
+      const target = resolveRelativeImport(filePath, specifier)
+      return target && path.basename(target) === 'spec.ts'
+    })
+  ) {
+    addViolation(filePath, 'impl.ts must import its adjacent spec.ts')
+  }
+}
+
+function checkSpecificationImport(filePath, specifier, targetPath) {
+  if (!specifier.startsWith('.')) {
+    if (specifier !== '@specter-ts/core/spec') {
+      addViolation(
+        filePath,
+        `spec.ts may only use @specter-ts/core/spec as an external value import; found ${specifier}`,
+      )
+    }
     return
   }
 
-  const sourceText = readFileSync(filePath, 'utf8')
-  const sourceFile = ts.createSourceFile(
+  if (!targetPath) return
+
+  const forbiddenName = /(?:^|[-.])(impl|slice|events?|schemas?|stores?|plugins?|server|registry)(?:[-.]|$)/
+  const targetName = path.basename(targetPath).toLowerCase()
+  const targetParts = relative(targetPath).split(path.sep)
+
+  if (
+    forbiddenName.test(targetName) ||
+    targetParts.some((part) => part === 'db' || part === 'server')
+  ) {
+    addViolation(
+      filePath,
+      `spec.ts imports implementation detail ${specifier}`,
+    )
+  }
+}
+
+function parse(filePath) {
+  return ts.createSourceFile(
     filePath,
-    sourceText,
+    readFileSync(filePath, 'utf8'),
     ts.ScriptTarget.Latest,
     false,
     filePath.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
   )
-
-  for (const specifier of getImportSpecifiers(sourceFile)) {
-    if (!specifier.startsWith('.')) {
-      continue
-    }
-
-    const targetPath = resolveRelativeImport(filePath, specifier)
-
-    if (!targetPath) {
-      continue
-    }
-
-    const targetSlice = getSliceInfo(targetPath)
-
-    if (
-      targetSlice &&
-      targetSlice.slicesRoot === importerSlice.slicesRoot &&
-      targetSlice.name !== importerSlice.name
-    ) {
-      violations.push({
-        importer: filePath,
-        specifier,
-        targetSlice: targetSlice.name,
-      })
-    }
-  }
 }
 
-function getImportSpecifiers(sourceFile) {
-  const specifiers = []
+function getImports(sourceFile) {
+  const imports = []
 
   function visit(node) {
     if (
@@ -81,26 +144,23 @@ function getImportSpecifiers(sourceFile) {
       node.moduleSpecifier &&
       ts.isStringLiteral(node.moduleSpecifier)
     ) {
-      specifiers.push(node.moduleSpecifier.text)
+      imports.push({ specifier: node.moduleSpecifier.text })
     }
 
     if (
       ts.isCallExpression(node) &&
       node.expression.kind === ts.SyntaxKind.ImportKeyword &&
-      node.arguments.length === 1
+      node.arguments.length === 1 &&
+      ts.isStringLiteral(node.arguments[0])
     ) {
-      const [argument] = node.arguments
-
-      if (ts.isStringLiteral(argument)) {
-        specifiers.push(argument.text)
-      }
+      imports.push({ specifier: node.arguments[0].text })
     }
 
     ts.forEachChild(node, visit)
   }
 
   visit(sourceFile)
-  return specifiers
+  return imports
 }
 
 function resolveRelativeImport(importerPath, specifier) {
@@ -122,56 +182,78 @@ function resolveRelativeImport(importerPath, specifier) {
   })
 }
 
-function isCheckedSliceSource(filePath) {
-  if (!sourceExtensions.some((extension) => filePath.endsWith(extension))) {
-    return false
-  }
-
-  if (filePath.includes(`${path.sep}node_modules${path.sep}`)) {
-    return false
-  }
-
-  if (/\.(test|spec)\.[cm]?[tj]sx?$/.test(filePath)) {
-    return false
-  }
-
-  return getSliceInfo(filePath) !== null
-}
-
 function getSliceInfo(filePath) {
-  const relativePath = path.relative(repoRoot, filePath)
-  const parts = relativePath.split(path.sep)
-  const slicesIndex = parts.indexOf('slices')
+  const parts = path.relative(repoRoot, filePath).split(path.sep)
+  const featuresIndex = parts.lastIndexOf('features')
 
-  if (slicesIndex === -1 || !parts[slicesIndex + 1]) {
-    return null
+  if (
+    featuresIndex < 1 ||
+    parts[featuresIndex - 1] !== 'src' ||
+    !parts[featuresIndex + 1] ||
+    !parts[featuresIndex + 2] ||
+    !parts[featuresIndex + 3]
+  ) {
+    return undefined
   }
 
   return {
-    name: parts[slicesIndex + 1],
-    slicesRoot: parts.slice(0, slicesIndex + 1).join('/'),
+    name: parts[featuresIndex + 2],
+    directory: path.join(
+      repoRoot,
+      ...parts.slice(0, featuresIndex + 3),
+    ),
+    featureRoot: parts.slice(0, featuresIndex + 2).join('/'),
   }
 }
 
-function walk(directory) {
-  if (!existsSync(directory)) {
-    return []
-  }
+function findFeatureRoots() {
+  const roots = []
+  const appsRoot = path.join(repoRoot, 'apps')
 
-  const filePaths = []
-
-  for (const entry of readdirSync(directory)) {
-    const entryPath = path.join(directory, entry)
-    const stats = statSync(entryPath)
-
-    if (stats.isDirectory()) {
-      filePaths.push(...walk(entryPath))
-    } else if (stats.isFile()) {
-      filePaths.push(entryPath)
+  if (existsSync(appsRoot)) {
+    for (const app of readdirSync(appsRoot)) {
+      const candidate = path.join(appsRoot, app, 'src', 'features')
+      if (existsSync(candidate)) roots.push(candidate)
     }
   }
 
-  return filePaths
+  const templateRoot = path.join(
+    repoRoot,
+    'packages',
+    'create-specter',
+    'template',
+    'src',
+    'features',
+  )
+  if (existsSync(templateRoot)) roots.push(templateRoot)
+
+  return roots
+}
+
+function walk(directory) {
+  if (!existsSync(directory)) return []
+
+  return readdirSync(directory).flatMap((entry) => {
+    const entryPath = path.join(directory, entry)
+    const stats = statSync(entryPath)
+    return stats.isDirectory() ? walk(entryPath) : stats.isFile() ? [entryPath] : []
+  })
+}
+
+function hasSliceContractFile(filenames) {
+  return (
+    filenames.has('slice.ts') ||
+    filenames.has('spec.ts') ||
+    filenames.has('impl.ts')
+  )
+}
+
+function isTypeScriptSource(filePath) {
+  return sourceExtensions.some((extension) => filePath.endsWith(extension))
+}
+
+function addViolation(filePath, message) {
+  violations.push({ filePath, message })
 }
 
 function relative(filePath) {
