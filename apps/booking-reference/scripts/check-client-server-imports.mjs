@@ -84,7 +84,7 @@ function isServerModule(filePath) {
     relativePath === 'src/server.ts' ||
     relativePath.endsWith('.server.ts') ||
     relativePath.startsWith('src/features/') ||
-    relativePath.endsWith('/slice.ts') ||
+    relativePath.endsWith('/impl.ts') ||
     relativePath.endsWith('/registry.ts') ||
     relativePath.includes('/server/') ||
     relativePath.includes('/db/')

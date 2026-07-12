@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const roomCreatedEvent = createEventDefinition(
-  'roomCreated',
+  'room-created',
   z.object({
     roomId: z.string(),
     name: z.string(),
@@ -12,14 +12,14 @@ export const roomCreatedEvent = createEventDefinition(
 )
 
 export const roomRetiredEvent = createEventDefinition(
-  'roomRetired',
+  'room-retired',
   z.object({
     roomId: z.string(),
   }),
 )
 
 export const bookingRequestedEvent = createEventDefinition(
-  'bookingRequested',
+  'booking-requested',
   z.object({
     bookingId: z.string(),
     roomId: z.string(),
@@ -32,7 +32,7 @@ export const bookingRequestedEvent = createEventDefinition(
 )
 
 export const bookingApprovedEvent = createEventDefinition(
-  'bookingApproved',
+  'booking-approved',
   z.object({
     bookingId: z.string(),
     approverEmail: z.string(),
@@ -41,7 +41,7 @@ export const bookingApprovedEvent = createEventDefinition(
 )
 
 export const bookingRejectedEvent = createEventDefinition(
-  'bookingRejected',
+  'booking-rejected',
   z.object({
     bookingId: z.string(),
     approverEmail: z.string(),
@@ -51,7 +51,7 @@ export const bookingRejectedEvent = createEventDefinition(
 )
 
 export const bookingRescheduledEvent = createEventDefinition(
-  'bookingRescheduled',
+  'booking-rescheduled',
   z.object({
     bookingId: z.string(),
     roomId: z.string(),
@@ -61,7 +61,7 @@ export const bookingRescheduledEvent = createEventDefinition(
 )
 
 export const bookingCanceledEvent = createEventDefinition(
-  'bookingCanceled',
+  'booking-canceled',
   z.object({
     bookingId: z.string(),
     canceledByEmail: z.string(),
@@ -70,7 +70,7 @@ export const bookingCanceledEvent = createEventDefinition(
 )
 
 export const bookingCheckedInEvent = createEventDefinition(
-  'bookingCheckedIn',
+  'booking-checked-in',
   z.object({
     bookingId: z.string(),
     checkedInByEmail: z.string(),
@@ -78,7 +78,7 @@ export const bookingCheckedInEvent = createEventDefinition(
 )
 
 export const roomReleasedEvent = createEventDefinition(
-  'roomReleased',
+  'room-released',
   z.object({
     bookingId: z.string(),
     releasedByEmail: z.string(),
@@ -86,7 +86,7 @@ export const roomReleasedEvent = createEventDefinition(
 )
 
 export const approvalNotificationRecordedEvent = createEventDefinition(
-  'approvalNotificationRecorded',
+  'approval-notification-recorded',
   z.object({
     bookingId: z.string(),
     message: z.string(),

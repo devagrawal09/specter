@@ -9,6 +9,7 @@
     "paths": {
       "@specter-ts/core": ["./packages/core/src/index.ts"],
       "@specter-ts/core/client": ["./packages/core/src/client-entry.ts"],
+      "@specter-ts/core/spec": ["./packages/core/src/spec-entry.ts"],
       "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"]
     },
     "allowImportingTsExtensions": true,

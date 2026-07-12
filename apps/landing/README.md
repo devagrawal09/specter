@@ -4,12 +4,11 @@ A single landing-page variation for Specter, built as a small Vite + Solid + Typ
 
 ## Design direction: Event Flow
 
-The page is centered on Specter's durable event log and its orchestration model. The
-core visual is an event dataflow: **user intent → command → durable events → read models
-and reactions → adapters** (database, protocol, frontend, external API). An append-only
-event ledger makes the no-data-loss story concrete, and the "never loses data" claim is
-framed as a property of event-sourced design (state is a replay of durable, ordered
-events), not as a magic guarantee.
+The page is centered on Specter's Event Log and orchestration model. The core visual is
+an event dataflow: **caller → typed Specter Client → Command implementation → durable
+events → Query and Reaction implementations**. It distinguishes immutable `spec.ts`
+files from executable `impl.ts` files and makes the storage caveat explicit: recovery
+depends on an Event Log adapter backed by atomic commits, durable storage, and backups.
 
 Tone is systems-architecture: robust, calm, readable. Styling is hand-written CSS with a
 blueprint grid and a restrained teal / amber / blue palette — no gradient slop, no remote
@@ -18,16 +17,16 @@ assets.
 ## What it communicates
 
 - What Specter is and how a change flows through it.
-- Structured specs shown as a concrete command-slice card.
-- How scenarios attached to a slice run as behavior tests.
+- A concrete Command Slice split between its specification and implementation.
+- How `testSliceImplementations` turns Scenarios into executable checks.
 - How vertical slices are built and tested independently.
-- Why the app never loses data (durable, append-only, replayable event log).
-- How reactions orchestrate slices through events.
+- Why a durable, append-only Event Log makes state replayable.
+- How a Reaction Effect is interpreted by its explicit Reaction Plugin.
 - How Specter runs anywhere with no opinion on database, protocol, or frontend.
 - How any external API is connected through an explicit reaction plugin.
 - How the slice shape keeps AI coding agents focused with minimal context and guardrails.
-- How specs, slices, and events can be rendered as architecture/dataflow diagrams.
-- A getting-started CTA using `npm create specter`.
+- How explicit Slice and Event relationships support architecture reasoning.
+- A getting-started CTA using `npm create specter@latest my-app`.
 
 ## Commands
 

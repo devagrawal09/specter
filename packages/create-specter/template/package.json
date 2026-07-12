@@ -1,5 +1,6 @@
 {
   "name": "specter-starter",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -30,7 +31,7 @@
     "@hono/vite-dev-server": "0.25.3",
     "@libsql/client": "^0.17.3",
     "@solidjs/web": "2.0.0-beta.13",
-    "@specter-ts/core": "0.2.2",
+    "@specter-ts/core": "0.3.0",
     "@tailwindcss/vite": "^4.1.18",
     "drizzle-orm": "^0.45.2",
     "effect": "^3.21.2",

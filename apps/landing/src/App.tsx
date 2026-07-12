@@ -1,7 +1,9 @@
-import { For, type JSX } from 'solid-js'
+import { createSignal, For, type JSX } from 'solid-js'
+
+const installCommand = 'npm create specter@latest my-app'
 
 type FlowNode = {
-  kind: 'intent' | 'command' | 'log' | 'query' | 'reaction' | 'adapter'
+  kind: 'intent' | 'client' | 'command' | 'log' | 'query' | 'reaction'
   label: string
   detail: string
 }
@@ -9,23 +11,18 @@ type FlowNode = {
 const ledgerEntries = [
   {
     order: '#0142',
-    type: 'IntentCaptured',
-    note: 'user asked to reserve seat A1',
+    type: 'seat-reserved',
+    note: 'accepted command appended a domain fact',
   },
   {
     order: '#0143',
-    type: 'SeatReserved',
-    note: 'command accepted, fact appended',
+    type: 'hold-placed',
+    note: 'plugin-dispatched command appended the next fact',
   },
   {
     order: '#0144',
-    type: 'HoldPlaced',
-    note: 'reaction dispatched a follow-up command',
-  },
-  {
-    order: '#0145',
-    type: 'PaymentRequested',
-    note: 'adapter call queued, not yet settled',
+    type: 'seat-confirmation-sent',
+    note: 'another accepted command extended the history',
   },
 ]
 
@@ -33,74 +30,112 @@ const flowStages: FlowNode[][] = [
   [
     {
       kind: 'intent',
-      label: 'User intent',
-      detail: 'A request enters the system',
+      label: 'Caller',
+      detail: 'UI · API · worker · agent',
+    },
+  ],
+  [
+    {
+      kind: 'client',
+      label: 'Specter Client',
+      detail: 'Typed command and query methods',
     },
   ],
   [
     {
       kind: 'command',
-      label: 'Command Slice',
-      detail: 'Decides which events to emit',
+      label: 'Command Implementation',
+      detail: 'Catches up, decides, emits drafts',
     },
   ],
   [
     {
       kind: 'log',
       label: 'Event Log',
-      detail: 'Appends durable, ordered facts',
+      detail: 'Atomically appends ordered facts',
     },
   ],
   [
-    { kind: 'query', label: 'Query Slice', detail: 'Rebuilds a read model' },
+    {
+      kind: 'query',
+      label: 'Query Implementation',
+      detail: 'Catches up when queried by a client',
+    },
     {
       kind: 'reaction',
-      label: 'Reaction Slice',
-      detail: 'Triggers the next command',
-    },
-  ],
-  [
-    {
-      kind: 'adapter',
-      label: 'Adapters',
-      detail: 'Database · protocol · frontend · API',
+      label: 'Reaction Implementation',
+      detail: 'Catches up after a successful command',
     },
   ],
 ]
 
-const specCode = `import { z } from 'zod'
-import { command, event } from '@specter-ts/core'
+const specCode = `// reserve-seat/spec.ts — immutable "what"
+import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-// A domain fact. Once appended it is never mutated.
-export const SeatReserved = event('SeatReserved', {
-  seatId: z.string(),
-  holdId: z.string(),
-})
+const reserveSeatSpec = createCommandSlice('reserveSeat')
+  .description('Reserves an available seat.')
+  .scenarios(
+    {
+      description: 'Reserves an available seat.',
+      given: [],
+      when: { seatId: 'A1', holdId: 'h-1' },
+      expect: [event('seat-reserved', { seatId: 'A1', holdId: 'h-1' })],
+    },
+    {
+      description: 'Rejects a seat that is already reserved.',
+      given: [event('seat-reserved', { seatId: 'A1', holdId: 'h-1' })],
+      when: { seatId: 'A1', holdId: 'h-2' },
+      expect: [],
+      reject: { reason: 'Seat is already reserved' },
+    },
+  )
 
-// One command, one decision, explicit event interests.
-export const reserveSeat = command('reserveSeat')
-  .interests([SeatReserved])
-  .decide((state, input: { seatId: string; holdId: string }) => {
-    if (state.taken.has(input.seatId)) {
-      // No event emitted -> the command is rejected, not a silent no-op.
-      return reject('seat already reserved')
+export default reserveSeatSpec
+
+// reserve-seat/impl.ts — executable "how"
+import spec from './spec'
+import { seatReservedEvent } from '../events'
+
+export const reserveSeat = spec
+  .inputSchema(reserveSeatInputSchema)
+  .store(reserveSeatStore)
+  .apply(seatReservedEvent, applySeatReserved)
+  .handle(async (command, state) => {
+    if (state.taken.has(command.seatId)) {
+      throw new Error('Seat is already reserved')
     }
-    return [SeatReserved(input)]
-  })
+    return [seatReservedEvent.create(command)]
+  })`
 
-// The scenario is the behavior test. given / when / then.
-reserveSeat.scenario('rejects a seat that is already held', {
-  given: [SeatReserved({ seatId: 'A1', holdId: 'h-1' })],
-  when: { seatId: 'A1', holdId: 'h-2' },
-  then: 'rejected',
-})`
+function CopyCommand() {
+  const [status, setStatus] = createSignal('Copy')
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(installCommand)
+      setStatus('Copied')
+      window.setTimeout(() => setStatus('Copy'), 1600)
+    } catch {
+      setStatus('Select and copy')
+    }
+  }
+
+  return (
+    <div class="copy-command">
+      <code>{installCommand}</code>
+      <button type="button" onClick={copy} aria-live="polite">
+        {status()}
+      </button>
+    </div>
+  )
+}
 
 function FlowDiagram() {
   return (
     <div
       class="flow"
       role="img"
-      aria-label="Event flow: intent becomes a command, the command emits durable events, events update read models and trigger reactions, and adapters connect any database, protocol, frontend, or API."
+      aria-label="Event flow: a caller uses the typed Specter Client, a Command Slice implementation emits drafts that the Event Log persists, and Query and Reaction implementations catch up in global event order."
     >
       <For each={flowStages}>
         {(stage, index) => (
@@ -172,7 +207,10 @@ function Section(props: {
 
 export function App() {
   return (
-    <div class="page">
+    <div class="page" id="top">
+      <a class="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <div class="grid-bg" aria-hidden="true" />
 
       <header class="topbar">
@@ -193,7 +231,7 @@ export function App() {
         </a>
       </header>
 
-      <main id="top">
+      <main id="main-content">
         <section class="hero">
           <p class="eyebrow">Event-sourced runtime for TypeScript</p>
           <h1 class="hero__title">
@@ -201,13 +239,13 @@ export function App() {
           </h1>
           <p class="hero__lede">
             Specter is a TypeScript runtime for vertically sliced, event-sourced
-            applications. You describe behavior as structured specs; Specter
-            turns them into running slices, behavior tests, and a durable event
-            log — with an Effect-based typed client wired in.
+            applications. Immutable Slice Specifications describe behavior;
+            selected implementations run it over a durable Event Log and expose
+            an Effect-based typed client.
           </p>
           <div class="hero__actions">
             <a class="btn btn--solid" href="#start">
-              npm create specter
+              Create a project
             </a>
             <a class="btn btn--ghost" href="#flow">
               See the event flow
@@ -231,9 +269,10 @@ export function App() {
                 ordered <strong>event log</strong>.
               </p>
               <p>
-                From there, Query Slices rebuild read models and Reaction Slices
-                observe new events and trigger the next command. Specter
-                orchestrates the slices; the log is the only thing they share.
+                A Query catches up its private state when its client method is
+                called. Reactions catch up after a command succeeds; each may
+                produce one ephemeral Reaction Effect for its explicit Plugin to
+                interpret, including by dispatching another command.
               </p>
             </div>
             <EventLedger />
@@ -243,25 +282,27 @@ export function App() {
         <Section
           id="specs"
           eyebrow="Structured specs"
-          title="A slice is a small, explicit specification you can read in one screen"
+          title="A Slice separates an immutable specification from an executable implementation"
         >
           <div class="split split--wide-right">
             <div class="prose">
               <p>
-                A slice names one behavior, declares the events it cares about,
-                and makes exactly one decision. No hidden wiring, no god objects
-                — just the command, its event interests, and the facts it emits.
+                The <code>spec.ts</code> file contains only the Slice name,
+                description, and exact Scenarios. It imports Scenario Events
+                from <code>@specter-ts/core/spec</code>, never runtime schemas,
+                stores, plugins, or Event Definitions.
               </p>
               <p>
-                Because the shape is fixed, the same spec is what compiles, what
-                runs, and what the typed client exposes as a method.
+                The selected <code>impl.ts</code> adds schemas, a private Store,
+                apply handlers, and the terminal handler. Registered Command and
+                Query names become methods on the typed Specter Client.
               </p>
             </div>
             <figure class="code">
               <figcaption class="code__head">
                 <span class="code__badge">command slice</span>
                 <span class="code__file">
-                  features/booking/reserve-seat/slice.ts
+                  features/booking/reserve-seat/spec.ts + impl.ts
                 </span>
               </figcaption>
               <pre class="code__body">
@@ -274,23 +315,24 @@ export function App() {
         <Section
           id="tests"
           eyebrow="Specs are tests"
-          title="Scenarios attached to a slice run as behavior tests automatically"
+          title="Scenarios become executable checks through Specter's test runner"
         >
           <div class="cards">
             <article class="card">
               <h3>given · when · then</h3>
               <p>
                 A scenario states the events that already happened, the input
-                under test, and the expected outcome. It lives next to the slice
-                it describes.
+                under test, and the expected outcome. It ships in the immutable
+                specification beside the implementation.
               </p>
             </article>
             <article class="card">
-              <h3>No separate harness</h3>
+              <h3>One explicit runner</h3>
               <p>
-                Specter replays the <em>given</em> events, applies the command,
-                and checks the result. The spec and the test are the same
-                artifact, so they never drift.
+                A small test file calls <code>testSliceImplementations</code>{' '}
+                with the app Event Definitions and a <code>runScenario</code>{' '}
+                environment. The runner replays <em>given</em> events and checks
+                each outcome.
               </p>
             </article>
             <article class="card">
@@ -340,7 +382,7 @@ export function App() {
         <Section
           id="durability"
           eyebrow="Durability"
-          title="The app never loses data because state is derived from a durable event log"
+          title="Recorded facts can rebuild state when the Event Log adapter is durable"
         >
           <div class="split split--wide-left">
             <div class="prose">
@@ -356,9 +398,9 @@ export function App() {
                 durable log — not any single table — is the system of record.
               </p>
               <p class="note">
-                This is a design property of event-sourced systems, not a magic
-                guarantee: your event log still needs durable, backed-up
-                storage.
+                Specter supplies the contract, not the durability medium. The
+                Event Log adapter still needs atomic commits, durable storage,
+                backups, and an operational recovery plan.
               </p>
             </div>
             <div class="stat-grid">
@@ -393,9 +435,9 @@ export function App() {
             <div class="prose">
               <p>
                 A Reaction Slice observes new events after a command succeeds
-                and may dispatch one follow-up command. That command appends
-                more events, which can trigger more reactions — a clear,
-                event-driven chain instead of services calling services.
+                and may produce zero or one Reaction Effect per catch-up cycle.
+                Its explicit Reaction Plugin executes that effect afterward;
+                same-app command dispatch is one possible plugin behavior.
               </p>
               <p>
                 Reactions run in their own effect boundary, so one failing
@@ -404,16 +446,16 @@ export function App() {
             </div>
             <ol class="chain" aria-label="Event-driven orchestration chain">
               <li>
-                <code>SeatReserved</code> is appended
+                <code>seat-reserved</code> is appended
               </li>
               <li>
                 <code>confirmHoldOnReserve</code> reacts
               </li>
               <li>
-                it dispatches <code>placeHold</code>
+                its plugin dispatches <code>placeHold</code>
               </li>
               <li>
-                <code>HoldPlaced</code> is appended
+                <code>hold-placed</code> is appended
               </li>
             </ol>
           </div>
@@ -488,17 +530,17 @@ export function App() {
             <article class="card">
               <h3>Minimal context</h3>
               <p>
-                To change a behavior, an agent reads one slice — its command,
-                its event interests, its scenarios — not the whole codebase.
-                Less context in, fewer ways to go wrong.
+                To change a behavior, an agent reads its <code>spec.ts</code>,
+                selected <code>impl.ts</code>, and shared Event Definitions —
+                not the whole codebase. Less context in, fewer ways to go wrong.
               </p>
             </article>
             <article class="card">
               <h3>Strong guardrails</h3>
               <p>
-                The fixed slice shape, typed client, and event-interest
-                declarations constrain what an agent can write, so generated
-                code lands inside the framework's rules.
+                The fixed slice shape, typed client, typed apply handlers, and
+                Scenario conformance make invalid boundaries easier to detect,
+                so agent changes stay reviewable against executable contracts.
               </p>
             </article>
             <article class="card">
@@ -514,21 +556,21 @@ export function App() {
 
         <Section
           id="visuals"
-          eyebrow="Visuals"
-          title="Turn specs, slices, and events into diagrams of your architecture and dataflow"
+          eyebrow="Architecture model"
+          title="Use registered slices and events to reason about architecture and dataflow"
         >
           <div class="split split--wide-left">
             <div class="prose">
               <p>
-                Because slices declare their commands, event interests, and
-                reactions, the wiring is already structured data. Specter can
-                read those declarations and render the architecture and dataflow
-                of your app for you.
+                Registered specifications, selected implementations, and Event
+                Definitions make relationships explicit enough to inspect and
+                diagram. This page illustrates that model; the current framework
+                does not generate architecture maps.
               </p>
               <p>
                 The event flow you see on this page is exactly that kind of
-                picture: commands, events, read models, reactions, and adapters,
-                derived from the specs themselves.
+                picture: callers, the typed client, commands, durable events,
+                queries, and reactions, drawn from the framework's vocabulary.
               </p>
             </div>
             <FlowDiagram />
@@ -543,9 +585,7 @@ export function App() {
             app, scenarios, and an agent skill — so you start from something
             that already runs.
           </p>
-          <div class="cta__command">
-            <code>npm create specter@latest</code>
-          </div>
+          <CopyCommand />
           <p class="cta__hint">
             Then open the reference slices, run the scenarios, and change one
             behavior at a time.

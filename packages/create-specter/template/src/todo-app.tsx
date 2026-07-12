@@ -20,20 +20,32 @@ const filterOptions = [
   { status: 'completed', label: 'Completed' },
 ] as const
 
+type Todo = {
+  id: string
+  title: string
+  completed: boolean
+  removed: boolean | null
+}
+
 export function TodoApp() {
   const cheerState = createMemo(() => specterClient.todoCheers({}))
   const status = () => {
     const value = searchParams().get('status')
     return value === 'active' || value === 'completed' ? value : 'all'
   }
-  const todos = createMemo(() => specterClient.todosQuery({ status: status() }))
+  const todos = createMemo<Todo[]>(() =>
+    specterClient.todosQuery({ status: status() }),
+  )
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createOptimistic(false)
   const [pendingToggleId, setPendingToggleId] = createOptimistic('')
   const [pendingRemoveId, setPendingRemoveId] = createOptimistic('')
   const add = action(function* (nextTitle: string) {
     setIsAdding(true)
-    yield specterClient.addTodo({ title: nextTitle })
+    yield specterClient.addTodo({
+      todoId: crypto.randomUUID(),
+      title: nextTitle,
+    })
     refresh(todos)
   })
   const change = action(function* (todoId: string, completed: boolean) {

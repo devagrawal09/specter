@@ -29,20 +29,31 @@ This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md`
 
 ## Slice Scenarios
 
-Create each Slice with a stable API name and a human-readable description:
+Create each Slice specification in `spec.ts` with a stable API name, a human-readable description, and nonempty scenarios:
 
 ```ts
-createCommandSlice('addTodo', 'Adds a todo to the list.')
+import { createCommandSlice, event } from '@specter-ts/core/spec'
+
+createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
+  .scenarios({
+    description: 'Creates a todo with the provided title.',
+    given: [],
+    when: { todoId: 'todo-1', title: 'Ship it' },
+    expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
+  })
 ```
 
 Every scenario object also needs a `description`. Scenario tests use Slice descriptions for suite names and scenario descriptions for test names.
 
-Command scenario event comparisons ignore ID-shaped payload keys. Query and reaction expectations are exact, so use deterministic IDs in scenarios when expected outputs include IDs.
+Keep `spec.ts` free of runtime schemas, Event Definitions, stores, and plugins. Add those dependencies in the adjacent `impl.ts`, using `inputSchema`/`outputSchema`, a store, repeated `apply(EventDefinition, handler)` calls, and `handle`. Apply handlers receive decoded payloads at `event.payload`.
+
+Scenario Event payloads are compared exactly. Use kebab-case Event types and supply generated domain IDs or timestamps through command inputs or prior Events.
 
 ## Structure
 
 ```txt
-src/features/todos/   Todo vertical feature with events, slices, and scenarios
+src/features/todos/   Todo vertical feature with two-file Slice directories
 src/todo-app.tsx      Solid UI that calls the typed Specter client
 src/db/schema.ts      App-owned Drizzle schema exports for migrations
 src/db/specter-sqlite.ts SQLite Slice Store and Event Log adapters

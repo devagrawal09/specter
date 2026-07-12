@@ -1,0 +1,47 @@
+{
+  "name": "@specter/narayan-ai",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite dev",
+    "dev:kill": "fuser -k 41735/tcp || true",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:prepare": "node -e \"require('node:fs').mkdirSync('data', { recursive: true })\"",
+    "db:migrate": "pnpm db:prepare && drizzle-kit migrate",
+    "db:studio": "drizzle-kit studio"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.17.3",
+    "@mastra/core": "^1.13.2",
+    "@openrouter/ai-sdk-provider": "^1.2.0",
+    "@specter-ts/core": "workspace:*",
+    "@tailwindcss/vite": "^4.1.18",
+    "@tanstack/router-core": "1.168.8",
+    "@tanstack/router-plugin": "1.167.16",
+    "@tanstack/solid-router": "1.168.8",
+    "@tanstack/solid-start": "1.167.14",
+    "drizzle-orm": "^0.45.2",
+    "solid-js": "^1.9.12",
+    "tailwindcss": "^4.1.18",
+    "twilio": "^5.10.5",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "^2.11.12",
+    "vitest": "^4.1.5"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "lightningcss"
+    ]
+  }
+}

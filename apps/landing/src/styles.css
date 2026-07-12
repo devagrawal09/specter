@@ -6,7 +6,7 @@
   --line-soft: #1a232f;
   --text: #e7eef6;
   --muted: #93a3b4;
-  --muted-2: #6f8093;
+  --muted-2: #8496aa;
 
   --event: #4dd3b0;
   --command: #f0b45f;
@@ -55,7 +55,29 @@ h3 {
 .page {
   position: relative;
   min-height: 100vh;
-  overflow: hidden;
+  overflow-x: clip;
+}
+
+.skip-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--event);
+  color: var(--ink);
+  font-weight: 700;
+  transform: translateY(-160%);
+}
+
+.skip-link:focus {
+  transform: translateY(0);
+}
+
+:where(a, button):focus-visible {
+  outline: 3px solid var(--event);
+  outline-offset: 3px;
 }
 
 /* Blueprint grid backdrop */
@@ -242,6 +264,9 @@ main {
 .node--intent {
   border-left-color: var(--muted);
 }
+.node--client {
+  border-left-color: var(--adapter);
+}
 .node--command {
   border-left-color: var(--command);
 }
@@ -263,6 +288,7 @@ main {
 .section {
   padding: 60px 0;
   border-top: 1px solid var(--line-soft);
+  scroll-margin-top: 24px;
 }
 
 .section__head {
@@ -613,24 +639,37 @@ main {
   color: var(--muted);
 }
 
-.cta__command {
-  display: inline-block;
+.copy-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
   margin: 28px auto 0;
-  padding: 16px 26px;
+  padding: 12px 14px 12px 20px;
   border: 1px solid var(--event);
   border-radius: 12px;
   background: var(--ink);
 }
 
-.cta__command code {
+.copy-command code {
   font-family: var(--mono);
   font-size: 1.1rem;
   color: var(--event);
 }
 
-.cta__command code::before {
+.copy-command code::before {
   content: "$ ";
   color: var(--muted-2);
+}
+
+.copy-command button {
+  min-height: 40px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: 600 0.8rem var(--mono);
+  cursor: pointer;
 }
 
 .cta__hint {
@@ -674,13 +713,32 @@ main {
   }
 
   .flow__arrow {
+    align-self: center;
     transform: rotate(90deg);
+  }
+
+  .flow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .flow__stage {
+    flex: none;
+    width: 100%;
+    min-width: 0;
   }
 }
 
 @media (max-width: 520px) {
   .stat-grid {
     grid-template-columns: 1fr;
+  }
+
+  .copy-command {
+    width: 100%;
+    flex-wrap: wrap;
+    justify-content: center;
+    overflow-wrap: anywhere;
   }
 }
 
