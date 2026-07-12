@@ -139,18 +139,25 @@ function isCheckedSliceSource(filePath) {
 }
 
 function getSliceInfo(filePath) {
-  const relativePath = path.relative(repoRoot, filePath)
-  const parts = relativePath.split(path.sep)
-  const slicesIndex = parts.indexOf('slices')
+  let directory = path.dirname(filePath)
 
-  if (slicesIndex === -1 || !parts[slicesIndex + 1]) {
-    return null
+  while (directory.startsWith(sourceRoot)) {
+    const hasSliceFiles = ['spec.ts', 'impl.ts'].some((fileName) =>
+      existsSync(path.join(directory, fileName)),
+    )
+
+    if (hasSliceFiles) {
+      return {
+        name: path.basename(directory),
+        slicesRoot: path.dirname(directory),
+      }
+    }
+
+    if (directory === sourceRoot) break
+    directory = path.dirname(directory)
   }
 
-  return {
-    name: parts[slicesIndex + 1],
-    slicesRoot: parts.slice(0, slicesIndex + 1).join('/'),
-  }
+  return null
 }
 
 function walk(directory) {

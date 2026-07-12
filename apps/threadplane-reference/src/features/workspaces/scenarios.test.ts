@@ -1,8 +1,9 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from "@specter-ts/core/testing";
 
-import { sqliteScenario } from '../../db/scenario-tests'
-import { workspaceRegistrations } from './registry'
+import { sqliteScenario } from "../../db/scenario-tests";
+import { workspaceEventDefinitions, workspaceRegistrations } from "./registry";
 
-testScenarios(workspaceRegistrations, {
+testSliceImplementations(workspaceRegistrations, {
+  events: workspaceEventDefinitions,
   runScenario: sqliteScenario,
-})
+});

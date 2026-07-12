@@ -2,53 +2,65 @@ import { type JSX, createSignal, For } from 'solid-js'
 
 const installCommand = 'npm create specter@latest my-app'
 
-const sliceSource = `import { z } from 'zod'
-import { createCommandSlice } from '@specter-ts/core'
-import { todoAddedEvent } from '../events'
+const sliceSource = `// add-todo/spec.ts — immutable "what"
+import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-export default createCommandSlice('addTodo', 'Adds a todo to the list.')
-  .schema(z.object({ title: z.string().min(1).max(120) }))
+const addTodoSpec = createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
   .scenarios(
     {
       description: 'Creates a todo with the given title.',
       given: [],
-      when: { title: 'Ship it' },
-      expect: [todoAddedEvent.create({ todoId: 'generated', title: 'Ship it' })],
+      when: { todoId: 'todo-1', title: 'Ship it' },
+      expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
     },
     {
       description: 'Rejects a blank title.',
       given: [],
-      when: { title: '   ' },
+      when: { todoId: 'todo-1', title: '   ' },
+      expect: [],
       reject: { reason: 'Todo title is required' },
     },
   )
-  .handle(async ({ title }) => [
-    todoAddedEvent.create({ todoId: crypto.randomUUID(), title: title.trim() }),
-  ])`
 
-const generatedTests = [
-  'addTodo › Creates a todo with the given title.',
-  'addTodo › Rejects a blank title.',
+export default addTodoSpec
+
+// add-todo/impl.ts — executable "how"
+import spec from './spec'
+import { todoAddedEvent } from '../events'
+
+export const addTodo = spec
+  .inputSchema(addTodoInputSchema)
+  .store(todoStore)
+  .handle(async (command) => {
+    const title = command.title.trim()
+    if (!title) throw new Error('Todo title is required')
+    return [todoAddedEvent.create({ ...command, title })]
+  })`
+
+const scenarioChecks = [
+  'Creates a todo with the given title.',
+  'Rejects a blank title.',
 ]
 
 const railStack = [
   { name: 'requestBooking', state: 'out' },
-  { name: 'confirmBooking', state: 'out' },
+  { name: 'approveBooking', state: 'out' },
   { name: 'addTodo', state: 'focus' },
-  { name: 'completeTodo', state: 'out' },
-  { name: 'todoCheers', state: 'out' },
+  { name: 'changeTodoCompletion', state: 'out' },
+  { name: 'todosQuery', state: 'out' },
 ]
 
 const capabilities = [
   {
     tag: '01',
     title: 'Specs are structured, not prose',
-    body: 'A slice declares its command, its input schema, and its scenarios in one place. The spec is real TypeScript that compiles — not a wiki page that drifts from the code.',
+    body: 'The immutable spec.ts declares a Slice name, description, and exact Scenarios. The selected impl.ts adds schemas, a private Store, apply handlers, and the handler.',
   },
   {
     tag: '02',
     title: 'Scenarios are the behavior tests',
-    body: 'Every scenario — given events, when input, expect events — runs as an executable check. There is no second copy of the truth to keep in sync. The spec is the test suite.',
+    body: 'An explicit test file calls testSliceImplementations with the app Event Definitions and a runScenario environment, turning each given/when/expect example into a check.',
   },
   {
     tag: '03',
@@ -60,7 +72,7 @@ const capabilities = [
 const anywhere = [
   {
     title: 'No database opinion',
-    body: 'The Event Log is reached through one adapter. Point it at SQLite, Postgres, libSQL, or your own store — the slices never change.',
+    body: 'The Event Log is reached through one adapter. Point it at durable storage with atomic commits and backups; the Slice specifications do not change.',
   },
   {
     title: 'No protocol opinion',
@@ -77,15 +89,15 @@ const anywhere = [
 ]
 
 function CopyCommand(props: { command: string; big?: boolean }): JSX.Element {
-  const [copied, setCopied] = createSignal(false)
+  const [status, setStatus] = createSignal('copy')
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(props.command)
-      setCopied(true)
-      window.setTimeout(() => setCopied(false), 1600)
+      setStatus('copied')
+      window.setTimeout(() => setStatus('copy'), 1600)
     } catch {
-      setCopied(false)
+      setStatus('select and copy')
     }
   }
 
@@ -95,8 +107,8 @@ function CopyCommand(props: { command: string; big?: boolean }): JSX.Element {
         $
       </span>
       <code class="cmd__text">{props.command}</code>
-      <button class="cmd__copy" type="button" onClick={copy}>
-        {copied() ? 'copied' : 'copy'}
+      <button class="cmd__copy" type="button" onClick={copy} aria-live="polite">
+        {status()}
       </button>
     </div>
   )
@@ -123,24 +135,27 @@ function Section(props: {
 
 export default function App(): JSX.Element {
   return (
-    <div class="page">
+    <div class="page" id="top">
+      <a class="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <header class="nav">
         <a class="brand" href="#top">
           <span class="brand__mark" aria-hidden="true" />
           <span class="brand__name">Specter</span>
         </a>
-        <nav class="nav__links">
+        <nav class="nav__links" aria-label="Primary">
           <a href="#guardrails">Guardrails</a>
           <a href="#spec">Specs</a>
           <a href="#events">Events</a>
           <a href="#map">Architecture</a>
         </nav>
         <a class="nav__cta" href="#start">
-          npm create specter
+          Get started
         </a>
       </header>
 
-      <main id="top">
+      <main id="main-content">
         <section class="hero">
           <div class="hero__glow" aria-hidden="true" />
           <div class="hero__body">
@@ -151,10 +166,10 @@ export default function App(): JSX.Element {
               specifications that compile execute and scaffold your app
             </h1>
             <p class="hero__lead">
-              Specter turns structured specs into a running, event-sourced
-              application. Slices define behavior, scenarios prove it, and the
-              same specs scaffold your app — so AI agents work one verifiable
-              slice at a time instead of rewriting your codebase.
+              Specter separates immutable Slice Specifications from selected,
+              executable implementations. Scenarios describe the contract and
+              run through an explicit test helper, giving AI agents a small,
+              verifiable behavior boundary to work within.
             </p>
             <div class="hero__actions">
               <CopyCommand command={installCommand} big />
@@ -170,10 +185,10 @@ export default function App(): JSX.Element {
             </ul>
           </div>
 
-          <aside class="context" aria-label="Agent context window">
+          <aside class="context" aria-label="Agent review focus illustration">
             <div class="context__chrome">
-              <span class="context__label">agent context</span>
-              <span class="context__budget">1 slice loaded</span>
+              <span class="context__label">review focus</span>
+              <span class="context__budget">1 slice in focus</span>
             </div>
             <div class="rails">
               <span class="rails__line rails__line--left" aria-hidden="true" />
@@ -191,9 +206,9 @@ export default function App(): JSX.Element {
                       <span class="rail__dot" aria-hidden="true" />
                       <span class="rail__name">{slice.name}</span>
                       {slice.state === 'focus' ? (
-                        <span class="rail__badge">in context</span>
+                        <span class="rail__badge">in focus</span>
                       ) : (
-                        <span class="rail__muted">out of context</span>
+                        <span class="rail__muted">out of focus</span>
                       )}
                     </li>
                   )}
@@ -201,8 +216,8 @@ export default function App(): JSX.Element {
               </ul>
             </div>
             <p class="context__note">
-              The agent only sees the slice it is changing. Everything else
-              stays behind the rails.
+              Project boundaries help an agent focus on the Slice it is changing
+              while shared Event contracts keep cross-Slice effects visible.
             </p>
           </aside>
         </section>
@@ -211,26 +226,26 @@ export default function App(): JSX.Element {
           <ol class="steps">
             <li>
               <span class="steps__num">1</span>
-              <h3>Write a slice</h3>
+              <h3>Specify behavior</h3>
               <p>
-                Declare a command or query, its schema, and its scenarios as
-                typed TypeScript.
+                Keep the Slice name, description, and exact Scenarios in an
+                immutable <code>spec.ts</code>.
               </p>
             </li>
             <li>
               <span class="steps__num">2</span>
-              <h3>Execute the spec</h3>
+              <h3>Implement the contract</h3>
               <p>
-                Scenarios run as behavior tests over the event log — the spec
-                and the tests are one artifact.
+                Add schemas, a private Store, apply handlers, and a handler in
+                <code>impl.ts</code>.
               </p>
             </li>
             <li>
               <span class="steps__num">3</span>
-              <h3>Scaffold the app</h3>
+              <h3>Run the scenarios</h3>
               <p>
-                Registered slices compose into a running Specter App with a
-                typed client and durable events.
+                Call <code>testSliceImplementations</code>, then register one
+                completed implementation per Slice in the Specter App.
               </p>
             </li>
           </ol>
@@ -240,15 +255,15 @@ export default function App(): JSX.Element {
           id="guardrails"
           eyebrow="Design direction — agent guardrails"
           title="Give agents rails, not the whole repo"
-          lead="Large context windows invite broad, accidental rewrites. Specter hands an agent one slice, one schema, and one set of scenarios — a bounded problem with a green/red answer."
+          lead="Large context windows invite broad, accidental rewrites. Specter's feature layout lets you give an agent one specification, one implementation, and their Event contracts — a bounded problem with a green/red answer."
         >
           <div class="guard">
             <div class="guard__card">
               <h3>Minimized context</h3>
               <p>
-                A slice is self-contained: its events, its state, its scenarios.
-                The agent loads that slice and the events it declares interest
-                in — not the rest of the application.
+                A Slice keeps its specification and implementation together in
+                one vertical feature. An agent can focus there, loading shared
+                Event Definitions only when the implementation applies them.
               </p>
             </div>
             <div class="guard__card">
@@ -262,9 +277,9 @@ export default function App(): JSX.Element {
             <div class="guard__card">
               <h3>Bounded blast radius</h3>
               <p>
-                Slices own private state and communicate only through events. A
-                change inside one slice cannot silently reach across the app, so
-                edits stay local and reviewable.
+                Slices own private state and coordinate through registered
+                Events. Cross-Slice effects are therefore visible in Event
+                contracts and Scenarios instead of hidden state sharing.
               </p>
             </div>
             <div class="guard__checks">
@@ -286,7 +301,7 @@ export default function App(): JSX.Element {
                   <span class="tick" aria-hidden="true">
                     ✓
                   </span>
-                  Appends exactly one todoAdded event
+                  Appends exactly one todo-added event
                 </li>
               </ul>
               <p class="guard__checks-foot">2 slices · 3 scenarios · 0 red</p>
@@ -297,8 +312,8 @@ export default function App(): JSX.Element {
         <Section
           id="spec"
           eyebrow="Structured specs"
-          title="One slice, and it already tests itself"
-          lead="This is a real Command Slice. The scenarios beside it are not documentation — they are the test suite that runs against the event log."
+          title="One contract, with a separate executable implementation"
+          lead="The immutable specification contains production examples, while the implementation supplies schemas, Store, apply handlers, and behavior. A test helper checks their conformance."
         >
           <div class="spec">
             <figure class="code">
@@ -308,7 +323,9 @@ export default function App(): JSX.Element {
                   <i />
                   <i />
                 </span>
-                <span class="code__file">features/todos/add-todo/slice.ts</span>
+                <span class="code__file">
+                  features/todos/add-todo/spec.ts + impl.ts
+                </span>
               </figcaption>
               <pre class="code__body">
                 <code>{sliceSource}</code>
@@ -316,10 +333,10 @@ export default function App(): JSX.Element {
             </figure>
             <div class="spec__tests">
               <p class="spec__tests-title">
-                behavior tests — generated from the spec
+                scenario checks — testSliceImplementations
               </p>
               <ul>
-                <For each={generatedTests}>
+                <For each={scenarioChecks}>
                   {(name) => (
                     <li>
                       <span class="tick" aria-hidden="true">
@@ -331,7 +348,9 @@ export default function App(): JSX.Element {
                 </For>
               </ul>
               <p class="spec__tests-foot">
-                No extra test files. Change the scenario, change the contract.
+                One explicit test file supplies Event Definitions and a{' '}
+                <code>runScenario</code> environment; the examples remain in the
+                spec.
               </p>
             </div>
           </div>
@@ -340,27 +359,29 @@ export default function App(): JSX.Element {
         <Section
           id="events"
           eyebrow="Durable by design"
-          title="The app never loses what happened"
-          lead="Specter is event-sourced. State is derived from an ordered, durable Event Log — the recorded facts are the source of truth, not a mutable table you can overwrite."
+          title="Recorded facts can rebuild state when storage is durable"
+          lead="Specter is event-sourced: state is derived from the ordered Event Log. The app-provided Event Log adapter must still guarantee atomic commits and use durable, backed-up storage."
         >
           <div class="events">
             <div class="events__log">
-              <div class="events__log-head">event log · append-only</div>
+              <div class="events__log-head">
+                event log excerpt · append-only
+              </div>
               <ol>
                 <li>
-                  <span class="events__id">#1</span>
-                  <code>todoAdded</code>
+                  <span class="events__id">#13</span>
+                  <code>todo-added</code>
                   <span class="events__meta">title: "Ship it"</span>
                 </li>
                 <li>
-                  <span class="events__id">#2</span>
-                  <code>todoCompletionChanged</code>
-                  <span class="events__meta">completed: true</span>
+                  <span class="events__id">#14</span>
+                  <code>todo-completion-changed</code>
+                  <span class="events__meta">completed: true · fifth</span>
                 </li>
                 <li>
-                  <span class="events__id">#3</span>
-                  <code>todoCheerCreated</code>
-                  <span class="events__meta">milestone: 1</span>
+                  <span class="events__id">#15</span>
+                  <code>todo-cheer-created</code>
+                  <span class="events__meta">milestone: 5</span>
                 </li>
               </ol>
             </div>
@@ -382,38 +403,39 @@ export default function App(): JSX.Element {
           id="orchestrate"
           eyebrow="Orchestration"
           title="Slices coordinate through events, not calls"
-          lead="A command appends an event. Reaction Slices observe new events after that command succeeds and may emit their own commands — so features compose without importing each other."
+          lead="After a command succeeds, a Reaction Slice catches up and may produce zero or one ephemeral Reaction Effect. Its explicit Reaction Plugin interprets that effect after the transaction."
         >
           <div class="flow">
             <div class="flow__node flow__node--cmd">
               <span class="flow__kind">command</span>
-              addTodo
+              changeTodoCompletion
             </div>
             <span class="flow__arrow" aria-hidden="true">
               →
             </span>
             <div class="flow__node flow__node--evt">
               <span class="flow__kind">event</span>
-              todoAdded
+              todo-completion-changed
             </div>
             <span class="flow__arrow" aria-hidden="true">
               →
             </span>
             <div class="flow__node flow__node--rxn">
               <span class="flow__kind">reaction</span>
-              todoCheers
+              todoCompletionCheer
             </div>
             <span class="flow__arrow" aria-hidden="true">
               →
             </span>
             <div class="flow__node flow__node--evt">
-              <span class="flow__kind">event</span>
-              todoCheerCreated
+              <span class="flow__kind">reaction effect</span>
+              createTodoCheer
             </div>
           </div>
           <p class="flow__note">
-            Reactions run in their own effect boundary. One reaction failing
-            does not take down unrelated reactions in the same run.
+            The explicit Plugin may call an API or dispatch another command. One
+            failed Reaction does not prevent unrelated Reactions from being
+            attempted in the same run.
           </p>
         </Section>
 
@@ -421,7 +443,7 @@ export default function App(): JSX.Element {
           id="anywhere"
           eyebrow="No lock-in"
           title="Runs anywhere, opinionated about nothing"
-          lead="Specter owns your domain behavior and leaves the edges to you. Storage, transport, and UI are adapters — swap them without touching a slice."
+          lead="Specter owns your domain behavior and leaves the edges to you. Immutable specifications and the typed client contract stay stable while implementations and runtime wiring choose storage, transport, and UI."
         >
           <div class="grid">
             <For each={anywhere}>
@@ -442,22 +464,25 @@ export default function App(): JSX.Element {
           lead="External calls are not sprinkled through your handlers. A Reaction Slice emits a Reaction Effect, and an explicit Reaction Plugin interprets it — email, payments, another service, or another Specter App."
         >
           <div class="integr">
-            <div class="integr__node">todoCheerCreated</div>
+            <div class="integr__node">
+              <span class="flow__kind">reaction effect</span>
+              sendReceiptEmail
+            </div>
             <span class="integr__arrow" aria-hidden="true">
               →
             </span>
             <div class="integr__plugin">
               <span class="flow__kind">reaction plugin</span>
-              sendEmail / callApi / dispatchCommand
+              emailPlugin
             </div>
             <span class="integr__arrow" aria-hidden="true">
               →
             </span>
-            <div class="integr__ext">External API</div>
+            <div class="integr__ext">Email API</div>
           </div>
           <p class="flow__note">
-            The side effect lives at an explicit, testable boundary — so your
-            command logic stays pure and your integrations stay swappable.
+            The side effect lives at an explicit, testable boundary, keeping
+            integration code out of Slice handlers and Plugins replaceable.
           </p>
         </Section>
 
@@ -481,16 +506,16 @@ export default function App(): JSX.Element {
 
         <Section
           id="map"
-          eyebrow="Generated visuals"
-          title="Turn slices and events into an architecture map"
-          lead="Because specs are structured, Specter can read your slices, events, and reactions and render the dataflow — a diagram that stays honest because it is derived from the code, not drawn by hand."
+          eyebrow="Architecture vocabulary"
+          title="Make Slice and Event relationships visible"
+          lead="Registered Slices and Event Definitions provide a precise vocabulary for architecture reviews. This page illustrates that model; the current framework does not generate maps from application code."
         >
           <figure class="map">
             <svg
               class="map__svg"
               viewBox="0 0 720 260"
               role="img"
-              aria-label="Architecture diagram derived from slices and events"
+              aria-label="Illustrative architecture: changeTodoCompletion emits todo-completion-changed; todosQuery applies it, while todoCompletionCheer may produce the createTodoCheer Reaction Effect."
             >
               <defs>
                 <marker
@@ -506,10 +531,10 @@ export default function App(): JSX.Element {
                 </marker>
               </defs>
 
-              <line class="map__edge" x1="150" y1="70" x2="300" y2="130" />
-              <line class="map__edge" x1="300" y1="130" x2="450" y2="70" />
-              <line class="map__edge" x1="450" y1="70" x2="600" y2="130" />
-              <line class="map__edge" x1="300" y1="130" x2="450" y2="190" />
+              <line class="map__edge" x1="210" y1="94" x2="240" y2="106" />
+              <line class="map__edge" x1="360" y1="106" x2="390" y2="94" />
+              <line class="map__edge" x1="510" y1="94" x2="540" y2="106" />
+              <line class="map__edge" x1="360" y1="154" x2="390" y2="166" />
 
               <g class="map__cmd">
                 <rect x="70" y="46" width="160" height="48" rx="10" />
@@ -517,17 +542,17 @@ export default function App(): JSX.Element {
                   command
                 </text>
                 <text x="150" y="84" class="map__strong">
-                  addTodo
+                  changeTodoCompletion
                 </text>
               </g>
 
               <g class="map__evt">
-                <rect x="222" y="106" width="156" height="48" rx="10" />
+                <rect x="202" y="106" width="196" height="48" rx="10" />
                 <text x="300" y="126">
                   event
                 </text>
                 <text x="300" y="144" class="map__strong">
-                  todoAdded
+                  todo-completion-changed
                 </text>
               </g>
 
@@ -537,7 +562,7 @@ export default function App(): JSX.Element {
                   reaction
                 </text>
                 <text x="450" y="84" class="map__strong">
-                  todoCheers
+                  todoCompletionCheer
                 </text>
               </g>
 
@@ -547,23 +572,22 @@ export default function App(): JSX.Element {
                   query
                 </text>
                 <text x="450" y="204" class="map__strong">
-                  listTodos
+                  todosQuery
                 </text>
               </g>
 
-              <g class="map__evt">
+              <g class="map__rxn">
                 <rect x="522" y="106" width="156" height="48" rx="10" />
                 <text x="600" y="126">
-                  event
+                  reaction effect
                 </text>
                 <text x="600" y="144" class="map__strong">
-                  todoCheerCreated
+                  createTodoCheer
                 </text>
               </g>
             </svg>
             <figcaption>
-              Nodes and edges are inferred from registered slices and their
-              event interests.
+              An illustrative review aid using registered Slice and Event names.
             </figcaption>
           </figure>
         </Section>
@@ -578,8 +602,8 @@ export default function App(): JSX.Element {
             </p>
             <CopyCommand command={installCommand} big />
             <p class="cta__hint">
-              Requires Node.js 24+. Add <code>-- --install</code> to install
-              dependencies automatically.
+              Requires a current Node.js release. Add <code>-- --install</code>{' '}
+              to install dependencies automatically.
             </p>
           </div>
         </section>

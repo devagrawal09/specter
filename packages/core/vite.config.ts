@@ -7,6 +7,7 @@ export default defineConfig({
       entry: {
         client: './src/client-entry.ts',
         index: './src/index.ts',
+        spec: './src/spec-entry.ts',
         testing: './src/testing-entry.ts',
       },
       formats: ['es'],

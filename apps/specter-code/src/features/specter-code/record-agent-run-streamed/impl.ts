@@ -1,0 +1,36 @@
+import recordAgentRunStreamedSpec from './spec'
+import { z } from 'zod'
+
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { agentRunStreamedEvent } from '../events'
+
+const recordAgentRunStreamed = recordAgentRunStreamedSpec
+  .inputSchema(z.object({
+      runId: z.string(),
+      workspaceId: z.string(),
+      agentId: z.string(),
+      chunkId: z.string(),
+      sequence: z.number().int().nonnegative(),
+      delta: z.string(),
+    }))
+  .store(createMemorySliceStore(() => ({})))
+  .handle(async (command) => {
+    const delta = command.delta
+
+    if (!delta) {
+      throw new Error('Streamed delta is required')
+    }
+
+    return [
+      agentRunStreamedEvent.create({
+        runId: command.runId,
+        workspaceId: command.workspaceId,
+        agentId: command.agentId,
+        chunkId: command.chunkId,
+        sequence: command.sequence,
+        delta,
+      }),
+    ]
+  })
+
+export default recordAgentRunStreamed
