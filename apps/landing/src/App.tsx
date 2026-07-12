@@ -1,84 +1,129 @@
-import { createSignal, For, type JSX } from 'solid-js'
+import { createSignal, For, onCleanup, type JSX } from 'solid-js'
 import { ArchitectureMap } from './ArchitectureMap'
 import { CodeBlock } from './CodeBlock'
-import { kindColor, kindLabel, nodes, snippets } from './architecture'
+import {
+  kindColor,
+  kindLabel,
+  type NodeId,
+  type NodeKind,
+  nodes,
+  snippets,
+} from './architecture'
 
-const legend: { kind: keyof typeof kindColor; label: string }[] = [
-  { kind: 'spec', label: 'Specification' },
-  { kind: 'slice', label: 'Slice' },
-  { kind: 'event', label: 'Event' },
+const createCommand = 'npm create specter@latest my-app'
+
+const legend: { kind: NodeKind; label: string }[] = [
+  { kind: 'spec', label: 'Slice specification' },
+  { kind: 'implementation', label: 'Implementation' },
+  { kind: 'runtime', label: 'Specter App' },
+  { kind: 'event', label: 'Event definition' },
   { kind: 'log', label: 'Event log' },
+  { kind: 'plugin', label: 'Reaction plugin' },
   { kind: 'client', label: 'Client / UI' },
 ]
 
 const pillars = [
   {
     step: '01',
-    title: 'Specify',
-    body: 'Describe each vertical feature as typed events and slices with plain-language scenarios. The specification is the source of truth.',
+    title: 'Specify behavior',
+    body: 'Give each Slice an immutable specification: a name, a description, and exact scenarios written in domain language.',
   },
   {
     step: '02',
-    title: 'Compile & execute',
-    body: 'Specter compiles those declarations into runnable command, query, and reaction slices wired to a durable event log.',
+    title: 'Complete the implementation',
+    body: 'Add schemas, a private Store, apply handlers, and a terminal handler. Reaction implementations also select an explicit plugin.',
   },
   {
     step: '03',
-    title: 'Test, scaffold & visualize',
-    body: 'The same declarations generate behavior tests, scaffold new features, and render the architecture map you are reading.',
+    title: 'Validate, test & run',
+    body: 'Specter validates the selected implementations at app construction, while testSliceImplementations executes every scenario.',
   },
 ]
 
-const capabilities = [
+const capabilities: {
+  kind: NodeKind
+  title: string
+  body: string
+}[] = [
   {
-    kind: 'log' as const,
-    title: 'Runs anywhere, no opinions',
-    body: 'Specter core owns runtime contracts, not infrastructure. Bring your own database, protocol, and frontend — SQLite and a typed client are just the reference adapters.',
+    kind: 'runtime',
+    title: 'Infrastructure stays replaceable',
+    body: 'Specter core defines runtime contracts, while applications choose their Event Log, Slice Store, scheduler, transport, and UI adapters.',
   },
   {
-    kind: 'event' as const,
-    title: 'Connect any external API',
-    body: 'Reaction slices call outward through small plugin adapters, so an event can trigger email, payments, or any third-party API without leaking into your domain.',
+    kind: 'plugin',
+    title: 'Side effects stay explicit',
+    body: 'A Reaction returns a typed effect. Its selected plugin decides whether that means dispatching a command, calling an API, or doing something else.',
   },
   {
-    kind: 'slice' as const,
-    title: 'Built for AI agents',
-    body: 'Each slice is a small, isolated unit with a schema, scenarios, and a single handler. Agents load one slice of context and stay inside strong, testable guardrails.',
+    kind: 'implementation',
+    title: 'Small boundaries for agents',
+    body: 'An agent can inspect one specification beside one implementation, with exact scenarios and private state instead of a cross-feature service graph.',
   },
   {
-    kind: 'spec' as const,
-    title: 'Architecture from source',
-    body: 'Because specs, slices, and events are structured data, Specter can translate them into diagrams of architecture and dataflow — like the map above.',
+    kind: 'spec',
+    title: 'Architecture you can inspect',
+    body: 'Specifications, selected implementations, Event Definitions, and adapters remain explicit in the project. The map above is a conceptual view of those contracts.',
   },
 ]
+
+type CopyStatus = 'idle' | 'copied' | 'failed'
 
 export function App(): JSX.Element {
-  const [active, setActive] = createSignal('spec')
-  const [copied, setCopied] = createSignal(false)
+  const [active, setActive] = createSignal<NodeId>('spec')
+  const [copyStatus, setCopyStatus] = createSignal<CopyStatus>('idle')
+  let copyResetTimer: ReturnType<typeof setTimeout> | undefined
 
-  const activeNode = () => nodes.find((node) => node.id === active())
-  const activeSnippet = () => snippets[active()] ?? snippets.spec
-
-  const copyCommand = async () => {
-    try {
-      await navigator.clipboard.writeText('npm create specter')
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
-    } catch {
-      setCopied(false)
-    }
+  const activeNode = () =>
+    nodes.find((node) => node.id === active()) ?? nodes[0]
+  const activeSnippet = () => snippets[active()]
+  const copyLabel = () => {
+    if (copyStatus() === 'copied') return 'copied'
+    if (copyStatus() === 'failed') return 'retry'
+    return 'copy'
   }
+  const copyAnnouncement = () => {
+    if (copyStatus() === 'copied') return 'Create command copied to clipboard.'
+    if (copyStatus() === 'failed') {
+      return 'The create command could not be copied. Select and copy it manually.'
+    }
+    return ''
+  }
+
+  const scheduleCopyReset = () => {
+    if (copyResetTimer) clearTimeout(copyResetTimer)
+    copyResetTimer = setTimeout(() => setCopyStatus('idle'), 2000)
+  }
+
+  const copyCreateCommand = async () => {
+    try {
+      if (!navigator.clipboard?.writeText) {
+        throw new Error('Clipboard API unavailable')
+      }
+
+      await navigator.clipboard.writeText(createCommand)
+      setCopyStatus('copied')
+    } catch {
+      setCopyStatus('failed')
+    }
+
+    scheduleCopyReset()
+  }
+
+  onCleanup(() => {
+    if (copyResetTimer) clearTimeout(copyResetTimer)
+  })
 
   return (
     <div class="page">
       <header class="site-header">
-        <a class="brand" href="#top">
+        <a class="brand" href="#top" aria-label="Specter home">
           <span class="brand-mark" aria-hidden="true" />
           <span class="brand-name">Specter</span>
         </a>
         <nav class="site-nav" aria-label="Primary">
           <a href="#how">How it works</a>
-          <a href="#specs">Specs</a>
+          <a href="#specs">Specifications</a>
           <a href="#durable">Event log</a>
           <a href="#start" class="nav-cta">
             Get started
@@ -87,32 +132,39 @@ export function App(): JSX.Element {
       </header>
 
       <main id="top">
-        <section class="hero">
-          <p class="eyebrow">Specification-first application framework</p>
-          <h1 class="hero-title">
+        <section class="hero" aria-labelledby="hero-title">
+          <p class="eyebrow">Specification-first TypeScript runtime</p>
+          <h1 id="hero-title" class="hero-title">
             specifications that compile execute and scaffold your app
           </h1>
           <p class="hero-sub">
-            Specter turns one structured specification per feature into running
-            vertical slices, a durable event log, behavior tests, and the live
-            architecture map below.
+            Specter pairs immutable Slice Specifications with selected
+            implementations, validates the complete app before it runs, and
+            coordinates them through one ordered Event Log.
           </p>
 
           <div class="hero-actions">
             <button
               type="button"
               class="term-pill"
-              onClick={copyCommand}
-              aria-label="Copy the npm create specter command"
+              onClick={copyCreateCommand}
+              aria-label={`Copy the ${createCommand} command`}
             >
-              <span class="term-prompt">$</span>
-              <span class="term-cmd">npm create specter</span>
-              <span class="term-copy">{copied() ? 'copied' : 'copy'}</span>
+              <span class="term-prompt" aria-hidden="true">
+                $
+              </span>
+              <span class="term-cmd">{createCommand}</span>
+              <span class="term-copy" aria-hidden="true">
+                {copyLabel()}
+              </span>
             </button>
-            <a class="ghost-link" href="#how">
-              See how it works
+            <a class="ghost-link" href="#architecture">
+              Explore the architecture
             </a>
           </div>
+          <output class="sr-only" aria-live="polite">
+            {copyAnnouncement()}
+          </output>
 
           <ul class="legend" aria-label="Node types in the architecture map">
             <For each={legend}>
@@ -121,6 +173,7 @@ export function App(): JSX.Element {
                   <span
                     class="legend-dot"
                     style={{ background: kindColor[item.kind] }}
+                    aria-hidden="true"
                   />
                   {item.label}
                 </li>
@@ -130,18 +183,23 @@ export function App(): JSX.Element {
         </section>
 
         <section
+          id="architecture"
           class="map-section"
-          aria-label="Generated architecture and dataflow map"
+          aria-labelledby="architecture-heading"
         >
           <div class="map-shell">
             <div class="map-heading">
-              <h2>Generated from your specs, slices &amp; events</h2>
+              <p class="map-kicker">Conceptual architecture</p>
+              <h2 id="architecture-heading">
+                The current contracts of a Specter App
+              </h2>
               <p>
-                Hover or select a node to trace the dataflow and read the
-                specification that produced it.
+                Select a node to trace its nearest dataflow and inspect a
+                representative example from the current reference app.
               </p>
             </div>
-            <div class="map-toolbar">
+            <fieldset class="map-toolbar">
+              <legend class="sr-only">Select an architecture contract</legend>
               <For each={nodes}>
                 {(node) => (
                   <button
@@ -154,30 +212,40 @@ export function App(): JSX.Element {
                     onMouseEnter={() => setActive(node.id)}
                     onFocus={() => setActive(node.id)}
                   >
-                    <span class="trace-dot" />
+                    <span class="trace-dot" aria-hidden="true" />
                     {node.title}
                   </button>
                 )}
               </For>
-            </div>
+            </fieldset>
             <div class="map-grid">
-              <div class="map-canvas">
-                <ArchitectureMap active={active()} />
-              </div>
-              <aside class="map-panel" aria-live="polite">
-                <div class="panel-head">
-                  <span
-                    class="panel-dot"
-                    style={{
-                      background: kindColor[activeNode()?.kind ?? 'spec'],
-                    }}
-                  />
-                  <span class="panel-kind">
-                    {kindLabel[activeNode()?.kind ?? 'spec']}
-                  </span>
-                  <span class="panel-title">{activeNode()?.title}</span>
+              <p id="map-scroll-help" class="map-scroll-hint">
+                Scroll horizontally to explore the full diagram.
+              </p>
+              <section
+                class="map-canvas"
+                aria-label="Scrollable Specter architecture diagram"
+                aria-describedby="map-scroll-help"
+              >
+                <ArchitectureMap active={active()} onSelect={setActive} />
+              </section>
+              <aside class="map-panel" aria-labelledby="active-contract-title">
+                <div class="panel-copy">
+                  <div class="panel-head">
+                    <span
+                      class="panel-dot"
+                      style={{ background: kindColor[activeNode().kind] }}
+                      aria-hidden="true"
+                    />
+                    <span class="panel-kind">
+                      {kindLabel[activeNode().kind]}
+                    </span>
+                    <h3 id="active-contract-title" class="panel-title">
+                      {activeNode().title}
+                    </h3>
+                  </div>
+                  <p class="panel-caption">{activeSnippet().caption}</p>
                 </div>
-                <p class="panel-caption">{activeSnippet().caption}</p>
                 <CodeBlock
                   file={activeSnippet().file}
                   lang={activeSnippet().lang}
@@ -192,10 +260,11 @@ export function App(): JSX.Element {
           <div class="section-head">
             <h2>What Specter is, and how it works</h2>
             <p>
-              Specter is a TypeScript framework for building vertically sliced,
-              event-sourced applications. You write the specification once;
-              Specter treats that specification as a source of truth it can
-              compile, execute, test, scaffold, and visualize.
+              Specter is a TypeScript runtime for vertically sliced,
+              event-sourced applications. Every Slice keeps its immutable
+              behavior specification separate from its executable
+              implementation, and a Specter App selects exactly one completed
+              implementation per Slice name.
             </p>
           </div>
           <ol class="pillars">
@@ -213,65 +282,62 @@ export function App(): JSX.Element {
 
         <section id="specs" class="section split">
           <div class="split-copy">
-            <p class="kicker">Structured specs · behavior tests</p>
-            <h2>Structured specs that test themselves</h2>
+            <p class="kicker">Immutable specs · executable scenarios</p>
+            <h2>Behavior stays independent from infrastructure</h2>
             <p>
-              A slice declares a schema, a handler, and scenarios written in
-              plain language. Each scenario is an executable example: a{' '}
-              <code>given</code> history of events, a <code>when</code> input,
-              and the <code>expect</code>ed result.
+              A <code>spec.ts</code> file declares only the Slice name,
+              description, and scenarios. It uses exact Scenario Events by type
+              string without importing Event Definitions, schemas, stores, or
+              sibling Slices.
             </p>
             <p>
-              Specter runs every scenario as a behavior test. For a command
-              slice, expecting no events means the command must be rejected — so
-              your specification and your test suite never drift apart.
+              <code>testSliceImplementations</code> runs every selected
+              implementation against those scenarios and checks configuration
+              conformance. For a Command, an empty expected Event list means the
+              command must reject.
             </p>
           </div>
           <div class="split-visual">
             <CodeBlock
-              file={snippets.cmd.file}
-              lang={snippets.cmd.lang}
-              code={snippets.cmd.code}
+              file={snippets.spec.file}
+              lang={snippets.spec.lang}
+              code={snippets.spec.code}
             />
           </div>
         </section>
 
         <section class="section">
           <div class="section-head">
-            <h2>Vertical slices, built and tested independently</h2>
+            <h2>One specification, one selected implementation</h2>
             <p>
-              A slice is one command, query, or reaction with private,
-              event-derived state. Slices never import each other, so you can
-              build, scenario-test, and reason about a single slice without
-              loading the rest of the app.
+              Implementations complete the specification with runtime details.
+              Each owns its private event-derived Slice State and imports no
+              sibling Slice implementation.
             </p>
           </div>
           <div class="slice-row">
             <For
               each={[
                 {
-                  kind: 'slice' as const,
                   tag: 'Command',
-                  body: 'Validates input, decides, and emits domain events. Owns its own decision state.',
+                  body: 'Validates input, catches up private decision state, and either emits at least one authorized Event Draft or rejects.',
                 },
                 {
-                  kind: 'slice' as const,
                   tag: 'Query',
-                  body: 'Folds events into a private read model and answers reads. Never drives commands.',
+                  body: 'Catches relevant Events into a private read model, then answers from a read-only view of that state.',
                 },
                 {
-                  kind: 'slice' as const,
                   tag: 'Reaction',
-                  body: 'Listens to events and requests follow-up commands to orchestrate the system.',
+                  body: 'Catches up private state and may return one typed Reaction Effect for an explicit plugin to interpret.',
                 },
               ]}
             >
               {(slice) => (
                 <article
                   class="slice-card"
-                  style={{ '--c': kindColor[slice.kind] }}
+                  style={{ '--c': kindColor.implementation }}
                 >
-                  <span class="slice-tag">{slice.tag} slice</span>
+                  <span class="slice-tag">{slice.tag} implementation</span>
                   <p>{slice.body}</p>
                 </article>
               )}
@@ -281,18 +347,17 @@ export function App(): JSX.Element {
 
         <section id="durable" class="section split reverse">
           <div class="split-copy">
-            <p class="kicker">Durable events · orchestration</p>
-            <h2>The app never loses data</h2>
+            <p class="kicker">Ordered Events · derived Slice State</p>
+            <h2>One app-level Event Log, explicit adapters</h2>
             <p>
-              Every accepted command appends immutable events to an append-only
-              event log. That log is the system of record: read models and
-              reactions are derived by replaying it, so nothing depends on
-              mutable rows that can be overwritten or lost.
+              Every accepted Command emits one or more validated Event Drafts.
+              The Specter App appends them through its selected Event Log
+              adapter, which owns the storage durability guarantee.
             </p>
             <p>
-              Specter orchestrates slices through those same events. A reaction
-              slice observes new events and requests follow-up commands, keeping
-              multi-step workflows explicit, replayable, and testable.
+              Each Slice Store tracks private state and a cursor. Before a
+              handler runs, Specter catches that Slice up with the relevant
+              persisted Events in global log order.
             </p>
           </div>
           <div class="split-visual">
@@ -306,11 +371,11 @@ export function App(): JSX.Element {
 
         <section class="section">
           <div class="section-head">
-            <h2>One source of truth, many outputs</h2>
+            <h2>Explicit seams, inspectable wiring</h2>
             <p>
-              Because the specification is structured data, Specter can target
-              your infrastructure, your integrations, your agents, and your
-              diagrams — all from the same declarations.
+              Specter keeps domain behavior close while leaving infrastructure
+              choices visible. The result is a project humans and coding agents
+              can inspect one Slice at a time.
             </p>
           </div>
           <div class="cap-grid">
@@ -320,7 +385,7 @@ export function App(): JSX.Element {
                   class="cap-card"
                   style={{ '--c': kindColor[cap.kind] }}
                 >
-                  <span class="cap-dot" />
+                  <span class="cap-dot" aria-hidden="true" />
                   <h3>{cap.title}</h3>
                   <p>{cap.body}</p>
                 </article>
@@ -332,32 +397,40 @@ export function App(): JSX.Element {
         <section id="start" class="section start">
           <div class="start-inner">
             <p class="kicker">Getting started</p>
-            <h2>Scaffold a Specter app in one command</h2>
+            <h2>Create a Specter Project from the reference app</h2>
             <p class="start-sub">
-              Generate a fully specified reference feature — events, slices,
-              scenarios, and wiring — then start editing the specification.
+              The Project Initializer copies the current Todo reference app,
+              including Events, Slice specs, selected implementations, scenario
+              tests, adapters, and wiring.
             </p>
             <button
               type="button"
               class="term-block"
-              onClick={copyCommand}
-              aria-label="Copy the npm create specter command"
+              onClick={copyCreateCommand}
+              aria-label={`Copy the ${createCommand} command`}
             >
               <span class="term-line">
-                <span class="term-prompt">$</span>
-                <span class="term-cmd">npm create specter</span>
+                <span class="term-prompt" aria-hidden="true">
+                  $
+                </span>
+                <span class="term-cmd">{createCommand}</span>
               </span>
-              <span class="term-copy-lg">{copied() ? 'Copied' : 'Copy'}</span>
+              <span class="term-copy-lg" aria-hidden="true">
+                {copyLabel()}
+              </span>
             </button>
             <ol class="start-steps">
-              <li>Scaffold the project and install dependencies.</li>
               <li>
-                Open <code>src/features/todos</code> — the worked example — and
-                read its events, slices, and scenarios.
+                Run the command, enter <code>my-app</code>, and install its
+                dependencies.
               </li>
               <li>
-                Change a spec, run the scenarios, and watch the architecture map
-                update with it.
+                Read <code>src/features/todos/add-todo/spec.ts</code> beside its
+                <code>impl.ts</code> implementation.
+              </li>
+              <li>
+                Run <code>npm test</code>, then change a scenario and complete
+                the implementation that must satisfy it.
               </li>
             </ol>
           </div>
@@ -367,8 +440,9 @@ export function App(): JSX.Element {
       <footer class="site-footer">
         <span class="brand-mark small" aria-hidden="true" />
         <p>
-          Specter — specification-first, event-sourced TypeScript. Copy is
-          illustrative; no real credentials are used on this page.
+          Specter — specification-first, vertically sliced, event-sourced
+          TypeScript. The architecture map is a conceptual view of current
+          framework contracts.
         </p>
       </footer>
     </div>

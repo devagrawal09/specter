@@ -1,8 +1,10 @@
-import { testScenarios } from '@specter-ts/core/testing'
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
 import { sqliteScenario } from '../../db/scenario-tests'
+import { bookingEventDefinitions } from './events'
 import { bookingRegistrations } from './registry'
 
-testScenarios(bookingRegistrations, {
+testSliceImplementations(bookingRegistrations, {
+  events: bookingEventDefinitions,
   runScenario: sqliteScenario({}),
 })

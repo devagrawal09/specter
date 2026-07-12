@@ -11,9 +11,11 @@ const keywords = new Set([
   'async',
   'await',
   'return',
+  'throw',
   'if',
   'else',
   'new',
+  'function',
   'type',
   'enum',
   'true',
@@ -73,14 +75,16 @@ export function CodeBlock(props: {
   const lines = () => props.code.split('\n')
 
   return (
-    <div class="code-block">
-      <div class="code-chrome" aria-hidden="true">
-        <span class="dot dot-red" />
-        <span class="dot dot-amber" />
-        <span class="dot dot-green" />
+    <figure class="code-block">
+      <figcaption class="code-chrome">
+        <span class="code-dots" aria-hidden="true">
+          <span class="dot dot-red" />
+          <span class="dot dot-amber" />
+          <span class="dot dot-green" />
+        </span>
         <span class="code-file">{props.file}</span>
         <span class="code-lang">{props.lang}</span>
-      </div>
+      </figcaption>
       <pre class="code-body">
         <code>
           <For each={lines()}>
@@ -95,6 +99,6 @@ export function CodeBlock(props: {
           </For>
         </code>
       </pre>
-    </div>
+    </figure>
   )
 }

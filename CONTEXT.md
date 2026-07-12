@@ -32,9 +32,17 @@ _Avoid_: Framework API, generated app feature
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. Multiple Reference applications may coexist to exercise different Specter capabilities; a Reference application should not lag behind the intended Specter API and is not automatically the Starter Template.
 _Avoid_: Product app, primary app
 
+**Threadplane Reference app**:
+The canonical Reference application that models collaborative Workspaces with messages, agents, participants, workspace files, and Agent Runs. The app name is Threadplane Reference app, not Threadplace.
+_Avoid_: Threadplace, primary product
+
 **Workspace**:
-In the Threadplane-style Reference application, a conversation and work surface that owns messages, agents, participants, and workspace files. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
+In the Threadplane Reference app, a conversation and work surface that owns messages, agents, participants, workspace files, and Agent Runs. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
 _Avoid_: Channel, Workstream, Project
+
+**Agent Run**:
+A durable domain concept for a single agent execution requested by a Workspace, user, or system event and observed through lifecycle facts. The current lifecycle fact vocabulary is run requested, run started, run streamed, run completed, run failed, tool call started, tool call completed, and tool call failed.
+_Avoid_: Agent job, transient plugin invocation
 
 **Product Site**:
 The public-facing site for presenting Specter itself and collecting interest from prospective users. A Product Site is distinct from a Reference application, even when it dogfoods Specter concepts.
@@ -45,7 +53,7 @@ A unique email registration from a prospective Specter user on the Product Site,
 _Avoid_: Lead event, repeated signup
 
 **Specter App**:
-The runtime composition of Event definitions and Slices for a user-defined application scope. A Specter App owns exactly one Event Log, exposes flat Effect-based methods named after Command Slices and Query Slices, and runs reactions. Separate Specter Apps do not share Event Logs and communicate only through commands and side effects.
+The runtime composition of Event Definitions and one selected implementation of each Slice Specification for a user-defined application scope. Specter App construction is asynchronous and validates specification/implementation conformance without executing handlers, stores, or plugins. A Specter App owns exactly one Event Log, exposes flat Effect-based methods named after Command Slices and Query Slices, and runs reactions. Separate Specter Apps do not share Event Logs and communicate only through commands and side effects.
 _Avoid_: Registry, shared event log
 
 **Specter Client**:
@@ -53,8 +61,16 @@ The app-inferred client contract exposed to runtime adapters and UI code. It exp
 _Avoid_: Stringly-typed dispatch client
 
 **Slice**:
-A named specification unit in a vertical feature that participates in event-log catch-up and slice state. A slice has one kind: Command Slice, Query Slice, or Reaction Slice; slice names are unique within a Specter App, Command Slice and Query Slice names become Specter Client method names, every Slice declares Event interests with Event definitions, relevant Events are applied in global Event Log order, and handlers receive adapter-provided Slice State.
+A named specification and selected implementation in a vertical feature that participates in Event Log catch-up and Slice State. A Slice has one kind: Command Slice, Query Slice, or Reaction Slice; Slice names are unique within a Specter App, Command Slice and Query Slice names become Specter Client method names, and relevant Events are applied in global Event Log order.
 _Avoid_: Full feature, persistence shard
+
+**Slice Specification**:
+The immutable "what" of a Slice: name, human-readable description, and one or more Scenarios, conventionally exported as `<sliceName>Spec` from the Slice's `spec.ts`. Specifications use branded Scenario Events by string type and do not import Event Definitions, schemas, stores, plugins, server modules, or sibling Slices. One Slice Specification may have multiple divergent implementations, each tested independently.
+_Avoid_: Runtime registration, schema-bearing Slice
+
+**Slice Implementation**:
+The executable "how" of a Slice, conventionally exported as `<sliceName>` from `impl.ts`. It completes one imported Slice Specification with input and output schema stages, a Reaction Plugin when applicable, a Slice Store, zero or more typed apply handlers bound to app Event Definitions, and a terminal handler. A Specter App selects exactly one completed implementation for each Slice name; incomplete specifications cannot be registered.
+_Avoid_: Specification, shared feature service
 
 **Slice State**:
 The private event-derived state a Slice uses after catch-up. Command Slice state supports decisions, Query Slice state supports queries, and Reaction Slice state supports whether to produce a Reaction Effect; two Slices should not share Slice State. Slice State is accessed through per-slice adapter-provided parameters: event application receives write-capable state, while command, query, and reaction handling receive read-only state.
@@ -65,7 +81,7 @@ The per-slice record of the last Event Log order applied to that Slice's Slice S
 _Avoid_: App-wide checkpoint
 
 **Command Slice**:
-A slice that defines exactly one command and decides which events should be emitted when that command is accepted. An accepted command emits at least one Event; a command that would emit no Events is a Rejected Command. The Command Slice name is the command type clients dispatch, and the slice may maintain event-derived decision state before handling the command. Command catch-up, read-only decision handling, and event append happen in one transaction; Events emitted by one accepted command append atomically and in order, then self-emitted Events are applied later through normal catch-up.
+A Slice that defines exactly one command and decides which Events should be emitted when that command is accepted. An accepted command emits at least one Event whose type appears in an accepted Scenario outcome; any other emitted Event type is rejected at runtime. A command that would emit no Events is a Rejected Command. Command handlers are deterministic: domain IDs, timestamps, and randomness enter through command input or prior Events rather than being generated inside the handler.
 _Avoid_: Stateless command handler, query reader
 
 **Reaction Slice**:
@@ -101,12 +117,16 @@ A domain fact emitted by an accepted command or reaction. The Specter App assign
 _Avoid_: Error response, validation failure
 
 **Event Definition**:
-A named schema and factory for Events. Event Definitions are owned by Vertical Features and registered with a Specter App; event type names are unique within a Specter App's Event Log, and persisted event payloads are decoded against their Event Definitions before being applied to Slices.
+A kebab-case type, runtime schema, and factory for Events. Event Definitions are implementation contracts owned by Vertical Features and registered once with a Specter App. Event schemas validate payloads but must preserve them one-to-one: they cannot strip, transform, or generate payload fields.
 _Avoid_: Event instance
 
 **Event Draft**:
 A typed event value created by an Event Definition before it is appended to the Event Log. Command Slices emit Event Drafts; the Specter App appends them and returns persisted Events with log metadata.
 _Avoid_: Persisted event
+
+**Scenario Event**:
+A branded specification example created with `event(type, payload)`. A Scenario Event contains an Event type string and exact example payload but is deliberately not an Event Draft and cannot enter runtime APIs. It lets specifications describe domain facts without importing implementation-owned Event Definitions or schemas.
+_Avoid_: Event Draft, persisted Event
 
 **Event Log**:
 The ordered durable record of registered Events owned by a Specter App and accessed through one app-level adapter that atomically queries and commits Events. In runtime use, Events enter the Event Log through accepted commands; the Event Log assigns persistence metadata such as ID, order, and recorded timestamp. The Event Log can contain as many event types as the application needs, but should not accept unknown event types.
@@ -124,8 +144,16 @@ _Avoid_: Rejected command
 A query input that cannot be decoded against the Query Slice schema. Invalid query input should fail the query rather than silently becoming an empty or default result.
 _Avoid_: Empty query result
 
+**Slice Input Schema**:
+The optional Standard Schema supplied with `.inputSchema(...)` for a Command or Query implementation. Passing a schema validates and may transform public input before the handler; calling `.inputSchema<Type>()` without a value supplies compile-time types with no runtime validation overhead. Invalid input is a runtime boundary failure and is not modeled as a Scenario outcome.
+_Avoid_: Scenario validator, Event schema
+
+**Slice Output Schema**:
+The optional Standard Schema supplied with `.outputSchema(...)` for a Query or Reaction implementation. Passing a schema validates and may transform handler output before callers or Reaction Plugins observe it; calling `.outputSchema<Type>()` without a value supplies compile-time types with no runtime validation overhead.
+_Avoid_: Event schema, transport serializer
+
 **Scenario**:
-An executable example attached to a Slice. Scenarios are usually shaped as given Event Drafts, when input or action, and expected outcome. Given and expected Event Drafts must match registered Event Definitions; given Event Drafts are test setup, not runtime ingestion; in Command Slice scenarios, expecting no events means the command must fail as a Rejected Command.
+A production specification example attached to a Slice Specification. Scenarios use exact Scenario Event payloads and describe accepted or rejected outcomes; there are no invalid-input Scenarios. Command Scenarios contain Given Events, command input, and expected Events; Query Scenarios contain Given Events, query input, and expected output; Reaction Scenarios contain Given Events and expected effects. Across a Slice's Scenarios, the union of Given Event types must exactly equal its implementation's apply Event types. Every Slice and every app Event Definition appears in at least one Scenario. Expecting no Events from a Command means the command must fail as a Rejected Command.
 _Avoid_: Test-only case, documentation-only example
 
 **Vertical Feature**:

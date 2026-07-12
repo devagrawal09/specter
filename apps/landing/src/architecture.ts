@@ -1,7 +1,25 @@
-export type NodeKind = 'client' | 'spec' | 'slice' | 'event' | 'log'
+export type NodeKind =
+  | 'client'
+  | 'spec'
+  | 'runtime'
+  | 'implementation'
+  | 'event'
+  | 'log'
+  | 'plugin'
+
+export type NodeId =
+  | 'client'
+  | 'spec'
+  | 'app'
+  | 'cmd'
+  | 'query'
+  | 'reaction'
+  | 'event'
+  | 'log'
+  | 'plugin'
 
 export type ArchNode = {
-  id: string
+  id: NodeId
   kind: NodeKind
   title: string
   subtitle: string
@@ -13,12 +31,14 @@ export type ArchNode = {
 
 export type ArchEdge = {
   id: string
-  from: string
-  to: string
+  from: NodeId
+  to: NodeId
   label: string
-  /** Source node whose color the flowing signal inherits. */
+  /** Source node kind whose color the flowing signal inherits. */
   color: NodeKind
   d: string
+  labelX: number
+  labelY: number
 }
 
 export type Snippet = {
@@ -31,298 +51,457 @@ export type Snippet = {
 export const kindColor: Record<NodeKind, string> = {
   client: '#cbd5e1',
   spec: '#b794f6',
-  slice: '#67e8f9',
+  runtime: '#60a5fa',
+  implementation: '#67e8f9',
   event: '#fbbf24',
   log: '#34d399',
+  plugin: '#fb7185',
 }
 
 export const kindLabel: Record<NodeKind, string> = {
   client: 'Client / UI',
-  spec: 'Specification',
-  slice: 'Slice',
-  event: 'Event',
-  log: 'Durable log',
+  spec: 'Slice specification',
+  runtime: 'Specter runtime',
+  implementation: 'Slice implementation',
+  event: 'Event definition',
+  log: 'Event log',
+  plugin: 'Reaction plugin',
 }
 
-export const nodes: ArchNode[] = [
+export const nodes: readonly ArchNode[] = [
   {
     id: 'client',
     kind: 'client',
     title: 'Client / UI',
-    subtitle: 'typed Specter client',
-    x: 70,
-    y: 96,
-    w: 210,
-    h: 88,
+    subtitle: 'typed command · query calls',
+    x: 50,
+    y: 70,
+    w: 220,
+    h: 92,
   },
   {
     id: 'spec',
     kind: 'spec',
-    title: 'Specification',
-    subtitle: 'source of truth',
-    x: 70,
-    y: 300,
-    w: 210,
+    title: 'Slice Specs',
+    subtitle: 'immutable what · scenarios',
+    x: 50,
+    y: 310,
+    w: 240,
+    h: 132,
+  },
+  {
+    id: 'app',
+    kind: 'runtime',
+    title: 'Specter App',
+    subtitle: 'validates · owns one log',
+    x: 370,
+    y: 250,
+    w: 240,
     h: 150,
   },
   {
     id: 'cmd',
-    kind: 'slice',
-    title: 'Command Slice',
-    subtitle: 'decides · emits events',
-    x: 400,
-    y: 120,
-    w: 220,
-    h: 96,
+    kind: 'implementation',
+    title: 'Command Impl',
+    subtitle: 'decides · emits drafts',
+    x: 700,
+    y: 55,
+    w: 230,
+    h: 100,
   },
   {
     id: 'query',
-    kind: 'slice',
-    title: 'Query Slice',
-    subtitle: 'derives read models',
-    x: 400,
-    y: 300,
-    w: 220,
-    h: 96,
+    kind: 'implementation',
+    title: 'Query Impl',
+    subtitle: 'private read state',
+    x: 700,
+    y: 245,
+    w: 230,
+    h: 100,
   },
   {
     id: 'reaction',
-    kind: 'slice',
-    title: 'Reaction Slice',
-    subtitle: 'orchestrates follow-ups',
-    x: 400,
-    y: 486,
-    w: 220,
-    h: 96,
+    kind: 'implementation',
+    title: 'Reaction Impl',
+    subtitle: 'produces an effect',
+    x: 700,
+    y: 455,
+    w: 230,
+    h: 100,
   },
   {
     id: 'event',
     kind: 'event',
-    title: 'Events',
-    subtitle: 'domain facts',
-    x: 730,
-    y: 300,
-    w: 180,
-    h: 96,
+    title: 'Event Definitions',
+    subtitle: 'validate · create drafts',
+    x: 1030,
+    y: 55,
+    w: 220,
+    h: 100,
   },
   {
     id: 'log',
     kind: 'log',
     title: 'Event Log',
-    subtitle: 'append-only',
-    x: 1010,
-    y: 290,
-    w: 160,
-    h: 118,
+    subtitle: 'ordered · adapter-backed',
+    x: 1030,
+    y: 250,
+    w: 220,
+    h: 115,
+  },
+  {
+    id: 'plugin',
+    kind: 'plugin',
+    title: 'Reaction Plugin',
+    subtitle: 'interprets the effect',
+    x: 1030,
+    y: 480,
+    w: 220,
+    h: 100,
   },
 ]
 
-export const edges: ArchEdge[] = [
+export const edges: readonly ArchEdge[] = [
   {
-    id: 'client-cmd',
+    id: 'client-app',
     from: 'client',
-    to: 'cmd',
-    label: 'issues command',
+    to: 'app',
+    label: 'typed calls',
     color: 'client',
-    d: 'M280,140 C345,140 345,168 400,168',
-  },
-  {
-    id: 'client-query',
-    from: 'client',
-    to: 'query',
-    label: 'requests read',
-    color: 'client',
-    d: 'M280,152 C350,152 350,340 400,348',
+    d: 'M270,116 C340,116 330,300 370,300',
+    labelX: 330,
+    labelY: 182,
   },
   {
     id: 'spec-cmd',
     from: 'spec',
     to: 'cmd',
-    label: 'compiles',
+    label: 'completed by',
     color: 'spec',
-    d: 'M280,330 C345,330 345,168 400,168',
+    d: 'M290,330 C500,330 510,105 700,105',
+    labelX: 510,
+    labelY: 188,
   },
   {
     id: 'spec-query',
     from: 'spec',
     to: 'query',
-    label: 'compiles',
+    label: 'completed by',
     color: 'spec',
-    d: 'M280,375 C345,375 345,348 400,348',
+    d: 'M290,376 C500,376 510,295 700,295',
+    labelX: 505,
+    labelY: 346,
   },
   {
     id: 'spec-reaction',
     from: 'spec',
     to: 'reaction',
-    label: 'compiles',
+    label: 'completed by',
     color: 'spec',
-    d: 'M280,420 C345,420 345,534 400,534',
+    d: 'M290,420 C500,420 510,505 700,505',
+    labelX: 505,
+    labelY: 465,
+  },
+  {
+    id: 'app-cmd',
+    from: 'app',
+    to: 'cmd',
+    label: 'runs command',
+    color: 'runtime',
+    d: 'M610,280 C660,280 650,105 700,105',
+    labelX: 655,
+    labelY: 212,
+  },
+  {
+    id: 'app-query',
+    from: 'app',
+    to: 'query',
+    label: 'serves query',
+    color: 'runtime',
+    d: 'M610,325 C650,325 660,295 700,295',
+    labelX: 655,
+    labelY: 310,
+  },
+  {
+    id: 'app-reaction',
+    from: 'app',
+    to: 'reaction',
+    label: 'runs reaction',
+    color: 'runtime',
+    d: 'M610,370 C660,370 650,505 700,505',
+    labelX: 655,
+    labelY: 438,
   },
   {
     id: 'cmd-event',
     from: 'cmd',
     to: 'event',
-    label: 'emits event',
-    color: 'slice',
-    d: 'M620,168 C720,168 820,224 820,300',
+    label: 'creates Event Draft',
+    color: 'implementation',
+    d: 'M930,105 L1030,105',
+    labelX: 980,
+    labelY: 90,
   },
   {
     id: 'event-log',
     from: 'event',
     to: 'log',
-    label: 'appends · durable',
+    label: 'validates · appends',
     color: 'event',
-    d: 'M910,349 L1010,349',
+    d: 'M1140,155 L1140,250',
+    labelX: 1192,
+    labelY: 208,
+  },
+  {
+    id: 'log-cmd',
+    from: 'log',
+    to: 'cmd',
+    label: 'catches up state',
+    color: 'log',
+    d: 'M1080,250 C1080,190 815,190 815,155',
+    labelX: 945,
+    labelY: 178,
   },
   {
     id: 'log-query',
     from: 'log',
     to: 'query',
-    label: 'derives read model',
+    label: 'catches up state',
     color: 'log',
-    d: 'M1090,290 C1090,240 900,240 700,240 C560,240 510,246 510,300',
+    d: 'M1030,292 L930,295',
+    labelX: 980,
+    labelY: 278,
   },
   {
     id: 'log-reaction',
     from: 'log',
     to: 'reaction',
-    label: 'drives reaction',
+    label: 'catches up state',
     color: 'log',
-    d: 'M1090,408 C1090,640 900,640 760,640 C600,640 510,618 510,582',
+    d: 'M1030,330 C970,330 980,505 930,505',
+    labelX: 982,
+    labelY: 415,
   },
   {
-    id: 'reaction-event',
+    id: 'reaction-plugin',
     from: 'reaction',
-    to: 'event',
-    label: 'orchestrates',
-    color: 'slice',
-    d: 'M620,534 C720,534 820,468 820,396',
+    to: 'plugin',
+    label: 'returns effect',
+    color: 'implementation',
+    d: 'M930,505 C970,505 990,530 1030,530',
+    labelX: 980,
+    labelY: 492,
+  },
+  {
+    id: 'plugin-app',
+    from: 'plugin',
+    to: 'app',
+    label: 'may dispatch a command',
+    color: 'plugin',
+    d: 'M1030,555 C900,700 500,700 490,400',
+    labelX: 755,
+    labelY: 682,
   },
 ]
 
-export const snippets: Record<string, Snippet> = {
-  spec: {
-    file: 'features/todos/spec.ts',
+export const snippets: Record<NodeId, Snippet> = {
+  client: {
+    file: 'src/specter-client.ts',
     lang: 'ts',
     caption:
-      'One vertical feature, specified once. The same declaration compiles, executes, tests, and scaffolds.',
-    code: `import { createEventDefinition, createCommandSlice } from '@specter-ts/core'
-import { z } from 'zod'
+      'UI code calls an app-inferred client. It does not import stores, Event Definitions, or server modules.',
+    code: `import { defineSpecterClient } from '@specter-ts/core/client'
+import type { todoSpecterAppConfig } from './features/todos/registry'
 
-// A domain fact this feature can record.
-export const todoAdded = createEventDefinition(
-  'todoAdded',
-  z.object({ todoId: z.string(), title: z.string() }),
-)
+type TodoAppConfig = typeof todoSpecterAppConfig
 
-// A command slice: decide, then emit the fact.
-export const addTodo = createCommandSlice('addTodo', 'Adds a todo to the list.')
-  .schema(z.object({ title: z.string() }))
-  .handle(async (command) => [
-    todoAdded.create({ todoId: crypto.randomUUID(), title: command.title.trim() }),
-  ])`,
+export const specterClient =
+  defineSpecterClient<TodoAppConfig>('/api')
+
+await specterClient.addTodo({
+  todoId: 'todo-1',
+  title: 'Ship it',
+})`,
   },
-  cmd: {
-    file: 'features/todos/add-todo/slice.ts',
+  spec: {
+    file: 'features/todos/add-todo/spec.ts',
     lang: 'ts',
     caption:
-      'Command slices decide and emit events. Their scenarios are executable examples that become behavior tests.',
-    code: `export const addTodo = createCommandSlice('addTodo', 'Adds a todo to the list.')
-  .schema(z.object({ title: z.string() }))
+      'The immutable specification contains only the Slice name, description, and exact behavior scenarios.',
+    code: `import { createCommandSlice, event } from '@specter-ts/core/spec'
+
+const addTodoSpec = createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
   .scenarios(
     {
       description: 'Creates a todo with the provided title.',
       given: [],
-      when: { title: 'Ship it' },
-      expect: [todoAdded.create({ todoId: 'generated', title: 'Ship it' })],
+      when: { todoId: 'todo-1', title: 'Ship it' },
+      expect: [
+        event('todo-added', { todoId: 'todo-1', title: 'Ship it' }),
+      ],
     },
     {
-      description: 'Rejects a blank todo title.',
+      description: 'Rejects a blank title.',
       given: [],
-      when: { title: '   ' },
-      expect: [], // no events emitted means the command is rejected
+      when: { todoId: 'todo-1', title: '   ' },
+      expect: [],
       reject: { reason: 'Todo title is required' },
     },
   )
+
+export default addTodoSpec`,
+  },
+  app: {
+    file: 'src/server.ts',
+    lang: 'ts',
+    caption:
+      'App construction validates Event Definitions and one completed implementation for every Slice specification before exposing methods.',
+    code: `import { createSpecterApp } from '@specter-ts/core'
+import { todoSpecterAppConfig } from './features/todos/registry'
+
+// Construction is async because conformance is validated first.
+const todoApp = await createSpecterApp(todoSpecterAppConfig)
+
+await todoApp.addTodo({
+  todoId: 'todo-1',
+  title: 'Ship it',
+})`,
+  },
+  cmd: {
+    file: 'features/todos/add-todo/impl.ts',
+    lang: 'ts',
+    caption:
+      'The implementation completes the imported specification. Domain IDs enter through command input, keeping the handler deterministic.',
+    code: `const addTodo = addTodoSpec
+  .inputSchema(
+    z.object({
+      todoId: z.string().min(1),
+      title: z.string(),
+    }),
+  )
+  .store(sqliteSliceStore)
   .handle(async (command) => {
     const title = command.title.trim()
+
     if (!title) throw new Error('Todo title is required')
-    return [todoAdded.create({ todoId: crypto.randomUUID(), title })]
+
+    return [
+      todoAddedEvent.create({
+        todoId: command.todoId,
+        title,
+      }),
+    ]
   })`,
   },
   query: {
-    file: 'features/todos/todos-query/slice.ts',
+    file: 'features/todos/todos-query/impl.ts',
     lang: 'ts',
     caption:
-      'Query slices fold events into a private read model, then answer reads. State is derived, never shared.',
-    code: `export const todosQuery = createQuerySlice(
-  'todosQuery',
-  'Lists visible todos by status.',
-)
-  .schema(z.object({ status: z.enum(['all', 'active', 'completed']).catch('all') }))
-  .apply({
-    [todoAdded.type]: async (event, db) => {
-      const { todoId, title } = await todoAdded.decode(event.payload)
-      await db.insert(todoListItems).values({ id: todoId, title }).run()
-    },
+      'A Query implementation catches relevant Events into private Slice State, then answers from its read-only view.',
+    code: `const todosQuery = todosQuerySpec
+  .inputSchema(
+    z.object({
+      status: z.enum(['all', 'active', 'completed']).catch('all'),
+    }),
+  )
+  .outputSchema(todoOutputSchema)
+  .store(sqliteSliceStore)
+  .apply(todoAddedEvent, async (event, db) => {
+    await db.insert(todoListItems).values({
+      id: event.payload.todoId,
+      title: event.payload.title,
+    }).run()
   })
   .handle(async (query, db) =>
     db.select().from(todoListItems).where(visible(query.status)).all(),
   )`,
   },
   reaction: {
-    file: 'features/todos/completion-cheer/slice.ts',
+    file: 'features/todos/todo-completion-cheer-reaction/impl.ts',
     lang: 'ts',
     caption:
-      'Reaction slices listen to events and request follow-up commands. This is how Specter orchestrates slices.',
-    code: `export const completionCheer = createReactionSlice(
-  'todoCompletionCheer',
-  'Requests a cheer when completion milestones are reached.',
-)
-  .apply({
-    [todoCompletionChanged.type]: async (event, db) => {
-      const { todoId, completed } = await todoCompletionChanged.decode(event.payload)
-      await db.update(states).set({ completed }).where(eq(states.todoId, todoId)).run()
-    },
+      'A Reaction implementation returns at most one typed effect after catch-up. Its plugin interprets that effect outside the state transaction.',
+    code: `const todoCompletionCheer = todoCompletionCheerSpec
+  .outputSchema(
+    z.object({
+      type: z.literal('createTodoCheer'),
+      payload: z.object({ milestone: z.number().int().positive() }),
+    }),
+  )
+  .plugin(async (command) => async (effect) => command(effect))
+  .store(sqliteSliceStore)
+  .apply(todoCompletionChangedEvent, async (event, db) => {
+    await recordCompletion(db, event.payload)
   })
   .handle(async (db) => {
-    const done = await countCompleted(db)
-    if (done > 0 && done % 5 === 0) {
-      return { type: 'createTodoCheer', payload: { milestone: done } }
-    }
+    const milestone = await nextMilestone(db)
+    if (!milestone) return
+
+    return { type: 'createTodoCheer', payload: { milestone } }
   })`,
   },
   event: {
     file: 'features/todos/events.ts',
     lang: 'ts',
     caption:
-      'Events are typed domain facts. Every payload is a Zod schema, so encoding and decoding are validated.',
-    code: `export const todoAdded = createEventDefinition(
-  'todoAdded',
-  z.object({ todoId: z.string(), title: z.string() }),
+      'Implementation-owned Event Definitions pair kebab-case fact types with Standard Schema-compatible payload validation and draft factories.',
+    code: `import { createEventDefinition } from '@specter-ts/core'
+import { z } from 'zod'
+
+export const todoAddedEvent = createEventDefinition(
+  'todo-added',
+  z.object({
+    todoId: z.string(),
+    title: z.string(),
+  }),
 )
 
-export const todoCompletionChanged = createEventDefinition(
-  'todoCompletionChanged',
-  z.object({ todoId: z.string(), completed: z.boolean() }),
-)
-
-export const todoRemoved = createEventDefinition(
-  'todoRemoved',
-  z.object({ todoId: z.string() }),
-)`,
+export const todoEventDefinitions = [
+  todoAddedEvent,
+  todoCompletionChangedEvent,
+  todoRemovedEvent,
+] as const`,
   },
   log: {
-    file: 'event-log.jsonl',
+    file: 'event-log.json',
     lang: 'jsonc',
     caption:
-      'The append-only event log is the system of record. Read models and reactions are replayed from it.',
-    code: `// append-only · replayable · the system of record
-[
-  { "seq": 1, "type": "todoAdded",             "payload": { "todoId": "t-1", "title": "Ship it" } },
-  { "seq": 2, "type": "todoAdded",             "payload": { "todoId": "t-2", "title": "Review" } },
-  { "seq": 3, "type": "todoCompletionChanged", "payload": { "todoId": "t-1", "completed": true } },
-  { "seq": 4, "type": "todoCheerCreated",      "payload": { "milestone": 5 } }
+      'The app-level adapter persists ordered Events. IDs, order, and recorded timestamps are log metadata, not domain payload fields.',
+    code: `[
+  {
+    "id": "event-1",
+    "order": 1,
+    "recordedAt": "2026-07-11T15:04:00.000Z",
+    "type": "todo-added",
+    "payload": {
+      "todoId": "todo-1",
+      "title": "Ship it"
+    }
+  },
+  {
+    "id": "event-2",
+    "order": 2,
+    "recordedAt": "2026-07-11T15:05:00.000Z",
+    "type": "todo-completion-changed",
+    "payload": { "todoId": "todo-1", "completed": true }
+  }
 ]`,
+  },
+  plugin: {
+    file: 'features/todos/todo-completion-cheer-reaction/impl.ts',
+    lang: 'ts',
+    caption:
+      'The explicit plugin is the side-effect boundary. This one interprets an effect by dispatching a same-app command.',
+    code: `const todoCompletionCheer = todoCompletionCheerSpec
+  .outputSchema(completionCheerEffectSchema)
+  .plugin(
+    async (command) => async (effect) => {
+      await command(effect)
+    },
+  )
+  .store(sqliteSliceStore)
+  .apply(todoCompletionChangedEvent, applyCompletion)
+  .handle(decideCompletionCheer)`,
   },
 }

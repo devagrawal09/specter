@@ -1,0 +1,15 @@
+{
+  "name": "@specter/shipyard-benchmark",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@specter-ts/core": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2"
+  }
+}

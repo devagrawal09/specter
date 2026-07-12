@@ -1,29 +1,29 @@
 import { For, type JSX } from 'solid-js'
-import { edges, kindColor, kindLabel, nodes } from './architecture'
+import { edges, kindColor, kindLabel, type NodeId, nodes } from './architecture'
 
-const labelPos: Record<string, { x: number; y: number }> = {
-  'client-cmd': { x: 352, y: 146 },
-  'client-query': { x: 360, y: 250 },
-  'spec-cmd': { x: 350, y: 252 },
-  'spec-query': { x: 350, y: 366 },
-  'spec-reaction': { x: 350, y: 474 },
-  'cmd-event': { x: 726, y: 214 },
-  'event-log': { x: 960, y: 338 },
-  'log-query': { x: 700, y: 231 },
-  'log-reaction': { x: 762, y: 633 },
-  'reaction-event': { x: 740, y: 470 },
-}
-
-export function ArchitectureMap(props: { active: string }): JSX.Element {
+export function ArchitectureMap(props: {
+  active: NodeId
+  onSelect: (id: NodeId) => void
+}): JSX.Element {
   const isConnected = (edgeFrom: string, edgeTo: string) =>
     edgeFrom === props.active || edgeTo === props.active
 
+  const selectWithKeyboard = (event: KeyboardEvent, id: NodeId) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+
+    event.preventDefault()
+    props.onSelect(id)
+  }
+
   return (
-    <svg class="arch-map" viewBox="0 0 1240 680">
-      <title>
-        Architecture and dataflow map generated from specifications, slices, and
-        events
-      </title>
+    <svg class="arch-map" viewBox="0 0 1320 720">
+      <title>Conceptual architecture and dataflow of a Specter App</title>
+      <desc>
+        Slice specifications are completed by command, query, and reaction
+        implementations. A validated Specter App coordinates typed client calls,
+        Event Definitions, one Event Log, and explicit Reaction Plugins. Select
+        a node to inspect its current contract.
+      </desc>
       <defs>
         <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
           <path
@@ -35,13 +35,12 @@ export function ArchitectureMap(props: { active: string }): JSX.Element {
         </pattern>
       </defs>
 
-      <rect x="0" y="0" width="1240" height="680" fill="url(#grid)" />
+      <rect x="0" y="0" width="1320" height="720" fill="url(#grid)" />
 
       <g class="arch-edges">
         <For each={edges}>
           {(edge) => {
             const active = () => isConnected(edge.from, edge.to)
-            const pos = labelPos[edge.id]
             return (
               <g
                 class="arch-edge"
@@ -50,7 +49,7 @@ export function ArchitectureMap(props: { active: string }): JSX.Element {
               >
                 <path class="edge-base" d={edge.d} />
                 <path class="edge-flow" d={edge.d} />
-                <text class="edge-label" x={pos.x} y={pos.y}>
+                <text class="edge-label" x={edge.labelX} y={edge.labelY}>
                   {edge.label}
                 </text>
               </g>
@@ -64,10 +63,19 @@ export function ArchitectureMap(props: { active: string }): JSX.Element {
           {(node) => {
             const active = () => node.id === props.active
             return (
+              // biome-ignore lint/a11y/useSemanticElements: SVG groups cannot contain HTML buttons, so each node implements equivalent button semantics.
               <g
                 class="arch-node"
                 classList={{ 'is-active': active() }}
                 style={{ '--c': kindColor[node.kind] }}
+                role="button"
+                tabIndex={0}
+                aria-label={`${node.title}: ${node.subtitle}`}
+                aria-pressed={active() ? 'true' : 'false'}
+                onClick={() => props.onSelect(node.id)}
+                onMouseEnter={() => props.onSelect(node.id)}
+                onFocus={() => props.onSelect(node.id)}
+                onKeyDown={(event) => selectWithKeyboard(event, node.id)}
               >
                 <rect
                   class="node-rect"

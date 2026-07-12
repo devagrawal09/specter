@@ -9,7 +9,8 @@ import {
   runWithSqliteDb,
 } from './specter-sqlite'
 
-const sqlitePath = './data/threadplane-reference.db'
+const sqlitePath =
+  process.env.THREADPLANE_REFERENCE_DB_PATH ?? './data/threadplane-reference.db'
 const sqliteUrl = `file:${sqlitePath}`
 
 mkdirSync(dirname(sqlitePath), { recursive: true })

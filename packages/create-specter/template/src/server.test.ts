@@ -11,7 +11,7 @@ let app: Awaited<typeof import('./server')>['default']
 let tempDir: string
 
 beforeAll(async () => {
-  tempDir = mkdtempSync(join(tmpdir(), 'specter-template-'))
+  tempDir = mkdtempSync(join(tmpdir(), 'specter-reference-'))
   const sqlitePath = join(tempDir, 'app.db')
   const sqlite = createClient({ url: `file:${sqlitePath}` })
 
@@ -32,7 +32,10 @@ afterAll(() => {
 })
 
 test('handles command followed by immediate query without SQLITE_BUSY', async () => {
-  const commandResponse = await postJson('/api/addTodo', { title: 'Ship it' })
+  const commandResponse = await postJson('/api/addTodo', {
+    todoId: 'todo-1',
+    title: 'Ship it',
+  })
 
   expect(commandResponse.status).toBe(200)
   expect(await commandResponse.json()).toBeNull()

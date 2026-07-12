@@ -1,73 +1,118 @@
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
+
 import {
-  decodeSchema,
+  assertConforms,
+  commandScenarioEventTypes,
+  decodeOptionalSchema,
+  isScenarioEvent,
+  type ApplyEventDefinition,
   type CommandScenario,
   type EventDraft,
   type QueryScenario,
   type ReactionScenario,
+  type ScenarioEvent,
   type SliceRegistration,
+  valuesEqual,
 } from '../definition'
 
 export type ScenarioTestOptions = {
-  runScenario?: <T>(run: () => Promise<T>) => Promise<T>
+  readonly events: readonly ApplyEventDefinition[]
+  readonly runScenario?: <T>(run: () => Promise<T>) => Promise<T>
 }
 
-export function testScenarios(
-  registrations: readonly SliceRegistration[],
-  options: ScenarioTestOptions = {},
+export function testSliceImplementation(
+  implementation: SliceRegistration,
+  options: ScenarioTestOptions,
+) {
+  testSliceImplementations([implementation], options)
+}
+
+export function testSliceImplementations(
+  implementations: readonly SliceRegistration[],
+  options: ScenarioTestOptions,
 ) {
   const runScenario = options.runScenario ?? ((run) => run())
 
-  for (const registration of registrations) {
-    if (!registration.scenarios) {
-      continue
+  describe('Specter Slice implementations', () => {
+    beforeAll(() =>
+      assertConforms({ events: options.events, slices: implementations }),
+    )
+
+    for (const implementation of implementations) {
+      describe(implementation.description, () => {
+        switch (implementation.kind) {
+          case 'command':
+            for (const scenario of implementation.scenarios) {
+              testCommandScenario(
+                implementation,
+                scenario,
+                options.events,
+                runScenario,
+              )
+            }
+            break
+          case 'query':
+            for (const scenario of implementation.scenarios) {
+              testQueryScenario(
+                implementation,
+                scenario,
+                options.events,
+                runScenario,
+              )
+            }
+            break
+          case 'reaction':
+            for (const scenario of implementation.scenarios) {
+              testReactionScenario(
+                implementation,
+                scenario,
+                options.events,
+                runScenario,
+              )
+            }
+            break
+        }
+      })
     }
-
-    const scenarios = registration.scenarios
-
-    describe(registration.description, () => {
-      switch (registration.kind) {
-        case 'command':
-          for (const scenario of scenarios) {
-            if (!isCommandScenario(scenario)) {
-              continue
-            }
-            testCommandScenario(registration, scenario, runScenario)
-          }
-          break
-        case 'query':
-          for (const scenario of scenarios) {
-            if (!isQueryScenario(scenario)) {
-              continue
-            }
-            testQueryScenario(registration, scenario, runScenario)
-          }
-          break
-        case 'reaction':
-          for (const scenario of scenarios) {
-            if (!isReactionScenario(scenario)) {
-              continue
-            }
-            testReactionScenario(registration, scenario, runScenario)
-          }
-          break
-      }
-    })
-  }
+  })
 }
 
 function testCommandScenario(
-  registration: Extract<SliceRegistration, { kind: 'command' }>,
+  implementation: Extract<SliceRegistration, { kind: 'command' }>,
   scenario: CommandScenario,
+  eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(run: () => Promise<T>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
     const result = await runScenario(async () => {
+      await replay([implementation], eventDefinitions, scenario.given)
+      const state = await implementation.store.get(implementation.name)
+      const command = await decodeOptionalSchema(
+        implementation.inputSchema,
+        scenario.when,
+      )
+
       try {
-        await replay([registration], scenario.given as EventDraft[])
-        const state = await registration.store.get(registration.name)
-        const right = await registration.handle(scenario.when, state.read)
-        return { _tag: 'Right' as const, right }
+        const events = await implementation.handle(command, state.read)
+
+        if (events.length === 0) {
+          throw new Error(`Command emitted no events: ${implementation.name}`)
+        }
+
+        const allowedEventTypes = commandScenarioEventTypes(implementation)
+        const decodedEvents = await Promise.all(
+          events.map(async (draft, index) => {
+            if (!allowedEventTypes.has(draft.type)) {
+              throw new Error(
+                `Command "${implementation.name}" emitted unauthorized Event "${draft.type}" at index ${index}.`,
+              )
+            }
+
+            return decodeEventDraft(eventDefinitions, draft)
+          }),
+        )
+
+        return { _tag: 'Right' as const, right: decodedEvents }
       } catch (error) {
         return { _tag: 'Left' as const, left: error }
       }
@@ -88,184 +133,146 @@ function testCommandScenario(
     }
 
     if (result._tag === 'Left') {
-      throw new Error('Command scenario rejected unexpectedly')
+      throw new Error('Command scenario rejected unexpectedly', {
+        cause: result.left,
+      })
     }
 
     expect(result.right).toHaveLength(scenario.expect.length)
 
     for (const [index, expectedEvent] of scenario.expect.entries()) {
-      if (!isEvent(expectedEvent)) {
-        throw new Error('Command scenario expected value is not an event')
+      if (!isScenarioEvent(expectedEvent)) {
+        throw new Error(
+          'Command scenario expected value is not a ScenarioEvent',
+        )
       }
 
-      const actualEvent = result.right[index]
-
-      expect(actualEvent).toEqual(
-        expect.objectContaining({
-          type: expectedEvent.type,
-        }),
-      )
-      expect(payloadWithoutIds(actualEvent?.payload)).toEqual(
-        payloadWithoutIds(expectedEvent.payload),
-      )
+      expect(result.right[index]).toEqual({
+        type: expectedEvent.eventType,
+        payload: expectedEvent.examplePayload,
+      })
     }
   })
 }
 
 function testQueryScenario(
-  registration: Extract<SliceRegistration, { kind: 'query' }>,
+  implementation: Extract<SliceRegistration, { kind: 'query' }>,
   scenario: QueryScenario,
+  eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(run: () => Promise<T>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
     const result = await runScenario(async () => {
-      await replay([registration], scenario.given as EventDraft[])
-      const state = await registration.store.get(registration.name)
-      return registration.handle(
-        await decodeSchema(registration.schema, scenario.when),
-        state.read,
+      await replay([implementation], eventDefinitions, scenario.given)
+      const state = await implementation.store.get(implementation.name)
+      const input = await decodeOptionalSchema(
+        implementation.inputSchema,
+        scenario.when,
       )
-    })
+      const output = await implementation.handle(input, state.read)
 
-    expect(result).toEqual(scenario.expect)
+      return decodeOptionalSchema(implementation.outputSchema, output)
+    })
+    const expected = await decodeOptionalSchema(
+      implementation.outputSchema,
+      scenario.expect,
+    )
+
+    expect(result).toEqual(expected)
   })
 }
 
 function testReactionScenario(
-  registration: Extract<SliceRegistration, { kind: 'reaction' }>,
+  implementation: Extract<SliceRegistration, { kind: 'reaction' }>,
   scenario: ReactionScenario,
+  eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(run: () => Promise<T>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
     const result = await runScenario(async () => {
-      await replay([registration], scenario.given as EventDraft[])
-      const payloads = []
-      const state = await registration.store.get(registration.name)
-      const payload = await registration.handle(state.read)
+      await replay([implementation], eventDefinitions, scenario.given)
+      const state = await implementation.store.get(implementation.name)
+      const output = await implementation.handle(state.read)
 
-      if (payload !== undefined) {
-        payloads.push(payload)
-      }
-      return payloads
+      if (output === undefined) return []
+
+      return [await decodeOptionalSchema(implementation.outputSchema, output)]
     })
+    const expected = await Promise.all(
+      scenario.expect.map((output) =>
+        decodeOptionalSchema(implementation.outputSchema, output),
+      ),
+    )
 
-    expect(result).toEqual(scenario.expect)
+    expect(result).toEqual(expected)
   })
 }
 
-function isCommandScenario(value: unknown): value is CommandScenario {
-  return hasDescription(value) && hasGivenExpectArray(value) && 'when' in value
-}
-
-function isQueryScenario(value: unknown): value is QueryScenario {
-  return (
-    hasDescription(value) &&
-    hasGiven(value) &&
-    'when' in value &&
-    'expect' in value
+async function decodeEventDraft(
+  eventDefinitions: readonly ApplyEventDefinition[],
+  draft: EventDraft,
+) {
+  const definition = eventDefinitions.find(
+    (candidate) => candidate.type === draft.type,
   )
-}
+  if (!definition) throw new Error(`Unknown Event type: ${draft.type}`)
 
-function isReactionScenario(value: unknown): value is ReactionScenario {
-  return hasDescription(value) && hasGivenExpectArray(value)
-}
-
-function hasDescription(value: unknown): value is { description: string } {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'description' in value &&
-    typeof value.description === 'string'
-  )
-}
-
-function hasGiven(value: unknown): value is { given: readonly unknown[] } {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'given' in value &&
-    Array.isArray(value.given)
-  )
-}
-
-function hasGivenExpectArray(
-  value: unknown,
-): value is { given: readonly unknown[]; expect: readonly unknown[] } {
-  return hasGiven(value) && 'expect' in value && Array.isArray(value.expect)
-}
-
-function isEvent(value: unknown): value is EventDraft {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    'type' in value &&
-    'payload' in value &&
-    typeof value.type === 'string'
-  )
-}
-
-function payloadWithoutIds(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map(payloadWithoutIds)
+  const payload = await definition.decode(draft.payload)
+  if (!valuesEqual(payload, draft.payload)) {
+    throw new Error(
+      `Event schema transformed payload for "${draft.type}". Event payload validation must preserve data one-to-one.`,
+    )
   }
 
-  if (!isPlainObject(value)) {
-    return value
+  return {
+    type: draft.type,
+    payload,
   }
-
-  return Object.fromEntries(
-    Object.entries(value)
-      .filter(([key]) => !isIdentifierKey(key))
-      .map(([key, nested]) => [key, payloadWithoutIds(nested)]),
-  )
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object') {
-    return false
-  }
-
-  const prototype = Object.getPrototypeOf(value)
-
-  return prototype === Object.prototype || prototype === null
-}
-
-function isIdentifierKey(key: string) {
-  return (
-    key === 'id' ||
-    key === 'ID' ||
-    key.endsWith('Id') ||
-    key.endsWith('ID') ||
-    key.endsWith('_id') ||
-    key.endsWith('_ID')
-  )
 }
 
 export async function replay(
-  registrations: SliceRegistration[],
-  events: EventDraft[],
+  implementations: readonly SliceRegistration[],
+  eventDefinitions: readonly ApplyEventDefinition[],
+  events: readonly ScenarioEvent[],
 ) {
-  for (const [index, event] of events.entries()) {
+  const definitionsByType = new Map(
+    eventDefinitions.map(
+      (definition) => [definition.type, definition] as const,
+    ),
+  )
+
+  for (const [index, scenarioEvent] of events.entries()) {
+    const definition = definitionsByType.get(scenarioEvent.eventType)
+    if (!definition) {
+      throw new Error(`Unknown Scenario Event type: ${scenarioEvent.eventType}`)
+    }
+
     const id = `scenario-event-${index + 1}`
     const order = index + 1
     const recordedAt = new Date(0)
+    const payload = await definition.decode(scenarioEvent.examplePayload)
+    if (!valuesEqual(payload, scenarioEvent.examplePayload)) {
+      throw new Error(
+        `Event schema transformed Scenario Event payload for "${scenarioEvent.eventType}".`,
+      )
+    }
 
-    for (const registration of registrations.filter(
-      (item) => item.apply?.[event.type],
-    )) {
-      const state = await registration.store.get(registration.name)
-      const handler = registration.apply?.[event.type]
+    for (const implementation of implementations) {
+      const apply = implementation.apply.find(
+        (candidate) => candidate.event.type === scenarioEvent.eventType,
+      )
+      if (!apply) continue
 
-      if (handler) {
-        await handler(
-          {
-            ...event,
-            id,
-            recordedAt,
-          },
-          state.write,
-        )
-      }
+      const state = await implementation.store.get(implementation.name)
+      await apply.handle(
+        {
+          type: scenarioEvent.eventType,
+          payload,
+          id,
+          recordedAt,
+        },
+        state.write,
+      )
 
       await state.setLastAppliedOrder(order)
     }
