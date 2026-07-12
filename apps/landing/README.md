@@ -1,49 +1,56 @@
 # Specter Landing — Compiler Console
 
-A single-page marketing site for Specter, built as a small Vite + Solid + TypeScript app. This is the **Compiler Console** variation: it frames Specter as a product for developers who think in specs-as-source, and walks the reader down a concrete pipeline.
+A single-page marketing site for Specter, built with Vite, Solid, and
+TypeScript. The **Compiler Console** variation presents Specter's explicit
+application pipeline:
 
-```
-spec → behavior test → slice → event log → visual map
+```text
+specification → implementation → scenario tests → event log → typed client
 ```
 
-Each pipeline stage is shown with a real-looking code or console card so the reader can see, not just read, how a structured specification turns into runnable behavior and durable events.
+The examples follow the current Specter API. A Slice Specification in `spec.ts`
+imports from `@specter-ts/core/spec` and contains only its name, description,
+and exact scenarios. A separate `impl.ts` completes schemas, a Reaction Plugin
+when applicable, private Slice State, apply handlers, and the terminal handler.
+`testSliceImplementations` runs the selected implementations against their
+specifications, while app construction validates conformance before exposing
+the runtime.
 
 ## What the page communicates
 
-- What Specter is and how it works (a TypeScript runtime for vertically sliced, event-sourced apps).
-- Structured specs, shown as a concrete command-slice card.
-- How scenarios in a spec compile automatically into behavior tests.
-- How vertical slices are built and tested independently.
-- How the app never loses data — framed as append-only, event-sourced, durable-event design, not magic.
-- How slices are orchestrated through events and reactions.
-- How Specter runs anywhere and stays unopinionated about database, protocol, and frontend.
-- How any external API is reached through an explicit reaction plugin.
-- How the structure improves AI coding agents by minimizing context and giving strong guardrails.
-- How specs, slices, and events render into a generated architecture/dataflow map.
-- A getting-started CTA using `npm create specter`.
+- Specter is a TypeScript framework for vertically sliced, event-sourced apps.
+- Command, Query, and Reaction Slices separate the immutable “what” from the
+  executable “how.”
+- Scenario Events use exact payload examples and Event types use kebab-case.
+- Accepted Commands append domain facts to one ordered Event Log.
+- Each Slice owns private state and catches up by applying relevant Events.
+- Reaction Plugins interpret typed outputs, including external API calls.
+- Completed Command and Query Slices form a flat, typed client contract.
+- The Todo starter is created with `npm create specter@latest my-app`.
 
 ## Design
 
-Dark "compiler console" motif: a fixed structural grid, phosphor-green terminal accents, monospace console chrome, and a pipeline that reads top-to-bottom. Copy is intentionally precise and avoids exaggerated claims. No remote assets, no external fonts, no analytics, no secrets.
-
-The code samples are illustrative of Specter's domain language (commands, events, scenarios, slices, reactions, plugins) and are static content — this app does not import `@specter-ts/core` at runtime.
+The dark compiler-console motif uses a structural grid, terminal-green accents,
+monospace chrome, and a top-to-bottom pipeline. Code samples are static content;
+the landing app does not import `@specter-ts/core` at runtime.
 
 ## Run locally
 
-From the repo root:
+From the repository root:
 
 ```sh
 pnpm install
 pnpm dev:landing
 ```
 
-The app uses fixed port `41733`. If the port is already occupied, stop the conflicting process instead of letting Vite fall back to another port.
+The app uses fixed port `41733`. If the port is occupied, stop the conflicting
+process instead of allowing Vite to select another port.
 
 ## Commands
 
 ```sh
-pnpm --filter @specter/landing dev        # start the dev server (port 41733)
+pnpm --filter @specter/landing dev        # start on port 41733
 pnpm --filter @specter/landing typecheck  # tsc --noEmit
 pnpm --filter @specter/landing build      # production build to dist/
-pnpm --filter @specter/landing preview     # preview the production build (port 41733)
+pnpm --filter @specter/landing preview    # preview on port 41733
 ```

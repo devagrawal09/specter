@@ -5,24 +5,54 @@ export type {
   PersistedEvent,
 } from './events'
 export { createEventDefinition } from './events'
-export { decodeSchema } from './schemas'
+export {
+  assertConforms,
+  collectConformanceDiagnostics,
+  commandScenarioEventTypes,
+  SpecterConformanceError,
+} from './conformance'
+export type {
+  ConformanceDiagnostic,
+  ConformanceInput,
+} from './conformance'
+export {
+  decodeOptionalSchema,
+  decodeSchema,
+  validateSchema,
+  valuesEqual,
+} from './schemas'
 export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
-  defineApplyHandlers,
 } from './builders'
 export type {
+  CommandSliceSpec,
+  QuerySliceSpec,
+  ReactionSliceSpec,
+} from './builders'
+export { event, isScenarioEvent } from './scenario-types'
+export type {
+  AcceptedCommandScenario,
   CommandScenario,
+  NonEmptyScenarios,
   QueryScenario,
   ReactionScenario,
+  RejectedCommandScenario,
+  ScenarioEvent,
+  SliceScenario,
 } from './scenario-types'
 export type {
-  ApplyHandlers,
+  ApplyEventDefinition,
+  ApplyRegistration,
   CommandDispatch,
   CommandEnvelope,
+  CommandInputOf,
   CommandRef,
   CommandSlice,
+  EventForDefinition,
+  QueryInputOf,
+  QueryOutputOf,
   QueryRef,
   QuerySlice,
   ReactionExec,

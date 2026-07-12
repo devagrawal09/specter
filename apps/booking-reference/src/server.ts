@@ -16,7 +16,7 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 const productionDb = drizzle(createClient({ url: `file:${sqlitePath}` }), {
   schema,
 })
-const specterApp = createSpecterApp(bookingSpecterAppConfig)
+const specterApp = await createSpecterApp(bookingSpecterAppConfig)
 
 const app = new Hono()
 
@@ -82,9 +82,24 @@ export default app
 
 async function seedRooms() {
   const rooms = [
-    { name: 'Library', capacity: 6, location: 'Floor 1' },
-    { name: 'Boardroom', capacity: 12, location: 'Floor 2' },
-    { name: 'Studio', capacity: 4, location: 'Floor 3' },
+    {
+      roomId: crypto.randomUUID(),
+      name: 'Library',
+      capacity: 6,
+      location: 'Floor 1',
+    },
+    {
+      roomId: crypto.randomUUID(),
+      name: 'Boardroom',
+      capacity: 12,
+      location: 'Floor 2',
+    },
+    {
+      roomId: crypto.randomUUID(),
+      name: 'Studio',
+      capacity: 4,
+      location: 'Floor 3',
+    },
   ]
 
   await runWithSqliteDb(productionDb, async () => {

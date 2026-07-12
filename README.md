@@ -1,10 +1,8 @@
 # Specter
 
-Specter is a TypeScript framework for vertically sliced event-sourced applications, with first-party reference apps that show how app developers and coding agents can build against the same domain model.
+Specter is a TypeScript framework for vertically sliced event-sourced applications.
 
-> **Public status:** Specter is being prepared in public. The framework, initializer, and reference apps are MIT-licensed; deeper public docs are being added through focused pull requests.
-
-## Repository Map
+This repository is a pnpm workspace:
 
 ```txt
 packages/core/             @specter-ts/core framework/runtime package
@@ -12,17 +10,6 @@ packages/create-specter/   create-specter initializer CLI
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
 apps/threadplane-reference/ Threadplane-style workspace Reference application
-```
-
-## Prerequisites
-
-- Node.js 24 or newer
-- pnpm 11.1.3, matching the root `packageManager` field
-
-```sh
-corepack enable
-corepack prepare pnpm@11.1.3 --activate
-pnpm install
 ```
 
 ## Create A Project
@@ -49,11 +36,9 @@ SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-spec
 
 ```sh
 pnpm install
-pnpm check
-pnpm lint
+pnpm build
 pnpm typecheck
 pnpm test
-pnpm build
 pnpm dev
 pnpm dev:booking
 pnpm dev:threadplane
@@ -61,25 +46,37 @@ pnpm dev:threadplane
 
 The existing Reference applications use fixed port `41731`; the Threadplane Reference application uses fixed port `41732`.
 
-Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
+Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/spec`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
 
-## Slice Scenarios
+## Slice Specifications And Implementations
 
-Slices are created with a stable name and a human-readable description:
+Each Slice separates its immutable specification from its executable implementation:
 
 ```ts
-createCommandSlice('addTodo', 'Adds a todo to the list.')
+// add-todo/spec.ts
+import { createCommandSlice, event } from '@specter-ts/core/spec'
+
+export const addTodoSpec = createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
+  .scenarios({
+    description: 'Adds the supplied todo.',
+    given: [],
+    when: { todoId: 'todo-1', title: 'Ship it' },
+    expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
+  })
 ```
 
-Every scenario also has a `description`. `testScenarios` uses slice descriptions for suite names and scenario descriptions for test names.
+```ts
+// add-todo/impl.ts
+export const addTodo = addTodoSpec
+  .inputSchema(addTodoInputSchema)
+  .store(todoStore)
+  .handle(async (command) => [todoAddedEvent.create(command)])
+```
 
-## Agent-Friendly Development
+Query implementations add `.outputSchema(...)`; Reaction implementations add `.outputSchema(...)` and `.plugin(...)`. After `.store(...)`, implementations may register typed handlers with `.apply(eventDefinition, handler)` before terminating with `.handle(...)`.
 
-Specter apps are organized so people and coding agents can work feature-by-feature. Keep changes small, prefer executable scenarios, and document the Specter concept an app or package demonstrates.
-
-## Contributing
-
-This repo uses pull requests instead of GitHub issues for work tracking. See [`CONTRIBUTING.md`](./CONTRIBUTING.md).
+Specifications use exact `event(type, payload)` examples and ship with the application. `createSpecterApp(...)` is asynchronous because construction validates all specifications, Event schemas, and selected implementations before exposing the app.
 
 ## Release
 

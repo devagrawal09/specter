@@ -7,125 +7,143 @@ export type PipelineStage = {
 
 export const pipeline: PipelineStage[] = [
   {
-    id: 'spec',
+    id: 'specification',
     step: '01',
-    title: 'spec',
+    title: 'specification',
     summary:
-      'A structured, typed description of one command, its events, and its scenarios.',
+      'The immutable what: a named Slice, its description, and exact scenarios.',
   },
   {
-    id: 'behavior-test',
+    id: 'implementation',
     step: '02',
-    title: 'behavior test',
+    title: 'implementation',
     summary:
-      'Every scenario compiles into an executable test that runs on each change.',
+      'The executable how: schemas, private state, apply handlers, and a handler.',
   },
   {
-    id: 'slice',
+    id: 'scenario-tests',
     step: '03',
-    title: 'slice',
+    title: 'scenario tests',
     summary:
-      'A vertical slice is scaffolded: events, command, read model, and registry.',
+      'The selected implementation runs against every scenario in its specification.',
   },
   {
     id: 'event-log',
     step: '04',
     title: 'event log',
     summary:
-      'Accepted commands append durable facts to one ordered, append-only log.',
+      "Accepted commands append domain facts to the app's ordered Event Log.",
   },
   {
-    id: 'visual-map',
+    id: 'typed-client',
     step: '05',
-    title: 'visual map',
+    title: 'typed client',
     summary:
-      'Specs, slices, and events render into an architecture and dataflow map.',
+      'Completed Command and Query Slices become flat, typed client methods.',
   },
 ]
 
-export const specSource = `import { command, event, reject } from '@specter-ts/core'
-import { z } from 'zod'
+export const specSource = `import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-// A domain fact. Named, versioned by its schema.
-export const WaitlistSignedUp = event('WaitlistSignedUp', {
-  email: z.string().email(),
-  variation: z.string(),
-})
-
-// A command slice: one command, its event interests, its scenarios.
-export const signUp = command('signUp', {
-  input: z.object({ email: z.string().email(), variation: z.string() }),
-  interests: [WaitlistSignedUp],
-  scenarios: [
+const addTodoSpec = createCommandSlice('addTodo')
+  .description('Adds a todo to the list.')
+  .scenarios(
     {
-      name: 'accepts a first-time email',
+      description: 'Creates a todo with the provided title.',
       given: [],
-      when: { email: 'ada@dev.io', variation: 'compiler-console' },
-      then: [WaitlistSignedUp.draft({ email: 'ada@dev.io', variation: 'compiler-console' })],
+      when: { todoId: 'todo-1', title: 'Ship it' },
+      expect: [
+        event('todo-added', { todoId: 'todo-1', title: 'Ship it' }),
+      ],
     },
     {
-      name: 'rejects a duplicate email',
-      given: [WaitlistSignedUp.draft({ email: 'ada@dev.io', variation: 'compiler-console' })],
-      when: { email: 'ada@dev.io', variation: 'compiler-console' },
-      then: [], // no events emitted => rejected command
+      description: 'Rejects a blank todo title.',
+      given: [],
+      when: { todoId: 'todo-1', title: '   ' },
+      expect: [],
+      reject: { reason: 'Todo title is required' },
     },
-  ],
-  decide: (input, state) =>
-    state.emails.has(input.email)
-      ? reject('email already registered')
-      : [WaitlistSignedUp.draft(input)],
+  )
+
+export default addTodoSpec`
+
+export const implementationSource = `import { z } from 'zod'
+
+import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { todoAddedEvent } from '../events'
+import addTodoSpec from './spec'
+
+const addTodo = addTodoSpec
+  .inputSchema(
+    z.object({ todoId: z.string().min(1), title: z.string() }),
+  )
+  .store(sqliteSliceStore)
+  .handle(async (command) => {
+    const title = command.title.trim()
+    if (!title) throw new Error('Todo title is required')
+
+    return [todoAddedEvent.create({ todoId: command.todoId, title })]
+  })
+
+export default addTodo`
+
+export const scenarioTestSource = `import { testSliceImplementations } from '@specter-ts/core/testing'
+
+import { sqliteScenario } from '../../db/scenario-tests'
+import { todoEventDefinitions } from './events'
+import { todoRegistrations } from './registry'
+
+testSliceImplementations(todoRegistrations, {
+  events: todoEventDefinitions,
+  runScenario: sqliteScenario({}),
 })`
 
-export const behaviorTestOutput = `$ specter test waitlist/sign-up
+export const eventLog = `order  recorded              type                     payload
+─────  ────────────────────  ────────────────────────  ─────────────────────────────
+   13  2026-07-09T18:04:11Z  todo-added                { todoId: "todo-5", … }
+   14  2026-07-09T18:07:52Z  todo-completion-changed   { todoId: "todo-5", … }
+   15  2026-07-09T18:09:30Z  todo-cheer-created        { milestone: 5, … }
 
- signUp
-  ✓ accepts a first-time email        1 event  (WaitlistSignedUp)
-  ✓ rejects a duplicate email          0 events (rejected command)
+IDs, order, and recorded timestamps are Event Log metadata outside the payload.`
 
- 2 scenarios compiled to 2 behavior tests
- 2 passed  ·  0 failed  ·  12ms`
+export const reactionSource = `const todoCompletionCheer = todoCompletionCheerSpec
+  .outputSchema(
+    z.object({
+      type: z.literal('createTodoCheer'),
+      payload: z.object({ milestone: z.number().int().positive() }),
+    }),
+  )
+  .plugin(async (dispatch) => async (output) => dispatch(output))
+  .store(sqliteSliceStore)
+  .apply(todoAddedEvent, recordTodo)
+  .apply(todoCompletionChangedEvent, async (event, db) => {
+    await updateCompletion(db, event.payload)
+  })
+  .apply(todoRemovedEvent, removeTodo)
+  .apply(todoCheerCreatedEvent, recordMilestone)
+  .handle(async (db) => {
+    const milestone = await nextMilestone(db)
+    if (!milestone) return
 
-export const sliceTree = `features/waitlist/
-├─ events.ts              # WaitlistSignedUp definition
-├─ sign-up/
-│  └─ slice.ts            # signUp command slice + scenarios
-├─ signups-query/
-│  └─ slice.ts            # event-derived read model
-└─ registry.ts            # registers the slice with the Specter App`
+    return { type: 'createTodoCheer', payload: { milestone } }
+  })`
 
-export const eventLog = `order  recorded              type              payload
-─────  ────────────────────  ────────────────  ───────────────────────────────
-    1  2026-07-09T18:04:11Z  WaitlistSignedUp  { email: "ada@dev.io", … }
-    2  2026-07-09T18:07:52Z  WaitlistSignedUp  { email: "grace@dev.io", … }
-    3  2026-07-09T18:09:30Z  WaitlistSignedUp  { email: "linus@dev.io", … }
+export const externalApiSource = `import type { ReactionPlugin } from '@specter-ts/core'
 
-append-only · ordered · replayable — state is a projection, never the source of truth`
+type WelcomeEmail = { to: string; template: 'welcome' }
 
-export const reactionSource = `import { reaction, dispatch } from '@specter-ts/core'
-import { WaitlistSignedUp } from '../waitlist/events'
+export const emailPlugin: ReactionPlugin<WelcomeEmail> =
+  async () => async (message) => {
+    const response = await fetch('https://email.example/v1/messages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(message),
+    })
 
-// A reaction slice observes committed events and produces one effect.
-export const sendWelcome = reaction('sendWelcome', {
-  interests: [WaitlistSignedUp],
-  // The plugin is the explicit interpreter for the effect.
-  plugin: dispatch('email', (e) => ({
-    to: e.payload.email,
-    template: 'welcome',
-  })),
-})`
+    if (!response.ok) throw new Error('Email provider rejected the message')
+  }
 
-export const externalApiSource = `import { httpPlugin } from '@specter-ts/core'
-
-// Any external API is reached through an explicit reaction plugin.
-// Swap the plugin without touching a single slice or scenario.
-export const email = httpPlugin({
-  baseUrl: process.env.EMAIL_API_URL,
-  send: (effect) => ({
-    method: 'POST',
-    path: '/v1/messages',
-    body: { to: effect.to, template: effect.template },
-  }),
-})`
+// Complete a Reaction implementation with .plugin(emailPlugin).`
 
 export type Adapter = {
   slot: string
@@ -135,24 +153,25 @@ export type Adapter = {
 
 export const adapters: Adapter[] = [
   {
-    slot: 'Event log',
-    detail: 'The one durable boundary an app depends on.',
-    swap: 'SQLite · Postgres · in-memory',
+    slot: 'Event Log',
+    detail: 'The ordered source of accepted domain facts for one Specter App.',
+    swap: 'SQLite starter · custom Event Log adapter',
   },
   {
-    slot: 'Protocol',
-    detail: 'How the typed client reaches the runtime.',
-    swap: 'RPC · HTTP · server functions',
+    slot: 'Slice Store',
+    detail: 'Private state that each Slice catches up from relevant Events.',
+    swap: 'SQLite starter · custom Slice Store adapter',
+  },
+  {
+    slot: 'Client boundary',
+    detail: 'How UI or server code reaches the completed app.',
+    swap: 'typed JSON-over-HTTP client · direct server calls',
   },
   {
     slot: 'Frontend',
-    detail: 'The client contract is UI-framework agnostic.',
+    detail:
+      'UI code depends on the client contract, not server or database modules.',
     swap: 'Solid · React · headless',
-  },
-  {
-    slot: 'Runtime',
-    detail: 'Where slices execute and catch up.',
-    swap: 'Node · edge · local dev',
   },
 ]
 
@@ -164,18 +183,18 @@ export type AgentBenefit = {
 export const agentBenefits: AgentBenefit[] = [
   {
     title: 'Minimal context per task',
-    body: 'A slice is a single file boundary: one command, its events, its scenarios. An agent reads and edits one vertical unit instead of scanning the whole app.',
+    body: 'A Slice keeps its specification and implementation together in one feature folder, so an agent can focus on one behavior boundary.',
   },
   {
     title: 'Guardrails from scenarios',
-    body: 'Scenarios are executable spec. When an agent changes behavior, the compiled behavior tests fail loudly — the intended contract is checked, not assumed.',
+    body: 'Scenarios state exact examples. The scenario runner checks the selected implementation against that contract.',
+  },
+  {
+    title: 'Construction-time conformance',
+    body: 'App construction validates registered Events, scenarios, and implementations before exposing the runtime.',
   },
   {
     title: 'Typed client contract',
-    body: 'Command and query methods are inferred from the app. Agents get real types at the call site instead of stringly-typed dispatch.',
-  },
-  {
-    title: 'A map to navigate',
-    body: 'The generated architecture view gives an agent a stable, high-signal picture of slices and events before it writes a line.',
+    body: 'Command and Query Slice names become typed client methods instead of stringly typed dispatch calls.',
   },
 ]

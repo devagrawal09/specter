@@ -3,28 +3,36 @@ import { CodeBlock } from './CodeBlock'
 import {
   adapters,
   agentBenefits,
-  behaviorTestOutput,
   eventLog,
   externalApiSource,
+  implementationSource,
   pipeline,
   reactionSource,
-  sliceTree,
+  scenarioTestSource,
   specSource,
 } from './content'
 
-const INSTALL_COMMAND = 'npm create specter'
+const INSTALL_COMMAND = 'npm create specter@latest my-app'
 
 function CommandLine(): JSX.Element {
-  const [copied, setCopied] = createSignal(false)
+  const [copyStatus, setCopyStatus] = createSignal<
+    'idle' | 'copied' | 'failed'
+  >('idle')
 
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(INSTALL_COMMAND)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 1600)
+      setCopyStatus('copied')
+      setTimeout(() => setCopyStatus('idle'), 1600)
     } catch {
-      setCopied(false)
+      setCopyStatus('failed')
     }
+  }
+
+  const visibleStatus = () => {
+    if (copyStatus() === 'copied') return 'copied'
+    if (copyStatus() === 'failed') return 'retry'
+    return 'copy'
   }
 
   return (
@@ -35,16 +43,31 @@ function CommandLine(): JSX.Element {
         </span>{' '}
         {INSTALL_COMMAND}
       </code>
-      <button type="button" class="command__copy" onClick={copy}>
-        {copied() ? 'copied' : 'copy'}
+      <button
+        type="button"
+        class="command__copy"
+        aria-label="Copy the Specter project creation command"
+        onClick={copy}
+      >
+        {visibleStatus()}
       </button>
+      <span class="sr-only" aria-live="polite">
+        {copyStatus() === 'copied'
+          ? 'Install command copied to clipboard.'
+          : copyStatus() === 'failed'
+            ? 'Could not copy the install command. Select and copy it manually.'
+            : ''}
+      </span>
     </div>
   )
 }
 
 export function App(): JSX.Element {
   return (
-    <div class="page">
+    <div class="page" id="top">
+      <a class="skip-link" href="#main-content">
+        Skip to content
+      </a>
       <header class="topbar">
         <a class="brand" href="#top">
           <span class="brand__mark" aria-hidden="true">
@@ -67,20 +90,20 @@ export function App(): JSX.Element {
         </a>
       </header>
 
-      <main id="top">
+      <main id="main-content" tabIndex={-1}>
         <section class="hero">
           <p class="eyebrow">
-            TypeScript runtime · event-sourced · vertically sliced
+            TypeScript framework · event-sourced · vertically sliced
           </p>
           <h1 class="hero__title">
             specifications that compile execute and scaffold your app
           </h1>
           <p class="hero__lede">
-            Specter is a TypeScript runtime for building apps as small, vertical
-            specifications. You describe a command, the events it emits, and the
-            scenarios it must satisfy. Specter compiles that spec into behavior
-            tests, scaffolds the slice, records every fact to a durable event
-            log, and draws the architecture back out for you.
+            Specter is a TypeScript framework for vertically sliced,
+            event-sourced applications. Each Slice separates an immutable
+            specification from its executable implementation. Scenarios test the
+            selected implementation, and app construction validates that every
+            registered piece conforms before the runtime is exposed.
           </p>
           <div class="hero__actions">
             <CommandLine />
@@ -110,33 +133,33 @@ export function App(): JSX.Element {
           <div class="band__head">
             <h2>How it works</h2>
             <p>
-              One idea, applied consistently: the specification is the source.
-              Everything runtime and everything visual is derived from it, so
-              behavior, code, and documentation cannot drift apart.
+              The specification records the behavior that must remain stable. An
+              implementation supplies runtime details, and Specter checks the
+              two together through scenario tests and construction-time
+              conformance.
             </p>
           </div>
           <div class="grid grid--3">
             <article class="card">
-              <h3>Write a slice</h3>
+              <h3>Specify the what</h3>
               <p>
-                A slice is one named unit — a command, query, or reaction — with
-                its event interests and scenarios in a single file boundary.
+                Give one Command, Query, or Reaction Slice a stable name,
+                description, and exact scenarios in <code>spec.ts</code>.
               </p>
             </article>
             <article class="card">
-              <h3>Compile it</h3>
+              <h3>Implement the how</h3>
               <p>
-                Scenarios become behavior tests. Types flow into an inferred
-                client contract. The runtime knows exactly which events each
-                slice cares about.
+                Complete that specification in <code>impl.ts</code> with
+                schemas, a private store, apply handlers, and its terminal
+                handler.
               </p>
             </article>
             <article class="card">
-              <h3>Run anywhere</h3>
+              <h3>Validate and compose</h3>
               <p>
-                Slices catch up on the ordered event log and answer commands and
-                queries through adapters you choose — storage, protocol, and
-                frontend stay pluggable.
+                Run every scenario against the implementation, then register one
+                complete implementation per Slice in the Specter App.
               </p>
             </article>
           </div>
@@ -146,96 +169,93 @@ export function App(): JSX.Element {
           <div class="band__head">
             <h2>The pipeline</h2>
             <p>
-              spec → behavior test → slice → event log → visual map. Each stage
-              below is produced from the one before it.
+              specification → implementation → scenario tests → event log →
+              typed client. Each boundary has one explicit job.
             </p>
           </div>
         </section>
 
-        <section class="stage" id="spec">
+        <section class="stage" id="specification">
           <div class="stage__grid">
             <div class="stage__copy">
-              <span class="stage__step">01 · spec</span>
-              <h2>Structured specs, not prose</h2>
+              <span class="stage__step">01 · specification</span>
+              <h2>The behavior contract stays immutable</h2>
               <p>
-                A command slice states its input schema, the events it may emit,
-                and concrete scenarios shaped as <em>given / when / then</em>.
-                This is the whole contract — typed, explicit, and small enough
-                to hold in your head.
+                A Slice Specification contains only its name, human-readable
+                description, and concrete <em>given / when / expect</em>{' '}
+                scenarios. Runtime schemas, stores, plugins, and handlers stay
+                out of this file.
               </p>
               <ul class="ticks">
-                <li>Events are named domain facts with a schema.</li>
+                <li>Scenario Events use exact example payloads.</li>
                 <li>
-                  Scenarios use real event drafts, so examples stay honest.
+                  Specifications import only from{' '}
+                  <code>@specter-ts/core/spec</code>
+                  and implementation-independent constants.
                 </li>
                 <li>
-                  An accepted command emits at least one event; emitting none is
-                  a rejection.
+                  An accepted Command expects Events; an empty expectation
+                  records a rejected outcome.
                 </li>
               </ul>
             </div>
             <CodeBlock
-              label="features/waitlist/sign-up/slice.ts"
+              label="features/todos/add-todo/spec.ts"
               tag="spec"
               code={specSource}
             />
           </div>
         </section>
 
-        <section class="stage" id="behavior-test">
+        <section class="stage" id="implementation">
           <div class="stage__grid stage__grid--flip">
             <CodeBlock
-              label="specter test waitlist/sign-up"
-              tag="generated"
-              tone="output"
-              code={behaviorTestOutput}
+              label="features/todos/add-todo/impl.ts"
+              tag="implementation"
+              code={implementationSource}
             />
             <div class="stage__copy">
-              <span class="stage__step">02 · behavior test</span>
-              <h2>Specs become behavior tests, automatically</h2>
+              <span class="stage__step">02 · implementation</span>
+              <h2>Runtime details complete the specification</h2>
               <p>
-                Every scenario compiles straight into an executable test. There
-                is no separate test suite to keep in sync — the examples in the
-                spec <em>are</em> the tests, and they run on every change.
+                The implementation imports its specification, supplies the
+                schema stages required by that Slice kind, selects a private
+                Slice Store, applies relevant Events, and finishes with a
+                handler.
               </p>
               <ul class="ticks">
                 <li>
-                  A scenario expecting events asserts exactly those events.
+                  The builder order makes every runtime dependency visible.
                 </li>
-                <li>
-                  A scenario expecting none asserts the command is rejected.
-                </li>
-                <li>Change behavior and the intended contract fails loudly.</li>
+                <li>Slice State stays private and catches up from Events.</li>
+                <li>One specification can have divergent implementations.</li>
               </ul>
             </div>
           </div>
         </section>
 
-        <section class="stage" id="slice">
+        <section class="stage" id="scenario-tests">
           <div class="stage__grid">
             <div class="stage__copy">
-              <span class="stage__step">03 · slice</span>
-              <h2>Vertical slices, built and tested independently</h2>
+              <span class="stage__step">03 · scenario tests</span>
+              <h2>Run every implementation against its contract</h2>
               <p>
-                Each feature is scaffolded as a self-contained vertical: its
-                events, its command, its read model, and the registry line that
-                wires it in. Slices don't share state, so you can build, test,
-                and reason about one without loading the rest of the app.
+                A small test entry point registers the selected implementations,
+                the app's Event Definition catalog, and a scenario runner. The
+                scenario descriptions become the test names.
               </p>
               <ul class="ticks">
-                <li>One slice is one comprehension boundary.</li>
+                <li>Given Events rebuild the Slice's private test state.</li>
+                <li>Expected Events and rejections are checked exactly.</li>
                 <li>
-                  Slice state is private and event-derived — no shared app
-                  store.
+                  Registries keep app composition explicit and inspectable.
                 </li>
-                <li>Add a feature by adding a folder, not by editing a hub.</li>
               </ul>
             </div>
             <CodeBlock
-              label="scaffolded structure"
-              tag="slice"
-              tone="output"
-              code={sliceTree}
+              label="features/todos/scenarios.test.ts"
+              tag="validation"
+              code={scenarioTestSource}
             />
           </div>
         </section>
@@ -250,21 +270,21 @@ export function App(): JSX.Element {
             />
             <div class="stage__copy">
               <span class="stage__step">04 · event log</span>
-              <h2>It never loses data, by design</h2>
+              <h2>Accepted facts stay in one ordered history</h2>
               <p>
-                State is not the source of truth — the event log is. Accepted
-                commands append immutable facts to one ordered, append-only log.
-                Read models are projections you can rebuild by replaying events,
-                so a schema change or a new view never means lost history.
+                The Event Log is the durable source of truth for a Specter App.
+                Accepted Commands append domain facts; each Slice catches up by
+                applying the relevant Events in global order.
               </p>
               <ul class="ticks">
+                <li>Event payloads contain domain facts, not log metadata.</li>
                 <li>
-                  Append-only and ordered: facts are added, never overwritten.
+                  The starter supplies SQLite; the core depends on an Event Log
+                  adapter contract.
                 </li>
                 <li>
-                  Durable by adapter — SQLite, Postgres, or in-memory for tests.
+                  Slice State can catch up again by replaying relevant Events.
                 </li>
-                <li>Rebuild any read model by replaying the log.</li>
               </ul>
             </div>
           </div>
@@ -277,10 +297,9 @@ export function App(): JSX.Element {
               <h2>Slices are orchestrated through events</h2>
               <p>
                 Slices don't call each other. A command appends events; reaction
-                slices observe those committed events and produce a single
-                explicit effect — which may dispatch another command.
-                Coordination is data flowing through the log, not a tangle of
-                direct calls.
+                Slices observe committed Events and may produce one typed
+                output. A Reaction Plugin interprets that output, including
+                dispatching a follow-up Command when appropriate.
               </p>
               <div class="flow" aria-hidden="true">
                 <span class="flow__node">command</span>
@@ -293,7 +312,7 @@ export function App(): JSX.Element {
               </div>
             </div>
             <CodeBlock
-              label="features/notify/send-welcome/slice.ts"
+              label="features/todos/todo-completion-cheer-reaction/impl.ts"
               tag="reaction"
               code={reactionSource}
             />
@@ -302,12 +321,11 @@ export function App(): JSX.Element {
 
         <section class="band" id="anywhere">
           <div class="band__head">
-            <h2>Runs anywhere, opinionated about nothing</h2>
+            <h2>Explicit edges around a stable core</h2>
             <p>
-              Specter has no opinion about your database, your protocol, or your
-              frontend. Slices and scenarios depend only on the runtime
-              contract; the concrete boundaries are adapters you swap without
-              touching a single spec.
+              Specifications do not depend on databases, transports, or UI
+              frameworks. Implementations and app wiring choose those concrete
+              boundaries without changing the behavior contract.
             </p>
           </div>
           <div class="grid grid--4">
@@ -326,23 +344,25 @@ export function App(): JSX.Element {
         <section class="stage" id="external">
           <div class="stage__grid stage__grid--flip">
             <CodeBlock
-              label="features/notify/plugins/email.ts"
+              label="features/notify/email-plugin.server.ts"
               tag="plugin"
               code={externalApiSource}
             />
             <div class="stage__copy">
               <span class="stage__step">integration · plugins</span>
-              <h2>Connect any external API</h2>
+              <h2>Keep external effects behind a plugin</h2>
               <p>
-                A reaction's effect is interpreted by an explicit plugin.
-                Reaching Stripe, an email provider, or another Specter app is
-                just choosing a plugin — the slice and its scenarios never
-                change, and integrations stay isolated and testable.
+                A Reaction's typed output is interpreted by an explicit plugin.
+                The plugin can call an external service or dispatch another
+                Command while the specification stays focused on observable
+                behavior.
               </p>
               <ul class="ticks">
-                <li>Effects are declared; plugins interpret them.</li>
-                <li>Swap providers without rewriting behavior.</li>
-                <li>Same-app and cross-app dispatch are both just plugins.</li>
+                <li>Output schemas validate the value before execution.</li>
+                <li>Service credentials stay in server-side plugin modules.</li>
+                <li>
+                  Swap an interpreter without rewriting the specification.
+                </li>
               </ul>
             </div>
           </div>
@@ -352,9 +372,9 @@ export function App(): JSX.Element {
           <div class="band__head">
             <h2>Built for coding agents</h2>
             <p>
-              The same structure that keeps humans oriented makes agents faster
-              and safer. Small boundaries mean less context per task; executable
-              scenarios mean strong guardrails on every edit.
+              The same boundaries that orient humans give agents smaller context
+              windows and executable examples. Conformance diagnostics point
+              back to a Slice, Scenario, Event, and schema path.
             </p>
           </div>
           <div class="grid grid--2">
@@ -369,29 +389,36 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        <section class="stage" id="visual-map">
+        <section class="stage" id="typed-client">
           <div class="band__head">
-            <h2>Architecture, drawn from your specs</h2>
+            <h2>A typed client from the completed app</h2>
             <p>
-              Because specs, slices, and events are structured data, Specter can
-              render them into a live map of your system — the slices you have,
-              the events they share, and how data flows between them. The
-              diagram is generated, so it can't fall out of date.
+              Command and Query Slice names become flat client methods with
+              their implementation input and output types. UI code calls that
+              contract instead of importing server, database, or Slice modules.
             </p>
           </div>
-          <figure class="map">
-            <figcaption class="map__cap">
-              waitlist + notify · generated dataflow
+          <figure class="map" aria-labelledby="app-shape-caption">
+            <figcaption class="map__cap" id="app-shape-caption">
+              completed app · explicit composition
             </figcaption>
-            <pre class="map__art">{MAP_ART}</pre>
+            <p class="sr-only">
+              A typed client calls the addTodo Command Slice and todosQuery
+              Query Slice. Registered implementations share the app's ordered
+              Event Log.
+            </p>
+            <pre class="map__art" aria-hidden="true">
+              {MAP_ART}
+            </pre>
           </figure>
         </section>
 
         <section class="cta" id="start">
           <h2>Start with one spec</h2>
           <p>
-            Scaffold a Specter project with a reference app, an event log, and a
-            first vertical slice ready to compile.
+            Create the Todo starter with working specifications,
+            implementations, scenario tests, SQLite adapters, and a typed
+            client.
           </p>
           <CommandLine />
           <p class="cta__note">
@@ -403,11 +430,11 @@ export function App(): JSX.Element {
 
       <footer class="foot">
         <span>
-          Specter · a TypeScript runtime for vertically sliced, event-sourced
+          Specter · a TypeScript framework for vertically sliced, event-sourced
           apps.
         </span>
         <span class="foot__mark">
-          spec → behavior test → slice → event log → visual map
+          specification → implementation → validation → event log → client
         </span>
       </footer>
     </div>
@@ -416,14 +443,11 @@ export function App(): JSX.Element {
 
 const MAP_ART = `        ┌───────────────────────── Specter App ─────────────────────────┐
         │                                                                │
-        │   [ signUp ]  ──emits──▶  ( WaitlistSignedUp )                 │
-        │   command slice                 │                              │
-        │                                 ├──▶  [ signupsQuery ]  read   │
-        │                                 │                              │
-        │                                 └──▶  [ sendWelcome ]  react   │
-        │                                              │                 │
-        │                                              ▼                 │
-        │                                        email plugin ──▶ API    │
+client  │   addTodo(command) ──▶ [ addTodo ] ──▶ ( todo-added )          │
+  API   │                                                │               │
+        │   todosQuery(query) ◀── [ todosQuery ] ◀────────┘               │
         │                                                                │
-        │   ═══════════════════  ordered event log  ═══════════════════ │
+        │   specifications + selected implementations + Event Definitions│
+        │                                                                │
+        │   ═══════════════════  ordered Event Log  ═══════════════════ │
         └────────────────────────────────────────────────────────────────┘`

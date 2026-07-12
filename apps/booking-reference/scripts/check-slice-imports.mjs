@@ -141,15 +141,21 @@ function isCheckedSliceSource(filePath) {
 function getSliceInfo(filePath) {
   const relativePath = path.relative(repoRoot, filePath)
   const parts = relativePath.split(path.sep)
-  const slicesIndex = parts.indexOf('slices')
+  const featuresIndex = parts.indexOf('features')
+  const fileName = parts.at(-1)
 
-  if (slicesIndex === -1 || !parts[slicesIndex + 1]) {
+  if (
+    featuresIndex === -1 ||
+    !parts[featuresIndex + 1] ||
+    !parts[featuresIndex + 2] ||
+    !['spec.ts', 'impl.ts'].includes(fileName)
+  ) {
     return null
   }
 
   return {
-    name: parts[slicesIndex + 1],
-    slicesRoot: parts.slice(0, slicesIndex + 1).join('/'),
+    name: parts[featuresIndex + 2],
+    slicesRoot: parts.slice(0, featuresIndex + 2).join('/'),
   }
 }
 

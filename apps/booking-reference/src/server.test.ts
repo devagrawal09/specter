@@ -41,6 +41,7 @@ test('handles command followed by immediate query without SQLITE_BUSY', async ()
   expect(rooms.length).toBeGreaterThan(0)
 
   const commandResponse = await postJson('/api/requestBooking', {
+    bookingId: crypto.randomUUID(),
     roomId: rooms[0].roomId,
     requesterEmail: 'ada@example.com',
     requesterName: 'Ada',

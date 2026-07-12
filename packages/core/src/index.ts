@@ -4,14 +4,17 @@ export type {
   EventDraft,
   PersistedEvent,
 } from './definition'
-export { createEventDefinition } from './definition'
+export {
+  createEventDefinition,
+  event,
+  SpecterConformanceError,
+} from './definition'
 export { defineSpecterClient } from './client'
 export type { SpecterClient } from './client'
 export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
-  defineApplyHandlers,
 } from './definition'
 export { createSpecterApp, ReactionRunFailure } from './runtime'
 export type {
@@ -20,21 +23,33 @@ export type {
   SpecterAppConfig,
 } from './runtime'
 export type {
-  ApplyHandlers,
+  ApplyEventDefinition,
+  ApplyRegistration,
   CommandRef,
   CommandEnvelope,
   CommandDispatch,
+  CommandInputOf,
   CommandSlice,
+  CommandSliceSpec,
+  ConformanceDiagnostic,
+  EventForDefinition,
+  QueryInputOf,
+  QueryOutputOf,
   QuerySlice,
+  QuerySliceSpec,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,
+  ReactionSliceSpec,
+  ScenarioEvent,
   SliceRegistration,
   QueryRef,
 } from './definition'
 export type {
   EventLogAdapter,
   ReactionScheduler,
+  RequestReactions,
   SliceStore,
   SliceStoreAdapter,
+  WaitForReactionsIdle,
 } from './adapters'

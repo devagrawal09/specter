@@ -18,23 +18,25 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 ## Canonical Imports
 
-- Use `@specter-ts/core` for Events, Slices, app creation, and command rejection.
+- Use `@specter-ts/core/spec` for dependency-free Slice specifications and scenario Events.
+- Use `@specter-ts/core` for Event Definitions, Slice implementations, app creation, and command rejection.
 - Use `@specter-ts/core/client` for client contract helpers.
 - Use `@specter-ts/core/testing` for scenario helpers.
 - Use local `src/db/*` modules for SQLite adapters, scenario database setup, and Drizzle schema exports.
 
 ## Feature Workflow
 
-1. Start from the domain fact: add or update Event Definitions in the feature's `events.ts`.
-2. Add or update Slices near the feature: Command Slices decide and emit Event Drafts, Query Slices serve reads, and Reaction Slices produce follow-up effects.
-3. Give every Slice a stable API name and a user-facing description, such as `createCommandSlice('addTodo', 'Adds a todo to the list.')`.
-4. Add Slice scenarios for changed behavior, and give every scenario a `description`. For Command Slices, expecting no events means the command is rejected.
-5. Register new Event Definitions and Slices in the feature registry, then wire that config into the Specter App.
-6. Wire UI through the typed Specter client rather than importing server/database modules.
-7. Prefer Events and Slices before database changes. Define app-specific Drizzle tables in the Slice file that owns that Slice State, then re-export those tables from `src/db/schema.ts` for migrations.
-8. Do not centralize Slice State table definitions in a shared schema/helper file. If two Slices need similar state, duplicate the table definition with slice-specific table names so each Slice keeps private state.
-9. Add shared Specter persistence tables only in local app infrastructure, such as `src/db/specter-schema.ts`.
-10. Use deterministic IDs in scenarios whenever query or reaction expectations include IDs. Command scenario event comparisons ignore ID-shaped payload keys, but query and reaction expectations are exact.
+1. Start from the domain fact: add or update kebab-case Event Definitions in the feature's `events.ts`.
+2. Give every Slice its own directory containing only `spec.ts` and `impl.ts`; do not add `slice.ts`.
+3. In `spec.ts`, import only `createCommandSlice`, `createQuerySlice`, `createReactionSlice`, and `event` from `@specter-ts/core/spec`. Build the specification through name, description, and nonempty scenarios. Do not import schemas, Event Definitions, stores, or plugins.
+4. Use `event('kebab-case-type', exactPayload)` for Given and expected scenario Events. Payload comparisons are exact, so put generated domain IDs and timestamps in command inputs or prior Events.
+5. In `impl.ts`, import the specification and add `inputSchema`/`outputSchema`, the Reaction Plugin when applicable, the store, repeated `apply(EventDefinition, async (event, state) => ...)` calls, and `handle`. Apply receives the decoded payload at `event.payload`; do not decode it again.
+6. Ensure the set of Given Event types in a Slice's scenarios exactly equals its set of apply Event Definitions.
+7. Register Event Definitions and Slice implementations in the feature registry, then wire that config into the Specter App. `createSpecterApp` is async and must be awaited.
+8. Wire UI through the typed Specter client rather than importing server/database modules.
+9. Define app-specific Drizzle tables in the `impl.ts` that owns the Slice State, then re-export those tables from `src/db/schema.ts` for migrations.
+10. Do not centralize Slice State table definitions in a shared schema/helper file. If two Slices need similar state, duplicate the table definition with slice-specific table names so each Slice keeps private state.
+11. Add shared Specter persistence tables only in local app infrastructure, such as `src/db/specter-schema.ts`.
 
 ## Boundaries
 
@@ -47,7 +49,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 - Run `npm run lint` after changing feature boundaries or imports.
 - Run `npm run typecheck` after changing Specter types, clients, or app wiring.
-- Run `npm test` after changing Slice behavior or scenarios.
+- Run `npm test` after changing Slice behavior or scenarios. Use `testSliceImplementations(registrations, { events, runScenario })`.
 - Run `npm run db:generate` after changing Drizzle table definitions, then inspect the generated migration before applying it.
 - Put browser or end-to-end tests under `tests/` or `e2e/`; the starter excludes those paths from Vitest so Playwright tests do not get collected by `npm test`.
 - Browser tests and Vite dev/preview use fixed port `41731` with `strictPort`. If the port is occupied, treat it as a conflict to investigate rather than silently switching ports.

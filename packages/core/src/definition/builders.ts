@@ -3,382 +3,635 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { EventDraft } from './events'
 import type {
   CommandScenario,
+  NonEmptyScenarios,
   QueryScenario,
   ReactionScenario,
+  SliceScenario,
 } from './scenario-types'
 import type {
-  ApplyHandlers,
   ApplyEventDefinition,
+  ApplyRegistration,
   CommandSlice,
+  EventForDefinition,
   QuerySlice,
   ReactionPlugin,
   ReactionSlice,
   SliceStoreAdapter,
 } from './slices'
-export { defineApplyHandlers } from './slices'
 
-type AnyApplyHandlers<TState = unknown> = ApplyHandlers<
-  readonly ApplyEventDefinition[],
-  TState
->
+type CommandDescriptionStep<TName extends string> = {
+  description: (description: string) => CommandScenariosStep<TName>
+}
 
-type CommandSchemaStep<TName extends string> = {
-  schema: <TSchema extends StandardSchemaV1>(
+type CommandScenariosStep<TName extends string> = {
+  scenarios: <const TScenarios extends NonEmptyScenarios<CommandScenario>>(
+    ...scenarios: TScenarios
+  ) => CommandSliceSpec<TName, TScenarios>
+}
+
+export type CommandSliceSpec<
+  TName extends string = string,
+  TScenarios extends
+    NonEmptyScenarios<CommandScenario> = NonEmptyScenarios<CommandScenario>,
+> = {
+  readonly stage: 'specification'
+  readonly kind: 'command'
+  readonly name: TName
+  readonly description: string
+  readonly scenarios: TScenarios
+  inputSchema<TInput = unknown>(): CommandStoreStep<
+    TName,
+    TInput,
+    TInput,
+    TScenarios
+  >
+  inputSchema<TSchema extends StandardSchemaV1>(
     schema: TSchema,
-  ) => CommandStoreStep<TName, TSchema>
+  ): CommandStoreStep<
+    TName,
+    StandardSchemaV1.InferInput<TSchema>,
+    StandardSchemaV1.InferOutput<TSchema>,
+    TScenarios
+  >
 }
 
 type CommandStoreStep<
   TName extends string,
-  TSchema extends StandardSchemaV1,
+  TInput,
+  TCommand,
+  TScenarios extends NonEmptyScenarios<CommandScenario>,
 > = {
   store: <TWriteState, TReadState = TWriteState>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
-  ) => CommandStep<TName, TSchema, TWriteState, TReadState>
-}
-
-type CommandStep<
-  TName extends string,
-  TSchema extends StandardSchemaV1,
-  TWriteState,
-  TReadState,
-> = {
-  handle: (
-    handle: (
-      command: StandardSchemaV1.InferOutput<TSchema>,
-      state: TReadState,
-    ) => Promise<EventDraft[]>,
-  ) => CommandSlice<TName, TSchema, TWriteState, TReadState> & {
-    scenarios?: readonly CommandScenario[]
-  }
-  apply: (
-    apply: AnyApplyHandlers<TWriteState>,
-  ) => CommandApplyStep<TName, TSchema, TWriteState, TReadState>
-  scenarios: (
-    ...scenarios: readonly CommandScenario<
-      StandardSchemaV1.InferOutput<TSchema>
-    >[]
-  ) => CommandScenarioStep<TName, TSchema, TWriteState, TReadState>
+  ) => CommandApplyStep<
+    TName,
+    TInput,
+    TCommand,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
 type CommandApplyStep<
   TName extends string,
-  TSchema extends StandardSchemaV1,
+  TInput,
+  TCommand,
   TWriteState,
   TReadState,
+  TScenarios extends NonEmptyScenarios<CommandScenario>,
 > = {
-  handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
-  scenarios: (
-    ...scenarios: readonly CommandScenario<
-      StandardSchemaV1.InferOutput<TSchema>
-    >[]
-  ) => {
-    handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
-  }
+  apply: <TDefinition extends ApplyEventDefinition>(
+    definition: TDefinition,
+    handle: (
+      event: EventForDefinition<TDefinition>,
+      state: TWriteState,
+    ) => Promise<void>,
+  ) => CommandApplyStep<
+    TName,
+    TInput,
+    TCommand,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
+  handle: (
+    handle: (
+      command: TCommand,
+      state: TReadState,
+    ) => Promise<readonly EventDraft[]>,
+  ) => CommandSlice<
+    TName,
+    TInput,
+    TCommand,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
-type CommandScenarioStep<
-  TName extends string,
-  TSchema extends StandardSchemaV1,
-  TWriteState,
-  TReadState,
-> = {
-  handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
-  apply: (apply: AnyApplyHandlers<TWriteState>) => {
-    handle: CommandStep<TName, TSchema, TWriteState, TReadState>['handle']
-  }
+type QueryDescriptionStep<TName extends string> = {
+  description: (description: string) => QueryScenariosStep<TName>
 }
 
-type QuerySchemaStep<TName extends string> = {
-  schema: <TSchema extends StandardSchemaV1>(
+type QueryScenariosStep<TName extends string> = {
+  scenarios: <const TScenarios extends NonEmptyScenarios<QueryScenario>>(
+    ...scenarios: TScenarios
+  ) => QuerySliceSpec<TName, TScenarios>
+}
+
+export type QuerySliceSpec<
+  TName extends string = string,
+  TScenarios extends
+    NonEmptyScenarios<QueryScenario> = NonEmptyScenarios<QueryScenario>,
+> = {
+  readonly stage: 'specification'
+  readonly kind: 'query'
+  readonly name: TName
+  readonly description: string
+  readonly scenarios: TScenarios
+  inputSchema<TInput = unknown>(): QueryOutputSchemaStep<
+    TName,
+    TInput,
+    TInput,
+    TScenarios
+  >
+  inputSchema<TSchema extends StandardSchemaV1>(
     schema: TSchema,
-  ) => QueryStoreStep<TName, TSchema>
+  ): QueryOutputSchemaStep<
+    TName,
+    StandardSchemaV1.InferInput<TSchema>,
+    StandardSchemaV1.InferOutput<TSchema>,
+    TScenarios
+  >
 }
 
-type QueryStoreStep<TName extends string, TSchema extends StandardSchemaV1> = {
+type QueryOutputSchemaStep<
+  TName extends string,
+  TInput,
+  TQuery,
+  TScenarios extends NonEmptyScenarios<QueryScenario>,
+> = {
+  outputSchema<TResult = unknown>(): QueryStoreStep<
+    TName,
+    TInput,
+    TQuery,
+    TResult,
+    TResult,
+    TScenarios
+  >
+  outputSchema<TSchema extends StandardSchemaV1>(
+    schema: TSchema,
+  ): QueryStoreStep<
+    TName,
+    TInput,
+    TQuery,
+    StandardSchemaV1.InferInput<TSchema>,
+    StandardSchemaV1.InferOutput<TSchema>,
+    TScenarios
+  >
+}
+
+type QueryStoreStep<
+  TName extends string,
+  TInput,
+  TQuery,
+  TResult,
+  TOutput,
+  TScenarios extends NonEmptyScenarios<QueryScenario>,
+> = {
   store: <TWriteState, TReadState = TWriteState>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
-  ) => QueryApplyStep<TName, TSchema, TWriteState, TReadState>
+  ) => QueryApplyStep<
+    TName,
+    TInput,
+    TQuery,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
 type QueryApplyStep<
   TName extends string,
-  TSchema extends StandardSchemaV1,
+  TInput,
+  TQuery,
+  TResult,
+  TOutput,
   TWriteState,
   TReadState,
+  TScenarios extends NonEmptyScenarios<QueryScenario>,
 > = {
-  apply: (
-    apply: AnyApplyHandlers<TWriteState>,
-  ) => QueryHandleStep<TName, TSchema, TWriteState, TReadState>
-}
-
-type QueryHandleStep<
-  TName extends string,
-  TSchema extends StandardSchemaV1,
-  TWriteState,
-  TReadState,
-> = {
-  handle: <TResult>(
+  apply: <TDefinition extends ApplyEventDefinition>(
+    definition: TDefinition,
     handle: (
-      input: StandardSchemaV1.InferOutput<TSchema>,
-      state: TReadState,
-    ) => Promise<TResult>,
-  ) => QuerySlice<TName, TSchema, TResult, TWriteState, TReadState> & {
-    scenarios?: readonly QueryScenario[]
-  }
-  scenarios: (
-    ...scenarios: readonly QueryScenario<
-      StandardSchemaV1.InferOutput<TSchema>
-    >[]
-  ) => QueryScenarioStep<TName, TSchema, TWriteState, TReadState>
+      event: EventForDefinition<TDefinition>,
+      state: TWriteState,
+    ) => Promise<void>,
+  ) => QueryApplyStep<
+    TName,
+    TInput,
+    TQuery,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
+  handle: (
+    handle: (query: TQuery, state: TReadState) => Promise<TResult>,
+  ) => QuerySlice<
+    TName,
+    TInput,
+    TQuery,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
-type QueryScenarioStep<
-  TName extends string,
-  TSchema extends StandardSchemaV1,
-  TWriteState,
-  TReadState,
+type ReactionDescriptionStep<TName extends string> = {
+  description: (description: string) => ReactionScenariosStep<TName>
+}
+
+type ReactionScenariosStep<TName extends string> = {
+  scenarios: <const TScenarios extends NonEmptyScenarios<ReactionScenario>>(
+    ...scenarios: TScenarios
+  ) => ReactionSliceSpec<TName, TScenarios>
+}
+
+export type ReactionSliceSpec<
+  TName extends string = string,
+  TScenarios extends
+    NonEmptyScenarios<ReactionScenario> = NonEmptyScenarios<ReactionScenario>,
 > = {
-  handle: QueryHandleStep<TName, TSchema, TWriteState, TReadState>['handle']
+  readonly stage: 'specification'
+  readonly kind: 'reaction'
+  readonly name: TName
+  readonly description: string
+  readonly scenarios: TScenarios
+  outputSchema<TResult = unknown>(): ReactionPluginStep<
+    TName,
+    TResult,
+    TResult,
+    TScenarios
+  >
+  outputSchema<TSchema extends StandardSchemaV1>(
+    schema: TSchema,
+  ): ReactionPluginStep<
+    TName,
+    StandardSchemaV1.InferInput<TSchema>,
+    StandardSchemaV1.InferOutput<TSchema>,
+    TScenarios
+  >
 }
 
-type ReactionStep<TName extends string, TPayload> = {
-  payload: <TNextPayload>() => ReactionStep<TName, TNextPayload>
-  plugin: (plugin: ReactionPlugin) => ReactionStoreStep<TName, TPayload>
+type ReactionPluginStep<
+  TName extends string,
+  TResult,
+  TOutput,
+  TScenarios extends NonEmptyScenarios<ReactionScenario>,
+> = {
+  plugin: (
+    plugin: ReactionPlugin<TOutput>,
+  ) => ReactionStoreStep<TName, TResult, TOutput, TScenarios>
 }
 
-type ReactionStoreStep<TName extends string, TPayload> = {
+type ReactionStoreStep<
+  TName extends string,
+  TResult,
+  TOutput,
+  TScenarios extends NonEmptyScenarios<ReactionScenario>,
+> = {
   store: <TWriteState, TReadState = TWriteState>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
-  ) => ReactionConfiguredStep<TName, TPayload, TWriteState, TReadState>
-}
-
-type ReactionConfiguredStep<
-  TName extends string,
-  TPayload,
-  TWriteState,
-  TReadState,
-> = {
-  apply: (
-    apply: AnyApplyHandlers<TWriteState>,
-  ) => ReactionApplyStep<TName, TPayload, TWriteState, TReadState>
-  scenarios: (
-    ...scenarios: readonly ReactionScenario<TPayload>[]
-  ) => ReactionScenarioStep<TName, TPayload, TWriteState, TReadState>
+  ) => ReactionApplyStep<
+    TName,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
 type ReactionApplyStep<
   TName extends string,
-  TPayload,
+  TResult,
+  TOutput,
   TWriteState,
   TReadState,
+  TScenarios extends NonEmptyScenarios<ReactionScenario>,
 > = {
-  handle: ReactionHandle<TName, TPayload, TWriteState, TReadState>
-  scenarios: ReactionConfiguredStep<
+  apply: <TDefinition extends ApplyEventDefinition>(
+    definition: TDefinition,
+    handle: (
+      event: EventForDefinition<TDefinition>,
+      state: TWriteState,
+    ) => Promise<void>,
+  ) => ReactionApplyStep<
     TName,
-    TPayload,
+    TResult,
+    TOutput,
     TWriteState,
-    TReadState
-  >['scenarios']
+    TReadState,
+    TScenarios
+  >
+  handle: (
+    handle: (state: TReadState) => Promise<TResult | undefined>,
+  ) => ReactionSlice<
+    TName,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios
+  >
 }
 
-type ReactionScenarioStep<
+type Specification<
+  TKind extends 'command' | 'query' | 'reaction',
   TName extends string,
-  TPayload,
-  TWriteState,
-  TReadState,
+  TScenarios extends NonEmptyScenarios<SliceScenario>,
 > = {
-  apply: ReactionConfiguredStep<
-    TName,
-    TPayload,
-    TWriteState,
-    TReadState
-  >['apply']
-  handle: ReactionHandle<TName, TPayload, TWriteState, TReadState>
-}
-
-type ReactionHandle<TName extends string, TPayload, TWriteState, TReadState> = (
-  handle: (state: TReadState) => Promise<TPayload | undefined>,
-) => ReactionSlice<TName, TPayload, TWriteState, TReadState> & {
-  scenarios?: readonly ReactionScenario<TPayload>[]
+  readonly stage: 'specification'
+  readonly kind: TKind
+  readonly name: TName
+  readonly description: string
+  readonly scenarios: TScenarios
 }
 
 export function createCommandSlice<const TName extends string>(
   name: TName,
+): CommandDescriptionStep<TName> {
+  return Object.freeze({
+    description: (description: string) => ({
+      scenarios: (...scenarios) =>
+        createCommandSpec(name, description, freezeScenarios(scenarios)),
+    }),
+  })
+}
+
+function createCommandSpec<
+  TName extends string,
+  TScenarios extends NonEmptyScenarios<CommandScenario>,
+>(
+  name: TName,
   description: string,
-): CommandSchemaStep<TName> {
-  return {
-    schema: (schema) => {
-      const withStore = <TWriteState, TReadState>(
+  scenarios: TScenarios,
+): CommandSliceSpec<TName, TScenarios> {
+  const specification = Object.freeze({
+    stage: 'specification' as const,
+    kind: 'command' as const,
+    name,
+    description,
+    scenarios,
+  })
+
+  return Object.freeze({
+    ...specification,
+    inputSchema: (schema?: StandardSchemaV1) => ({
+      store: <TWriteState, TReadState = TWriteState>(
         store: SliceStoreAdapter<TWriteState, TReadState>,
-      ) => {
-        const createRegistration = (
-          handle: (
-            command: StandardSchemaV1.InferOutput<typeof schema>,
-            state: TReadState,
-          ) => Promise<EventDraft[]>,
-          apply: AnyApplyHandlers<TWriteState>,
-          scenarios?: readonly CommandScenario[],
-        ) => ({
-          kind: 'command' as const,
-          name,
-          description,
-          schema,
-          store,
-          apply,
-          scenarios,
-          handle,
-        })
+      ) =>
+        createCommandApplyStep(specification, schema, store, Object.freeze([])),
+    }),
+  }) as CommandSliceSpec<TName, TScenarios>
+}
 
-        return {
-          handle: (handle) => createRegistration(handle, {}),
-          apply: (apply: AnyApplyHandlers<TWriteState>) => ({
-            handle: (handle) => createRegistration(handle, apply),
-            scenarios: (...scenarios) => ({
-              handle: (handle) => createRegistration(handle, apply, scenarios),
-            }),
-          }),
-          scenarios: (...scenarios) => ({
-            handle: (handle) => createRegistration(handle, {}, scenarios),
-            apply: (apply: AnyApplyHandlers<TWriteState>) => ({
-              handle: (handle) => createRegistration(handle, apply, scenarios),
-            }),
-          }),
-        } satisfies CommandStep<TName, typeof schema, TWriteState, TReadState>
-      }
-
-      return { store: withStore }
-    },
-  }
+function createCommandApplyStep<
+  TName extends string,
+  TInput,
+  TCommand,
+  TWriteState,
+  TReadState,
+  TScenarios extends NonEmptyScenarios<CommandScenario>,
+>(
+  specification: Specification<'command', TName, TScenarios>,
+  inputSchema: StandardSchemaV1<TInput, TCommand> | undefined,
+  store: SliceStoreAdapter<TWriteState, TReadState>,
+  apply: readonly ApplyRegistration<TWriteState>[],
+): CommandApplyStep<
+  TName,
+  TInput,
+  TCommand,
+  TWriteState,
+  TReadState,
+  TScenarios
+> {
+  return Object.freeze({
+    apply: <TDefinition extends ApplyEventDefinition>(
+      definition: TDefinition,
+      handle: (
+        event: EventForDefinition<TDefinition>,
+        state: TWriteState,
+      ) => Promise<void>,
+    ) =>
+      createCommandApplyStep(specification, inputSchema, store, [
+        ...apply,
+        { event: definition, handle } as ApplyRegistration<TWriteState>,
+      ]),
+    handle: (
+      handle: (
+        command: TCommand,
+        state: TReadState,
+      ) => Promise<readonly EventDraft[]>,
+    ) =>
+      Object.freeze({
+        ...specification,
+        stage: 'implementation' as const,
+        inputSchema,
+        store,
+        apply: Object.freeze([...apply]),
+        handle,
+      }),
+  })
 }
 
 export function createQuerySlice<const TName extends string>(
   name: TName,
-  description: string,
-): QuerySchemaStep<TName> {
-  return {
-    schema: (schema) => ({
-      store: <TWriteState, TReadState = TWriteState>(
-        store: SliceStoreAdapter<TWriteState, TReadState>,
-      ) => ({
-        apply: (apply: AnyApplyHandlers<TWriteState>) => {
-          const createRegistration = <TResult>(
-            handle: (
-              query: StandardSchemaV1.InferOutput<typeof schema>,
-              state: TReadState,
-            ) => Promise<TResult>,
-            scenarios?: readonly QueryScenario[],
-          ): QuerySlice<
-            TName,
-            typeof schema,
-            TResult,
-            TWriteState,
-            TReadState
-          > & {
-            scenarios?: readonly QueryScenario[]
-          } => ({
-            kind: 'query' as const,
-            name,
-            description,
-            schema,
-            store,
-            apply,
-            scenarios,
-            handle,
-          })
+): QueryDescriptionStep<TName> {
+  return Object.freeze({
+    description: (description: string) => ({
+      scenarios: (...scenarios) =>
+        createQuerySpec(name, description, freezeScenarios(scenarios)),
+    }),
+  })
+}
 
-          return {
-            handle: (handle) => createRegistration(handle),
-            scenarios: (...scenarios) => ({
-              handle: (handle) => createRegistration(handle, scenarios),
-            }),
-          } satisfies QueryHandleStep<
-            TName,
-            typeof schema,
-            TWriteState,
-            TReadState
-          >
-        },
+function createQuerySpec<
+  TName extends string,
+  TScenarios extends NonEmptyScenarios<QueryScenario>,
+>(
+  name: TName,
+  description: string,
+  scenarios: TScenarios,
+): QuerySliceSpec<TName, TScenarios> {
+  const specification = Object.freeze({
+    stage: 'specification' as const,
+    kind: 'query' as const,
+    name,
+    description,
+    scenarios,
+  })
+
+  return Object.freeze({
+    ...specification,
+    inputSchema: (inputSchema?: StandardSchemaV1) => ({
+      outputSchema: (outputSchema?: StandardSchemaV1) => ({
+        store: <TWriteState, TReadState = TWriteState>(
+          store: SliceStoreAdapter<TWriteState, TReadState>,
+        ) =>
+          createQueryApplyStep(
+            specification,
+            inputSchema,
+            outputSchema,
+            store,
+            Object.freeze([]),
+          ),
       }),
     }),
-  }
+  }) as QuerySliceSpec<TName, TScenarios>
+}
+
+function createQueryApplyStep<
+  TName extends string,
+  TInput,
+  TQuery,
+  TResult,
+  TOutput,
+  TWriteState,
+  TReadState,
+  TScenarios extends NonEmptyScenarios<QueryScenario>,
+>(
+  specification: Specification<'query', TName, TScenarios>,
+  inputSchema: StandardSchemaV1<TInput, TQuery> | undefined,
+  outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
+  store: SliceStoreAdapter<TWriteState, TReadState>,
+  apply: readonly ApplyRegistration<TWriteState>[],
+): QueryApplyStep<
+  TName,
+  TInput,
+  TQuery,
+  TResult,
+  TOutput,
+  TWriteState,
+  TReadState,
+  TScenarios
+> {
+  return Object.freeze({
+    apply: <TDefinition extends ApplyEventDefinition>(
+      definition: TDefinition,
+      handle: (
+        event: EventForDefinition<TDefinition>,
+        state: TWriteState,
+      ) => Promise<void>,
+    ) =>
+      createQueryApplyStep(specification, inputSchema, outputSchema, store, [
+        ...apply,
+        { event: definition, handle } as ApplyRegistration<TWriteState>,
+      ]),
+    handle: (handle: (query: TQuery, state: TReadState) => Promise<TResult>) =>
+      Object.freeze({
+        ...specification,
+        stage: 'implementation' as const,
+        inputSchema,
+        outputSchema,
+        store,
+        apply: Object.freeze([...apply]),
+        handle,
+      }),
+  })
 }
 
 export function createReactionSlice<const TName extends string>(
   name: TName,
-  description: string,
-): ReactionStep<TName, import('./slices').CommandEnvelope> {
-  return createReactionStep(name, description)
+): ReactionDescriptionStep<TName> {
+  return Object.freeze({
+    description: (description: string) => ({
+      scenarios: (...scenarios) =>
+        createReactionSpec(name, description, freezeScenarios(scenarios)),
+    }),
+  })
 }
 
-function createReactionStep<TName extends string, TPayload>(
+function createReactionSpec<
+  TName extends string,
+  TScenarios extends NonEmptyScenarios<ReactionScenario>,
+>(
   name: TName,
   description: string,
-  scenarios?: readonly ReactionScenario<TPayload>[],
-): ReactionStep<TName, TPayload> {
-  const s: ReactionStep<TName, TPayload> = {
-    payload: <TNextPayload>() =>
-      createReactionStep<TName, TNextPayload>(name, description),
-    plugin: (nextPlugin: ReactionPlugin) =>
-      createReactionStoreStep(name, description, nextPlugin, scenarios),
-  }
+  scenarios: TScenarios,
+): ReactionSliceSpec<TName, TScenarios> {
+  const specification = Object.freeze({
+    stage: 'specification' as const,
+    kind: 'reaction' as const,
+    name,
+    description,
+    scenarios,
+  })
 
-  return s
+  return Object.freeze({
+    ...specification,
+    outputSchema: (outputSchema?: StandardSchemaV1) => ({
+      plugin: (plugin: ReactionPlugin) => ({
+        store: <TWriteState, TReadState = TWriteState>(
+          store: SliceStoreAdapter<TWriteState, TReadState>,
+        ) =>
+          createReactionApplyStep(
+            specification,
+            outputSchema,
+            plugin,
+            store,
+            Object.freeze([]),
+          ),
+      }),
+    }),
+  }) as ReactionSliceSpec<TName, TScenarios>
 }
 
-function createReactionStoreStep<TName extends string, TPayload>(
-  name: TName,
-  description: string,
-  plugin: ReactionPlugin,
-  scenarios?: readonly ReactionScenario<TPayload>[],
-): ReactionStoreStep<TName, TPayload> {
-  return {
-    store: <TWriteState, TReadState = TWriteState>(
-      store: SliceStoreAdapter<TWriteState, TReadState>,
-    ) => {
-      const configured = (
-        apply: AnyApplyHandlers<TWriteState> = {},
-      ): ReactionConfiguredStep<TName, TPayload, TWriteState, TReadState> &
-        ReactionApplyStep<TName, TPayload, TWriteState, TReadState> => {
-        const handle: ReactionHandle<
-          TName,
-          TPayload,
-          TWriteState,
-          TReadState
-        > = (handler) => ({
-          kind: 'reaction' as const,
-          name,
-          description,
-          store,
-          apply,
-          plugin,
-          scenarios,
-          handle: handler,
-        })
+function createReactionApplyStep<
+  TName extends string,
+  TResult,
+  TOutput,
+  TWriteState,
+  TReadState,
+  TScenarios extends NonEmptyScenarios<ReactionScenario>,
+>(
+  specification: Specification<'reaction', TName, TScenarios>,
+  outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
+  plugin: ReactionPlugin<TOutput>,
+  store: SliceStoreAdapter<TWriteState, TReadState>,
+  apply: readonly ApplyRegistration<TWriteState>[],
+): ReactionApplyStep<
+  TName,
+  TResult,
+  TOutput,
+  TWriteState,
+  TReadState,
+  TScenarios
+> {
+  return Object.freeze({
+    apply: <TDefinition extends ApplyEventDefinition>(
+      definition: TDefinition,
+      handle: (
+        event: EventForDefinition<TDefinition>,
+        state: TWriteState,
+      ) => Promise<void>,
+    ) =>
+      createReactionApplyStep(specification, outputSchema, plugin, store, [
+        ...apply,
+        { event: definition, handle } as ApplyRegistration<TWriteState>,
+      ]),
+    handle: (handle: (state: TReadState) => Promise<TResult | undefined>) =>
+      Object.freeze({
+        ...specification,
+        stage: 'implementation' as const,
+        outputSchema,
+        plugin,
+        store,
+        apply: Object.freeze([...apply]),
+        handle,
+      }),
+  })
+}
 
-        return {
-          apply: (nextApply: ApplyHandlers) => configured(nextApply),
-          scenarios: (
-            ...nextScenarios: readonly ReactionScenario<TPayload>[]
-          ) => ({
-            apply: (nextApply: ApplyHandlers) =>
-              createReactionStoreStep(name, description, plugin, nextScenarios)
-                .store(store)
-                .apply(nextApply),
-            handle: createReactionStoreStep(
-              name,
-              description,
-              plugin,
-              nextScenarios,
-            )
-              .store(store)
-              .apply(apply).handle,
-          }),
-          handle,
-        }
-      }
-
-      return configured()
-    },
-  }
+function freezeScenarios<const TScenarios extends readonly SliceScenario[]>(
+  scenarios: TScenarios,
+): TScenarios {
+  return Object.freeze(
+    scenarios.map((scenario) =>
+      Object.freeze({
+        ...scenario,
+        given: Object.freeze([...scenario.given]),
+        ...(Array.isArray(scenario.expect)
+          ? { expect: Object.freeze([...scenario.expect]) }
+          : {}),
+      }),
+    ),
+  ) as unknown as TScenarios
 }
