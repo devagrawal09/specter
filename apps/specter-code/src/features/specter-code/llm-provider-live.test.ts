@@ -43,7 +43,10 @@ describe('OpenAI-compatible live provider streaming', () => {
     expect(result).toEqual({ content: 'hello world' })
     expect(deltas).toEqual(['hello ', 'world'])
     expect(fetchImpl).toHaveBeenCalledOnce()
-    const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit]
+    const [url, init] = fetchImpl.mock.calls[0] as unknown as [
+      string,
+      RequestInit,
+    ]
     const request = init as RequestInit & {
       headers: Record<string, string>
       body: string
@@ -62,11 +65,12 @@ describe('OpenAI-compatible live provider streaming', () => {
   })
 
   it('redacts provider secrets from failed completion errors', async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response('upstream rejected super-secret-token', {
-        status: 401,
-        statusText: 'Unauthorized',
-      }),
+    const fetchImpl = vi.fn(
+      async () =>
+        new Response('upstream rejected super-secret-token', {
+          status: 401,
+          statusText: 'Unauthorized',
+        }),
     )
 
     await expect(
@@ -81,7 +85,9 @@ describe('OpenAI-compatible live provider streaming', () => {
         messages: [{ role: 'user', content: 'Say hello' }],
         fetchImpl,
       }),
-    ).rejects.toThrow('OpenAI-compatible provider localai returned 401 Unauthorized')
+    ).rejects.toThrow(
+      'OpenAI-compatible provider localai returned 401 Unauthorized',
+    )
   })
 
   it('lets non-interactive CLI run use a configured live provider instead of mocked output', async () => {
@@ -111,14 +117,23 @@ describe('OpenAI-compatible live provider streaming', () => {
       },
     })
 
-    const result = await cli.run(['run', '--live', '--format', 'json', 'explain', 'repo'])
+    const result = await cli.run([
+      'run',
+      '--live',
+      '--format',
+      'json',
+      'explain',
+      'repo',
+    ])
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
     const events = result.stdout
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+      .map(
+        (line) => JSON.parse(line) as { type: string; [key: string]: unknown },
+      )
     expect(events.map((event) => event.type)).toEqual([
       'session.created',
       'message.created',

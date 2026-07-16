@@ -19,7 +19,9 @@ export const listNarayanConversationMessages = createServerFn({ method: 'GET' })
     return listNarayanConversationMessagesOnServer(data)
   })
 
-export const createNarayanTestInboundMessage = createServerFn({ method: 'POST' })
+export const createNarayanTestInboundMessage = createServerFn({
+  method: 'POST',
+})
   .inputValidator(
     z.object({
       from: z.string().min(1),

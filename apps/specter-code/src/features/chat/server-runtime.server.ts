@@ -14,7 +14,9 @@ async function ensureDefaultWorkspace() {
   const workspaces = await app.workspacesQuery({})
 
   if (
-    !workspaces.some((workspace) => workspace.id === defaultWorkspace.workspaceId)
+    !workspaces.some(
+      (workspace) => workspace.id === defaultWorkspace.workspaceId,
+    )
   ) {
     await app.createWorkspace(defaultWorkspace)
   }
@@ -30,7 +32,9 @@ export async function postChatMessageOnServer(data: {
   )
 }
 
-export async function listWorkspaceMessagesOnServer(data: { workspaceId: string }) {
+export async function listWorkspaceMessagesOnServer(data: {
+  workspaceId: string
+}) {
   return runWithSpecterCodeReferenceDb(() => app.chatMessagesQuery(data))
 }
 

@@ -1,21 +1,26 @@
 import type { ReactionPlugin } from '@specter-ts/core'
 import type { CoreMessageV4 } from '@mastra/core/agent/message-list'
 
-import type { GenerateAssistantReplyEffect } from './slice'
+import type { GenerateAssistantReplyEffect } from './impl'
 
 const fallbackPrefix = 'Namaste from Narayan AI.'
 
-export const mastraOpenRouterPlugin: ReactionPlugin = async (command) => {
-  return async (payload) => {
-    const effect = payload as GenerateAssistantReplyEffect
+export const mastraOpenRouterPlugin: ReactionPlugin<{
+  type: 'generateAssistantReply'
+  payload: GenerateAssistantReplyEffect
+}> = async (command) => {
+  return async (output) => {
+    const effect = output.payload
     const body = await generateReply(effect)
 
     await command({
       type: 'recordAssistantReply',
       payload: {
         inboundMessageId: effect.inboundMessageId,
+        outboundMessageId: crypto.randomUUID(),
         to: effect.from,
         body,
+        generatedAt: new Date().toISOString(),
       },
     })
   }
@@ -52,10 +57,11 @@ async function generateReply(effect: GenerateAssistantReplyEffect) {
         role: 'user',
         content: `Customer WhatsApp conversation from ${effect.from}. You are Narayan AI, a concise WhatsApp commerce assistant for Kashi local shops. Use the following messages as context before replying. Help with product availability, prices, delivery timing, order details, and polite next steps. Keep replies under 700 characters and do not invent exact prices or inventory.`,
       },
-      ...recentMessages.map((item): CoreMessageV4 =>
-        item.role === 'assistant'
-          ? { role: 'assistant', content: item.body }
-          : { role: 'user', content: item.body },
+      ...recentMessages.map(
+        (item): CoreMessageV4 =>
+          item.role === 'assistant'
+            ? { role: 'assistant', content: item.body }
+            : { role: 'user', content: item.body },
       ),
       {
         role: 'user',

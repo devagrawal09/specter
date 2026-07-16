@@ -5,11 +5,13 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStartedEvent } from '../events'
 
 const recordAgentRunStarted = recordAgentRunStartedSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       runId: z.string(),
       workspaceId: z.string(),
       agentId: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [

@@ -42,7 +42,10 @@ function normalizeOption(option: QuestionToolOptionInput): QuestionToolOption {
   }
 }
 
-export const questionTool: ToolDefinition<QuestionToolInput, QuestionToolOutput> = {
+export const questionTool: ToolDefinition<
+  QuestionToolInput,
+  QuestionToolOutput
+> = {
   name: 'question',
   description: 'Ask the user a clarifying question and wait for an answer',
   permission: 'question.ask',

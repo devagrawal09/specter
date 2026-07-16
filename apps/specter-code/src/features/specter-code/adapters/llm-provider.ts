@@ -88,7 +88,9 @@ export class ProviderRegistry {
   }
 
   requireProvider(providerId: string) {
-    const provider = this.#providers.find((candidate) => candidate.id === providerId)
+    const provider = this.#providers.find(
+      (candidate) => candidate.id === providerId,
+    )
     if (!provider) throw new Error(`Unknown provider: ${providerId}`)
     return { ...provider, models: [...provider.models] }
   }
@@ -109,7 +111,9 @@ export class ProviderRegistry {
   }
 }
 
-export function createProviderRegistry(options: CreateProviderRegistryOptions = {}) {
+export function createProviderRegistry(
+  options: CreateProviderRegistryOptions = {},
+) {
   const env = options.env ?? process.env
   const configuredProviders = options.config?.provider ?? {}
   const providerIds = new Set([
@@ -120,7 +124,8 @@ export function createProviderRegistry(options: CreateProviderRegistryOptions = 
   const providers = [...providerIds].map((providerId) => {
     const builtIn = DEFAULT_PROVIDER_CATALOG[providerId]
     const config = readProviderConfig(configuredProviders[providerId])
-    const apiKeyEnv = config.apiKeyEnv ?? builtIn?.apiKeyEnv ?? defaultApiKeyEnv(providerId)
+    const apiKeyEnv =
+      config.apiKeyEnv ?? builtIn?.apiKeyEnv ?? defaultApiKeyEnv(providerId)
     const models = mergeModels(builtIn?.models ?? [], config.models ?? [])
 
     return {

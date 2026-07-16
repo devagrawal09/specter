@@ -34,7 +34,10 @@ export function createTaskTool(
     async execute(input, context) {
       const prompt = normalizeText(input.prompt, 'Task prompt is required')
       const taskId = input.taskId ?? crypto.randomUUID()
-      const agent = normalizeText(input.agent ?? context.agent, 'Task agent is required')
+      const agent = normalizeText(
+        input.agent ?? context.agent,
+        'Task agent is required',
+      )
       const description = input.description?.trim() || undefined
 
       const record = runner.spawn({

@@ -7,6 +7,7 @@ import {
   collectConformanceDiagnostics,
   createCommandSlice,
   createEventDefinition,
+  createQuerySlice,
   event,
   type SpecterConformanceError,
 } from './index'
@@ -156,5 +157,41 @@ describe('conformance diagnostics', () => {
         slices: [implementation],
       }),
     ).resolves.toEqual([])
+  })
+
+  test('allows implementation-level conformance without a Command Slice', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<{ value: number }, { value: number }>((payload) => payload),
+    )
+    const query = createQuerySlice('readValue')
+      .description('Reads a value.')
+      .scenarios({
+        description: 'Reads the latest value.',
+        given: [event('value-recorded', { value: 1 })],
+        when: {},
+        expect: 1,
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<number>()
+      .store(memoryStore({ value: 0 }))
+      .apply(valueRecorded, async (applied, state) => {
+        state.value = applied.payload.value
+      })
+      .handle(async (_input, state) => state.value)
+
+    await expect(
+      assertConforms(
+        { events: [valueRecorded], slices: [query] },
+        { requireCommandSlice: false },
+      ),
+    ).resolves.toBeUndefined()
+    await expect(
+      assertConforms({ events: [valueRecorded], slices: [query] }),
+    ).rejects.toMatchObject({
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({ code: 'missing-command-slice' }),
+      ]),
+    })
   })
 })

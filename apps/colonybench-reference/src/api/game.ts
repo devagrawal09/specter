@@ -1,4 +1,14 @@
-import { SPAWN_WORKER_COST, type ColonyBenchBase, type ColonyBenchController, type ColonyBenchConstructionSite, type ColonyBenchPosition, type ColonyBenchRoad, type ColonyBenchSource, type ColonyBenchWorker, type ColonyBenchWorldSnapshot } from '../simulation/state'
+import {
+  SPAWN_WORKER_COST,
+  type ColonyBenchBase,
+  type ColonyBenchController,
+  type ColonyBenchConstructionSite,
+  type ColonyBenchPosition,
+  type ColonyBenchRoad,
+  type ColonyBenchSource,
+  type ColonyBenchWorker,
+  type ColonyBenchWorldSnapshot,
+} from '../simulation/state'
 import type { ColonyBenchBotCommands } from '../runner/types'
 
 export const OK = 0
@@ -107,9 +117,14 @@ export type ColonyBenchApiCreep = {
   pos: ColonyBenchApiPosition
   store: Required<ColonyBenchApiStore>
   memory: Record<string, unknown>
-  moveTo: (target: ColonyBenchApiPosition | { pos: ColonyBenchApiPosition }) => ReturnCode
+  moveTo: (
+    target: ColonyBenchApiPosition | { pos: ColonyBenchApiPosition },
+  ) => ReturnCode
   harvest: (source: ColonyBenchApiSource) => ReturnCode
-  transfer: (target: ColonyBenchApiSpawn, resourceType: typeof RESOURCE_ENERGY) => ReturnCode
+  transfer: (
+    target: ColonyBenchApiSpawn,
+    resourceType: typeof RESOURCE_ENERGY,
+  ) => ReturnCode
   upgradeController: (controller?: ColonyBenchApiController) => ReturnCode
   build: (site: ColonyBenchApiConstructionSite) => ReturnCode
   repair: (road: ColonyBenchApiRoad) => ReturnCode
@@ -119,8 +134,17 @@ export type ColonyBenchApiCreep = {
 export type ColonyBenchApiLookAtResult =
   | { type: 'terrain'; terrain: ColonyBenchApiTerrain }
   | { type: 'source'; source: ColonyBenchApiSource }
-  | { type: 'structure'; structure: ColonyBenchApiSpawn | ColonyBenchApiController | ColonyBenchApiRoad }
-  | { type: 'constructionSite'; constructionSite: ColonyBenchApiConstructionSite }
+  | {
+      type: 'structure'
+      structure:
+        | ColonyBenchApiSpawn
+        | ColonyBenchApiController
+        | ColonyBenchApiRoad
+    }
+  | {
+      type: 'constructionSite'
+      constructionSite: ColonyBenchApiConstructionSite
+    }
   | { type: 'creep'; creep: ColonyBenchApiCreep }
 
 export type ColonyBenchApiRoom = {
@@ -132,8 +156,13 @@ export type ColonyBenchApiRoom = {
   getTerrainAt: (x: number, y: number) => ColonyBenchApiTerrain
   lookAt: (x: number, y: number) => ColonyBenchApiLookAtResult[]
   find: (
-    findConstant: typeof FIND_SOURCES | typeof FIND_CONSTRUCTION_SITES | typeof FIND_STRUCTURES,
-  ) => Array<ColonyBenchApiSource | ColonyBenchApiConstructionSite | ColonyBenchApiRoad>
+    findConstant:
+      | typeof FIND_SOURCES
+      | typeof FIND_CONSTRUCTION_SITES
+      | typeof FIND_STRUCTURES,
+  ) => Array<
+    ColonyBenchApiSource | ColonyBenchApiConstructionSite | ColonyBenchApiRoad
+  >
 }
 
 export type ColonyBenchGame = {
@@ -163,13 +192,17 @@ function isAdjacent(left: ColonyBenchPosition, right: ColonyBenchPosition) {
   return distance(left, right) <= 1
 }
 
-function targetPosition(target: ColonyBenchApiPosition | { pos: ColonyBenchApiPosition }) {
+function targetPosition(
+  target: ColonyBenchApiPosition | { pos: ColonyBenchApiPosition },
+) {
   return 'pos' in target ? target.pos : target
 }
 
 function ensureCreepMemory(memory: ColonyBenchApiMemory, workerId: string) {
-  const creeps = (memory.creeps ??= {})
-  return (creeps[workerId] ??= {})
+  memory.creeps ??= {}
+  const creeps = memory.creeps
+  creeps[workerId] ??= {}
+  return creeps[workerId]
 }
 
 function recordApiIntent(
@@ -220,10 +253,15 @@ function createRoad(road: ColonyBenchRoad): ColonyBenchApiRoad {
   }
 }
 
-function createController(controller: ColonyBenchController | null, base: ColonyBenchBase | null): ColonyBenchApiController {
+function createController(
+  controller: ColonyBenchController | null,
+  base: ColonyBenchBase | null,
+): ColonyBenchApiController {
   return {
     id: controller?.id ?? 'controller-1',
-    pos: clonePosition(controller?.position ?? base?.position ?? { x: 0, y: 0 }),
+    pos: clonePosition(
+      controller?.position ?? base?.position ?? { x: 0, y: 0 },
+    ),
     level: controller?.level ?? base?.level ?? 0,
     progress: controller?.progress ?? base?.upgradeProgress ?? 0,
     progressTotal: controller?.progressTotal ?? 10,
@@ -514,7 +552,12 @@ function createRoom({
   spawns: ColonyBenchApiSpawn[]
   creeps: ColonyBenchApiCreep[]
 }): ColonyBenchApiRoom {
-  const terrainByPosition = new Map(terrain.map((tile) => [`${tile.position.x},${tile.position.y}`, tile.terrain]))
+  const terrainByPosition = new Map(
+    terrain.map((tile) => [
+      `${tile.position.x},${tile.position.y}`,
+      tile.terrain,
+    ]),
+  )
 
   return {
     name: 'sim',
@@ -529,18 +572,22 @@ function createRoom({
       const position = { x, y }
       const results: ColonyBenchApiLookAtResult[] = []
       const terrainAtPosition = terrainByPosition.get(`${x},${y}`)
-      if (terrainAtPosition) results.push({ type: 'terrain', terrain: terrainAtPosition })
+      if (terrainAtPosition)
+        results.push({ type: 'terrain', terrain: terrainAtPosition })
       for (const source of sources) {
-        if (source.pos.x === position.x && source.pos.y === position.y) results.push({ type: 'source', source })
+        if (source.pos.x === position.x && source.pos.y === position.y)
+          results.push({ type: 'source', source })
       }
       if (controller.pos.x === position.x && controller.pos.y === position.y) {
         results.push({ type: 'structure', structure: controller })
       }
       for (const spawn of spawns) {
-        if (spawn.pos.x === position.x && spawn.pos.y === position.y) results.push({ type: 'structure', structure: spawn })
+        if (spawn.pos.x === position.x && spawn.pos.y === position.y)
+          results.push({ type: 'structure', structure: spawn })
       }
       for (const road of roads) {
-        if (road.pos.x === position.x && road.pos.y === position.y) results.push({ type: 'structure', structure: road })
+        if (road.pos.x === position.x && road.pos.y === position.y)
+          results.push({ type: 'structure', structure: road })
       }
       for (const site of constructionSites) {
         if (site.pos.x === position.x && site.pos.y === position.y) {
@@ -548,7 +595,8 @@ function createRoom({
         }
       }
       for (const creep of creeps) {
-        if (creep.pos.x === position.x && creep.pos.y === position.y) results.push({ type: 'creep', creep })
+        if (creep.pos.x === position.x && creep.pos.y === position.y)
+          results.push({ type: 'creep', creep })
       }
       return results
     },
@@ -568,7 +616,9 @@ export function createColonyBenchGame({
 }: CreateColonyBenchGameOptions): ColonyBenchGame {
   const base = snapshot.base
   const sources = snapshot.sources.map(createSource)
-  const constructionSites = snapshot.constructionSites.map(createConstructionSite)
+  const constructionSites = snapshot.constructionSites.map(
+    createConstructionSite,
+  )
   const roads = snapshot.roads.map(createRoad)
   const controller = createController(snapshot.controller, base)
   const terrain = snapshot.terrain ?? []
@@ -577,7 +627,9 @@ export function createColonyBenchGame({
   const validTargetIds: ColonyBenchApiValidTargetIds = {
     sourceIds: new Set(snapshot.sources.map((source) => source.id)),
     spawnIds: new Set(base ? [base.id] : []),
-    constructionSiteIds: new Set(snapshot.constructionSites.map((site) => site.id)),
+    constructionSiteIds: new Set(
+      snapshot.constructionSites.map((site) => site.id),
+    ),
     roadIds: new Set(snapshot.roads.map((road) => road.id)),
     controllerIds: new Set(snapshot.controller ? [snapshot.controller.id] : []),
   }

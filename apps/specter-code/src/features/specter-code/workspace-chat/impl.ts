@@ -28,35 +28,38 @@ type WorkspaceChatState = {
 }
 
 const workspaceChat = workspaceChatSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       workspaceId: z.string(),
-    }))
+    }),
+  )
   .outputSchema<WorkspaceChatItem[]>()
   .store(createMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
   .apply(postCreatedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      state.posts.push({
-        id: payload.postId,
-        workspaceId: payload.workspaceId,
-        author: payload.author,
-        content: payload.content,
-        sourceRunId: payload.sourceRunId,
-      })
+    state.posts.push({
+      id: payload.postId,
+      workspaceId: payload.workspaceId,
+      author: payload.author,
+      content: payload.content,
+      sourceRunId: payload.sourceRunId,
     })
+  })
   .apply(postReplyCreatedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      state.posts.push({
-        id: payload.replyId,
-        workspaceId: payload.workspaceId,
-        parentPostId: payload.parentPostId,
-        author: payload.author,
-        content: payload.content,
-        sourceRunId: payload.sourceRunId,
-      })
+    state.posts.push({
+      id: payload.replyId,
+      workspaceId: payload.workspaceId,
+      parentPostId: payload.parentPostId,
+      author: payload.author,
+      content: payload.content,
+      sourceRunId: payload.sourceRunId,
     })
+  })
   .handle(async (query, state) =>
-    state.posts.filter((post) => post.workspaceId === query.workspaceId))
+    state.posts.filter((post) => post.workspaceId === query.workspaceId),
+  )
 
 export default workspaceChat

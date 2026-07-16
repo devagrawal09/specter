@@ -3,8 +3,9 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 const submitPromptSpec = createCommandSlice('submitPrompt')
   .description('Records a user prompt and requests a coding-agent turn.')
   .scenarios(
-{
-      description: 'Records a prompt and requests an agent run for the session.',
+    {
+      description:
+        'Records a prompt and requests an agent run for the session.',
       given: [],
       when: {
         messageId: 'message-1',
@@ -30,7 +31,11 @@ const submitPromptSpec = createCommandSlice('submitPrompt')
           postId: 'message-1',
           agentId: 'build',
           agentName: 'Build Agent',
-          requestedBy: { type: 'user', userId: 'user-1', displayName: 'Ada Lovelace' },
+          requestedBy: {
+            type: 'user',
+            userId: 'user-1',
+            displayName: 'Ada Lovelace',
+          },
         }),
       ],
     },

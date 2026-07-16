@@ -1,8 +1,8 @@
-import createWorkspaceSpec from "./spec";
-import { z } from "zod";
+import createWorkspaceSpec from './spec'
+import { z } from 'zod'
 
-import { createSqliteSliceStore } from "../../../db/specter-sqlite";
-import { workspaceCreatedEvent } from "../events";
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
+import { workspaceCreatedEvent } from '../events'
 
 const createWorkspace = createWorkspaceSpec
   .inputSchema(
@@ -13,10 +13,10 @@ const createWorkspace = createWorkspaceSpec
   )
   .store(createSqliteSliceStore(() => ({})))
   .handle(async (command) => {
-    const name = command.name.trim();
+    const name = command.name.trim()
 
     if (!name) {
-      throw new Error("Workspace name is required");
+      throw new Error('Workspace name is required')
     }
 
     return [
@@ -24,7 +24,7 @@ const createWorkspace = createWorkspaceSpec
         workspaceId: command.workspaceId,
         name,
       }),
-    ];
-  });
+    ]
+  })
 
-export default createWorkspace;
+export default createWorkspace

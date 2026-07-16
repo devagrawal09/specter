@@ -142,12 +142,15 @@ function cellKey(position: ColonyBenchPosition) {
 }
 
 function formatEventType(type: string) {
-  return (
-    type
-      .replace(/^colonybench/, '')
-      .replace(/[A-Z]/g, ' $&')
-      .trim() || type
-  )
+  const words = type
+    .replace(/^colonybench-?/, '')
+    .replace(/[A-Z]/g, ' $&')
+    .split(/[-\s]+/)
+    .filter(Boolean)
+
+  return words.length > 0
+    ? words.map((word) => `${word[0]?.toUpperCase()}${word.slice(1)}`).join(' ')
+    : type
 }
 
 function formatCommand(command: ColonyBenchBotCommand) {
@@ -238,21 +241,21 @@ function formatEvent(event: ColonyBenchWorldEventSummary) {
   const amount = numberPayloadValue(payload, 'amount')
 
   switch (event.type) {
-    case 'colonybenchEnergyDeposited':
-    case 'colonybenchWorkerDeposited':
+    case 'colonybench-energy-deposited':
+    case 'colonybench-worker-deposited':
       return `${type}: ${workerId ?? 'worker'} deposited energy`
-    case 'colonybenchEnergyHarvested':
-    case 'colonybenchWorkerHarvested':
+    case 'colonybench-energy-harvested':
+    case 'colonybench-worker-harvested':
       return `${type}: ${workerId ?? 'worker'} harvested ${amount ?? 'some'} from ${sourceId ?? 'source'}`
-    case 'colonybenchBaseUpgraded':
+    case 'colonybench-base-upgraded':
       return `${type}: base reached level ${numberPayloadValue(payload, 'level') ?? '?'}`
-    case 'colonybenchWorkerSpawned':
+    case 'colonybench-worker-spawned':
       return `${type}: ${workerId ?? 'worker'} joined the colony`
-    case 'colonybenchConstructionSiteBuilt':
+    case 'colonybench-construction-site-built':
       return `${type}: ${workerId ?? 'worker'} built ${amount ?? 'some'} progress`
-    case 'colonybenchRoadCompleted':
+    case 'colonybench-road-completed':
       return `${type}: road completed`
-    case 'colonybenchTickAdvanced': {
+    case 'colonybench-tick-advanced': {
       const regeneratedSources = Array.isArray(payload.regeneratedSources)
         ? payload.regeneratedSources.length
         : 0

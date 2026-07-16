@@ -12,16 +12,27 @@ beforeEach(async () => {
   workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-find-'))
   await mkdir(path.join(workspaceRoot, 'src', 'nested'), { recursive: true })
   await mkdir(path.join(workspaceRoot, 'docs'), { recursive: true })
-  await mkdir(path.join(workspaceRoot, 'node_modules', 'noise'), { recursive: true })
+  await mkdir(path.join(workspaceRoot, 'node_modules', 'noise'), {
+    recursive: true,
+  })
   await writeFile(
     path.join(workspaceRoot, 'src', 'app.ts'),
     'export const state = "loading"\nexport const ready = true\n',
   )
-  await writeFile(path.join(workspaceRoot, 'src', 'nested', 'worker.ts'), 'ready()\n')
+  await writeFile(
+    path.join(workspaceRoot, 'src', 'nested', 'worker.ts'),
+    'ready()\n',
+  )
   await writeFile(path.join(workspaceRoot, 'docs', 'guide.md'), 'Ready guide\n')
   await writeFile(path.join(workspaceRoot, 'README.md'), 'Project notes\n')
-  await writeFile(path.join(workspaceRoot, 'node_modules', 'noise', 'app.ts'), 'ready noise\n')
-  await writeFile(path.join(workspaceRoot, 'binary.bin'), new Uint8Array([0, 1, 2, 3]))
+  await writeFile(
+    path.join(workspaceRoot, 'node_modules', 'noise', 'app.ts'),
+    'ready noise\n',
+  )
+  await writeFile(
+    path.join(workspaceRoot, 'binary.bin'),
+    new Uint8Array([0, 1, 2, 3]),
+  )
 })
 
 afterEach(async () => {
@@ -30,16 +41,21 @@ afterEach(async () => {
 
 describe('OpenCode-compatible find adapters', () => {
   it('finds files by substring or glob query with stable ordering and limits', async () => {
-    await expect(findWorkspaceFiles({ workspaceRoot, query: 'app', limit: 10 })).resolves.toEqual([
-      'src/app.ts',
-    ])
-
-    await expect(findWorkspaceFiles({ workspaceRoot, query: '**/*.ts', limit: 1 })).resolves.toEqual([
-      'src/app.ts',
-    ])
+    await expect(
+      findWorkspaceFiles({ workspaceRoot, query: 'app', limit: 10 }),
+    ).resolves.toEqual(['src/app.ts'])
 
     await expect(
-      findWorkspaceFiles({ workspaceRoot, query: 'doc', type: 'directory', limit: 10 }),
+      findWorkspaceFiles({ workspaceRoot, query: '**/*.ts', limit: 1 }),
+    ).resolves.toEqual(['src/app.ts'])
+
+    await expect(
+      findWorkspaceFiles({
+        workspaceRoot,
+        query: 'doc',
+        type: 'directory',
+        limit: 10,
+      }),
     ).resolves.toEqual(['docs'])
   })
 
@@ -66,14 +82,23 @@ describe('OpenCode-compatible find adapters', () => {
 
   it('normalizes subdirectories and blocks path escape', async () => {
     await expect(
-      findWorkspaceText({ workspaceRoot, directory: 'src', pattern: 'ready', limit: 10 }),
+      findWorkspaceText({
+        workspaceRoot,
+        directory: 'src',
+        pattern: 'ready',
+        limit: 10,
+      }),
     ).resolves.toEqual([
       expect.objectContaining({ path: { text: 'app.ts' } }),
       expect.objectContaining({ path: { text: 'nested/worker.ts' } }),
     ])
 
     await expect(
-      findWorkspaceFiles({ workspaceRoot, directory: '../outside', query: 'app' }),
+      findWorkspaceFiles({
+        workspaceRoot,
+        directory: '../outside',
+        query: 'app',
+      }),
     ).rejects.toThrow('Workspace path escapes the workspace root')
   })
 })

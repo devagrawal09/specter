@@ -42,17 +42,28 @@ function normalizeUrl(input: string) {
 
 function normalizeFormat(format: WebFetchFormat | undefined): WebFetchFormat {
   if (format === undefined) return DEFAULT_FORMAT
-  if (format === 'markdown' || format === 'text' || format === 'html') return format
+  if (format === 'markdown' || format === 'text' || format === 'html')
+    return format
   throw new Error('WebFetch format must be markdown, text, or html')
 }
 
-function normalizePositiveInteger(value: number | undefined, fallback: number, maximum: number, label: string) {
+function normalizePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+  label: string,
+) {
   if (value === undefined) return fallback
-  if (!Number.isFinite(value) || value < 1) throw new Error(label + ' must be positive')
+  if (!Number.isFinite(value) || value < 1)
+    throw new Error(label + ' must be positive')
   return Math.min(Math.floor(value), maximum)
 }
 
-async function fetchWithTimeout(url: string, timeoutMs: number, abortSignal: AbortSignal | undefined) {
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number,
+  abortSignal: AbortSignal | undefined,
+) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const abortFromParent = () => controller.abort()
@@ -68,7 +79,8 @@ async function fetchWithTimeout(url: string, timeoutMs: number, abortSignal: Abo
       },
     })
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('WebFetch request timed out or was aborted')
+    if (controller.signal.aborted)
+      throw new Error('WebFetch request timed out or was aborted')
     throw error
   } finally {
     clearTimeout(timeout)
@@ -138,7 +150,10 @@ function htmlToMarkdown(html: string) {
     .replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, '\n### $1\n\n')
     .replace(/<(strong|b)\b[^>]*>([\s\S]*?)<\/(strong|b)>/gi, '**$2**')
     .replace(/<(em|i)\b[^>]*>([\s\S]*?)<\/(em|i)>/gi, '*$2*')
-    .replace(/<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi, '[$2]($1)')
+    .replace(
+      /<a\b[^>]*href=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi,
+      '[$2]($1)',
+    )
     .replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, '\n- $1')
     .replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, '\n$1\n\n')
     .replace(/<br\s*\/?\s*>/gi, '\n')
@@ -147,14 +162,21 @@ function htmlToMarkdown(html: string) {
   return normalizeMarkdownWhitespace(markdown)
 }
 
-function renderContent(content: string, contentType: string, format: WebFetchFormat) {
+function renderContent(
+  content: string,
+  contentType: string,
+  format: WebFetchFormat,
+) {
   const isHtml = contentType.toLowerCase().includes('text/html')
   if (format === 'html' || !isHtml) return content.trim()
   if (format === 'text') return htmlToText(content)
   return htmlToMarkdown(content)
 }
 
-export const webfetchTool: ToolDefinition<WebFetchToolInput, WebFetchToolOutput> = {
+export const webfetchTool: ToolDefinition<
+  WebFetchToolInput,
+  WebFetchToolOutput
+> = {
   name: 'webfetch',
   description: 'Fetch web content from an HTTP or HTTPS URL',
   permission: 'webfetch',
@@ -175,8 +197,13 @@ export const webfetchTool: ToolDefinition<WebFetchToolInput, WebFetchToolOutput>
         ABSOLUTE_MAX_BYTES,
         'WebFetch maxBytes',
       )
-      const response = await fetchWithTimeout(url, timeoutMs, context.abortSignal)
-      if (!response.ok) throw new Error('WebFetch failed with HTTP ' + response.status)
+      const response = await fetchWithTimeout(
+        url,
+        timeoutMs,
+        context.abortSignal,
+      )
+      if (!response.ok)
+        throw new Error('WebFetch failed with HTTP ' + response.status)
 
       const contentType = response.headers.get('content-type') ?? ''
       const bytes = new Uint8Array(await response.arrayBuffer())

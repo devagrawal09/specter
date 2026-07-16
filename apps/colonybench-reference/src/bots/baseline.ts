@@ -36,11 +36,9 @@ function roleForWorker(index: number, workerCount: number): BaselineWorkerRole {
   return 'harvester'
 }
 
-function assignRoles(
-  memory: BaselineBotMemory,
-  workers: ColonyBenchWorker[],
-) {
-  const creeps = (memory.creeps ??= {})
+function assignRoles(memory: BaselineBotMemory, workers: ColonyBenchWorker[]) {
+  memory.creeps ??= {}
+  const creeps = memory.creeps
   const liveWorkerIds = new Set(workers.map((worker) => worker.id))
 
   for (const workerId of Object.keys(creeps)) {
@@ -69,18 +67,16 @@ function nearestSource(
     )[0]
 }
 
-
 function nearestConstructionSite(
   worker: ColonyBenchWorker,
   sites: ColonyBenchConstructionSite[],
 ): ColonyBenchConstructionSite | undefined {
-  return sites
-    .sort(
-      (left, right) =>
-        distance(worker.position, left.position) -
-          distance(worker.position, right.position) ||
-        left.id.localeCompare(right.id),
-    )[0]
+  return sites.sort(
+    (left, right) =>
+      distance(worker.position, left.position) -
+        distance(worker.position, right.position) ||
+      left.id.localeCompare(right.id),
+  )[0]
 }
 
 function nearestDamagedRoad(
@@ -111,7 +107,10 @@ export const baselineBot: ColonyBenchBot<BaselineBotMemory> = {
       const spawnedWorkerId = `worker-${snapshot.workers.length + 1}`
       memory.creeps ??= {}
       memory.creeps[spawnedWorkerId] = {
-        role: roleForWorker(snapshot.workers.length, snapshot.workers.length + 1),
+        role: roleForWorker(
+          snapshot.workers.length,
+          snapshot.workers.length + 1,
+        ),
       }
       commands.spawnWorker()
     }
@@ -122,7 +121,10 @@ export const baselineBot: ColonyBenchBot<BaselineBotMemory> = {
       const creep = game.creeps[worker.id]
       if (worker.energy > 0) {
         const role = memory.creeps?.[worker.id]?.role ?? 'harvester'
-        const site = role === 'builder' ? nearestConstructionSite(worker, snapshot.constructionSites) : undefined
+        const site =
+          role === 'builder'
+            ? nearestConstructionSite(worker, snapshot.constructionSites)
+            : undefined
         if (site) {
           if (isAdjacent(worker.position, site.position)) {
             creep?.say(`building ${site.id}`)
@@ -134,10 +136,15 @@ export const baselineBot: ColonyBenchBot<BaselineBotMemory> = {
           continue
         }
 
-        const road = role === 'builder' ? nearestDamagedRoad(worker, snapshot.roads) : undefined
+        const road =
+          role === 'builder'
+            ? nearestDamagedRoad(worker, snapshot.roads)
+            : undefined
         if (road) {
           if (isAdjacent(worker.position, road.position)) {
-            const apiRoad = game.rooms.sim.roads.find((candidate) => candidate.id === road.id)
+            const apiRoad = game.rooms.sim.roads.find(
+              (candidate) => candidate.id === road.id,
+            )
             creep?.say(`repairing ${road.id}`)
             if (apiRoad) creep?.repair(apiRoad)
           } else {

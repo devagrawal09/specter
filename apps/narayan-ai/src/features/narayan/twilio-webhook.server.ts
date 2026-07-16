@@ -22,6 +22,7 @@ export async function handleTwilioIncomingWebhook(request: Request) {
     './server-runtime.server'
   )
   await recordIncomingTwilioMessageOnServer({
+    inboundMessageId: crypto.randomUUID(),
     twilioMessageSid,
     from,
     to,
@@ -51,7 +52,12 @@ async function validateTwilioSignature(request: Request, form: FormData) {
     if (typeof item === 'string') params[key] = item
   }
 
-  return twilio.validateRequest(authToken, signature, publicValidationUrl(request), params)
+  return twilio.validateRequest(
+    authToken,
+    signature,
+    publicValidationUrl(request),
+    params,
+  )
 }
 
 function publicValidationUrl(request: Request) {

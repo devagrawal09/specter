@@ -65,7 +65,10 @@ describe('createProviderRegistry', () => {
   it('resolves the configured default model to a provider/model pair with availability status', () => {
     const registry = createProviderRegistry({
       config: {
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       },
       env: { OPENROUTER_API_KEY: 'sk-or-secret' },
     })

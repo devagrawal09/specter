@@ -20,7 +20,7 @@ const updateTodoList = updateTodoListSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     return [
       todoListUpdatedEvent.create({

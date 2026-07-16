@@ -2,9 +2,13 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
 import { runWithSpecterCodeReferenceDb } from '../../../db/client.server.ts'
-import { querySpecterSqliteEvents, sqliteEventLog } from '../../../db/specter-sqlite.ts'
+import {
+  querySpecterSqliteEvents,
+  sqliteEventLog,
+} from '../../../db/specter-sqlite.ts'
 
-export const SPECTER_CODE_SESSION_EXPORT_FORMAT = 'specter-code.session.v1' as const
+export const SPECTER_CODE_SESSION_EXPORT_FORMAT =
+  'specter-code.session.v1' as const
 
 export type SpecterCodeSessionEvent = {
   type: string
@@ -34,13 +38,18 @@ export function buildSpecterCodeSessionExport(input: {
   exportedAt?: string
 }): SpecterCodeSessionExport {
   const sessionEvent = input.events.find(
-    (event) => event.type === 'session-created' && event.payload.sessionId === input.sessionId,
+    (event) =>
+      event.type === 'session-created' &&
+      event.payload.sessionId === input.sessionId,
   )
-  if (!sessionEvent) throw new Error(`Cannot export unknown session: ${input.sessionId}`)
+  if (!sessionEvent)
+    throw new Error(`Cannot export unknown session: ${input.sessionId}`)
 
   const session = sessionFromPayload(sessionEvent.payload)
   const included = selectSessionEventIndexes(input.events, session)
-  const events = input.events.filter((_, index) => included.has(index)).map(cloneEvent)
+  const events = input.events
+    .filter((_, index) => included.has(index))
+    .map(cloneEvent)
 
   return {
     format: SPECTER_CODE_SESSION_EXPORT_FORMAT,
@@ -50,26 +59,38 @@ export function buildSpecterCodeSessionExport(input: {
   }
 }
 
-export function normalizeSpecterCodeSessionExport(input: unknown): SpecterCodeSessionExport {
+export function normalizeSpecterCodeSessionExport(
+  input: unknown,
+): SpecterCodeSessionExport {
   if (!isRecord(input) || input.format !== SPECTER_CODE_SESSION_EXPORT_FORMAT) {
     throw new Error('Unsupported Specter Code session export format')
   }
-  if (typeof input.exportedAt !== 'string') throw new Error('Session export timestamp is required')
-  if (!isRecord(input.session)) throw new Error('Session export metadata is required')
-  if (!Array.isArray(input.events)) throw new Error('Session export events are required')
+  if (typeof input.exportedAt !== 'string')
+    throw new Error('Session export timestamp is required')
+  if (!isRecord(input.session))
+    throw new Error('Session export metadata is required')
+  if (!Array.isArray(input.events))
+    throw new Error('Session export events are required')
 
   const session = sessionFromPayload(input.session)
   const events = input.events.map((event, index) => {
-    if (!isRecord(event) || typeof event.type !== 'string' || !isRecord(event.payload)) {
+    if (
+      !isRecord(event) ||
+      typeof event.type !== 'string' ||
+      !isRecord(event.payload)
+    ) {
       throw new Error(`Invalid session export event at index ${index}`)
     }
     return { type: event.type, payload: { ...event.payload } }
   })
 
   const hasSessionCreated = events.some(
-    (event) => event.type === 'session-created' && event.payload.sessionId === session.sessionId,
+    (event) =>
+      event.type === 'session-created' &&
+      event.payload.sessionId === session.sessionId,
   )
-  if (!hasSessionCreated) throw new Error('Session export must include its sessionCreated event')
+  if (!hasSessionCreated)
+    throw new Error('Session export must include its sessionCreated event')
 
   return {
     format: SPECTER_CODE_SESSION_EXPORT_FORMAT,
@@ -83,10 +104,19 @@ export async function exportSpecterCodeSessionFile(input: {
   sessionId: string
   outputPath: string
 }) {
-  const events = await runWithSpecterCodeReferenceDb(async () => queryAllSpecterCodeEvents())
-  const exported = buildSpecterCodeSessionExport({ sessionId: input.sessionId, events })
+  const events = await runWithSpecterCodeReferenceDb(async () =>
+    queryAllSpecterCodeEvents(),
+  )
+  const exported = buildSpecterCodeSessionExport({
+    sessionId: input.sessionId,
+    events,
+  })
   await mkdir(path.dirname(input.outputPath), { recursive: true })
-  await writeFile(input.outputPath, `${JSON.stringify(exported, null, 2)}\n`, 'utf8')
+  await writeFile(
+    input.outputPath,
+    `${JSON.stringify(exported, null, 2)}\n`,
+    'utf8',
+  )
   return {
     sessionId: exported.session.sessionId,
     eventCount: exported.events.length,
@@ -94,12 +124,19 @@ export async function exportSpecterCodeSessionFile(input: {
   }
 }
 
-export async function importSpecterCodeSessionFile(input: { inputPath: string }) {
+export async function importSpecterCodeSessionFile(input: {
+  inputPath: string
+}) {
   const parsed = JSON.parse(await readFile(input.inputPath, 'utf8')) as unknown
   const exported = normalizeSpecterCodeSessionExport(parsed)
 
   await runWithSpecterCodeReferenceDb(async () => {
-    await sqliteEventLog.append(exported.events.map((event) => ({ type: event.type, payload: event.payload })))
+    await sqliteEventLog.append(
+      exported.events.map((event) => ({
+        type: event.type,
+        payload: event.payload,
+      })),
+    )
   })
 
   return {
@@ -115,7 +152,8 @@ async function queryAllSpecterCodeEvents() {
   while (true) {
     const page = await querySpecterSqliteEvents({ afterOrder, limit: 500 })
     for (const event of page) {
-      if (isRecord(event.payload)) events.push({ type: event.type, payload: { ...event.payload } })
+      if (isRecord(event.payload))
+        events.push({ type: event.type, payload: { ...event.payload } })
       afterOrder = event.order
     }
     if (page.length < 500) return events
@@ -137,10 +175,26 @@ function selectSessionEventIndexes(
     changed = false
     events.forEach((event, index) => {
       if (included.has(index)) return
-      if (!isSessionRelatedEvent(event, session, messageIds, runIds, toolCallIds, ptySessionIds)) return
+      if (
+        !isSessionRelatedEvent(
+          event,
+          session,
+          messageIds,
+          runIds,
+          toolCallIds,
+          ptySessionIds,
+        )
+      )
+        return
 
       included.add(index)
-      collectIdentifiers(event.payload, messageIds, runIds, toolCallIds, ptySessionIds)
+      collectIdentifiers(
+        event.payload,
+        messageIds,
+        runIds,
+        toolCallIds,
+        ptySessionIds,
+      )
       changed = true
     })
   }
@@ -157,15 +211,24 @@ function isSessionRelatedEvent(
   ptySessionIds: ReadonlySet<string>,
 ) {
   const payload = event.payload
-  if (event.type === 'workspace-created' && payload.workspaceId === session.workspaceId) return true
+  if (
+    event.type === 'workspace-created' &&
+    payload.workspaceId === session.workspaceId
+  )
+    return true
   if (payload.sessionId === session.sessionId) return true
-  if (payload.messageId && messageIds.has(String(payload.messageId))) return true
-  if (payload.parentPostId && messageIds.has(String(payload.parentPostId))) return true
+  if (payload.messageId && messageIds.has(String(payload.messageId)))
+    return true
+  if (payload.parentPostId && messageIds.has(String(payload.parentPostId)))
+    return true
   if (payload.postId && messageIds.has(String(payload.postId))) return true
   if (payload.runId && runIds.has(String(payload.runId))) return true
-  if (payload.sourceRunId && runIds.has(String(payload.sourceRunId))) return true
-  if (payload.toolCallId && toolCallIds.has(String(payload.toolCallId))) return true
-  if (payload.ptySessionId && ptySessionIds.has(String(payload.ptySessionId))) return true
+  if (payload.sourceRunId && runIds.has(String(payload.sourceRunId)))
+    return true
+  if (payload.toolCallId && toolCallIds.has(String(payload.toolCallId)))
+    return true
+  if (payload.ptySessionId && ptySessionIds.has(String(payload.ptySessionId)))
+    return true
   return false
 }
 
@@ -190,7 +253,9 @@ function addString(values: Set<string>, value: unknown) {
   if (typeof value === 'string' && value) values.add(value)
 }
 
-function sessionFromPayload(payload: Record<string, unknown>): SpecterCodeSessionExport['session'] {
+function sessionFromPayload(
+  payload: Record<string, unknown>,
+): SpecterCodeSessionExport['session'] {
   const model = payload.model
   if (!isRecord(model)) throw new Error('Session export model is required')
   return {
@@ -207,7 +272,8 @@ function sessionFromPayload(payload: Record<string, unknown>): SpecterCodeSessio
 }
 
 function requireString(value: unknown, field: string) {
-  if (typeof value !== 'string' || !value) throw new Error(`Session export ${field} is required`)
+  if (typeof value !== 'string' || !value)
+    throw new Error(`Session export ${field} is required`)
   return value
 }
 

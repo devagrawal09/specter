@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postCreatedEvent, postReplyCreatedEvent } from '../events'
 
 const replyToPost = replyToPostSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       replyId: z.string(),
       workspaceId: z.string(),
       parentPostId: z.string(),
@@ -14,7 +15,8 @@ const replyToPost = replyToPostSpec
         displayName: z.string(),
       }),
       content: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .apply(postCreatedEvent, async () => {})
   .handle(async (command) => {

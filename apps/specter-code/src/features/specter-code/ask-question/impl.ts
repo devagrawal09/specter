@@ -21,7 +21,7 @@ const askQuestion = askQuestionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const prompt = command.prompt.trim()
     if (!prompt) throw new Error('Question prompt is required')

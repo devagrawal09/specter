@@ -7,14 +7,14 @@ export const positionSchema = z.object({
 })
 
 export const simulationInitializedEvent = createEventDefinition(
-  'colonybenchSimulationInitialized',
+  'colonybench-simulation-initialized',
   z.object({
     runId: z.string(),
   }),
 )
 
 export const workerMovedEvent = createEventDefinition(
-  'colonybenchWorkerMoved',
+  'colonybench-worker-moved',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -25,7 +25,7 @@ export const workerMovedEvent = createEventDefinition(
 )
 
 export const workerHarvestedEvent = createEventDefinition(
-  'colonybenchWorkerHarvested',
+  'colonybench-worker-harvested',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -35,7 +35,7 @@ export const workerHarvestedEvent = createEventDefinition(
 )
 
 export const workerDepositedEvent = createEventDefinition(
-  'colonybenchWorkerDeposited',
+  'colonybench-worker-deposited',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -44,7 +44,7 @@ export const workerDepositedEvent = createEventDefinition(
 )
 
 export const baseUpgradedEvent = createEventDefinition(
-  'colonybenchBaseUpgraded',
+  'colonybench-base-upgraded',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -55,7 +55,7 @@ export const baseUpgradedEvent = createEventDefinition(
 )
 
 export const workerSpawnedEvent = createEventDefinition(
-  'colonybenchWorkerSpawned',
+  'colonybench-worker-spawned',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -64,9 +64,8 @@ export const workerSpawnedEvent = createEventDefinition(
   }),
 )
 
-
 export const constructionSiteBuiltEvent = createEventDefinition(
-  'colonybenchConstructionSiteBuilt',
+  'colonybench-construction-site-built',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -78,7 +77,7 @@ export const constructionSiteBuiltEvent = createEventDefinition(
 )
 
 export const roadCompletedEvent = createEventDefinition(
-  'colonybenchRoadCompleted',
+  'colonybench-road-completed',
   z.object({
     runId: z.string(),
     siteId: z.string(),
@@ -88,7 +87,7 @@ export const roadCompletedEvent = createEventDefinition(
 )
 
 export const roadRepairedEvent = createEventDefinition(
-  'colonybenchRoadRepaired',
+  'colonybench-road-repaired',
   z.object({
     runId: z.string(),
     workerId: z.string(),
@@ -99,7 +98,7 @@ export const roadRepairedEvent = createEventDefinition(
 )
 
 export const commandRejectedEvent = createEventDefinition(
-  'colonybenchCommandRejected',
+  'colonybench-command-rejected',
   z.object({
     runId: z.string(),
     command: z.string(),
@@ -108,7 +107,7 @@ export const commandRejectedEvent = createEventDefinition(
 )
 
 export const tickAdvancedEvent = createEventDefinition(
-  'colonybenchTickAdvanced',
+  'colonybench-tick-advanced',
   z.object({
     runId: z.string(),
     tick: z.number().int().nonnegative(),

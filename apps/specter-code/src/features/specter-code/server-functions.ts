@@ -21,7 +21,6 @@ export const createSpecterCodeWorkspace = createServerFn({ method: 'POST' })
     return createSpecterCodeWorkspaceOnServer(data)
   })
 
-
 const sessionIdInput = z.object({ sessionId: z.string() })
 
 export const createSpecterCodeSession = createServerFn({ method: 'POST' })
@@ -77,7 +76,9 @@ export const submitSpecterCodePrompt = createServerFn({ method: 'POST' })
     return submitSpecterCodePromptOnServer(data)
   })
 
-export const listSpecterCodeSessionTranscript = createServerFn({ method: 'GET' })
+export const listSpecterCodeSessionTranscript = createServerFn({
+  method: 'GET',
+})
   .inputValidator(sessionIdInput)
   .handler(async ({ data }) => {
     const { listSpecterCodeSessionTranscriptOnServer } = await import(
@@ -85,7 +86,6 @@ export const listSpecterCodeSessionTranscript = createServerFn({ method: 'GET' }
     )
     return listSpecterCodeSessionTranscriptOnServer(data)
   })
-
 
 export const requestSpecterCodeToolApproval = createServerFn({ method: 'POST' })
   .inputValidator(
@@ -128,7 +128,9 @@ export const replySpecterCodeToolApproval = createServerFn({ method: 'POST' })
     return replySpecterCodeToolApprovalOnServer(data)
   })
 
-export const listSpecterCodePendingPermissions = createServerFn({ method: 'GET' })
+export const listSpecterCodePendingPermissions = createServerFn({
+  method: 'GET',
+})
   .inputValidator(sessionIdInput)
   .handler(async ({ data }) => {
     const { listSpecterCodePendingPermissionsOnServer } = await import(
@@ -137,10 +139,14 @@ export const listSpecterCodePendingPermissions = createServerFn({ method: 'GET' 
     return listSpecterCodePendingPermissionsOnServer(data)
   })
 
-export const getSpecterCodeSettings = createServerFn({ method: 'GET' }).handler(async () => {
-  const { getSpecterCodeSettingsOnServer } = await import('./server-runtime.server')
-  return getSpecterCodeSettingsOnServer()
-})
+export const getSpecterCodeSettings = createServerFn({ method: 'GET' }).handler(
+  async () => {
+    const { getSpecterCodeSettingsOnServer } = await import(
+      './server-runtime.server'
+    )
+    return getSpecterCodeSettingsOnServer()
+  },
+)
 
 export const createSpecterCodePost = createServerFn({ method: 'POST' })
   .inputValidator(
@@ -249,7 +255,9 @@ export const getSpecterCodeWorkspaceDiff = createServerFn({ method: 'GET' })
     return getSpecterCodeWorkspaceDiffOnServer(data)
   })
 
-export const revertSpecterCodeWorkspaceChanges = createServerFn({ method: 'POST' })
+export const revertSpecterCodeWorkspaceChanges = createServerFn({
+  method: 'POST',
+})
   .inputValidator(
     z.object({
       workspaceId: z.string(),

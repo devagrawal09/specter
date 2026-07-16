@@ -1,8 +1,8 @@
-import recordWorkspaceFilesystemScanFailedSpec from "./spec";
-import { z } from "zod";
+import recordWorkspaceFilesystemScanFailedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { workspaceFilesystemScanFailedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { workspaceFilesystemScanFailedEvent } from '../events'
 
 const recordWorkspaceFilesystemScanFailed =
   recordWorkspaceFilesystemScanFailedSpec
@@ -21,7 +21,7 @@ const recordWorkspaceFilesystemScanFailed =
           workspaceId: command.workspaceId,
           error: command.error,
         }),
-      ];
-    });
+      ]
+    })
 
-export default recordWorkspaceFilesystemScanFailed;
+export default recordWorkspaceFilesystemScanFailed

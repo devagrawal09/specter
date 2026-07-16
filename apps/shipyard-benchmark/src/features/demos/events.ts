@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const demoCreatedEvent = createEventDefinition(
-  'demoCreated',
+  'demo-created',
   z.object({
     demoId: z.string(),
     projectId: z.string(),
@@ -11,7 +11,7 @@ export const demoCreatedEvent = createEventDefinition(
 )
 
 export const demoStageAddedEvent = createEventDefinition(
-  'demoStageAdded',
+  'demo-stage-added',
   z.object({
     demoId: z.string(),
     stageId: z.string(),
@@ -21,7 +21,7 @@ export const demoStageAddedEvent = createEventDefinition(
 )
 
 export const demoStageReorderedEvent = createEventDefinition(
-  'demoStageReordered',
+  'demo-stage-reordered',
   z.object({
     demoId: z.string(),
     stageId: z.string(),
@@ -30,7 +30,7 @@ export const demoStageReorderedEvent = createEventDefinition(
 )
 
 export const demoStepAddedEvent = createEventDefinition(
-  'demoStepAdded',
+  'demo-step-added',
   z.object({
     demoId: z.string(),
     stageId: z.string(),
@@ -41,7 +41,7 @@ export const demoStepAddedEvent = createEventDefinition(
 )
 
 export const demoRehearsalCompletedEvent = createEventDefinition(
-  'demoRehearsalCompleted',
+  'demo-rehearsal-completed',
   z.object({
     demoId: z.string(),
     rehearsedAt: z.string(),

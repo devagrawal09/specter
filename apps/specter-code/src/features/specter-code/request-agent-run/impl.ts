@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunRequestedEvent } from '../events'
 
 const requestAgentRun = requestAgentRunSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       runId: z.string(),
       workspaceId: z.string(),
       postId: z.string().optional(),
@@ -26,7 +27,8 @@ const requestAgentRun = requestAgentRunSpec
           type: z.literal('system'),
         }),
       ]),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const agentName = command.agentName.trim()

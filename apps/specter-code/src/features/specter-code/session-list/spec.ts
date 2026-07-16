@@ -3,7 +3,7 @@ import { createQuerySlice, event } from '@specter-ts/core/spec'
 const sessionListSpec = createQuerySlice('sessionList')
   .description('Lists coding-agent sessions for a workspace.')
   .scenarios(
-{
+    {
       description:
         'Lists sessions for the requested workspace in creation order.',
       given: [

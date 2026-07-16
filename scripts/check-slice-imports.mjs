@@ -10,13 +10,22 @@ const violations = []
 const sliceDirectories = new Map()
 
 for (const filePath of files) {
-  const slice = getSliceInfo(filePath)
+  const slice = getSliceCandidate(filePath)
   if (slice) {
     const filenames = sliceDirectories.get(slice.directory) ?? new Set()
     filenames.add(path.basename(filePath))
     sliceDirectories.set(slice.directory, filenames)
   }
 
+}
+
+const sliceContractDirectories = new Set(
+  [...sliceDirectories]
+    .filter(([, filenames]) => hasSliceContractFile(filenames))
+    .map(([directory]) => directory),
+)
+
+for (const filePath of files) {
   if (isTypeScriptSource(filePath)) checkFile(filePath)
 }
 
@@ -183,6 +192,13 @@ function resolveRelativeImport(importerPath, specifier) {
 }
 
 function getSliceInfo(filePath) {
+  const slice = getSliceCandidate(filePath)
+  return slice && sliceContractDirectories.has(slice.directory)
+    ? slice
+    : undefined
+}
+
+function getSliceCandidate(filePath) {
   const parts = path.relative(repoRoot, filePath).split(path.sep)
   const featuresIndex = parts.lastIndexOf('features')
 

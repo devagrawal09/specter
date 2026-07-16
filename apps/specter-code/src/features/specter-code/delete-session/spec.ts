@@ -2,8 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const deleteSessionSpec = createCommandSlice('deleteSession')
   .description('Deletes a coding-agent session from active session lists.')
-  .scenarios(
-{
+  .scenarios({
     description: 'Deletes a session by id.',
     given: [],
     when: {
@@ -16,7 +15,6 @@ const deleteSessionSpec = createCommandSlice('deleteSession')
         deletedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
       }),
     ],
-  }
-  )
+  })
 
 export default deleteSessionSpec

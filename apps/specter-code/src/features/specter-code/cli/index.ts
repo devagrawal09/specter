@@ -81,8 +81,10 @@ const AUTH_USAGE = `Usage: specter-code auth login --provider <id> --key <api-ke
        specter-code auth list
        specter-code auth logout <provider>
 `
-const DB_USAGE = 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n'
-const DEBUG_USAGE = 'Usage: specter-code debug info\n       specter-code debug paths\n'
+const DB_USAGE =
+  'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n'
+const DEBUG_USAGE =
+  'Usage: specter-code debug info\n       specter-code debug paths\n'
 
 export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
   const cwd = options.cwd ?? process.cwd()
@@ -99,13 +101,19 @@ export function buildSpecterCodeCli(options: SpecterCodeCliOptions = {}) {
         switch (parsed.command) {
           case 'providers':
           case 'provider':
-            return runCatalogCommand(parsed.rest, parsed.command, () => renderProviders(cwd, env))
+            return runCatalogCommand(parsed.rest, parsed.command, () =>
+              renderProviders(cwd, env),
+            )
           case 'models':
           case 'model':
-            return runCatalogCommand(parsed.rest, parsed.command, () => renderModels(cwd, env))
+            return runCatalogCommand(parsed.rest, parsed.command, () =>
+              renderModels(cwd, env),
+            )
           case 'agents':
           case 'agent':
-            return runCatalogCommand(parsed.rest, parsed.command, () => renderAgents(cwd, env))
+            return runCatalogCommand(parsed.rest, parsed.command, () =>
+              renderAgents(cwd, env),
+            )
           case 'auth':
             return runAuthCommand(parsed.rest, env)
           case 'stats':
@@ -163,10 +171,19 @@ type ServeCommandOptions = {
 
 async function runPromptCommand(
   argv: readonly string[],
-  options: { cwd: string; env: SpecterCodeCliEnvironment; fetch?: SpecterCodeFetch },
+  options: {
+    cwd: string
+    env: SpecterCodeCliEnvironment
+    fetch?: SpecterCodeFetch
+  },
 ) {
   const { runSpecterCodePrompt } = await import('./run.ts')
-  return runSpecterCodePrompt({ argv, cwd: options.cwd, env: options.env, fetch: options.fetch })
+  return runSpecterCodePrompt({
+    argv,
+    cwd: options.cwd,
+    env: options.env,
+    fetch: options.fetch,
+  })
 }
 
 async function runServeCommand(
@@ -214,7 +231,10 @@ async function runDevServerCommand(
     if (arg === '--help' || arg === '-h') {
       return ok(command.usage)
     }
-    return fail(`Unknown ${command.commandName} option: ${arg}\n\n${command.usage}`, 1)
+    return fail(
+      `Unknown ${command.commandName} option: ${arg}\n\n${command.usage}`,
+      1,
+    )
   }
 
   return options.runProcess({
@@ -224,7 +244,6 @@ async function runDevServerCommand(
     env: options.env,
   })
 }
-
 
 async function loadCliConfig(cwd: string, env: SpecterCodeCliEnvironment) {
   const { loadSpecterCodeConfig } = await import('../adapters/config-loader.ts')
@@ -260,7 +279,8 @@ async function renderModels(cwd: string, env: SpecterCodeCliEnvironment) {
   const lines = registry.listProviders().flatMap((provider) =>
     provider.models.map((model) => {
       const selector =
-        provider.id === defaultModel.providerId && model.id === defaultModel.modelId
+        provider.id === defaultModel.providerId &&
+        model.id === defaultModel.modelId
           ? '*'
           : ' '
       return `${selector} ${provider.id}/${model.id}\t${model.name}`
@@ -291,23 +311,41 @@ async function runCatalogCommand(
   render: () => Promise<string>,
 ) {
   if (argv.length === 0) return ok(await render())
-  if (argv.length === 1 && isHelpArg(argv[0])) return ok(`Usage: specter-code ${command}\n`)
-  return fail(`Unknown ${command} option: ${argv[0]}\n\nUsage: specter-code ${command}\n`, 1)
+  if (argv.length === 1 && isHelpArg(argv[0]))
+    return ok(`Usage: specter-code ${command}\n`)
+  return fail(
+    `Unknown ${command} option: ${argv[0]}\n\nUsage: specter-code ${command}\n`,
+    1,
+  )
 }
 
-async function runStatsCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+async function runStatsCommand(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+) {
   if (argv.length === 0) return ok(await renderStats(env))
-  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code stats\n')
-  return fail(`Unknown stats option: ${argv[0]}\n\nUsage: specter-code stats\n`, 1)
+  if (argv.length === 1 && isHelpArg(argv[0]))
+    return ok('Usage: specter-code stats\n')
+  return fail(
+    `Unknown stats option: ${argv[0]}\n\nUsage: specter-code stats\n`,
+    1,
+  )
 }
 
-async function runDbCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+async function runDbCommand(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+) {
   if (argv.length === 0 || isHelpArg(argv[0])) return ok(DB_USAGE)
 
   if (argv[0] === 'path') {
     if (argv.length === 1) return ok(`${cliSqlitePath(env)}\n`)
-    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code db path\n')
-    return fail(`Unknown db path option: ${argv[1]}\n\nUsage: specter-code db path\n`, 1)
+    if (argv.length === 2 && isHelpArg(argv[1]))
+      return ok('Usage: specter-code db path\n')
+    return fail(
+      `Unknown db path option: ${argv[1]}\n\nUsage: specter-code db path\n`,
+      1,
+    )
   }
 
   if (argv[0] === 'query') {
@@ -322,17 +360,26 @@ async function runDbCommand(argv: readonly string[], env: SpecterCodeCliEnvironm
 
 type DbQueryFormat = 'json' | 'tsv'
 
-async function runDbQueryCommand(argv: readonly string[], env: SpecterCodeCliEnvironment) {
+async function runDbQueryCommand(
+  argv: readonly string[],
+  env: SpecterCodeCliEnvironment,
+) {
   const parsed = parseDbQueryArgs(argv)
   const sql = parsed.sql.trim()
   if (!isReadonlySelect(sql)) {
-    return fail('Only readonly SELECT queries are supported by specter-code db query\n', 1)
+    return fail(
+      'Only readonly SELECT queries are supported by specter-code db query\n',
+      1,
+    )
   }
 
   return ok(await renderDbQuery(env, sql, parsed.format))
 }
 
-function parseDbQueryArgs(argv: readonly string[]): { sql: string; format: DbQueryFormat } {
+function parseDbQueryArgs(argv: readonly string[]): {
+  sql: string
+  format: DbQueryFormat
+} {
   let format: DbQueryFormat = 'tsv'
   const sqlParts: string[] = []
 
@@ -340,7 +387,8 @@ function parseDbQueryArgs(argv: readonly string[]): { sql: string; format: DbQue
     const arg = argv[index]
     if (arg === '--format') {
       const value = optionValue(argv, index, '--format')
-      if (value !== 'json' && value !== 'tsv') throw new Error('DB query format must be json or tsv')
+      if (value !== 'json' && value !== 'tsv')
+        throw new Error('DB query format must be json or tsv')
       format = value
       index += 1
       continue
@@ -352,7 +400,8 @@ function parseDbQueryArgs(argv: readonly string[]): { sql: string; format: DbQue
   }
 
   const sql = sqlParts.join(' ').trim()
-  if (!sql) throw new Error('Usage: specter-code db query <sql> [--format json|tsv]')
+  if (!sql)
+    throw new Error('Usage: specter-code db query <sql> [--format json|tsv]')
   return { sql, format }
 }
 
@@ -388,7 +437,8 @@ async function renderDbQuery(
     if (format === 'json') return `${JSON.stringify(rows, null, 2)}\n`
     if (rows.length === 0) return ''
 
-    const columns = result.columns.length > 0 ? result.columns : Object.keys(rows[0] ?? {})
+    const columns =
+      result.columns.length > 0 ? result.columns : Object.keys(rows[0] ?? {})
     const lines = [columns.join('\t')]
     for (const row of rows) {
       lines.push(columns.map((column) => formatDbCell(row[column])).join('\t'))
@@ -416,15 +466,25 @@ async function runDebugCommand(
   if (argv.length === 0 || isHelpArg(argv[0])) return ok(DEBUG_USAGE)
 
   if (argv[0] === 'info') {
-    if (argv.length === 1) return ok(await renderDebugInfo(options.cwd, options.env))
-    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code debug info\n')
-    return fail(`Unknown debug info option: ${argv[1]}\n\nUsage: specter-code debug info\n`, 1)
+    if (argv.length === 1)
+      return ok(await renderDebugInfo(options.cwd, options.env))
+    if (argv.length === 2 && isHelpArg(argv[1]))
+      return ok('Usage: specter-code debug info\n')
+    return fail(
+      `Unknown debug info option: ${argv[1]}\n\nUsage: specter-code debug info\n`,
+      1,
+    )
   }
 
   if (argv[0] === 'paths') {
-    if (argv.length === 1) return ok(await renderDebugPaths(options.cwd, options.env))
-    if (argv.length === 2 && isHelpArg(argv[1])) return ok('Usage: specter-code debug paths\n')
-    return fail(`Unknown debug paths option: ${argv[1]}\n\nUsage: specter-code debug paths\n`, 1)
+    if (argv.length === 1)
+      return ok(await renderDebugPaths(options.cwd, options.env))
+    if (argv.length === 2 && isHelpArg(argv[1]))
+      return ok('Usage: specter-code debug paths\n')
+    return fail(
+      `Unknown debug paths option: ${argv[1]}\n\nUsage: specter-code debug paths\n`,
+      1,
+    )
   }
 
   return fail(`Unknown debug command: ${argv[0]}\n\n${DEBUG_USAGE}`, 1)
@@ -443,52 +503,67 @@ async function renderDebugInfo(cwd: string, env: SpecterCodeCliEnvironment) {
       if (left.configured !== right.configured) return left.configured ? -1 : 1
       return left.id.localeCompare(right.id)
     })
-    .map((provider) => `${provider.id}(${provider.configured ? 'configured' : 'missing key'})`)
+    .map(
+      (provider) =>
+        `${provider.id}(${provider.configured ? 'configured' : 'missing key'})`,
+    )
     .join(', ')
 
-  return [
-    'Specter Code debug info',
-    `cwd: ${cwd}`,
-    `database: ${cliSqlitePath(env)}`,
-    `node: ${process.version}`,
-    `platform: ${process.platform} ${process.arch}`,
-    `config sources: ${formatConfigSources(config.sources)}`,
-    `plugins: ${formatPluginList(config.plugin)}`,
-    `providers: ${providers || 'none'}`,
-  ].join('\n') + '\n'
+  return (
+    [
+      'Specter Code debug info',
+      `cwd: ${cwd}`,
+      `database: ${cliSqlitePath(env)}`,
+      `node: ${process.version}`,
+      `platform: ${process.platform} ${process.arch}`,
+      `config sources: ${formatConfigSources(config.sources)}`,
+      `plugins: ${formatPluginList(config.plugin)}`,
+      `providers: ${providers || 'none'}`,
+    ].join('\n') + '\n'
+  )
 }
 
 async function renderDebugPaths(cwd: string, env: SpecterCodeCliEnvironment) {
   const { join } = await import('node:path')
-  return [
-    ['cwd', cwd],
-    ['database', cliSqlitePath(env)],
-    ['project config', join(cwd, '.opencode', 'opencode.jsonc')],
-    ['project config json', join(cwd, '.opencode', 'opencode.json')],
-    ['workspace opencode.jsonc', join(cwd, 'opencode.jsonc')],
-    ['workspace opencode.json', join(cwd, 'opencode.json')],
-  ]
-    .map(([name, value]) => `${name}	${value}`)
-    .join('\n') + '\n'
+  return (
+    [
+      ['cwd', cwd],
+      ['database', cliSqlitePath(env)],
+      ['project config', join(cwd, '.opencode', 'opencode.jsonc')],
+      ['project config json', join(cwd, '.opencode', 'opencode.json')],
+      ['workspace opencode.jsonc', join(cwd, 'opencode.jsonc')],
+      ['workspace opencode.json', join(cwd, 'opencode.json')],
+    ]
+      .map(([name, value]) => `${name}	${value}`)
+      .join('\n') + '\n'
+  )
 }
 
 function formatConfigSources(sources: readonly string[]) {
   return sources.length > 0 ? sources.join(', ') : 'none'
 }
 
-function formatPluginList(plugins: readonly (string | [string, Record<string, unknown>])[] | undefined) {
+function formatPluginList(
+  plugins: readonly (string | [string, Record<string, unknown>])[] | undefined,
+) {
   if (!plugins || plugins.length === 0) return 'none'
-  return plugins.map((plugin) => (typeof plugin === 'string' ? plugin : plugin[0])).join(', ')
+  return plugins
+    .map((plugin) => (typeof plugin === 'string' ? plugin : plugin[0]))
+    .join(', ')
 }
 
 async function renderStats(env: SpecterCodeCliEnvironment) {
-  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
-    await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('@libsql/client/sqlite3'),
-      import('../../../db/specter-sqlite.ts'),
-    ])
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+  ])
   const sqlitePath = cliSqlitePath(env)
 
   mkdirSync(dirname(sqlitePath), { recursive: true })
@@ -496,35 +571,47 @@ async function renderStats(env: SpecterCodeCliEnvironment) {
 
   try {
     await prepareSpecterSqlite(sqlite)
-    const [sessionResult, messageResult, toolResult, permissionResult, topToolResult, topModelResult] =
-      await Promise.all([
-        sqlite.execute({
-          sql: `
+    const [
+      sessionResult,
+      messageResult,
+      toolResult,
+      permissionResult,
+      topToolResult,
+      topModelResult,
+    ] = await Promise.all([
+      sqlite.execute({
+        sql: `
             SELECT
               COUNT(*) AS total,
               SUM(CASE WHEN status != 'deleted' THEN 1 ELSE 0 END) AS active
             FROM specter_code_sessions
           `,
-          args: [],
-        }),
-        sqlite.execute({ sql: 'SELECT COUNT(*) AS total FROM specter_code_messages', args: [] }),
-        sqlite.execute({ sql: 'SELECT COUNT(*) AS total FROM specter_code_tool_calls', args: [] }),
-        sqlite.execute({
-          sql: "SELECT COUNT(*) AS total FROM specter_code_permissions WHERE status = 'pending'",
-          args: [],
-        }),
-        sqlite.execute({
-          sql: `
+        args: [],
+      }),
+      sqlite.execute({
+        sql: 'SELECT COUNT(*) AS total FROM specter_code_messages',
+        args: [],
+      }),
+      sqlite.execute({
+        sql: 'SELECT COUNT(*) AS total FROM specter_code_tool_calls',
+        args: [],
+      }),
+      sqlite.execute({
+        sql: "SELECT COUNT(*) AS total FROM specter_code_permissions WHERE status = 'pending'",
+        args: [],
+      }),
+      sqlite.execute({
+        sql: `
             SELECT tool_name, COUNT(*) AS total
             FROM specter_code_tool_calls
             GROUP BY tool_name
             ORDER BY total DESC, tool_name ASC
             LIMIT 5
           `,
-          args: [],
-        }),
-        sqlite.execute({
-          sql: `
+        args: [],
+      }),
+      sqlite.execute({
+        sql: `
             SELECT provider_id, model_id, COUNT(*) AS total
             FROM specter_code_sessions
             WHERE status != 'deleted'
@@ -532,9 +619,9 @@ async function renderStats(env: SpecterCodeCliEnvironment) {
             ORDER BY total DESC, provider_id ASC, model_id ASC
             LIMIT 5
           `,
-          args: [],
-        }),
-      ])
+        args: [],
+      }),
+    ])
 
     const totalSessions = numberCell(sessionResult.rows[0]?.total)
     const activeSessions = numberCell(sessionResult.rows[0]?.active)
@@ -554,16 +641,18 @@ async function renderStats(env: SpecterCodeCliEnvironment) {
       })),
     )
 
-    return [
-      'Specter Code stats',
-      `Database: ${sqlitePath}`,
-      `Sessions: ${activeSessions} active / ${totalSessions} total`,
-      `Messages: ${totalMessages}`,
-      `Tool calls: ${totalToolCalls}`,
-      `Pending approvals: ${pendingApprovals}`,
-      `Top tools: ${topTools}`,
-      `Top models: ${topModels}`,
-    ].join('\n') + '\n'
+    return (
+      [
+        'Specter Code stats',
+        `Database: ${sqlitePath}`,
+        `Sessions: ${activeSessions} active / ${totalSessions} total`,
+        `Messages: ${totalMessages}`,
+        `Tool calls: ${totalToolCalls}`,
+        `Pending approvals: ${pendingApprovals}`,
+        `Top tools: ${topTools}`,
+        `Top models: ${topModels}`,
+      ].join('\n') + '\n'
+    )
   } finally {
     sqlite.close()
   }
@@ -589,7 +678,10 @@ async function runMcpCommand(
   if (isHelpArg(argv[0]) || (argv[0] === 'list' && isHelpArg(argv[1]))) {
     return ok('Usage: specter-code mcp list\n')
   }
-  return fail(`Unknown mcp command: ${argv[0]}\n\nUsage: specter-code mcp list\n`, 1)
+  return fail(
+    `Unknown mcp command: ${argv[0]}\n\nUsage: specter-code mcp list\n`,
+    1,
+  )
 }
 
 async function renderMcpServers(cwd: string, env: SpecterCodeCliEnvironment) {
@@ -615,7 +707,8 @@ function mcpServerTarget(server: Record<string, unknown>) {
   return '-'
 }
 
-const PLUGIN_USAGE = 'Usage: specter-code plugin <module> [--global] [--force]\n'
+const PLUGIN_USAGE =
+  'Usage: specter-code plugin <module> [--global] [--force]\n'
 
 async function runPluginCommand(
   argv: readonly string[],
@@ -631,7 +724,9 @@ async function runPluginCommand(
     cwd: options.cwd,
     env: options.env,
   })
-  const verb = result.alreadyConfigured ? 'Plugin already configured' : 'Registered plugin'
+  const verb = result.alreadyConfigured
+    ? 'Plugin already configured'
+    : 'Registered plugin'
   return ok(`${verb} ${parsed.module} in ${result.configPath}\n`)
 }
 
@@ -672,12 +767,15 @@ type RegisterPluginInput = {
 }
 
 async function registerPluginModule(input: RegisterPluginInput) {
-  const [{ mkdir, readFile, writeFile }, { dirname, join }] = await Promise.all([
-    import('node:fs/promises'),
-    import('node:path'),
-  ])
+  const [{ mkdir, readFile, writeFile }, { dirname, join }] = await Promise.all(
+    [import('node:fs/promises'), import('node:path')],
+  )
   const configPath = input.global
-    ? join(input.env.OPENCODE_CONFIG_DIR ?? join(input.env.HOME ?? input.cwd, '.config', 'opencode'), 'opencode.jsonc')
+    ? join(
+        input.env.OPENCODE_CONFIG_DIR ??
+          join(input.env.HOME ?? input.cwd, '.config', 'opencode'),
+        'opencode.jsonc',
+      )
     : join(input.cwd, '.opencode', 'opencode.jsonc')
 
   let config: Record<string, unknown> = {}
@@ -699,13 +797,18 @@ async function registerPluginModule(input: RegisterPluginInput) {
       : [...existing, input.module]
 
   await mkdir(dirname(configPath), { recursive: true })
-  await writeFile(configPath, `${JSON.stringify({ ...config, plugin: nextPlugins }, null, 2)}\n`)
+  await writeFile(
+    configPath,
+    `${JSON.stringify({ ...config, plugin: nextPlugins }, null, 2)}\n`,
+  )
   return { configPath, alreadyConfigured }
 }
 
 function parseCliJsonc(text: string, source: string): Record<string, unknown> {
   try {
-    const parsed = JSON.parse(stripCliJsonComments(text).replace(/,\s*([}\]])/g, '$1'))
+    const parsed = JSON.parse(
+      stripCliJsonComments(text).replace(/,\s*([}\]])/g, '$1'),
+    )
     if (!isRecord(parsed)) throw new Error('Config root must be an object')
     return parsed
   } catch (error) {
@@ -744,7 +847,11 @@ function stripCliJsonComments(text: string) {
     }
     if (character === '/' && next === '*') {
       index += 2
-      while (index < text.length && !(text[index] === '*' && text[index + 1] === '/')) index += 1
+      while (
+        index < text.length &&
+        !(text[index] === '*' && text[index + 1] === '/')
+      )
+        index += 1
       index += 1
       continue
     }
@@ -754,7 +861,12 @@ function stripCliJsonComments(text: string) {
 }
 
 function isNodeErrorCode(error: unknown, code: string) {
-  return Boolean(error && typeof error === 'object' && 'code' in error && error.code === code)
+  return Boolean(
+    error &&
+      typeof error === 'object' &&
+      'code' in error &&
+      error.code === code,
+  )
 }
 
 function isHelpArg(value: string | undefined) {
@@ -794,7 +906,10 @@ async function runSessionCommand(
     return runSessionDeleteCommand(argv.slice(1), options)
   }
 
-  return fail(`Unknown session command: ${argv[0] ?? ''}\n\n${SESSION_USAGE}`, 1)
+  return fail(
+    `Unknown session command: ${argv[0] ?? ''}\n\n${SESSION_USAGE}`,
+    1,
+  )
 }
 
 type SessionCreateInput = {
@@ -822,7 +937,10 @@ async function runSessionNewCommand(
     workspaceId: 'default',
     directory: options.cwd,
     agent: config.defaultAgent ?? 'build',
-    model: config.model ?? { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+    model: config.model ?? {
+      providerId: 'openrouter',
+      modelId: 'anthropic/claude-sonnet-4',
+    },
   }
   const parsed = parseSessionNewOptions(argv, defaults)
   const sessionId = parsed.sessionId ?? crypto.randomUUID()
@@ -921,7 +1039,6 @@ function failWithUsage(message: string): never {
   )
 }
 
-
 async function runSessionRenameCommand(
   argv: readonly string[],
   options: { env: SpecterCodeCliEnvironment },
@@ -944,7 +1061,6 @@ async function runSessionRenameCommand(
 
   return ok(`Renamed session ${sessionId}\t${title}\n`)
 }
-
 
 async function runSessionDeleteCommand(
   argv: readonly string[],
@@ -1010,14 +1126,20 @@ async function createCliSession(
         INSERT INTO specter_events (id, type, payload, recorded_at)
         VALUES (?, ?, ?, ?)
       `,
-      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+      args: [
+        eventId,
+        eventDraft.type,
+        JSON.stringify(eventDraft.payload),
+        recordedAt,
+      ],
     })
     const orderResult = await sqlite.execute({
       sql: 'SELECT event_order FROM specter_events WHERE id = ?',
       args: [eventId],
     })
     const order = Number(orderResult.rows[0]?.event_order)
-    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+    if (!Number.isFinite(order))
+      throw new Error('Failed to persist session event')
 
     await projectSpecterCodeEvent(sqlite, {
       id: eventId,
@@ -1065,7 +1187,8 @@ async function renameCliSession(
       sql: "SELECT id FROM specter_code_sessions WHERE id = ? AND status != 'deleted' LIMIT 1",
       args: [input.sessionId],
     })
-    if (!existing.rows[0]) throw new Error(`Session not found: ${input.sessionId}`)
+    if (!existing.rows[0])
+      throw new Error(`Session not found: ${input.sessionId}`)
 
     const eventDraft = sessionUpdatedEvent.create({
       sessionId: input.sessionId,
@@ -1080,14 +1203,20 @@ async function renameCliSession(
         INSERT INTO specter_events (id, type, payload, recorded_at)
         VALUES (?, ?, ?, ?)
       `,
-      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+      args: [
+        eventId,
+        eventDraft.type,
+        JSON.stringify(eventDraft.payload),
+        recordedAt,
+      ],
     })
     const orderResult = await sqlite.execute({
       sql: 'SELECT event_order FROM specter_events WHERE id = ?',
       args: [eventId],
     })
     const order = Number(orderResult.rows[0]?.event_order)
-    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+    if (!Number.isFinite(order))
+      throw new Error('Failed to persist session event')
 
     await projectSpecterCodeEvent(sqlite, {
       id: eventId,
@@ -1100,7 +1229,6 @@ async function renameCliSession(
     sqlite.close()
   }
 }
-
 
 async function deleteCliSession(
   env: SpecterCodeCliEnvironment,
@@ -1135,7 +1263,8 @@ async function deleteCliSession(
       sql: "SELECT id FROM specter_code_sessions WHERE id = ? AND status != 'deleted' LIMIT 1",
       args: [input.sessionId],
     })
-    if (!existing.rows[0]) throw new Error(`Session not found: ${input.sessionId}`)
+    if (!existing.rows[0])
+      throw new Error(`Session not found: ${input.sessionId}`)
 
     const eventDraft = sessionDeletedEvent.create({
       sessionId: input.sessionId,
@@ -1149,14 +1278,20 @@ async function deleteCliSession(
         INSERT INTO specter_events (id, type, payload, recorded_at)
         VALUES (?, ?, ?, ?)
       `,
-      args: [eventId, eventDraft.type, JSON.stringify(eventDraft.payload), recordedAt],
+      args: [
+        eventId,
+        eventDraft.type,
+        JSON.stringify(eventDraft.payload),
+        recordedAt,
+      ],
     })
     const orderResult = await sqlite.execute({
       sql: 'SELECT event_order FROM specter_events WHERE id = ?',
       args: [eventId],
     })
     const order = Number(orderResult.rows[0]?.event_order)
-    if (!Number.isFinite(order)) throw new Error('Failed to persist session event')
+    if (!Number.isFinite(order))
+      throw new Error('Failed to persist session event')
 
     await projectSpecterCodeEvent(sqlite, {
       id: eventId,
@@ -1171,13 +1306,17 @@ async function deleteCliSession(
 }
 
 async function renderSessionList(env: SpecterCodeCliEnvironment) {
-  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
-    await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('@libsql/client/sqlite3'),
-      import('../../../db/specter-sqlite.ts'),
-    ])
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+  ])
   const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
 
   mkdirSync(dirname(sqlitePath), { recursive: true })
@@ -1198,29 +1337,38 @@ async function renderSessionList(env: SpecterCodeCliEnvironment) {
 
     if (result.rows.length === 0) return 'No sessions found.\n'
 
-    return result.rows
-      .map((row) => {
-        const id = String(row.id)
-        const title = String(row.title)
-        const agent = String(row.agent_id)
-        const model = `${String(row.provider_id)}/${String(row.model_id)}`
-        const directory = String(row.directory)
-        return `${id}\t${title}\t${agent}\t${model}\t${directory}`
-      })
-      .join('\n') + '\n'
+    return (
+      result.rows
+        .map((row) => {
+          const id = String(row.id)
+          const title = String(row.title)
+          const agent = String(row.agent_id)
+          const model = `${String(row.provider_id)}/${String(row.model_id)}`
+          const directory = String(row.directory)
+          return `${id}\t${title}\t${agent}\t${model}\t${directory}`
+        })
+        .join('\n') + '\n'
+    )
   } finally {
     sqlite.close()
   }
 }
 
-async function renderSessionDetail(sessionId: string, env: SpecterCodeCliEnvironment) {
-  const [{ mkdirSync }, { dirname }, { createClient }, { prepareSpecterSqlite }] =
-    await Promise.all([
-      import('node:fs'),
-      import('node:path'),
-      import('@libsql/client/sqlite3'),
-      import('../../../db/specter-sqlite.ts'),
-    ])
+async function renderSessionDetail(
+  sessionId: string,
+  env: SpecterCodeCliEnvironment,
+) {
+  const [
+    { mkdirSync },
+    { dirname },
+    { createClient },
+    { prepareSpecterSqlite },
+  ] = await Promise.all([
+    import('node:fs'),
+    import('node:path'),
+    import('@libsql/client/sqlite3'),
+    import('../../../db/specter-sqlite.ts'),
+  ])
   const sqlitePath = env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
 
   mkdirSync(dirname(sqlitePath), { recursive: true })
@@ -1310,7 +1458,9 @@ async function authLogin(
   env: SpecterCodeCliEnvironment,
 ): Promise<SpecterCodeCliResult> {
   if (argv.length === 1 && isHelpArg(argv[0])) {
-    return ok('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n')
+    return ok(
+      'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
+    )
   }
 
   let providerId: string | undefined
@@ -1319,7 +1469,11 @@ async function authLogin(
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index]
-    if (arg === '--provider' || arg === '--provider-id' || arg === '--service') {
+    if (
+      arg === '--provider' ||
+      arg === '--provider-id' ||
+      arg === '--service'
+    ) {
       providerId = optionValue(argv, index, arg)
       index += 1
       continue
@@ -1334,11 +1488,17 @@ async function authLogin(
       index += 1
       continue
     }
-    return fail('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n', 1)
+    return fail(
+      'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
+      1,
+    )
   }
 
   if (!providerId || !key) {
-    return fail('Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n', 1)
+    return fail(
+      'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
+      1,
+    )
   }
 
   const label = description ?? 'default'
@@ -1365,17 +1525,21 @@ async function authList(
   argv: readonly string[],
   env: SpecterCodeCliEnvironment,
 ): Promise<SpecterCodeCliResult> {
-  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code auth list\n')
+  if (argv.length === 1 && isHelpArg(argv[0]))
+    return ok('Usage: specter-code auth list\n')
   if (argv.length > 0) return fail('Usage: specter-code auth list\n', 1)
 
   const file = await loadAuthFile(env)
-  const accounts = Object.values(file.accounts).sort((left, right) =>
-    left.serviceID.localeCompare(right.serviceID) || left.description.localeCompare(right.description),
+  const accounts = Object.values(file.accounts).sort(
+    (left, right) =>
+      left.serviceID.localeCompare(right.serviceID) ||
+      left.description.localeCompare(right.description),
   )
   if (accounts.length === 0) return ok('No authenticated providers\n')
 
   const lines = accounts.map((account) => {
-    const status = file.active[account.serviceID] === account.id ? 'active' : '-'
+    const status =
+      file.active[account.serviceID] === account.id ? 'active' : '-'
     return `${account.serviceID}\t${account.description}\t${account.credential.type}\t${status}`
   })
   return ok(`${lines.join('\n')}\n`)
@@ -1385,7 +1549,8 @@ async function authLogout(
   argv: readonly string[],
   env: SpecterCodeCliEnvironment,
 ): Promise<SpecterCodeCliResult> {
-  if (argv.length === 1 && isHelpArg(argv[0])) return ok('Usage: specter-code auth logout <provider>\n')
+  if (argv.length === 1 && isHelpArg(argv[0]))
+    return ok('Usage: specter-code auth logout <provider>\n')
   if (argv.length !== 1 || argv[0].startsWith('--')) {
     return fail('Usage: specter-code auth logout <provider>\n', 1)
   }
@@ -1394,7 +1559,8 @@ async function authLogout(
   const file = await loadAuthFile(env)
   file.accounts = Object.fromEntries(
     Object.entries(file.accounts).filter(
-      ([accountId, account]) => accountId !== providerId && account.serviceID !== providerId,
+      ([accountId, account]) =>
+        accountId !== providerId && account.serviceID !== providerId,
     ),
   )
   delete file.active[providerId]
@@ -1411,9 +1577,12 @@ async function loadAuthFile(env: SpecterCodeCliEnvironment): Promise<AuthFile> {
 
   const [{ readFile }] = await Promise.all([import('node:fs/promises')])
   try {
-    return normalizeAuthFile(JSON.parse(await readFile(await authFilePath(env), 'utf8')))
+    return normalizeAuthFile(
+      JSON.parse(await readFile(await authFilePath(env), 'utf8')),
+    )
   } catch (error) {
-    if (isMissingFileError(error)) return { version: 2, accounts: {}, active: {} }
+    if (isMissingFileError(error))
+      return { version: 2, accounts: {}, active: {} }
     throw error
   }
 }
@@ -1425,14 +1594,20 @@ async function writeAuthFile(env: SpecterCodeCliEnvironment, file: AuthFile) {
   ])
   const filePath = await authFilePath(env)
   await mkdir(dirname(filePath), { recursive: true })
-  await writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, { mode: 0o600 })
+  await writeFile(filePath, `${JSON.stringify(file, null, 2)}\n`, {
+    mode: 0o600,
+  })
 }
 
 async function authFilePath(env: SpecterCodeCliEnvironment) {
   if (env.SPECTER_CODE_AUTH_PATH) return env.SPECTER_CODE_AUTH_PATH
   if (env.OPENCODE_AUTH_PATH) return env.OPENCODE_AUTH_PATH
-  const [{ join }, { homedir }] = await Promise.all([import('node:path'), import('node:os')])
-  const dataHome = env.XDG_DATA_HOME ?? join(env.HOME ?? homedir(), '.local', 'share')
+  const [{ join }, { homedir }] = await Promise.all([
+    import('node:path'),
+    import('node:os'),
+  ])
+  const dataHome =
+    env.XDG_DATA_HOME ?? join(env.HOME ?? homedir(), '.local', 'share')
   return join(dataHome, 'opencode', 'auth-v2.json')
 }
 
@@ -1453,13 +1628,15 @@ function normalizeAuthAccounts(value: unknown): Record<string, AuthAccount> {
   const accounts: Record<string, AuthAccount> = {}
   for (const [id, raw] of Object.entries(value)) {
     if (!isRecord(raw)) continue
-    const serviceID = typeof raw.serviceID === 'string' ? raw.serviceID : undefined
+    const serviceID =
+      typeof raw.serviceID === 'string' ? raw.serviceID : undefined
     const credential = normalizeAuthCredential(raw.credential)
     if (!serviceID || !credential) continue
     accounts[id] = {
       id: typeof raw.id === 'string' ? raw.id : id,
       serviceID,
-      description: typeof raw.description === 'string' ? raw.description : 'default',
+      description:
+        typeof raw.description === 'string' ? raw.description : 'default',
       credential,
     }
   }
@@ -1469,13 +1646,16 @@ function normalizeAuthAccounts(value: unknown): Record<string, AuthAccount> {
 function normalizeAuthActive(value: unknown): Record<string, string> {
   if (!isRecord(value)) return {}
   return Object.fromEntries(
-    Object.entries(value).filter((entry): entry is [string, string] => typeof entry[1] === 'string'),
+    Object.entries(value).filter(
+      (entry): entry is [string, string] => typeof entry[1] === 'string',
+    ),
   )
 }
 
 function normalizeAuthCredential(value: unknown): AuthCredential | undefined {
   if (!isRecord(value) || typeof value.type !== 'string') return undefined
-  if (value.type === 'api' && typeof value.key === 'string') return { type: 'api', key: value.key }
+  if (value.type === 'api' && typeof value.key === 'string')
+    return { type: 'api', key: value.key }
   if (value.type === 'oauth') {
     const credential: AuthCredential = { type: 'oauth' }
     if (typeof value.refresh === 'string') credential.refresh = value.refresh
@@ -1504,7 +1684,10 @@ function migrateLegacyAuthFile(value: Record<string, unknown>): AuthFile {
 }
 
 function sanitizeAuthAccountId(providerId: string) {
-  return providerId.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'provider'
+  return (
+    providerId.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') ||
+    'provider'
+  )
 }
 
 function isMissingFileError(error: unknown) {
@@ -1517,9 +1700,13 @@ async function runImportCommand(argv: readonly string[]) {
     return fail('Usage: specter-code import <file>\n', 1)
   }
 
-  const { importSpecterCodeSessionFile } = await import('../adapters/import-export.ts')
+  const { importSpecterCodeSessionFile } = await import(
+    '../adapters/import-export.ts'
+  )
   const result = await importSpecterCodeSessionFile({ inputPath })
-  return ok(`Imported session ${result.sessionId} (${result.eventCount} events)\n`)
+  return ok(
+    `Imported session ${result.sessionId} (${result.eventCount} events)\n`,
+  )
 }
 
 async function runExportCommand(argv: readonly string[]) {
@@ -1538,24 +1725,34 @@ async function runExportCommand(argv: readonly string[]) {
       index += 1
       continue
     }
-    return fail('Usage: specter-code export --session <id> --output <file>\n', 1)
+    return fail(
+      'Usage: specter-code export --session <id> --output <file>\n',
+      1,
+    )
   }
 
   if (!sessionId || !outputPath) {
-    return fail('Usage: specter-code export --session <id> --output <file>\n', 1)
+    return fail(
+      'Usage: specter-code export --session <id> --output <file>\n',
+      1,
+    )
   }
 
-  const { exportSpecterCodeSessionFile } = await import('../adapters/import-export.ts')
+  const { exportSpecterCodeSessionFile } = await import(
+    '../adapters/import-export.ts'
+  )
   const result = await exportSpecterCodeSessionFile({ sessionId, outputPath })
-  return ok(`Exported session ${result.sessionId} (${result.eventCount} events) to ${result.outputPath}\n`)
+  return ok(
+    `Exported session ${result.sessionId} (${result.eventCount} events) to ${result.outputPath}\n`,
+  )
 }
 
 function optionValue(argv: readonly string[], index: number, option: string) {
   const value = argv[index + 1]
-  if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
+  if (!value || value.startsWith('--'))
+    throw new Error(`${option} requires a value`)
   return value
 }
-
 
 async function runLocalProcess(
   input: SpecterCodeProcessRequest,

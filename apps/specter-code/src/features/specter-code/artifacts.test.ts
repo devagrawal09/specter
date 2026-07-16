@@ -27,7 +27,9 @@ afterEach(async () => {
 
 describe('file-backed Specter Code artifacts', () => {
   it('persists oversized tool output as a file artifact with a small inline preview', async () => {
-    const db = createClient({ url: `file:${path.join(tempDir, 'specter-code.db')}` })
+    const db = createClient({
+      url: `file:${path.join(tempDir, 'specter-code.db')}`,
+    })
     const store = createFileArtifactStore({ rootDir: artifactRoot })
 
     try {
@@ -61,11 +63,15 @@ describe('file-backed Specter Code artifacts', () => {
           createdAt: '2026-06-25T12:00:00.000Z',
         }),
       )
-      expect(result.artifact?.path).toMatch(/^session-1\/artifacts\/artifact-[\w-]+\.txt$/)
+      expect(result.artifact?.path).toMatch(
+        /^session-1\/artifacts\/artifact-[\w-]+\.txt$/,
+      )
 
       const storedFile = path.join(artifactRoot, result.artifact!.path)
       await expect(stat(storedFile)).resolves.toMatchObject({ size: 6 })
-      await expect(readArtifactContent(store, result.artifact!.path)).resolves.toBe('abcdef')
+      await expect(
+        readArtifactContent(store, result.artifact!.path),
+      ).resolves.toBe('abcdef')
 
       const artifacts = await runWithSqliteDb(db, () =>
         listSessionArtifacts({ sessionId: 'session-1' }),

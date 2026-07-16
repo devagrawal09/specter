@@ -39,7 +39,8 @@ function parseUnifiedPatch(patch: string): ParsedPatchFile[] {
     }
 
     const next = lines[index + 1]
-    if (!next?.startsWith('+++ ')) throw new Error('Patch file header is missing +++ path')
+    if (!next?.startsWith('+++ '))
+      throw new Error('Patch file header is missing +++ path')
     const filePath = stripPatchPathPrefix(next.slice(4).trim())
     index += 2
 
@@ -47,8 +48,13 @@ function parseUnifiedPatch(patch: string): ParsedPatchFile[] {
     while (index < lines.length && !lines[index].startsWith('--- ')) {
       if (lines[index].startsWith('@@')) {
         index += 1
-        while (index < lines.length && !lines[index].startsWith('@@') && !lines[index].startsWith('--- ')) {
-          if (lines[index] !== '\\ No newline at end of file') hunkLines.push(lines[index])
+        while (
+          index < lines.length &&
+          !lines[index].startsWith('@@') &&
+          !lines[index].startsWith('--- ')
+        ) {
+          if (lines[index] !== '\\ No newline at end of file')
+            hunkLines.push(lines[index])
           index += 1
         }
         continue
@@ -56,11 +62,13 @@ function parseUnifiedPatch(patch: string): ParsedPatchFile[] {
       index += 1
     }
 
-    if (hunkLines.length === 0) throw new Error('Patch file has no hunks for ' + filePath)
+    if (hunkLines.length === 0)
+      throw new Error('Patch file has no hunks for ' + filePath)
     files.push({ path: filePath, hunkLines })
   }
 
-  if (files.length === 0) throw new Error('Patch must contain at least one file')
+  if (files.length === 0)
+    throw new Error('Patch must contain at least one file')
   return files
 }
 
@@ -107,22 +115,37 @@ function applyLinePatch(originalContent: string, hunkLines: string[]) {
   }
 
   output.push(...originalLines.slice(originalIndex))
-  return { content: output.join('\n') + (hadTrailingNewline ? '\n' : ''), additions, removals }
+  return {
+    content: output.join('\n') + (hadTrailingNewline ? '\n' : ''),
+    additions,
+    removals,
+  }
 }
 
-export const applyPatchTool: ToolDefinition<ApplyPatchToolInput, ApplyPatchToolOutput> = {
+export const applyPatchTool: ToolDefinition<
+  ApplyPatchToolInput,
+  ApplyPatchToolOutput
+> = {
   name: 'apply_patch',
-  description: 'Apply a unified patch inside the current workspace after approval',
+  description:
+    'Apply a unified patch inside the current workspace after approval',
   permission: 'file.write',
-  permissionTargets: (input) => parseUnifiedPatch(input.patch).map((file) => file.path),
+  permissionTargets: (input) =>
+    parseUnifiedPatch(input.patch).map((file) => file.path),
   async execute(input, context) {
     try {
       const parsedFiles = parseUnifiedPatch(input.patch)
       const files: AppliedPatchFile[] = []
 
       for (const parsedFile of parsedFiles) {
-        const target = await resolveWritableWorkspaceFile(context.workspaceRoot, parsedFile.path)
-        if (!target.existed) throw new Error('Patch target must be an existing file: ' + target.path)
+        const target = await resolveWritableWorkspaceFile(
+          context.workspaceRoot,
+          parsedFile.path,
+        )
+        if (!target.existed)
+          throw new Error(
+            'Patch target must be an existing file: ' + target.path,
+          )
         const originalContent = await readFile(target.absolutePath, 'utf8')
         const snapshot = await createFileSnapshot(target)
         const applied = applyLinePatch(originalContent, parsedFile.hunkLines)
@@ -138,7 +161,11 @@ export const applyPatchTool: ToolDefinition<ApplyPatchToolInput, ApplyPatchToolO
       await context.metadata({
         toolName: 'apply_patch',
         status: 'completed',
-        summary: 'Applied patch to ' + files.length + ' file' + (files.length === 1 ? '' : 's'),
+        summary:
+          'Applied patch to ' +
+          files.length +
+          ' file' +
+          (files.length === 1 ? '' : 's'),
       })
       return { files }
     } catch (error) {

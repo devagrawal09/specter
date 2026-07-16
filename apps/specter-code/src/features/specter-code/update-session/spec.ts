@@ -3,7 +3,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 const updateSessionSpec = createCommandSlice('updateSession')
   .description('Updates mutable metadata for an existing coding-agent session.')
   .scenarios(
-{
+    {
       description:
         'Updates session title, directory, agent, and model metadata.',
       given: [],

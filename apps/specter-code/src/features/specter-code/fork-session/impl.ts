@@ -26,7 +26,7 @@ const forkSession = forkSessionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const title = command.title.trim()
     if (!title) throw new Error('Session title is required')

@@ -23,12 +23,14 @@ async function nextOverviewUntil(
 
 describe('ColonyBench recorded control runner', () => {
   test('records streamed runner frames into control timeline and completes the run for live UI queries', async () => {
-    const controlApp = createColonyBenchControlApp({
+    const controlApp = await createColonyBenchControlApp({
       adapters: createMemoryColonyBenchControlAdapters(),
     })
-    const overview = controlApp.subscribe.runOverview({
-      runId: 'recorded-baseline',
-    })[Symbol.asyncIterator]()
+    const overview = controlApp.subscribe
+      .runOverview({
+        runId: 'recorded-baseline',
+      })
+      [Symbol.asyncIterator]()
 
     await expect(overview.next()).resolves.toEqual({
       done: false,
@@ -65,15 +67,17 @@ describe('ColonyBench recorded control runner', () => {
         baseLevel: result.finalSnapshot.base?.level ?? 0,
         baseEnergy: result.finalSnapshot.base?.energy ?? 0,
         commandCount: result.commandLog[1]?.commands.length ?? 0,
-        eventTypes: expect.arrayContaining(['colonybenchTickAdvanced']),
+        eventTypes: expect.arrayContaining(['colonybench-tick-advanced']),
       },
     })
-    await expect(controlApp.runTimeline({ runId: 'recorded-baseline' })).resolves.toEqual([
+    await expect(
+      controlApp.runTimeline({ runId: 'recorded-baseline' }),
+    ).resolves.toEqual([
       expect.objectContaining({
         runId: 'recorded-baseline',
         tick: 0,
         commandCount: 0,
-        eventTypes: ['colonybenchSimulationInitialized'],
+        eventTypes: ['colonybench-simulation-initialized'],
       }),
       expect.objectContaining({
         runId: 'recorded-baseline',

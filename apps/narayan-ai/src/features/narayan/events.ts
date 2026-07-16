@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { createEventDefinition } from '@specter-ts/core'
 
 export const twilioInboundMessageRecordedEvent = createEventDefinition(
-  'twilioInboundMessageRecorded',
+  'twilio-inbound-message-recorded',
   z.object({
     inboundMessageId: z.string(),
     twilioMessageSid: z.string(),
@@ -14,7 +14,7 @@ export const twilioInboundMessageRecordedEvent = createEventDefinition(
 )
 
 export const twilioInboundDuplicateIgnoredEvent = createEventDefinition(
-  'twilioInboundDuplicateIgnored',
+  'twilio-inbound-duplicate-ignored',
   z.object({
     twilioMessageSid: z.string(),
     from: z.string(),
@@ -25,7 +25,7 @@ export const twilioInboundDuplicateIgnoredEvent = createEventDefinition(
 )
 
 export const assistantReplyGeneratedEvent = createEventDefinition(
-  'assistantReplyGenerated',
+  'assistant-reply-generated',
   z.object({
     inboundMessageId: z.string(),
     outboundMessageId: z.string(),
@@ -36,7 +36,7 @@ export const assistantReplyGeneratedEvent = createEventDefinition(
 )
 
 export const twilioOutboundMessageRequestedEvent = createEventDefinition(
-  'twilioOutboundMessageRequested',
+  'twilio-outbound-message-requested',
   z.object({
     outboundMessageId: z.string(),
     inboundMessageId: z.string(),
@@ -47,7 +47,7 @@ export const twilioOutboundMessageRequestedEvent = createEventDefinition(
 )
 
 export const twilioOutboundMessageSentEvent = createEventDefinition(
-  'twilioOutboundMessageSent',
+  'twilio-outbound-message-sent',
   z.object({
     outboundMessageId: z.string(),
     twilioMessageSid: z.string(),
@@ -57,7 +57,7 @@ export const twilioOutboundMessageSentEvent = createEventDefinition(
 )
 
 export const twilioOutboundMessageFailedEvent = createEventDefinition(
-  'twilioOutboundMessageFailed',
+  'twilio-outbound-message-failed',
   z.object({
     outboundMessageId: z.string(),
     error: z.string(),

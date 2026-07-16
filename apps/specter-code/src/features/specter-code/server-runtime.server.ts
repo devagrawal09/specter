@@ -119,7 +119,10 @@ export async function createSpecterCodeSessionOnServer(data: {
   createdBy?: { userId?: string; displayName: string }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.createSession({ ...data, sessionId: data.sessionId ?? crypto.randomUUID() }),
+    app.createSession({
+      ...data,
+      sessionId: data.sessionId ?? crypto.randomUUID(),
+    }),
   )
 }
 
@@ -134,7 +137,6 @@ export async function getSpecterCodeSessionOnServer(data: {
 }) {
   return runWithSpecterCodeReferenceDb(() => app.sessionDetail(data))
 }
-
 
 export async function forkSpecterCodeSessionOnServer(data: {
   sessionId: string
@@ -221,9 +223,12 @@ export async function getSpecterCodeSessionMessageOnServer(data: {
   messageId: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const transcript = await app.sessionTranscript({
+      sessionId: data.sessionId,
+    })
     const message = transcript.find((item) => item.id === data.messageId)
-    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    if (!message)
+      throw new Error(`Session message not found: ${data.messageId}`)
     return message
   })
 }
@@ -236,9 +241,12 @@ export async function updateSpecterCodeSessionMessagePartOnServer(data: {
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
     await app.updateSessionMessagePart(data)
-    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const transcript = await app.sessionTranscript({
+      sessionId: data.sessionId,
+    })
     const message = transcript.find((item) => item.id === data.messageId)
-    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    if (!message)
+      throw new Error(`Session message not found: ${data.messageId}`)
     return message
   })
 }
@@ -250,9 +258,12 @@ export async function deleteSpecterCodeSessionMessagePartOnServer(data: {
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
     await app.deleteSessionMessagePart(data)
-    const transcript = await app.sessionTranscript({ sessionId: data.sessionId })
+    const transcript = await app.sessionTranscript({
+      sessionId: data.sessionId,
+    })
     const message = transcript.find((item) => item.id === data.messageId)
-    if (!message) throw new Error(`Session message not found: ${data.messageId}`)
+    if (!message)
+      throw new Error(`Session message not found: ${data.messageId}`)
     return message
   })
 }
@@ -276,7 +287,10 @@ export async function requestSpecterCodeFilesystemScanOnServer(data: {
     | { type: 'system' }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.requestWorkspaceFilesystemScan({ ...data, scanId: crypto.randomUUID() }),
+    app.requestWorkspaceFilesystemScan({
+      ...data,
+      scanId: crypto.randomUUID(),
+    }),
   )
 }
 

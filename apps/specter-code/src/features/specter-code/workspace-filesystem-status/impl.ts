@@ -65,59 +65,63 @@ const getStatus = (
 }
 
 const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       workspaceId: z.string(),
-    }))
+    }),
+  )
   .outputSchema<WorkspaceFilesystemStatus>()
-  .store(createMemorySliceStore<WorkspaceFilesystemStatusState>(() => ({
+  .store(
+    createMemorySliceStore<WorkspaceFilesystemStatusState>(() => ({
       statuses: {},
-    })))
+    })),
+  )
   .apply(workspaceFilesystemInitializedEvent, async (event, state) => {
-      const payload = event.payload
-      const current = getStatus(state, payload.workspaceId)
-      current.initialized = true
-    })
+    const payload = event.payload
+    const current = getStatus(state, payload.workspaceId)
+    current.initialized = true
+  })
   .apply(workspaceFilesystemScanRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      const current = getStatus(state, payload.workspaceId)
-      current.latestScan = {
-        scanId: payload.scanId,
-        status: 'requested',
-        reason: payload.reason,
-        requestedBy: payload.requestedBy,
-      }
-    })
+    const payload = event.payload
+    const current = getStatus(state, payload.workspaceId)
+    current.latestScan = {
+      scanId: payload.scanId,
+      status: 'requested',
+      reason: payload.reason,
+      requestedBy: payload.requestedBy,
+    }
+  })
   .apply(workspaceFilesystemScanStartedEvent, async (event, state) => {
-      const payload = event.payload
-      const current = state.statuses[payload.workspaceId]
-      if (current?.latestScan?.scanId === payload.scanId) {
-        current.latestScan = { ...current.latestScan, status: 'running' }
-      }
-    })
+    const payload = event.payload
+    const current = state.statuses[payload.workspaceId]
+    if (current?.latestScan?.scanId === payload.scanId) {
+      current.latestScan = { ...current.latestScan, status: 'running' }
+    }
+  })
   .apply(workspaceFilesystemScanCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      const current = state.statuses[payload.workspaceId]
-      if (current?.latestScan?.scanId === payload.scanId) {
-        current.latestScan = {
-          ...current.latestScan,
-          status: 'completed',
-          discoveredNodeCount: payload.discoveredNodeCount,
-          changedNodeCount: payload.changedNodeCount,
-          deletedNodeCount: payload.deletedNodeCount,
-        }
+    const payload = event.payload
+    const current = state.statuses[payload.workspaceId]
+    if (current?.latestScan?.scanId === payload.scanId) {
+      current.latestScan = {
+        ...current.latestScan,
+        status: 'completed',
+        discoveredNodeCount: payload.discoveredNodeCount,
+        changedNodeCount: payload.changedNodeCount,
+        deletedNodeCount: payload.deletedNodeCount,
       }
-    })
+    }
+  })
   .apply(workspaceFilesystemScanFailedEvent, async (event, state) => {
-      const payload = event.payload
-      const current = state.statuses[payload.workspaceId]
-      if (current?.latestScan?.scanId === payload.scanId) {
-        current.latestScan = {
-          ...current.latestScan,
-          status: 'failed',
-          error: payload.error,
-        }
+    const payload = event.payload
+    const current = state.statuses[payload.workspaceId]
+    if (current?.latestScan?.scanId === payload.scanId) {
+      current.latestScan = {
+        ...current.latestScan,
+        status: 'failed',
+        error: payload.error,
       }
-    })
+    }
+  })
   .handle(async (query, state): Promise<WorkspaceFilesystemStatus> => {
     return (
       state.statuses[query.workspaceId] ?? {

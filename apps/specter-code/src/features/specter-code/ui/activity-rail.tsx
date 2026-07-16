@@ -15,8 +15,12 @@ export function ActivityRail() {
       <header class="border-b border-white/10 p-3.5">
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0">
-            <p class="font-mono text-[0.62rem] font-semibold uppercase tracking-[0.28em] text-emerald-200/75">Right Rail</p>
-            <h2 class="truncate text-lg font-semibold tracking-tight text-white">Activity</h2>
+            <p class="font-mono text-[0.62rem] font-semibold uppercase tracking-[0.28em] text-emerald-200/75">
+              Right Rail
+            </p>
+            <h2 class="truncate text-lg font-semibold tracking-tight text-white">
+              Activity
+            </h2>
           </div>
           <div class="flex shrink-0 items-center gap-2">
             <button
@@ -27,7 +31,10 @@ export function ActivityRail() {
               onClick={() => void filesystem.scanWorkspace()}
               disabled={!activeWorkspaceId() || filesystem.isScanning()}
             >
-              <Icon name="scan" class={filesystem.isScanning() ? 'animate-pulse' : ''} />
+              <Icon
+                name="scan"
+                class={filesystem.isScanning() ? 'animate-pulse' : ''}
+              />
             </button>
             <button
               type="button"
@@ -37,7 +44,10 @@ export function ActivityRail() {
               onClick={() => void runs.simulateAgentRun()}
               disabled={!activeWorkspaceId() || runs.isRequestingRun()}
             >
-              <Icon name={runs.isRequestingRun() ? 'refresh' : 'play'} class={runs.isRequestingRun() ? 'animate-spin' : ''} />
+              <Icon
+                name={runs.isRequestingRun() ? 'refresh' : 'play'}
+                class={runs.isRequestingRun() ? 'animate-spin' : ''}
+              />
             </button>
           </div>
         </div>

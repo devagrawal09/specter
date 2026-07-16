@@ -35,7 +35,10 @@ export function testSliceImplementations(
 
   describe('Specter Slice implementations', () => {
     beforeAll(() =>
-      assertConforms({ events: options.events, slices: implementations }),
+      assertConforms(
+        { events: options.events, slices: implementations },
+        { requireCommandSlice: false },
+      ),
     )
 
     for (const implementation of implementations) {

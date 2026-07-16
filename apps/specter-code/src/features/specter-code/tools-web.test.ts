@@ -34,7 +34,11 @@ describe('web tools', () => {
     globalThis.fetch = vi.fn(async () => response) as typeof fetch
 
     await expect(
-      registry.execute('webfetch', { url: 'https://example.com/releases', format: 'markdown' }, context),
+      registry.execute(
+        'webfetch',
+        { url: 'https://example.com/releases', format: 'markdown' },
+        context,
+      ),
     ).resolves.toEqual({
       url: 'https://example.com/releases',
       status: 200,
@@ -58,9 +62,9 @@ describe('web tools', () => {
     globalThis.fetch = vi.fn() as unknown as typeof fetch
     const context = createContext()
 
-    await expect(webfetchTool.execute({ url: 'file:///etc/passwd' }, context)).rejects.toThrow(
-      'URL must start with http:// or https://',
-    )
+    await expect(
+      webfetchTool.execute({ url: 'file:///etc/passwd' }, context),
+    ).rejects.toThrow('URL must start with http:// or https://')
     expect(globalThis.fetch).not.toHaveBeenCalled()
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'webfetch',
@@ -78,11 +82,17 @@ describe('web tools', () => {
       AbstractURL: 'https://specter.dev/',
       Heading: 'Specter',
       RelatedTopics: [
-        { Text: 'Specter docs - durable workflows', FirstURL: 'https://specter.dev/docs' },
+        {
+          Text: 'Specter docs - durable workflows',
+          FirstURL: 'https://specter.dev/docs',
+        },
         {
           Name: 'Nested',
           Topics: [
-            { Text: 'Specter examples - reference apps', FirstURL: 'https://specter.dev/examples' },
+            {
+              Text: 'Specter examples - reference apps',
+              FirstURL: 'https://specter.dev/examples',
+            },
           ],
         },
       ],
@@ -90,7 +100,11 @@ describe('web tools', () => {
     globalThis.fetch = vi.fn(async () => response) as typeof fetch
 
     await expect(
-      registry.execute('websearch', { query: 'specter framework', numResults: 2 }, context),
+      registry.execute(
+        'websearch',
+        { query: 'specter framework', numResults: 2 },
+        context,
+      ),
     ).resolves.toEqual({
       query: 'specter framework',
       provider: 'duckduckgo',
@@ -114,7 +128,9 @@ describe('web tools', () => {
     })
     expect(globalThis.fetch).toHaveBeenCalledWith(
       'https://api.duckduckgo.com/?q=specter+framework&format=json&no_html=1&skip_disambig=1',
-      expect.objectContaining({ headers: expect.objectContaining({ Accept: 'application/json' }) }),
+      expect.objectContaining({
+        headers: expect.objectContaining({ Accept: 'application/json' }),
+      }),
     )
   })
 })

@@ -1,6 +1,12 @@
 import { createClient } from '@libsql/client/sqlite3'
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import {
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -27,10 +33,14 @@ describe('Specter Code CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stdout).toContain('Usage: specter-code [command]')
-    expect(result.stdout).toContain('specter-code          Start the interactive TUI')
+    expect(result.stdout).toContain(
+      'specter-code          Start the interactive TUI',
+    )
     expect(result.stdout).toContain('run [message]')
     expect(result.stdout).toContain('serve')
-    expect(result.stdout).toContain('web                 Start the Specter Code web UI')
+    expect(result.stdout).toContain(
+      'web                 Start the Specter Code web UI',
+    )
     expect(result.stdout).toContain('session list')
     expect(result.stdout).toContain('import <file>')
     expect(result.stdout).toContain('export --session <id> --output <file>')
@@ -67,7 +77,8 @@ describe('Specter Code CLI', () => {
 
     await expect(cli.run(['debug', '--help'])).resolves.toEqual({
       exitCode: 0,
-      stdout: 'Usage: specter-code debug info\n       specter-code debug paths\n',
+      stdout:
+        'Usage: specter-code debug info\n       specter-code debug paths\n',
       stderr: '',
     })
 
@@ -90,7 +101,9 @@ describe('Specter Code CLI', () => {
     expect(paths.stderr).toBe('')
     expect(paths.stdout).toContain(`cwd\t${tempDir}`)
     expect(paths.stdout).toContain(`database\t${dbPath}`)
-    expect(paths.stdout).toContain(`project config\t${join(tempDir, '.opencode', 'opencode.jsonc')}`)
+    expect(paths.stdout).toContain(
+      `project config\t${join(tempDir, '.opencode', 'opencode.jsonc')}`,
+    )
   })
 
   it('prints help for OpenCode-compatible database commands without opening SQLite', async () => {
@@ -98,7 +111,8 @@ describe('Specter Code CLI', () => {
 
     await expect(cli.run(['db', '--help'])).resolves.toEqual({
       exitCode: 0,
-      stdout: 'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n',
+      stdout:
+        'Usage: specter-code db path\n       specter-code db query <sql> [--format json|tsv]\n',
       stderr: '',
     })
     await expect(cli.run(['db', 'path', '--help'])).resolves.toEqual({
@@ -156,7 +170,10 @@ describe('Specter Code CLI', () => {
       db.close()
     }
 
-    const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: { SPECTER_CODE_DB_PATH: dbPath } })
+    const cli = buildSpecterCodeCli({
+      cwd: '/tmp/project',
+      env: { SPECTER_CODE_DB_PATH: dbPath },
+    })
 
     await expect(cli.run(['db', 'path'])).resolves.toEqual({
       exitCode: 0,
@@ -164,7 +181,11 @@ describe('Specter Code CLI', () => {
       stderr: '',
     })
     await expect(
-      cli.run(['db', 'query', 'SELECT id, title FROM specter_code_sessions ORDER BY id']),
+      cli.run([
+        'db',
+        'query',
+        'SELECT id, title FROM specter_code_sessions ORDER BY id',
+      ]),
     ).resolves.toEqual({
       exitCode: 0,
       stdout: 'id\ttitle\nsession-query\tQuery me\n',
@@ -180,20 +201,29 @@ describe('Specter Code CLI', () => {
       ]),
     ).resolves.toEqual({
       exitCode: 0,
-      stdout: '[\n  {\n    "id": "session-query",\n    "title": "Query me"\n  }\n]\n',
+      stdout:
+        '[\n  {\n    "id": "session-query",\n    "title": "Query me"\n  }\n]\n',
       stderr: '',
     })
     await expect(
       cli.run(['db', 'query', 'DELETE FROM specter_code_sessions']),
     ).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining('Only readonly SELECT queries are supported'),
+      stderr: expect.stringContaining(
+        'Only readonly SELECT queries are supported',
+      ),
     })
     await expect(
-      cli.run(['db', 'query', 'WITH stale AS (SELECT 1) DELETE FROM specter_code_sessions']),
+      cli.run([
+        'db',
+        'query',
+        'WITH stale AS (SELECT 1) DELETE FROM specter_code_sessions',
+      ]),
     ).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining('Only readonly SELECT queries are supported'),
+      stderr: expect.stringContaining(
+        'Only readonly SELECT queries are supported',
+      ),
     })
   })
 
@@ -278,7 +308,8 @@ describe('Specter Code CLI', () => {
     })
     await expect(cli.run(['auth', 'login', '--help'])).resolves.toEqual({
       exitCode: 0,
-      stdout: 'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
+      stdout:
+        'Usage: specter-code auth login --provider <id> --key <api-key> [--description <label>]\n',
       stderr: '',
     })
     await expect(cli.run(['auth', 'list', '--help'])).resolves.toEqual({
@@ -295,7 +326,10 @@ describe('Specter Code CLI', () => {
 
   it('stores, lists, and removes OpenCode-compatible provider API credentials', async () => {
     const authPath = join(tempDir, 'auth-v2.json')
-    const cli = buildSpecterCodeCli({ cwd: tempDir, env: { SPECTER_CODE_AUTH_PATH: authPath } })
+    const cli = buildSpecterCodeCli({
+      cwd: tempDir,
+      env: { SPECTER_CODE_AUTH_PATH: authPath },
+    })
 
     await expect(cli.run(['auth', 'list'])).resolves.toEqual({
       exitCode: 0,
@@ -337,7 +371,9 @@ describe('Specter Code CLI', () => {
 
     expect(listed.exitCode).toBe(0)
     expect(listed.stderr).toBe('')
-    expect(listed.stdout).toContain('openrouter\tOpenRouter CI key\tapi\tactive')
+    expect(listed.stdout).toContain(
+      'openrouter\tOpenRouter CI key\tapi\tactive',
+    )
     expect(listed.stdout).not.toContain('sk-or-secret-value')
 
     await expect(cli.run(['auth', 'logout', 'openrouter'])).resolves.toEqual({
@@ -432,9 +468,13 @@ describe('Specter Code CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).toContain('session-main\tFix tests\tbuild\tlocalai/qwen-code\t/tmp/project')
+    expect(result.stdout).toContain(
+      'session-main\tFix tests\tbuild\tlocalai/qwen-code\t/tmp/project',
+    )
     expect(result.stdout).not.toContain('session-deleted')
-    expect(result.stdout).not.toContain('No persisted session CLI adapter is configured yet')
+    expect(result.stdout).not.toContain(
+      'No persisted session CLI adapter is configured yet',
+    )
   })
 
   it('renders persisted session details and transcript from the configured CLI database', async () => {
@@ -570,7 +610,9 @@ describe('Specter Code CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).toBe('Created session session-cli-new\tFix from CLI\tbuild\tlocalai/qwen-code\t/tmp/project\n')
+    expect(result.stdout).toBe(
+      'Created session session-cli-new\tFix from CLI\tbuild\tlocalai/qwen-code\t/tmp/project\n',
+    )
 
     const db = createClient({ url: `file:${dbPath}` })
     try {
@@ -630,11 +672,18 @@ describe('Specter Code CLI', () => {
       ]),
     ).resolves.toMatchObject({ exitCode: 0 })
 
-    const result = await cli.run(['session', 'rename', 'session-cli-rename', 'After rename'])
+    const result = await cli.run([
+      'session',
+      'rename',
+      'session-cli-rename',
+      'After rename',
+    ])
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).toBe('Renamed session session-cli-rename\tAfter rename\n')
+    expect(result.stdout).toBe(
+      'Renamed session session-cli-rename\tAfter rename\n',
+    )
 
     const db = createClient({ url: `file:${dbPath}` })
     try {
@@ -643,14 +692,20 @@ describe('Specter Code CLI', () => {
         args: ['session-cli-rename'],
       })
       expect(sessionRows.rows).toEqual([
-        expect.objectContaining({ id: 'session-cli-rename', title: 'After rename' }),
+        expect.objectContaining({
+          id: 'session-cli-rename',
+          title: 'After rename',
+        }),
       ])
 
       const eventRows = await db.execute({
         sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
         args: [],
       })
-      expect(eventRows.rows.map((row) => row.type)).toEqual(['session-created', 'session-updated'])
+      expect(eventRows.rows.map((row) => row.type)).toEqual([
+        'session-created',
+        'session-updated',
+      ])
       expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
         sessionId: 'session-cli-rename',
         title: 'After rename',
@@ -698,14 +753,20 @@ describe('Specter Code CLI', () => {
         args: ['session-cli-delete'],
       })
       expect(sessionRows.rows).toEqual([
-        expect.objectContaining({ id: 'session-cli-delete', status: 'deleted' }),
+        expect.objectContaining({
+          id: 'session-cli-delete',
+          status: 'deleted',
+        }),
       ])
 
       const eventRows = await db.execute({
         sql: 'SELECT type, payload FROM specter_events ORDER BY event_order ASC',
         args: [],
       })
-      expect(eventRows.rows.map((row) => row.type)).toEqual(['session-created', 'session-deleted'])
+      expect(eventRows.rows.map((row) => row.type)).toEqual([
+        'session-created',
+        'session-deleted',
+      ])
       expect(JSON.parse(String(eventRows.rows[1]?.payload))).toMatchObject({
         sessionId: 'session-cli-delete',
         deletedBy: { displayName: 'Specter Code CLI' },
@@ -718,9 +779,13 @@ describe('Specter Code CLI', () => {
   it('validates import and export session command arguments before touching persistence', async () => {
     const cli = buildSpecterCodeCli({ cwd: '/tmp/project', env: {} })
 
-    await expect(cli.run(['export', '--session', 'session-main'])).resolves.toMatchObject({
+    await expect(
+      cli.run(['export', '--session', 'session-main']),
+    ).resolves.toMatchObject({
       exitCode: 1,
-      stderr: expect.stringContaining('Usage: specter-code export --session <id> --output <file>'),
+      stderr: expect.stringContaining(
+        'Usage: specter-code export --session <id> --output <file>',
+      ),
     })
     await expect(cli.run(['import'])).resolves.toMatchObject({
       exitCode: 1,
@@ -941,7 +1006,13 @@ describe('Specter Code CLI', () => {
       },
     })
 
-    const result = await cli.run(['serve', '--host', '127.0.0.1', '--port', '41999'])
+    const result = await cli.run([
+      'serve',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '41999',
+    ])
 
     expect(result).toEqual({
       exitCode: 0,
@@ -981,7 +1052,13 @@ describe('Specter Code CLI', () => {
       },
     })
 
-    const result = await cli.run(['web', '--host', '127.0.0.1', '--port', '42001'])
+    const result = await cli.run([
+      'web',
+      '--host',
+      '127.0.0.1',
+      '--port',
+      '42001',
+    ])
 
     expect(result).toEqual({
       exitCode: 0,
@@ -1010,11 +1087,19 @@ describe('Specter Code CLI', () => {
   it('can render serve help from the Node CLI entrypoint without loading run-only adapters', () => {
     const stdout = execFileSync(
       process.execPath,
-      ['--experimental-strip-types', 'src/features/specter-code/cli/index.ts', '--', 'serve', '--help'],
+      [
+        '--experimental-strip-types',
+        'src/features/specter-code/cli/index.ts',
+        '--',
+        'serve',
+        '--help',
+      ],
       { cwd: process.cwd(), encoding: 'utf8' },
     )
 
-    expect(stdout).toBe('Usage: specter-code serve [--host <host>] [--port <port>]\n')
+    expect(stdout).toBe(
+      'Usage: specter-code serve [--host <host>] [--port <port>]\n',
+    )
   })
 
   it('creates a session through the Node CLI entrypoint', async () => {
@@ -1043,11 +1128,17 @@ describe('Specter Code CLI', () => {
       {
         cwd: process.cwd(),
         encoding: 'utf8',
-        env: { ...process.env, ...createConfiguredCliEnv(), SPECTER_CODE_DB_PATH: dbPath },
+        env: {
+          ...process.env,
+          ...createConfiguredCliEnv(),
+          SPECTER_CODE_DB_PATH: dbPath,
+        },
       },
     )
 
-    expect(stdout).toBe('Created session session-entrypoint\tEntry point session\tbuild\tlocalai/qwen-code\t/tmp/project\n')
+    expect(stdout).toBe(
+      'Created session session-entrypoint\tEntry point session\tbuild\tlocalai/qwen-code\t/tmp/project\n',
+    )
 
     const db = createClient({ url: `file:${dbPath}` })
     try {
@@ -1056,7 +1147,10 @@ describe('Specter Code CLI', () => {
         args: ['session-entrypoint'],
       })
       expect(result.rows).toEqual([
-        expect.objectContaining({ id: 'session-entrypoint', title: 'Entry point session' }),
+        expect.objectContaining({
+          id: 'session-entrypoint',
+          title: 'Entry point session',
+        }),
       ])
     } finally {
       db.close()
@@ -1137,7 +1231,11 @@ describe('Specter Code CLI', () => {
           mcp: {
             docs: { type: 'local', command: ['node', 'server.js'] },
             remoteDocs: { type: 'remote', url: 'https://mcp.example.test/sse' },
-            disabled: { type: 'local', command: ['python', 'server.py'], enabled: false },
+            disabled: {
+              type: 'local',
+              command: ['python', 'server.py'],
+              enabled: false,
+            },
           },
         }),
       },
@@ -1148,8 +1246,12 @@ describe('Specter Code CLI', () => {
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
     expect(result.stdout).toContain('docs\tlocal\tenabled\tnode server.js')
-    expect(result.stdout).toContain('remoteDocs\tremote\tenabled\thttps://mcp.example.test/sse')
-    expect(result.stdout).toContain('disabled\tlocal\tdisabled\tpython server.py')
+    expect(result.stdout).toContain(
+      'remoteDocs\tremote\tenabled\thttps://mcp.example.test/sse',
+    )
+    expect(result.stdout).toContain(
+      'disabled\tlocal\tdisabled\tpython server.py',
+    )
   })
 
   it('registers plugin modules in project OpenCode config through plugin and plug aliases', async () => {
@@ -1159,14 +1261,22 @@ describe('Specter Code CLI', () => {
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).toBe(`Registered plugin @acme/opencode-plugin in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`)
+    expect(result.stdout).toBe(
+      `Registered plugin @acme/opencode-plugin in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`,
+    )
 
     const aliasResult = await cli.run(['plug', './plugins/local-plugin.ts'])
 
     expect(aliasResult.exitCode).toBe(0)
     expect(aliasResult.stderr).toBe('')
-    expect(aliasResult.stdout).toBe(`Registered plugin ./plugins/local-plugin.ts in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`)
-    expect(JSON.parse(readFileSync(join(tempDir, '.opencode', 'opencode.jsonc'), 'utf8'))).toMatchObject({
+    expect(aliasResult.stdout).toBe(
+      `Registered plugin ./plugins/local-plugin.ts in ${join(tempDir, '.opencode', 'opencode.jsonc')}\n`,
+    )
+    expect(
+      JSON.parse(
+        readFileSync(join(tempDir, '.opencode', 'opencode.jsonc'), 'utf8'),
+      ),
+    ).toMatchObject({
       plugin: ['@acme/opencode-plugin', './plugins/local-plugin.ts'],
     })
   })
@@ -1186,7 +1296,9 @@ describe('Specter Code CLI', () => {
     const events = result.stdout
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+      .map(
+        (line) => JSON.parse(line) as { type: string; [key: string]: unknown },
+      )
 
     expect(events.map((event) => event.type)).toEqual([
       'session.created',
@@ -1214,7 +1326,10 @@ describe('Specter Code CLI', () => {
       agentId: 'build',
       model: 'localai/qwen-code',
     })
-    expect(events[5]).toMatchObject({ type: 'assistant.delta', delta: 'I found ' })
+    expect(events[5]).toMatchObject({
+      type: 'assistant.delta',
+      delta: 'I found ',
+    })
     expect(events[7]).toMatchObject({
       type: 'assistant.message',
       role: 'assistant',
@@ -1225,7 +1340,16 @@ describe('Specter Code CLI', () => {
   it('runs a non-interactive prompt through the Node CLI entrypoint', () => {
     const stdout = execFileSync(
       process.execPath,
-      ['--experimental-strip-types', 'src/features/specter-code/cli/index.ts', '--', 'run', '--format', 'json', 'say', 'hi'],
+      [
+        '--experimental-strip-types',
+        'src/features/specter-code/cli/index.ts',
+        '--',
+        'run',
+        '--format',
+        'json',
+        'say',
+        'hi',
+      ],
       {
         cwd: process.cwd(),
         encoding: 'utf8',
@@ -1236,7 +1360,9 @@ describe('Specter Code CLI', () => {
     const events = stdout
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+      .map(
+        (line) => JSON.parse(line) as { type: string; [key: string]: unknown },
+      )
     expect(events.map((event) => event.type)).toEqual([
       'session.created',
       'message.created',
@@ -1248,13 +1374,19 @@ describe('Specter Code CLI', () => {
       'assistant.message',
       'run.completed',
     ])
-    expect(events[2]).toMatchObject({ agentId: 'build', model: 'localai/qwen-code' })
+    expect(events[2]).toMatchObject({
+      agentId: 'build',
+      model: 'localai/qwen-code',
+    })
     expect(stdout).not.toContain('super-secret-token')
   })
 
   it('executes grep prompts through the real built-in tool registry', async () => {
     mkdirSync(join(tempDir, 'src'), { recursive: true })
-    writeFileSync(join(tempDir, 'src', 'app.ts'), 'export const needle = true\n')
+    writeFileSync(
+      join(tempDir, 'src', 'app.ts'),
+      'export const needle = true\n',
+    )
     writeFileSync(join(tempDir, 'README.md'), 'nothing to see here\n')
     const cli = buildSpecterCodeCli({
       cwd: tempDir,
@@ -1268,7 +1400,9 @@ describe('Specter Code CLI', () => {
     const events = result.stdout
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line) as { type: string; [key: string]: unknown })
+      .map(
+        (line) => JSON.parse(line) as { type: string; [key: string]: unknown },
+      )
     expect(events[3]).toMatchObject({
       type: 'tool.started',
       toolName: 'grep',
@@ -1282,7 +1416,8 @@ describe('Specter Code CLI', () => {
     expect(events[7]).toMatchObject({
       type: 'assistant.message',
       role: 'assistant',
-      content: 'Found 1 match for "needle".\nsrc/app.ts:1: export const needle = true',
+      content:
+        'Found 1 match for "needle".\nsrc/app.ts:1: export const needle = true',
     })
     expect(result.stdout).not.toContain('Mocked')
   })
@@ -1293,7 +1428,13 @@ describe('Specter Code CLI', () => {
       env: createConfiguredCliEnv(),
     })
 
-    const result = await cli.run(['run', '--interactive', '--demo', 'say', 'hi'])
+    const result = await cli.run([
+      'run',
+      '--interactive',
+      '--demo',
+      'say',
+      'hi',
+    ])
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
@@ -1313,11 +1454,19 @@ describe('Specter Code CLI', () => {
       env: createConfiguredCliEnv(),
     })
 
-    const result = await cli.run(['run', '--interactive', 'inspect', 'the', 'repo'])
+    const result = await cli.run([
+      'run',
+      '--interactive',
+      'inspect',
+      'the',
+      'repo',
+    ])
 
     expect(result.exitCode).toBe(0)
     expect(result.stderr).toBe('')
-    expect(result.stdout).not.toContain('Interactive TUI smoke mode currently requires --demo')
+    expect(result.stdout).not.toContain(
+      'Interactive TUI smoke mode currently requires --demo',
+    )
     expect(result.stdout).toContain('Specter Code TUI')
     expect(result.stdout).toContain('Session transcript')
     expect(result.stdout).toContain('You: inspect the repo')

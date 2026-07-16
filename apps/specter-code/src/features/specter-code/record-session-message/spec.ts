@@ -1,10 +1,13 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const recordSessionMessageSpec = createCommandSlice('recordSessionMessage')
-  .description('Records a user message in a session without requesting an agent turn.')
+  .description(
+    'Records a user message in a session without requesting an agent turn.',
+  )
   .scenarios(
-{
-      description: 'Records a no-reply session message without requesting an agent run.',
+    {
+      description:
+        'Records a no-reply session message without requesting an agent run.',
       given: [],
       when: {
         messageId: 'message-no-reply-1',

@@ -20,9 +20,11 @@ function createSimulationApp() {
 
 describe('ColonyBench same-process runner', () => {
   test('command collector records bot commands without mutating the world directly', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'collector-run' })
-    const before = await simulationApp.liveWorldSnapshot({ runId: 'collector-run' })
+    const before = await simulationApp.liveWorldSnapshot({
+      runId: 'collector-run',
+    })
     const collector = createBotCommandCollector()
 
     collector.commands.move('worker-1', { x: 2, y: 1 })
@@ -57,7 +59,9 @@ describe('ColonyBench same-process runner', () => {
     expect(result.finalSnapshot.tick).toBe(4)
     expect(result.snapshots).toHaveLength(5)
     expect(result.commandLog).toHaveLength(4)
-    expect(result.commandLog.some((entry) => entry.commands.length > 0)).toBe(true)
+    expect(result.commandLog.some((entry) => entry.commands.length > 0)).toBe(
+      true,
+    )
   })
 
   test('baseline bot improves the world state over enough ticks', async () => {
@@ -76,10 +80,13 @@ describe('ColonyBench same-process runner', () => {
       ),
     ).toBe(true)
     expect(
-      result.commandLog.flatMap((entry) => entry.commands).map((command) => command.type),
-    ).toEqual(expect.arrayContaining(['spawnWorker', 'deposit', 'upgrade', 'harvest']))
+      result.commandLog
+        .flatMap((entry) => entry.commands)
+        .map((command) => command.type),
+    ).toEqual(
+      expect.arrayContaining(['spawnWorker', 'deposit', 'upgrade', 'harvest']),
+    )
   })
-
 
   test('baseline bot builds the initial road construction site during a real run', async () => {
     const result = await runColonyBenchLoop({
@@ -89,14 +96,19 @@ describe('ColonyBench same-process runner', () => {
     })
 
     expect(result.finalSnapshot.roads).toEqual([
-      expect.objectContaining({ id: 'road-1', position: { x: 1, y: 0 }, hitsMax: 20 }),
+      expect.objectContaining({
+        id: 'road-1',
+        position: { x: 1, y: 0 },
+        hitsMax: 20,
+      }),
     ])
     expect(result.finalSnapshot.constructionSites).toEqual([])
     expect(
-      result.commandLog.flatMap((entry) => entry.commands).map((command) => command.type),
+      result.commandLog
+        .flatMap((entry) => entry.commands)
+        .map((command) => command.type),
     ).toContain('build')
   })
-
 
   test('baseline bot repairs the road after it decays during a real run', async () => {
     const result = await runColonyBenchLoop({
@@ -109,7 +121,9 @@ describe('ColonyBench same-process runner', () => {
       expect.objectContaining({ id: 'road-1', hitsMax: 20 }),
     ])
     expect(
-      result.commandLog.flatMap((entry) => entry.commands).map((command) => command.type),
+      result.commandLog
+        .flatMap((entry) => entry.commands)
+        .map((command) => command.type),
     ).toContain('repair')
   })
 
@@ -135,7 +149,9 @@ describe('ColonyBench same-process runner', () => {
       memory,
     })
 
-    expect(result.memory.creeps?.['worker-1']).toMatchObject({ saying: 'api harvest' })
+    expect(result.memory.creeps?.['worker-1']).toMatchObject({
+      saying: 'api harvest',
+    })
     expect(result.commandLog[0]?.commands).toEqual([
       { type: 'move', workerId: 'worker-1', target: { x: 2, y: 1 } },
     ])
@@ -179,7 +195,10 @@ describe('ColonyBench same-process runner', () => {
   })
 
   test('runner keeps the same bot memory object across ticks', async () => {
-    const memory: { turns: number; seenTicks: number[] } = { turns: 0, seenTicks: [] }
+    const memory: { turns: number; seenTicks: number[] } = {
+      turns: 0,
+      seenTicks: [],
+    }
     const bot: ColonyBenchBot<typeof memory> = {
       loop(ctx) {
         ctx.memory.turns += 1
@@ -198,7 +217,6 @@ describe('ColonyBench same-process runner', () => {
     expect(memory).toEqual({ turns: 4, seenTicks: [0, 1, 2, 3] })
     expect(result.finalSnapshot.tick).toBe(4)
   })
-
 
   test('baseline bot publishes per-worker role memory on streamed frames', async () => {
     const frames = []
@@ -220,7 +238,6 @@ describe('ColonyBench same-process runner', () => {
     })
   })
 
-
   test('baseline bot role memory includes workers spawned during the yielded frame', async () => {
     const frames = []
 
@@ -232,8 +249,12 @@ describe('ColonyBench same-process runner', () => {
       frames.push(frame)
     }
 
-    const spawnFrame = frames.find((frame) => frame.snapshot.workers.length >= 2)
-    expect(spawnFrame?.snapshot.workers.map((worker) => worker.id)).toContain('worker-2')
+    const spawnFrame = frames.find(
+      (frame) => frame.snapshot.workers.length >= 2,
+    )
+    expect(spawnFrame?.snapshot.workers.map((worker) => worker.id)).toContain(
+      'worker-2',
+    )
     expect(spawnFrame?.memory).toMatchObject({
       creeps: {
         'worker-2': {
@@ -242,7 +263,6 @@ describe('ColonyBench same-process runner', () => {
       },
     })
   })
-
 
   test('runner stream yields initial and per-tick frames for live UI replay', async () => {
     const frames = []
@@ -263,15 +283,14 @@ describe('ColonyBench same-process runner', () => {
       snapshot: { tick: 0, initialized: true },
     })
     expect(frames[0]?.events.map((event) => event.type)).toEqual([
-      'colonybenchSimulationInitialized',
+      'colonybench-simulation-initialized',
     ])
     expect(frames[1]?.commands.length).toBeGreaterThan(0)
     expect(frames[1]?.events.map((event) => event.type)).toContain(
-      'colonybenchTickAdvanced',
+      'colonybench-tick-advanced',
     )
     expect(frames[2]?.snapshot.tick).toBe(2)
   })
-
 
   test('runner stream keeps per-frame events after the recent-event window is full', async () => {
     const frames = []
@@ -287,12 +306,10 @@ describe('ColonyBench same-process runner', () => {
     const lateFrame = frames[frames.length - 1]
     expect(lateFrame?.snapshot.recentEvents).toHaveLength(20)
     expect(lateFrame?.events.map((event) => event.type)).toContain(
-      'colonybenchTickAdvanced',
+      'colonybench-tick-advanced',
     )
     expect(lateFrame?.events.length).toBeLessThan(20)
   })
-
-
 
   test('runner stream preserves both build progress and road completion events from one command', async () => {
     const roadCompletingBot: ColonyBenchBot = {
@@ -318,13 +335,15 @@ describe('ColonyBench same-process runner', () => {
 
     const eventTypes = frames[1]?.events.map((event) => event.type) ?? []
     expect(
-      eventTypes.filter((type) => type === 'colonybenchConstructionSiteBuilt'),
+      eventTypes.filter(
+        (type) => type === 'colonybench-construction-site-built',
+      ),
     ).toHaveLength(2)
     expect(eventTypes).toEqual(
       expect.arrayContaining([
-        'colonybenchConstructionSiteBuilt',
-        'colonybenchRoadCompleted',
-        'colonybenchTickAdvanced',
+        'colonybench-construction-site-built',
+        'colonybench-road-completed',
+        'colonybench-tick-advanced',
       ]),
     )
   })
@@ -351,11 +370,11 @@ describe('ColonyBench same-process runner', () => {
     const tickFrame = frames[1]
     expect(
       tickFrame?.events.filter(
-        (event) => event.type === 'colonybenchCommandRejected',
+        (event) => event.type === 'colonybench-command-rejected',
       ),
     ).toHaveLength(25)
     expect(tickFrame?.events.map((event) => event.type)).toContain(
-      'colonybenchTickAdvanced',
+      'colonybench-tick-advanced',
     )
   })
 
@@ -375,7 +394,7 @@ describe('ColonyBench same-process runner', () => {
 
     expect(result.snapshots[0]?.recentEvents).toEqual([
       {
-        type: 'colonybenchSimulationInitialized',
+        type: 'colonybench-simulation-initialized',
         payload: { runId: 'stream-mutation-isolation' },
       },
     ])

@@ -31,25 +31,27 @@ const pendingQuestions = pendingQuestionsSpec
   .outputSchema<PendingQuestion[]>()
   .store(createMemorySliceStore<PendingQuestionsState>(() => ({ pending: {} })))
   .apply(questionAskedEvent, async (event, state) => {
-      const payload = event.payload
-      state.pending[payload.questionId] = {
-        questionId: payload.questionId,
-        sessionId: payload.sessionId,
-        messageId: payload.messageId,
-        prompt: payload.prompt,
-        options: payload.options.map((option) => ({ ...option })),
-        allowFreeform: payload.allowFreeform,
-      }
-    })
+    const payload = event.payload
+    state.pending[payload.questionId] = {
+      questionId: payload.questionId,
+      sessionId: payload.sessionId,
+      messageId: payload.messageId,
+      prompt: payload.prompt,
+      options: payload.options.map((option) => ({ ...option })),
+      allowFreeform: payload.allowFreeform,
+    }
+  })
   .apply(questionAnsweredEvent, async (event, state) => {
-      const payload = event.payload
-      delete state.pending[payload.questionId]
-    })
-  
+    const payload = event.payload
+    delete state.pending[payload.questionId]
+  })
+
   .handle(async (query, state): Promise<PendingQuestion[]> => {
     const questions = Object.values(state.pending)
     if (!query.sessionId) return questions
-    return questions.filter((question) => question.sessionId === query.sessionId)
+    return questions.filter(
+      (question) => question.sessionId === query.sessionId,
+    )
   })
 
 export default pendingQuestions

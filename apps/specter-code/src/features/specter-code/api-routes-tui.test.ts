@@ -35,16 +35,26 @@ describe('Specter Code OpenCode TUI API routes', () => {
   it('dispatches TUI event routes and control queue routes to the runtime', async () => {
     const calls: string[] = []
     const runtime = {
-      async publishTuiEvent(input: { workspaceRoot: string; event: { type: string; properties: unknown } }) {
-        calls.push(`publish:${input.workspaceRoot}:${input.event.type}:${JSON.stringify(input.event.properties)}`)
+      async publishTuiEvent(input: {
+        workspaceRoot: string
+        event: { type: string; properties: unknown }
+      }) {
+        calls.push(
+          `publish:${input.workspaceRoot}:${input.event.type}:${JSON.stringify(input.event.properties)}`,
+        )
         return true
       },
       async nextTuiControlRequest(input: { workspaceRoot: string }) {
         calls.push(`next:${input.workspaceRoot}`)
         return { path: '/tui/open-help', body: { source: 'keyboard' } }
       },
-      async submitTuiControlResponse(input: { workspaceRoot: string; response: unknown }) {
-        calls.push(`response:${input.workspaceRoot}:${JSON.stringify(input.response)}`)
+      async submitTuiControlResponse(input: {
+        workspaceRoot: string
+        response: unknown
+      }) {
+        calls.push(
+          `response:${input.workspaceRoot}:${JSON.stringify(input.response)}`,
+        )
         return true
       },
     } as SpecterCodeApiRuntime
@@ -72,10 +82,13 @@ describe('Specter Code OpenCode TUI API routes', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/tui/execute-command?directory=/repo', {
-            method: 'POST',
-            body: JSON.stringify({ command: 'session_new' }),
-          }),
+          new Request(
+            'http://specter.test/tui/execute-command?directory=/repo',
+            {
+              method: 'POST',
+              body: JSON.stringify({ command: 'session_new' }),
+            },
+          ),
         ),
       ),
     ).resolves.toBe(true)
@@ -93,15 +106,22 @@ describe('Specter Code OpenCode TUI API routes', () => {
       ),
     ).resolves.toBe(true)
     await expect(
-      json(await router.handle(new Request('http://specter.test/tui/control/next?directory=/repo'))),
+      json(
+        await router.handle(
+          new Request('http://specter.test/tui/control/next?directory=/repo'),
+        ),
+      ),
     ).resolves.toEqual({ path: '/tui/open-help', body: { source: 'keyboard' } })
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/tui/control/response?directory=/repo', {
-            method: 'POST',
-            body: JSON.stringify({ ok: true }),
-          }),
+          new Request(
+            'http://specter.test/tui/control/response?directory=/repo',
+            {
+              method: 'POST',
+              body: JSON.stringify({ ok: true }),
+            },
+          ),
         ),
       ),
     ).resolves.toBe(true)

@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postReplyCreatedEvent } from '../events'
 
 const recordVisibleAgentReply = recordVisibleAgentReplySpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       replyId: z.string(),
       workspaceId: z.string(),
       parentPostId: z.string(),
@@ -13,7 +14,8 @@ const recordVisibleAgentReply = recordVisibleAgentReplySpec
       agentId: z.string(),
       agentName: z.string(),
       content: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const content = command.content.trim()

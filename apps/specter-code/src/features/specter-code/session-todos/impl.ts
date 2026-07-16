@@ -27,10 +27,12 @@ const sessionTodos = sessionTodosSpec
   .outputSchema<SessionTodo[]>()
   .store(createMemorySliceStore<SessionTodosState>(() => ({ bySession: {} })))
   .apply(todoListUpdatedEvent, async (event, state) => {
-      const payload = event.payload
-      state.bySession[payload.sessionId] = payload.items.map((item) => ({ ...item }))
-    })
-  
+    const payload = event.payload
+    state.bySession[payload.sessionId] = payload.items.map((item) => ({
+      ...item,
+    }))
+  })
+
   .handle(async (query, state): Promise<SessionTodo[]> => {
     return state.bySession[query.sessionId] ?? []
   })

@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { filesystemNodeDiscoveredEvent } from '../events'
 
 const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       scanId: z.string(),
       workspaceId: z.string(),
       path: z.string(),
@@ -14,7 +15,8 @@ const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
       kind: z.enum(['file', 'directory']),
       sizeBytes: z.number().int().nonnegative().nullable(),
       modifiedAt: z.string().optional(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     if (

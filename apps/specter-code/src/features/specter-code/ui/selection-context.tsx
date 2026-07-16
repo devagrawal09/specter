@@ -2,10 +2,16 @@ import { createContext, createSignal, useContext } from 'solid-js'
 import type { ProviderProps } from './shared/view-helpers'
 
 function createSelectionModel() {
-  const [activeWorkspaceId, setActiveWorkspaceId] = createSignal<string | null>(null)
-  const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null)
+  const [activeWorkspaceId, setActiveWorkspaceId] = createSignal<string | null>(
+    null,
+  )
+  const [activeSessionId, setActiveSessionId] = createSignal<string | null>(
+    null,
+  )
   const [selectedPath, setSelectedPath] = createSignal<string | null>(null)
-  const [selectedFilePath, setSelectedFilePath] = createSignal<string | null>(null)
+  const [selectedFilePath, setSelectedFilePath] = createSignal<string | null>(
+    null,
+  )
   const [activeRunId, setActiveRunId] = createSignal<string | null>(null)
 
   function selectWorkspace(workspaceId: string | null) {
@@ -46,6 +52,9 @@ export function SpecterCodeSelectionProvider(props: ProviderProps) {
 
 export function useSpecterCodeSelection() {
   const value = useContext(SelectionContext)
-  if (!value) throw new Error('useSpecterCodeSelection must be used inside SpecterCodeSelectionProvider')
+  if (!value)
+    throw new Error(
+      'useSpecterCodeSelection must be used inside SpecterCodeSelectionProvider',
+    )
   return value
 }

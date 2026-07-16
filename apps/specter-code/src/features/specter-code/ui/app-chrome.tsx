@@ -7,7 +7,8 @@ import { useSessionChat } from './session-chat'
 import { useWorkspaces } from './workspaces'
 
 export function SpecterCodeHeader() {
-  const { activeWorkspaceId, activeRunId, activeSessionId } = useSpecterCodeSelection()
+  const { activeWorkspaceId, activeRunId, activeSessionId } =
+    useSpecterCodeSelection()
   const workspaces = useWorkspaces()
   const filesystem = useFilesystem()
   const runs = useRuns()
@@ -32,7 +33,10 @@ export function SpecterCodeHeader() {
     ])
     if (activeRunId()) await runs.refetchTimeline()
     if (activeSessionId()) {
-      await Promise.all([sessions.refetchTranscript(), approvals.refetchPendingPermissions()])
+      await Promise.all([
+        sessions.refetchTranscript(),
+        approvals.refetchPendingPermissions(),
+      ])
     }
   }
 
@@ -46,24 +50,52 @@ export function SpecterCodeHeader() {
           <p class="font-mono text-[0.66rem] font-semibold uppercase tracking-[0.32em] text-emerald-200/75">
             SpecterCode / Sessions
           </p>
-          <h1 class="truncate text-xl font-semibold tracking-tight text-white">Specter Code Chat</h1>
+          <h1 class="truncate text-xl font-semibold tracking-tight text-white">
+            Specter Code Chat
+          </h1>
         </div>
       </div>
 
-      <nav aria-label="Visual application tabs" class="flex w-full min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/20 p-1 md:w-auto md:max-w-xl">
-        <button type="button" aria-label="Chat tab (visual only)" class="flex shrink-0 items-center gap-2 rounded-xl bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 shadow-lg shadow-cyan-950/30" title="Chat tab (visual only)">
+      <nav
+        aria-label="Visual application tabs"
+        class="flex w-full min-w-0 flex-1 items-center gap-1 overflow-x-auto rounded-2xl border border-white/10 bg-black/20 p-1 md:w-auto md:max-w-xl"
+      >
+        <button
+          type="button"
+          aria-label="Chat tab (visual only)"
+          class="flex shrink-0 items-center gap-2 rounded-xl bg-cyan-300 px-3 py-2 text-xs font-semibold text-slate-950 shadow-lg shadow-cyan-950/30"
+          title="Chat tab (visual only)"
+        >
           <Icon name="chat" />
           <span class="hidden lg:inline">Chat</span>
         </button>
-        <button type="button" aria-label="Tasks tab (visual only)" aria-disabled="true" class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200" title="Tasks tab (visual only)">
+        <button
+          type="button"
+          aria-label="Tasks tab (visual only)"
+          aria-disabled="true"
+          class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
+          title="Tasks tab (visual only)"
+        >
           <Icon name="tasks" />
           <span class="hidden lg:inline">Tasks</span>
         </button>
-        <button type="button" aria-label="Files tab (visual only)" aria-disabled="true" class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200" title="Files tab (visual only)">
+        <button
+          type="button"
+          aria-label="Files tab (visual only)"
+          aria-disabled="true"
+          class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
+          title="Files tab (visual only)"
+        >
           <Icon name="calendar" />
           <span class="hidden lg:inline">Files</span>
         </button>
-        <button type="button" aria-label="Tools tab (visual only)" aria-disabled="true" class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200" title="Tools tab (visual only)">
+        <button
+          type="button"
+          aria-label="Tools tab (visual only)"
+          aria-disabled="true"
+          class="flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.04] hover:text-slate-200"
+          title="Tools tab (visual only)"
+        >
           <Icon name="readme" />
           <span class="hidden lg:inline">Tools</span>
         </button>
@@ -82,7 +114,10 @@ export function SpecterCodeHeader() {
           onClick={() => void refreshWorkspacePanels()}
           disabled={!activeWorkspaceId() || isRefreshingWorkspace()}
         >
-          <Icon name="refresh" class={isRefreshingWorkspace() ? 'animate-spin' : ''} />
+          <Icon
+            name="refresh"
+            class={isRefreshingWorkspace() ? 'animate-spin' : ''}
+          />
         </button>
       </div>
     </header>
@@ -109,20 +144,34 @@ export function WorkspaceStatusStrip() {
     <aside class="order-6 rounded-[1.75rem] border border-white/10 bg-[#07101c]/90 p-2.5 shadow-2xl shadow-black/35 ring-1 ring-white/5 backdrop-blur-xl xl:order-none xl:col-start-3 xl:row-start-3">
       <div class="grid grid-cols-3 gap-2 text-xs">
         <div class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5">
-          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">Sync</div>
-          <div class="mt-0.5 truncate font-semibold text-white">{isRefreshingWorkspace() ? 'busy' : 'idle'}</div>
+          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">
+            Sync
+          </div>
+          <div class="mt-0.5 truncate font-semibold text-white">
+            {isRefreshingWorkspace() ? 'busy' : 'idle'}
+          </div>
         </div>
         <div class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5">
-          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">Scan</div>
-          <div class="mt-0.5 truncate font-semibold text-cyan-100">{filesystem.latestScan()?.status ?? 'none'}</div>
+          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">
+            Scan
+          </div>
+          <div class="mt-0.5 truncate font-semibold text-cyan-100">
+            {filesystem.latestScan()?.status ?? 'none'}
+          </div>
         </div>
         <div class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5">
-          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">Run</div>
-          <div class="mt-0.5 truncate font-semibold text-emerald-100">{runs.activeRun()?.status ?? 'none'}</div>
+          <div class="font-mono uppercase tracking-[0.18em] text-slate-500">
+            Run
+          </div>
+          <div class="mt-0.5 truncate font-semibold text-emerald-100">
+            {runs.activeRun()?.status ?? 'none'}
+          </div>
         </div>
       </div>
       <p class="mt-1.5 truncate px-1 font-mono text-[0.68rem] text-slate-500">
-        {selectedFilePath() ?? selectedPath() ?? workspaces.activeWorkspaceName()}
+        {selectedFilePath() ??
+          selectedPath() ??
+          workspaces.activeWorkspaceName()}
       </p>
     </aside>
   )

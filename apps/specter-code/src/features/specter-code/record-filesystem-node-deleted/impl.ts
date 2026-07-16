@@ -8,11 +8,13 @@ import {
 } from '../events'
 
 const recordFilesystemNodeDeleted = recordFilesystemNodeDeletedSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       scanId: z.string(),
       workspaceId: z.string(),
       path: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .apply(filesystemNodeDiscoveredEvent, async () => {})
   .handle(async (command) => {

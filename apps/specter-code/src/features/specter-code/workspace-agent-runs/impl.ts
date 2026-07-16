@@ -28,44 +28,45 @@ type WorkspaceAgentRunsState = {
 }
 
 const workspaceAgentRuns = workspaceAgentRunsSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       workspaceId: z.string(),
-    }))
+    }),
+  )
   .outputSchema<WorkspaceAgentRun[]>()
   .store(createMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
   .apply(agentRunRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      if (payload.workspaceId) {
-        state.runs.push({
-          runId: payload.runId,
-          workspaceId: payload.workspaceId,
-          postId: payload.postId,
-          agentId: payload.agentId,
-          agentName: payload.agentName,
-          status: 'pending',
-          requestedBy: payload.requestedBy,
-        })
-      }
-    })
+    const payload = event.payload
+    if (payload.workspaceId) {
+      state.runs.push({
+        runId: payload.runId,
+        workspaceId: payload.workspaceId,
+        postId: payload.postId,
+        agentId: payload.agentId,
+        agentName: payload.agentName,
+        status: 'pending',
+        requestedBy: payload.requestedBy,
+      })
+    }
+  })
   .apply(agentRunStartedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
-      if (run && run.workspaceId === payload.workspaceId) run.status = 'running'
-    })
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
+    if (run && run.workspaceId === payload.workspaceId) run.status = 'running'
+  })
   .apply(agentRunCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
-      if (run && run.workspaceId === payload.workspaceId)
-        run.status = 'completed'
-    })
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
+    if (run && run.workspaceId === payload.workspaceId) run.status = 'completed'
+  })
   .apply(agentRunFailedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
-      if (run && run.workspaceId === payload.workspaceId) {
-        run.status = 'failed'
-        run.error = payload.error
-      }
-    })
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
+    if (run && run.workspaceId === payload.workspaceId) {
+      run.status = 'failed'
+      run.error = payload.error
+    }
+  })
   .handle(async (query, state): Promise<WorkspaceAgentRun[]> => {
     return state.runs.filter((run) => run.workspaceId === query.workspaceId)
   })

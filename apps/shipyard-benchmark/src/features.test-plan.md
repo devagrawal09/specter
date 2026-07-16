@@ -1,8 +1,8 @@
 # Shipyard Feature Test Plan
 
-This Phase 1 package defines contracts, event definitions, fixture streams, and planned slice groups only. Command, query, and reaction slice specs are deferred to Phase 2 so they can be represented with complete Specter registrations instead of placeholder handlers.
+This Phase 1 package defines contracts, kebab-case Event Definitions, fixture streams, and planned Slice groups only. Executable command, query, and reaction Slices are deferred to Phase 2 so each immutable `spec.ts` specification can be completed by one or more `impl.ts` implementations instead of a placeholder handler.
 
-## Deferred Slice Specs
+## Deferred Slice Specifications and Implementations
 
 - OpenCode lifecycle: request a run, record each direct inbound event, idempotently ignore duplicate `eventId` deliveries, preserve final states, and emit direct outbound operation envelopes for start, cancel, and follow-up input.
 - Agent suggestions: record only typed suggestions, reject malformed or underspecified suggestions into an operator-review path, apply once, reject once, and never parse freeform summaries into records.

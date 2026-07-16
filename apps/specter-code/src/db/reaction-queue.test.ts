@@ -143,5 +143,4 @@ describe('SQLite reaction queue scheduler', () => {
       db.close()
     }
   })
-
 })

@@ -14,6 +14,7 @@ export {
 export type {
   ConformanceDiagnostic,
   ConformanceInput,
+  ConformanceOptions,
 } from './conformance'
 export {
   decodeOptionalSchema,

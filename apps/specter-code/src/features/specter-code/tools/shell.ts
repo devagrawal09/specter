@@ -20,13 +20,17 @@ export type ShellToolOutput = ShellRunResult & {
 
 export const shellTool: ToolDefinition<ShellToolInput, ShellToolOutput> = {
   name: 'shell',
-  description: 'Run a bounded shell command inside the current workspace after approval',
+  description:
+    'Run a bounded shell command inside the current workspace after approval',
   permission: 'shell.execute',
   permissionTarget: (input) => input.command.trim(),
   async execute(input, context) {
     const command = input.command.trim()
     try {
-      const cwd = await resolveShellWorkingDirectory(context.workspaceRoot, input.cwd)
+      const cwd = await resolveShellWorkingDirectory(
+        context.workspaceRoot,
+        input.cwd,
+      )
       await context.metadata({
         toolName: 'shell',
         status: 'started',
@@ -56,7 +60,8 @@ export const shellTool: ToolDefinition<ShellToolInput, ShellToolOutput> = {
 
       await context.metadata({
         toolName: 'shell',
-        status: result.timedOut || result.exitCode !== 0 ? 'failed' : 'completed',
+        status:
+          result.timedOut || result.exitCode !== 0 ? 'failed' : 'completed',
         summary: result.timedOut
           ? 'Shell timed out'
           : 'Shell exited ' + (result.exitCode ?? result.signal ?? 'unknown'),
@@ -71,7 +76,10 @@ export const shellTool: ToolDefinition<ShellToolInput, ShellToolOutput> = {
       await context.metadata({
         toolName: 'shell',
         status: 'failed',
-        summary: error instanceof Error ? error.message : 'Shell failed for ' + command,
+        summary:
+          error instanceof Error
+            ? error.message
+            : 'Shell failed for ' + command,
       })
       throw error
     }

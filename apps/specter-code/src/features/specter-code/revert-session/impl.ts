@@ -27,7 +27,7 @@ const revertSession = revertSessionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     if (command.snapshots.length === 0) {
       throw new Error('At least one snapshot is required to revert a session')

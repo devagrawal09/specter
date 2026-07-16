@@ -5,14 +5,16 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStreamedEvent } from '../events'
 
 const recordAgentRunStreamed = recordAgentRunStreamedSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       runId: z.string(),
       workspaceId: z.string(),
       agentId: z.string(),
       chunkId: z.string(),
       sequence: z.number().int().nonnegative(),
       delta: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const delta = command.delta

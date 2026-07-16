@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const opportunityCreatedEvent = createEventDefinition(
-  'opportunityCreated',
+  'opportunity-created',
   z.object({
     opportunityId: z.string(),
     title: z.string(),
@@ -14,7 +14,7 @@ export const opportunityCreatedEvent = createEventDefinition(
 )
 
 export const opportunityUpdatedEvent = createEventDefinition(
-  'opportunityUpdated',
+  'opportunity-updated',
   z.object({
     opportunityId: z.string(),
     title: z.string().optional(),
@@ -24,7 +24,7 @@ export const opportunityUpdatedEvent = createEventDefinition(
 )
 
 export const opportunityPrioritizedEvent = createEventDefinition(
-  'opportunityPrioritized',
+  'opportunity-prioritized',
   z.object({
     opportunityId: z.string(),
     priority: z.enum(['low', 'medium', 'high']),
@@ -33,7 +33,7 @@ export const opportunityPrioritizedEvent = createEventDefinition(
 )
 
 export const opportunityArchivedEvent = createEventDefinition(
-  'opportunityArchived',
+  'opportunity-archived',
   z.object({
     opportunityId: z.string(),
     reason: z.string(),
@@ -41,7 +41,7 @@ export const opportunityArchivedEvent = createEventDefinition(
 )
 
 export const opportunityConversionRequestedEvent = createEventDefinition(
-  'opportunityConversionRequested',
+  'opportunity-conversion-requested',
   z.object({
     opportunityId: z.string(),
     requestedBy: z.string(),
@@ -49,7 +49,7 @@ export const opportunityConversionRequestedEvent = createEventDefinition(
 )
 
 export const opportunityConvertedToProjectEvent = createEventDefinition(
-  'opportunityConvertedToProject',
+  'opportunity-converted-to-project',
   z.object({
     opportunityId: z.string(),
     projectId: z.string(),

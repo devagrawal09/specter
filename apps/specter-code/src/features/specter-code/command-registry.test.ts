@@ -13,11 +13,18 @@ let workspaceRoot: string
 
 describe('OpenCode command registry', () => {
   beforeEach(async () => {
-    workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-commands-'))
-    await mkdir(path.join(workspaceRoot, '.opencode', 'commands'), { recursive: true })
-    await mkdir(path.join(workspaceRoot, '.opencode', 'skills', 'review-local'), {
+    workspaceRoot = await mkdtemp(
+      path.join(os.tmpdir(), 'specter-code-commands-'),
+    )
+    await mkdir(path.join(workspaceRoot, '.opencode', 'commands'), {
       recursive: true,
     })
+    await mkdir(
+      path.join(workspaceRoot, '.opencode', 'skills', 'review-local'),
+      {
+        recursive: true,
+      },
+    )
 
     await writeFile(
       path.join(workspaceRoot, '.opencode', 'opencode.jsonc'),
@@ -52,7 +59,13 @@ describe('OpenCode command registry', () => {
     )
 
     await writeFile(
-      path.join(workspaceRoot, '.opencode', 'skills', 'review-local', 'SKILL.md'),
+      path.join(
+        workspaceRoot,
+        '.opencode',
+        'skills',
+        'review-local',
+        'SKILL.md',
+      ),
       [
         '---',
         'name: review-local',
@@ -122,7 +135,10 @@ describe('OpenCode command registry', () => {
     expect(fix).toBeDefined()
 
     expect(
-      renderSpecterCodeCommandPrompt(fix!, 'src/app.ts with regression coverage'),
+      renderSpecterCodeCommandPrompt(
+        fix!,
+        'src/app.ts with regression coverage',
+      ),
     ).toBe('Fix src/app.ts and explain src/app.ts with regression coverage')
   })
 })

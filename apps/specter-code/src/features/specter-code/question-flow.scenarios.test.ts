@@ -7,7 +7,11 @@ import askQuestion from './ask-question/impl'
 import pendingQuestions from './pending-questions/impl'
 import replyQuestion from './reply-question/impl'
 
-const questionRegistrations = [askQuestion, replyQuestion, pendingQuestions] as const
+const questionRegistrations = [
+  askQuestion,
+  replyQuestion,
+  pendingQuestions,
+] as const
 const events = eventsForSliceImplementations(
   questionRegistrations,
   specterCodeEventDefinitions,

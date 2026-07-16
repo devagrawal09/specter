@@ -2,8 +2,7 @@ import { createQuerySlice, event } from '@specter-ts/core/spec'
 
 const sessionChildrenSpec = createQuerySlice('sessionChildren')
   .description('Lists child sessions forked from a parent session.')
-  .scenarios(
-{
+  .scenarios({
     description: 'Lists non-deleted children for the requested parent session.',
     given: [
       event('session-created', {
@@ -12,7 +11,10 @@ const sessionChildrenSpec = createQuerySlice('sessionChildren')
         title: 'Parent',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       }),
       event('session-created', {
         sessionId: 'session-child-1',
@@ -21,7 +23,10 @@ const sessionChildrenSpec = createQuerySlice('sessionChildren')
         title: 'Child one',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       }),
       event('session-created', {
         sessionId: 'session-child-2',
@@ -30,7 +35,10 @@ const sessionChildrenSpec = createQuerySlice('sessionChildren')
         title: 'Child two',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       }),
       event('session-created', {
         sessionId: 'session-other-child',
@@ -39,7 +47,10 @@ const sessionChildrenSpec = createQuerySlice('sessionChildren')
         title: 'Other child',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       }),
       event('session-updated', {
         sessionId: 'session-child-1',
@@ -56,10 +67,12 @@ const sessionChildrenSpec = createQuerySlice('sessionChildren')
         title: 'Renamed child',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       },
     ],
-  }
-  )
+  })
 
 export default sessionChildrenSpec

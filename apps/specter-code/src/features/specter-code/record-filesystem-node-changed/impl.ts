@@ -8,7 +8,8 @@ import {
 } from '../events'
 
 const recordFilesystemNodeChanged = recordFilesystemNodeChangedSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       scanId: z.string(),
       workspaceId: z.string(),
       path: z.string(),
@@ -17,7 +18,8 @@ const recordFilesystemNodeChanged = recordFilesystemNodeChangedSpec
       kind: z.enum(['file', 'directory']),
       sizeBytes: z.number().int().nonnegative().nullable(),
       modifiedAt: z.string().optional(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .apply(filesystemNodeDiscoveredEvent, async () => {})
   .handle(async (command) => {

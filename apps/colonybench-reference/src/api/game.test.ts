@@ -15,7 +15,9 @@ import {
   type ColonyBenchApiIntentLogEntry,
 } from './game'
 
-function snapshot(overrides: Partial<ColonyBenchWorldSnapshot> = {}): ColonyBenchWorldSnapshot {
+function snapshot(
+  overrides: Partial<ColonyBenchWorldSnapshot> = {},
+): ColonyBenchWorldSnapshot {
   return {
     runId: 'api-run',
     initialized: true,
@@ -93,13 +95,12 @@ describe('ColonyBench Screeps-like bot API', () => {
       'source-1',
       'source-2',
     ])
-    expect(game.rooms.sim.find(FIND_SOURCES).map((source) => source.id)).toEqual([
-      'source-1',
-      'source-2',
-    ])
-    expect(game.rooms.sim.find(FIND_CONSTRUCTION_SITES).map((site) => site.id)).toEqual([
-      'road-site-1',
-    ])
+    expect(
+      game.rooms.sim.find(FIND_SOURCES).map((source) => source.id),
+    ).toEqual(['source-1', 'source-2'])
+    expect(
+      game.rooms.sim.find(FIND_CONSTRUCTION_SITES).map((site) => site.id),
+    ).toEqual(['road-site-1'])
     expect(game.rooms.sim.getTerrainAt(-1, 1)).toBe('wall')
     expect(game.rooms.sim.getTerrainAt(0, 0)).toBe('plain')
   })
@@ -153,7 +154,11 @@ describe('ColonyBench Screeps-like bot API', () => {
       commands: adjacentCollector.commands,
       memory: {},
     })
-    expect(adjacentGame.creeps['worker-1']?.harvest(adjacentGame.rooms.sim.sources[0])).toBe(OK)
+    expect(
+      adjacentGame.creeps['worker-1']?.harvest(
+        adjacentGame.rooms.sim.sources[0],
+      ),
+    ).toBe(OK)
     expect(adjacentCollector.drain()).toEqual([
       { type: 'harvest', workerId: 'worker-1', sourceId: 'source-1' },
     ])
@@ -216,7 +221,6 @@ describe('ColonyBench Screeps-like bot API', () => {
     expect(collector.peek()).toEqual([])
   })
 
-
   test('controller API is separate from the spawn and gates upgrade range', () => {
     const collector = createBotCommandCollector()
     const game = createColonyBenchGame({
@@ -248,9 +252,9 @@ describe('ColonyBench Screeps-like bot API', () => {
       progress: 0,
       progressTotal: 10,
     })
-    expect(game.creeps['worker-1']?.upgradeController(game.rooms.sim.controller)).toBe(
-      ERR_NOT_IN_RANGE,
-    )
+    expect(
+      game.creeps['worker-1']?.upgradeController(game.rooms.sim.controller),
+    ).toBe(ERR_NOT_IN_RANGE)
     expect(collector.peek()).toEqual([])
   })
 
@@ -286,9 +290,15 @@ describe('ColonyBench Screeps-like bot API', () => {
       memory: {},
       apiIntents,
     })
-    const forgedSource = { id: 'forged-source', pos: { x: 0, y: 1 }, energy: 100 }
+    const forgedSource = {
+      id: 'forged-source',
+      pos: { x: 0, y: 1 },
+      energy: 100,
+    }
 
-    expect(game.creeps['worker-1']?.harvest(forgedSource)).toBe(ERR_INVALID_TARGET)
+    expect(game.creeps['worker-1']?.harvest(forgedSource)).toBe(
+      ERR_INVALID_TARGET,
+    )
     expect(collector.peek()).toEqual([])
     expect(apiIntents).toEqual([
       {
@@ -312,7 +322,9 @@ describe('ColonyBench Screeps-like bot API', () => {
             capacity: 10,
           },
         ],
-        roads: [{ id: 'road-1', position: { x: 1, y: 0 }, hits: 12, hitsMax: 20 }],
+        roads: [
+          { id: 'road-1', position: { x: 1, y: 0 }, hits: 12, hitsMax: 20 },
+        ],
       }),
       commands: collector.commands,
       memory: {},
@@ -333,7 +345,6 @@ describe('ColonyBench Screeps-like bot API', () => {
     ])
   })
 
-
   test('room.lookAt returns Screeps-like object stack for bots inspecting a cell', () => {
     const collector = createBotCommandCollector()
     const game = createColonyBenchGame({
@@ -346,7 +357,9 @@ describe('ColonyBench Screeps-like bot API', () => {
             capacity: 10,
           },
         ],
-        roads: [{ id: 'road-1', position: { x: 0, y: 0 }, hits: 12, hitsMax: 20 }],
+        roads: [
+          { id: 'road-1', position: { x: 0, y: 0 }, hits: 12, hitsMax: 20 },
+        ],
       }),
       commands: collector.commands,
       memory: {},
@@ -361,5 +374,4 @@ describe('ColonyBench Screeps-like bot API', () => {
       { type: 'terrain', terrain: 'wall' },
     ])
   })
-
 })

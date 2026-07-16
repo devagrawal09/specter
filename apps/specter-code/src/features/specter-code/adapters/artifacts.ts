@@ -45,7 +45,9 @@ type ArtifactMetadata = {
   preview: string
 }
 
-export function createFileArtifactStore(input: { rootDir: string }): FileArtifactStore {
+export function createFileArtifactStore(input: {
+  rootDir: string
+}): FileArtifactStore {
   const rootDir = path.resolve(input.rootDir)
   return { rootDir }
 }
@@ -56,10 +58,16 @@ export async function writeToolOutputArtifact(
 ): Promise<ToolOutputArtifactResult> {
   const maxInlineBytes = normalizeByteLimit(input.maxInlineBytes)
   const contentBytes = Buffer.from(input.content, 'utf8')
-  const inlineContent = contentBytes.subarray(0, maxInlineBytes).toString('utf8')
+  const inlineContent = contentBytes
+    .subarray(0, maxInlineBytes)
+    .toString('utf8')
 
   if (contentBytes.byteLength <= maxInlineBytes) {
-    return { inlineContent: input.content, truncated: false, artifact: undefined }
+    return {
+      inlineContent: input.content,
+      truncated: false,
+      artifact: undefined,
+    }
   }
 
   const artifactId = 'artifact-' + randomUUID()

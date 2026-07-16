@@ -114,38 +114,42 @@ const runRequestedFilesystemScan = runRequestedFilesystemScanSpec
       } as never)
     }
   })
-  .store(createMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
+  .store(
+    createMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
       requestedScans: [],
       startedScanIds: new Set(),
       terminalScanIds: new Set(),
-    })))
+    })),
+  )
   .apply(workspaceFilesystemScanRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      state.requestedScans.push({
-        scanId: payload.scanId,
-        workspaceId: payload.workspaceId,
-      })
+    const payload = event.payload
+    state.requestedScans.push({
+      scanId: payload.scanId,
+      workspaceId: payload.workspaceId,
     })
-  .apply(workspaceFilesystemScanStartedEvent, async (event, state) => {
-      const payload = event.payload
-      state.startedScanIds.add(payload.scanId)
-    })
-  .apply(workspaceFilesystemScanCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      state.terminalScanIds.add(payload.scanId)
-    })
-  .apply(workspaceFilesystemScanFailedEvent, async (event, state) => {
-      const payload = event.payload
-      state.terminalScanIds.add(payload.scanId)
-    })
-  .handle(async (state): Promise<RunWorkspaceFilesystemScanCommand | undefined> => {
-    const job = state.requestedScans.find(
-      (scan) =>
-        !state.startedScanIds.has(scan.scanId) &&
-        !state.terminalScanIds.has(scan.scanId),
-    )
-    if (!job) return undefined
-    return { type: 'runWorkspaceFilesystemScan', payload: job }
   })
+  .apply(workspaceFilesystemScanStartedEvent, async (event, state) => {
+    const payload = event.payload
+    state.startedScanIds.add(payload.scanId)
+  })
+  .apply(workspaceFilesystemScanCompletedEvent, async (event, state) => {
+    const payload = event.payload
+    state.terminalScanIds.add(payload.scanId)
+  })
+  .apply(workspaceFilesystemScanFailedEvent, async (event, state) => {
+    const payload = event.payload
+    state.terminalScanIds.add(payload.scanId)
+  })
+  .handle(
+    async (state): Promise<RunWorkspaceFilesystemScanCommand | undefined> => {
+      const job = state.requestedScans.find(
+        (scan) =>
+          !state.startedScanIds.has(scan.scanId) &&
+          !state.terminalScanIds.has(scan.scanId),
+      )
+      if (!job) return undefined
+      return { type: 'runWorkspaceFilesystemScan', payload: job }
+    },
+  )
 
 export default runRequestedFilesystemScan

@@ -59,7 +59,10 @@ export class PtySessionManager {
   constructor(private readonly options: PtySessionManagerOptions = {}) {}
 
   async start(input: PtyStartInput): Promise<PtySession> {
-    const cwd = await resolveShellWorkingDirectory(input.workspaceRoot, input.cwd)
+    const cwd = await resolveShellWorkingDirectory(
+      input.workspaceRoot,
+      input.cwd,
+    )
     const shell = input.shell ?? process.env.SHELL ?? '/bin/sh'
     const child = spawn(shell, [], {
       cwd: cwd.absolutePath,
@@ -86,9 +89,15 @@ export class PtySessionManager {
       sequence: 0,
     }
 
-    child.stdout.on('data', (chunk: Buffer) => this.#emitOutput(record, 'stdout', chunk))
-    child.stderr.on('data', (chunk: Buffer) => this.#emitOutput(record, 'stderr', chunk))
-    child.on('error', (error) => this.#emitOutput(record, 'stderr', Buffer.from(error.message)))
+    child.stdout.on('data', (chunk: Buffer) =>
+      this.#emitOutput(record, 'stdout', chunk),
+    )
+    child.stderr.on('data', (chunk: Buffer) =>
+      this.#emitOutput(record, 'stderr', chunk),
+    )
+    child.on('error', (error) =>
+      this.#emitOutput(record, 'stderr', Buffer.from(error.message)),
+    )
     child.on('close', (exitCode, signal) => {
       if (record.status !== 'running') return
       const endedAt = new Date().toISOString()
@@ -118,7 +127,8 @@ export class PtySessionManager {
 
   write(ptySessionId: string, data: string) {
     const session = this.#get(ptySessionId)
-    if (session.status !== 'running') throw new Error('PTY session is not running')
+    if (session.status !== 'running')
+      throw new Error('PTY session is not running')
     session.child.stdin.write(data)
   }
 
@@ -167,6 +177,8 @@ const toPublicSession = (record: PtyRecord): PtySession => ({
   endedAt: record.endedAt,
 })
 
-export function createPtySessionManager(options: PtySessionManagerOptions = {}) {
+export function createPtySessionManager(
+  options: PtySessionManagerOptions = {},
+) {
   return new PtySessionManager(options)
 }

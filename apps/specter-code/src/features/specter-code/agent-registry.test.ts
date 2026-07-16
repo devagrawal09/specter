@@ -69,9 +69,15 @@ describe('createAgentRegistry', () => {
         }),
       ]),
     )
-    expect(registry.listAgents().map((agent) => agent.id)).not.toContain('disabled')
+    expect(registry.listAgents().map((agent) => agent.id)).not.toContain(
+      'disabled',
+    )
     expect(registry.resolveDefaultAgent()).toEqual(
-      expect.objectContaining({ id: 'reviewer', mode: 'primary', default: true }),
+      expect.objectContaining({
+        id: 'reviewer',
+        mode: 'primary',
+        default: true,
+      }),
     )
   })
 
@@ -91,7 +97,11 @@ describe('createAgentRegistry', () => {
     expect(registry.resolveDefaultAgent()).toEqual(
       expect.objectContaining({ id: 'build', mode: 'primary', default: true }),
     )
-    expect(registry.listPrimaryAgents().map((agent) => agent.id)).toContain('build')
-    expect(registry.listPrimaryAgents().map((agent) => agent.id)).not.toContain('researcher')
+    expect(registry.listPrimaryAgents().map((agent) => agent.id)).toContain(
+      'build',
+    )
+    expect(registry.listPrimaryAgents().map((agent) => agent.id)).not.toContain(
+      'researcher',
+    )
   })
 })

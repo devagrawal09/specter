@@ -199,7 +199,9 @@ export function recomputeWorldScore(world: ColonyBenchWorld) {
   world.score = (world.base.level - 1) * 100
 }
 
-export function clonePosition(position: ColonyBenchPosition): ColonyBenchPosition {
+export function clonePosition(
+  position: ColonyBenchPosition,
+): ColonyBenchPosition {
   return { x: position.x, y: position.y }
 }
 
@@ -263,7 +265,9 @@ export function cloneRoad(road: ColonyBenchRoad): ColonyBenchRoad {
   }
 }
 
-export function cloneTerrainTile(tile: ColonyBenchTerrainTile): ColonyBenchTerrainTile {
+export function cloneTerrainTile(
+  tile: ColonyBenchTerrainTile,
+): ColonyBenchTerrainTile {
   return {
     id: tile.id,
     position: clonePosition(tile.position),
@@ -299,13 +303,19 @@ export function snapshotWorld(
     score: world.score,
     base: cloneBase(world.base),
     controller: cloneController(world.controller),
-    workers: world.workerOrder.map((workerId) => cloneWorker(world.workers[workerId])),
-    sources: world.sourceOrder.map((sourceId) => cloneSource(world.sources[sourceId])),
+    workers: world.workerOrder.map((workerId) =>
+      cloneWorker(world.workers[workerId]),
+    ),
+    sources: world.sourceOrder.map((sourceId) =>
+      cloneSource(world.sources[sourceId]),
+    ),
     constructionSites: world.constructionSiteOrder.map((siteId) =>
       cloneConstructionSite(world.constructionSites[siteId]),
     ),
     roads: world.roadOrder.map((roadId) => cloneRoad(world.roads[roadId])),
-    terrain: world.terrainOrder.map((tileId) => cloneTerrainTile(world.terrain[tileId])),
+    terrain: world.terrainOrder.map((tileId) =>
+      cloneTerrainTile(world.terrain[tileId]),
+    ),
     recentEvents: world.recentEvents.map((event) => ({
       type: event.type,
       payload: event.payload,

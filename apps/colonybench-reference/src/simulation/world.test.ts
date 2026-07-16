@@ -11,13 +11,15 @@ function createSimulationApp() {
   })
 }
 
-function lastRecentEvent(snapshot: { recentEvents: { type: string; payload: unknown }[] }) {
+function lastRecentEvent(snapshot: {
+  recentEvents: { type: string; payload: unknown }[]
+}) {
   return snapshot.recentEvents[snapshot.recentEvents.length - 1]
 }
 
 describe('ColonyBench v0 simulation world', () => {
   test('initializeSimulation creates a deterministic tick 0 world', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
 
     await simulationApp.initializeSimulation({ runId: 'sim-init' })
 
@@ -49,7 +51,7 @@ describe('ColonyBench v0 simulation world', () => {
       ],
       recentEvents: [
         {
-          type: 'colonybenchSimulationInitialized',
+          type: 'colonybench-simulation-initialized',
           payload: { runId: 'sim-init' },
         },
       ],
@@ -57,7 +59,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('initial world exposes a separate room controller for Screeps-like upgrading', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
 
     await simulationApp.initializeSimulation({ runId: 'sim-controller' })
 
@@ -74,9 +76,8 @@ describe('ColonyBench v0 simulation world', () => {
     })
   })
 
-
   test('moveWorker rejects a step into wall terrain and leaves the worker in place', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-wall' })
 
     await simulationApp.moveWorker({
@@ -85,7 +86,9 @@ describe('ColonyBench v0 simulation world', () => {
       target: { x: -1, y: 1 },
     })
 
-    const snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-wall' })
+    const snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-wall',
+    })
     expect(snapshot.terrain).toEqual([
       { id: 'wall-1', position: { x: -1, y: 1 }, terrain: 'wall' },
     ])
@@ -94,7 +97,7 @@ describe('ColonyBench v0 simulation world', () => {
       position: { x: 0, y: 1 },
     })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchCommandRejected',
+      type: 'colonybench-command-rejected',
       payload: {
         runId: 'sim-wall',
         command: 'moveWorker',
@@ -104,7 +107,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('moveWorker emits WorkerMoved and moves one step toward the target', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-move' })
 
     await simulationApp.moveWorker({
@@ -113,13 +116,15 @@ describe('ColonyBench v0 simulation world', () => {
       target: { x: 2, y: 1 },
     })
 
-    const snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-move' })
+    const snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-move',
+    })
     expect(snapshot.workers[0]).toMatchObject({
       id: 'worker-1',
       position: { x: 1, y: 1 },
     })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchWorkerMoved',
+      type: 'colonybench-worker-moved',
       payload: {
         runId: 'sim-move',
         workerId: 'worker-1',
@@ -131,7 +136,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('harvestEnergy requires adjacency; success transfers energy from source to worker', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-harvest' })
 
     await simulationApp.harvestEnergy({
@@ -140,11 +145,13 @@ describe('ColonyBench v0 simulation world', () => {
       sourceId: 'source-1',
     })
 
-    let snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-harvest' })
+    let snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-harvest',
+    })
     expect(snapshot.workers[0]).toMatchObject({ energy: 0 })
     expect(snapshot.sources[0]).toMatchObject({ energy: 100 })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchCommandRejected',
+      type: 'colonybench-command-rejected',
       payload: {
         runId: 'sim-harvest',
         command: 'harvestEnergy',
@@ -167,7 +174,7 @@ describe('ColonyBench v0 simulation world', () => {
     expect(snapshot.workers[0]).toMatchObject({ energy: 5 })
     expect(snapshot.sources[0]).toMatchObject({ energy: 95 })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchWorkerHarvested',
+      type: 'colonybench-worker-harvested',
       payload: {
         runId: 'sim-harvest',
         workerId: 'worker-1',
@@ -178,7 +185,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('depositEnergy transfers carried energy into the adjacent base', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-deposit' })
     await simulationApp.moveWorker({
       runId: 'sim-deposit',
@@ -201,11 +208,13 @@ describe('ColonyBench v0 simulation world', () => {
       workerId: 'worker-1',
     })
 
-    const snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-deposit' })
+    const snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-deposit',
+    })
     expect(snapshot.base).toMatchObject({ energy: 5 })
     expect(snapshot.workers[0]).toMatchObject({ energy: 0 })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchWorkerDeposited',
+      type: 'colonybench-worker-deposited',
       payload: {
         runId: 'sim-deposit',
         workerId: 'worker-1',
@@ -215,7 +224,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('upgradeBase consumes worker energy/progress and upgrades at the threshold', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-upgrade' })
     await simulationApp.moveWorker({
       runId: 'sim-upgrade',
@@ -243,7 +252,9 @@ describe('ColonyBench v0 simulation world', () => {
       workerId: 'worker-1',
     })
 
-    const snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-upgrade' })
+    const snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-upgrade',
+    })
     expect(snapshot.base).toMatchObject({
       level: 2,
       upgradeProgress: 0,
@@ -251,7 +262,7 @@ describe('ColonyBench v0 simulation world', () => {
     expect(snapshot.workers[0]).toMatchObject({ energy: 0 })
     expect(snapshot.score).toBe(100)
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchBaseUpgraded',
+      type: 'colonybench-base-upgraded',
       payload: {
         runId: 'sim-upgrade',
         workerId: 'worker-1',
@@ -262,7 +273,7 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('spawnWorker spends base energy and creates deterministic worker IDs', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-spawn' })
     await simulationApp.moveWorker({
       runId: 'sim-spawn',
@@ -289,9 +300,14 @@ describe('ColonyBench v0 simulation world', () => {
       workerId: 'worker-1',
     })
 
-    await simulationApp.spawnWorker({ runId: 'sim-spawn' })
+    await simulationApp.spawnWorker({
+      runId: 'sim-spawn',
+      workerId: 'worker-2',
+    })
 
-    const snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-spawn' })
+    const snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-spawn',
+    })
     expect(snapshot.base).toMatchObject({ energy: 0 })
     expect(snapshot.workers).toEqual([
       expect.objectContaining({ id: 'worker-1' }),
@@ -303,13 +319,13 @@ describe('ColonyBench v0 simulation world', () => {
       }),
     ])
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchWorkerSpawned',
+      type: 'colonybench-worker-spawned',
       payload: { runId: 'sim-spawn', workerId: 'worker-2', cost: 10 },
     })
   })
 
   test('advanceTick regenerates depleted sources with a visible event summary', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-regenerate' })
 
     for (let count = 0; count < 20; count += 1) {
@@ -334,15 +350,19 @@ describe('ColonyBench v0 simulation world', () => {
       })
     }
 
-    let snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-regenerate' })
+    let snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-regenerate',
+    })
     expect(snapshot.sources[0]).toMatchObject({ id: 'source-1', energy: 0 })
 
     await simulationApp.advanceTick({ runId: 'sim-regenerate' })
 
-    snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-regenerate' })
+    snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-regenerate',
+    })
     expect(snapshot.sources[0]).toMatchObject({ id: 'source-1', energy: 2 })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchTickAdvanced',
+      type: 'colonybench-tick-advanced',
       payload: {
         runId: 'sim-regenerate',
         tick: expect.any(Number),
@@ -352,10 +372,12 @@ describe('ColonyBench v0 simulation world', () => {
   })
 
   test('liveWorldSnapshot subscriptions yield updated snapshots after granular events', async () => {
-    const simulationApp = createSimulationApp()
-    const subscription = simulationApp.subscribe.liveWorldSnapshot({
-      runId: 'sim-live',
-    })[Symbol.asyncIterator]()
+    const simulationApp = await createSimulationApp()
+    const subscription = simulationApp.subscribe
+      .liveWorldSnapshot({
+        runId: 'sim-live',
+      })
+      [Symbol.asyncIterator]()
 
     await expect(subscription.next()).resolves.toEqual({
       done: false,
@@ -375,7 +397,9 @@ describe('ColonyBench v0 simulation world', () => {
         initialized: true,
         workers: [expect.objectContaining({ id: 'worker-1' })],
         recentEvents: [
-          expect.objectContaining({ type: 'colonybenchSimulationInitialized' }),
+          expect.objectContaining({
+            type: 'colonybench-simulation-initialized',
+          }),
         ],
       }),
     })
@@ -395,7 +419,7 @@ describe('ColonyBench v0 simulation world', () => {
           }),
         ],
         recentEvents: expect.arrayContaining([
-          expect.objectContaining({ type: 'colonybenchWorkerMoved' }),
+          expect.objectContaining({ type: 'colonybench-worker-moved' }),
         ]),
       }),
     })
@@ -403,12 +427,13 @@ describe('ColonyBench v0 simulation world', () => {
     await subscription.return?.()
   })
 
-
   test('buildConstructionSite turns worker energy into road progress and completes roads', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-build-road' })
 
-    let snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-build-road' })
+    let snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-build-road',
+    })
     expect(snapshot.constructionSites).toEqual([
       {
         id: 'road-site-1',
@@ -420,10 +445,26 @@ describe('ColonyBench v0 simulation world', () => {
     ])
     expect(snapshot.roads).toEqual([])
 
-    await simulationApp.moveWorker({ runId: 'sim-build-road', workerId: 'worker-1', target: { x: 2, y: 1 } })
-    await simulationApp.harvestEnergy({ runId: 'sim-build-road', workerId: 'worker-1', sourceId: 'source-1' })
-    await simulationApp.harvestEnergy({ runId: 'sim-build-road', workerId: 'worker-1', sourceId: 'source-1' })
-    await simulationApp.moveWorker({ runId: 'sim-build-road', workerId: 'worker-1', target: { x: 1, y: 0 } })
+    await simulationApp.moveWorker({
+      runId: 'sim-build-road',
+      workerId: 'worker-1',
+      target: { x: 2, y: 1 },
+    })
+    await simulationApp.harvestEnergy({
+      runId: 'sim-build-road',
+      workerId: 'worker-1',
+      sourceId: 'source-1',
+    })
+    await simulationApp.harvestEnergy({
+      runId: 'sim-build-road',
+      workerId: 'worker-1',
+      sourceId: 'source-1',
+    })
+    await simulationApp.moveWorker({
+      runId: 'sim-build-road',
+      workerId: 'worker-1',
+      target: { x: 1, y: 0 },
+    })
 
     await simulationApp.buildConstructionSite({
       runId: 'sim-build-road',
@@ -431,11 +472,16 @@ describe('ColonyBench v0 simulation world', () => {
       siteId: 'road-site-1',
     })
 
-    snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-build-road' })
+    snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-build-road',
+    })
     expect(snapshot.workers[0]).toMatchObject({ energy: 5 })
-    expect(snapshot.constructionSites[0]).toMatchObject({ id: 'road-site-1', progress: 5 })
+    expect(snapshot.constructionSites[0]).toMatchObject({
+      id: 'road-site-1',
+      progress: 5,
+    })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchConstructionSiteBuilt',
+      type: 'colonybench-construction-site-built',
       payload: {
         runId: 'sim-build-road',
         workerId: 'worker-1',
@@ -452,14 +498,16 @@ describe('ColonyBench v0 simulation world', () => {
       siteId: 'road-site-1',
     })
 
-    snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-build-road' })
+    snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-build-road',
+    })
     expect(snapshot.workers[0]).toMatchObject({ energy: 0 })
     expect(snapshot.constructionSites).toEqual([])
     expect(snapshot.roads).toEqual([
       { id: 'road-1', position: { x: 1, y: 0 }, hits: 20, hitsMax: 20 },
     ])
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchRoadCompleted',
+      type: 'colonybench-road-completed',
       payload: {
         runId: 'sim-build-road',
         siteId: 'road-site-1',
@@ -469,46 +517,104 @@ describe('ColonyBench v0 simulation world', () => {
     })
   })
 
-
   test('roads decay each tick and adjacent workers can repair them with carried energy', async () => {
-    const simulationApp = createSimulationApp()
+    const simulationApp = await createSimulationApp()
     await simulationApp.initializeSimulation({ runId: 'sim-repair-road' })
 
-    await simulationApp.moveWorker({ runId: 'sim-repair-road', workerId: 'worker-1', target: { x: 2, y: 1 } })
-    await simulationApp.harvestEnergy({ runId: 'sim-repair-road', workerId: 'worker-1', sourceId: 'source-1' })
-    await simulationApp.harvestEnergy({ runId: 'sim-repair-road', workerId: 'worker-1', sourceId: 'source-1' })
-    await simulationApp.moveWorker({ runId: 'sim-repair-road', workerId: 'worker-1', target: { x: 1, y: 0 } })
-    await simulationApp.buildConstructionSite({ runId: 'sim-repair-road', workerId: 'worker-1', siteId: 'road-site-1' })
-    await simulationApp.buildConstructionSite({ runId: 'sim-repair-road', workerId: 'worker-1', siteId: 'road-site-1' })
+    await simulationApp.moveWorker({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      target: { x: 2, y: 1 },
+    })
+    await simulationApp.harvestEnergy({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      sourceId: 'source-1',
+    })
+    await simulationApp.harvestEnergy({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      sourceId: 'source-1',
+    })
+    await simulationApp.moveWorker({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      target: { x: 1, y: 0 },
+    })
+    await simulationApp.buildConstructionSite({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      siteId: 'road-site-1',
+    })
+    await simulationApp.buildConstructionSite({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      siteId: 'road-site-1',
+    })
 
-    let snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-repair-road' })
+    let snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-repair-road',
+    })
     expect(snapshot.roads).toEqual([
       { id: 'road-1', position: { x: 1, y: 0 }, hits: 20, hitsMax: 20 },
     ])
 
     await simulationApp.advanceTick({ runId: 'sim-repair-road' })
-    snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-repair-road' })
-    expect(snapshot.roads[0]).toMatchObject({ id: 'road-1', hits: 19, hitsMax: 20 })
+    snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-repair-road',
+    })
+    expect(snapshot.roads[0]).toMatchObject({
+      id: 'road-1',
+      hits: 19,
+      hitsMax: 20,
+    })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchTickAdvanced',
+      type: 'colonybench-tick-advanced',
       payload: {
         runId: 'sim-repair-road',
         decayedRoads: [{ roadId: 'road-1', amount: 1, hits: 19 }],
       },
     })
 
-    await simulationApp.moveWorker({ runId: 'sim-repair-road', workerId: 'worker-1', target: { x: 2, y: 1 } })
-    await simulationApp.harvestEnergy({ runId: 'sim-repair-road', workerId: 'worker-1', sourceId: 'source-1' })
-    await simulationApp.moveWorker({ runId: 'sim-repair-road', workerId: 'worker-1', target: { x: 1, y: 0 } })
-    await simulationApp.repairRoad({ runId: 'sim-repair-road', workerId: 'worker-1', roadId: 'road-1' })
+    await simulationApp.moveWorker({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      target: { x: 2, y: 1 },
+    })
+    await simulationApp.harvestEnergy({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      sourceId: 'source-1',
+    })
+    await simulationApp.moveWorker({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      target: { x: 1, y: 0 },
+    })
+    await simulationApp.repairRoad({
+      runId: 'sim-repair-road',
+      workerId: 'worker-1',
+      roadId: 'road-1',
+    })
 
-    snapshot = await simulationApp.liveWorldSnapshot({ runId: 'sim-repair-road' })
-    expect(snapshot.roads[0]).toMatchObject({ id: 'road-1', hits: 20, hitsMax: 20 })
+    snapshot = await simulationApp.liveWorldSnapshot({
+      runId: 'sim-repair-road',
+    })
+    expect(snapshot.roads[0]).toMatchObject({
+      id: 'road-1',
+      hits: 20,
+      hitsMax: 20,
+    })
     expect(snapshot.workers[0]).toMatchObject({ energy: 4 })
     expect(lastRecentEvent(snapshot)).toMatchObject({
-      type: 'colonybenchRoadRepaired',
-      payload: { runId: 'sim-repair-road', workerId: 'worker-1', roadId: 'road-1', amount: 1, hits: 20 },
+      type: 'colonybench-road-repaired',
+      payload: {
+        runId: 'sim-repair-road',
+        workerId: 'worker-1',
+        roadId: 'road-1',
+        amount: 1,
+        hits: 20,
+      },
     })
   })
-
 })

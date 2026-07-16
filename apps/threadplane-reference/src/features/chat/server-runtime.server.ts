@@ -1,54 +1,54 @@
-import { createSpecterApp } from "@specter-ts/core";
+import { createSpecterApp } from '@specter-ts/core'
 
-import { runWithThreadplaneReferenceDb } from "../../db/client.server";
-import { threadplaneReferenceSpecterAppConfig } from "./registry";
+import { runWithThreadplaneReferenceDb } from '../../db/client.server'
+import { threadplaneReferenceSpecterAppConfig } from './registry'
 
-const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig);
+const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
 
 const defaultWorkspace = {
-  workspaceId: "workspace-main",
-  name: "Main Workspace",
-};
+  workspaceId: 'workspace-main',
+  name: 'Main Workspace',
+}
 
 async function ensureDefaultWorkspace() {
-  const workspaces = await app.workspacesQuery({});
+  const workspaces = await app.workspacesQuery({})
 
   if (
     !workspaces.some(
       (workspace) => workspace.id === defaultWorkspace.workspaceId,
     )
   ) {
-    await app.createWorkspace(defaultWorkspace);
+    await app.createWorkspace(defaultWorkspace)
   }
 }
 
 export async function postChatMessageOnServer(data: {
-  workspaceId: string;
-  authorName: string;
-  content: string;
+  workspaceId: string
+  authorName: string
+  content: string
 }) {
   await runWithThreadplaneReferenceDb(() =>
     app.postMessage({ ...data, messageId: crypto.randomUUID() }),
-  );
+  )
 }
 
 export async function listWorkspaceMessagesOnServer(data: {
-  workspaceId: string;
+  workspaceId: string
 }) {
-  return runWithThreadplaneReferenceDb(() => app.chatMessagesQuery(data));
+  return runWithThreadplaneReferenceDb(() => app.chatMessagesQuery(data))
 }
 
 export async function createWorkspaceOnServer(data: { name: string }) {
   return runWithThreadplaneReferenceDb(async () => {
-    await ensureDefaultWorkspace();
-    await app.createWorkspace({ ...data, workspaceId: crypto.randomUUID() });
-    return app.workspacesQuery({});
-  });
+    await ensureDefaultWorkspace()
+    await app.createWorkspace({ ...data, workspaceId: crypto.randomUUID() })
+    return app.workspacesQuery({})
+  })
 }
 
 export async function listWorkspacesOnServer() {
   return runWithThreadplaneReferenceDb(async () => {
-    await ensureDefaultWorkspace();
-    return app.workspacesQuery({});
-  });
+    await ensureDefaultWorkspace()
+    return app.workspacesQuery({})
+  })
 }

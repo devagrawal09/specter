@@ -428,8 +428,14 @@ export type SpecterCodeApiRuntime = {
     modelId: string
     auto?: boolean
   }): Promise<boolean | unknown>
-  compactSession(input: { sessionId: string; workspaceRoot: string }): Promise<void>
-  waitForSession(input: { sessionId: string; workspaceRoot: string }): Promise<void>
+  compactSession(input: {
+    sessionId: string
+    workspaceRoot: string
+  }): Promise<void>
+  waitForSession(input: {
+    sessionId: string
+    workspaceRoot: string
+  }): Promise<void>
   runSessionShell(input: {
     sessionId: string
     messageId?: string
@@ -556,20 +562,28 @@ export type SpecterCodeApiRuntime = {
   disposeGlobal(input: { workspaceRoot?: string }): Promise<boolean | unknown>
   upgradeGlobal(input: {
     target?: string
-  }): Promise<{ success: true; version: string } | { success: false; error: string } | unknown>
+  }): Promise<
+    | { success: true; version: string }
+    | { success: false; error: string }
+    | unknown
+  >
   writeLogEntry(input: {
     service: string
     level: OpenCodeLogLevel
     message: string
     extra?: JsonRecord
   }): Promise<boolean | unknown>
-  listSyncHistory(input: Record<string, number>): Promise<readonly OpenCodeSyncEvent[] | unknown>
+  listSyncHistory(
+    input: Record<string, number>,
+  ): Promise<readonly OpenCodeSyncEvent[] | unknown>
   replaySyncEvents(input: {
     directory: string
     events: OpenCodeReplaySyncEvent[]
   }): Promise<{ sessionID: string } | unknown>
   startSync(input: { workspaceRoot: string }): Promise<boolean | unknown>
-  stealSyncSession(input: { sessionId: string }): Promise<{ sessionID: string } | unknown>
+  stealSyncSession(input: {
+    sessionId: string
+  }): Promise<{ sessionID: string } | unknown>
 }
 
 export const INITIAL_OPENCODE_API_ROUTES = [
@@ -676,10 +690,22 @@ export const INITIAL_OPENCODE_API_ROUTES = [
   { method: 'GET', normalizedPath: '/session/:sessionID/diff' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message' },
   { method: 'GET', normalizedPath: '/session/:sessionID/message/:messageID' },
-  { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID' },
-  { method: 'PATCH', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
-  { method: 'DELETE', normalizedPath: '/session/:sessionID/message/:messageID/part/:partID' },
-  { method: 'POST', normalizedPath: '/session/:sessionID/permissions/:permissionID' },
+  {
+    method: 'DELETE',
+    normalizedPath: '/session/:sessionID/message/:messageID',
+  },
+  {
+    method: 'PATCH',
+    normalizedPath: '/session/:sessionID/message/:messageID/part/:partID',
+  },
+  {
+    method: 'DELETE',
+    normalizedPath: '/session/:sessionID/message/:messageID/part/:partID',
+  },
+  {
+    method: 'POST',
+    normalizedPath: '/session/:sessionID/permissions/:permissionID',
+  },
   { method: 'POST', normalizedPath: '/session/:sessionID/prompt_async' },
   { method: 'POST', normalizedPath: '/session/:sessionID/revert' },
   { method: 'POST', normalizedPath: '/session/:sessionID/share' },
@@ -764,13 +790,17 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'POST' && pathname === '/instance/dispose') {
     return jsonResponse(
-      await runtime.disposeGlobal({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+      await runtime.disposeGlobal({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
     )
   }
 
   if (method === 'POST' && pathname === '/global/upgrade') {
     const body = await readJsonBody(request)
-    return jsonResponse(await runtime.upgradeGlobal({ target: optionalString(body.target) }))
+    return jsonResponse(
+      await runtime.upgradeGlobal({ target: optionalString(body.target) }),
+    )
   }
 
   if (method === 'POST' && pathname === '/log') {
@@ -786,7 +816,11 @@ async function dispatchOpenCodeApiRequest(
   }
 
   if (method === 'POST' && pathname === '/sync/history') {
-    return jsonResponse(await runtime.listSyncHistory(readSyncHistoryCursor(await readJsonBody(request))))
+    return jsonResponse(
+      await runtime.listSyncHistory(
+        readSyncHistoryCursor(await readJsonBody(request)),
+      ),
+    )
   }
 
   if (method === 'POST' && pathname === '/sync/replay') {
@@ -801,7 +835,9 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'POST' && pathname === '/sync/start') {
     return jsonResponse(
-      await runtime.startSync({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+      await runtime.startSync({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
     )
   }
 
@@ -839,7 +875,9 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/experimental/console/orgs') {
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).listExperimentalConsoleOrgs({
+      await experimentalCompatibilityRuntime(
+        runtime,
+      ).listExperimentalConsoleOrgs({
         workspaceRoot: workspaceRootFromFindQuery(url),
       }),
     )
@@ -848,7 +886,9 @@ async function dispatchOpenCodeApiRequest(
   if (method === 'POST' && pathname === '/experimental/console/switch') {
     const body = await readJsonBody(request)
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).switchExperimentalConsoleOrg({
+      await experimentalCompatibilityRuntime(
+        runtime,
+      ).switchExperimentalConsoleOrg({
         workspaceRoot: workspaceRootFromFindQuery(url),
         accountId: requiredString(body.accountID, 'accountID'),
         orgId: requiredString(body.orgID, 'orgID'),
@@ -866,24 +906,30 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/experimental/resource') {
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).listExperimentalResources({
-        workspaceRoot: workspaceRootFromFindQuery(url),
-      }),
+      await experimentalCompatibilityRuntime(runtime).listExperimentalResources(
+        {
+          workspaceRoot: workspaceRootFromFindQuery(url),
+        },
+      ),
     )
   }
 
   if (method === 'GET' && pathname === '/experimental/worktree') {
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).listExperimentalWorktrees({
-        workspaceRoot: workspaceRootFromFindQuery(url),
-      }),
+      await experimentalCompatibilityRuntime(runtime).listExperimentalWorktrees(
+        {
+          workspaceRoot: workspaceRootFromFindQuery(url),
+        },
+      ),
     )
   }
 
   if (method === 'POST' && pathname === '/experimental/worktree') {
     const body = await readJsonBody(request)
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).createExperimentalWorktree({
+      await experimentalCompatibilityRuntime(
+        runtime,
+      ).createExperimentalWorktree({
         workspaceRoot: workspaceRootFromFindQuery(url),
         name: optionalString(body.name),
         startCommand: optionalString(body.startCommand),
@@ -894,7 +940,9 @@ async function dispatchOpenCodeApiRequest(
   if (method === 'DELETE' && pathname === '/experimental/worktree') {
     const body = await readJsonBody(request)
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).removeExperimentalWorktree({
+      await experimentalCompatibilityRuntime(
+        runtime,
+      ).removeExperimentalWorktree({
         workspaceRoot: workspaceRootFromFindQuery(url),
         directory: requiredString(body.directory, 'directory'),
       }),
@@ -904,10 +952,12 @@ async function dispatchOpenCodeApiRequest(
   if (method === 'POST' && pathname === '/experimental/worktree/reset') {
     const body = await readJsonBody(request)
     return jsonResponse(
-      await experimentalCompatibilityRuntime(runtime).resetExperimentalWorktree({
-        workspaceRoot: workspaceRootFromFindQuery(url),
-        directory: requiredString(body.directory, 'directory'),
-      }),
+      await experimentalCompatibilityRuntime(runtime).resetExperimentalWorktree(
+        {
+          workspaceRoot: workspaceRootFromFindQuery(url),
+          directory: requiredString(body.directory, 'directory'),
+        },
+      ),
     )
   }
 
@@ -931,7 +981,9 @@ async function dispatchOpenCodeApiRequest(
 
   if (method === 'GET' && pathname === '/experimental/workspace/adapter') {
     return jsonResponse(
-      await experimentalWorkspaceRuntime(runtime).listExperimentalWorkspaceAdapters({
+      await experimentalWorkspaceRuntime(
+        runtime,
+      ).listExperimentalWorkspaceAdapters({
         workspaceRoot: workspaceRootFromFindQuery(url),
       }),
     )
@@ -992,13 +1044,17 @@ async function dispatchOpenCodeApiRequest(
         optionalString(body.workspaceID) ??
         optionalString(body.workspaceId) ??
         experimentalWorkspaceIdFromQuery(url),
-      sessionId: optionalString(body.sessionID) ?? optionalString(body.sessionId),
+      sessionId:
+        optionalString(body.sessionID) ?? optionalString(body.sessionId),
       copyChanges: optionalBoolean(body.copyChanges) ?? false,
     })
     return noContentResponse()
   }
 
-  const experimentalWorkspaceMatch = matchPath(pathname, '/experimental/workspace/:id')
+  const experimentalWorkspaceMatch = matchPath(
+    pathname,
+    '/experimental/workspace/:id',
+  )
   if (method === 'DELETE' && experimentalWorkspaceMatch) {
     return jsonResponse(
       await experimentalWorkspaceRuntime(runtime).deleteExperimentalWorkspace({
@@ -1008,17 +1064,25 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const experimentalWorkspaceStatusMatch = matchPath(pathname, '/experimental/workspace/:id/status')
+  const experimentalWorkspaceStatusMatch = matchPath(
+    pathname,
+    '/experimental/workspace/:id/status',
+  )
   if (method === 'GET' && experimentalWorkspaceStatusMatch) {
     return jsonResponse(
-      await experimentalWorkspaceRuntime(runtime).getExperimentalWorkspaceStatus({
+      await experimentalWorkspaceRuntime(
+        runtime,
+      ).getExperimentalWorkspaceStatus({
         workspaceRoot: workspaceRootFromFindQuery(url),
         workspaceId: experimentalWorkspaceStatusMatch.id,
       }),
     )
   }
 
-  const experimentalWorkspaceWarpMatch = matchPath(pathname, '/experimental/workspace/:id/warp')
+  const experimentalWorkspaceWarpMatch = matchPath(
+    pathname,
+    '/experimental/workspace/:id/warp',
+  )
   if (method === 'POST' && experimentalWorkspaceWarpMatch) {
     await experimentalWorkspaceRuntime(runtime).warpExperimentalWorkspace({
       workspaceRoot: workspaceRootFromFindQuery(url),
@@ -1027,7 +1091,10 @@ async function dispatchOpenCodeApiRequest(
     return noContentResponse()
   }
 
-  if (method === 'GET' && (pathname === '/api/provider' || pathname === '/api/model')) {
+  if (
+    method === 'GET' &&
+    (pathname === '/api/provider' || pathname === '/api/model')
+  ) {
     return jsonResponse(
       await runtime.listProviders({
         workspaceRoot: optionalQuery(url, 'workspaceRoot'),
@@ -1132,7 +1199,10 @@ async function dispatchOpenCodeApiRequest(
   }
 
   const sessionMessageMatch = matchPath(pathname, '/session/:sessionID/message')
-  const apiSessionMessageMatch = matchPath(pathname, '/api/session/:sessionID/message')
+  const apiSessionMessageMatch = matchPath(
+    pathname,
+    '/api/session/:sessionID/message',
+  )
   const transcriptMatch = sessionMessageMatch ?? apiSessionMessageMatch
   if (method === 'GET' && transcriptMatch) {
     return jsonResponse(
@@ -1196,13 +1266,16 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.createSessionMessage({
         sessionId: sessionMessageMatch.sessionID,
-        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        messageId:
+          optionalString(body.messageID) ?? optionalString(body.messageId),
         content: readMessagePartsText(body.parts),
         agentId,
         agentName: optionalString(body.agentName) ?? agentId,
         model: readOptionalOpenCodeModel(body.model),
         noReply: optionalBoolean(body.noReply),
-        submittedBy: readActor(body.submittedBy) ?? { displayName: 'OpenCode API' },
+        submittedBy: readActor(body.submittedBy) ?? {
+          displayName: 'OpenCode API',
+        },
       }),
     )
   }
@@ -1220,10 +1293,12 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.executeSessionCommand({
         sessionId: sessionCommandMatch.sessionID,
-        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        messageId:
+          optionalString(body.messageID) ?? optionalString(body.messageId),
         workspaceRoot: workspaceRootFromFindQuery(url),
         command: requiredString(body.command ?? body.name, 'command'),
-        arguments: optionalString(body.arguments) ?? optionalString(body.argument),
+        arguments:
+          optionalString(body.arguments) ?? optionalString(body.argument),
         agentId: optionalString(body.agent),
         model: readOptionalOpenCodeModel(body.model),
       }),
@@ -1245,7 +1320,10 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const sessionSummarizeMatch = matchPath(pathname, '/session/:sessionID/summarize')
+  const sessionSummarizeMatch = matchPath(
+    pathname,
+    '/session/:sessionID/summarize',
+  )
   if (method === 'POST' && sessionSummarizeMatch) {
     const body = await readJsonBody(request)
     const model = readOpenCodeBodyModel(body)
@@ -1266,7 +1344,8 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.runSessionShell({
         sessionId: sessionShellMatch.sessionID,
-        messageId: optionalString(body.messageID) ?? optionalString(body.messageId),
+        messageId:
+          optionalString(body.messageID) ?? optionalString(body.messageId),
         workspaceRoot: workspaceRootFromFindQuery(url),
         agentId: requiredString(body.agent, 'agent'),
         command: requiredString(body.command, 'command'),
@@ -1296,7 +1375,9 @@ async function dispatchOpenCodeApiRequest(
   const apiContextMatch = matchPath(pathname, '/api/session/:sessionID/context')
   if (method === 'GET' && apiContextMatch) {
     return jsonResponse(
-      await runtime.listSessionContext({ sessionId: apiContextMatch.sessionID }),
+      await runtime.listSessionContext({
+        sessionId: apiContextMatch.sessionID,
+      }),
     )
   }
 
@@ -1309,7 +1390,10 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const sessionChildrenMatch = matchPath(pathname, '/session/:sessionID/children')
+  const sessionChildrenMatch = matchPath(
+    pathname,
+    '/session/:sessionID/children',
+  )
   if (method === 'GET' && sessionChildrenMatch) {
     return jsonResponse(
       await runtime.listSessionChildren({
@@ -1324,7 +1408,8 @@ async function dispatchOpenCodeApiRequest(
     return jsonResponse(
       await runtime.forkSession({
         sessionId: forkSessionMatch.sessionID,
-        newSessionId: optionalString(body.sessionId) ?? optionalString(body.newSessionId),
+        newSessionId:
+          optionalString(body.sessionId) ?? optionalString(body.newSessionId),
         title: optionalString(body.title),
         createdBy: readActor(body.createdBy),
       }),
@@ -1348,7 +1433,8 @@ async function dispatchOpenCodeApiRequest(
         runId: optionalString(body.runId),
         sessionId: promptMatch.sessionID,
         workspaceId: requiredString(body.workspaceId, 'workspaceId'),
-        content: optionalString(body.content) ?? readMessagePartsText(body.parts),
+        content:
+          optionalString(body.content) ?? readMessagePartsText(body.parts),
         agentId,
         agentName: optionalString(body.agentName) ?? agentId,
         submittedBy: readActor(body.submittedBy) ?? {
@@ -1457,7 +1543,10 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const mcpAuthAuthenticateMatch = matchPath(pathname, '/mcp/:name/auth/authenticate')
+  const mcpAuthAuthenticateMatch = matchPath(
+    pathname,
+    '/mcp/:name/auth/authenticate',
+  )
   if (method === 'POST' && mcpAuthAuthenticateMatch) {
     return jsonResponse(
       await runtime.authenticateMcp({
@@ -1553,10 +1642,15 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const sessionUnrevertMatch = matchPath(pathname, '/session/:sessionID/unrevert')
+  const sessionUnrevertMatch = matchPath(
+    pathname,
+    '/session/:sessionID/unrevert',
+  )
   if (method === 'POST' && sessionUnrevertMatch) {
     return jsonResponse(
-      await runtime.unrevertSession({ sessionId: sessionUnrevertMatch.sessionID }),
+      await runtime.unrevertSession({
+        sessionId: sessionUnrevertMatch.sessionID,
+      }),
     )
   }
 
@@ -1630,13 +1724,21 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  if (method === 'GET' && (pathname === '/config' || pathname === '/global/config')) {
+  if (
+    method === 'GET' &&
+    (pathname === '/config' || pathname === '/global/config')
+  ) {
     return jsonResponse(
-      await runtime.loadConfig({ workspaceRoot: workspaceRootFromFindQuery(url) }),
+      await runtime.loadConfig({
+        workspaceRoot: workspaceRootFromFindQuery(url),
+      }),
     )
   }
 
-  if (method === 'PATCH' && (pathname === '/config' || pathname === '/global/config')) {
+  if (
+    method === 'PATCH' &&
+    (pathname === '/config' || pathname === '/global/config')
+  ) {
     const body = await readJsonBody(request)
     return jsonResponse(
       await runtime.updateConfig({
@@ -1729,7 +1831,10 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const providerAuthorizeMatch = matchPath(pathname, '/provider/:providerID/oauth/authorize')
+  const providerAuthorizeMatch = matchPath(
+    pathname,
+    '/provider/:providerID/oauth/authorize',
+  )
   if (method === 'POST' && providerAuthorizeMatch) {
     const body = await readJsonBody(request)
     return jsonResponse(
@@ -1742,7 +1847,10 @@ async function dispatchOpenCodeApiRequest(
     )
   }
 
-  const providerCallbackMatch = matchPath(pathname, '/provider/:providerID/oauth/callback')
+  const providerCallbackMatch = matchPath(
+    pathname,
+    '/provider/:providerID/oauth/callback',
+  )
   if (method === 'POST' && providerCallbackMatch) {
     const body = await readJsonBody(request)
     return jsonResponse(
@@ -1898,11 +2006,21 @@ const liveProviderAuth = new Map<string, JsonRecord>()
 const liveSessionShares = new Map<string, { url: string }>()
 const liveSessionStatuses = new Map<
   string,
-  { sessionId: string; status: 'idle' | 'running' | 'aborted'; updatedAt: string }
+  {
+    sessionId: string
+    status: 'idle' | 'running' | 'aborted'
+    updatedAt: string
+  }
 >()
-const liveExperimentalWorkspaces = new Map<string, ExperimentalWorkspaceSummary[]>()
+const liveExperimentalWorkspaces = new Map<
+  string,
+  ExperimentalWorkspaceSummary[]
+>()
 const liveExperimentalWorkspaceActive = new Map<string, string>()
-const liveExperimentalConsoleActiveOrg = new Map<string, { accountId: string; orgId: string }>()
+const liveExperimentalConsoleActiveOrg = new Map<
+  string,
+  { accountId: string; orgId: string }
+>()
 const liveExperimentalWorktrees = new Map<string, ExperimentalWorktree[]>()
 const liveTuiEvents = new Map<string, TuiEventPayload[]>()
 const liveTuiControlQueues = new Map<
@@ -1969,7 +2087,10 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
         status: input.noReply ? 'idle' : 'running',
         updatedAt: new Date().toISOString(),
       })
-      const workspaceId = requiredString(session.workspaceId, 'session.workspaceId')
+      const workspaceId = requiredString(
+        session.workspaceId,
+        'session.workspaceId',
+      )
       if (input.noReply) {
         const messageId = input.messageId ?? randomUUID()
         await runtime.recordSpecterCodeSessionMessageOnServer({
@@ -2002,12 +2123,14 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async updateSessionMessagePart(input) {
       const runtime = await import('./server-runtime.server')
-      const message = await runtime.updateSpecterCodeSessionMessagePartOnServer(input)
+      const message =
+        await runtime.updateSpecterCodeSessionMessagePartOnServer(input)
       return toOpenCodeMessageDetail(message)
     },
     async deleteSessionMessagePart(input) {
       const runtime = await import('./server-runtime.server')
-      const message = await runtime.deleteSpecterCodeSessionMessagePartOnServer(input)
+      const message =
+        await runtime.deleteSpecterCodeSessionMessagePartOnServer(input)
       return toOpenCodeMessageDetail(message)
     },
     async deleteSessionMessage(input) {
@@ -2142,14 +2265,21 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       return createProviderRegistry({ config }).listProviders()
     },
     async listProviderAuthMethods(input) {
-      const providers = await this.listProviders({ workspaceRoot: input.workspaceRoot })
+      const providers = await this.listProviders({
+        workspaceRoot: input.workspaceRoot,
+      })
       return providerAuthMethodsFor(providers)
     },
     async authorizeProviderOAuth(input) {
       return {
-        url: createProviderOauthUrl(input.providerId, input.method, input.inputs),
+        url: createProviderOauthUrl(
+          input.providerId,
+          input.method,
+          input.inputs,
+        ),
         method: 'code',
-        instructions: 'Open the URL, authorize the provider, then paste the returned code.',
+        instructions:
+          'Open the URL, authorize the provider, then paste the returned code.',
       }
     },
     async completeProviderOAuth(input) {
@@ -2216,8 +2346,12 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
       return listSpecterCodeCommands(input)
     },
     async executeSessionCommand(input) {
-      const commands = await listSpecterCodeCommands({ workspaceRoot: input.workspaceRoot })
-      const command = commands.find((candidate) => candidate.name === input.command)
+      const commands = await listSpecterCodeCommands({
+        workspaceRoot: input.workspaceRoot,
+      })
+      const command = commands.find(
+        (candidate) => candidate.name === input.command,
+      )
       if (!command) throw new Error('Unknown command: ' + input.command)
       const agentId = input.agentId ?? command.agent ?? 'build'
       return this.createSessionMessage({
@@ -2305,16 +2439,28 @@ ${input.command}
       }
     },
     async writeLogEntry(input) {
-      const writer = input.level === 'error' ? console.error : input.level === 'warn' ? console.warn : console.log
-      writer(`[${input.service}] ${input.level}: ${input.message}`, input.extra ?? {})
+      const writer =
+        input.level === 'error'
+          ? console.error
+          : input.level === 'warn'
+            ? console.warn
+            : console.log
+      writer(
+        `[${input.service}] ${input.level}: ${input.message}`,
+        input.extra ?? {},
+      )
       return true
     },
     async listSyncHistory(input) {
-      const events = await this.listEvents({ afterOrder: smallestSyncCursor(input) })
+      const events = await this.listEvents({
+        afterOrder: smallestSyncCursor(input),
+      })
       return events.map(toOpenCodeSyncEvent)
     },
     async replaySyncEvents(input) {
-      const sessionId = input.events.find((event) => event.aggregateID)?.aggregateID
+      const sessionId = input.events.find(
+        (event) => event.aggregateID,
+      )?.aggregateID
       return { sessionID: sessionId ?? input.directory }
     },
     async startSync() {
@@ -2381,7 +2527,10 @@ ${input.command}
       const server = requireLiveMcpServer(input.workspaceRoot, input.name)
       server.status = 'connected'
       server.error = undefined
-      server.config = { ...(isRecord(server.config) ? server.config : {}), oauthCode: input.code }
+      server.config = {
+        ...(isRecord(server.config) ? server.config : {}),
+        oauthCode: input.code,
+      }
       return server
     },
     async removeMcpAuth(input) {
@@ -2519,7 +2668,9 @@ async function readTuiEventRoute(
     return { type: 'tui.prompt.append', properties: body }
   }
   if (pathname === '/tui/execute-command') {
-    return tuiCommandEvent(tuiCommandAliases[requiredString(body.command, 'command')])
+    return tuiCommandEvent(
+      tuiCommandAliases[requiredString(body.command, 'command')],
+    )
   }
   if (pathname === '/tui/show-toast') {
     return { type: 'tui.toast.show', properties: body }
@@ -2548,7 +2699,9 @@ function readTuiProperties(value: unknown): JsonRecord {
   return value
 }
 
-function requireTuiRuntime(runtime: SpecterCodeApiRuntime): Required<
+function requireTuiRuntime(
+  runtime: SpecterCodeApiRuntime,
+): Required<
   Pick<
     SpecterCodeApiRuntime,
     'publishTuiEvent' | 'nextTuiControlRequest' | 'submitTuiControlResponse'
@@ -2645,16 +2798,22 @@ function readMcpConfigType(config: unknown) {
   return optionalString(config.type)
 }
 
-function providerAuthMethodsFor(providers: unknown): Record<string, ProviderAuthMethod[]> {
+function providerAuthMethodsFor(
+  providers: unknown,
+): Record<string, ProviderAuthMethod[]> {
   if (!Array.isArray(providers)) return {}
   return Object.fromEntries(
     providers
       .map((provider) => providerAuthMethodEntry(provider))
-      .filter((entry): entry is [string, ProviderAuthMethod[]] => entry !== undefined),
+      .filter(
+        (entry): entry is [string, ProviderAuthMethod[]] => entry !== undefined,
+      ),
   )
 }
 
-function providerAuthMethodEntry(provider: unknown): [string, ProviderAuthMethod[]] | undefined {
+function providerAuthMethodEntry(
+  provider: unknown,
+): [string, ProviderAuthMethod[]] | undefined {
   if (!isRecord(provider)) return undefined
   const id = optionalString(provider.id)
   if (!id) return undefined
@@ -2681,7 +2840,9 @@ function createProviderOauthUrl(
   method: number,
   inputs: Record<string, string> | undefined,
 ) {
-  const url = new URL(`specter-code://provider/${encodeURIComponent(providerId)}/oauth`)
+  const url = new URL(
+    `specter-code://provider/${encodeURIComponent(providerId)}/oauth`,
+  )
   url.searchParams.set('method', String(method))
   for (const [key, value] of Object.entries(inputs ?? {})) {
     url.searchParams.set(key, value)
@@ -2701,9 +2862,10 @@ async function loadConfigForRegistry(workspaceRoot?: string) {
 
 function createSessionShareUrl(sessionId: string) {
   const configuredBase = process.env.SPECTER_CODE_SHARE_BASE_URL
-  const base = configuredBase && configuredBase.trim().length > 0
-    ? configuredBase
-    : 'specter-code://share'
+  const base =
+    configuredBase && configuredBase.trim().length > 0
+      ? configuredBase
+      : 'specter-code://share'
   return `${base.replace(/\/$/, '')}/${encodeURIComponent(sessionId)}`
 }
 
@@ -2711,7 +2873,9 @@ async function updateWorkspaceConfig(input: {
   workspaceRoot: string
   patch: JsonRecord
 }) {
-  const current = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+  const current = await loadSpecterCodeConfig({
+    workspaceRoot: input.workspaceRoot,
+  })
   const nextRaw = mergeConfigPatch(current.raw, input.patch)
   await writeWorkspaceConfig(input.workspaceRoot, nextRaw)
   return loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
@@ -2731,14 +2895,30 @@ function mergeConfigPatch(current: JsonRecord, patch: JsonRecord): JsonRecord {
 
 function experimentalCompatibilityRuntime(runtime: SpecterCodeApiRuntime) {
   return {
-    listExperimentalConsole: (runtime.listExperimentalConsole ?? listExperimentalConsole).bind(runtime),
-    listExperimentalConsoleOrgs: (runtime.listExperimentalConsoleOrgs ?? listExperimentalConsoleOrgs).bind(runtime),
-    switchExperimentalConsoleOrg: (runtime.switchExperimentalConsoleOrg ?? switchExperimentalConsoleOrg).bind(runtime),
-    listExperimentalResources: (runtime.listExperimentalResources ?? listExperimentalResources).bind(runtime),
-    listExperimentalWorktrees: (runtime.listExperimentalWorktrees ?? listExperimentalWorktrees).bind(runtime),
-    createExperimentalWorktree: (runtime.createExperimentalWorktree ?? createExperimentalWorktree).bind(runtime),
-    removeExperimentalWorktree: (runtime.removeExperimentalWorktree ?? removeExperimentalWorktree).bind(runtime),
-    resetExperimentalWorktree: (runtime.resetExperimentalWorktree ?? resetExperimentalWorktree).bind(runtime),
+    listExperimentalConsole: (
+      runtime.listExperimentalConsole ?? listExperimentalConsole
+    ).bind(runtime),
+    listExperimentalConsoleOrgs: (
+      runtime.listExperimentalConsoleOrgs ?? listExperimentalConsoleOrgs
+    ).bind(runtime),
+    switchExperimentalConsoleOrg: (
+      runtime.switchExperimentalConsoleOrg ?? switchExperimentalConsoleOrg
+    ).bind(runtime),
+    listExperimentalResources: (
+      runtime.listExperimentalResources ?? listExperimentalResources
+    ).bind(runtime),
+    listExperimentalWorktrees: (
+      runtime.listExperimentalWorktrees ?? listExperimentalWorktrees
+    ).bind(runtime),
+    createExperimentalWorktree: (
+      runtime.createExperimentalWorktree ?? createExperimentalWorktree
+    ).bind(runtime),
+    removeExperimentalWorktree: (
+      runtime.removeExperimentalWorktree ?? removeExperimentalWorktree
+    ).bind(runtime),
+    resetExperimentalWorktree: (
+      runtime.resetExperimentalWorktree ?? resetExperimentalWorktree
+    ).bind(runtime),
   }
 }
 
@@ -2755,12 +2935,18 @@ function experimentalWorkspaceRuntime(runtime: SpecterCodeApiRuntime) {
     throw new Error('Experimental workspace runtime is unavailable')
   }
   return {
-    listExperimentalWorkspaceAdapters: runtime.listExperimentalWorkspaceAdapters.bind(runtime),
-    listExperimentalWorkspaces: runtime.listExperimentalWorkspaces.bind(runtime),
-    createExperimentalWorkspace: runtime.createExperimentalWorkspace.bind(runtime),
-    deleteExperimentalWorkspace: runtime.deleteExperimentalWorkspace.bind(runtime),
-    syncExperimentalWorkspaceList: runtime.syncExperimentalWorkspaceList.bind(runtime),
-    getExperimentalWorkspaceStatus: runtime.getExperimentalWorkspaceStatus.bind(runtime),
+    listExperimentalWorkspaceAdapters:
+      runtime.listExperimentalWorkspaceAdapters.bind(runtime),
+    listExperimentalWorkspaces:
+      runtime.listExperimentalWorkspaces.bind(runtime),
+    createExperimentalWorkspace:
+      runtime.createExperimentalWorkspace.bind(runtime),
+    deleteExperimentalWorkspace:
+      runtime.deleteExperimentalWorkspace.bind(runtime),
+    syncExperimentalWorkspaceList:
+      runtime.syncExperimentalWorkspaceList.bind(runtime),
+    getExperimentalWorkspaceStatus:
+      runtime.getExperimentalWorkspaceStatus.bind(runtime),
     warpExperimentalWorkspace: runtime.warpExperimentalWorkspace.bind(runtime),
   }
 }
@@ -2771,7 +2957,9 @@ async function listExperimentalConsole(input: {
   const providers = await createProviderRegistry({
     config: await loadConfigForRegistry(input.workspaceRoot),
   }).listProviders()
-  const active = liveExperimentalConsoleActiveOrg.get(experimentalWorkspaceKey(input.workspaceRoot))
+  const active = liveExperimentalConsoleActiveOrg.get(
+    experimentalWorkspaceKey(input.workspaceRoot),
+  )
   return {
     consoleManagedProviders: providers.map((provider) => provider.id),
     activeOrgName: active ? active.orgId : undefined,
@@ -2782,7 +2970,9 @@ async function listExperimentalConsole(input: {
 async function listExperimentalConsoleOrgs(input: {
   workspaceRoot: string
 }): Promise<{ orgs: ExperimentalConsoleOrg[] }> {
-  const active = liveExperimentalConsoleActiveOrg.get(experimentalWorkspaceKey(input.workspaceRoot))
+  const active = liveExperimentalConsoleActiveOrg.get(
+    experimentalWorkspaceKey(input.workspaceRoot),
+  )
   if (!active) return { orgs: [] }
   return {
     orgs: [
@@ -2803,10 +2993,13 @@ async function switchExperimentalConsoleOrg(input: {
   accountId: string
   orgId: string
 }): Promise<boolean> {
-  liveExperimentalConsoleActiveOrg.set(experimentalWorkspaceKey(input.workspaceRoot), {
-    accountId: input.accountId,
-    orgId: input.orgId,
-  })
+  liveExperimentalConsoleActiveOrg.set(
+    experimentalWorkspaceKey(input.workspaceRoot),
+    {
+      accountId: input.accountId,
+      orgId: input.orgId,
+    },
+  )
   return true
 }
 
@@ -2819,9 +3012,11 @@ async function listExperimentalResources(_input: {
 async function listExperimentalWorktrees(input: {
   workspaceRoot: string
 }): Promise<string[]> {
-  return (liveExperimentalWorktrees.get(experimentalWorkspaceKey(input.workspaceRoot)) ?? []).map(
-    (worktree) => worktree.directory,
-  )
+  return (
+    liveExperimentalWorktrees.get(
+      experimentalWorkspaceKey(input.workspaceRoot),
+    ) ?? []
+  ).map((worktree) => worktree.directory)
 }
 
 async function createExperimentalWorktree(input: {
@@ -2831,11 +3026,19 @@ async function createExperimentalWorktree(input: {
 }): Promise<ExperimentalWorktree> {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
   const name = sanitizeWorktreeName(input.name ?? `worktree-${Date.now()}`)
-  const directory = path.join(input.workspaceRoot, '.specter-code-worktrees', name)
+  const directory = path.join(
+    input.workspaceRoot,
+    '.specter-code-worktrees',
+    name,
+  )
   await mkdir(directory, { recursive: true })
   if (input.startCommand) {
-    await writeFile(path.join(directory, '.specter-start-command'), `${input.startCommand}
-`, 'utf8')
+    await writeFile(
+      path.join(directory, '.specter-start-command'),
+      `${input.startCommand}
+`,
+      'utf8',
+    )
   }
   const worktree: ExperimentalWorktree = { name, branch: name, directory }
   const existing = liveExperimentalWorktrees.get(key) ?? []
@@ -2851,7 +3054,10 @@ async function removeExperimentalWorktree(input: {
   directory: string
 }): Promise<boolean> {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
-  const directory = containedWorktreeDirectory(input.workspaceRoot, input.directory)
+  const directory = containedWorktreeDirectory(
+    input.workspaceRoot,
+    input.directory,
+  )
   const existing = liveExperimentalWorktrees.get(key) ?? []
   liveExperimentalWorktrees.set(
     key,
@@ -2885,7 +3091,9 @@ async function listExperimentalWorkspaces(input: {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
   const existing = liveExperimentalWorkspaces.get(key)
   if (existing) return existing
-  const projects = await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot })
+  const projects = await listWorkspaceProjects({
+    workspaceRoot: input.workspaceRoot,
+  })
   const workspaces = projects.map(projectToExperimentalWorkspace)
   liveExperimentalWorkspaces.set(key, workspaces)
   return workspaces
@@ -2903,15 +3111,17 @@ async function createExperimentalWorkspace(input: {
   const workspace: ExperimentalWorkspaceSummary = {
     id: input.workspaceId ?? nextExperimentalWorkspaceId(input.workspaceRoot),
     type: input.type ?? 'local',
-    name: input.branch ?? (path.basename(input.workspaceRoot) || input.workspaceRoot),
+    name:
+      input.branch ??
+      (path.basename(input.workspaceRoot) || input.workspaceRoot),
     directory: input.workspaceRoot,
   }
   if (input.branch) workspace.branch = input.branch
   if (input.metadata) workspace.metadata = input.metadata
-  liveExperimentalWorkspaces.set(
-    key,
-    [...workspaces.filter((item) => item.id !== workspace.id), workspace],
-  )
+  liveExperimentalWorkspaces.set(key, [
+    ...workspaces.filter((item) => item.id !== workspace.id),
+    workspace,
+  ])
   liveExperimentalWorkspaceActive.set(key, workspace.id)
   return workspace
 }
@@ -2922,7 +3132,9 @@ async function deleteExperimentalWorkspace(input: {
 }): Promise<boolean> {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
   const workspaces = await listExperimentalWorkspaces(input)
-  const next = workspaces.filter((workspace) => workspace.id !== input.workspaceId)
+  const next = workspaces.filter(
+    (workspace) => workspace.id !== input.workspaceId,
+  )
   liveExperimentalWorkspaces.set(key, next)
   if (liveExperimentalWorkspaceActive.get(key) === input.workspaceId) {
     liveExperimentalWorkspaceActive.delete(key)
@@ -2932,13 +3144,16 @@ async function deleteExperimentalWorkspace(input: {
 
 async function syncExperimentalWorkspaceList(input: { workspaceRoot: string }) {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
-  const projects = await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot })
+  const projects = await listWorkspaceProjects({
+    workspaceRoot: input.workspaceRoot,
+  })
   const existing = liveExperimentalWorkspaces.get(key) ?? []
   const projectWorkspaces = projects.map(projectToExperimentalWorkspace)
   liveExperimentalWorkspaces.set(key, [
     ...projectWorkspaces,
     ...existing.filter(
-      (workspace) => !projectWorkspaces.some((project) => project.id === workspace.id),
+      (workspace) =>
+        !projectWorkspaces.some((project) => project.id === workspace.id),
     ),
   ])
 }
@@ -2965,13 +3180,19 @@ async function warpExperimentalWorkspace(input: {
 }) {
   const key = experimentalWorkspaceKey(input.workspaceRoot)
   const status = await getExperimentalWorkspaceStatus(input)
-  if (status.status === 'missing') throw new Error(`Workspace not found: ${input.workspaceId}`)
+  if (status.status === 'missing')
+    throw new Error(`Workspace not found: ${input.workspaceId}`)
   liveExperimentalWorkspaceActive.set(key, input.workspaceId)
 }
 
-function projectToExperimentalWorkspace(project: ProjectSummary): ExperimentalWorkspaceSummary {
+function projectToExperimentalWorkspace(
+  project: ProjectSummary,
+): ExperimentalWorkspaceSummary {
   const workspace: ExperimentalWorkspaceSummary = {
-    id: project.id === project.directory ? nextExperimentalWorkspaceId(project.directory) : project.id,
+    id:
+      project.id === project.directory
+        ? nextExperimentalWorkspaceId(project.directory)
+        : project.id,
     type: project.vcs === 'git' ? 'git-worktree' : 'local',
     name: project.name,
     directory: project.directory,
@@ -3000,7 +3221,9 @@ function experimentalWorkspaceIdFromQuery(url: URL) {
 }
 
 function sanitizeWorktreeName(name: string) {
-  return name.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'worktree'
+  return (
+    name.replace(/[^a-zA-Z0-9_.-]+/g, '-').replace(/^-+|-+$/g, '') || 'worktree'
+  )
 }
 
 function containedWorktreeDirectory(workspaceRoot: string, candidate: string) {
@@ -3019,11 +3242,18 @@ async function updateWorkspaceProject(input: {
   icon?: string
   commands?: JsonRecord
 }): Promise<ProjectSummary> {
-  if (input.projectId !== input.workspaceRoot && input.projectId !== path.basename(input.workspaceRoot)) {
+  if (
+    input.projectId !== input.workspaceRoot &&
+    input.projectId !== path.basename(input.workspaceRoot)
+  ) {
     throw new Error(`Project not found: ${input.projectId}`)
   }
-  const current = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
-  const currentProject = isRecord(current.raw.project) ? current.raw.project : {}
+  const current = await loadSpecterCodeConfig({
+    workspaceRoot: input.workspaceRoot,
+  })
+  const currentProject = isRecord(current.raw.project)
+    ? current.raw.project
+    : {}
   const nextProject: JsonRecord = { ...currentProject }
   if (input.name !== undefined) nextProject.name = input.name
   if (input.icon !== undefined) nextProject.icon = input.icon
@@ -3033,26 +3263,34 @@ async function updateWorkspaceProject(input: {
     ...current.raw,
     project: nextProject,
   })
-  return firstProject(await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }))
+  return firstProject(
+    await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }),
+  )
 }
 
 async function initializeWorkspaceGitProject(input: {
   workspaceRoot: string
 }): Promise<ProjectSummary> {
   await initGitRepository({ workspaceRoot: input.workspaceRoot })
-  return firstProject(await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }))
+  return firstProject(
+    await listWorkspaceProjects({ workspaceRoot: input.workspaceRoot }),
+  )
 }
 
 async function listWorkspaceProjects(input: {
   workspaceRoot: string
 }): Promise<ProjectSummary[]> {
-  const config = await loadSpecterCodeConfig({ workspaceRoot: input.workspaceRoot })
+  const config = await loadSpecterCodeConfig({
+    workspaceRoot: input.workspaceRoot,
+  })
   const projectConfig = isRecord(config.raw.project) ? config.raw.project : {}
   const gitReady = await hasGitDirectory(input.workspaceRoot)
   const summary: ProjectSummary = {
     id: input.workspaceRoot,
     directory: input.workspaceRoot,
-    name: optionalString(projectConfig.name) ?? (path.basename(input.workspaceRoot) || input.workspaceRoot),
+    name:
+      optionalString(projectConfig.name) ??
+      (path.basename(input.workspaceRoot) || input.workspaceRoot),
     configSources: config.sources,
   }
   const icon = optionalString(projectConfig.icon)
@@ -3095,7 +3333,14 @@ function formatterStatusesFromValue(
 ): FormatterStatus[] {
   if (value === undefined || value === null || value === false) return []
   if (typeof value === 'string') {
-    return [{ name: fallbackName, command: value, enabled: true, status: 'configured' }]
+    return [
+      {
+        name: fallbackName,
+        command: value,
+        enabled: true,
+        status: 'configured',
+      },
+    ]
   }
   if (Array.isArray(value)) {
     return value.flatMap((entry, index) =>
@@ -3252,7 +3497,12 @@ function formatQuestionAnswers(answers: string[][]) {
 }
 
 function readLogLevel(value: unknown): OpenCodeLogLevel {
-  if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
+  if (
+    value === 'debug' ||
+    value === 'info' ||
+    value === 'warn' ||
+    value === 'error'
+  ) {
     return value
   }
   throw new Error('Invalid log level')
@@ -3374,11 +3624,16 @@ function optionalJsonRecord(value: unknown): JsonRecord | undefined {
   return isRecord(value) ? value : undefined
 }
 
-function optionalStringRecord(value: unknown): Record<string, string> | undefined {
+function optionalStringRecord(
+  value: unknown,
+): Record<string, string> | undefined {
   if (value === undefined || value === null) return undefined
   if (!isRecord(value)) throw new Error('Invalid string record')
   return Object.fromEntries(
-    Object.entries(value).map(([key, item]) => [key, requiredString(item, key)]),
+    Object.entries(value).map(([key, item]) => [
+      key,
+      requiredString(item, key),
+    ]),
   )
 }
 
@@ -3435,7 +3690,8 @@ function readOptionalOpenCodeModel(value: unknown) {
       optionalString(value.providerId) ??
       requiredString(value.providerID, 'model.providerID'),
     modelId:
-      optionalString(value.modelId) ?? requiredString(value.modelID, 'model.modelID'),
+      optionalString(value.modelId) ??
+      requiredString(value.modelID, 'model.modelID'),
   }
 }
 
@@ -3476,7 +3732,8 @@ function readMessagePartsText(value: unknown) {
   if (!Array.isArray(value)) throw new Error('Missing required field: parts')
   const chunks = value.map((part) => {
     if (!isRecord(part)) throw new Error('Invalid message part')
-    if (part.type !== 'text') throw new Error('Only text message parts are supported')
+    if (part.type !== 'text')
+      throw new Error('Only text message parts are supported')
     return requiredString(part.text, 'parts.text')
   })
   const content = chunks.join('\n\n').trim()

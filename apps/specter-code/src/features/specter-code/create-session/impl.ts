@@ -26,7 +26,7 @@ const createSession = createSessionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const title = command.title.trim()
 

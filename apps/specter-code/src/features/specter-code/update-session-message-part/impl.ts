@@ -14,7 +14,7 @@ const updateSessionMessagePart = updateSessionMessagePartSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const content = command.text.trim()
     if (!content) throw new Error('Message part text is required')

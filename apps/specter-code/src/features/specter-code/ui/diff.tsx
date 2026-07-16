@@ -20,16 +20,23 @@ type WorkspaceDiffState = {
 export function WorkspaceDiffPanel() {
   const { activeWorkspaceId } = useSpecterCodeSelection()
   const getWorkspaceDiffFn = useServerFn(getSpecterCodeWorkspaceDiff)
-  const revertWorkspaceChangesFn = useServerFn(revertSpecterCodeWorkspaceChanges)
-  const [workspaceDiff, setWorkspaceDiff] = createSignal<WorkspaceDiffState | null>(null)
+  const revertWorkspaceChangesFn = useServerFn(
+    revertSpecterCodeWorkspaceChanges,
+  )
+  const [workspaceDiff, setWorkspaceDiff] =
+    createSignal<WorkspaceDiffState | null>(null)
   const [error, setError] = createSignal<string | null>(null)
   const [isRefreshing, setIsRefreshing] = createSignal(false)
   const [isReverting, setIsReverting] = createSignal(false)
 
-  const changedPaths = createMemo(() =>
-    [...new Set((workspaceDiff()?.status.entries ?? []).map((entry) => entry.path))],
+  const changedPaths = createMemo(() => [
+    ...new Set(
+      (workspaceDiff()?.status.entries ?? []).map((entry) => entry.path),
+    ),
+  ])
+  const patchPreview = createMemo(
+    () => workspaceDiff()?.diff.patch.trim() ?? '',
   )
-  const patchPreview = createMemo(() => workspaceDiff()?.diff.patch.trim() ?? '')
 
   async function refreshWorkspaceDiff() {
     const workspaceId = activeWorkspaceId()
@@ -73,7 +80,6 @@ export function WorkspaceDiffPanel() {
 
   return (
     <section
-      role="region"
       aria-label="Workspace diff"
       class="flex min-h-0 flex-col overflow-hidden rounded-[1.35rem] border border-violet-100/10 bg-slate-950/45 p-3 shadow-inner shadow-black/20"
     >
@@ -84,7 +90,9 @@ export function WorkspaceDiffPanel() {
             Workspace diff
           </h3>
           <p class="mt-0.5 truncate text-[0.68rem] text-slate-500">
-            {changedPaths().length > 0 ? `${changedPaths().length} changed` : 'Git changes + revert'}
+            {changedPaths().length > 0
+              ? `${changedPaths().length} changed`
+              : 'Git changes + revert'}
           </p>
         </div>
         <div class="flex shrink-0 gap-1.5">
@@ -104,7 +112,11 @@ export function WorkspaceDiffPanel() {
             title="Revert changed files"
             class="rounded-lg bg-rose-300 px-2 py-1 text-[0.68rem] font-semibold text-slate-950 transition hover:bg-rose-200 disabled:cursor-not-allowed disabled:opacity-50"
             onClick={() => void revertChangedFiles()}
-            disabled={!activeWorkspaceId() || changedPaths().length === 0 || isReverting()}
+            disabled={
+              !activeWorkspaceId() ||
+              changedPaths().length === 0 ||
+              isReverting()
+            }
           >
             {isReverting() ? 'Reverting' : 'Revert'}
           </button>
@@ -114,12 +126,27 @@ export function WorkspaceDiffPanel() {
       <div class="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
         <Show
           when={activeWorkspaceId()}
-          fallback={<div class="rounded-xl border border-dashed border-violet-100/15 p-3 text-xs leading-5 text-slate-400">Select a workspace to inspect Git diff output.</div>}
+          fallback={
+            <div class="rounded-xl border border-dashed border-violet-100/15 p-3 text-xs leading-5 text-slate-400">
+              Select a workspace to inspect Git diff output.
+            </div>
+          }
         >
-          <Show when={!error()} fallback={<div class="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs leading-5 text-rose-100">Diff unavailable: {error()}</div>}>
+          <Show
+            when={!error()}
+            fallback={
+              <div class="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-xs leading-5 text-rose-100">
+                Diff unavailable: {error()}
+              </div>
+            }
+          >
             <Show
               when={changedPaths().length > 0}
-              fallback={<div class="rounded-xl border border-dashed border-violet-100/15 p-3 text-xs leading-5 text-slate-400">No workspace changes</div>}
+              fallback={
+                <div class="rounded-xl border border-dashed border-violet-100/15 p-3 text-xs leading-5 text-slate-400">
+                  No workspace changes
+                </div>
+              }
             >
               <div class="space-y-2">
                 <div class="space-y-1">

@@ -41,48 +41,51 @@ const publishAgentRunReply = publishAgentRunReplySpec
   .plugin(async (dispatch) => async (payload) => {
     await dispatch(payload as never)
   })
-  .store(createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })))
+  .store(
+    createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
+  )
   .apply(agentRunRequestedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      state.runs.push({
-        runId: payload.runId,
-        workspaceId: payload.workspaceId,
-        postId: payload.postId,
-        agentId: payload.agentId,
-        agentName: payload.agentName,
-        text: '',
-        completed: false,
-        failed: false,
-        replyPublished: false,
-      })
+    state.runs.push({
+      runId: payload.runId,
+      workspaceId: payload.workspaceId,
+      postId: payload.postId,
+      agentId: payload.agentId,
+      agentName: payload.agentName,
+      text: '',
+      completed: false,
+      failed: false,
+      replyPublished: false,
     })
+  })
   .apply(agentRunStreamedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-      if (run) run.text += payload.delta
-    })
+    if (run) run.text += payload.delta
+  })
   .apply(agentRunCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-      if (run) run.completed = true
-    })
+    if (run) run.completed = true
+  })
   .apply(agentRunFailedEvent, async (event, state) => {
-      const payload = event.payload
-      const run = state.runs.find((item) => item.runId === payload.runId)
+    const payload = event.payload
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-      if (run) run.failed = true
-    })
+    if (run) run.failed = true
+  })
   .apply(postReplyCreatedEvent, async (event, state) => {
-      const payload = event.payload
-      if (!payload.sourceRunId) return
+    const payload = event.payload
+    if (!payload.sourceRunId) return
 
-      const run = state.runs.find((item) => item.runId === payload.sourceRunId)
-      if (run) run.replyPublished = true
-    })
-  .handle(async (state): Promise<RecordVisibleAgentReplyCommand | undefined> => {
+    const run = state.runs.find((item) => item.runId === payload.sourceRunId)
+    if (run) run.replyPublished = true
+  })
+  .handle(
+    async (state): Promise<RecordVisibleAgentReplyCommand | undefined> => {
       const run = state.runs.find(
         (item) =>
           item.postId && item.completed && !item.failed && !item.replyPublished,
@@ -106,6 +109,7 @@ const publishAgentRunReply = publishAgentRunReplySpec
           content: run.text.trim(),
         },
       }
-    })
+    },
+  )
 
 export default publishAgentRunReply

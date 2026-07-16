@@ -14,7 +14,9 @@ const OBJECT_LAYER: Record<ColonyBenchCellEntity['kind'], number> = {
   worker: 6,
   intent: 7,
 }
-const BOARD_LABEL_PRIORITY: Partial<Record<ColonyBenchCellEntity['kind'], number>> = {
+const BOARD_LABEL_PRIORITY: Partial<
+  Record<ColonyBenchCellEntity['kind'], number>
+> = {
   base: 2,
   source: 3,
   controller: 4,
@@ -87,16 +89,21 @@ function escapeSvg(value: string) {
 }
 
 function isBoardLabeledKind(object: ColonyBenchCellEntity) {
-  return !['terrain', 'road', 'constructionSite', 'intent'].includes(object.kind)
+  return !['terrain', 'road', 'constructionSite', 'intent'].includes(
+    object.kind,
+  )
 }
 
 function selectPrimaryBoardLabel(labelableEntities: ColonyBenchCellEntity[]) {
-  return labelableEntities.reduce<ColonyBenchCellEntity | null>((selected, entity) => {
-    if (!selected) return entity
-    const selectedPriority = BOARD_LABEL_PRIORITY[selected.kind] ?? 0
-    const entityPriority = BOARD_LABEL_PRIORITY[entity.kind] ?? 0
-    return entityPriority > selectedPriority ? entity : selected
-  }, null)
+  return labelableEntities.reduce<ColonyBenchCellEntity | null>(
+    (selected, entity) => {
+      if (!selected) return entity
+      const selectedPriority = BOARD_LABEL_PRIORITY[selected.kind] ?? 0
+      const entityPriority = BOARD_LABEL_PRIORITY[entity.kind] ?? 0
+      return entityPriority > selectedPriority ? entity : selected
+    },
+    null,
+  )
 }
 
 function trailingNumber(value: string) {
@@ -195,7 +202,8 @@ export function buildColonyBenchSvgBoardModel({
 }): ColonyBenchSvgBoardModel {
   const columns = model.bounds.maxX - model.bounds.minX + 1
   const rows = model.bounds.maxY - model.bounds.minY + 1
-  const width = padding * 2 + columns * tileSize + Math.max(0, columns - 1) * tileGap
+  const width =
+    padding * 2 + columns * tileSize + Math.max(0, columns - 1) * tileGap
   const height = padding * 2 + rows * tileSize + Math.max(0, rows - 1) * tileGap
   const entitiesByCell = new Map(
     model.cells.map((cell) => [cellKey(cell), cell.entities] as const),
@@ -256,7 +264,8 @@ export function buildColonyBenchSvgBoardModel({
       const cy = origin.y + tileSize / 2
       const labelableEntities = cell.entities.filter(isBoardLabeledKind)
       const labelCount = labelableEntities.length
-      const primaryLabelId = selectPrimaryBoardLabel(labelableEntities)?.id ?? null
+      const primaryLabelId =
+        selectPrimaryBoardLabel(labelableEntities)?.id ?? null
       return cell.entities.map((entity) => {
         const labelIndex = labelableEntities.findIndex(
           (candidate) => candidate.id === entity.id,
@@ -362,9 +371,10 @@ function renderObjectLabelChip(object: ColonyBenchSvgObjectPrimitive) {
   const height = 17
   const x = object.cx - width / 2
   const y = object.labelY - 12
-  const ariaLabel = object.detail.length > 0
-    ? `${object.label} details: ${object.detail}`
-    : object.label
+  const ariaLabel =
+    object.detail.length > 0
+      ? `${object.label} details: ${object.detail}`
+      : object.label
 
   return `
   <g class="room-object-label-chip room-object-label-chip--${object.kind}" aria-label="${escapeSvg(ariaLabel)}">

@@ -4,23 +4,23 @@ import {
   type ReactionScheduler,
   type SliceStoreAdapter,
   type SpecterApp,
-} from "@specter-ts/core"
+} from '@specter-ts/core'
 
-import { controlEventDefinitions } from "./control/events"
-import { createControlSlices } from "./control/slices"
+import { controlEventDefinitions } from './control/events'
+import { createControlSlices } from './control/slices'
 import {
   createColonyBenchControlState,
   type ColonyBenchControlState,
-} from "./control/state"
-import { simulationEventDefinitions } from "./simulation/events"
-import { createSimulationSlices } from "./simulation/slices"
+} from './control/state'
+import { simulationEventDefinitions } from './simulation/events'
+import { createSimulationSlices } from './simulation/slices'
 import {
   createColonyBenchSimulationState,
   type ColonyBenchSimulationState,
-} from "./simulation/state"
-import { createMemoryEventLog } from "./testing/memory-event-log"
-import { memoryReactionScheduler } from "./testing/memory-reaction-scheduler"
-import { createMemorySliceStore } from "./testing/memory-slice-store"
+} from './simulation/state'
+import { createMemoryEventLog } from './testing/memory-event-log'
+import { memoryReactionScheduler } from './testing/memory-reaction-scheduler'
+import { createMemorySliceStore } from './testing/memory-slice-store'
 
 export type ColonyBenchControlAdapters = {
   eventLog: EventLogAdapter
@@ -50,12 +50,12 @@ export function createMemoryColonyBenchSimulationAdapters(): ColonyBenchSimulati
   }
 }
 
-export function createColonyBenchSimulationApp({
+export async function createColonyBenchSimulationApp({
   adapters,
 }: {
   adapters: ColonyBenchSimulationAdapters
 }) {
-  return createSpecterApp({
+  return await createSpecterApp({
     events: simulationEventDefinitions,
     eventLog: adapters.eventLog,
     schedule: adapters.schedule,
@@ -63,8 +63,8 @@ export function createColonyBenchSimulationApp({
   })
 }
 
-export type ColonyBenchSimulationApp = ReturnType<
-  typeof createColonyBenchSimulationApp
+export type ColonyBenchSimulationApp = Awaited<
+  ReturnType<typeof createColonyBenchSimulationApp>
 >
 
 export type ColonyBenchControlBridge = {
@@ -81,14 +81,14 @@ export function connectControlRunStartedToSimulation(
   }
 }
 
-export function createColonyBenchControlApp({
+export async function createColonyBenchControlApp({
   adapters,
   bridge,
 }: {
   adapters: ColonyBenchControlAdapters
   bridge?: ColonyBenchControlBridge
 }) {
-  const app = createSpecterApp({
+  const app = await createSpecterApp({
     events: controlEventDefinitions,
     eventLog: adapters.eventLog,
     schedule: adapters.schedule,

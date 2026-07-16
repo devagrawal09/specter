@@ -13,7 +13,7 @@ const deleteSessionMessagePart = deleteSessionMessagePartSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => [
     sessionMessagePartDeletedEvent.create({
       sessionId: command.sessionId,

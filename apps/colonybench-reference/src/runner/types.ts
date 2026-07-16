@@ -75,9 +75,7 @@ export type ColonyBenchBotContext<
 }
 
 export type ColonyBenchBot<TMemory extends object = ColonyBenchBotMemory> = {
-  loop: (
-    ctx: ColonyBenchBotContext<TMemory>,
-  ) => void | Promise<void>
+  loop: (ctx: ColonyBenchBotContext<TMemory>) => void | Promise<void>
 }
 
 export type ColonyBenchBotCommandCollector = {
@@ -109,9 +107,17 @@ function cloneCommand(command: ColonyBenchBotCommand): ColonyBenchBotCommand {
     case 'upgrade':
       return { type: 'upgrade', workerId: command.workerId }
     case 'build':
-      return { type: 'build', workerId: command.workerId, siteId: command.siteId }
+      return {
+        type: 'build',
+        workerId: command.workerId,
+        siteId: command.siteId,
+      }
     case 'repair':
-      return { type: 'repair', workerId: command.workerId, roadId: command.roadId }
+      return {
+        type: 'repair',
+        workerId: command.workerId,
+        roadId: command.roadId,
+      }
     case 'spawnWorker':
       return { type: 'spawnWorker' }
   }

@@ -80,10 +80,13 @@ describe('OpenCode deprecated session permission response route', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/session/session-main/permissions/permission-1', {
-            method: 'POST',
-            body: JSON.stringify({ response: 'once' }),
-          }),
+          new Request(
+            'http://specter.test/session/session-main/permissions/permission-1',
+            {
+              method: 'POST',
+              body: JSON.stringify({ response: 'once' }),
+            },
+          ),
         ),
       ),
     ).resolves.toEqual({ requestId: 'permission-1', action: 'allow' })
@@ -100,10 +103,13 @@ describe('OpenCode deprecated session permission response route', () => {
     await expect(
       json(
         await router.handle(
-          new Request('http://specter.test/session/session-main/permissions/permission-2', {
-            method: 'POST',
-            body: JSON.stringify({ response: 'reject' }),
-          }),
+          new Request(
+            'http://specter.test/session/session-main/permissions/permission-2',
+            {
+              method: 'POST',
+              body: JSON.stringify({ response: 'reject' }),
+            },
+          ),
         ),
       ),
     ).resolves.toEqual({ requestId: 'permission-2', action: 'deny' })

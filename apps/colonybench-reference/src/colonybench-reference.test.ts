@@ -12,7 +12,7 @@ import {
 } from './index'
 
 test('control app records run creation in detail and list queries', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
@@ -29,10 +29,10 @@ test('control app records run creation in detail and list queries', async () => 
 })
 
 test('startRun bridge initializes the separate in-memory simulation app', async () => {
-  const simulationApp = createColonyBenchSimulationApp({
+  const simulationApp = await createColonyBenchSimulationApp({
     adapters: createMemoryColonyBenchSimulationAdapters(),
   })
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
     bridge: connectControlRunStartedToSimulation(simulationApp),
   })
@@ -55,10 +55,10 @@ test('startRun bridge initializes the separate in-memory simulation app', async 
 })
 
 test('control and simulation apps expose separate command/query surfaces', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
-  const simulationApp = createColonyBenchSimulationApp({
+  const simulationApp = await createColonyBenchSimulationApp({
     adapters: createMemoryColonyBenchSimulationAdapters(),
   })
 
@@ -74,15 +74,17 @@ test('control and simulation apps expose separate command/query surfaces', async
 })
 
 test('control app records runner frames for live timeline subscriptions', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
   await controlApp.createRun({ runId: 'timeline-run', name: 'Timeline run' })
   await controlApp.startRun({ runId: 'timeline-run' })
 
-  const timeline = controlApp.subscribe.runTimeline({
-    runId: 'timeline-run',
-  })[Symbol.asyncIterator]()
+  const timeline = controlApp.subscribe
+    .runTimeline({
+      runId: 'timeline-run',
+    })
+    [Symbol.asyncIterator]()
   await expect(timeline.next()).resolves.toEqual({ done: false, value: [] })
 
   const stream = streamColonyBenchLoop({
@@ -116,7 +118,7 @@ test('control app records runner frames for live timeline subscriptions', async 
         baseLevel: 1,
         baseEnergy: 0,
         commandCount: 0,
-        eventTypes: ['colonybenchSimulationInitialized'],
+        eventTypes: ['colonybench-simulation-initialized'],
       },
     ],
   })
@@ -146,21 +148,25 @@ test('control app records runner frames for live timeline subscriptions', async 
     workerCount: 1,
     commandCount: expect.any(Number),
   })
-  expect(nextTimeline.value[1]?.eventTypes).toContain('colonybenchTickAdvanced')
+  expect(nextTimeline.value[1]?.eventTypes).toContain(
+    'colonybench-tick-advanced',
+  )
 
   await timeline.return?.()
 })
 
 test('control app exposes live run overview summaries for UI polling', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
   await controlApp.createRun({ runId: 'overview-run', name: 'Overview run' })
   await controlApp.startRun({ runId: 'overview-run' })
 
-  const overview = controlApp.subscribe.runOverview({
-    runId: 'overview-run',
-  })[Symbol.asyncIterator]()
+  const overview = controlApp.subscribe
+    .runOverview({
+      runId: 'overview-run',
+    })
+    [Symbol.asyncIterator]()
 
   await expect(overview.next()).resolves.toEqual({
     done: false,
@@ -179,7 +185,7 @@ test('control app exposes live run overview summaries for UI polling', async () 
     baseLevel: 1,
     baseEnergy: 0,
     commandCount: 0,
-    eventTypes: ['colonybenchSimulationInitialized'],
+    eventTypes: ['colonybench-simulation-initialized'],
   })
   await controlApp.recordRunFrame({
     runId: 'overview-run',
@@ -189,7 +195,7 @@ test('control app exposes live run overview summaries for UI polling', async () 
     baseLevel: 2,
     baseEnergy: 5,
     commandCount: 3,
-    eventTypes: ['colonybenchTickAdvanced'],
+    eventTypes: ['colonybench-tick-advanced'],
   })
 
   await expect(overview.next()).resolves.toEqual({
@@ -205,7 +211,7 @@ test('control app exposes live run overview summaries for UI polling', async () 
         baseLevel: 2,
         baseEnergy: 5,
         commandCount: 3,
-        eventTypes: ['colonybenchTickAdvanced'],
+        eventTypes: ['colonybench-tick-advanced'],
       },
     },
   })
@@ -213,7 +219,9 @@ test('control app exposes live run overview summaries for UI polling', async () 
   const firstQuery = await controlApp.runOverview({ runId: 'overview-run' })
   firstQuery.latestFrame?.eventTypes.push('mutated')
 
-  await expect(controlApp.runOverview({ runId: 'overview-run' })).resolves.toEqual({
+  await expect(
+    controlApp.runOverview({ runId: 'overview-run' }),
+  ).resolves.toEqual({
     run: { runId: 'overview-run', name: 'Overview run', status: 'started' },
     frameCount: 2,
     latestFrame: {
@@ -224,7 +232,7 @@ test('control app exposes live run overview summaries for UI polling', async () 
       baseLevel: 2,
       baseEnergy: 5,
       commandCount: 3,
-      eventTypes: ['colonybenchTickAdvanced'],
+      eventTypes: ['colonybench-tick-advanced'],
     },
   })
 
@@ -232,15 +240,17 @@ test('control app exposes live run overview summaries for UI polling', async () 
 })
 
 test('control app publishes completed run status for live UI overviews', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
   await controlApp.createRun({ runId: 'completed-run', name: 'Completed run' })
   await controlApp.startRun({ runId: 'completed-run' })
 
-  const overview = controlApp.subscribe.runOverview({
-    runId: 'completed-run',
-  })[Symbol.asyncIterator]()
+  const overview = controlApp.subscribe
+    .runOverview({
+      runId: 'completed-run',
+    })
+    [Symbol.asyncIterator]()
   await expect(overview.next()).resolves.toEqual({
     done: false,
     value: {
@@ -258,14 +268,18 @@ test('control app publishes completed run status for live UI overviews', async (
     baseLevel: 2,
     baseEnergy: 0,
     commandCount: 1,
-    eventTypes: ['colonybenchTickAdvanced'],
+    eventTypes: ['colonybench-tick-advanced'],
   })
   await controlApp.completeRun({ runId: 'completed-run' })
 
   await expect(overview.next()).resolves.toEqual({
     done: false,
     value: {
-      run: { runId: 'completed-run', name: 'Completed run', status: 'completed' },
+      run: {
+        runId: 'completed-run',
+        name: 'Completed run',
+        status: 'completed',
+      },
       frameCount: 1,
       latestFrame: {
         runId: 'completed-run',
@@ -275,7 +289,7 @@ test('control app publishes completed run status for live UI overviews', async (
         baseLevel: 2,
         baseEnergy: 0,
         commandCount: 1,
-        eventTypes: ['colonybenchTickAdvanced'],
+        eventTypes: ['colonybench-tick-advanced'],
       },
     },
   })
@@ -283,18 +297,23 @@ test('control app publishes completed run status for live UI overviews', async (
 })
 
 test('control app rejects restarting completed runs', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
-  await controlApp.createRun({ runId: 'restart-completed-run', name: 'Restart guard' })
+  await controlApp.createRun({
+    runId: 'restart-completed-run',
+    name: 'Restart guard',
+  })
   await controlApp.startRun({ runId: 'restart-completed-run' })
   await controlApp.completeRun({ runId: 'restart-completed-run' })
 
   await expect(
     controlApp.startRun({ runId: 'restart-completed-run' }),
   ).rejects.toThrow('Run already completed: restart-completed-run')
-  await expect(controlApp.runDetail({ runId: 'restart-completed-run' })).resolves.toEqual({
+  await expect(
+    controlApp.runDetail({ runId: 'restart-completed-run' }),
+  ).resolves.toEqual({
     runId: 'restart-completed-run',
     name: 'Restart guard',
     status: 'completed',
@@ -302,16 +321,21 @@ test('control app rejects restarting completed runs', async () => {
 })
 
 test('control app rejects completing runs before they start', async () => {
-  const controlApp = createColonyBenchControlApp({
+  const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
-  await controlApp.createRun({ runId: 'unstarted-complete-run', name: 'Complete guard' })
+  await controlApp.createRun({
+    runId: 'unstarted-complete-run',
+    name: 'Complete guard',
+  })
 
   await expect(
     controlApp.completeRun({ runId: 'unstarted-complete-run' }),
   ).rejects.toThrow('Run not started: unstarted-complete-run')
-  await expect(controlApp.runDetail({ runId: 'unstarted-complete-run' })).resolves.toEqual({
+  await expect(
+    controlApp.runDetail({ runId: 'unstarted-complete-run' }),
+  ).resolves.toEqual({
     runId: 'unstarted-complete-run',
     name: 'Complete guard',
     status: 'created',
@@ -319,12 +343,14 @@ test('control app rejects completing runs before they start', async () => {
 })
 
 test('simulation app supports liveSimulationStatus subscriptions', async () => {
-  const simulationApp = createColonyBenchSimulationApp({
+  const simulationApp = await createColonyBenchSimulationApp({
     adapters: createMemoryColonyBenchSimulationAdapters(),
   })
-  const subscription = simulationApp.subscribe.liveSimulationStatus({
-    runId: 'run-3',
-  })[Symbol.asyncIterator]()
+  const subscription = simulationApp.subscribe
+    .liveSimulationStatus({
+      runId: 'run-3',
+    })
+    [Symbol.asyncIterator]()
 
   await expect(subscription.next()).resolves.toEqual({
     done: false,

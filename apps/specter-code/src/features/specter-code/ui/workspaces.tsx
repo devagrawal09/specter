@@ -1,5 +1,15 @@
 import { useServerFn } from '@tanstack/solid-start'
-import { For, Show, createContext, createEffect, createMemo, createSignal, on, startTransition, useContext } from 'solid-js'
+import {
+  For,
+  Show,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  on,
+  startTransition,
+  useContext,
+} from 'solid-js'
 
 import {
   createSpecterCodeWorkspace,
@@ -20,7 +30,13 @@ function createWorkspaceModel() {
   const [workspaceDraft, setWorkspaceDraft] = createSignal('')
   const [workspaceFilter, setWorkspaceFilter] = createSignal('')
   const [isCreatingWorkspace, setIsCreatingWorkspace] = createSignal(false)
-  const { activeWorkspaceId, selectWorkspace, setSelectedPath, setSelectedFilePath, setActiveRunId } = useSpecterCodeSelection()
+  const {
+    activeWorkspaceId,
+    selectWorkspace,
+    setSelectedPath,
+    setSelectedFilePath,
+    setActiveRunId,
+  } = useSpecterCodeSelection()
 
   const listWorkspacesFn = useServerFn(listSpecterCodeWorkspaces)
   const createWorkspaceFn = useServerFn(createSpecterCodeWorkspace)
@@ -118,12 +134,17 @@ const WorkspaceContext = createContext<WorkspaceContextValue>()
 
 export function WorkspaceProvider(props: ProviderProps) {
   const value = createWorkspaceModel()
-  return <WorkspaceContext.Provider value={value}>{props.children}</WorkspaceContext.Provider>
+  return (
+    <WorkspaceContext.Provider value={value}>
+      {props.children}
+    </WorkspaceContext.Provider>
+  )
 }
 
 export function useWorkspaces() {
   const value = useContext(WorkspaceContext)
-  if (!value) throw new Error('useWorkspaces must be used inside WorkspaceProvider')
+  if (!value)
+    throw new Error('useWorkspaces must be used inside WorkspaceProvider')
   return value
 }
 
@@ -176,7 +197,9 @@ export function WorkspaceSidebar() {
                 id="specterCode-workspace-name"
                 class="min-w-0 flex-1 rounded-2xl border border-white/10 bg-black/25 px-3 py-2.5 text-sm text-white outline-none transition placeholder:text-slate-600 focus:border-cyan-300/70 focus:ring-2 focus:ring-cyan-300/10 disabled:cursor-not-allowed disabled:opacity-60"
                 value={workspaces.workspaceDraft()}
-                onInput={(event) => workspaces.setWorkspaceDraft(event.currentTarget.value)}
+                onInput={(event) =>
+                  workspaces.setWorkspaceDraft(event.currentTarget.value)
+                }
                 placeholder="Workspace name"
                 disabled={workspaces.isCreatingWorkspace()}
               />
@@ -185,7 +208,10 @@ export function WorkspaceSidebar() {
                 aria-label="Create Workspace"
                 title="Create Workspace"
                 class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-cyan-300 text-lg font-semibold text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!workspaces.workspaceDraft().trim() || workspaces.isCreatingWorkspace()}
+                disabled={
+                  !workspaces.workspaceDraft().trim() ||
+                  workspaces.isCreatingWorkspace()
+                }
               >
                 <Icon
                   name={workspaces.isCreatingWorkspace() ? 'refresh' : 'plus'}
@@ -209,7 +235,9 @@ export function WorkspaceSidebar() {
               id="specterCode-workspace-filter"
               class="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-600"
               value={workspaces.workspaceFilter()}
-              onInput={(event) => workspaces.setWorkspaceFilter(event.currentTarget.value)}
+              onInput={(event) =>
+                workspaces.setWorkspaceFilter(event.currentTarget.value)
+              }
               placeholder="Filter workspaces"
             />
           </div>

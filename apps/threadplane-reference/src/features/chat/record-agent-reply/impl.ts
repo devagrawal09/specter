@@ -1,8 +1,8 @@
-import recordAgentReplySpec from "./spec";
-import { z } from "zod";
+import recordAgentReplySpec from './spec'
+import { z } from 'zod'
 
-import { createSqliteSliceStore } from "../../../db/specter-sqlite";
-import { messagePostedEvent } from "../events";
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
+import { messagePostedEvent } from '../events'
 
 const recordAgentReply = recordAgentReplySpec
   .inputSchema(
@@ -17,10 +17,10 @@ const recordAgentReply = recordAgentReplySpec
   )
   .store(createSqliteSliceStore(() => ({})))
   .handle(async (command) => {
-    const content = command.content.trim();
+    const content = command.content.trim()
 
     if (!content) {
-      throw new Error("Agent reply content is required");
+      throw new Error('Agent reply content is required')
     }
 
     return [
@@ -28,14 +28,14 @@ const recordAgentReply = recordAgentReplySpec
         messageId: command.messageId,
         workspaceId: command.workspaceId,
         author: {
-          type: "agent",
+          type: 'agent',
           displayName: command.agentName,
           agentId: command.agentId,
         },
         content,
         parentMessageId: command.replyToMessageId,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordAgentReply;
+export default recordAgentReply

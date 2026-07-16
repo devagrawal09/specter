@@ -1,8 +1,8 @@
-import requestAgentRunSpec from "./spec";
-import { z } from "zod";
+import requestAgentRunSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { agentRunRequestedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { agentRunRequestedEvent } from '../events'
 
 const requestAgentRun = requestAgentRunSpec
   .inputSchema(
@@ -12,29 +12,29 @@ const requestAgentRun = requestAgentRunSpec
       postId: z.string().optional(),
       agentId: z.string(),
       agentName: z.string(),
-      requestedBy: z.discriminatedUnion("type", [
+      requestedBy: z.discriminatedUnion('type', [
         z.object({
-          type: z.literal("user"),
+          type: z.literal('user'),
           userId: z.string().optional(),
           displayName: z.string(),
         }),
         z.object({
-          type: z.literal("agent"),
+          type: z.literal('agent'),
           agentId: z.string(),
           displayName: z.string(),
         }),
         z.object({
-          type: z.literal("system"),
+          type: z.literal('system'),
         }),
       ]),
     }),
   )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
-    const agentName = command.agentName.trim();
+    const agentName = command.agentName.trim()
 
     if (!agentName) {
-      throw new Error("Agent name is required");
+      throw new Error('Agent name is required')
     }
 
     return [
@@ -46,7 +46,7 @@ const requestAgentRun = requestAgentRunSpec
         agentName,
         requestedBy: command.requestedBy,
       }),
-    ];
-  });
+    ]
+  })
 
-export default requestAgentRun;
+export default requestAgentRun

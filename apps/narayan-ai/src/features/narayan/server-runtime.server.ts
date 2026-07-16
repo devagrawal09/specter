@@ -3,14 +3,15 @@ import { createSpecterApp } from '@specter-ts/core'
 import { runWithNarayanAiDb } from '../../db/client.server'
 import { narayanSpecterAppConfig } from './registry'
 
-const app = createSpecterApp(narayanSpecterAppConfig)
+const app = await createSpecterApp(narayanSpecterAppConfig)
 
 export async function recordIncomingTwilioMessageOnServer(data: {
+  inboundMessageId: string
   twilioMessageSid: string
   from: string
   to: string
   body: string
-  receivedAt?: string
+  receivedAt: string
 }) {
   return runWithNarayanAiDb(() => app.recordIncomingTwilioMessage(data))
 }
@@ -43,6 +44,7 @@ export async function createNarayanTestInboundMessageOnServer(data: {
 }) {
   return runWithNarayanAiDb(async () => {
     await app.recordIncomingTwilioMessage({
+      inboundMessageId: crypto.randomUUID(),
       twilioMessageSid: `local-${crypto.randomUUID()}`,
       from: data.from,
       to: process.env.TWILIO_WHATSAPP_FROM ?? 'whatsapp:+14155238886',

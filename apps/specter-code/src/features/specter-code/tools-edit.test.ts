@@ -3,7 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { PermissionRequest, PermissionAction } from './adapters/permissions'
+import type {
+  PermissionRequest,
+  PermissionAction,
+} from './adapters/permissions'
 import { createToolRegistry, type ToolContext } from './adapters/tool-registry'
 import { applyPatchTool } from './tools/apply-patch'
 import { editTool } from './tools/edit'
@@ -23,9 +26,14 @@ const createContext = (overrides: Partial<ToolContext> = {}): ToolContext => ({
 })
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-edit-tools-'))
+  workspaceRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'specter-code-edit-tools-'),
+  )
   await mkdir(path.join(workspaceRoot, 'src'), { recursive: true })
-  await writeFile(path.join(workspaceRoot, 'src', 'app.ts'), 'export const value = 1\n')
+  await writeFile(
+    path.join(workspaceRoot, 'src', 'app.ts'),
+    'export const value = 1\n',
+  )
 })
 
 afterEach(async () => {
@@ -34,13 +42,19 @@ afterEach(async () => {
 
 describe('write/edit/apply_patch tools', () => {
   it('writes a workspace file only after approval and creates a reversible snapshot', async () => {
-    const ask = vi.fn(async (_request: PermissionRequest) => 'allow' as PermissionAction)
+    const ask = vi.fn(
+      async (_request: PermissionRequest) => 'allow' as PermissionAction,
+    )
     const context = createContext({ ask })
     const registry = createToolRegistry()
     registry.register(writeTool)
 
     await expect(
-      registry.execute('write', { path: 'src/app.ts', content: 'export const value = 2\n' }, context),
+      registry.execute(
+        'write',
+        { path: 'src/app.ts', content: 'export const value = 2\n' },
+        context,
+      ),
     ).resolves.toEqual({
       path: 'src/app.ts',
       bytesWritten: 23,
@@ -51,10 +65,13 @@ describe('write/edit/apply_patch tools', () => {
       },
     })
 
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 2\n',
-    )
-    expect(ask).toHaveBeenCalledWith({ permission: 'file.write', target: 'src/app.ts' })
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 2\n')
+    expect(ask).toHaveBeenCalledWith({
+      permission: 'file.write',
+      target: 'src/app.ts',
+    })
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'write',
       status: 'completed',
@@ -63,7 +80,9 @@ describe('write/edit/apply_patch tools', () => {
   })
 
   it('honors write allow permission rules through the registry without prompting', async () => {
-    const ask = vi.fn(async (_request: PermissionRequest) => 'deny' as PermissionAction)
+    const ask = vi.fn(
+      async (_request: PermissionRequest) => 'deny' as PermissionAction,
+    )
     const context = createContext({
       ask,
       permissionRules: [
@@ -74,16 +93,22 @@ describe('write/edit/apply_patch tools', () => {
     registry.register(writeTool)
 
     await expect(
-      registry.execute('write', { path: 'src/app.ts', content: 'export const value = 22\n' }, context),
+      registry.execute(
+        'write',
+        { path: 'src/app.ts', content: 'export const value = 22\n' },
+        context,
+      ),
     ).resolves.toMatchObject({ path: 'src/app.ts', bytesWritten: 24 })
     expect(ask).not.toHaveBeenCalled()
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 22\n',
-    )
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 22\n')
   })
 
   it('honors edit deny permission rules through the registry without mutating files', async () => {
-    const ask = vi.fn(async (_request: PermissionRequest) => 'allow' as PermissionAction)
+    const ask = vi.fn(
+      async (_request: PermissionRequest) => 'allow' as PermissionAction,
+    )
     const context = createContext({
       ask,
       permissionRules: [
@@ -101,9 +126,9 @@ describe('write/edit/apply_patch tools', () => {
       ),
     ).rejects.toThrow('Tool denied: edit for src/app.ts')
     expect(ask).not.toHaveBeenCalled()
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 1\n',
-    )
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 1\n')
   })
 
   it('edits a file by replacing an exact string and snapshots the original content', async () => {
@@ -127,10 +152,13 @@ describe('write/edit/apply_patch tools', () => {
       },
     })
 
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 3\n',
-    )
-    expect(context.ask).toHaveBeenCalledWith({ permission: 'file.write', target: 'src/app.ts' })
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 3\n')
+    expect(context.ask).toHaveBeenCalledWith({
+      permission: 'file.write',
+      target: 'src/app.ts',
+    })
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'edit',
       status: 'completed',
@@ -152,7 +180,9 @@ describe('write/edit/apply_patch tools', () => {
       '',
     ].join('\n')
 
-    await expect(registry.execute('apply_patch', { patch }, context)).resolves.toEqual({
+    await expect(
+      registry.execute('apply_patch', { patch }, context),
+    ).resolves.toEqual({
       files: [
         {
           path: 'src/app.ts',
@@ -167,10 +197,13 @@ describe('write/edit/apply_patch tools', () => {
       ],
     })
 
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 4\nexport const label = "patched"\n',
-    )
-    expect(context.ask).toHaveBeenCalledWith({ permission: 'file.write', target: 'src/app.ts' })
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 4\nexport const label = "patched"\n')
+    expect(context.ask).toHaveBeenCalledWith({
+      permission: 'file.write',
+      target: 'src/app.ts',
+    })
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'apply_patch',
       status: 'completed',
@@ -179,7 +212,9 @@ describe('write/edit/apply_patch tools', () => {
   })
 
   it('honors apply_patch deny permission rules for patch target files', async () => {
-    const ask = vi.fn(async (_request: PermissionRequest) => 'allow' as PermissionAction)
+    const ask = vi.fn(
+      async (_request: PermissionRequest) => 'allow' as PermissionAction,
+    )
     const context = createContext({
       ask,
       permissionRules: [
@@ -197,12 +232,12 @@ describe('write/edit/apply_patch tools', () => {
       '',
     ].join('\n')
 
-    await expect(registry.execute('apply_patch', { patch }, context)).rejects.toThrow(
-      'Tool denied: apply_patch for src/app.ts',
-    )
+    await expect(
+      registry.execute('apply_patch', { patch }, context),
+    ).rejects.toThrow('Tool denied: apply_patch for src/app.ts')
     expect(ask).not.toHaveBeenCalled()
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 1\n',
-    )
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 1\n')
   })
 })

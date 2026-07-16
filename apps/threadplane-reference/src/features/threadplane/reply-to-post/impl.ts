@@ -1,8 +1,8 @@
-import replyToPostSpec from "./spec";
-import { z } from "zod";
+import replyToPostSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { postCreatedEvent, postReplyCreatedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { postCreatedEvent, postReplyCreatedEvent } from '../events'
 
 const replyToPost = replyToPostSpec
   .inputSchema(
@@ -20,10 +20,10 @@ const replyToPost = replyToPostSpec
   .store(createMemorySliceStore(() => ({})))
   .apply(postCreatedEvent, async () => {})
   .handle(async (command) => {
-    const content = command.content.trim();
+    const content = command.content.trim()
 
     if (!content) {
-      throw new Error("Reply content is required");
+      throw new Error('Reply content is required')
     }
 
     return [
@@ -32,13 +32,13 @@ const replyToPost = replyToPostSpec
         workspaceId: command.workspaceId,
         parentPostId: command.parentPostId,
         author: {
-          type: "user",
+          type: 'user',
           userId: command.author.userId,
           displayName: command.author.displayName,
         },
         content,
       }),
-    ];
-  });
+    ]
+  })
 
-export default replyToPost;
+export default replyToPost

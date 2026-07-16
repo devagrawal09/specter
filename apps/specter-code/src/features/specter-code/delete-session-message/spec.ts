@@ -2,8 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const deleteSessionMessageSpec = createCommandSlice('deleteSessionMessage')
   .description('Deletes a user-visible session message from the transcript.')
-  .scenarios(
-{
+  .scenarios({
     description: 'Records a session message deletion event.',
     given: [],
     when: {
@@ -18,7 +17,6 @@ const deleteSessionMessageSpec = createCommandSlice('deleteSessionMessage')
         deletedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
       }),
     ],
-  }
-  )
+  })
 
 export default deleteSessionMessageSpec

@@ -2,7 +2,7 @@ import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
 
 export function createMemorySliceStore<TState>(
   createState: () => TState,
-): SliceStoreAdapter<TState> {
+): SliceStoreAdapter<TState> & { reset: () => void } {
   type Entry = { state: TState; order: number }
   const entries = new Map<string, Entry>()
 
@@ -31,6 +31,7 @@ export function createMemorySliceStore<TState>(
   }
 
   return {
+    reset: () => entries.clear(),
     get: async (sliceName) => getStore(sliceName),
     transaction: async (sliceName, run) => run(getStore(sliceName)),
   }

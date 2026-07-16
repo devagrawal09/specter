@@ -1,45 +1,45 @@
-import publishAgentRunReplySpec from "./spec";
+import publishAgentRunReplySpec from './spec'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
   agentRunRequestedEvent,
   agentRunStreamedEvent,
   postReplyCreatedEvent,
-} from "../events";
+} from '../events'
 
 type RecordVisibleAgentReplyCommand = {
-  type: "recordVisibleAgentReply";
+  type: 'recordVisibleAgentReply'
   payload: {
-    replyId: string;
-    workspaceId: string;
-    parentPostId: string;
-    runId: string;
-    agentId: string;
-    agentName: string;
-    content: string;
-  };
-};
+    replyId: string
+    workspaceId: string
+    parentPostId: string
+    runId: string
+    agentId: string
+    agentName: string
+    content: string
+  }
+}
 
 type PublishAgentRunReplyState = {
   runs: {
-    runId: string;
-    workspaceId: string;
-    postId?: string;
-    agentId: string;
-    agentName: string;
-    text: string;
-    completed: boolean;
-    failed: boolean;
-    replyPublished: boolean;
-  }[];
-};
+    runId: string
+    workspaceId: string
+    postId?: string
+    agentId: string
+    agentName: string
+    text: string
+    completed: boolean
+    failed: boolean
+    replyPublished: boolean
+  }[]
+}
 
 const publishAgentRunReply = publishAgentRunReplySpec
   .outputSchema<RecordVisibleAgentReplyCommand>()
   .plugin(async (dispatch) => async (payload) => {
-    await dispatch(payload as never);
+    await dispatch(payload as never)
   })
   .store(
     createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
@@ -47,7 +47,7 @@ const publishAgentRunReply = publishAgentRunReplySpec
   .apply(agentRunRequestedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof agentRunRequestedEvent.decode>
-    >;
+    >
 
     state.runs.push({
       runId: payload.runId,
@@ -55,60 +55,60 @@ const publishAgentRunReply = publishAgentRunReplySpec
       postId: payload.postId,
       agentId: payload.agentId,
       agentName: payload.agentName,
-      text: "",
+      text: '',
       completed: false,
       failed: false,
       replyPublished: false,
-    });
+    })
   })
   .apply(agentRunStreamedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof agentRunStreamedEvent.decode>
-    >;
-    const run = state.runs.find((item) => item.runId === payload.runId);
+    >
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-    if (run) run.text += payload.delta;
+    if (run) run.text += payload.delta
   })
   .apply(agentRunCompletedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof agentRunCompletedEvent.decode>
-    >;
-    const run = state.runs.find((item) => item.runId === payload.runId);
+    >
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-    if (run) run.completed = true;
+    if (run) run.completed = true
   })
   .apply(agentRunFailedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof agentRunFailedEvent.decode>
-    >;
-    const run = state.runs.find((item) => item.runId === payload.runId);
+    >
+    const run = state.runs.find((item) => item.runId === payload.runId)
 
-    if (run) run.failed = true;
+    if (run) run.failed = true
   })
   .apply(postReplyCreatedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof postReplyCreatedEvent.decode>
-    >;
-    if (!payload.sourceRunId) return;
+    >
+    if (!payload.sourceRunId) return
 
-    const run = state.runs.find((item) => item.runId === payload.sourceRunId);
-    if (run) run.replyPublished = true;
+    const run = state.runs.find((item) => item.runId === payload.sourceRunId)
+    if (run) run.replyPublished = true
   })
   .handle(
     async (state): Promise<RecordVisibleAgentReplyCommand | undefined> => {
       const run = state.runs.find(
         (item) =>
           item.postId && item.completed && !item.failed && !item.replyPublished,
-      );
+      )
 
       if (!run || !run.postId || !run.text.trim()) {
-        return undefined;
+        return undefined
       }
 
-      run.replyPublished = true;
+      run.replyPublished = true
 
       return {
-        type: "recordVisibleAgentReply",
+        type: 'recordVisibleAgentReply',
         payload: {
           replyId: `${run.runId}-reply`,
           workspaceId: run.workspaceId,
@@ -118,8 +118,8 @@ const publishAgentRunReply = publishAgentRunReplySpec
           agentName: run.agentName,
           content: run.text.trim(),
         },
-      };
+      }
     },
-  );
+  )
 
-export default publishAgentRunReply;
+export default publishAgentRunReply

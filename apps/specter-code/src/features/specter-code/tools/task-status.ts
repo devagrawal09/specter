@@ -24,10 +24,17 @@ export type TaskStatusToolOutput = Pick<
 
 function summarizeTask(record: TaskRecord) {
   if (record.status === 'completed') {
-    return 'Task ' + record.taskId + ' completed: ' + (record.result?.summary ?? 'done')
+    return (
+      'Task ' +
+      record.taskId +
+      ' completed: ' +
+      (record.result?.summary ?? 'done')
+    )
   }
   if (record.status === 'failed') {
-    return 'Task ' + record.taskId + ' failed: ' + (record.error ?? 'unknown error')
+    return (
+      'Task ' + record.taskId + ' failed: ' + (record.error ?? 'unknown error')
+    )
   }
   return 'Task ' + record.taskId + ' is running'
 }

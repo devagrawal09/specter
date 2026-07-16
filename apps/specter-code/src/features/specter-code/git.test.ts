@@ -1,5 +1,12 @@
 import { execFile } from 'node:child_process'
-import { mkdtemp, mkdir, readFile, rm, writeFile, access } from 'node:fs/promises'
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  writeFile,
+  access,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { promisify } from 'node:util'
@@ -26,7 +33,10 @@ beforeEach(async () => {
   await git(['init', '-b', 'main'])
   await git(['config', 'user.email', 'specter-code@example.test'])
   await git(['config', 'user.name', 'Specter Code Tests'])
-  await writeFile(path.join(workspaceRoot, 'src', 'app.ts'), 'export const value = 1\n')
+  await writeFile(
+    path.join(workspaceRoot, 'src', 'app.ts'),
+    'export const value = 1\n',
+  )
   await git(['add', 'src/app.ts'])
   await git(['commit', '-m', 'initial'])
 })
@@ -37,7 +47,10 @@ afterEach(async () => {
 
 describe('git adapter', () => {
   it('reports porcelain status entries and scoped workspace diffs', async () => {
-    await writeFile(path.join(workspaceRoot, 'src', 'app.ts'), 'export const value = 2\n')
+    await writeFile(
+      path.join(workspaceRoot, 'src', 'app.ts'),
+      'export const value = 2\n',
+    )
     await writeFile(path.join(workspaceRoot, 'notes.md'), '# Notes\n')
 
     await expect(getGitStatus({ workspaceRoot })).resolves.toEqual({
@@ -49,7 +62,9 @@ describe('git adapter', () => {
       ],
     })
 
-    await expect(getGitDiff({ workspaceRoot, path: 'src/app.ts' })).resolves.toEqual(
+    await expect(
+      getGitDiff({ workspaceRoot, path: 'src/app.ts' }),
+    ).resolves.toEqual(
       expect.objectContaining({
         staged: false,
         path: 'src/app.ts',
@@ -70,28 +85,35 @@ describe('git adapter', () => {
       '',
     ].join('\n')
 
-    await expect(applyGitPatch({ workspaceRoot, patch: patchText })).resolves.toEqual({
+    await expect(
+      applyGitPatch({ workspaceRoot, patch: patchText }),
+    ).resolves.toEqual({
       paths: ['src/app.ts'],
       staged: false,
     })
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 1\nexport const label = "patched"\n',
-    )
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 1\nexport const label = "patched"\n')
 
     await writeFile(path.join(workspaceRoot, 'scratch.txt'), 'temporary\n')
     await expect(
-      revertWorkspacePaths({ workspaceRoot, paths: ['src/app.ts', 'scratch.txt'] }),
+      revertWorkspacePaths({
+        workspaceRoot,
+        paths: ['src/app.ts', 'scratch.txt'],
+      }),
     ).resolves.toEqual({ paths: ['src/app.ts', 'scratch.txt'] })
-    await expect(readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8')).resolves.toBe(
-      'export const value = 1\n',
-    )
-    await expect(access(path.join(workspaceRoot, 'scratch.txt'))).rejects.toThrow()
+    await expect(
+      readFile(path.join(workspaceRoot, 'src', 'app.ts'), 'utf8'),
+    ).resolves.toBe('export const value = 1\n')
+    await expect(
+      access(path.join(workspaceRoot, 'scratch.txt')),
+    ).rejects.toThrow()
   })
 
   it('rejects workspace path escapes before executing git operations', async () => {
-    await expect(getGitDiff({ workspaceRoot, path: '../outside.txt' })).rejects.toThrow(
-      'Git path escapes the workspace root',
-    )
+    await expect(
+      getGitDiff({ workspaceRoot, path: '../outside.txt' }),
+    ).rejects.toThrow('Git path escapes the workspace root')
 
     const escapingPatch = [
       '--- /dev/null',
@@ -100,8 +122,8 @@ describe('git adapter', () => {
       '+nope',
       '',
     ].join('\n')
-    await expect(applyGitPatch({ workspaceRoot, patch: escapingPatch })).rejects.toThrow(
-      'Git patch path escapes the workspace root',
-    )
+    await expect(
+      applyGitPatch({ workspaceRoot, patch: escapingPatch }),
+    ).rejects.toThrow('Git patch path escapes the workspace root')
   })
 })

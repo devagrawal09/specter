@@ -1,11 +1,11 @@
-import recordWorkspaceFilesystemScanStartedSpec from "./spec";
-import { z } from "zod";
+import recordWorkspaceFilesystemScanStartedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceFilesystemScanRequestedEvent,
   workspaceFilesystemScanStartedEvent,
-} from "../events";
+} from '../events'
 
 const recordWorkspaceFilesystemScanStarted =
   recordWorkspaceFilesystemScanStartedSpec
@@ -23,7 +23,7 @@ const recordWorkspaceFilesystemScanStarted =
           scanId: command.scanId,
           workspaceId: command.workspaceId,
         }),
-      ];
-    });
+      ]
+    })
 
-export default recordWorkspaceFilesystemScanStarted;
+export default recordWorkspaceFilesystemScanStarted

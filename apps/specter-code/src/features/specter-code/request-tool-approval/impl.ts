@@ -20,7 +20,7 @@ const requestToolApproval = requestToolApprovalSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const permission = command.permission.trim()
     const target = command.target.trim()

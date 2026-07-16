@@ -1,8 +1,8 @@
-import recordToolCallFailedSpec from "./spec";
-import { z } from "zod";
+import recordToolCallFailedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { toolCallFailedEvent, toolCallStartedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { toolCallFailedEvent, toolCallStartedEvent } from '../events'
 
 const recordToolCallFailed = recordToolCallFailedSpec
   .inputSchema(
@@ -18,10 +18,10 @@ const recordToolCallFailed = recordToolCallFailedSpec
   .store(createMemorySliceStore(() => ({})))
   .apply(toolCallStartedEvent, async () => {})
   .handle(async (command) => {
-    const error = command.error.trim();
+    const error = command.error.trim()
 
     if (!error) {
-      throw new Error("Tool call error is required");
+      throw new Error('Tool call error is required')
     }
 
     return [
@@ -33,7 +33,7 @@ const recordToolCallFailed = recordToolCallFailedSpec
         toolName: command.toolName,
         error,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordToolCallFailed;
+export default recordToolCallFailed

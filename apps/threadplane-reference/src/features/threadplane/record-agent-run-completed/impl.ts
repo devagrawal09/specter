@@ -1,8 +1,8 @@
-import recordAgentRunCompletedSpec from "./spec";
-import { z } from "zod";
+import recordAgentRunCompletedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { agentRunCompletedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { agentRunCompletedEvent } from '../events'
 
 const recordAgentRunCompleted = recordAgentRunCompletedSpec
   .inputSchema(
@@ -20,7 +20,7 @@ const recordAgentRunCompleted = recordAgentRunCompletedSpec
         workspaceId: command.workspaceId,
         agentId: command.agentId,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordAgentRunCompleted;
+export default recordAgentRunCompleted

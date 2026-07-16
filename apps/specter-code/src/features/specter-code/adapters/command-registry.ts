@@ -1,7 +1,10 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader.ts'
+import {
+  loadSpecterCodeConfig,
+  type SpecterCodeConfig,
+} from './config-loader.ts'
 import { listSpecterCodeSkills } from './skills.ts'
 
 export type SpecterCodeCommandSource = 'command' | 'mcp' | 'skill'
@@ -63,7 +66,7 @@ async function scanMarkdownFiles(root: string): Promise<string[]> {
   for (const entry of entries) {
     const absolutePath = path.join(root, entry.name)
     if (entry.isDirectory()) {
-      matches.push(...await scanMarkdownFiles(absolutePath))
+      matches.push(...(await scanMarkdownFiles(absolutePath)))
       continue
     }
     if (entry.isFile() && entry.name.endsWith('.md')) {
@@ -117,9 +120,13 @@ function parseCommandMarkdown(markdown: string) {
   const closeMarker = normalized.indexOf('\n---', lineBreak)
   if (closeMarker < 0) return { frontmatter: {}, content: normalized.trim() }
 
-  const frontmatter = parseFrontmatter(normalized.slice(lineBreak + 1, closeMarker))
+  const frontmatter = parseFrontmatter(
+    normalized.slice(lineBreak + 1, closeMarker),
+  )
   const afterMarker = normalized.indexOf('\n', closeMarker + 1)
-  const content = (afterMarker < 0 ? '' : normalized.slice(afterMarker + 1)).trim()
+  const content = (
+    afterMarker < 0 ? '' : normalized.slice(afterMarker + 1)
+  ).trim()
   return { frontmatter, content }
 }
 
@@ -128,11 +135,16 @@ function commandNameFromPath(filePath: string, root: string) {
   return relative.replace(/\.md$/i, '')
 }
 
-function configuredCommand(commandName: string, value: unknown): SpecterCodeCommandInfo | undefined {
+function configuredCommand(
+  commandName: string,
+  value: unknown,
+): SpecterCodeCommandInfo | undefined {
   if (!isRecord(value) || typeof value.template !== 'string') return undefined
   return {
     name: commandName,
-    ...(typeof value.description === 'string' ? { description: value.description } : {}),
+    ...(typeof value.description === 'string'
+      ? { description: value.description }
+      : {}),
     ...(typeof value.agent === 'string' ? { agent: value.agent } : {}),
     ...(typeof value.model === 'string' ? { model: value.model } : {}),
     source: 'command',
@@ -152,17 +164,26 @@ export function extractSpecterCodeCommandHints(template: string) {
   return result
 }
 
-export function renderSpecterCodeCommandPrompt(command: SpecterCodeCommandInfo, argumentText: string) {
+export function renderSpecterCodeCommandPrompt(
+  command: SpecterCodeCommandInfo,
+  argumentText: string,
+) {
   const args = argumentText.trim()
   const positional = args ? args.split(/\s+/) : []
   return command.template
-    .replace(/\$(\d+)/g, (_match, index: string) => positional[Number(index) - 1] ?? '')
+    .replace(
+      /\$(\d+)/g,
+      (_match, index: string) => positional[Number(index) - 1] ?? '',
+    )
     .replaceAll('$ARGUMENTS', args)
 }
 
-export async function listSpecterCodeCommands(options: ListSpecterCodeCommandsOptions): Promise<SpecterCodeCommandInfo[]> {
+export async function listSpecterCodeCommands(
+  options: ListSpecterCodeCommandsOptions,
+): Promise<SpecterCodeCommandInfo[]> {
   const workspaceRoot = path.resolve(options.workspaceRoot)
-  const config = options.config ?? await loadSpecterCodeConfig({ workspaceRoot })
+  const config =
+    options.config ?? (await loadSpecterCodeConfig({ workspaceRoot }))
   const commands = new Map<string, SpecterCodeCommandInfo>()
 
   commands.set('init', {
@@ -188,7 +209,9 @@ export async function listSpecterCodeCommands(options: ListSpecterCodeCommandsOp
     }
   }
 
-  for (const root of DEFAULT_COMMAND_DIRS.map((directory) => path.join(workspaceRoot, directory))) {
+  for (const root of DEFAULT_COMMAND_DIRS.map((directory) =>
+    path.join(workspaceRoot, directory),
+  )) {
     for (const filePath of await scanMarkdownFiles(root)) {
       const parsed = parseCommandMarkdown(await readFile(filePath, 'utf8'))
       if (!parsed.content) continue
@@ -214,5 +237,7 @@ export async function listSpecterCodeCommands(options: ListSpecterCodeCommandsOp
     })
   }
 
-  return [...commands.values()].sort((left, right) => left.name.localeCompare(right.name))
+  return [...commands.values()].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )
 }

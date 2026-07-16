@@ -22,9 +22,23 @@ describe('todo tool', () => {
       todoTool.execute(
         {
           items: [
-            { id: 'todo-1', content: ' Inspect failing test ', status: 'in_progress', priority: 'high' },
-            { id: 'todo-2', content: 'Implement smallest fix', status: 'pending' },
-            { id: 'todo-3', content: 'Run verification', status: 'completed', priority: 'medium' },
+            {
+              id: 'todo-1',
+              content: ' Inspect failing test ',
+              status: 'in_progress',
+              priority: 'high',
+            },
+            {
+              id: 'todo-2',
+              content: 'Implement smallest fix',
+              status: 'pending',
+            },
+            {
+              id: 'todo-3',
+              content: 'Run verification',
+              status: 'completed',
+              priority: 'medium',
+            },
           ],
         },
         context,
@@ -33,9 +47,19 @@ describe('todo tool', () => {
       sessionId: 'session-todo-1',
       messageId: 'message-todo-1',
       items: [
-        { id: 'todo-1', content: 'Inspect failing test', status: 'in_progress', priority: 'high' },
+        {
+          id: 'todo-1',
+          content: 'Inspect failing test',
+          status: 'in_progress',
+          priority: 'high',
+        },
         { id: 'todo-2', content: 'Implement smallest fix', status: 'pending' },
-        { id: 'todo-3', content: 'Run verification', status: 'completed', priority: 'medium' },
+        {
+          id: 'todo-3',
+          content: 'Run verification',
+          status: 'completed',
+          priority: 'medium',
+        },
       ],
     })
     expect(context.ask).not.toHaveBeenCalled()
@@ -50,10 +74,16 @@ describe('todo tool', () => {
     const context = createContext()
 
     await expect(
-      todoTool.execute({ items: [{ id: 'todo-empty', content: '   ', status: 'pending' }] }, context),
+      todoTool.execute(
+        { items: [{ id: 'todo-empty', content: '   ', status: 'pending' }] },
+        context,
+      ),
     ).rejects.toThrow('Todo content is required')
     await expect(
-      todoTool.execute({ items: [{ id: 'todo-bad', content: 'Ship it', status: 'blocked' }] }, context),
+      todoTool.execute(
+        { items: [{ id: 'todo-bad', content: 'Ship it', status: 'blocked' }] },
+        context,
+      ),
     ).rejects.toThrow('Unsupported todo status: blocked')
     expect(context.metadata).not.toHaveBeenCalled()
   })
