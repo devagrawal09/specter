@@ -25,7 +25,10 @@ const approvalNotificationReaction = spec
       payload: z.object({ bookingId: z.string() }),
     }),
   )
-  .plugin(async (command) => async (payload) => command(payload as never))
+  .plugin(
+    async (command) => async (payload, context) =>
+      command(payload as never, { idempotencyKey: context.deliveryId }),
+  )
   .store(sqliteSliceStore)
   .apply(bookingRequestedEvent, async (event, db) => {
     const payload = event.payload
@@ -36,6 +39,7 @@ const approvalNotificationReaction = spec
         approved: false,
         notified: false,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {

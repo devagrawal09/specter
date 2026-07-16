@@ -47,6 +47,7 @@ export type {
   ApplyEventDefinition,
   ApplyRegistration,
   CommandDispatch,
+  CommandDispatchOptions,
   CommandEnvelope,
   CommandInputOf,
   CommandRef,

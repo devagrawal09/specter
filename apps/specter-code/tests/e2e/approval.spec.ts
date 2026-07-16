@@ -22,7 +22,11 @@ test('shows pending tool approval requests and records user decisions', async ({
   const workspaceName = uniqueLabel('Approval Workspace', testInfo)
   const sessionTitle = uniqueLabel('approval session', testInfo)
 
-  await createSpecterCodeWorkspaceOnServer({ name: workspaceName })
+  await createSpecterCodeWorkspaceOnServer({
+    workspaceId: `approval-workspace-${Date.now()}-${testInfo.workerIndex}`,
+    scanId: `approval-scan-${Date.now()}-${testInfo.workerIndex}`,
+    name: workspaceName,
+  })
   const workspace = (await listSpecterCodeWorkspacesOnServer()).find(
     (item) => item.name === workspaceName,
   )

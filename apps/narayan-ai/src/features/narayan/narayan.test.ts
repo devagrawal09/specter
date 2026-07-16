@@ -14,17 +14,24 @@ describe('Narayan AI Specter lifecycle', () => {
     await scenario(async () => {
       const app = await createSpecterApp(narayanSpecterAppConfig)
 
-      await app.recordIncomingTwilioMessage({
-        inboundMessageId: 'inbound-1',
-        twilioMessageSid: 'SM-inbound-1',
-        from: 'whatsapp:+155****0001',
-        to: 'whatsapp:+141****8886',
-        body: 'Do you have puja flowers?',
-        receivedAt: '2026-06-28T10:00:00.000Z',
+      const execution = await app.command({
+        type: 'recordIncomingTwilioMessage',
+        payload: {
+          inboundMessageId: 'inbound-1',
+          twilioMessageSid: 'SM-inbound-1',
+          from: 'whatsapp:+155****0001',
+          to: 'whatsapp:+141****8886',
+          body: 'Do you have puja flowers?',
+          receivedAt: '2026-06-28T10:00:00.000Z',
+        },
       })
+      await execution.reactions
 
-      const messages = await app.conversationMessagesQuery({
-        phoneNumber: 'whatsapp:+155****0001',
+      const messages = await app.query({
+        type: 'conversationMessagesQuery',
+        payload: {
+          phoneNumber: 'whatsapp:+155****0001',
+        },
       })
 
       expect(messages.some((message) => message.direction === 'inbound')).toBe(
@@ -50,11 +57,23 @@ describe('Narayan AI Specter lifecycle', () => {
         receivedAt: '2026-06-28T10:01:00.000Z',
       }
 
-      await app.recordIncomingTwilioMessage(command)
-      await app.recordIncomingTwilioMessage(command)
+      const firstExecution = await app.command({
+        type: 'recordIncomingTwilioMessage',
+        payload: command,
+      })
+      await firstExecution.reactions
 
-      const messages = await app.conversationMessagesQuery({
-        phoneNumber: 'whatsapp:+155****0002',
+      const secondExecution = await app.command({
+        type: 'recordIncomingTwilioMessage',
+        payload: command,
+      })
+      await secondExecution.reactions
+
+      const messages = await app.query({
+        type: 'conversationMessagesQuery',
+        payload: {
+          phoneNumber: 'whatsapp:+155****0002',
+        },
       })
       const inboundMessages = messages.filter(
         (message) => message.direction === 'inbound',
@@ -72,16 +91,23 @@ describe('Narayan AI Specter lifecycle', () => {
     await scenario(async () => {
       const app = await createSpecterApp(narayanSpecterAppConfig)
 
-      await app.recordAssistantReply({
-        inboundMessageId: 'inbound-1',
-        outboundMessageId: 'outbound-1',
-        to: 'whatsapp:+155****0003',
-        body: 'Yes, we can help with that.',
-        generatedAt: '2026-06-28T10:02:00.000Z',
+      const execution = await app.command({
+        type: 'recordAssistantReply',
+        payload: {
+          inboundMessageId: 'inbound-1',
+          outboundMessageId: 'outbound-1',
+          to: 'whatsapp:+155****0003',
+          body: 'Yes, we can help with that.',
+          generatedAt: '2026-06-28T10:02:00.000Z',
+        },
       })
+      await execution.reactions
 
-      const messages = await app.conversationMessagesQuery({
-        phoneNumber: 'whatsapp:+155****0003',
+      const messages = await app.query({
+        type: 'conversationMessagesQuery',
+        payload: {
+          phoneNumber: 'whatsapp:+155****0003',
+        },
       })
 
       expect(messages).toHaveLength(1)
@@ -115,8 +141,11 @@ describe('Narayan AI Specter lifecycle', () => {
         )
 
         const app = await createSpecterApp(narayanSpecterAppConfig)
-        const messages = await app.conversationMessagesQuery({
-          phoneNumber: 'whatsapp:+155****0004',
+        const messages = await app.query({
+          type: 'conversationMessagesQuery',
+          payload: {
+            phoneNumber: 'whatsapp:+155****0004',
+          },
         })
 
         expect(response.status).toBe(200)

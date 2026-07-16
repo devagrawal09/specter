@@ -12,7 +12,7 @@ import {
 } from 'solid-js'
 
 import { searchParams, setSearch } from './location'
-import { specterClient } from './specter-client'
+import { runSpecterCommand, specterTransport } from './specter-transport'
 
 const filterOptions = [
   { status: 'all', label: 'All' },
@@ -28,13 +28,18 @@ type Todo = {
 }
 
 export function TodoApp() {
-  const cheerState = createMemo(() => specterClient.todoCheers({}))
+  const cheerState = createMemo(() =>
+    specterTransport.query({ type: 'todoCheers', payload: {} }),
+  )
   const status = () => {
     const value = searchParams().get('status')
     return value === 'active' || value === 'completed' ? value : 'all'
   }
   const todos = createMemo<Todo[]>(() =>
-    specterClient.todosQuery({ status: status() }),
+    specterTransport.query({
+      type: 'todosQuery',
+      payload: { status: status() },
+    }),
   )
   const [title, setTitle] = createSignal('')
   const [isAdding, setIsAdding] = createOptimistic(false)
@@ -42,20 +47,26 @@ export function TodoApp() {
   const [pendingRemoveId, setPendingRemoveId] = createOptimistic('')
   const add = action(function* (nextTitle: string) {
     setIsAdding(true)
-    yield specterClient.addTodo({
-      todoId: crypto.randomUUID(),
-      title: nextTitle,
+    yield runSpecterCommand({
+      type: 'addTodo',
+      payload: {
+        todoId: crypto.randomUUID(),
+        title: nextTitle,
+      },
     })
     refresh(todos)
   })
   const change = action(function* (todoId: string, completed: boolean) {
     setPendingToggleId(todoId)
-    yield specterClient.changeTodoCompletion({ todoId, completed })
+    yield runSpecterCommand({
+      type: 'changeTodoCompletion',
+      payload: { todoId, completed },
+    })
     refresh(todos)
   })
   const remove = action(function* (todoId: string) {
     setPendingRemoveId(todoId)
-    yield specterClient.removeTodo({ todoId })
+    yield runSpecterCommand({ type: 'removeTodo', payload: { todoId } })
     refresh(todos)
   })
 

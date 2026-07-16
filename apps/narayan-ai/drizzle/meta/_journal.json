@@ -15,6 +15,20 @@
       "when": 1782717069795,
       "tag": "0001_white_retro_girl",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784192512708,
+      "tag": "0002_vengeful_scream",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784195052539,
+      "tag": "0003_cheerful_winter_soldier",
+      "breakpoints": true
     }
   ]
 }

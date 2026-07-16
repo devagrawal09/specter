@@ -53,6 +53,7 @@ const rescheduleBooking = spec
     await db
       .insert(rescheduleBookingSqlRooms)
       .values({ ...payload, retired: false })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomRetiredEvent, async (event, db) => {
@@ -68,6 +69,7 @@ const rescheduleBooking = spec
     await db
       .insert(rescheduleBookingSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingRejectedEvent, async (event, db) => {

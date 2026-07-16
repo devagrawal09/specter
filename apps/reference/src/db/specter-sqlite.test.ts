@@ -5,29 +5,29 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
+import { createSqliteEventLog, prepareSqliteEventLog } from '@specter-ts/sqlite'
 import * as schema from './schema'
-import { runWithSqliteDb, sqliteEventLog } from './specter-sqlite'
 
 test('appends multiple events in input order', async () => {
-  const { sqlite, db, tempDir } = await createMigratedDb()
+  const { sqlite, tempDir } = await createMigratedDb()
 
   try {
-    const appended = await runWithSqliteDb(db, async () =>
-      sqliteEventLog.transaction(async (eventLog) =>
-        eventLog.append([
-          { type: 'event.one', payload: { position: 1 } },
-          { type: 'event.two', payload: { position: 2 } },
-          { type: 'event.three', payload: { position: 3 } },
-        ]),
-      ),
+    await prepareSqliteEventLog(sqlite)
+    const eventLog = createSqliteEventLog(sqlite)
+    const appended = await eventLog.transaction((transaction) =>
+      transaction.append([
+        { type: 'event.one', payload: { position: 1 } },
+        { type: 'event.two', payload: { position: 2 } },
+        { type: 'event.three', payload: { position: 3 } },
+      ]),
     )
 
-    expect(appended.map((event) => event.type)).toEqual([
+    expect(appended.events.map((event) => event.type)).toEqual([
       'event.one',
       'event.two',
       'event.three',
     ])
-    expect(appended.map((event) => event.order)).toEqual([1, 2, 3])
+    expect(appended.events.map((event) => event.order)).toEqual([1, 2, 3])
   } finally {
     sqlite.close()
     rmSync(tempDir, { recursive: true, force: true })

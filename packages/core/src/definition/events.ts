@@ -3,33 +3,33 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { decodeSchema } from './schemas'
 
 export type EventDraft<TType extends string = string, TPayload = unknown> = {
-  type: TType
-  payload: TPayload
+  readonly type: TType
+  readonly payload: TPayload
 }
 
 export type Event<
   TType extends string = string,
   TPayload = unknown,
 > = EventDraft<TType, TPayload> & {
-  id: string
-  recordedAt: Date
+  readonly id: string
+  readonly recordedAt: string
 }
 
 export type PersistedEvent<
   TType extends string = string,
   TPayload = unknown,
 > = Event<TType, TPayload> & {
-  order: number
+  readonly order: number
 }
 
 export type EventDefinition<
   TType extends string = string,
   TPayload = unknown,
 > = {
-  type: TType
-  schema: StandardSchemaV1
-  create: (payload: TPayload) => EventDraft<TType, TPayload>
-  decode: (payload: unknown) => Promise<TPayload>
+  readonly type: TType
+  readonly schema: StandardSchemaV1
+  readonly create: (payload: TPayload) => EventDraft<TType, TPayload>
+  readonly decode: (payload: unknown) => Promise<TPayload>
 }
 
 export function createEventDefinition<

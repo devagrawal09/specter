@@ -4,19 +4,20 @@ import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
-import removeTodoSpec from './spec'
+import { removeTodoSpec } from './spec'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
 })
 
-const removeTodo = removeTodoSpec
+export const removeTodo = removeTodoSpec
   .inputSchema(z.object({ todoId: z.string().min(1) }))
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {
     await db
       .insert(todoRemovalSqlStates)
       .values({ todoId: event.payload.todoId })
+      .onConflictDoNothing()
       .run()
   })
   .apply(todoRemovedEvent, async (event, db) => {
@@ -35,5 +36,3 @@ const removeTodo = removeTodoSpec
     if (!rows[0]) throw new Error('Todo not found')
     return [todoRemovedEvent.create({ todoId: command.todoId })]
   })
-
-export default removeTodo

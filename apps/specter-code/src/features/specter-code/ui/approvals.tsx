@@ -1,10 +1,9 @@
-import { useServerFn } from '@tanstack/solid-start'
 import { For, Show, createContext, createMemo, useContext } from 'solid-js'
 
 import {
   listSpecterCodePendingPermissions,
   replySpecterCodeToolApproval,
-} from '../server-functions'
+} from '../client-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import {
@@ -16,10 +15,8 @@ import {
 
 function createApprovalsModel() {
   const { activeSessionId } = useSpecterCodeSelection()
-  const listPendingPermissionsFn = useServerFn(
-    listSpecterCodePendingPermissions,
-  )
-  const replyToolApprovalFn = useServerFn(replySpecterCodeToolApproval)
+  const listPendingPermissionsFn = listSpecterCodePendingPermissions
+  const replyToolApprovalFn = replySpecterCodeToolApproval
 
   const [pendingPermissions, { refetch: refetchPendingPermissions }] =
     createPollingResource(

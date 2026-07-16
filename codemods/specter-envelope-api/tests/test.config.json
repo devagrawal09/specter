@@ -1,0 +1,9 @@
+{
+  "language": "tsx",
+  "params": {
+    "command_names": "addTodo,changeTodoCompletion,removeTodo",
+    "query_names": "todosQuery,todoCheers",
+    "receiver_names": "app,specterClient,specterTransport",
+    "transport_module": "./transport/specter-browser"
+  }
+}

@@ -1,4 +1,5 @@
-export { events, sliceCursors } from './specter-schema'
+export { eventCommits, events, sliceCursors } from './specter-schema'
+export { narayanTwilioDeliveryAttempts } from './twilio-delivery-attempts'
 export { narayanConversationMessages } from '../features/narayan/conversation-messages-query/impl'
 export { narayanConversations } from '../features/narayan/conversations-query/impl'
 export {

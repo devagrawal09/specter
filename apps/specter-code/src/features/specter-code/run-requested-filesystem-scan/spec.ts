@@ -20,12 +20,19 @@ const runRequestedFilesystemScanSpec = createReactionSlice(
       expect: [
         {
           type: 'runWorkspaceFilesystemScan',
-          payload: { scanId: 'scan-1', workspaceId: 'workspace-1' },
+          payload: {
+            scanId: 'scan-1',
+            workspaceId: 'workspace-1',
+            baseline: [],
+            plannedSnapshot: null,
+            progress: { discovered: {}, changed: {}, deleted: {} },
+          },
         },
       ],
     },
     {
-      description: 'Does not queue a filesystem scan that already started.',
+      description:
+        'Resumes a started filesystem scan from its durable plan and committed progress.',
       given: [
         event('workspace-filesystem-scan-requested', {
           scanId: 'scan-1',
@@ -36,9 +43,93 @@ const runRequestedFilesystemScanSpec = createReactionSlice(
         event('workspace-filesystem-scan-started', {
           scanId: 'scan-1',
           workspaceId: 'workspace-1',
+          snapshot: [
+            {
+              path: 'src',
+              parentPath: null,
+              name: 'src',
+              kind: 'directory',
+              sizeBytes: null,
+            },
+            {
+              path: 'src/index.ts',
+              parentPath: 'src',
+              name: 'index.ts',
+              kind: 'file',
+              sizeBytes: 42,
+            },
+          ],
+        }),
+        event('filesystem-node-discovered', {
+          scanId: 'scan-1',
+          workspaceId: 'workspace-1',
+          path: 'src',
+          parentPath: null,
+          name: 'src',
+          kind: 'directory',
+          sizeBytes: null,
+        }),
+        event('filesystem-node-changed', {
+          scanId: 'scan-1',
+          workspaceId: 'workspace-1',
+          path: 'src/index.ts',
+          parentPath: 'src',
+          name: 'index.ts',
+          kind: 'file',
+          sizeBytes: 40,
+        }),
+        event('filesystem-node-deleted', {
+          scanId: 'scan-1',
+          workspaceId: 'workspace-1',
+          path: 'old.ts',
         }),
       ],
-      expect: [],
+      expect: [
+        {
+          type: 'runWorkspaceFilesystemScan',
+          payload: {
+            scanId: 'scan-1',
+            workspaceId: 'workspace-1',
+            baseline: [
+              {
+                path: 'src',
+                parentPath: null,
+                name: 'src',
+                kind: 'directory',
+                sizeBytes: null,
+              },
+              {
+                path: 'src/index.ts',
+                parentPath: 'src',
+                name: 'index.ts',
+                kind: 'file',
+                sizeBytes: 40,
+              },
+            ],
+            plannedSnapshot: [
+              {
+                path: 'src',
+                parentPath: null,
+                name: 'src',
+                kind: 'directory',
+                sizeBytes: null,
+              },
+              {
+                path: 'src/index.ts',
+                parentPath: 'src',
+                name: 'index.ts',
+                kind: 'file',
+                sizeBytes: 42,
+              },
+            ],
+            progress: {
+              discovered: { src: true },
+              changed: { 'src/index.ts': true },
+              deleted: { 'old.ts': true },
+            },
+          },
+        },
+      ],
     },
     {
       description:

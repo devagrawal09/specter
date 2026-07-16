@@ -8,6 +8,7 @@ import {
   createReactionSlice,
   event,
 } from '../spec-entry'
+import { eventsFor } from './events-for'
 import { testSliceImplementations } from './scenarios'
 
 function identitySchema<T>(): StandardSchemaV1<T, T> {
@@ -16,6 +17,18 @@ function identitySchema<T>(): StandardSchemaV1<T, T> {
       version: 1,
       vendor: 'specter-core-test',
       validate: (value) => ({ value: value as T }),
+    },
+  }
+}
+
+function transformSchema<TInput, TOutput>(
+  transform: (input: TInput) => TOutput,
+): StandardSchemaV1<TInput, TOutput> {
+  return {
+    '~standard': {
+      version: 1,
+      vendor: 'specter-core-test',
+      validate: (value) => ({ value: transform(value as TInput) }),
     },
   }
 }
@@ -159,7 +172,61 @@ const reaction = reactionSpec
     },
   }))
 
-testSliceImplementations([command, query, reaction], {
-  events: [recordCreated],
-  runScenario: async (run) => run(),
-})
+const transformedQuery = createQuerySlice('recordLabel')
+  .description('Transforms a private handler result once.')
+  .scenarios({
+    description: 'Compares the final public Query value directly.',
+    given: [
+      event('record-created', {
+        id: 'record-42',
+        value: 42,
+        occurredAt: '2026-07-11T12:00:00.000Z',
+      }),
+    ],
+    when: {},
+    expect: 'Record 42',
+  })
+  .inputSchema<Record<string, never>>()
+  .outputSchema(
+    transformSchema<{ value: number }, string>(
+      ({ value }) => `Record ${value}`,
+    ),
+  )
+  .store(memoryStore({ value: 0 }))
+  .apply(recordCreated, async (applied, state) => {
+    state.value = applied.payload.value
+  })
+  .handle(async (_input, state) => ({ value: state.value }))
+
+const transformedReaction = createReactionSlice('recordNotice')
+  .description('Transforms a private Reaction effect once.')
+  .scenarios({
+    description: 'Compares the final public Reaction effect directly.',
+    given: [
+      event('record-created', {
+        id: 'record-42',
+        value: 42,
+        occurredAt: '2026-07-11T12:00:00.000Z',
+      }),
+    ],
+    expect: [{ message: 'Record 42' }],
+  })
+  .outputSchema(
+    transformSchema<{ value: number }, { message: string }>(({ value }) => ({
+      message: `Record ${value}`,
+    })),
+  )
+  .plugin(async () => async () => undefined)
+  .store(memoryStore({ value: 0 }))
+  .apply(recordCreated, async (applied, state) => {
+    state.value = applied.payload.value
+  })
+  .handle(async (state) => ({ value: state.value }))
+
+testSliceImplementations(
+  [command, query, reaction, transformedQuery, transformedReaction],
+  {
+    events: eventsFor(command, [recordCreated]),
+    runScenario: async (run) => run(),
+  },
+)

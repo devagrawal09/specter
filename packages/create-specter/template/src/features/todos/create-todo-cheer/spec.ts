@@ -10,7 +10,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-const createTodoCheerSpec = createCommandSlice('createTodoCheer')
+export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
   .description('Creates milestone cheers for completed todos.')
   .scenarios(
     {
@@ -61,5 +61,3 @@ const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       expect: [],
     },
   )
-
-export default createTodoCheerSpec

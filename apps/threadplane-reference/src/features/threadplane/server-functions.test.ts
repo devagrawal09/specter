@@ -36,19 +36,25 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
   await sqliteScenario(async () => {
     expect(await listThreadplaneWorkspacesOnServer()).toEqual([])
 
-    await createThreadplaneWorkspaceOnServer({ name: '  Design Lab  ' })
+    await createThreadplaneWorkspaceOnServer({
+      workspaceId: 'workspace-main',
+      scanId: 'scan-initial',
+      name: '  Design Lab  ',
+    })
     expect(await listThreadplaneWorkspacesOnServer()).toEqual([
       expect.objectContaining({ name: 'Design Lab' }),
     ])
 
     await createThreadplanePostOnServer({
       workspaceId: 'workspace-main',
+      postId: 'post-main',
       author: { displayName: 'Ada Lovelace' },
       content: 'Can Specter inspect this?',
     })
     await replyToThreadplanePostOnServer({
       workspaceId: 'workspace-main',
-      parentPostId: 'generated',
+      replyId: 'reply-main',
+      parentPostId: 'post-main',
       author: { displayName: 'Grace Hopper' },
       content: 'Please check src/index.ts',
     })
@@ -61,6 +67,7 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
 
     await requestThreadplaneFilesystemScanOnServer({
       workspaceId: 'workspace-main',
+      scanId: 'scan-user',
       reason: 'userRequested',
       requestedBy: { type: 'user', displayName: 'Ada Lovelace' },
     })
@@ -69,7 +76,7 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
       await getThreadplaneFilesystemStatusOnServer({
         workspaceId: 'workspace-main',
       }),
-    ).toMatchObject({ initialized: false, latestScan: expect.any(Object) })
+    ).toMatchObject({ initialized: true, latestScan: expect.any(Object) })
     expect(
       await listThreadplaneFilesystemTreeOnServer({
         workspaceId: 'workspace-main',
@@ -83,7 +90,8 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
 
     await requestThreadplaneAgentRunOnServer({
       workspaceId: 'workspace-main',
-      postId: 'generated',
+      runId: 'run-main',
+      postId: 'post-main',
       agentId: 'specter',
       agentName: 'Specter',
       requestedBy: { type: 'user', displayName: 'Ada Lovelace' },
@@ -114,7 +122,7 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
         expect.objectContaining({
           author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
           content: 'I found the issue.',
-          parentPostId: 'generated',
+          parentPostId: 'post-main',
           sourceRunId: runId,
         }),
       ]),
@@ -228,12 +236,16 @@ test('threadplane server functions preserve database state across app reopen', a
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
         const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
-        await app.createWorkspace({
-          workspaceId: 'workspace-durable',
-          scanId: 'scan-durable',
-          name: 'Durable Lab',
+        const execution = await app.command({
+          type: 'createWorkspace',
+          payload: {
+            workspaceId: 'workspace-durable',
+            scanId: 'scan-durable',
+            name: 'Durable Lab',
+          },
         })
-        await app.workspaceList({})
+        await execution.reactions
+        await app.query({ type: 'workspaceList', payload: {} })
       })
     } finally {
       firstSqlite.close()

@@ -27,7 +27,11 @@ async function openSpecterCode(page: Page) {
 
 async function createWorkspaceFixture(testInfo: TestInfo) {
   const workspaceName = uniqueLabel('Full Flow Workspace', testInfo)
-  await createSpecterCodeWorkspaceOnServer({ name: workspaceName })
+  await createSpecterCodeWorkspaceOnServer({
+    workspaceId: `full-flow-workspace-${Date.now()}-${testInfo.workerIndex}`,
+    scanId: `full-flow-scan-${Date.now()}-${testInfo.workerIndex}`,
+    name: workspaceName,
+  })
   const workspace = (await listSpecterCodeWorkspacesOnServer()).find(
     (item) => item.name === workspaceName,
   )

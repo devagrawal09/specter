@@ -132,6 +132,15 @@ function isOpenCodeApiPath(pathname: string) {
 
 async function fetch(request: Request, options?: unknown) {
   const url = new URL(request.url)
+  if (
+    (request.method === 'POST' || request.method === 'GET') &&
+    url.pathname.startsWith('/api/specter/')
+  ) {
+    const { handleSpecterCodeSpecterRequest } = await import(
+      './features/specter-code/server-runtime.server'
+    )
+    return handleSpecterCodeSpecterRequest(request)
+  }
   if (isOpenCodeApiPath(url.pathname)) {
     return apiRouter.handle(request)
   }

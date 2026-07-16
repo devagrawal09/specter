@@ -11,6 +11,7 @@ import type {
 export type ConformanceDiagnostic = {
   readonly code: string
   readonly message: string
+  readonly remediation?: string
   readonly sliceName?: string
   readonly scenarioDescription?: string
   readonly location?: string
@@ -19,6 +20,7 @@ export type ConformanceDiagnostic = {
 }
 
 export class SpecterConformanceError extends AggregateError {
+  readonly code = 'SPECTER_CONFORMANCE_FAILED' as const
   readonly diagnostics: readonly ConformanceDiagnostic[]
 
   constructor(diagnostics: readonly ConformanceDiagnostic[]) {
@@ -126,6 +128,13 @@ export async function collectConformanceDiagnostics(
       diagnostics.push({
         code: 'empty-slice-name',
         message: 'Slice names must not be empty.',
+      })
+    } else if (!isLowerCamelCase(slice.name)) {
+      diagnostics.push({
+        code: 'slice-name-format',
+        sliceName: slice.name,
+        message:
+          'Slice names must use lower camel case (for example, "addTodo" or "workspaceFilesystemTree").',
       })
     }
 
@@ -247,32 +256,15 @@ export async function collectConformanceDiagnostics(
             )
           }
 
-          if (slice.outputSchema) {
-            await validateExample(
-              slice.outputSchema,
-              scenario.expect,
-              diagnostics,
-              {
-                code: 'query-output-schema',
-                sliceName: slice.name,
-                scenarioDescription: scenario.description,
-                location: 'expect',
-              },
-            )
-          }
+          // `expect` is already the public, post-schema value. Standard Schema
+          // exposes the raw-input -> public-output direction only, so applying
+          // it to the expected public value would transform it twice.
           break
         }
         case 'reaction': {
-          if (slice.outputSchema) {
-            for (const [index, output] of scenario.expect.entries()) {
-              await validateExample(slice.outputSchema, output, diagnostics, {
-                code: 'reaction-output-schema',
-                sliceName: slice.name,
-                scenarioDescription: scenario.description,
-                location: `expect[${index}]`,
-              })
-            }
-          }
+          // Reaction expectations have the same post-schema semantics as
+          // Query expectations; executable scenarios validate the actual
+          // handler output once and compare it directly with this value.
           break
         }
       }
@@ -322,6 +314,7 @@ export async function collectConformanceDiagnostics(
           sliceName: slice.name,
           eventType,
           message: `Scenarios use "${eventType}" in Given data, but the implementation has no matching apply handler.`,
+          remediation: `Add .apply(${eventType}, handler) to Slice "${slice.name}", or remove the Event from that Slice's Given scenarios.`,
         })
       }
     }
@@ -333,6 +326,7 @@ export async function collectConformanceDiagnostics(
           sliceName: slice.name,
           eventType,
           message: `The implementation applies "${eventType}", but that Event never appears in the Slice's Given scenarios.`,
+          remediation: `Add a Given example for "${eventType}" to Slice "${slice.name}", or remove the unused apply handler.`,
         })
       }
     }
@@ -345,6 +339,8 @@ export async function collectConformanceDiagnostics(
           code: 'event-without-scenario',
           eventType,
           message: `Registered Event "${eventType}" must appear in at least one scenario Given or Command outcome.`,
+          remediation:
+            'For a whole-app check, add the missing scenario coverage. For a focused single-Slice test, pass eventsFor(slice, fullEventCatalog) from @specter-ts/core/testing instead of the whole app catalog.',
         })
       }
     }
@@ -383,6 +379,7 @@ async function validateScenarioEvent(
       ...context,
       eventType: scenarioEvent.eventType,
       message: `Scenario Event "${scenarioEvent.eventType}" has no registered EventDefinition.`,
+      remediation: `Add the "${scenarioEvent.eventType}" EventDefinition to this test/app Event catalog. Focused tests can derive the catalog with eventsFor(slice, fullEventCatalog).`,
     })
     return
   }
@@ -411,6 +408,8 @@ async function validateScenarioEvent(
       eventType: scenarioEvent.eventType,
       message:
         'The Event schema accepted this payload but changed, stripped, or generated data. Event payload schemas must preserve scenario payloads one-to-one.',
+      remediation:
+        'Make the Event schema validation-only, then use analyzeEventPropagation(...) from @specter-ts/core/testing to update every producer, Given example, and apply consumer.',
     })
   }
 }
@@ -445,7 +444,10 @@ function formatConformanceDiagnostic(diagnostic: ConformanceDiagnostic) {
   ].filter(Boolean)
   const prefix = `[${diagnostic.code}]`
 
-  return `${prefix}${context.length > 0 ? ` ${context.join(' › ')}` : ''}: ${diagnostic.message}`
+  const detail = `${prefix}${context.length > 0 ? ` ${context.join(' › ')}` : ''}: ${diagnostic.message}`
+  return diagnostic.remediation
+    ? `${detail} Remediation: ${diagnostic.remediation}`
+    : detail
 }
 
 function issuePath(path: StandardSchemaV1.Issue['path']) {
@@ -467,4 +469,8 @@ function issuePath(path: StandardSchemaV1.Issue['path']) {
 
 function isKebabCase(value: string) {
   return /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(value)
+}
+
+function isLowerCamelCase(value: string) {
+  return /^[a-z][a-zA-Z0-9]*$/.test(value)
 }

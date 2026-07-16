@@ -16,3 +16,11 @@ export const sliceCursors = sqliteTable('slice_cursors', {
   sliceName: text('slice_name').primaryKey(),
   lastAppliedOrder: integer('last_applied_order').notNull(),
 })
+
+export const eventCommits = sqliteTable('specter_event_commits', {
+  idempotencyKey: text('idempotency_key').primaryKey(),
+  fingerprint: text('fingerprint'),
+  firstEventOrder: integer('first_event_order').notNull(),
+  lastEventOrder: integer('last_event_order').notNull(),
+  committedAt: text('committed_at').notNull(),
+})

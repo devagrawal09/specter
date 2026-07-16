@@ -76,7 +76,11 @@ export function connectControlRunStartedToSimulation(
 ): ColonyBenchControlBridge {
   return {
     async runStarted({ runId }) {
-      await simulationApp.initializeSimulation({ runId })
+      const execution = await simulationApp.command({
+        type: 'initializeSimulation',
+        payload: { runId },
+      })
+      await execution.reactions
     },
   }
 }
@@ -97,13 +101,20 @@ export async function createColonyBenchControlApp({
 
   if (!bridge) return app
 
-  return {
-    ...app,
-    async startRun(input: { runId: string }) {
-      await app.startRun(input)
-      await bridge.runStarted(input)
-    },
-  } satisfies typeof app
+  const command: typeof app.command = async (envelope, options) => {
+    const execution = await app.command(envelope, options)
+    if (envelope.type !== 'startRun') return execution
+
+    return {
+      ...execution,
+      reactions: Promise.all([
+        execution.reactions,
+        bridge.runStarted(envelope.payload as { runId: string }),
+      ]).then(() => undefined),
+    }
+  }
+
+  return Object.freeze({ ...app, command })
 }
 
 export type ColonyBenchControlApp = SpecterApp<{

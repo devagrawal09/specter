@@ -50,6 +50,7 @@ const requestBooking = spec
     await db
       .insert(requestBookingSqlRooms)
       .values({ ...payload, retired: false })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomRetiredEvent, async (event, db) => {
@@ -65,6 +66,7 @@ const requestBooking = spec
     await db
       .insert(requestBookingSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (command, db) => {

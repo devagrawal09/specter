@@ -21,9 +21,15 @@ function createSimulationApp() {
 describe('ColonyBench same-process runner', () => {
   test('command collector records bot commands without mutating the world directly', async () => {
     const simulationApp = await createSimulationApp()
-    await simulationApp.initializeSimulation({ runId: 'collector-run' })
-    const before = await simulationApp.liveWorldSnapshot({
-      runId: 'collector-run',
+    await simulationApp.command({
+      type: 'initializeSimulation',
+      payload: { runId: 'collector-run' },
+    })
+    const before = await simulationApp.query({
+      type: 'liveWorldSnapshot',
+      payload: {
+        runId: 'collector-run',
+      },
     })
     const collector = createBotCommandCollector()
 
@@ -45,7 +51,10 @@ describe('ColonyBench same-process runner', () => {
       { type: 'spawnWorker' },
     ])
     await expect(
-      simulationApp.liveWorldSnapshot({ runId: 'collector-run' }),
+      simulationApp.query({
+        type: 'liveWorldSnapshot',
+        payload: { runId: 'collector-run' },
+      }),
     ).resolves.toEqual(before)
   })
 
