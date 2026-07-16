@@ -42,6 +42,28 @@ rust/
     └── deploy-cli/   Approval Reaction that dispatches start-deployment
 ```
 
+Each CLI mirrors the generated TypeScript project layout. Rust uses snake_case
+directory names for modules, while keeping the same feature and Slice
+boundaries:
+
+```text
+src/
+├── main.rs                         CLI wiring only
+└── features/
+    └── <feature>/
+        ├── events.rs               Feature-owned Event definitions
+        ├── registry.rs             Selected implementations and app wiring
+        ├── scenarios.rs            Feature Scenario test
+        └── <slice>/
+            ├── mod.rs              Rust module exports
+            ├── spec.rs             Name, description, and Scenarios only
+            └── impl.rs             Types, private state, apply, and handler
+```
+
+`spec.rs` files import only Specter specification APIs and
+implementation-independent example data. They do not import Event definitions,
+private state, sibling Slices, registries, or runtime wiring.
+
 Each CLI supports a scripted `demo` and a `verify` command that executes all of
 its production Scenarios:
 
@@ -72,6 +94,7 @@ cargo build --workspace
 A specification uses only example data and string Event types:
 
 ```rust
+// features/todos/add_todo/spec.rs
 use serde_json::json;
 use specter::{CommandScenario, command, event};
 
@@ -92,6 +115,7 @@ An implementation selects Rust types, private state, apply handlers, and the
 handler:
 
 ```rust,no_run
+// features/todos/add_todo/impl.rs
 # use serde::{Deserialize, Serialize};
 # use specter::{DomainEvent, EventDraft, Result};
 # let add_todo_spec = specter::command("add-todo")
