@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const operatorWorkflowPreviewedEvent = createEventDefinition(
-  'operatorWorkflowPreviewed',
+  'operator-workflow-previewed',
   z.object({
     workflowId: z.string(),
     kind: z.enum([
@@ -18,7 +18,7 @@ export const operatorWorkflowPreviewedEvent = createEventDefinition(
 )
 
 export const operatorWorkflowRunConfirmedEvent = createEventDefinition(
-  'operatorWorkflowRunConfirmed',
+  'operator-workflow-run-confirmed',
   z.object({
     workflowId: z.string(),
     confirmedBy: z.string(),
@@ -27,7 +27,7 @@ export const operatorWorkflowRunConfirmedEvent = createEventDefinition(
 )
 
 export const opencodeFollowupRequestedEvent = createEventDefinition(
-  'opencodeFollowupRequested',
+  'opencode-followup-requested',
   z.object({
     runId: z.string(),
     message: z.string(),
@@ -36,7 +36,7 @@ export const opencodeFollowupRequestedEvent = createEventDefinition(
 )
 
 export const opencodeRunCancelRequestedEvent = createEventDefinition(
-  'opencodeRunCancelRequested',
+  'opencode-run-cancel-requested',
   z.object({
     runId: z.string(),
     reason: z.string(),

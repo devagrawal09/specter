@@ -2,18 +2,26 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const agentSuggestionRecordedEvent = createEventDefinition(
-  'agentSuggestionRecorded',
+  'agent-suggestion-recorded',
   z.object({
     suggestionId: z.string(),
     sourceRunId: z.string(),
-    kind: z.enum(['opportunity', 'project', 'milestone', 'task', 'demo', 'demo_stage', 'artifact']),
+    kind: z.enum([
+      'opportunity',
+      'project',
+      'milestone',
+      'task',
+      'demo',
+      'demo_stage',
+      'artifact',
+    ]),
     title: z.string(),
     body: z.string(),
   }),
 )
 
 export const agentSuggestionAppliedEvent = createEventDefinition(
-  'agentSuggestionApplied',
+  'agent-suggestion-applied',
   z.object({
     suggestionId: z.string(),
     appliedAt: z.string(),
@@ -22,7 +30,7 @@ export const agentSuggestionAppliedEvent = createEventDefinition(
 )
 
 export const agentSuggestionRejectedEvent = createEventDefinition(
-  'agentSuggestionRejected',
+  'agent-suggestion-rejected',
   z.object({
     suggestionId: z.string(),
     rejectedAt: z.string(),

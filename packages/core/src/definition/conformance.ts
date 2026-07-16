@@ -43,8 +43,16 @@ export type ConformanceInput = {
   readonly slices: readonly SliceRegistration[]
 }
 
-export async function assertConforms(input: ConformanceInput): Promise<void> {
-  const diagnostics = await collectConformanceDiagnostics(input)
+export type ConformanceOptions = {
+  readonly requireEveryEventInAScenario?: boolean
+  readonly requireCommandSlice?: boolean
+}
+
+export async function assertConforms(
+  input: ConformanceInput,
+  options: ConformanceOptions = {},
+): Promise<void> {
+  const diagnostics = await collectConformanceDiagnostics(input, options)
 
   if (diagnostics.length > 0) {
     throw new SpecterConformanceError(diagnostics)
@@ -53,6 +61,7 @@ export async function assertConforms(input: ConformanceInput): Promise<void> {
 
 export async function collectConformanceDiagnostics(
   input: ConformanceInput,
+  options: ConformanceOptions = {},
 ): Promise<readonly ConformanceDiagnostic[]> {
   const diagnostics: ConformanceDiagnostic[] = []
   const eventDefinitions = new Map<string, ApplyEventDefinition>()
@@ -81,7 +90,10 @@ export async function collectConformanceDiagnostics(
     }
   }
 
-  if (!input.slices.some((slice) => slice.kind === 'command')) {
+  if (
+    options.requireCommandSlice !== false &&
+    !input.slices.some((slice) => slice.kind === 'command')
+  ) {
     diagnostics.push({
       code: 'missing-command-slice',
       message: 'At least one completed Command Slice must be registered.',
@@ -326,13 +338,15 @@ export async function collectConformanceDiagnostics(
     }
   }
 
-  for (const eventType of eventDefinitions.keys()) {
-    if (!coveredEventTypes.has(eventType)) {
-      diagnostics.push({
-        code: 'event-without-scenario',
-        eventType,
-        message: `Registered Event "${eventType}" must appear in at least one scenario Given or Command outcome.`,
-      })
+  if (options.requireEveryEventInAScenario !== false) {
+    for (const eventType of eventDefinitions.keys()) {
+      if (!coveredEventTypes.has(eventType)) {
+        diagnostics.push({
+          code: 'event-without-scenario',
+          eventType,
+          message: `Registered Event "${eventType}" must appear in at least one scenario Given or Command outcome.`,
+        })
+      }
     }
   }
 

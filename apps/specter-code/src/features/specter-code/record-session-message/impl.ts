@@ -18,7 +18,7 @@ const recordSessionMessage = recordSessionMessageSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const content = command.content.trim()
     if (!content) throw new Error('Message content is required')

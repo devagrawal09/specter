@@ -22,22 +22,20 @@ const workspaceList = workspaceListSpec
   .outputSchema<WorkspaceListItem[]>()
   .store(createMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
   .apply(workspaceCreatedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      if (
-        state.workspaces.some(
-          (workspace) => workspace.id === payload.workspaceId,
-        )
-      ) {
-        return
-      }
+    if (
+      state.workspaces.some((workspace) => workspace.id === payload.workspaceId)
+    ) {
+      return
+    }
 
-      state.workspaces.push({
-        id: payload.workspaceId,
-        name: payload.name,
-        createdBy: payload.createdBy,
-      })
+    state.workspaces.push({
+      id: payload.workspaceId,
+      name: payload.name,
+      createdBy: payload.createdBy,
     })
+  })
   .handle(async (_query, state) => state.workspaces)
 
 export default workspaceList

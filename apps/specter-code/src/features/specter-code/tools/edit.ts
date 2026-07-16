@@ -25,10 +25,15 @@ export const editTool: ToolDefinition<EditToolInput, EditToolOutput> = {
   async execute(input, context) {
     let targetPath = input.path
     try {
-      if (input.oldString.length === 0) throw new Error('Edit oldString is required')
-      const target = await resolveWritableWorkspaceFile(context.workspaceRoot, input.path)
+      if (input.oldString.length === 0)
+        throw new Error('Edit oldString is required')
+      const target = await resolveWritableWorkspaceFile(
+        context.workspaceRoot,
+        input.path,
+      )
       targetPath = target.path
-      if (!target.existed) throw new Error('Workspace path must be an existing file')
+      if (!target.existed)
+        throw new Error('Workspace path must be an existing file')
       const content = await readFile(target.absolutePath, 'utf8')
       if (!content.includes(input.oldString)) {
         throw new Error('Edit oldString was not found in ' + target.path)
@@ -42,14 +47,24 @@ export const editTool: ToolDefinition<EditToolInput, EditToolOutput> = {
       await context.metadata({
         toolName: 'edit',
         status: 'completed',
-        summary: 'Edited ' + target.path + ' (' + replacements + ' replacement' + (replacements === 1 ? '' : 's') + ')',
+        summary:
+          'Edited ' +
+          target.path +
+          ' (' +
+          replacements +
+          ' replacement' +
+          (replacements === 1 ? '' : 's') +
+          ')',
       })
       return { path: target.path, replacements, snapshot }
     } catch (error) {
       await context.metadata({
         toolName: 'edit',
         status: 'failed',
-        summary: error instanceof Error ? error.message : 'Edit failed for ' + targetPath,
+        summary:
+          error instanceof Error
+            ? error.message
+            : 'Edit failed for ' + targetPath,
       })
       throw error
     }

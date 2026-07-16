@@ -2,8 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const replyToolApprovalSpec = createCommandSlice('replyToolApproval')
   .description('Records the user decision for a pending tool approval request.')
-  .scenarios(
-{
+  .scenarios({
     description: 'Records an allow decision for a pending tool approval.',
     given: [],
     when: {
@@ -22,7 +21,6 @@ const replyToolApprovalSpec = createCommandSlice('replyToolApproval')
         reason: 'Known safe command',
       }),
     ],
-  }
-  )
+  })
 
 export default replyToolApprovalSpec

@@ -20,7 +20,7 @@ const replyToolApproval = replyToolApprovalSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     return [
       toolApprovalRepliedEvent.create({

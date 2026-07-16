@@ -9,7 +9,8 @@ import {
 } from '../events'
 
 const createWorkspace = createWorkspaceSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       workspaceId: z.string(),
       scanId: z.string(),
       name: z.string(),
@@ -19,7 +20,8 @@ const createWorkspace = createWorkspaceSpec
           displayName: z.string(),
         })
         .optional(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const name = command.name.trim()

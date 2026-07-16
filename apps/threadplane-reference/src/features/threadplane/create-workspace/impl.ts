@@ -1,12 +1,12 @@
-import createWorkspaceSpec from "./spec";
-import { z } from "zod";
+import createWorkspaceSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceCreatedEvent,
   workspaceFilesystemInitializedEvent,
   workspaceFilesystemScanRequestedEvent,
-} from "../events";
+} from '../events'
 
 const createWorkspace = createWorkspaceSpec
   .inputSchema(
@@ -24,11 +24,11 @@ const createWorkspace = createWorkspaceSpec
   )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
-    const name = command.name.trim();
-    const workspaceId = command.workspaceId;
+    const name = command.name.trim()
+    const workspaceId = command.workspaceId
 
     if (!name) {
-      throw new Error("Workspace name is required");
+      throw new Error('Workspace name is required')
     }
 
     return [
@@ -43,10 +43,10 @@ const createWorkspace = createWorkspaceSpec
       workspaceFilesystemScanRequestedEvent.create({
         scanId: command.scanId,
         workspaceId,
-        reason: "workspaceCreated",
-        requestedBy: { type: "system" },
+        reason: 'workspaceCreated',
+        requestedBy: { type: 'system' },
       }),
-    ];
-  });
+    ]
+  })
 
-export default createWorkspace;
+export default createWorkspace

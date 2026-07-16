@@ -5,14 +5,16 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolCallStartedEvent } from '../events'
 
 const recordToolCallStarted = recordToolCallStartedSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       toolCallId: z.string(),
       runId: z.string(),
       workspaceId: z.string(),
       agentId: z.string(),
       toolName: z.string(),
       inputSummary: z.string().optional(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [

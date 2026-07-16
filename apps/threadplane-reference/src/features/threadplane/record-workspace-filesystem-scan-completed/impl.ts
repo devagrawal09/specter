@@ -1,8 +1,8 @@
-import recordWorkspaceFilesystemScanCompletedSpec from "./spec";
-import { z } from "zod";
+import recordWorkspaceFilesystemScanCompletedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { workspaceFilesystemScanCompletedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { workspaceFilesystemScanCompletedEvent } from '../events'
 
 const recordWorkspaceFilesystemScanCompleted =
   recordWorkspaceFilesystemScanCompletedSpec
@@ -25,7 +25,7 @@ const recordWorkspaceFilesystemScanCompleted =
           changedNodeCount: command.changedNodeCount,
           deletedNodeCount: command.deletedNodeCount,
         }),
-      ];
-    });
+      ]
+    })
 
-export default recordWorkspaceFilesystemScanCompleted;
+export default recordWorkspaceFilesystemScanCompleted

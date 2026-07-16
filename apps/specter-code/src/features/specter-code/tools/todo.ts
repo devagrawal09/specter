@@ -27,7 +27,11 @@ export type TodoToolOutput = {
   items: TodoToolOutputItem[]
 }
 
-const TODO_STATUSES = new Set<TodoStatus>(['pending', 'in_progress', 'completed'])
+const TODO_STATUSES = new Set<TodoStatus>([
+  'pending',
+  'in_progress',
+  'completed',
+])
 
 function normalizeTodoItem(item: TodoToolInputItem): TodoToolOutputItem {
   const content = item.content.trim()
@@ -50,7 +54,9 @@ function plural(count: number, singular: string, pluralName = singular + 's') {
 
 function summarize(items: readonly TodoToolOutputItem[]) {
   const pending = items.filter((item) => item.status === 'pending').length
-  const inProgress = items.filter((item) => item.status === 'in_progress').length
+  const inProgress = items.filter(
+    (item) => item.status === 'in_progress',
+  ).length
   const completed = items.filter((item) => item.status === 'completed').length
   return (
     'Updated ' +

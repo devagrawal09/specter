@@ -21,7 +21,8 @@ const ABSOLUTE_LIMIT = 1_000
 
 const normalizeLimit = (value: number | undefined) => {
   if (value === undefined) return DEFAULT_LIMIT
-  if (!Number.isFinite(value) || value < 1) throw new Error('Glob limit must be positive')
+  if (!Number.isFinite(value) || value < 1)
+    throw new Error('Glob limit must be positive')
   return Math.min(Math.floor(value), ABSOLUTE_LIMIT)
 }
 

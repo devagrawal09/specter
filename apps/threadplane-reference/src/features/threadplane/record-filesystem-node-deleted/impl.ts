@@ -1,11 +1,11 @@
-import recordFilesystemNodeDeletedSpec from "./spec";
-import { z } from "zod";
+import recordFilesystemNodeDeletedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   filesystemNodeDeletedEvent,
   filesystemNodeDiscoveredEvent,
-} from "../events";
+} from '../events'
 
 const recordFilesystemNodeDeleted = recordFilesystemNodeDeletedSpec
   .inputSchema(
@@ -19,13 +19,13 @@ const recordFilesystemNodeDeleted = recordFilesystemNodeDeletedSpec
   .apply(filesystemNodeDiscoveredEvent, async () => {})
   .handle(async (command) => {
     if (
-      command.path.startsWith("/") ||
-      command.path.includes("..") ||
-      command.path === ""
+      command.path.startsWith('/') ||
+      command.path.includes('..') ||
+      command.path === ''
     ) {
-      throw new Error("Filesystem node path must be relative and normalized");
+      throw new Error('Filesystem node path must be relative and normalized')
     }
-    return [filesystemNodeDeletedEvent.create(command)];
-  });
+    return [filesystemNodeDeletedEvent.create(command)]
+  })
 
-export default recordFilesystemNodeDeleted;
+export default recordFilesystemNodeDeleted

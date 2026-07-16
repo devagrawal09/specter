@@ -18,8 +18,12 @@ afterEach(async () => {
 
 describe('Specter Code skill registry', () => {
   it('loads OpenCode SKILL.md files from project and configured skill paths', async () => {
-    await mkdir(path.join(workspaceRoot, '.opencode', 'skills', 'review'), { recursive: true })
-    await mkdir(path.join(workspaceRoot, 'custom-skills', 'planning'), { recursive: true })
+    await mkdir(path.join(workspaceRoot, '.opencode', 'skills', 'review'), {
+      recursive: true,
+    })
+    await mkdir(path.join(workspaceRoot, 'custom-skills', 'planning'), {
+      recursive: true,
+    })
     await writeFile(
       path.join(workspaceRoot, '.opencode', 'skills', 'review', 'SKILL.md'),
       [
@@ -57,13 +61,24 @@ describe('Specter Code skill registry', () => {
     expect(skills.map((skill) => skill.name)).toEqual(['planning', 'review'])
     expect(skills[0]).toEqual({
       name: 'planning',
-      location: path.join(workspaceRoot, 'custom-skills', 'planning', 'SKILL.md'),
+      location: path.join(
+        workspaceRoot,
+        'custom-skills',
+        'planning',
+        'SKILL.md',
+      ),
       content: '# Planning\n\nBreak large requests into milestones.\n',
     })
     expect(skills[1]).toEqual({
       name: 'review',
       description: 'Review local code changes',
-      location: path.join(workspaceRoot, '.opencode', 'skills', 'review', 'SKILL.md'),
+      location: path.join(
+        workspaceRoot,
+        '.opencode',
+        'skills',
+        'review',
+        'SKILL.md',
+      ),
       content: '# Review\n\nInspect diffs and produce actionable feedback.\n',
     })
   })

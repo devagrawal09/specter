@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const projectCreatedEvent = createEventDefinition(
-  'projectCreated',
+  'project-created',
   z.object({
     projectId: z.string(),
     opportunityId: z.string().optional(),
@@ -12,7 +12,7 @@ export const projectCreatedEvent = createEventDefinition(
 )
 
 export const projectStatusUpdatedEvent = createEventDefinition(
-  'projectStatusUpdated',
+  'project-status-updated',
   z.object({
     projectId: z.string(),
     status: z.enum(['idea', 'active', 'polish', 'shipped', 'archived']),
@@ -20,7 +20,7 @@ export const projectStatusUpdatedEvent = createEventDefinition(
 )
 
 export const projectMilestoneAddedEvent = createEventDefinition(
-  'projectMilestoneAdded',
+  'project-milestone-added',
   z.object({
     projectId: z.string(),
     milestoneId: z.string(),
@@ -29,7 +29,7 @@ export const projectMilestoneAddedEvent = createEventDefinition(
 )
 
 export const projectMilestoneCompletedEvent = createEventDefinition(
-  'projectMilestoneCompleted',
+  'project-milestone-completed',
   z.object({
     projectId: z.string(),
     milestoneId: z.string(),
@@ -38,7 +38,7 @@ export const projectMilestoneCompletedEvent = createEventDefinition(
 )
 
 export const projectLinkAddedEvent = createEventDefinition(
-  'projectLinkAdded',
+  'project-link-added',
   z.object({
     projectId: z.string(),
     label: z.string(),

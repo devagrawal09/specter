@@ -1,33 +1,33 @@
-import simulatedAgentReplyReactionSpec from "./spec";
-import type { Event } from "@specter-ts/core";
+import simulatedAgentReplyReactionSpec from './spec'
+import type { Event } from '@specter-ts/core'
 
-import { createSqliteSliceStore } from "../../../db/specter-sqlite";
-import { messagePostedEvent } from "../events";
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
+import { messagePostedEvent } from '../events'
 
 type AgentReplyMessage = {
-  id: string;
-  workspaceId: string;
-  authorType: "user" | "agent";
-  content: string;
-  parentMessageId?: string;
-};
+  id: string
+  workspaceId: string
+  authorType: 'user' | 'agent'
+  content: string
+  parentMessageId?: string
+}
 
 type SimulatedAgentReplyState = {
-  messages: AgentReplyMessage[];
-  repliedToMessageIds: Set<string>;
-};
+  messages: AgentReplyMessage[]
+  repliedToMessageIds: Set<string>
+}
 
 type RecordAgentReplyCommand = {
-  type: "recordAgentReply";
+  type: 'recordAgentReply'
   payload: {
-    messageId: string;
-    workspaceId: string;
-    replyToMessageId: string;
-    agentId: string;
-    agentName: string;
-    content: string;
-  };
-};
+    messageId: string
+    workspaceId: string
+    replyToMessageId: string
+    agentId: string
+    agentName: string
+    content: string
+  }
+}
 
 const simulatedAgentReplyReaction = simulatedAgentReplyReactionSpec
   .outputSchema<RecordAgentReplyCommand>()
@@ -46,7 +46,7 @@ const simulatedAgentReplyReaction = simulatedAgentReplyReactionSpec
     ) => {
       const payload = event.payload as Awaited<
         ReturnType<typeof messagePostedEvent.decode>
-      >;
+      >
 
       state.messages.push({
         id: payload.messageId,
@@ -54,36 +54,36 @@ const simulatedAgentReplyReaction = simulatedAgentReplyReactionSpec
         authorType: payload.author.type,
         content: payload.content,
         parentMessageId: payload.parentMessageId,
-      });
+      })
 
-      if (payload.author.type === "agent" && payload.parentMessageId) {
-        state.repliedToMessageIds.add(payload.parentMessageId);
+      if (payload.author.type === 'agent' && payload.parentMessageId) {
+        state.repliedToMessageIds.add(payload.parentMessageId)
       }
     },
   )
   .handle(async (state) => {
     const message = state.messages.find(
       (item) =>
-        item.authorType === "user" &&
-        item.content.toLowerCase().includes("@specter") &&
+        item.authorType === 'user' &&
+        item.content.toLowerCase().includes('@specter') &&
         !state.repliedToMessageIds.has(item.id),
-    );
+    )
 
     if (!message) {
-      return undefined;
+      return undefined
     }
 
     return {
-      type: "recordAgentReply",
+      type: 'recordAgentReply',
       payload: {
         messageId: `${message.id}-reply`,
         workspaceId: message.workspaceId,
         replyToMessageId: message.id,
-        agentId: "specter",
-        agentName: "Specter",
+        agentId: 'specter',
+        agentName: 'Specter',
         content: `Specter heard: ${message.content}`,
       },
-    };
-  });
+    }
+  })
 
-export default simulatedAgentReplyReaction;
+export default simulatedAgentReplyReaction

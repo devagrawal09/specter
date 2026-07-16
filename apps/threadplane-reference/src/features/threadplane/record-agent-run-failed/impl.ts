@@ -1,8 +1,8 @@
-import recordAgentRunFailedSpec from "./spec";
-import { z } from "zod";
+import recordAgentRunFailedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { agentRunFailedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { agentRunFailedEvent } from '../events'
 
 const recordAgentRunFailed = recordAgentRunFailedSpec
   .inputSchema(
@@ -15,10 +15,10 @@ const recordAgentRunFailed = recordAgentRunFailedSpec
   )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
-    const error = command.error.trim();
+    const error = command.error.trim()
 
     if (!error) {
-      throw new Error("Agent run error is required");
+      throw new Error('Agent run error is required')
     }
 
     return [
@@ -28,7 +28,7 @@ const recordAgentRunFailed = recordAgentRunFailedSpec
         agentId: command.agentId,
         error,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordAgentRunFailed;
+export default recordAgentRunFailed

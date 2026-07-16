@@ -1,9 +1,14 @@
-import { evaluatePermission, type PermissionAction, type PermissionRequest, type PermissionRule } from "./permissions.ts"
+import {
+  evaluatePermission,
+  type PermissionAction,
+  type PermissionRequest,
+  type PermissionRule,
+} from './permissions.ts'
 
 export type ToolMetadataUpdate = {
   toolName: string
-  status: "started" | "output" | "completed" | "failed"
-  stream?: "stdout" | "stderr"
+  status: 'started' | 'output' | 'completed' | 'failed'
+  stream?: 'stdout' | 'stderr'
   summary?: string
 }
 
@@ -56,11 +61,13 @@ export class ToolRegistry {
   }
 
   list(): ToolSummary[] {
-    return [...this.#tools.values()].map(({ name, description, permission }) => ({
-      name,
-      description,
-      permission,
-    }))
+    return [...this.#tools.values()].map(
+      ({ name, description, permission }) => ({
+        name,
+        description,
+        permission,
+      }),
+    )
   }
 
   async execute<Output = unknown>(
@@ -80,10 +87,11 @@ export class ToolRegistry {
       const request = { permission: tool.permission, target }
       const policyDecision = context.permissionRules?.length
         ? evaluatePermission(context.permissionRules, request).action
-        : "ask"
+        : 'ask'
       const decision =
-        policyDecision === "ask" ? await context.ask(request) : policyDecision
-      if (decision !== "allow") throw new Error(`Tool denied: ${name} for ${target}`)
+        policyDecision === 'ask' ? await context.ask(request) : policyDecision
+      if (decision !== 'allow')
+        throw new Error(`Tool denied: ${name} for ${target}`)
     }
 
     return (await tool.execute(input, context)) as Output

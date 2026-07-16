@@ -5,14 +5,16 @@ import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { messagePostedEvent } from '../events'
 
 const recordAgentReply = recordAgentReplySpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       messageId: z.string(),
       workspaceId: z.string(),
       replyToMessageId: z.string(),
       agentId: z.string(),
       agentName: z.string(),
       content: z.string(),
-    }))
+    }),
+  )
   .store(createSqliteSliceStore(() => ({})))
   .handle(async (command) => {
     const content = command.content.trim()

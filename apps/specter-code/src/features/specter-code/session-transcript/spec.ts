@@ -3,8 +3,9 @@ import { createQuerySlice, event } from '@specter-ts/core/spec'
 const sessionTranscriptSpec = createQuerySlice('sessionTranscript')
   .description('Lists transcript items for a coding-agent session.')
   .scenarios(
-{
-      description: 'Lists user messages for the requested session in submission order.',
+    {
+      description:
+        'Lists user messages for the requested session in submission order.',
       given: [
         event('user-message-submitted', {
           messageId: 'message-1',
@@ -49,7 +50,8 @@ const sessionTranscriptSpec = createQuerySlice('sessionTranscript')
       ],
     },
     {
-      description: 'Includes assistant replies produced by runs for session prompts.',
+      description:
+        'Includes assistant replies produced by runs for session prompts.',
       given: [
         event('user-message-submitted', {
           messageId: 'message-assistant-1',
@@ -64,13 +66,21 @@ const sessionTranscriptSpec = createQuerySlice('sessionTranscript')
           postId: 'message-assistant-1',
           agentId: 'build',
           agentName: 'Build Agent',
-          requestedBy: { type: 'user', userId: 'user-1', displayName: 'Ada Lovelace' },
+          requestedBy: {
+            type: 'user',
+            userId: 'user-1',
+            displayName: 'Ada Lovelace',
+          },
         }),
         event('post-reply-created', {
           replyId: 'reply-assistant-1',
           workspaceId: 'workspace-1',
           parentPostId: 'message-assistant-1',
-          author: { type: 'agent', agentId: 'build', displayName: 'Build Agent' },
+          author: {
+            type: 'agent',
+            agentId: 'build',
+            displayName: 'Build Agent',
+          },
           content: 'I added the regression test.',
           sourceRunId: 'run-assistant-1',
         }),
@@ -96,7 +106,8 @@ const sessionTranscriptSpec = createQuerySlice('sessionTranscript')
       ],
     },
     {
-      description: 'Applies a text part update to an existing transcript message.',
+      description:
+        'Applies a text part update to an existing transcript message.',
       given: [
         event('user-message-submitted', {
           messageId: 'message-update-1',
@@ -153,7 +164,8 @@ const sessionTranscriptSpec = createQuerySlice('sessionTranscript')
       ],
     },
     {
-      description: 'Removes a transcript message after session message deletion.',
+      description:
+        'Removes a transcript message after session message deletion.',
       given: [
         event('user-message-submitted', {
           messageId: 'message-delete-1',

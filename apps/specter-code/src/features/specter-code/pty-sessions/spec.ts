@@ -1,10 +1,12 @@
 import { createQuerySlice, event } from '@specter-ts/core/spec'
 
 const ptySessionsSpec = createQuerySlice('ptySessions')
-  .description('Lists terminal sessions and recent output for an OpenCode session.')
-  .scenarios(
-{
-    description: 'Tracks running and ended PTY sessions for the queried OpenCode session.',
+  .description(
+    'Lists terminal sessions and recent output for an OpenCode session.',
+  )
+  .scenarios({
+    description:
+      'Tracks running and ended PTY sessions for the queried OpenCode session.',
     given: [
       event('pty-session-started', {
         ptySessionId: 'pty-session-1',
@@ -54,7 +56,6 @@ const ptySessionsSpec = createQuerySlice('ptySessions')
         outputPreview: 'hello from pty\n',
       },
     ],
-  }
-  )
+  })
 
 export default ptySessionsSpec

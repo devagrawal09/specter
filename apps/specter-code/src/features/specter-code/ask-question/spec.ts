@@ -1,10 +1,13 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const askQuestionSpec = createCommandSlice('askQuestion')
-  .description('Records an OpenCode-style user question raised by an agent tool.')
+  .description(
+    'Records an OpenCode-style user question raised by an agent tool.',
+  )
   .scenarios(
-{
-      description: 'Records a normalized pending question for a session message.',
+    {
+      description:
+        'Records a normalized pending question for a session message.',
       given: [],
       when: {
         questionId: 'question-1',

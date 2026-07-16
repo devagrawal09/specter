@@ -22,12 +22,19 @@ const isWindowsAbsolutePath = (value: string) => /^[a-zA-Z]:\//.test(value)
 const normalizeSnapshotPath = (input: string) => {
   const slashNormalized = input.trim().replaceAll('\\', '/')
   if (!slashNormalized) throw new Error('Snapshot path is required')
-  if (path.posix.isAbsolute(slashNormalized) || isWindowsAbsolutePath(slashNormalized)) {
+  if (
+    path.posix.isAbsolute(slashNormalized) ||
+    isWindowsAbsolutePath(slashNormalized)
+  ) {
     throw new Error('Snapshot path escapes the workspace root')
   }
 
   const normalized = path.posix.normalize(slashNormalized)
-  if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../')
+  ) {
     throw new Error('Snapshot path escapes the workspace root')
   }
   return normalized
@@ -36,13 +43,17 @@ const normalizeSnapshotPath = (input: string) => {
 const isInsideRoot = (root: string, candidate: string) => {
   const resolvedRoot = path.resolve(root)
   const resolvedCandidate = path.resolve(candidate)
-  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  return (
+    resolvedCandidate === resolvedRoot ||
+    resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  )
 }
 
 async function assertWorkspaceRoot(workspaceRoot: string) {
   const root = path.resolve(workspaceRoot)
   const stat = await lstat(root)
-  if (stat.isSymbolicLink()) throw new Error('Workspace root must not be a symlink')
+  if (stat.isSymbolicLink())
+    throw new Error('Workspace root must not be a symlink')
   if (!stat.isDirectory()) throw new Error('Workspace root must be a directory')
   return root
 }
@@ -55,14 +66,22 @@ async function resolveSnapshotTarget(workspaceRoot: string, inputPath: string) {
   let current = root
   for (const segment of segments.slice(0, -1)) {
     current = path.join(current, segment)
-    if (!isInsideRoot(root, current)) throw new Error('Snapshot path escapes the workspace root')
+    if (!isInsideRoot(root, current))
+      throw new Error('Snapshot path escapes the workspace root')
 
     try {
       const stat = await lstat(current)
-      if (stat.isSymbolicLink()) throw new Error('Snapshot path must not traverse symlinks')
-      if (!stat.isDirectory()) throw new Error('Snapshot parent path must be a directory')
+      if (stat.isSymbolicLink())
+        throw new Error('Snapshot path must not traverse symlinks')
+      if (!stat.isDirectory())
+        throw new Error('Snapshot parent path must be a directory')
     } catch (error) {
-      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') {
+      if (
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      ) {
         break
       }
       throw error
@@ -70,14 +89,23 @@ async function resolveSnapshotTarget(workspaceRoot: string, inputPath: string) {
   }
 
   const absolutePath = path.join(root, ...segments)
-  if (!isInsideRoot(root, absolutePath)) throw new Error('Snapshot path escapes the workspace root')
+  if (!isInsideRoot(root, absolutePath))
+    throw new Error('Snapshot path escapes the workspace root')
 
   try {
     const stat = await lstat(absolutePath)
-    if (stat.isSymbolicLink()) throw new Error('Snapshot path must not traverse symlinks')
+    if (stat.isSymbolicLink())
+      throw new Error('Snapshot path must not traverse symlinks')
     if (!stat.isFile()) throw new Error('Snapshot path must be a file')
   } catch (error) {
-    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
+    if (
+      !(
+        error &&
+        typeof error === 'object' &&
+        'code' in error &&
+        error.code === 'ENOENT'
+      )
+    ) {
       throw error
     }
   }
@@ -104,7 +132,10 @@ export async function restoreFileSnapshot(input: {
   workspaceRoot: string
   snapshot: FileSnapshot
 }): Promise<RestoreFileSnapshotResult> {
-  const target = await resolveSnapshotTarget(input.workspaceRoot, input.snapshot.path)
+  const target = await resolveSnapshotTarget(
+    input.workspaceRoot,
+    input.snapshot.path,
+  )
 
   if (!input.snapshot.existed) {
     await rm(target.absolutePath, { force: true })
@@ -128,7 +159,10 @@ export async function restoreFileSnapshots(input: {
   const deleted: string[] = []
 
   for (const snapshot of input.snapshots) {
-    const result = await restoreFileSnapshot({ workspaceRoot: input.workspaceRoot, snapshot })
+    const result = await restoreFileSnapshot({
+      workspaceRoot: input.workspaceRoot,
+      snapshot,
+    })
     if (result.action === 'restored') restored.push(result.path)
     if (result.action === 'deleted') deleted.push(result.path)
   }

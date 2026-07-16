@@ -3,7 +3,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 const replyQuestionSpec = createCommandSlice('replyQuestion')
   .description('Records the user answer for a pending OpenCode-style question.')
   .scenarios(
-{
+    {
       description: 'Records a normalized answer for a pending question.',
       given: [],
       when: {

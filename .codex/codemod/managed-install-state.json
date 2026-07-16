@@ -1,0 +1,42 @@
+{
+  "schema_version": "1",
+  "harness": "codex",
+  "scope": "project",
+  "components": [
+    {
+      "id": "discovery-guide:AGENTS.md",
+      "kind": "discovery_guide",
+      "path": "/home/lucifer/work/active/specter/AGENTS.md",
+      "version": null,
+      "fingerprint": "1cbfb9e72156d76dbd4a9c5ce2cce9fcd5e742cdd21be3e967493f502e7de943"
+    },
+    {
+      "id": "periodic-trigger:check-updates.sh",
+      "kind": "discovery_guide",
+      "path": "/home/lucifer/work/active/specter/.codex/codemod/periodic-update/check-updates.sh",
+      "version": null,
+      "fingerprint": "4b30fb4360d6c791ff09c3d3d5970af76772f44af1d7a41b559c4b31c189553c"
+    },
+    {
+      "id": "periodic-trigger:config.toml",
+      "kind": "discovery_guide",
+      "path": "/home/lucifer/work/active/specter/.codex/config.toml",
+      "version": null,
+      "fingerprint": "5f6aa8b5d626ac47539ed5cda53bea1010703977346bb2eec841099fffa57524"
+    },
+    {
+      "id": "codemod-mcp",
+      "kind": "mcp_config",
+      "path": "/home/lucifer/work/active/specter/.codex/config.toml",
+      "version": null,
+      "fingerprint": "5f6aa8b5d626ac47539ed5cda53bea1010703977346bb2eec841099fffa57524"
+    },
+    {
+      "id": "codemod",
+      "kind": "skill",
+      "path": "/home/lucifer/work/active/specter/.agents/skills/codemod/SKILL.md",
+      "version": "1.1.0",
+      "fingerprint": "b4062d5a201d28bbb1b6b6157354d05400114070740f0d381b7541cea97ae9ed"
+    }
+  ]
+}

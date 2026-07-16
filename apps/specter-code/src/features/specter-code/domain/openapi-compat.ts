@@ -70,7 +70,9 @@ export function extractOpenCodeRoutes(document: OpenApiDocument): RouteSpec[] {
             method: method.toUpperCase() as HttpMethod,
             openApiPath,
             normalizedPath,
-            operationId: readString((operation as OpenApiOperation).operationId),
+            operationId: readString(
+              (operation as OpenApiOperation).operationId,
+            ),
             tags: readStringArray((operation as OpenApiOperation).tags),
           }),
         ]
@@ -129,7 +131,8 @@ function readString(value: unknown) {
 }
 
 function readStringArray(value: unknown) {
-  return Array.isArray(value) && value.every((entry) => typeof entry === 'string')
+  return Array.isArray(value) &&
+    value.every((entry) => typeof entry === 'string')
     ? value
     : undefined
 }

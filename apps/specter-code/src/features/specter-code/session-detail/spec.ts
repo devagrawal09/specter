@@ -3,7 +3,7 @@ import { createQuerySlice, event } from '@specter-ts/core/spec'
 const sessionDetailSpec = createQuerySlice('sessionDetail')
   .description('Gets a single coding-agent session by id.')
   .scenarios(
-{
+    {
       description: 'Returns a created session by id.',
       given: [
         event('session-created', {

@@ -159,13 +159,18 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       createdBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
     })
 
-    expect(await listSpecterCodeSessionsOnServer({ workspaceId: 'workspace-main' })).toEqual([
+    expect(
+      await listSpecterCodeSessionsOnServer({ workspaceId: 'workspace-main' }),
+    ).toEqual([
       expect.objectContaining({
         id: 'session-main',
         title: 'Fix failing tests',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       }),
     ])
 
@@ -181,7 +186,9 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
     })
 
     expect(
-      await listSpecterCodeSessionTranscriptOnServer({ sessionId: 'session-main' }),
+      await listSpecterCodeSessionTranscriptOnServer({
+        sessionId: 'session-main',
+      }),
     ).toEqual([
       expect.objectContaining({
         id: 'message-1',
@@ -195,13 +202,25 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       sessionId: 'session-main',
       messageId: 'message-1',
       items: [
-        { id: 'todo-1', content: ' Add failing test ', status: 'completed', priority: 'high' },
+        {
+          id: 'todo-1',
+          content: ' Add failing test ',
+          status: 'completed',
+          priority: 'high',
+        },
         { id: 'todo-2', content: 'Implement fix', status: 'in_progress' },
       ],
     })
 
-    expect(await listSpecterCodeSessionTodosOnServer({ sessionId: 'session-main' })).toEqual([
-      { id: 'todo-1', content: 'Add failing test', status: 'completed', priority: 'high' },
+    expect(
+      await listSpecterCodeSessionTodosOnServer({ sessionId: 'session-main' }),
+    ).toEqual([
+      {
+        id: 'todo-1',
+        content: 'Add failing test',
+        status: 'completed',
+        priority: 'high',
+      },
       { id: 'todo-2', content: 'Implement fix', status: 'in_progress' },
     ])
 
@@ -242,7 +261,11 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       },
     ])
 
-    expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([
+    expect(
+      await listSpecterCodePendingQuestionsOnServer({
+        sessionId: 'session-main',
+      }),
+    ).toEqual([
       {
         questionId: 'question-1',
         sessionId: 'session-main',
@@ -260,7 +283,11 @@ test('specterCode server functions wrap sessions, prompts, and transcripts', asy
       answeredBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
     })
 
-    expect(await listSpecterCodePendingQuestionsOnServer({ sessionId: 'session-main' })).toEqual([])
+    expect(
+      await listSpecterCodePendingQuestionsOnServer({
+        sessionId: 'session-main',
+      }),
+    ).toEqual([])
     expect(await listSpecterCodePendingQuestionsOnServer({})).toEqual([
       {
         questionId: 'question-other',

@@ -1,4 +1,4 @@
-export type PermissionAction = "allow" | "ask" | "deny"
+export type PermissionAction = 'allow' | 'ask' | 'deny'
 
 export type PermissionRule = {
   permission: string
@@ -17,46 +17,46 @@ export type PermissionDecision = {
 }
 
 const REGEXP_SPECIAL_CHARACTERS = new Set([
-  "\\",
-  ".",
-  "+",
-  "?",
-  "^",
-  "$",
-  "{",
-  "}",
-  "(",
-  ")",
-  "|",
-  "[",
-  "]",
+  '\\',
+  '.',
+  '+',
+  '?',
+  '^',
+  '$',
+  '{',
+  '}',
+  '(',
+  ')',
+  '|',
+  '[',
+  ']',
 ])
 
 function normalizeMatchValue(value: string) {
-  return value.trim().replaceAll("\\", "/")
+  return value.trim().replaceAll('\\', '/')
 }
 
 function escapeRegExpCharacter(character: string) {
-  return REGEXP_SPECIAL_CHARACTERS.has(character) ? "\\" + character : character
+  return REGEXP_SPECIAL_CHARACTERS.has(character) ? '\\' + character : character
 }
 
 function wildcardPatternToRegExp(pattern: string) {
-  let expression = ""
+  let expression = ''
 
   for (let index = 0; index < pattern.length; index += 1) {
     const character = pattern[index]
-    if (character === "*") {
-      if (pattern[index + 1] === "*") {
-        expression += ".*"
+    if (character === '*') {
+      if (pattern[index + 1] === '*') {
+        expression += '.*'
         index += 1
       } else {
-        expression += ".*"
+        expression += '.*'
       }
       continue
     }
 
-    if (character === "?") {
-      expression += "."
+    if (character === '?') {
+      expression += '.'
       continue
     }
 
@@ -86,5 +86,5 @@ export function evaluatePermission(
     }
   }
 
-  return { action: "ask" }
+  return { action: 'ask' }
 }

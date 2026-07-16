@@ -1,8 +1,8 @@
-import recordVisibleAgentReplySpec from "./spec";
-import { z } from "zod";
+import recordVisibleAgentReplySpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { postReplyCreatedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { postReplyCreatedEvent } from '../events'
 
 const recordVisibleAgentReply = recordVisibleAgentReplySpec
   .inputSchema(
@@ -18,10 +18,10 @@ const recordVisibleAgentReply = recordVisibleAgentReplySpec
   )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
-    const content = command.content.trim();
+    const content = command.content.trim()
 
     if (!content) {
-      throw new Error("Agent reply content is required");
+      throw new Error('Agent reply content is required')
     }
 
     return [
@@ -30,14 +30,14 @@ const recordVisibleAgentReply = recordVisibleAgentReplySpec
         workspaceId: command.workspaceId,
         parentPostId: command.parentPostId,
         author: {
-          type: "agent",
+          type: 'agent',
           agentId: command.agentId,
           displayName: command.agentName,
         },
         content,
         sourceRunId: command.runId,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordVisibleAgentReply;
+export default recordVisibleAgentReply

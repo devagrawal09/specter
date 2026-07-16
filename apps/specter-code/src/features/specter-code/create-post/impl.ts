@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postCreatedEvent } from '../events'
 
 const createPost = createPostSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       postId: z.string(),
       workspaceId: z.string(),
       author: z.object({
@@ -13,7 +14,8 @@ const createPost = createPostSpec
         displayName: z.string(),
       }),
       content: z.string(),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const content = command.content.trim()

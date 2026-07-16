@@ -1,8 +1,8 @@
-import postMessageSpec from "./spec";
-import { z } from "zod";
+import postMessageSpec from './spec'
+import { z } from 'zod'
 
-import { createSqliteSliceStore } from "../../../db/specter-sqlite";
-import { messagePostedEvent } from "../events";
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
+import { messagePostedEvent } from '../events'
 
 const postMessage = postMessageSpec
   .inputSchema(
@@ -16,21 +16,21 @@ const postMessage = postMessageSpec
   )
   .store(createSqliteSliceStore(() => ({})))
   .handle(async (command) => {
-    const content = command.content.trim();
+    const content = command.content.trim()
 
     if (!content) {
-      throw new Error("Message content is required");
+      throw new Error('Message content is required')
     }
 
     return [
       messagePostedEvent.create({
         messageId: command.messageId,
         workspaceId: command.workspaceId,
-        author: { type: "user", displayName: command.authorName },
+        author: { type: 'user', displayName: command.authorName },
         content,
         parentMessageId: command.parentMessageId,
       }),
-    ];
-  });
+    ]
+  })
 
-export default postMessage;
+export default postMessage

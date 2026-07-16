@@ -19,7 +19,8 @@ afterEach(async () => {
 const waitFor = async (predicate: () => boolean, timeoutMs = 2000) => {
   const startedAt = Date.now()
   while (!predicate()) {
-    if (Date.now() - startedAt > timeoutMs) throw new Error('Timed out waiting for PTY output')
+    if (Date.now() - startedAt > timeoutMs)
+      throw new Error('Timed out waiting for PTY output')
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
@@ -27,10 +28,14 @@ const waitFor = async (predicate: () => boolean, timeoutMs = 2000) => {
 describe('PTY session manager', () => {
   it('starts an interactive shell inside a workspace subdirectory and streams input output until exit', async () => {
     const chunks: PtyOutputChunk[] = []
-    const exits: Array<{ exitCode: number | null; signal: NodeJS.Signals | null }> = []
+    const exits: Array<{
+      exitCode: number | null
+      signal: NodeJS.Signals | null
+    }> = []
     const manager = createPtySessionManager({
       onOutput: (chunk) => chunks.push(chunk),
-      onExit: (exit) => exits.push({ exitCode: exit.exitCode, signal: exit.signal }),
+      onExit: (exit) =>
+        exits.push({ exitCode: exit.exitCode, signal: exit.signal }),
     })
 
     const session = await manager.start({
@@ -54,16 +59,27 @@ describe('PTY session manager', () => {
 
     expect(closed.status).toBe('exited')
     expect(exits).toEqual([{ exitCode: 0, signal: null }])
-    expect(chunks.map((chunk) => chunk.data).join('')).toContain(path.join(workspaceRoot, 'src'))
+    expect(chunks.map((chunk) => chunk.data).join('')).toContain(
+      path.join(workspaceRoot, 'src'),
+    )
     expect(manager.list()).toEqual([])
   })
 
   it('rejects workspace escape and symlink cwd before spawning a process', async () => {
-    await symlink(path.dirname(workspaceRoot), path.join(workspaceRoot, 'outside-link'), 'dir')
+    await symlink(
+      path.dirname(workspaceRoot),
+      path.join(workspaceRoot, 'outside-link'),
+      'dir',
+    )
     const manager = createPtySessionManager()
 
     await expect(
-      manager.start({ sessionId: 'session-pty-escape', workspaceRoot, cwd: '..', shell: '/bin/sh' }),
+      manager.start({
+        sessionId: 'session-pty-escape',
+        workspaceRoot,
+        cwd: '..',
+        shell: '/bin/sh',
+      }),
     ).rejects.toThrow('Shell working directory escapes the workspace root')
     await expect(
       manager.start({

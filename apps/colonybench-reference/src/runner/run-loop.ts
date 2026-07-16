@@ -47,9 +47,7 @@ export type RunColonyBenchLoopResult<
   finalSnapshot: ColonyBenchWorldSnapshot
 }
 
-export type ColonyBenchRunFrame<
-  TMemory extends object = object,
-> = {
+export type ColonyBenchRunFrame<TMemory extends object = object> = {
   runId: string
   tick: number
   snapshot: ColonyBenchWorldSnapshot
@@ -109,9 +107,14 @@ async function applyBotCommand({
         roadId: command.roadId,
       })
       return
-    case 'spawnWorker':
-      await app.spawnWorker({ runId })
+    case 'spawnWorker': {
+      const snapshot = await app.liveWorldSnapshot({ runId })
+      await app.spawnWorker({
+        runId,
+        workerId: `worker-${snapshot.workers.length + 1}`,
+      })
       return
+    }
   }
 }
 
@@ -124,7 +127,6 @@ function assertValidTickCount(ticks: number) {
 function cloneRunnerValue<TValue>(value: TValue): TValue {
   return JSON.parse(JSON.stringify(value)) as TValue
 }
-
 
 function sameRunnerValue(left: unknown, right: unknown) {
   return JSON.stringify(left) === JSON.stringify(right)
@@ -163,18 +165,21 @@ export async function* streamColonyBenchLoop<
   runId,
   ticks,
   bot,
-  simulationApp = createDefaultSimulationApp(),
+  simulationApp,
   memory = {} as TMemory,
 }: RunColonyBenchLoopOptions<TMemory>): AsyncGenerator<
   ColonyBenchRunFrame<TMemory>,
   RunColonyBenchLoopResult<TMemory>
 > {
   assertValidTickCount(ticks)
+  const app = simulationApp ?? (await createDefaultSimulationApp())
 
-  await simulationApp.initializeSimulation({ runId })
+  await app.initializeSimulation({ runId })
 
-  const initialSnapshot = await simulationApp.liveWorldSnapshot({ runId })
-  const snapshots: ColonyBenchWorldSnapshot[] = [cloneRunnerValue(initialSnapshot)]
+  const initialSnapshot = await app.liveWorldSnapshot({ runId })
+  const snapshots: ColonyBenchWorldSnapshot[] = [
+    cloneRunnerValue(initialSnapshot),
+  ]
   const commandLog: ColonyBenchRunCommandLogEntry[] = []
   yield {
     runId,
@@ -209,13 +214,19 @@ export async function* streamColonyBenchLoop<
 
     const commands = collector.drain()
     const frameEvents: ColonyBenchWorldEventSummary[] = []
-    commandLog.push({ tick: snapshot.tick, commands: cloneRunnerValue(commands) })
+    commandLog.push({
+      tick: snapshot.tick,
+      commands: cloneRunnerValue(commands),
+    })
 
     for (const command of commands) {
-      const beforeCommandSnapshot = await simulationApp.liveWorldSnapshot({ runId })
-      await applyBotCommand({ app: simulationApp, runId, command })
-      const commandSnapshot = await simulationApp.liveWorldSnapshot({ runId })
-      const commandEvents = appendedEventsBetween(beforeCommandSnapshot, commandSnapshot)
+      const beforeCommandSnapshot = await app.liveWorldSnapshot({ runId })
+      await applyBotCommand({ app, runId, command })
+      const commandSnapshot = await app.liveWorldSnapshot({ runId })
+      const commandEvents = appendedEventsBetween(
+        beforeCommandSnapshot,
+        commandSnapshot,
+      )
       frameEvents.push(
         ...(commandEvents.length > 0
           ? commandEvents
@@ -223,8 +234,8 @@ export async function* streamColonyBenchLoop<
       )
     }
 
-    await simulationApp.advanceTick({ runId })
-    const nextSnapshot = await simulationApp.liveWorldSnapshot({ runId })
+    await app.advanceTick({ runId })
+    const nextSnapshot = await app.liveWorldSnapshot({ runId })
     frameEvents.push(latestEventFromSnapshot(nextSnapshot))
 
     const storedNextSnapshot = cloneRunnerValue(nextSnapshot)

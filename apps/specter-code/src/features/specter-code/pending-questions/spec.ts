@@ -1,9 +1,10 @@
 import { createQuerySlice, event } from '@specter-ts/core/spec'
 
 const pendingQuestionsSpec = createQuerySlice('pendingQuestions')
-  .description('Lists unresolved OpenCode-style questions for a session or all sessions.')
-  .scenarios(
-{
+  .description(
+    'Lists unresolved OpenCode-style questions for a session or all sessions.',
+  )
+  .scenarios({
     description: 'Lists only unresolved questions for the queried session.',
     given: [
       event('question-asked', {
@@ -51,7 +52,6 @@ const pendingQuestionsSpec = createQuerySlice('pendingQuestions')
         allowFreeform: true,
       },
     ],
-  }
-  )
+  })
 
 export default pendingQuestionsSpec

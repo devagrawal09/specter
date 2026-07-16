@@ -14,7 +14,7 @@ function createContext(overrides: Partial<ToolContext> = {}): ToolContext {
     agent: 'build',
     workspaceRoot: '/workspace/project',
     abortSignal: new AbortController().signal,
-    ask: async () => "allow" as const,
+    ask: async () => 'allow' as const,
     metadata: vi.fn(),
     ...overrides,
   }
@@ -43,12 +43,14 @@ describe('ToolRegistry', () => {
   it('executes a registered tool with the required OpenCode-style context', async () => {
     const registry = new ToolRegistry()
     const context = createContext()
-    const execute = vi.fn(async (_input: { path: string }, ctx: ToolContext) => ({
-      sessionId: ctx.sessionId,
-      messageId: ctx.messageId,
-      agent: ctx.agent,
-      workspaceRoot: ctx.workspaceRoot,
-    }))
+    const execute = vi.fn(
+      async (_input: { path: string }, ctx: ToolContext) => ({
+        sessionId: ctx.sessionId,
+        messageId: ctx.messageId,
+        agent: ctx.agent,
+        workspaceRoot: ctx.workspaceRoot,
+      }),
+    )
 
     registry.register({
       name: 'read',
@@ -101,7 +103,11 @@ describe('ToolRegistry', () => {
     })
 
     await expect(
-      registry.execute('shell', { command: 'pnpm test' }, createContext({ ask })),
+      registry.execute(
+        'shell',
+        { command: 'pnpm test' },
+        createContext({ ask }),
+      ),
     ).resolves.toEqual({ ok: true })
     expect(ask).toHaveBeenCalledWith({
       permission: 'shell.execute',
@@ -185,7 +191,10 @@ describe('ToolRegistry', () => {
 describe('evaluatePermission', () => {
   it('defaults to ask when no rule matches', () => {
     expect(
-      evaluatePermission([], { permission: 'file.write', target: 'src/app.ts' }),
+      evaluatePermission([], {
+        permission: 'file.write',
+        target: 'src/app.ts',
+      }),
     ).toEqual({ action: 'ask' })
   })
 
@@ -194,8 +203,16 @@ describe('evaluatePermission', () => {
       evaluatePermission(
         [
           { permission: 'file.write', pattern: 'src/**', action: 'allow' },
-          { permission: 'file.write', pattern: 'src/secrets/**', action: 'deny' },
-          { permission: 'file.*', pattern: 'src/secrets/example.env', action: 'ask' },
+          {
+            permission: 'file.write',
+            pattern: 'src/secrets/**',
+            action: 'deny',
+          },
+          {
+            permission: 'file.*',
+            pattern: 'src/secrets/example.env',
+            action: 'ask',
+          },
         ],
         { permission: 'file.write', target: 'src/secrets/example.env' },
       ),
@@ -213,17 +230,27 @@ describe('evaluatePermission', () => {
     expect(
       evaluatePermission(
         [
-          { permission: 'shell.execute', pattern: 'pnpm --filter * test*', action: 'allow' },
+          {
+            permission: 'shell.execute',
+            pattern: 'pnpm --filter * test*',
+            action: 'allow',
+          },
           { permission: 'file.read', pattern: 'src/**/*.ts', action: 'allow' },
         ],
-        { permission: 'shell.execute', target: 'pnpm --filter @specter/specter-code test' },
+        {
+          permission: 'shell.execute',
+          target: 'pnpm --filter @specter/specter-code test',
+        },
       ).action,
     ).toBe('allow')
 
     expect(
       evaluatePermission(
         [{ permission: 'file.read', pattern: 'src/**/*.ts', action: 'allow' }],
-        { permission: "file.read", target: String.raw`src\features\specter-code\events.ts` },
+        {
+          permission: 'file.read',
+          target: String.raw`src\features\specter-code\events.ts`,
+        },
       ).action,
     ).toBe('allow')
   })

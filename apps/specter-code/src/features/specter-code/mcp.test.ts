@@ -21,14 +21,18 @@ const createContext = (overrides: Partial<ToolContext> = {}): ToolContext => ({
 
 describe('MCP adapter and tool registry bridge', () => {
   it('sanitizes OpenCode-style server/tool names into registry-safe tool names', () => {
-    expect(sanitizeMcpToolName('local-tools', 'repo/info')).toBe('local_tools_repo_info')
+    expect(sanitizeMcpToolName('local-tools', 'repo/info')).toBe(
+      'local_tools_repo_info',
+    )
   })
 
   it('registers connected MCP tools and executes them through the ToolRegistry permission gate', async () => {
     const registry = createToolRegistry()
     const mcp = createMcpClientRegistry()
     const callTool = vi.fn(async ({ name, arguments: args }) => ({
-      content: [{ type: 'text', text: `called ${name} on ${String(args?.path)}` }],
+      content: [
+        { type: 'text', text: `called ${name} on ${String(args?.path)}` },
+      ],
     }))
     const client: McpClient = {
       listTools: async () => [

@@ -19,7 +19,7 @@ const replyQuestion = replyQuestionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const answer = command.answer.trim()
     if (!answer) throw new Error('Question answer is required')

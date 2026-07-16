@@ -5,10 +5,12 @@ import { createSqliteSliceStore } from '../../../db/specter-sqlite'
 import { workspaceCreatedEvent } from '../events'
 
 const createWorkspace = createWorkspaceSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       name: z.string(),
       workspaceId: z.string(),
-    }))
+    }),
+  )
   .store(createSqliteSliceStore(() => ({})))
   .handle(async (command) => {
     const name = command.name.trim()

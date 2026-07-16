@@ -34,7 +34,9 @@ export type TaskRecord = {
   error?: string
 }
 
-export type TaskExecutor = (input: TaskExecutorInput) => Promise<TaskExecutorResult> | TaskExecutorResult
+export type TaskExecutor = (
+  input: TaskExecutorInput,
+) => Promise<TaskExecutorResult> | TaskExecutorResult
 
 export type CreateTaskRunnerOptions = {
   execute: TaskExecutor
@@ -62,7 +64,8 @@ export function createTaskRunner(options: CreateTaskRunnerOptions) {
 
   return {
     spawn(input: TaskExecutorInput) {
-      if (tasks.has(input.taskId)) throw new Error('Task already exists: ' + input.taskId)
+      if (tasks.has(input.taskId))
+        throw new Error('Task already exists: ' + input.taskId)
 
       const record: TaskRecord = {
         ...input,

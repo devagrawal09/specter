@@ -43,9 +43,15 @@ function normalizeQuery(input: string) {
   return query
 }
 
-function normalizePositiveInteger(value: number | undefined, fallback: number, maximum: number, label: string) {
+function normalizePositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum: number,
+  label: string,
+) {
   if (value === undefined) return fallback
-  if (!Number.isFinite(value) || value < 1) throw new Error(label + ' must be positive')
+  if (!Number.isFinite(value) || value < 1)
+    throw new Error(label + ' must be positive')
   return Math.min(Math.floor(value), maximum)
 }
 
@@ -59,7 +65,11 @@ function searchUrl(query: string) {
   return 'https://api.duckduckgo.com/?' + params.toString()
 }
 
-async function fetchJsonWithTimeout(url: string, timeoutMs: number, abortSignal: AbortSignal | undefined) {
+async function fetchJsonWithTimeout(
+  url: string,
+  timeoutMs: number,
+  abortSignal: AbortSignal | undefined,
+) {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), timeoutMs)
   const abortFromParent = () => controller.abort()
@@ -73,10 +83,12 @@ async function fetchJsonWithTimeout(url: string, timeoutMs: number, abortSignal:
         'User-Agent': 'specter-code-websearch',
       },
     })
-    if (!response.ok) throw new Error('WebSearch failed with HTTP ' + response.status)
+    if (!response.ok)
+      throw new Error('WebSearch failed with HTTP ' + response.status)
     return (await response.json()) as unknown
   } catch (error) {
-    if (controller.signal.aborted) throw new Error('WebSearch request timed out or was aborted')
+    if (controller.signal.aborted)
+      throw new Error('WebSearch request timed out or was aborted')
     throw error
   } finally {
     clearTimeout(timeout)
@@ -130,7 +142,9 @@ function parseDuckDuckGoResults(body: unknown) {
     })
   }
 
-  const relatedTopics = Array.isArray(payload.RelatedTopics) ? payload.RelatedTopics : []
+  const relatedTopics = Array.isArray(payload.RelatedTopics)
+    ? payload.RelatedTopics
+    : []
   for (const topic of relatedTopics) {
     if (isRecord(topic)) parseTopic(topic, results)
   }
@@ -138,9 +152,13 @@ function parseDuckDuckGoResults(body: unknown) {
   return results
 }
 
-export const websearchTool: ToolDefinition<WebSearchToolInput, WebSearchToolOutput> = {
+export const websearchTool: ToolDefinition<
+  WebSearchToolInput,
+  WebSearchToolOutput
+> = {
   name: 'websearch',
-  description: 'Search the web using the DuckDuckGo instant-answer compatible endpoint',
+  description:
+    'Search the web using the DuckDuckGo instant-answer compatible endpoint',
   permission: 'websearch',
   permissionTarget: (input) => input.query.trim(),
   async execute(input, context) {
@@ -159,7 +177,11 @@ export const websearchTool: ToolDefinition<WebSearchToolInput, WebSearchToolOutp
         'WebSearch timeoutMs',
       )
       const url = searchUrl(query)
-      const body = await fetchJsonWithTimeout(url, timeoutMs, context.abortSignal)
+      const body = await fetchJsonWithTimeout(
+        url,
+        timeoutMs,
+        context.abortSignal,
+      )
       const allResults = parseDuckDuckGoResults(body)
       const results = allResults.slice(0, numResults)
       const truncated = allResults.length > results.length

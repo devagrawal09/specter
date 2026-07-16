@@ -1,5 +1,13 @@
 import { useServerFn } from '@tanstack/solid-start'
-import { For, Show, createContext, createMemo, createResource, createSignal, useContext } from 'solid-js'
+import {
+  For,
+  Show,
+  createContext,
+  createMemo,
+  createResource,
+  createSignal,
+  useContext,
+} from 'solid-js'
 
 import {
   getSpecterCodeFilesystemStatus,
@@ -59,11 +67,19 @@ function createFilesystemModel() {
   })
 
   const treeNodes = createMemo(() => tree() ?? [])
-  const visibleFiles = createMemo(() => treeNodes().filter((node) => node.kind === 'file').length)
-  const visibleDirectories = createMemo(() => treeNodes().filter((node) => node.kind === 'directory').length)
+  const visibleFiles = createMemo(
+    () => treeNodes().filter((node) => node.kind === 'file').length,
+  )
+  const visibleDirectories = createMemo(
+    () => treeNodes().filter((node) => node.kind === 'directory').length,
+  )
   const latestScan = createMemo(() => status()?.latestScan)
-  const selectedPathSegments = createMemo(() => buildPathSegments(selectedPath()))
-  const previewErrorMessage = createMemo(() => selectedFilePath() ? formatError(previewText.error) : null)
+  const selectedPathSegments = createMemo(() =>
+    buildPathSegments(selectedPath()),
+  )
+  const previewErrorMessage = createMemo(() =>
+    selectedFilePath() ? formatError(previewText.error) : null,
+  )
 
   async function scanWorkspace() {
     const workspaceId = activeWorkspaceId()
@@ -108,12 +124,17 @@ const FilesystemContext = createContext<FilesystemContextValue>()
 
 export function FilesystemProvider(props: ProviderProps) {
   const value = createFilesystemModel()
-  return <FilesystemContext.Provider value={value}>{props.children}</FilesystemContext.Provider>
+  return (
+    <FilesystemContext.Provider value={value}>
+      {props.children}
+    </FilesystemContext.Provider>
+  )
 }
 
 export function useFilesystem() {
   const value = useContext(FilesystemContext)
-  if (!value) throw new Error('useFilesystem must be used inside FilesystemProvider')
+  if (!value)
+    throw new Error('useFilesystem must be used inside FilesystemProvider')
   return value
 }
 
@@ -136,21 +157,29 @@ export function FilesystemPanel() {
             Files
           </h3>
           <p class="mt-0.5 truncate text-[0.68rem] text-slate-500">
-            {filesystem.visibleDirectories()} folders · {filesystem.visibleFiles()} files
+            {filesystem.visibleDirectories()} folders ·{' '}
+            {filesystem.visibleFiles()} files
           </p>
         </div>
-        <span class={`shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold ${scanStatusTone(filesystem.latestScan()?.status)}`}>
+        <span
+          class={`shrink-0 rounded-full border px-2 py-0.5 text-[0.68rem] font-semibold ${scanStatusTone(filesystem.latestScan()?.status)}`}
+        >
           {filesystem.status()?.initialized ? 'Init' : 'Cold'}
         </span>
       </div>
 
       <div
         class="mt-2 grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-2.5 py-1.5"
-        title={filesystem.latestScan() ? `${formatScanReason(filesystem.latestScan()?.reason)} · ${formatRequester(filesystem.latestScan()?.requestedBy)}` : undefined}
+        title={
+          filesystem.latestScan()
+            ? `${formatScanReason(filesystem.latestScan()?.reason)} · ${formatRequester(filesystem.latestScan()?.requestedBy)}`
+            : undefined
+        }
       >
         <span class="h-2 w-2 rounded-full bg-emerald-300 shadow-[0_0_14px_rgba(110,231,183,0.7)]" />
         <p class="truncate text-xs text-slate-400">
-          Latest {filesystem.latestScan()?.status ?? 'scan pending'} · {scanSummary(filesystem.latestScan())}
+          Latest {filesystem.latestScan()?.status ?? 'scan pending'} ·{' '}
+          {scanSummary(filesystem.latestScan())}
         </p>
       </div>
 
@@ -201,20 +230,38 @@ export function FilesystemPanel() {
       <div class="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
         <Show
           when={activeWorkspaceId()}
-          fallback={<div class="rounded-xl border border-dashed border-cyan-100/15 p-3 text-xs leading-5 text-slate-400">Select a workspace to inspect filesystem metadata.</div>}
+          fallback={
+            <div class="rounded-xl border border-dashed border-cyan-100/15 p-3 text-xs leading-5 text-slate-400">
+              Select a workspace to inspect filesystem metadata.
+            </div>
+          }
         >
           <Show
-            when={!(filesystem.tree.loading && filesystem.treeNodes().length === 0)}
-            fallback={<div class="space-y-1.5"><div class="h-9 animate-pulse rounded-xl bg-white/5" /><div class="h-9 animate-pulse rounded-xl bg-white/5" /></div>}
+            when={
+              !(filesystem.tree.loading && filesystem.treeNodes().length === 0)
+            }
+            fallback={
+              <div class="space-y-1.5">
+                <div class="h-9 animate-pulse rounded-xl bg-white/5" />
+                <div class="h-9 animate-pulse rounded-xl bg-white/5" />
+              </div>
+            }
           >
             <Show
               when={filesystem.treeNodes().length > 0}
-              fallback={<div class="rounded-xl border border-dashed border-cyan-100/15 p-3 text-xs leading-5 text-slate-400">Empty folder, or scan has not populated the tree.</div>}
+              fallback={
+                <div class="rounded-xl border border-dashed border-cyan-100/15 p-3 text-xs leading-5 text-slate-400">
+                  Empty folder, or scan has not populated the tree.
+                </div>
+              }
             >
               <div class="space-y-1.5">
                 <For each={filesystem.treeNodes()}>
                   {(node) => {
-                    const isSelected = () => node.kind === 'file' ? node.path === selectedFilePath() : node.path === selectedPath()
+                    const isSelected = () =>
+                      node.kind === 'file'
+                        ? node.path === selectedFilePath()
+                        : node.path === selectedPath()
                     return (
                       <button
                         type="button"
@@ -230,11 +277,17 @@ export function FilesystemPanel() {
                         }}
                       >
                         <span class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-white/[0.04] text-xs text-cyan-100">
-                          <Icon name={node.kind === 'directory' ? 'folder' : 'file'} />
+                          <Icon
+                            name={node.kind === 'directory' ? 'folder' : 'file'}
+                          />
                         </span>
                         <span class="min-w-0 flex-1">
-                          <span class="block truncate text-xs font-semibold text-slate-100">{node.name}</span>
-                          <span class="block truncate font-mono text-[0.62rem] text-slate-500">{node.path}</span>
+                          <span class="block truncate text-xs font-semibold text-slate-100">
+                            {node.name}
+                          </span>
+                          <span class="block truncate font-mono text-[0.62rem] text-slate-500">
+                            {node.path}
+                          </span>
                         </span>
                         <span class="shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-[0.68rem] text-slate-400">
                           {formatBytes(node.sizeBytes)}
@@ -264,7 +317,9 @@ export function FilePreviewPanel() {
             <Icon name="file" class="text-emerald-200" />
             Preview
           </h3>
-          <p class="mt-0.5 truncate text-[0.68rem] text-slate-500">Guarded UTF-8 read</p>
+          <p class="mt-0.5 truncate text-[0.68rem] text-slate-500">
+            Guarded UTF-8 read
+          </p>
         </div>
         <Show when={selectedFilePath()}>
           <span class="max-w-[9rem] truncate rounded-full border border-white/10 bg-black/25 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-300">
@@ -276,19 +331,37 @@ export function FilePreviewPanel() {
       <div class="mt-2 min-h-0 flex-1 overflow-y-auto">
         <Show
           when={selectedFilePath()}
-          fallback={<div class="rounded-xl border border-dashed border-emerald-100/15 bg-white/[0.02] p-3 text-xs leading-5 text-slate-400">Select a file to preview text. Binary, symlink, and escaping paths stay blocked.</div>}
+          fallback={
+            <div class="rounded-xl border border-dashed border-emerald-100/15 bg-white/[0.02] p-3 text-xs leading-5 text-slate-400">
+              Select a file to preview text. Binary, symlink, and escaping paths
+              stay blocked.
+            </div>
+          }
         >
           <Show
             when={!filesystem.previewText.loading}
-            fallback={<div class="h-12 animate-pulse rounded-xl border border-white/10 bg-white/5" />}
+            fallback={
+              <div class="h-12 animate-pulse rounded-xl border border-white/10 bg-white/5" />
+            }
           >
             <Show
               when={!filesystem.previewErrorMessage()}
-              fallback={<div class="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100"><div class="font-semibold">Preview unavailable</div><p class="mt-1 text-rose-100/80">{filesystem.previewErrorMessage()}</p></div>}
+              fallback={
+                <div class="rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100">
+                  <div class="font-semibold">Preview unavailable</div>
+                  <p class="mt-1 text-rose-100/80">
+                    {filesystem.previewErrorMessage()}
+                  </p>
+                </div>
+              }
             >
               <Show
                 when={(filesystem.previewText() ?? '').length > 0}
-                fallback={<div class="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-slate-400">File is empty.</div>}
+                fallback={
+                  <div class="rounded-xl border border-white/10 bg-black/25 p-3 text-xs text-slate-400">
+                    File is empty.
+                  </div>
+                }
               >
                 <pre class="m-0 max-h-28 overflow-auto rounded-xl border border-emerald-300/10 bg-black/35 p-3 font-mono text-[0.68rem] leading-5 text-slate-200 shadow-inner shadow-black/30">
                   <code>{filesystem.previewText()}</code>

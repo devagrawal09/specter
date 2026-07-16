@@ -2,9 +2,9 @@ import { createQuerySlice, event } from '@specter-ts/core/spec'
 
 const pendingPermissionsSpec = createQuerySlice('pendingPermissions')
   .description('Lists unresolved tool approval requests for a session.')
-  .scenarios(
-{
-    description: 'Lists only unresolved tool approval requests for the queried session.',
+  .scenarios({
+    description:
+      'Lists only unresolved tool approval requests for the queried session.',
     given: [
       event('tool-approval-requested', {
         requestId: 'permission-request-1',
@@ -60,7 +60,6 @@ const pendingPermissionsSpec = createQuerySlice('pendingPermissions')
         target: 'src/index.ts',
       },
     ],
-  }
-  )
+  })
 
 export default pendingPermissionsSpec

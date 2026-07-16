@@ -107,7 +107,10 @@ function stripJsonComments(input: string) {
 
     if (character === '/' && next === '*') {
       index += 2
-      while (index < input.length && !(input[index] === '*' && input[index + 1] === '/')) {
+      while (
+        index < input.length &&
+        !(input[index] === '*' && input[index + 1] === '/')
+      ) {
         if (input[index] === '\n') output += '\n'
         index += 1
       }
@@ -184,7 +187,10 @@ function permissionRulesFromConfig(permission: unknown): PermissionRule[] {
   return rules
 }
 
-function normalizeRelativePathValue(item: string, sourceDir: string | undefined) {
+function normalizeRelativePathValue(
+  item: string,
+  sourceDir: string | undefined,
+) {
   if (path.isAbsolute(item)) return path.normalize(item)
   if (!sourceDir || !item.startsWith('.')) return item
   return path.resolve(sourceDir, item)
@@ -192,7 +198,10 @@ function normalizeRelativePathValue(item: string, sourceDir: string | undefined)
 
 function normalizePathList(value: unknown, sourcePath: string) {
   if (!Array.isArray(value)) return value
-  const sourceDir = sourcePath === 'OPENCODE_CONFIG_CONTENT' ? undefined : path.dirname(sourcePath)
+  const sourceDir =
+    sourcePath === 'OPENCODE_CONFIG_CONTENT'
+      ? undefined
+      : path.dirname(sourcePath)
   return value.map((item) => {
     if (typeof item !== 'string') return item
     return normalizeRelativePathValue(item, sourceDir)
@@ -201,20 +210,34 @@ function normalizePathList(value: unknown, sourcePath: string) {
 
 function normalizePluginList(value: unknown, sourcePath: string) {
   if (!Array.isArray(value)) return value
-  const sourceDir = sourcePath === 'OPENCODE_CONFIG_CONTENT' ? undefined : path.dirname(sourcePath)
+  const sourceDir =
+    sourcePath === 'OPENCODE_CONFIG_CONTENT'
+      ? undefined
+      : path.dirname(sourcePath)
   return value.map((item) => {
-    if (typeof item === 'string') return normalizeRelativePathValue(item, sourceDir)
-    if (!Array.isArray(item) || typeof item[0] !== 'string' || !isRecord(item[1])) return item
+    if (typeof item === 'string')
+      return normalizeRelativePathValue(item, sourceDir)
+    if (
+      !Array.isArray(item) ||
+      typeof item[0] !== 'string' ||
+      !isRecord(item[1])
+    )
+      return item
     return [normalizeRelativePathValue(item[0], sourceDir), item[1]]
   })
 }
 
 function isPluginEntry(value: unknown): value is SpecterCodePluginEntry {
   if (typeof value === 'string') return true
-  return Array.isArray(value) && typeof value[0] === 'string' && isRecord(value[1])
+  return (
+    Array.isArray(value) && typeof value[0] === 'string' && isRecord(value[1])
+  )
 }
 
-function normalizeSourceConfig(config: JsonObject, sourcePath: string): JsonObject {
+function normalizeSourceConfig(
+  config: JsonObject,
+  sourcePath: string,
+): JsonObject {
   return {
     ...config,
     plugin: normalizePluginList(config.plugin, sourcePath),
@@ -240,17 +263,26 @@ function candidateFiles(options: LoadSpecterCodeConfigOptions) {
   return candidates
 }
 
-function toSpecterCodeConfig(raw: JsonObject, sources: string[], permissionRules: PermissionRule[]): SpecterCodeConfig {
+function toSpecterCodeConfig(
+  raw: JsonObject,
+  sources: string[],
+  permissionRules: PermissionRule[],
+): SpecterCodeConfig {
   return {
     sources,
     permissionRules,
     shell: typeof raw.shell === 'string' ? raw.shell : undefined,
     model: parseModel(raw.model),
-    defaultAgent: typeof raw.default_agent === 'string' ? raw.default_agent : undefined,
+    defaultAgent:
+      typeof raw.default_agent === 'string' ? raw.default_agent : undefined,
     provider: isRecord(raw.provider) ? raw.provider : undefined,
     agent: isRecord(raw.agent) ? raw.agent : undefined,
-    plugin: Array.isArray(raw.plugin) ? raw.plugin.filter(isPluginEntry) : undefined,
-    skills: Array.isArray(raw.skills) ? raw.skills.filter((item): item is string => typeof item === 'string') : undefined,
+    plugin: Array.isArray(raw.plugin)
+      ? raw.plugin.filter(isPluginEntry)
+      : undefined,
+    skills: Array.isArray(raw.skills)
+      ? raw.skills.filter((item): item is string => typeof item === 'string')
+      : undefined,
     mcp: isRecord(raw.mcp) ? raw.mcp : undefined,
     watcher: isRecord(raw.watcher) ? raw.watcher : undefined,
     formatter: raw.formatter,
@@ -259,22 +291,31 @@ function toSpecterCodeConfig(raw: JsonObject, sources: string[], permissionRules
   }
 }
 
-export async function loadSpecterCodeConfig(options: LoadSpecterCodeConfigOptions): Promise<SpecterCodeConfig> {
+export async function loadSpecterCodeConfig(
+  options: LoadSpecterCodeConfigOptions,
+): Promise<SpecterCodeConfig> {
   let raw: JsonObject = {}
   const sources: string[] = []
   const permissionRules: PermissionRule[] = []
 
   for (const filePath of candidateFiles(options)) {
     if (!(await exists(filePath))) continue
-    const parsed = normalizeSourceConfig(parseJsonc(await readFile(filePath, 'utf8'), filePath), filePath)
+    const parsed = normalizeSourceConfig(
+      parseJsonc(await readFile(filePath, 'utf8'), filePath),
+      filePath,
+    )
     raw = deepMerge(raw, parsed) as JsonObject
     permissionRules.push(...permissionRulesFromConfig(parsed.permission))
     sources.push(filePath)
   }
 
-  const envContent = options.env?.OPENCODE_CONFIG_CONTENT ?? process.env.OPENCODE_CONFIG_CONTENT
+  const envContent =
+    options.env?.OPENCODE_CONFIG_CONTENT ?? process.env.OPENCODE_CONFIG_CONTENT
   if (envContent) {
-    const parsed = normalizeSourceConfig(parseJsonc(envContent, 'OPENCODE_CONFIG_CONTENT'), 'OPENCODE_CONFIG_CONTENT')
+    const parsed = normalizeSourceConfig(
+      parseJsonc(envContent, 'OPENCODE_CONFIG_CONTENT'),
+      'OPENCODE_CONFIG_CONTENT',
+    )
     raw = deepMerge(raw, parsed) as JsonObject
     permissionRules.push(...permissionRulesFromConfig(parsed.permission))
     sources.push('OPENCODE_CONFIG_CONTENT')

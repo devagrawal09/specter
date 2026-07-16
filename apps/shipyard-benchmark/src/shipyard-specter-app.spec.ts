@@ -21,7 +21,7 @@ export const eventDefinitions = {
 export const plannedSliceGroups = [
   {
     featureGroup: 'opportunities',
-    note: 'Opportunity Radar is a broad feature group; slices remain granular one-command or one-query units.',
+    note: 'Opportunity Radar is a broad feature group; planned Slices remain granular one-command or one-query units, each separating spec.ts from complete impl.ts implementations.',
     slices: [
       'create-opportunity',
       'update-opportunity',
@@ -35,7 +35,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'projects',
-    note: 'Project Shiproom is a broad feature group; slices remain granular one-command or one-query units.',
+    note: 'Project Shiproom is a broad feature group; planned Slices remain granular one-command or one-query units, each separating spec.ts from complete impl.ts implementations.',
     slices: [
       'create-project',
       'update-project-status',
@@ -47,7 +47,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'tasks',
-    note: 'Nexus Task Loop and scoring are broad concepts; slices remain granular around task state and score awards.',
+    note: 'Nexus Task Loop and scoring are broad concepts; planned Slices remain granular around task state and score awards.',
     slices: [
       'create-task',
       'triage-task',
@@ -62,7 +62,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'demos',
-    note: 'DemoLab is a broad feature group; slices remain granular for demos, stages, steps, and rehearsal records.',
+    note: 'DemoLab is a broad feature group; planned Slices remain granular for demos, stages, steps, and rehearsal records.',
     slices: [
       'create-demo',
       'add-demo-stage',
@@ -74,7 +74,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'github',
-    note: 'GitHub Integration is a broad feature group; slices remain granular and read-only for the MVP.',
+    note: 'GitHub Integration is a broad feature group; planned Slices remain granular and read-only for the MVP.',
     slices: [
       'attach-github-repository',
       'refresh-github-repository-reaction',
@@ -86,7 +86,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'opencode',
-    note: 'OpenCode Integration is a broad feature group; slices remain granular and preserve direct event/operation mapping with no normalized layer.',
+    note: 'OpenCode Integration is a broad feature group; planned Slices remain granular and preserve direct event/operation mapping with no normalized layer.',
     slices: [
       'request-opencode-run',
       'record-opencode-run-started',
@@ -103,7 +103,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'suggestions',
-    note: 'Agent Suggestions is a broad feature group; slices remain granular for record, apply, reject, and query flows.',
+    note: 'Agent Suggestions is a broad feature group; planned Slices remain granular for record, apply, reject, and query flows.',
     slices: [
       'record-agent-suggestion',
       'apply-agent-suggestion',
@@ -113,7 +113,7 @@ export const plannedSliceGroups = [
   },
   {
     featureGroup: 'operator-workflows',
-    note: 'Operator Workflows is a broad feature group; slices remain granular for preview, confirmation, follow-up, and cancellation.',
+    note: 'Operator Workflows is a broad feature group; planned Slices remain granular for preview, confirmation, follow-up, and cancellation.',
     slices: [
       'preview-operator-workflow',
       'confirm-operator-workflow-run',

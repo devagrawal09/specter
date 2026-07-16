@@ -59,22 +59,34 @@ const normalizeSlashes = (input: string) => input.trim().replaceAll('\\', '/')
 export const normalizeWorkspacePath = (input: string): string => {
   const slashNormalized = normalizeSlashes(input)
   if (!slashNormalized) throw new Error('Workspace path is required')
-  if (path.posix.isAbsolute(slashNormalized) || isWindowsAbsolutePath(slashNormalized)) {
+  if (
+    path.posix.isAbsolute(slashNormalized) ||
+    isWindowsAbsolutePath(slashNormalized)
+  ) {
     throw new Error('Workspace path escapes the workspace root')
   }
 
   const normalized = path.posix.normalize(slashNormalized)
-  if (normalized === '.' || normalized.startsWith('../') || normalized === '..') {
+  if (
+    normalized === '.' ||
+    normalized.startsWith('../') ||
+    normalized === '..'
+  ) {
     throw new Error('Workspace path escapes the workspace root')
   }
 
   return normalized
 }
 
-export const normalizeWorkspaceGlobPattern = (input: string | undefined): string => {
+export const normalizeWorkspaceGlobPattern = (
+  input: string | undefined,
+): string => {
   const slashNormalized = normalizeSlashes(input ?? '**/*')
   if (!slashNormalized) throw new Error('Workspace glob pattern is required')
-  if (path.posix.isAbsolute(slashNormalized) || isWindowsAbsolutePath(slashNormalized)) {
+  if (
+    path.posix.isAbsolute(slashNormalized) ||
+    isWindowsAbsolutePath(slashNormalized)
+  ) {
     throw new Error('Workspace glob pattern escapes the workspace root')
   }
   if (slashNormalized.split('/').some((segment) => segment === '..')) {
@@ -90,8 +102,10 @@ export const resolveWorkspacePath = async (
   const relativePath = normalizeWorkspacePath(input)
   const root = path.resolve(workspaceRoot)
   const rootStat = await lstat(root)
-  if (rootStat.isSymbolicLink()) throw new Error('Workspace root must not be a symlink')
-  if (!rootStat.isDirectory()) throw new Error('Workspace root must be a directory')
+  if (rootStat.isSymbolicLink())
+    throw new Error('Workspace root must not be a symlink')
+  if (!rootStat.isDirectory())
+    throw new Error('Workspace root must be a directory')
 
   let current = root
   let currentStat: Stats = rootStat
@@ -136,7 +150,9 @@ const segmentPatternToRegExp = (segment: string) => {
         const alternatives = segment
           .slice(index + 1, closeIndex)
           .split(',')
-          .map((alternative) => alternative.split('').map(escapeRegExpCharacter).join(''))
+          .map((alternative) =>
+            alternative.split('').map(escapeRegExpCharacter).join(''),
+          )
         expression += `(?:${alternatives.join('|')})`
         index = closeIndex
         continue
@@ -152,11 +168,16 @@ const matchSegments = (
   pathSegments: readonly string[],
 ): boolean => {
   const matchFrom = (patternIndex: number, pathIndex: number): boolean => {
-    if (patternIndex === patternSegments.length) return pathIndex === pathSegments.length
+    if (patternIndex === patternSegments.length)
+      return pathIndex === pathSegments.length
 
     const patternSegment = patternSegments[patternIndex]
     if (patternSegment === '**') {
-      for (let nextPathIndex = pathIndex; nextPathIndex <= pathSegments.length; nextPathIndex += 1) {
+      for (
+        let nextPathIndex = pathIndex;
+        nextPathIndex <= pathSegments.length;
+        nextPathIndex += 1
+      ) {
         if (matchFrom(patternIndex + 1, nextPathIndex)) return true
       }
       return false
@@ -178,25 +199,35 @@ export const matchesWorkspaceGlob = (pattern: string, value: string) => {
   return matchSegments(normalizedPattern.split('/'), normalizedValue.split('/'))
 }
 
-export const listWorkspaceFiles = async (workspaceRoot: string): Promise<WorkspaceFileEntry[]> => {
+export const listWorkspaceFiles = async (
+  workspaceRoot: string,
+): Promise<WorkspaceFileEntry[]> => {
   const root = path.resolve(workspaceRoot)
   const rootStat = await lstat(root)
-  if (rootStat.isSymbolicLink()) throw new Error('Workspace root must not be a symlink')
-  if (!rootStat.isDirectory()) throw new Error('Workspace root must be a directory')
+  if (rootStat.isSymbolicLink())
+    throw new Error('Workspace root must not be a symlink')
+  if (!rootStat.isDirectory())
+    throw new Error('Workspace root must be a directory')
 
   const files: WorkspaceFileEntry[] = []
 
-  const walk = async (absoluteDirectory: string, relativeDirectory: string | null) => {
+  const walk = async (
+    absoluteDirectory: string,
+    relativeDirectory: string | null,
+  ) => {
     const entries = await readdir(absoluteDirectory, { withFileTypes: true })
     entries.sort((left, right) => left.name.localeCompare(right.name))
 
     for (const entry of entries) {
-      if (entry.isDirectory() && DEFAULT_IGNORED_DIRECTORIES.has(entry.name)) continue
+      if (entry.isDirectory() && DEFAULT_IGNORED_DIRECTORIES.has(entry.name))
+        continue
       const absolutePath = path.join(absoluteDirectory, entry.name)
       if (!isInsideRoot(root, absolutePath)) continue
       const stat = await lstat(absolutePath)
       if (stat.isSymbolicLink()) continue
-      const relativePath = relativeDirectory ? `${relativeDirectory}/${entry.name}` : entry.name
+      const relativePath = relativeDirectory
+        ? `${relativeDirectory}/${entry.name}`
+        : entry.name
       const normalizedPath = normalizeWorkspacePath(relativePath)
       if (stat.isDirectory()) {
         await walk(absolutePath, normalizedPath)

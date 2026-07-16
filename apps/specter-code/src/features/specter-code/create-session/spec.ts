@@ -3,7 +3,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 const createSessionSpec = createCommandSlice('createSession')
   .description('Creates a coding-agent session in a workspace.')
   .scenarios(
-{
+    {
       description: 'Creates a session with title, directory, agent, and model.',
       given: [],
       when: {
@@ -12,7 +12,10 @@ const createSessionSpec = createCommandSlice('createSession')
         title: '  Fix tests  ',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
         createdBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
       },
       expect: [
@@ -22,7 +25,10 @@ const createSessionSpec = createCommandSlice('createSession')
           title: 'Fix tests',
           directory: '/tmp/project',
           agent: 'build',
-          model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+          model: {
+            providerId: 'openrouter',
+            modelId: 'anthropic/claude-sonnet-4',
+          },
           createdBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
         }),
       ],
@@ -36,7 +42,10 @@ const createSessionSpec = createCommandSlice('createSession')
         title: '   ',
         directory: '/tmp/project',
         agent: 'build',
-        model: { providerId: 'openrouter', modelId: 'anthropic/claude-sonnet-4' },
+        model: {
+          providerId: 'openrouter',
+          modelId: 'anthropic/claude-sonnet-4',
+        },
       },
       expect: [],
       reject: { reason: 'Session title is required' },

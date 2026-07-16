@@ -16,7 +16,7 @@ const envelopeFields = {
 }
 
 export const opencodeRunRequestedEvent = createEventDefinition(
-  'opencodeRunRequested',
+  'opencode-run-requested',
   z.object({
     ...envelopeFields,
     operation: z.literal('opencode.run.start'),
@@ -26,7 +26,7 @@ export const opencodeRunRequestedEvent = createEventDefinition(
 )
 
 export const opencodeRunStartedEvent = createEventDefinition(
-  'opencodeRunStarted',
+  'opencode-run-started',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.run.started'),
@@ -36,17 +36,24 @@ export const opencodeRunStartedEvent = createEventDefinition(
 )
 
 export const opencodeRunStatusChangedEvent = createEventDefinition(
-  'opencodeRunStatusChanged',
+  'opencode-run-status-changed',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.run.status_changed'),
     runId: z.string(),
-    status: z.enum(['queued', 'running', 'waiting_for_input', 'completed', 'failed', 'cancelled']),
+    status: z.enum([
+      'queued',
+      'running',
+      'waiting_for_input',
+      'completed',
+      'failed',
+      'cancelled',
+    ]),
   }),
 )
 
 export const opencodeLogAppendedEvent = createEventDefinition(
-  'opencodeLogAppended',
+  'opencode-log-appended',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.log.appended'),
@@ -57,7 +64,7 @@ export const opencodeLogAppendedEvent = createEventDefinition(
 )
 
 export const opencodeToolCompletedEvent = createEventDefinition(
-  'opencodeToolCompleted',
+  'opencode-tool-completed',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.tool.completed'),
@@ -70,7 +77,7 @@ export const opencodeToolCompletedEvent = createEventDefinition(
 )
 
 export const opencodeFileChangedEvent = createEventDefinition(
-  'opencodeFileChanged',
+  'opencode-file-changed',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.file.changed'),
@@ -81,7 +88,7 @@ export const opencodeFileChangedEvent = createEventDefinition(
 )
 
 export const opencodeSuggestionCreatedEvent = createEventDefinition(
-  'opencodeSuggestionCreated',
+  'opencode-suggestion-created',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.suggestion.created'),
@@ -102,7 +109,7 @@ export const opencodeSuggestionCreatedEvent = createEventDefinition(
 )
 
 export const opencodeRunCompletedEvent = createEventDefinition(
-  'opencodeRunCompleted',
+  'opencode-run-completed',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.run.completed'),
@@ -112,7 +119,7 @@ export const opencodeRunCompletedEvent = createEventDefinition(
 )
 
 export const opencodeRunFailedEvent = createEventDefinition(
-  'opencodeRunFailed',
+  'opencode-run-failed',
   z.object({
     ...envelopeFields,
     inboundName: z.literal('opencode.run.failed'),

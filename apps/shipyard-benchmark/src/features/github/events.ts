@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const githubRepositoryAttachedEvent = createEventDefinition(
-  'githubRepositoryAttached',
+  'github-repository-attached',
   z.object({
     repositoryId: z.string(),
     owner: z.string(),
@@ -12,7 +12,7 @@ export const githubRepositoryAttachedEvent = createEventDefinition(
 )
 
 export const githubRepositoryRefreshedEvent = createEventDefinition(
-  'githubRepositoryRefreshed',
+  'github-repository-refreshed',
   z.object({
     repositoryId: z.string(),
     refreshedAt: z.string(),
@@ -22,7 +22,7 @@ export const githubRepositoryRefreshedEvent = createEventDefinition(
 )
 
 export const githubRepositoryRefreshFailedEvent = createEventDefinition(
-  'githubRepositoryRefreshFailed',
+  'github-repository-refresh-failed',
   z.object({
     repositoryId: z.string(),
     failedAt: z.string(),
@@ -31,7 +31,7 @@ export const githubRepositoryRefreshFailedEvent = createEventDefinition(
 )
 
 export const githubIssuesImportedEvent = createEventDefinition(
-  'githubIssuesImported',
+  'github-issues-imported',
   z.object({
     repositoryId: z.string(),
     importedAt: z.string(),

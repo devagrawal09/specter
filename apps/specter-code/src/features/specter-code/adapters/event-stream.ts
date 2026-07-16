@@ -11,7 +11,9 @@ export type LoadSpecterCodeEventsInput = {
 }
 
 export type SpecterCodeEventStreamOptions = {
-  loadEvents: (input: LoadSpecterCodeEventsInput) => Promise<readonly SpecterCodeStreamEvent[]>
+  loadEvents: (
+    input: LoadSpecterCodeEventsInput,
+  ) => Promise<readonly SpecterCodeStreamEvent[]>
 }
 
 export type OpenSpecterCodeEventStreamInput = {
@@ -22,7 +24,9 @@ export type OpenSpecterCodeEventStreamInput = {
 
 const textEncoder = new TextEncoder()
 
-export function createSpecterCodeEventStream(options: SpecterCodeEventStreamOptions) {
+export function createSpecterCodeEventStream(
+  options: SpecterCodeEventStreamOptions,
+) {
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
 
   return {
@@ -44,7 +48,9 @@ export function createSpecterCodeEventStream(options: SpecterCodeEventStreamOpti
           if (live) subscribers.add(controller)
 
           try {
-            const events = await options.loadEvents({ afterOrder: input.afterOrder })
+            const events = await options.loadEvents({
+              afterOrder: input.afterOrder,
+            })
             for (const event of events) {
               controller.enqueue(encodeServerSentEvent(event))
             }
@@ -60,7 +66,10 @@ export function createSpecterCodeEventStream(options: SpecterCodeEventStreamOpti
 
       if (input.signal) {
         if (input.signal.aborted) closeSubscriber?.()
-        else input.signal.addEventListener('abort', () => closeSubscriber?.(), { once: true })
+        else
+          input.signal.addEventListener('abort', () => closeSubscriber?.(), {
+            once: true,
+          })
       }
 
       return new Response(body, {
@@ -99,6 +108,8 @@ function normalizeStreamEvent(event: SpecterCodeStreamEvent) {
   return {
     ...event,
     recordedAt:
-      event.recordedAt instanceof Date ? event.recordedAt.toISOString() : event.recordedAt,
+      event.recordedAt instanceof Date
+        ? event.recordedAt.toISOString()
+        : event.recordedAt,
   }
 }

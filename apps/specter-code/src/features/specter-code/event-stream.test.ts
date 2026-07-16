@@ -27,7 +27,9 @@ describe('Specter Code event stream adapter', () => {
 
     const response = await stream.open({ afterOrder: 1, live: false })
 
-    expect(response.headers.get('content-type')).toBe('text/event-stream; charset=utf-8')
+    expect(response.headers.get('content-type')).toBe(
+      'text/event-stream; charset=utf-8',
+    )
     expect(response.headers.get('cache-control')).toBe('no-cache, no-transform')
     await expect(response.text()).resolves.toBe(
       'id: 2\n' +

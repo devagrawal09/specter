@@ -17,7 +17,7 @@ describe('ColonyBench UI model', () => {
       baseLevel: 2,
       baseEnergy: 7,
       commandCount: 2,
-      eventTypes: ['colonybenchEnergyDeposited', 'colonybenchTickAdvanced'],
+      eventTypes: ['colonybench-energy-deposited', 'colonybench-tick-advanced'],
     }
     const overview: ColonyBenchRunOverview = {
       run: {
@@ -40,7 +40,7 @@ describe('ColonyBench UI model', () => {
           baseLevel: 1,
           baseEnergy: 4,
           commandCount: 1,
-          eventTypes: ['colonybenchWorkerMoved'],
+          eventTypes: ['colonybench-worker-moved'],
         },
         {
           runId: 'baseline-ui',
@@ -50,7 +50,7 @@ describe('ColonyBench UI model', () => {
           baseLevel: 1,
           baseEnergy: 9,
           commandCount: 1,
-          eventTypes: ['colonybenchEnergyHarvested'],
+          eventTypes: ['colonybench-energy-harvested'],
         },
         latestFrame,
       ],
@@ -67,8 +67,8 @@ describe('ColonyBench UI model', () => {
     ])
     expect(model.recentFrames.map((frame) => frame.tick)).toEqual([30, 29, 28])
     expect(model.recentFrames[0]?.eventTypes).toEqual([
-      'colonybenchEnergyDeposited',
-      'colonybenchTickAdvanced',
+      'colonybench-energy-deposited',
+      'colonybench-tick-advanced',
     ])
   })
 
@@ -127,7 +127,10 @@ describe('ColonyBench UI model', () => {
         ],
         terrain: [{ id: 'wall-1', position: { x: -1, y: 1 }, terrain: 'wall' }],
         recentEvents: [
-          { type: 'colonybenchWorkerMoved', payload: { workerId: 'worker-2' } },
+          {
+            type: 'colonybench-worker-moved',
+            payload: { workerId: 'worker-2' },
+          },
         ],
       },
       commands: [
@@ -156,7 +159,7 @@ describe('ColonyBench UI model', () => {
       },
       events: [
         {
-          type: 'colonybenchEnergyDeposited',
+          type: 'colonybench-energy-deposited',
           payload: { workerId: 'worker-1' },
         },
       ],

@@ -41,80 +41,80 @@ const sessionTranscript = sessionTranscriptSpec
     })),
   )
   .apply(userMessageSubmittedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      state.messageSessions[payload.messageId] = {
-        sessionId: payload.sessionId,
-        workspaceId: payload.workspaceId,
-      }
+    state.messageSessions[payload.messageId] = {
+      sessionId: payload.sessionId,
+      workspaceId: payload.workspaceId,
+    }
 
-      if (state.items.some((item) => item.id === payload.messageId)) {
-        return
-      }
+    if (state.items.some((item) => item.id === payload.messageId)) {
+      return
+    }
 
-      state.items.push({
-        id: payload.messageId,
-        sessionId: payload.sessionId,
-        workspaceId: payload.workspaceId,
-        role: 'user',
-        content: payload.content,
-        author: payload.submittedBy,
-      })
+    state.items.push({
+      id: payload.messageId,
+      sessionId: payload.sessionId,
+      workspaceId: payload.workspaceId,
+      role: 'user',
+      content: payload.content,
+      author: payload.submittedBy,
     })
+  })
   .apply(agentRunRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      if (payload.postId) state.runMessageIds[payload.runId] = payload.postId
-    })
+    const payload = event.payload
+    if (payload.postId) state.runMessageIds[payload.runId] = payload.postId
+  })
   .apply(postReplyCreatedEvent, async (event, state) => {
-      const payload = event.payload
-      if (!payload.sourceRunId || payload.author.type !== 'agent') return
+    const payload = event.payload
+    if (!payload.sourceRunId || payload.author.type !== 'agent') return
 
-      const messageId =
-        state.runMessageIds[payload.sourceRunId] ?? payload.parentPostId
-      const session = state.messageSessions[messageId]
-      if (!session) return
+    const messageId =
+      state.runMessageIds[payload.sourceRunId] ?? payload.parentPostId
+    const session = state.messageSessions[messageId]
+    if (!session) return
 
-      if (state.items.some((item) => item.id === payload.replyId)) return
+    if (state.items.some((item) => item.id === payload.replyId)) return
 
-      state.items.push({
-        id: payload.replyId,
-        sessionId: session.sessionId,
-        workspaceId: session.workspaceId,
-        role: 'assistant',
-        content: payload.content,
-        author: {
-          agentId: payload.author.agentId,
-          displayName: payload.author.displayName,
-        },
-      })
+    state.items.push({
+      id: payload.replyId,
+      sessionId: session.sessionId,
+      workspaceId: session.workspaceId,
+      role: 'assistant',
+      content: payload.content,
+      author: {
+        agentId: payload.author.agentId,
+        displayName: payload.author.displayName,
+      },
     })
+  })
   .apply(sessionMessagePartUpdatedEvent, async (event, state) => {
-      const payload = event.payload
-      const item = state.items.find(
-        (candidate) =>
-          candidate.sessionId === payload.sessionId &&
-          candidate.id === payload.messageId,
-      )
-      if (item) item.content = payload.content
-    })
+    const payload = event.payload
+    const item = state.items.find(
+      (candidate) =>
+        candidate.sessionId === payload.sessionId &&
+        candidate.id === payload.messageId,
+    )
+    if (item) item.content = payload.content
+  })
   .apply(sessionMessagePartDeletedEvent, async (event, state) => {
-      const payload = event.payload
-      const item = state.items.find(
-        (candidate) =>
-          candidate.sessionId === payload.sessionId &&
-          candidate.id === payload.messageId,
-      )
-      if (item) item.content = ''
-    })
+    const payload = event.payload
+    const item = state.items.find(
+      (candidate) =>
+        candidate.sessionId === payload.sessionId &&
+        candidate.id === payload.messageId,
+    )
+    if (item) item.content = ''
+  })
   .apply(sessionMessageDeletedEvent, async (event, state) => {
-      const payload = event.payload
-      state.items = state.items.filter(
-        (item) =>
-          item.sessionId !== payload.sessionId || item.id !== payload.messageId,
-      )
-      delete state.messageSessions[payload.messageId]
-    })
-  
+    const payload = event.payload
+    state.items = state.items.filter(
+      (item) =>
+        item.sessionId !== payload.sessionId || item.id !== payload.messageId,
+    )
+    delete state.messageSessions[payload.messageId]
+  })
+
   .handle(async (query, state) =>
     state.items.filter((item) => item.sessionId === query.sessionId),
   )

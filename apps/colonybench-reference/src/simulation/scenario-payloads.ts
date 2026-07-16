@@ -1,0 +1,62 @@
+export const lifecyclePayloads = {
+  initialized: { runId: 'other-run' },
+  moved: {
+    runId: 'other-run',
+    workerId: 'worker-1',
+    from: { x: 0, y: 1 },
+    to: { x: 1, y: 1 },
+    target: { x: 2, y: 1 },
+  },
+  harvested: {
+    runId: 'other-run',
+    workerId: 'worker-1',
+    sourceId: 'source-1',
+    amount: 5,
+  },
+  deposited: { runId: 'other-run', workerId: 'worker-1', amount: 1 },
+  upgraded: {
+    runId: 'other-run',
+    workerId: 'worker-1',
+    amount: 1,
+    level: 1,
+    upgradeProgress: 1,
+  },
+  spawned: {
+    runId: 'other-run',
+    workerId: 'worker-2',
+    cost: 1,
+    position: { x: 0, y: 0 },
+  },
+  built: {
+    runId: 'other-run',
+    workerId: 'worker-1',
+    siteId: 'road-site-1',
+    amount: 1,
+    progress: 1,
+    completed: false,
+  },
+  completed: {
+    runId: 'other-run',
+    siteId: 'road-site-1',
+    roadId: 'road-1',
+    position: { x: 1, y: 0 },
+  },
+  repaired: {
+    runId: 'other-run',
+    workerId: 'worker-1',
+    roadId: 'road-1',
+    amount: 1,
+    hits: 20,
+  },
+  rejected: {
+    runId: 'other-run',
+    command: 'moveWorker',
+    reason: 'terrain_wall',
+  },
+  advanced: {
+    runId: 'other-run',
+    tick: 1,
+    regeneratedSources: [],
+    decayedRoads: [],
+  },
+} as const

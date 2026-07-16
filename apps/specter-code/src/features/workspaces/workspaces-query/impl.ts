@@ -18,21 +18,19 @@ const workspacesQuery = workspacesQuerySpec
   .outputSchema<Workspace[]>()
   .store(createSqliteSliceStore<WorkspacesState>(() => ({ workspaces: [] })))
   .apply(workspaceCreatedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      if (
-        state.workspaces.some(
-          (workspace) => workspace.id === payload.workspaceId,
-        )
-      ) {
-        return
-      }
+    if (
+      state.workspaces.some((workspace) => workspace.id === payload.workspaceId)
+    ) {
+      return
+    }
 
-      state.workspaces.push({
-        id: payload.workspaceId,
-        name: payload.name,
-      })
+    state.workspaces.push({
+      id: payload.workspaceId,
+      name: payload.name,
     })
+  })
   .handle(async (_query, state) => state.workspaces)
 
 export default workspacesQuery

@@ -33,7 +33,8 @@ export const openCodeCommandEnvelopeSchema = z.object({
   payload: z.record(z.string(), z.unknown()),
 })
 
-export type InboundOpenCodeEventName = (typeof inboundOpenCodeEventNames)[number]
+export type InboundOpenCodeEventName =
+  (typeof inboundOpenCodeEventNames)[number]
 export type OutboundOpenCodeOperationName =
   (typeof outboundOpenCodeOperationNames)[number]
 export type LinkedEntity = z.infer<typeof linkedEntitySchema>

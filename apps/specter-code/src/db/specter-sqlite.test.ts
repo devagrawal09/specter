@@ -119,7 +119,10 @@ describe('prepareSpecterSqlite', () => {
       await prepareSpecterSqlite(db)
 
       const journal = await db.execute({ sql: 'PRAGMA journal_mode', args: [] })
-      const busyTimeout = await db.execute({ sql: 'PRAGMA busy_timeout', args: [] })
+      const busyTimeout = await db.execute({
+        sql: 'PRAGMA busy_timeout',
+        args: [],
+      })
 
       expect(String(journal.rows[0]?.journal_mode).toLowerCase()).toBe('wal')
       expect(Number(busyTimeout.rows[0]?.timeout)).toBeGreaterThanOrEqual(5_000)
@@ -127,7 +130,6 @@ describe('prepareSpecterSqlite', () => {
       db.close()
     }
   })
-
 })
 
 async function expectColumns(
@@ -135,7 +137,10 @@ async function expectColumns(
   tableName: string,
   expectedColumns: readonly string[],
 ) {
-  const result = await db.execute({ sql: `PRAGMA table_info(${tableName})`, args: [] })
+  const result = await db.execute({
+    sql: `PRAGMA table_info(${tableName})`,
+    args: [],
+  })
   const actualColumns = result.rows.map((row) => String(row.name))
 
   expect(actualColumns).toEqual(expect.arrayContaining([...expectedColumns]))

@@ -230,11 +230,13 @@ export function createSqliteSliceStore<TState>(
   }
 }
 
-export async function querySpecterSqliteEvents(input: {
-  afterOrder?: number
-  limit?: number
-  eventTypes?: readonly string[]
-} = {}): Promise<SpecterSqliteEventRecord[]> {
+export async function querySpecterSqliteEvents(
+  input: {
+    afterOrder?: number
+    limit?: number
+    eventTypes?: readonly string[]
+  } = {},
+): Promise<SpecterSqliteEventRecord[]> {
   const afterOrder = input.afterOrder ?? 0
   const limit = input.limit ?? 500
   if (!Number.isInteger(afterOrder) || afterOrder < 0) {

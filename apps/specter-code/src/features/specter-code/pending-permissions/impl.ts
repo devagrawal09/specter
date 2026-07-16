@@ -28,27 +28,29 @@ const pendingPermissions = pendingPermissionsSpec
     }),
   )
   .outputSchema<PendingPermission[]>()
-  .store(createMemorySliceStore<PendingPermissionsState>(() => ({ pending: {} })))
+  .store(
+    createMemorySliceStore<PendingPermissionsState>(() => ({ pending: {} })),
+  )
   .apply(toolApprovalRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      state.pending[payload.requestId] = {
-        requestId: payload.requestId,
-        sessionId: payload.sessionId,
-        messageId: payload.messageId,
-        workspaceId: payload.workspaceId,
-        agentId: payload.agentId,
-        toolCallId: payload.toolCallId,
-        toolName: payload.toolName,
-        permission: payload.permission,
-        target: payload.target,
-        reason: payload.reason,
-      }
-    })
+    const payload = event.payload
+    state.pending[payload.requestId] = {
+      requestId: payload.requestId,
+      sessionId: payload.sessionId,
+      messageId: payload.messageId,
+      workspaceId: payload.workspaceId,
+      agentId: payload.agentId,
+      toolCallId: payload.toolCallId,
+      toolName: payload.toolName,
+      permission: payload.permission,
+      target: payload.target,
+      reason: payload.reason,
+    }
+  })
   .apply(toolApprovalRepliedEvent, async (event, state) => {
-      const payload = event.payload
-      delete state.pending[payload.requestId]
-    })
-  
+    const payload = event.payload
+    delete state.pending[payload.requestId]
+  })
+
   .handle(async (query, state): Promise<PendingPermission[]> => {
     return Object.values(state.pending).filter(
       (request) => request.sessionId === query.sessionId,

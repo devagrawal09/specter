@@ -9,8 +9,7 @@ import {
   runWithSqliteDb,
 } from './specter-sqlite.ts'
 
-const sqlitePath =
-  process.env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
+const sqlitePath = process.env.SPECTER_CODE_DB_PATH ?? './data/specter-code.db'
 const sqliteUrl = `file:${sqlitePath}`
 
 mkdirSync(dirname(sqlitePath), { recursive: true })

@@ -218,7 +218,9 @@ export function nextRunRequestedAgentRunCommand(
       if (promptMessageId && promptSessionId) {
         if (!plan.approvalRequestId) {
           const requestId = approvalRequestIdForToolCall(toolCallId)
-          const { permission, target } = permissionForSimulatedTool(plan.toolName)
+          const { permission, target } = permissionForSimulatedTool(
+            plan.toolName,
+          )
           return {
             type: 'requestToolApproval',
             payload: {
@@ -330,85 +332,85 @@ const runRequestedAgentRun = runRequestedAgentRunSpec
     ),
   )
   .apply(userMessageSubmittedEvent, async (event, state) => {
-      const payload = event.payload
-      state.messageSessions[payload.messageId] = payload.sessionId
-    })
+    const payload = event.payload
+    state.messageSessions[payload.messageId] = payload.sessionId
+  })
   .apply(agentRunRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = getSimulatedAgentPlan(payload.runId)
+    const payload = event.payload
+    const plan = getSimulatedAgentPlan(payload.runId)
 
-      state.requestedRuns.push(payload)
-      state.runPlans[payload.runId] = {
-        toolName: pickToolName(plan.seed, payload.runId),
-        chunks: buildStreamChunks(plan.seed, payload.runId),
-        shouldFail: shouldFailRun(plan.seed, payload.runId),
-        failed: false,
-        completed: false,
-        toolStarted: false,
-        toolCompleted: false,
-        streamIndex: 0,
-      }
-    })
+    state.requestedRuns.push(payload)
+    state.runPlans[payload.runId] = {
+      toolName: pickToolName(plan.seed, payload.runId),
+      chunks: buildStreamChunks(plan.seed, payload.runId),
+      shouldFail: shouldFailRun(plan.seed, payload.runId),
+      failed: false,
+      completed: false,
+      toolStarted: false,
+      toolCompleted: false,
+      streamIndex: 0,
+    }
+  })
   .apply(agentRunStartedEvent, async (event, state) => {
-      const payload = event.payload
-      state.startedRunIds.add(payload.runId)
-    })
+    const payload = event.payload
+    state.startedRunIds.add(payload.runId)
+  })
   .apply(toolCallStartedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) plan.toolStarted = true
-    })
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) plan.toolStarted = true
+  })
   .apply(toolApprovalRequestedEvent, async (event, state) => {
-      const payload = event.payload
-      if (!payload.toolCallId) return
-      const run = state.requestedRuns.find(
-        (candidate) => toolCallIdForRun(candidate.runId) === payload.toolCallId,
-      )
-      if (!run) return
-      const plan = state.runPlans[run.runId]
-      if (!plan) return
-      plan.approvalRequestId = payload.requestId
-      plan.approvalStatus = 'pending'
-      state.approvalRequests[payload.requestId] = run.runId
-    })
+    const payload = event.payload
+    if (!payload.toolCallId) return
+    const run = state.requestedRuns.find(
+      (candidate) => toolCallIdForRun(candidate.runId) === payload.toolCallId,
+    )
+    if (!run) return
+    const plan = state.runPlans[run.runId]
+    if (!plan) return
+    plan.approvalRequestId = payload.requestId
+    plan.approvalStatus = 'pending'
+    state.approvalRequests[payload.requestId] = run.runId
+  })
   .apply(toolApprovalRepliedEvent, async (event, state) => {
-      const payload = event.payload
-      const runId = state.approvalRequests[payload.requestId]
-      if (!runId) return
-      const plan = state.runPlans[runId]
-      if (plan) plan.approvalStatus = payload.action
-    })
+    const payload = event.payload
+    const runId = state.approvalRequests[payload.requestId]
+    if (!runId) return
+    const plan = state.runPlans[runId]
+    if (plan) plan.approvalStatus = payload.action
+  })
   .apply(toolCallCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) plan.toolCompleted = true
-    })
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) plan.toolCompleted = true
+  })
   .apply(toolCallFailedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) {
-        plan.failed = true
-        plan.toolCompleted = true
-      }
-    })
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) {
+      plan.failed = true
+      plan.toolCompleted = true
+    }
+  })
   .apply(agentRunStreamedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) plan.streamIndex = payload.sequence + 1
-    })
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) plan.streamIndex = payload.sequence + 1
+  })
   .apply(agentRunCompletedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) plan.completed = true
-      state.terminalRunIds.add(payload.runId)
-    })
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) plan.completed = true
+    state.terminalRunIds.add(payload.runId)
+  })
   .apply(agentRunFailedEvent, async (event, state) => {
-      const payload = event.payload
-      const plan = state.runPlans[payload.runId]
-      if (plan) plan.failed = true
-      state.terminalRunIds.add(payload.runId)
-    })
-  
+    const payload = event.payload
+    const plan = state.runPlans[payload.runId]
+    if (plan) plan.failed = true
+    state.terminalRunIds.add(payload.runId)
+  })
+
   .handle(async (state): Promise<RunRequestedAgentRunCommand | undefined> => {
     return nextRunRequestedAgentRunCommand(state)
   })

@@ -26,7 +26,7 @@ const updateSession = updateSessionSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const title = command.title === undefined ? undefined : command.title.trim()
     if (command.title !== undefined && !title) {

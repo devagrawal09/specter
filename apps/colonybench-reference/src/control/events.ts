@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const runCreatedEvent = createEventDefinition(
-  'colonybenchRunCreated',
+  'colonybench-run-created',
   z.object({
     runId: z.string(),
     name: z.string(),
@@ -10,21 +10,21 @@ export const runCreatedEvent = createEventDefinition(
 )
 
 export const runStartedEvent = createEventDefinition(
-  'colonybenchRunStarted',
+  'colonybench-run-started',
   z.object({
     runId: z.string(),
   }),
 )
 
 export const runCompletedEvent = createEventDefinition(
-  'colonybenchRunCompleted',
+  'colonybench-run-completed',
   z.object({
     runId: z.string(),
   }),
 )
 
 export const runFrameRecordedEvent = createEventDefinition(
-  'colonybenchRunFrameRecorded',
+  'colonybench-run-frame-recorded',
   z.object({
     runId: z.string(),
     tick: z.number().int().nonnegative(),

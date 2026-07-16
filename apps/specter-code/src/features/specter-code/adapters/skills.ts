@@ -1,7 +1,10 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import path from 'node:path'
 
-import { loadSpecterCodeConfig, type SpecterCodeConfig } from './config-loader.ts'
+import {
+  loadSpecterCodeConfig,
+  type SpecterCodeConfig,
+} from './config-loader.ts'
 
 export type SpecterCodeSkillInfo = {
   name: string
@@ -47,7 +50,7 @@ async function scanSkillFiles(root: string): Promise<string[]> {
   for (const entry of entries) {
     const absolutePath = path.join(root, entry.name)
     if (entry.isDirectory()) {
-      matches.push(...await scanSkillFiles(absolutePath))
+      matches.push(...(await scanSkillFiles(absolutePath)))
       continue
     }
     if (entry.isFile() && entry.name === 'SKILL.md') {
@@ -90,26 +93,40 @@ function parseSkillMarkdown(markdown: string) {
   const closeMarker = normalized.indexOf('\n---', lineBreak)
   if (closeMarker < 0) return undefined
 
-  const frontmatter = parseFrontmatter(normalized.slice(lineBreak + 1, closeMarker))
+  const frontmatter = parseFrontmatter(
+    normalized.slice(lineBreak + 1, closeMarker),
+  )
   if (!frontmatter.name) return undefined
 
   const afterMarker = normalized.indexOf('\n', closeMarker + 1)
-  const content = (afterMarker < 0 ? '' : normalized.slice(afterMarker + 1)).replace(/^\r?\n/, '')
+  const content = (
+    afterMarker < 0 ? '' : normalized.slice(afterMarker + 1)
+  ).replace(/^\r?\n/, '')
   return {
     name: frontmatter.name,
-    ...(frontmatter.description ? { description: frontmatter.description } : {}),
+    ...(frontmatter.description
+      ? { description: frontmatter.description }
+      : {}),
     content,
   }
 }
 
-function normalizeConfiguredPath(workspaceRoot: string, configuredPath: string) {
+function normalizeConfiguredPath(
+  workspaceRoot: string,
+  configuredPath: string,
+) {
   const expanded = configuredPath.startsWith('~/')
     ? path.join(process.env.HOME ?? workspaceRoot, configuredPath.slice(2))
     : configuredPath
-  return path.isAbsolute(expanded) ? path.normalize(expanded) : path.resolve(workspaceRoot, expanded)
+  return path.isAbsolute(expanded)
+    ? path.normalize(expanded)
+    : path.resolve(workspaceRoot, expanded)
 }
 
-function configuredSkillRoots(workspaceRoot: string, config: SpecterCodeConfig) {
+function configuredSkillRoots(
+  workspaceRoot: string,
+  config: SpecterCodeConfig,
+) {
   const roots = new Set<string>()
   for (const configuredPath of config.skills ?? []) {
     roots.add(normalizeConfiguredPath(workspaceRoot, configuredPath))
@@ -127,7 +144,9 @@ function configuredSkillRoots(workspaceRoot: string, config: SpecterCodeConfig) 
   return [...roots]
 }
 
-async function loadSkillFile(filePath: string): Promise<SpecterCodeSkillInfo | undefined> {
+async function loadSkillFile(
+  filePath: string,
+): Promise<SpecterCodeSkillInfo | undefined> {
   const parsed = parseSkillMarkdown(await readFile(filePath, 'utf8'))
   if (!parsed) return undefined
   return {
@@ -136,11 +155,16 @@ async function loadSkillFile(filePath: string): Promise<SpecterCodeSkillInfo | u
   }
 }
 
-export async function listSpecterCodeSkills(options: ListSpecterCodeSkillsOptions): Promise<SpecterCodeSkillInfo[]> {
+export async function listSpecterCodeSkills(
+  options: ListSpecterCodeSkillsOptions,
+): Promise<SpecterCodeSkillInfo[]> {
   const workspaceRoot = path.resolve(options.workspaceRoot)
-  const config = options.config ?? await loadSpecterCodeConfig({ workspaceRoot })
+  const config =
+    options.config ?? (await loadSpecterCodeConfig({ workspaceRoot }))
   const roots = [
-    ...DEFAULT_SKILL_DIRS.map((directory) => path.join(workspaceRoot, directory)),
+    ...DEFAULT_SKILL_DIRS.map((directory) =>
+      path.join(workspaceRoot, directory),
+    ),
     ...configuredSkillRoots(workspaceRoot, config),
   ]
 
@@ -157,5 +181,7 @@ export async function listSpecterCodeSkills(options: ListSpecterCodeSkillsOption
     if (skill) byName.set(skill.name, skill)
   }
 
-  return [...byName.values()].sort((left, right) => left.name.localeCompare(right.name))
+  return [...byName.values()].sort((left, right) =>
+    left.name.localeCompare(right.name),
+  )
 }

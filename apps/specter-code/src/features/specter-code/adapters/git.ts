@@ -32,15 +32,25 @@ function isWindowsAbsolutePath(input: string) {
   return /^[a-zA-Z]:[\\/]/.test(input)
 }
 
-function normalizeWorkspacePath(input: string, errorMessage = 'Git path escapes the workspace root') {
+function normalizeWorkspacePath(
+  input: string,
+  errorMessage = 'Git path escapes the workspace root',
+) {
   const slashNormalized = normalizeSlashes(input.trim())
   if (!slashNormalized) throw new Error('Git path is required')
-  if (path.posix.isAbsolute(slashNormalized) || isWindowsAbsolutePath(slashNormalized)) {
+  if (
+    path.posix.isAbsolute(slashNormalized) ||
+    isWindowsAbsolutePath(slashNormalized)
+  ) {
     throw new Error(errorMessage)
   }
 
   const normalized = path.posix.normalize(slashNormalized)
-  if (normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
+  if (
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../')
+  ) {
     throw new Error(errorMessage)
   }
   return normalized
@@ -49,16 +59,25 @@ function normalizeWorkspacePath(input: string, errorMessage = 'Git path escapes 
 async function assertWorkspaceRoot(workspaceRoot: string) {
   const resolved = path.resolve(workspaceRoot)
   const stat = await lstat(resolved)
-  if (stat.isSymbolicLink()) throw new Error('Git workspace root must not be a symlink')
-  if (!stat.isDirectory()) throw new Error('Git workspace root must be a directory')
+  if (stat.isSymbolicLink())
+    throw new Error('Git workspace root must not be a symlink')
+  if (!stat.isDirectory())
+    throw new Error('Git workspace root must be a directory')
   return resolved
 }
 
-async function runGit(input: { workspaceRoot: string; args: string[]; stdin?: string }) {
+async function runGit(input: {
+  workspaceRoot: string
+  args: string[]
+  stdin?: string
+}) {
   const cwd = await assertWorkspaceRoot(input.workspaceRoot)
 
   return new Promise<string>((resolve, reject) => {
-    const child = spawn('git', input.args, { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
+    const child = spawn('git', input.args, {
+      cwd,
+      stdio: ['pipe', 'pipe', 'pipe'],
+    })
     let stdout = ''
     let stderr = ''
     let stdoutBytes = 0
@@ -130,13 +149,17 @@ function parseStatusEntry(line: string): GitStatusEntry | undefined {
   return { path: rawPath, index, workingTree }
 }
 
-export async function initGitRepository(input: { workspaceRoot: string }): Promise<{ workspaceRoot: string }> {
+export async function initGitRepository(input: {
+  workspaceRoot: string
+}): Promise<{ workspaceRoot: string }> {
   const workspaceRoot = await assertWorkspaceRoot(input.workspaceRoot)
   await runGit({ workspaceRoot, args: ['init'] })
   return { workspaceRoot }
 }
 
-export async function getGitStatus(input: { workspaceRoot: string }): Promise<GitStatus> {
+export async function getGitStatus(input: {
+  workspaceRoot: string
+}): Promise<GitStatus> {
   const stdout = await runGit({
     workspaceRoot: input.workspaceRoot,
     args: ['status', '--porcelain=v1', '--branch'],
@@ -161,7 +184,9 @@ export async function getGitDiff(input: {
 }): Promise<GitDiff> {
   const args = ['diff']
   if (input.staged) args.push('--staged')
-  const normalizedPath = input.path ? normalizeWorkspacePath(input.path) : undefined
+  const normalizedPath = input.path
+    ? normalizeWorkspacePath(input.path)
+    : undefined
   if (normalizedPath) args.push('--', normalizedPath)
 
   return {
@@ -174,8 +199,14 @@ export async function getGitDiff(input: {
 function normalizePatchFilePath(rawPath: string) {
   const trimmed = rawPath.trim()
   if (!trimmed || trimmed === '/dev/null') return undefined
-  const withoutPrefix = trimmed.startsWith('a/') || trimmed.startsWith('b/') ? trimmed.slice(2) : trimmed
-  return normalizeWorkspacePath(withoutPrefix, 'Git patch path escapes the workspace root')
+  const withoutPrefix =
+    trimmed.startsWith('a/') || trimmed.startsWith('b/')
+      ? trimmed.slice(2)
+      : trimmed
+  return normalizeWorkspacePath(
+    withoutPrefix,
+    'Git patch path escapes the workspace root',
+  )
 }
 
 function extractPatchPaths(patchText: string) {
@@ -196,11 +227,16 @@ export async function applyGitPatch(input: {
 }): Promise<{ paths: string[]; staged: boolean }> {
   if (!input.patch.trim()) throw new Error('Git patch is required')
   const paths = extractPatchPaths(input.patch)
-  if (paths.length === 0) throw new Error('Git patch does not reference any workspace files')
+  if (paths.length === 0)
+    throw new Error('Git patch does not reference any workspace files')
 
   await runGit({
     workspaceRoot: input.workspaceRoot,
-    args: ['apply', '--whitespace=nowarn', ...(input.staged ? ['--index'] : [])],
+    args: [
+      'apply',
+      '--whitespace=nowarn',
+      ...(input.staged ? ['--index'] : []),
+    ],
     stdin: input.patch,
   })
 
@@ -219,7 +255,8 @@ export async function revertWorkspacePaths(input: {
       seen.add(pathInput)
       return true
     })
-  if (normalizedPaths.length === 0) throw new Error('At least one Git path is required')
+  if (normalizedPaths.length === 0)
+    throw new Error('At least one Git path is required')
 
   for (const normalizedPath of normalizedPaths) {
     await runGit({

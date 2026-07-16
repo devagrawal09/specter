@@ -82,10 +82,19 @@ function Home() {
         <aside class="rounded-[2rem] border border-stone-700 bg-stone-950/80 p-6">
           <h2 class="text-2xl font-semibold text-amber-50">Setup</h2>
           <ol class="mt-5 space-y-3 text-sm leading-6 text-stone-300">
-            <li>1. Copy `.env.example` to `.env` and fill Twilio/OpenRouter values.</li>
+            <li>
+              1. Copy `.env.example` to `.env` and fill Twilio/OpenRouter
+              values.
+            </li>
             <li>2. Run `pnpm --filter @specter/narayan-ai db:migrate`.</li>
-            <li>3. Configure Twilio sandbox webhook to your public `/api/twilio/incoming` URL.</li>
-            <li>4. Keep `TWILIO_VALIDATE_SIGNATURE=false` only for local curl tests.</li>
+            <li>
+              3. Configure Twilio sandbox webhook to your public
+              `/api/twilio/incoming` URL.
+            </li>
+            <li>
+              4. Keep `TWILIO_VALIDATE_SIGNATURE=false` only for local curl
+              tests.
+            </li>
           </ol>
         </aside>
       </section>
@@ -111,7 +120,8 @@ function Home() {
                     {conversation.lastMessageBody}
                   </p>
                   <p class="mt-2 text-xs uppercase tracking-wide text-stone-500">
-                    {conversation.lastMessageDirection} · {conversation.lastMessageStatus}
+                    {conversation.lastMessageDirection} ·{' '}
+                    {conversation.lastMessageStatus}
                   </p>
                 </article>
               )}
@@ -122,7 +132,9 @@ function Home() {
         <Panel title="Recent Messages">
           <Show
             when={homeData().messages.length}
-            fallback={<Empty text="The latest conversation will appear here." />}
+            fallback={
+              <Empty text="The latest conversation will appear here." />
+            }
           >
             <For each={homeData().messages}>
               {(message) => (
@@ -156,7 +168,10 @@ function StatusCard(props: { label: string; value: string }) {
   )
 }
 
-function Panel(props: { title: string; children: import('solid-js').JSX.Element }) {
+function Panel(props: {
+  title: string
+  children: import('solid-js').JSX.Element
+}) {
   return (
     <section class="rounded-[2rem] border border-stone-700 bg-stone-950/80 p-6">
       <h2 class="text-2xl font-semibold text-amber-50">{props.title}</h2>

@@ -55,7 +55,11 @@ export function initials(name: string) {
   return letters || 'TP'
 }
 
-export function formatCount(count: number, singular: string, plural = `${singular}s`) {
+export function formatCount(
+  count: number,
+  singular: string,
+  plural = `${singular}s`,
+) {
   return `${count.toLocaleString()} ${count === 1 ? singular : plural}`
 }
 

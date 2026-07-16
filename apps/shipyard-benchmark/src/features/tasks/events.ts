@@ -2,7 +2,7 @@ import { createEventDefinition } from '@specter-ts/core'
 import { z } from 'zod'
 
 export const taskCreatedEvent = createEventDefinition(
-  'taskCreated',
+  'task-created',
   z.object({
     taskId: z.string(),
     title: z.string(),
@@ -12,7 +12,7 @@ export const taskCreatedEvent = createEventDefinition(
 )
 
 export const taskTriagedEvent = createEventDefinition(
-  'taskTriaged',
+  'task-triaged',
   z.object({
     taskId: z.string(),
     priority: z.enum(['low', 'medium', 'high']),
@@ -20,7 +20,7 @@ export const taskTriagedEvent = createEventDefinition(
 )
 
 export const taskStartedEvent = createEventDefinition(
-  'taskStarted',
+  'task-started',
   z.object({
     taskId: z.string(),
     startedAt: z.string(),
@@ -28,7 +28,7 @@ export const taskStartedEvent = createEventDefinition(
 )
 
 export const taskCompletionRequestedEvent = createEventDefinition(
-  'taskCompletionRequested',
+  'task-completion-requested',
   z.object({
     taskId: z.string(),
     requestedByRunId: z.string().optional(),
@@ -37,7 +37,7 @@ export const taskCompletionRequestedEvent = createEventDefinition(
 )
 
 export const taskCompletedEvent = createEventDefinition(
-  'taskCompleted',
+  'task-completed',
   z.object({
     taskId: z.string(),
     completedAt: z.string(),
@@ -45,7 +45,7 @@ export const taskCompletedEvent = createEventDefinition(
 )
 
 export const taskRolledForwardEvent = createEventDefinition(
-  'taskRolledForward',
+  'task-rolled-forward',
   z.object({
     taskId: z.string(),
     fromDate: z.string(),
@@ -54,7 +54,7 @@ export const taskRolledForwardEvent = createEventDefinition(
 )
 
 export const scoreAwardRequestedEvent = createEventDefinition(
-  'scoreAwardRequested',
+  'score-award-requested',
   z.object({
     scoreRequestId: z.string(),
     taskId: z.string(),
@@ -64,7 +64,7 @@ export const scoreAwardRequestedEvent = createEventDefinition(
 )
 
 export const scoreAwardedEvent = createEventDefinition(
-  'scoreAwarded',
+  'score-awarded',
   z.object({
     scoreRequestId: z.string(),
     taskId: z.string(),

@@ -102,11 +102,17 @@ describe('loadSpecterCodeConfig', () => {
       }`,
     )
 
-    const config = await loadSpecterCodeConfig({ workspaceRoot, globalConfigDir })
+    const config = await loadSpecterCodeConfig({
+      workspaceRoot,
+      globalConfigDir,
+    })
 
     expect(config.plugin).toEqual([
       '@acme/opencode-server-plugin',
-      [path.join(workspaceRoot, '.opencode', 'local-server.mjs'), { mode: 'strict', theme: 'dark' }],
+      [
+        path.join(workspaceRoot, '.opencode', 'local-server.mjs'),
+        { mode: 'strict', theme: 'dark' },
+      ],
     ])
   })
 
@@ -131,7 +137,10 @@ describe('loadSpecterCodeConfig', () => {
       }`,
     )
 
-    const config = await loadSpecterCodeConfig({ workspaceRoot, globalConfigDir })
+    const config = await loadSpecterCodeConfig({
+      workspaceRoot,
+      globalConfigDir,
+    })
 
     expect(config.permissionRules).toEqual([
       { permission: 'file.read', pattern: '*', action: 'allow' },

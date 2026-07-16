@@ -42,33 +42,33 @@ const ptySessions = ptySessionsSpec
   .outputSchema<PtySessionProjection[]>()
   .store(createMemorySliceStore<PtySessionsState>(() => ({ sessions: {} })))
   .apply(ptySessionStartedEvent, async (event, state) => {
-      const payload = event.payload
-      state.sessions[payload.ptySessionId] = {
-        id: payload.ptySessionId,
-        sessionId: payload.sessionId,
-        workspaceId: payload.workspaceId,
-        cwd: payload.cwd,
-        shell: payload.shell,
-        status: 'running',
-        startedAt: payload.startedAt,
-        outputPreview: '',
-      }
-    })
+    const payload = event.payload
+    state.sessions[payload.ptySessionId] = {
+      id: payload.ptySessionId,
+      sessionId: payload.sessionId,
+      workspaceId: payload.workspaceId,
+      cwd: payload.cwd,
+      shell: payload.shell,
+      status: 'running',
+      startedAt: payload.startedAt,
+      outputPreview: '',
+    }
+  })
   .apply(ptySessionOutputEvent, async (event, state) => {
-      const payload = event.payload
-      const session = state.sessions[payload.ptySessionId]
-      if (!session) return
-      session.outputPreview = appendPreview(session.outputPreview, payload.data)
-      session.lastOutputAt = payload.emittedAt
-    })
+    const payload = event.payload
+    const session = state.sessions[payload.ptySessionId]
+    if (!session) return
+    session.outputPreview = appendPreview(session.outputPreview, payload.data)
+    session.lastOutputAt = payload.emittedAt
+  })
   .apply(ptySessionEndedEvent, async (event, state) => {
-      const payload = event.payload
-      const session = state.sessions[payload.ptySessionId]
-      if (!session) return
-      session.status = payload.status
-      session.endedAt = payload.endedAt
-    })
-  
+    const payload = event.payload
+    const session = state.sessions[payload.ptySessionId]
+    if (!session) return
+    session.status = payload.status
+    session.endedAt = payload.endedAt
+  })
+
   .handle(async (query, state): Promise<PtySessionProjection[]> => {
     return Object.values(state.sessions)
       .filter((session) => session.sessionId === query.sessionId)

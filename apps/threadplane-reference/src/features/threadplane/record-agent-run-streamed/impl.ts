@@ -1,8 +1,8 @@
-import recordAgentRunStreamedSpec from "./spec";
-import { z } from "zod";
+import recordAgentRunStreamedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { agentRunStreamedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { agentRunStreamedEvent } from '../events'
 
 const recordAgentRunStreamed = recordAgentRunStreamedSpec
   .inputSchema(
@@ -17,10 +17,10 @@ const recordAgentRunStreamed = recordAgentRunStreamedSpec
   )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
-    const delta = command.delta;
+    const delta = command.delta
 
     if (!delta) {
-      throw new Error("Streamed delta is required");
+      throw new Error('Streamed delta is required')
     }
 
     return [
@@ -32,7 +32,7 @@ const recordAgentRunStreamed = recordAgentRunStreamedSpec
         sequence: command.sequence,
         delta,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordAgentRunStreamed;
+export default recordAgentRunStreamed

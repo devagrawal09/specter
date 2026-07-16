@@ -34,7 +34,8 @@ const MAX_SEARCH_BYTES_PER_FILE = 1_000_000
 
 const normalizeLimit = (value: number | undefined) => {
   if (value === undefined) return DEFAULT_MAX_MATCHES
-  if (!Number.isFinite(value) || value < 1) throw new Error('Grep maxMatches must be positive')
+  if (!Number.isFinite(value) || value < 1)
+    throw new Error('Grep maxMatches must be positive')
   return Math.min(Math.floor(value), ABSOLUTE_MAX_MATCHES)
 }
 
@@ -47,14 +48,19 @@ export const grepTool: ToolDefinition<GrepToolInput, GrepToolOutput> = {
   permissionTarget: (input) =>
     `${normalizeWorkspaceGlobPattern(input.include ?? DEFAULT_INCLUDE)}:${input.pattern}`,
   async execute(input, context) {
-    const include = normalizeWorkspaceGlobPattern(input.include ?? DEFAULT_INCLUDE)
+    const include = normalizeWorkspaceGlobPattern(
+      input.include ?? DEFAULT_INCLUDE,
+    )
     const maxMatches = normalizeLimit(input.maxMatches)
-    const expression = new RegExp(input.pattern, input.caseSensitive === false ? 'i' : undefined)
+    const expression = new RegExp(
+      input.pattern,
+      input.caseSensitive === false ? 'i' : undefined,
+    )
     const matches: GrepMatch[] = []
     let truncated = false
 
-    const files = (await listWorkspaceFiles(context.workspaceRoot)).filter((file) =>
-      matchesWorkspaceGlob(include, file.path),
+    const files = (await listWorkspaceFiles(context.workspaceRoot)).filter(
+      (file) => matchesWorkspaceGlob(include, file.path),
     )
 
     for (const file of files) {
@@ -64,7 +70,11 @@ export const grepTool: ToolDefinition<GrepToolInput, GrepToolOutput> = {
       const lines = buffer.toString('utf8').split(/\r?\n/)
       for (let index = 0; index < lines.length; index += 1) {
         if (!expression.test(lines[index])) continue
-        matches.push({ path: file.path, lineNumber: index + 1, line: lines[index] })
+        matches.push({
+          path: file.path,
+          lineNumber: index + 1,
+          line: lines[index],
+        })
         if (matches.length >= maxMatches) {
           truncated = true
           await context.metadata({

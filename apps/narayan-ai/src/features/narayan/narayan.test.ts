@@ -12,9 +12,10 @@ const scenario = sqliteScenario()
 describe('Narayan AI Specter lifecycle', () => {
   it('records an inbound command and returns it from message queries', async () => {
     await scenario(async () => {
-      const app = createSpecterApp(narayanSpecterAppConfig)
+      const app = await createSpecterApp(narayanSpecterAppConfig)
 
       await app.recordIncomingTwilioMessage({
+        inboundMessageId: 'inbound-1',
         twilioMessageSid: 'SM-inbound-1',
         from: 'whatsapp:+155****0001',
         to: 'whatsapp:+141****8886',
@@ -39,8 +40,9 @@ describe('Narayan AI Specter lifecycle', () => {
 
   it('emits duplicate ignored events without duplicating inbound message rows', async () => {
     await scenario(async () => {
-      const app = createSpecterApp(narayanSpecterAppConfig)
+      const app = await createSpecterApp(narayanSpecterAppConfig)
       const command = {
+        inboundMessageId: 'inbound-duplicate-1',
         twilioMessageSid: 'SM-duplicate-1',
         from: 'whatsapp:+155****0002',
         to: 'whatsapp:+141****8886',
@@ -58,7 +60,7 @@ describe('Narayan AI Specter lifecycle', () => {
         (message) => message.direction === 'inbound',
       )
       const duplicateEvents = await sqliteEventLog.query(0, [
-        'twilioInboundDuplicateIgnored',
+        'twilio-inbound-duplicate-ignored',
       ])
 
       expect(inboundMessages).toHaveLength(1)
@@ -68,12 +70,14 @@ describe('Narayan AI Specter lifecycle', () => {
 
   it('assistant reply command creates an outbound requested message row', async () => {
     await scenario(async () => {
-      const app = createSpecterApp(narayanSpecterAppConfig)
+      const app = await createSpecterApp(narayanSpecterAppConfig)
 
       await app.recordAssistantReply({
         inboundMessageId: 'inbound-1',
+        outboundMessageId: 'outbound-1',
         to: 'whatsapp:+155****0003',
         body: 'Yes, we can help with that.',
+        generatedAt: '2026-06-28T10:02:00.000Z',
       })
 
       const messages = await app.conversationMessagesQuery({
@@ -110,16 +114,16 @@ describe('Narayan AI Specter lifecycle', () => {
           }),
         )
 
-        const app = createSpecterApp(narayanSpecterAppConfig)
+        const app = await createSpecterApp(narayanSpecterAppConfig)
         const messages = await app.conversationMessagesQuery({
           phoneNumber: 'whatsapp:+155****0004',
         })
 
         expect(response.status).toBe(200)
         await expect(response.text()).resolves.toBe('<Response/>')
-        expect(messages.some((message) => message.body === 'Can I order sweets?')).toBe(
-          true,
-        )
+        expect(
+          messages.some((message) => message.body === 'Can I order sweets?'),
+        ).toBe(true)
       } finally {
         if (previous === undefined) {
           delete process.env.TWILIO_VALIDATE_SIGNATURE
@@ -174,7 +178,8 @@ describe('Narayan AI Specter lifecycle', () => {
         if (previous.TWILIO_VALIDATE_SIGNATURE === undefined) {
           delete process.env.TWILIO_VALIDATE_SIGNATURE
         } else {
-          process.env.TWILIO_VALIDATE_SIGNATURE = previous.TWILIO_VALIDATE_SIGNATURE
+          process.env.TWILIO_VALIDATE_SIGNATURE =
+            previous.TWILIO_VALIDATE_SIGNATURE
         }
         if (previous.auth === undefined) delete process.env[authKey]
         else process.env[authKey] = previous.auth

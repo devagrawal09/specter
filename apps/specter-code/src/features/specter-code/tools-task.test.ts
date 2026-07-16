@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { createTaskRunner, type TaskExecutorResult } from './adapters/task-runner'
+import {
+  createTaskRunner,
+  type TaskExecutorResult,
+} from './adapters/task-runner'
 import type { ToolContext } from './adapters/tool-registry'
 import { createTaskTool } from './tools/task'
 import { createTaskStatusTool } from './tools/task-status'
@@ -81,7 +84,10 @@ describe('task/subagent tools', () => {
       result: undefined,
     })
 
-    completion.resolve({ summary: 'Use the focused Vitest scenario', output: 'src/features/specter-code/scenarios.test.ts' })
+    completion.resolve({
+      summary: 'Use the focused Vitest scenario',
+      output: 'src/features/specter-code/scenarios.test.ts',
+    })
     await flushMicrotasks()
 
     await expect(
@@ -89,7 +95,10 @@ describe('task/subagent tools', () => {
     ).resolves.toMatchObject({
       taskId: 'task-1',
       status: 'completed',
-      result: { summary: 'Use the focused Vitest scenario', output: 'src/features/specter-code/scenarios.test.ts' },
+      result: {
+        summary: 'Use the focused Vitest scenario',
+        output: 'src/features/specter-code/scenarios.test.ts',
+      },
     })
     expect(context.metadata).toHaveBeenCalledWith({
       toolName: 'task-status',
@@ -99,7 +108,9 @@ describe('task/subagent tools', () => {
   })
 
   it('rejects empty task prompts and unknown task status requests before emitting metadata', async () => {
-    const runner = createTaskRunner({ execute: async () => ({ summary: 'unused' }) })
+    const runner = createTaskRunner({
+      execute: async () => ({ summary: 'unused' }),
+    })
     const taskTool = createTaskTool(runner)
     const taskStatusTool = createTaskStatusTool(runner)
     const context = createContext()

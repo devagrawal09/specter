@@ -1,9 +1,10 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-const deleteSessionMessagePartSpec = createCommandSlice('deleteSessionMessagePart')
+const deleteSessionMessagePartSpec = createCommandSlice(
+  'deleteSessionMessagePart',
+)
   .description('Deletes a supported text part from a session message.')
-  .scenarios(
-{
+  .scenarios({
     description: 'Records a text part deletion for a session message.',
     given: [],
     when: {
@@ -18,7 +19,6 @@ const deleteSessionMessagePartSpec = createCommandSlice('deleteSessionMessagePar
         partId: 'part_text',
       }),
     ],
-  }
-  )
+  })
 
 export default deleteSessionMessagePartSpec

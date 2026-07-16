@@ -1,18 +1,18 @@
-import workspacesQuerySpec from "./spec";
-import type { Event } from "@specter-ts/core";
-import { z } from "zod";
+import workspacesQuerySpec from './spec'
+import type { Event } from '@specter-ts/core'
+import { z } from 'zod'
 
-import { createSqliteSliceStore } from "../../../db/specter-sqlite";
-import { workspaceCreatedEvent } from "../events";
+import { createSqliteSliceStore } from '../../../db/specter-sqlite'
+import { workspaceCreatedEvent } from '../events'
 
 type Workspace = {
-  id: string;
-  name: string;
-};
+  id: string
+  name: string
+}
 
 type WorkspacesState = {
-  workspaces: Workspace[];
-};
+  workspaces: Workspace[]
+}
 
 const workspacesQuery = workspacesQuerySpec
   .inputSchema(z.object({}))
@@ -26,22 +26,22 @@ const workspacesQuery = workspacesQuerySpec
     ) => {
       const payload = event.payload as Awaited<
         ReturnType<typeof workspaceCreatedEvent.decode>
-      >;
+      >
 
       if (
         state.workspaces.some(
           (workspace) => workspace.id === payload.workspaceId,
         )
       ) {
-        return;
+        return
       }
 
       state.workspaces.push({
         id: payload.workspaceId,
         name: payload.name,
-      });
+      })
     },
   )
-  .handle(async (_query, state) => state.workspaces);
+  .handle(async (_query, state) => state.workspaces)
 
-export default workspacesQuery;
+export default workspacesQuery

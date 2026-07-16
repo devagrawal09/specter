@@ -44,7 +44,10 @@ const DEFAULT_MAX_OUTPUT_BYTES = 64 * 1024
 const isInsideRoot = (root: string, candidate: string) => {
   const resolvedRoot = path.resolve(root)
   const resolvedCandidate = path.resolve(candidate)
-  return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  return (
+    resolvedCandidate === resolvedRoot ||
+    resolvedCandidate.startsWith(resolvedRoot + path.sep)
+  )
 }
 
 const normalizeShellCwd = (cwd: string | undefined) => {
@@ -54,7 +57,10 @@ const normalizeShellCwd = (cwd: string | undefined) => {
   try {
     return normalizeWorkspacePath(trimmed)
   } catch (error) {
-    if (error instanceof Error && error.message.includes('escapes the workspace root')) {
+    if (
+      error instanceof Error &&
+      error.message.includes('escapes the workspace root')
+    ) {
       throw new Error('Shell working directory escapes the workspace root')
     }
     throw error
@@ -67,8 +73,10 @@ export async function resolveShellWorkingDirectory(
 ): Promise<ShellWorkingDirectory> {
   const root = path.resolve(workspaceRoot)
   const rootStat = await lstat(root)
-  if (rootStat.isSymbolicLink()) throw new Error('Workspace root must not be a symlink')
-  if (!rootStat.isDirectory()) throw new Error('Workspace root must be a directory')
+  if (rootStat.isSymbolicLink())
+    throw new Error('Workspace root must not be a symlink')
+  if (!rootStat.isDirectory())
+    throw new Error('Workspace root must be a directory')
 
   const relativePath = normalizeShellCwd(cwd)
   if (relativePath === '.') return { path: '.', absolutePath: root }
@@ -99,9 +107,13 @@ type OutputState = {
   truncated: boolean
 }
 
-const normalizePositiveInteger = (value: number | undefined, fallback: number) => {
+const normalizePositiveInteger = (
+  value: number | undefined,
+  fallback: number,
+) => {
   if (value === undefined) return fallback
-  if (!Number.isFinite(value) || value <= 0) throw new Error('Shell limits must be positive numbers')
+  if (!Number.isFinite(value) || value <= 0)
+    throw new Error('Shell limits must be positive numbers')
   return Math.floor(value)
 }
 
@@ -117,7 +129,10 @@ const appendBoundedOutput = (
     return ''
   }
 
-  const accepted = chunk.byteLength > remainingBytes ? chunk.subarray(0, remainingBytes) : chunk
+  const accepted =
+    chunk.byteLength > remainingBytes
+      ? chunk.subarray(0, remainingBytes)
+      : chunk
   state.usedBytes += accepted.byteLength
   if (accepted.byteLength < chunk.byteLength) state.truncated = true
 
@@ -133,9 +148,20 @@ export async function runShellCommand(
   const command = input.command.trim()
   if (!command) throw new Error('Shell command is required')
 
-  const timeoutMs = normalizePositiveInteger(input.timeoutMs, DEFAULT_TIMEOUT_MS)
-  const maxOutputBytes = normalizePositiveInteger(input.maxOutputBytes, DEFAULT_MAX_OUTPUT_BYTES)
-  const output: OutputState = { stdout: '', stderr: '', usedBytes: 0, truncated: false }
+  const timeoutMs = normalizePositiveInteger(
+    input.timeoutMs,
+    DEFAULT_TIMEOUT_MS,
+  )
+  const maxOutputBytes = normalizePositiveInteger(
+    input.maxOutputBytes,
+    DEFAULT_MAX_OUTPUT_BYTES,
+  )
+  const output: OutputState = {
+    stdout: '',
+    stderr: '',
+    usedBytes: 0,
+    truncated: false,
+  }
 
   return await new Promise<ShellRunResult>((resolve, reject) => {
     const child = spawn(command, {
@@ -189,12 +215,22 @@ export async function runShellCommand(
     options.abortSignal?.addEventListener('abort', abort, { once: true })
 
     child.stdout.on('data', (chunk: Buffer) => {
-      const accepted = appendBoundedOutput(output, 'stdout', chunk, maxOutputBytes)
+      const accepted = appendBoundedOutput(
+        output,
+        'stdout',
+        chunk,
+        maxOutputBytes,
+      )
       if (accepted) options.onOutput?.({ stream: 'stdout', chunk: accepted })
     })
 
     child.stderr.on('data', (chunk: Buffer) => {
-      const accepted = appendBoundedOutput(output, 'stderr', chunk, maxOutputBytes)
+      const accepted = appendBoundedOutput(
+        output,
+        'stderr',
+        chunk,
+        maxOutputBytes,
+      )
       if (accepted) options.onOutput?.({ stream: 'stderr', chunk: accepted })
     })
 

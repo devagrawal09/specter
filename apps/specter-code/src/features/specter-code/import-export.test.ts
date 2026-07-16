@@ -16,7 +16,10 @@ describe('Specter Code session import/export', () => {
       sessionId: 'session-main',
       exportedAt: '2026-06-24T00:00:00.000Z',
       events: [
-        event('workspace-created', { workspaceId: 'workspace-main', name: 'Main workspace' }),
+        event('workspace-created', {
+          workspaceId: 'workspace-main',
+          name: 'Main workspace',
+        }),
         event('session-created', {
           sessionId: 'session-main',
           workspaceId: 'workspace-main',
@@ -99,7 +102,11 @@ describe('Specter Code session import/export', () => {
           replyId: 'reply-main',
           workspaceId: 'workspace-main',
           parentPostId: 'message-main',
-          author: { type: 'agent', agentId: 'build', displayName: 'Build Agent' },
+          author: {
+            type: 'agent',
+            agentId: 'build',
+            displayName: 'Build Agent',
+          },
           content: 'Done.',
           sourceRunId: 'run-main',
         }),
@@ -166,9 +173,9 @@ describe('Specter Code session import/export', () => {
     })
 
     expect(normalized.session.sessionId).toBe('session-import')
-    expect(() => normalizeSpecterCodeSessionExport({ format: 'opencode.session.v0' })).toThrow(
-      'Unsupported Specter Code session export format',
-    )
+    expect(() =>
+      normalizeSpecterCodeSessionExport({ format: 'opencode.session.v0' }),
+    ).toThrow('Unsupported Specter Code session export format')
   })
 
   it('loads in the stripped Node runtime used by the CLI package script', async () => {

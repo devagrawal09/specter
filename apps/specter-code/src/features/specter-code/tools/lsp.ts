@@ -39,7 +39,8 @@ const MAX_LIMIT = 500
 
 function normalizeLimit(limit: number | undefined) {
   if (limit === undefined) return DEFAULT_LIMIT
-  if (!Number.isFinite(limit) || limit < 1) throw new Error('LSP limit must be positive')
+  if (!Number.isFinite(limit) || limit < 1)
+    throw new Error('LSP limit must be positive')
   return Math.min(Math.floor(limit), MAX_LIMIT)
 }
 
@@ -109,7 +110,8 @@ export const lspTool: ToolDefinition<LspToolInput, LspToolOutput> = {
       await context.metadata({
         toolName: 'lsp',
         status: 'failed',
-        summary: error instanceof Error ? error.message : 'LSP inspection failed',
+        summary:
+          error instanceof Error ? error.message : 'LSP inspection failed',
       })
       throw error
     }

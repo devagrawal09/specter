@@ -1,9 +1,11 @@
 import { createReactionSlice, event } from '@specter-ts/core/spec'
 
 const runRequestedAgentRunSpec = createReactionSlice('runRequestedAgentRun')
-  .description('Executes requested Agent Runs through the configured agent plugin.')
+  .description(
+    'Executes requested Agent Runs through the configured agent plugin.',
+  )
   .scenarios(
-{
+    {
       description: 'Queues a requested Agent Run that has not started.',
       given: [
         event('agent-run-requested', {

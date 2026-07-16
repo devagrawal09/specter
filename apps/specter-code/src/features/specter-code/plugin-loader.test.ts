@@ -31,8 +31,12 @@ async function writeModule(relativePath: string, source: string) {
 }
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(path.join(os.tmpdir(), 'specter-code-plugin-tools-'))
-  globalConfigDir = await mkdtemp(path.join(os.tmpdir(), 'specter-code-global-'))
+  workspaceRoot = await mkdtemp(
+    path.join(os.tmpdir(), 'specter-code-plugin-tools-'),
+  )
+  globalConfigDir = await mkdtemp(
+    path.join(os.tmpdir(), 'specter-code-global-'),
+  )
 })
 
 afterEach(async () => {
@@ -102,7 +106,9 @@ describe('OpenCode-compatible tool extension loading', () => {
       permission: 'tool.custom',
       target: 'database',
     })
-    await expect(registry.execute('math_add', { a: 2, b: 3 }, createContext())).resolves.toBe(5)
+    await expect(
+      registry.execute('math_add', { a: 2, b: 3 }, createContext()),
+    ).resolves.toBe(5)
   })
 
   it('lets custom tool files replace a built-in registry tool by name', async () => {
@@ -124,7 +130,11 @@ describe('OpenCode-compatible tool extension loading', () => {
     await loadOpenCodeToolExtensionsIntoRegistry({ registry, workspaceRoot })
 
     expect(registry.list()).toEqual([
-      { name: 'bash', description: 'Restricted bash wrapper', permission: 'tool.custom' },
+      {
+        name: 'bash',
+        description: 'Restricted bash wrapper',
+        permission: 'tool.custom',
+      },
     ])
     await expect(
       registry.execute('bash', { command: 'rm -rf /' }, createContext()),
@@ -166,10 +176,12 @@ describe('OpenCode-compatible tool extension loading', () => {
       'plugin-tool:shout',
       'plugin-tool:greet',
     ])
-    await expect(registry.execute('shout', { text: 'specter' }, createContext())).resolves.toBe('SPECTER')
-    await expect(registry.execute('greet', { name: 'Ada' }, createContext())).resolves.toBe(
-      `hello Ada from ${workspaceRoot}`,
-    )
+    await expect(
+      registry.execute('shout', { text: 'specter' }, createContext()),
+    ).resolves.toBe('SPECTER')
+    await expect(
+      registry.execute('greet', { name: 'Ada' }, createContext()),
+    ).resolves.toBe(`hello Ada from ${workspaceRoot}`)
   })
 
   it('loads OpenCode v1 default server plugins with configured options', async () => {
@@ -202,11 +214,19 @@ describe('OpenCode-compatible tool extension loading', () => {
     const loaded = await loadOpenCodeToolExtensionsIntoRegistry({
       registry,
       workspaceRoot,
-      config: { plugin: [[configuredPlugin, { flag: true, nested: { label: 'from-config' } }]] },
+      config: {
+        plugin: [
+          [configuredPlugin, { flag: true, nested: { label: 'from-config' } }],
+        ],
+      },
     })
 
     expect(loaded).toEqual([
-      expect.objectContaining({ kind: 'plugin-tool', name: 'configured', source: configuredPlugin }),
+      expect.objectContaining({
+        kind: 'plugin-tool',
+        name: 'configured',
+        source: configuredPlugin,
+      }),
     ])
     await expect(
       registry.execute('configured', { text: 'hello' }, createContext()),

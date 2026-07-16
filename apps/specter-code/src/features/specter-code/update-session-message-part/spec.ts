@@ -1,9 +1,11 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-const updateSessionMessagePartSpec = createCommandSlice('updateSessionMessagePart')
+const updateSessionMessagePartSpec = createCommandSlice(
+  'updateSessionMessagePart',
+)
   .description('Updates the text content for a supported session message part.')
   .scenarios(
-{
+    {
       description: 'Records a text part update for a session message.',
       given: [],
       when: {

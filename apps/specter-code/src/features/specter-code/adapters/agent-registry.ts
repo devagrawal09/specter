@@ -32,7 +32,14 @@ export type CreateAgentRegistryOptions = {
 
 type AgentCatalogEntry = Omit<
   AgentSummary,
-  'default' | 'model' | 'prompt' | 'temperature' | 'topP' | 'variant' | 'color' | 'steps'
+  | 'default'
+  | 'model'
+  | 'prompt'
+  | 'temperature'
+  | 'topP'
+  | 'variant'
+  | 'color'
+  | 'steps'
 > & {
   model?: ProviderModelRef
   prompt?: string
@@ -42,7 +49,8 @@ const BUILT_IN_AGENTS: Record<string, AgentCatalogEntry> = {
   build: {
     id: 'build',
     name: 'Build',
-    description: 'Default coding agent for editing, testing, and explaining a project.',
+    description:
+      'Default coding agent for editing, testing, and explaining a project.',
     mode: 'primary',
     native: true,
     hidden: false,
@@ -62,7 +70,8 @@ const BUILT_IN_AGENTS: Record<string, AgentCatalogEntry> = {
   plan: {
     id: 'plan',
     name: 'Plan',
-    description: 'Primary planning agent that can inspect context without changing files.',
+    description:
+      'Primary planning agent that can inspect context without changing files.',
     mode: 'primary',
     native: true,
     hidden: false,
@@ -72,7 +81,8 @@ const BUILT_IN_AGENTS: Record<string, AgentCatalogEntry> = {
   review: {
     id: 'review',
     name: 'Review',
-    description: 'Primary review agent for inspecting diffs and surfacing risks.',
+    description:
+      'Primary review agent for inspecting diffs and surfacing risks.',
     mode: 'primary',
     native: true,
     hidden: false,
@@ -137,7 +147,10 @@ export function createAgentRegistry(options: CreateAgentRegistryOptions = {}) {
   return new AgentRegistry(agents, defaultAgentId)
 }
 
-function buildAgentSummary(agentId: string, value: unknown): AgentSummary | undefined {
+function buildAgentSummary(
+  agentId: string,
+  value: unknown,
+): AgentSummary | undefined {
   const builtIn = BUILT_IN_AGENTS[agentId]
   const config = readAgentConfig(value)
   if (config.disable) return undefined
@@ -204,9 +217,13 @@ function readTools(value: unknown, fallback: readonly string[]) {
     .sort()
 }
 
-function selectDefaultAgentId(agents: readonly AgentSummary[], requested?: string) {
+function selectDefaultAgentId(
+  agents: readonly AgentSummary[],
+  requested?: string,
+) {
   const eligible = agents.filter((agent) => isPrimaryMode(agent.mode))
-  if (requested && eligible.some((agent) => agent.id === requested)) return requested
+  if (requested && eligible.some((agent) => agent.id === requested))
+    return requested
   if (eligible.some((agent) => agent.id === 'build')) return 'build'
   return eligible[0]?.id ?? agents[0]?.id ?? 'build'
 }
@@ -222,7 +239,8 @@ function parseModel(model: unknown): ProviderModelRef | undefined {
 }
 
 function readAgentMode(value: unknown): AgentMode | undefined {
-  if (value === 'primary' || value === 'subagent' || value === 'all') return value
+  if (value === 'primary' || value === 'subagent' || value === 'all')
+    return value
   return undefined
 }
 

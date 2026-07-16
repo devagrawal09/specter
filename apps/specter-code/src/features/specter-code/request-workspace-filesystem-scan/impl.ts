@@ -5,7 +5,8 @@ import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanRequestedEvent } from '../events'
 
 const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       scanId: z.string(),
       workspaceId: z.string(),
       reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
@@ -24,7 +25,8 @@ const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
           type: z.literal('system'),
         }),
       ]),
-    }))
+    }),
+  )
   .store(createMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [

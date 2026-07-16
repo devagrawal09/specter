@@ -1,8 +1,8 @@
-import recordToolCallCompletedSpec from "./spec";
-import { z } from "zod";
+import recordToolCallCompletedSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
-import { toolCallCompletedEvent, toolCallStartedEvent } from "../events";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { toolCallCompletedEvent, toolCallStartedEvent } from '../events'
 
 const recordToolCallCompleted = recordToolCallCompletedSpec
   .inputSchema(
@@ -27,7 +27,7 @@ const recordToolCallCompleted = recordToolCallCompletedSpec
         toolName: command.toolName,
         outputSummary: command.outputSummary,
       }),
-    ];
-  });
+    ]
+  })
 
-export default recordToolCallCompleted;
+export default recordToolCallCompleted

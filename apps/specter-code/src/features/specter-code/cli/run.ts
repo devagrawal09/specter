@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto'
 
 import { renderInteractiveDemoTui } from './tui/demo.ts'
-import { createAgentRegistry, type AgentSummary } from '../adapters/agent-registry.ts'
+import {
+  createAgentRegistry,
+  type AgentSummary,
+} from '../adapters/agent-registry.ts'
 import { loadSpecterCodeConfig } from '../adapters/config-loader.ts'
-import { runOpenAICompatibleChatCompletion, type SpecterCodeFetch } from '../adapters/chat-completions.ts'
+import {
+  runOpenAICompatibleChatCompletion,
+  type SpecterCodeFetch,
+} from '../adapters/chat-completions.ts'
 import { createProviderRegistry } from '../adapters/llm-provider.ts'
 import { createSpecterCodeBuiltInToolRegistry } from '../adapters/tool-catalog.ts'
 import {
@@ -116,12 +122,20 @@ export async function runSpecterCodePrompt(options: {
   fetch?: SpecterCodeFetch
 }): Promise<SpecterCodeCliResult> {
   const parsed = parseRunArguments(options.argv)
-  const message = parsed.message || (parsed.interactive && parsed.demo ? 'Review this project' : '')
+  const message =
+    parsed.message ||
+    (parsed.interactive && parsed.demo ? 'Review this project' : '')
   if (!message) {
-    return fail('Usage: specter-code run [--live] [--format text|json] [--interactive] [--demo] [--agent id] [--model provider/model] <message>\n', 1)
+    return fail(
+      'Usage: specter-code run [--live] [--format text|json] [--interactive] [--demo] [--agent id] [--model provider/model] <message>\n',
+      1,
+    )
   }
   if (parsed.live && parsed.interactive) {
-    return fail('Live provider runs are only supported in non-interactive mode.\n', 1)
+    return fail(
+      'Live provider runs are only supported in non-interactive mode.\n',
+      1,
+    )
   }
 
   const config = await loadSpecterCodeConfig({
@@ -154,7 +168,9 @@ export async function runSpecterCodePrompt(options: {
       : await buildRunEvents(eventOptions)
 
   if (parsed.interactive) {
-    return ok(renderInteractiveDemoTui(events, { cwd: options.cwd, prompt: message }))
+    return ok(
+      renderInteractiveDemoTui(events, { cwd: options.cwd, prompt: message }),
+    )
   }
 
   if (parsed.format === 'json') {
@@ -227,9 +243,14 @@ function parseRunArguments(argv: readonly string[]): RunArguments {
   }
 }
 
-function requireOptionValue(argv: readonly string[], index: number, option: string) {
+function requireOptionValue(
+  argv: readonly string[],
+  index: number,
+  option: string,
+) {
   const value = argv[index + 1]
-  if (!value || value.startsWith('--')) throw new Error(`${option} requires a value`)
+  if (!value || value.startsWith('--'))
+    throw new Error(`${option} requires a value`)
   return value
 }
 
@@ -400,14 +421,18 @@ async function buildRunEvents(options: {
 
   try {
     const registry = createSpecterCodeBuiltInToolRegistry()
-    const output = await registry.execute(localToolPlan.toolName, localToolPlan.input, {
-      sessionId: options.ids.sessionId,
-      messageId: options.ids.messageId,
-      agent: options.agent.id,
-      workspaceRoot: options.cwd,
-      ask: async () => 'allow',
-      metadata: () => {},
-    })
+    const output = await registry.execute(
+      localToolPlan.toolName,
+      localToolPlan.input,
+      {
+        sessionId: options.ids.sessionId,
+        messageId: options.ids.messageId,
+        agent: options.agent.id,
+        workspaceRoot: options.cwd,
+        ask: async () => 'allow',
+        metadata: () => {},
+      },
+    )
     const outputSummary = summarizeToolOutput(localToolPlan, output)
     events.push({
       type: 'tool.completed',
@@ -441,7 +466,8 @@ async function buildRunEvents(options: {
     )
     return events
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Tool execution failed'
+    const message =
+      error instanceof Error ? error.message : 'Tool execution failed'
     events.push(
       {
         type: 'tool.failed',
@@ -508,7 +534,9 @@ async function buildLiveRunEvents(options: {
   let sequence = 0
 
   try {
-    const provider = options.providerRegistry.requireProvider(options.model.providerId)
+    const provider = options.providerRegistry.requireProvider(
+      options.model.providerId,
+    )
     const result = await runOpenAICompatibleChatCompletion({
       provider,
       env: options.env,
@@ -541,7 +569,8 @@ async function buildLiveRunEvents(options: {
       },
     )
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Live provider run failed'
+    const message =
+      error instanceof Error ? error.message : 'Live provider run failed'
     events.push({
       type: 'run.failed',
       runId: options.ids.runId,
@@ -614,7 +643,13 @@ function readGrepMatches(output: unknown): CliGrepMatch[] {
     ) {
       return []
     }
-    return [{ path: candidate.path, lineNumber: candidate.lineNumber, line: candidate.line }]
+    return [
+      {
+        path: candidate.path,
+        lineNumber: candidate.lineNumber,
+        line: candidate.line,
+      },
+    ]
   })
 }
 
@@ -624,7 +659,8 @@ function formatGrepMatch(match: CliGrepMatch) {
 
 function chunkAssistantContent(content: string) {
   const newline = content.indexOf('\n')
-  if (newline >= 0) return [content.slice(0, newline + 1), content.slice(newline + 1)]
+  if (newline >= 0)
+    return [content.slice(0, newline + 1), content.slice(newline + 1)]
   const midpoint = Math.max(1, Math.floor(content.length / 2))
   return [content.slice(0, midpoint), content.slice(midpoint)]
 }
@@ -643,7 +679,10 @@ function renderTextRun(events: readonly JsonRunEvent[]) {
     return `Run ${failure.runId} failed: ${failure.error}\n`
   }
 
-  if (started?.type !== 'run.started' || message?.type !== 'assistant.message') {
+  if (
+    started?.type !== 'run.started' ||
+    message?.type !== 'assistant.message'
+  ) {
     return 'Run did not produce an assistant message.\n'
   }
 

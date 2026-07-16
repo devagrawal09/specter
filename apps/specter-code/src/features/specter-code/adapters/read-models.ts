@@ -146,7 +146,12 @@ export async function projectSpecterCodeEvent(
             event_order = ?
         WHERE id = ? AND session_id = ?
       `,
-      args: [payload.content, event.order, payload.messageId, payload.sessionId],
+      args: [
+        payload.content,
+        event.order,
+        payload.messageId,
+        payload.sessionId,
+      ],
     })
     await db.execute({
       sql: `

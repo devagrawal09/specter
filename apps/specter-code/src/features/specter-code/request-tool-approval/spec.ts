@@ -1,9 +1,11 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const requestToolApprovalSpec = createCommandSlice('requestToolApproval')
-  .description('Records that an agent tool execution is waiting for user approval.')
+  .description(
+    'Records that an agent tool execution is waiting for user approval.',
+  )
   .scenarios(
-{
+    {
       description: 'Requests approval before a gated tool executes.',
       given: [],
       when: {

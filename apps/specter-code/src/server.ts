@@ -1,4 +1,7 @@
-import { createStartHandler, defaultStreamHandler } from '@tanstack/solid-start/server'
+import {
+  createStartHandler,
+  defaultStreamHandler,
+} from '@tanstack/solid-start/server'
 
 import { createSpecterCodeApiRouter } from './features/specter-code/api-routes'
 
@@ -133,10 +136,12 @@ async function fetch(request: Request, options?: unknown) {
     return apiRouter.handle(request)
   }
 
-  return (startHandler as (request: Request, options?: unknown) => Promise<Response> | Response)(
-    request,
-    options,
-  )
+  return (
+    startHandler as (
+      request: Request,
+      options?: unknown,
+    ) => Promise<Response> | Response
+  )(request, options)
 }
 
 export default { fetch }

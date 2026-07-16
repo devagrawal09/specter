@@ -93,7 +93,12 @@ function gameModelFixture(): ColonyBenchGameModel {
         x: 1,
         y: -1,
         entities: [
-          { kind: 'terrain', id: 'wall-1', label: 'wall', detail: 'impassable terrain' },
+          {
+            kind: 'terrain',
+            id: 'wall-1',
+            label: 'wall',
+            detail: 'impassable terrain',
+          },
         ],
       },
     ],
@@ -147,19 +152,25 @@ describe('ColonyBench SVG board renderer', () => {
       'worker-1',
       'move-target-worker-1',
     ])
-    expect(board.objects.find((object) => object.id === 'road-site-1')).toMatchObject({
+    expect(
+      board.objects.find((object) => object.id === 'road-site-1'),
+    ).toMatchObject({
       kind: 'constructionSite',
       label: 'road site',
       detail: '0/10 built',
       labelVisible: false,
       meterVisible: false,
     })
-    expect(board.objects.find((object) => object.id === 'base-1')).toMatchObject({
+    expect(
+      board.objects.find((object) => object.id === 'base-1'),
+    ).toMatchObject({
       labelY: 144,
       labelVisible: false,
       meterVisible: false,
     })
-    expect(board.objects.find((object) => object.id === 'worker-1')).toMatchObject({
+    expect(
+      board.objects.find((object) => object.id === 'worker-1'),
+    ).toMatchObject({
       kind: 'worker',
       cx: 128,
       cy: 128,
@@ -170,7 +181,9 @@ describe('ColonyBench SVG board renderer', () => {
       labelVisible: true,
       meterVisible: true,
     })
-    expect(board.objects.find((object) => object.id === 'source-1')).toMatchObject({
+    expect(
+      board.objects.find((object) => object.id === 'source-1'),
+    ).toMatchObject({
       cx: 272,
       cy: 200,
       label: 'source-1',
@@ -260,11 +273,15 @@ describe('ColonyBench SVG board renderer', () => {
 
     expect(css).toContain('.room-object-label-chip')
     expect(css).toContain('.room-object-label-backing')
-    expect(css).toMatch(/\.room-coordinate\s*{[^}]*fill:\s*rgba\(238, 248, 236, 0\.22\)/s)
+    expect(css).toMatch(
+      /\.room-coordinate\s*{[^}]*fill:\s*rgba\(238, 248, 236, 0\.22\)/s,
+    )
     expect(css).toMatch(/\.room-object-label\s*{[^}]*font-size:\s*0\.92rem/s)
     expect(css).toMatch(
       /\.room-object-label-chip--worker \.room-object-label-backing\s*{[^}]*stroke:\s*rgba\(143, 213, 255, 0\.72\)/s,
     )
-    expect(css).not.toMatch(/\.room-object-detail-label\s*{[^}]*font-size:\s*0\.55rem/s)
+    expect(css).not.toMatch(
+      /\.room-object-detail-label\s*{[^}]*font-size:\s*0\.55rem/s,
+    )
   })
 })

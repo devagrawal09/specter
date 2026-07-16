@@ -21,23 +21,28 @@ type ChatMessagesState = {
 }
 
 const chatMessagesQuery = chatMessagesQuerySpec
-  .inputSchema(z.object({
+  .inputSchema(
+    z.object({
       workspaceId: z.string(),
-    }))
+    }),
+  )
   .outputSchema<ChatMessage[]>()
   .store(createSqliteSliceStore<ChatMessagesState>(() => ({ messages: [] })))
   .apply(messagePostedEvent, async (event, state) => {
-      const payload = event.payload
+    const payload = event.payload
 
-      state.messages.push({
-        id: payload.messageId,
-        workspaceId: payload.workspaceId,
-        author: payload.author,
-        content: payload.content,
-        parentMessageId: payload.parentMessageId,
-      })
+    state.messages.push({
+      id: payload.messageId,
+      workspaceId: payload.workspaceId,
+      author: payload.author,
+      content: payload.content,
+      parentMessageId: payload.parentMessageId,
     })
+  })
   .handle(async (query, state) =>
-    state.messages.filter((message) => message.workspaceId === query.workspaceId))
+    state.messages.filter(
+      (message) => message.workspaceId === query.workspaceId,
+    ),
+  )
 
 export default chatMessagesQuery

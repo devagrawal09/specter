@@ -60,7 +60,9 @@ export function createSqliteReactionScheduler(
     }
 
     async function requeueStaleRunningJobs() {
-      const staleBefore = new Date(now().getTime() - staleRunningAfterMs).toISOString()
+      const staleBefore = new Date(
+        now().getTime() - staleRunningAfterMs,
+      ).toISOString()
       await getBoundSqliteDb().execute({
         sql: `
           UPDATE specter_reaction_queue

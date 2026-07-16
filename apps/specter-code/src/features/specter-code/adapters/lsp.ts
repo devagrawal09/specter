@@ -6,7 +6,11 @@ import {
   resolveWorkspaceFile,
 } from './file-index.ts'
 
-export type LspDiagnosticCategory = 'warning' | 'error' | 'suggestion' | 'message'
+export type LspDiagnosticCategory =
+  | 'warning'
+  | 'error'
+  | 'suggestion'
+  | 'message'
 
 export type LspDiagnostic = {
   path: string
@@ -51,7 +55,10 @@ async function resolveIncludedSourceFiles(input: TypeScriptDiagnosticsInput) {
   if (input.include?.length) {
     const files = await Promise.all(
       input.include.map(async (filePath) => {
-        const resolved = await resolveWorkspaceFile(input.workspaceRoot, filePath)
+        const resolved = await resolveWorkspaceFile(
+          input.workspaceRoot,
+          filePath,
+        )
         return { path: resolved.path, absolutePath: resolved.absolutePath }
       }),
     )
@@ -64,7 +71,9 @@ async function resolveIncludedSourceFiles(input: TypeScriptDiagnosticsInput) {
     .map((file) => ({ path: file.path, absolutePath: file.absolutePath }))
 }
 
-function diagnosticCategory(category: ts.DiagnosticCategory): LspDiagnosticCategory {
+function diagnosticCategory(
+  category: ts.DiagnosticCategory,
+): LspDiagnosticCategory {
   switch (category) {
     case ts.DiagnosticCategory.Warning:
       return 'warning'
@@ -81,7 +90,9 @@ export async function collectTypeScriptDiagnostics(
   input: TypeScriptDiagnosticsInput,
 ): Promise<LspDiagnostic[]> {
   const files = await resolveIncludedSourceFiles(input)
-  const pathByAbsolutePath = new Map(files.map((file) => [file.absolutePath, file.path]))
+  const pathByAbsolutePath = new Map(
+    files.map((file) => [file.absolutePath, file.path]),
+  )
   const program = ts.createProgram(
     files.map((file) => file.absolutePath),
     {
@@ -111,15 +122,19 @@ export async function collectTypeScriptDiagnostics(
           column: position.character + 1,
           category: diagnosticCategory(diagnostic.category),
           code: diagnostic.code,
-          message: ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'),
+          message: ts.flattenDiagnosticMessageText(
+            diagnostic.messageText,
+            '\n',
+          ),
         },
       ]
     })
-    .sort((left, right) =>
-      left.path.localeCompare(right.path) ||
-      left.lineNumber - right.lineNumber ||
-      left.column - right.column ||
-      left.code - right.code,
+    .sort(
+      (left, right) =>
+        left.path.localeCompare(right.path) ||
+        left.lineNumber - right.lineNumber ||
+        left.column - right.column ||
+        left.code - right.code,
     )
 }
 
@@ -130,12 +145,19 @@ function normalizeQuery(query: string) {
 }
 
 function positionForNode(sourceFile: ts.SourceFile, node: ts.Node) {
-  return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+  return (
+    sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1
+  )
 }
 
 function pushNamedSymbol(
   symbols: LspSymbol[],
-  input: { path: string; sourceFile: ts.SourceFile; name: ts.Identifier; kind: LspSymbolKind },
+  input: {
+    path: string
+    sourceFile: ts.SourceFile
+    name: ts.Identifier
+    kind: LspSymbolKind
+  },
 ) {
   symbols.push({
     path: input.path,
@@ -150,15 +172,40 @@ function collectSymbolsFromSourceFile(path: string, sourceFile: ts.SourceFile) {
 
   const visit = (node: ts.Node) => {
     if (ts.isFunctionDeclaration(node) && node.name) {
-      pushNamedSymbol(symbols, { path, sourceFile, name: node.name, kind: 'function' })
+      pushNamedSymbol(symbols, {
+        path,
+        sourceFile,
+        name: node.name,
+        kind: 'function',
+      })
     } else if (ts.isClassDeclaration(node) && node.name) {
-      pushNamedSymbol(symbols, { path, sourceFile, name: node.name, kind: 'class' })
+      pushNamedSymbol(symbols, {
+        path,
+        sourceFile,
+        name: node.name,
+        kind: 'class',
+      })
     } else if (ts.isInterfaceDeclaration(node)) {
-      pushNamedSymbol(symbols, { path, sourceFile, name: node.name, kind: 'interface' })
+      pushNamedSymbol(symbols, {
+        path,
+        sourceFile,
+        name: node.name,
+        kind: 'interface',
+      })
     } else if (ts.isTypeAliasDeclaration(node)) {
-      pushNamedSymbol(symbols, { path, sourceFile, name: node.name, kind: 'type' })
+      pushNamedSymbol(symbols, {
+        path,
+        sourceFile,
+        name: node.name,
+        kind: 'type',
+      })
     } else if (ts.isEnumDeclaration(node)) {
-      pushNamedSymbol(symbols, { path, sourceFile, name: node.name, kind: 'enum' })
+      pushNamedSymbol(symbols, {
+        path,
+        sourceFile,
+        name: node.name,
+        kind: 'enum',
+      })
     } else if (ts.isVariableStatement(node)) {
       for (const declaration of node.declarationList.declarations) {
         if (ts.isIdentifier(declaration.name)) {
@@ -179,7 +226,9 @@ function collectSymbolsFromSourceFile(path: string, sourceFile: ts.SourceFile) {
   return symbols
 }
 
-export async function findWorkspaceSymbols(input: WorkspaceSymbolsInput): Promise<LspSymbol[]> {
+export async function findWorkspaceSymbols(
+  input: WorkspaceSymbolsInput,
+): Promise<LspSymbol[]> {
   const query = normalizeQuery(input.query)
   const files = await resolveIncludedSourceFiles(input)
   const symbols: LspSymbol[] = []
@@ -200,7 +249,10 @@ export async function findWorkspaceSymbols(input: WorkspaceSymbolsInput): Promis
 
   return symbols
     .filter((symbol) => symbol.name.toLocaleLowerCase().includes(query))
-    .sort((left, right) =>
-      left.path.localeCompare(right.path) || left.lineNumber - right.lineNumber || left.name.localeCompare(right.name),
+    .sort(
+      (left, right) =>
+        left.path.localeCompare(right.path) ||
+        left.lineNumber - right.lineNumber ||
+        left.name.localeCompare(right.name),
     )
 }

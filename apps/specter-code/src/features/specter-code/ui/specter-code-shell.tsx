@@ -6,7 +6,11 @@ import { SpecterCodeHeader, WorkspaceStatusStrip } from './app-chrome'
 import { FilesystemProvider } from './filesystem'
 import { RunsProvider } from './runs'
 import { SpecterCodeSelectionProvider } from './selection-context'
-import { SessionChatPanel, SessionChatProvider, SessionPromptComposer } from './session-chat'
+import {
+  SessionChatPanel,
+  SessionChatProvider,
+  SessionPromptComposer,
+} from './session-chat'
 import { SettingsPanel } from './settings'
 import { WorkspaceProvider, WorkspaceSidebar } from './workspaces'
 
@@ -29,7 +33,11 @@ function SpecterCodeSurface() {
         <div class="fixed bottom-4 right-4 z-20 hidden xl:block">
           <button
             type="button"
-            aria-label={settingsOpen() ? 'Close model and agent settings' : 'Open model and agent settings'}
+            aria-label={
+              settingsOpen()
+                ? 'Close model and agent settings'
+                : 'Open model and agent settings'
+            }
             class="rounded-2xl border border-violet-200/25 bg-slate-950/90 px-3 py-2 text-xs font-semibold text-violet-50 shadow-2xl shadow-black/40 ring-1 ring-white/10 backdrop-blur-xl transition hover:border-violet-100/50 hover:bg-slate-900"
             onClick={() => setSettingsOpen((open) => !open)}
           >

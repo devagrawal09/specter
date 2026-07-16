@@ -54,9 +54,9 @@ describe('question tool', () => {
   it('rejects empty prompts and empty option labels before emitting metadata', async () => {
     const context = createContext()
 
-    await expect(questionTool.execute({ prompt: '   ' }, context)).rejects.toThrow(
-      'Question prompt is required',
-    )
+    await expect(
+      questionTool.execute({ prompt: '   ' }, context),
+    ).rejects.toThrow('Question prompt is required')
     await expect(
       questionTool.execute(
         { prompt: 'Choose one', options: [{ id: 'empty', label: '   ' }] },

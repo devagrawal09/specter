@@ -1,7 +1,7 @@
-import { testSliceImplementations } from "@specter-ts/core/testing";
+import { testSliceImplementations } from '@specter-ts/core/testing'
 
-import { sqliteScenario } from "../../../db/scenario-tests";
-import runRequestedAgentRun from "./impl";
+import { sqliteScenario } from '../../../db/scenario-tests'
+import runRequestedAgentRun from './impl'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -11,7 +11,7 @@ import {
   toolCallCompletedEvent,
   toolCallFailedEvent,
   toolCallStartedEvent,
-} from "../events";
+} from '../events'
 
 testSliceImplementations([runRequestedAgentRun], {
   events: [
@@ -25,4 +25,4 @@ testSliceImplementations([runRequestedAgentRun], {
     toolCallFailedEvent,
   ],
   runScenario: sqliteScenario,
-});
+})

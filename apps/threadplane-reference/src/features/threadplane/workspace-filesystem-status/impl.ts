@@ -1,68 +1,68 @@
-import workspaceFilesystemStatusSpec from "./spec";
-import { z } from "zod";
+import workspaceFilesystemStatusSpec from './spec'
+import { z } from 'zod'
 
-import { createMemorySliceStore } from "../../../testing/memory-slice-store";
+import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceFilesystemInitializedEvent,
   workspaceFilesystemScanCompletedEvent,
   workspaceFilesystemScanFailedEvent,
   workspaceFilesystemScanRequestedEvent,
   workspaceFilesystemScanStartedEvent,
-} from "../events";
+} from '../events'
 
 type WorkspaceFilesystemScanStatus =
   | {
-      scanId: string;
-      status: "requested" | "running";
-      reason: "workspaceCreated" | "userRequested" | "agentToolChanged";
+      scanId: string
+      status: 'requested' | 'running'
+      reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'
       requestedBy:
-        | { type: "user"; userId?: string; displayName: string }
-        | { type: "agent"; agentId: string; displayName: string }
-        | { type: "system" };
+        | { type: 'user'; userId?: string; displayName: string }
+        | { type: 'agent'; agentId: string; displayName: string }
+        | { type: 'system' }
     }
   | {
-      scanId: string;
-      status: "completed";
-      reason: "workspaceCreated" | "userRequested" | "agentToolChanged";
+      scanId: string
+      status: 'completed'
+      reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'
       requestedBy:
-        | { type: "user"; userId?: string; displayName: string }
-        | { type: "agent"; agentId: string; displayName: string }
-        | { type: "system" };
-      discoveredNodeCount: number;
-      changedNodeCount: number;
-      deletedNodeCount: number;
+        | { type: 'user'; userId?: string; displayName: string }
+        | { type: 'agent'; agentId: string; displayName: string }
+        | { type: 'system' }
+      discoveredNodeCount: number
+      changedNodeCount: number
+      deletedNodeCount: number
     }
   | {
-      scanId: string;
-      status: "failed";
-      reason: "workspaceCreated" | "userRequested" | "agentToolChanged";
+      scanId: string
+      status: 'failed'
+      reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'
       requestedBy:
-        | { type: "user"; userId?: string; displayName: string }
-        | { type: "agent"; agentId: string; displayName: string }
-        | { type: "system" };
-      error: string;
-    };
+        | { type: 'user'; userId?: string; displayName: string }
+        | { type: 'agent'; agentId: string; displayName: string }
+        | { type: 'system' }
+      error: string
+    }
 
 type WorkspaceFilesystemStatus = {
-  initialized: boolean;
-  latestScan: WorkspaceFilesystemScanStatus | null;
-};
+  initialized: boolean
+  latestScan: WorkspaceFilesystemScanStatus | null
+}
 
 type WorkspaceFilesystemStatusState = {
-  statuses: Record<string, WorkspaceFilesystemStatus>;
-};
+  statuses: Record<string, WorkspaceFilesystemStatus>
+}
 
 const getStatus = (
   state: WorkspaceFilesystemStatusState,
   workspaceId: string,
 ): WorkspaceFilesystemStatus => {
-  const existing = state.statuses[workspaceId];
-  if (existing) return existing;
+  const existing = state.statuses[workspaceId]
+  if (existing) return existing
 
-  const status = { initialized: false, latestScan: null };
-  state.statuses[workspaceId] = status;
-  return status;
-};
+  const status = { initialized: false, latestScan: null }
+  state.statuses[workspaceId] = status
+  return status
+}
 
 const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
   .inputSchema(
@@ -79,57 +79,57 @@ const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
   .apply(workspaceFilesystemInitializedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof workspaceFilesystemInitializedEvent.decode>
-    >;
-    const current = getStatus(state, payload.workspaceId);
-    current.initialized = true;
+    >
+    const current = getStatus(state, payload.workspaceId)
+    current.initialized = true
   })
   .apply(workspaceFilesystemScanRequestedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof workspaceFilesystemScanRequestedEvent.decode>
-    >;
-    const current = getStatus(state, payload.workspaceId);
+    >
+    const current = getStatus(state, payload.workspaceId)
     current.latestScan = {
       scanId: payload.scanId,
-      status: "requested",
+      status: 'requested',
       reason: payload.reason,
       requestedBy: payload.requestedBy,
-    };
+    }
   })
   .apply(workspaceFilesystemScanStartedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof workspaceFilesystemScanStartedEvent.decode>
-    >;
-    const current = state.statuses[payload.workspaceId];
+    >
+    const current = state.statuses[payload.workspaceId]
     if (current?.latestScan?.scanId === payload.scanId) {
-      current.latestScan = { ...current.latestScan, status: "running" };
+      current.latestScan = { ...current.latestScan, status: 'running' }
     }
   })
   .apply(workspaceFilesystemScanCompletedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof workspaceFilesystemScanCompletedEvent.decode>
-    >;
-    const current = state.statuses[payload.workspaceId];
+    >
+    const current = state.statuses[payload.workspaceId]
     if (current?.latestScan?.scanId === payload.scanId) {
       current.latestScan = {
         ...current.latestScan,
-        status: "completed",
+        status: 'completed',
         discoveredNodeCount: payload.discoveredNodeCount,
         changedNodeCount: payload.changedNodeCount,
         deletedNodeCount: payload.deletedNodeCount,
-      };
+      }
     }
   })
   .apply(workspaceFilesystemScanFailedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof workspaceFilesystemScanFailedEvent.decode>
-    >;
-    const current = state.statuses[payload.workspaceId];
+    >
+    const current = state.statuses[payload.workspaceId]
     if (current?.latestScan?.scanId === payload.scanId) {
       current.latestScan = {
         ...current.latestScan,
-        status: "failed",
+        status: 'failed',
         error: payload.error,
-      };
+      }
     }
   })
   .handle(async (query, state): Promise<WorkspaceFilesystemStatus> => {
@@ -138,7 +138,7 @@ const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
         initialized: false,
         latestScan: null,
       }
-    );
-  });
+    )
+  })
 
-export default workspaceFilesystemStatus;
+export default workspaceFilesystemStatus

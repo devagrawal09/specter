@@ -21,7 +21,7 @@ const submitPrompt = submitPromptSpec
     }),
   )
   .store(createMemorySliceStore(() => ({})))
-  
+
   .handle(async (command) => {
     const content = command.content.trim()
 

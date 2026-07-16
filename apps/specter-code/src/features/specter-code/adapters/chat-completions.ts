@@ -29,7 +29,10 @@ export async function runOpenAICompatibleChatCompletion(
 ): Promise<OpenAICompatibleChatCompletionResult> {
   const env = options.env ?? process.env
   const fetchImpl = options.fetchImpl ?? globalThis.fetch
-  if (!fetchImpl) throw new Error('No fetch implementation is available for live provider runs')
+  if (!fetchImpl)
+    throw new Error(
+      'No fetch implementation is available for live provider runs',
+    )
 
   const baseUrl = resolveOpenAICompatibleBaseUrl(options.provider)
   const apiKey = readProviderApiKey(options.provider, env)
@@ -55,7 +58,9 @@ export async function runOpenAICompatibleChatCompletion(
   }
 
   if (!response.body) {
-    throw new Error(`OpenAI-compatible provider ${options.provider.id} returned an empty stream`)
+    throw new Error(
+      `OpenAI-compatible provider ${options.provider.id} returned an empty stream`,
+    )
   }
 
   return readOpenAICompatibleSseStream(response.body, options.onDelta)
@@ -64,9 +69,13 @@ export async function runOpenAICompatibleChatCompletion(
 function resolveOpenAICompatibleBaseUrl(
   provider: Pick<ProviderSummary, 'id' | 'baseUrl'>,
 ) {
-  const baseUrl = provider.baseUrl?.trim() || (provider.id === 'openai' ? 'https://api.openai.com/v1' : '')
+  const baseUrl =
+    provider.baseUrl?.trim() ||
+    (provider.id === 'openai' ? 'https://api.openai.com/v1' : '')
   if (!baseUrl) {
-    throw new Error(`OpenAI-compatible provider ${provider.id} is missing a base URL`)
+    throw new Error(
+      `OpenAI-compatible provider ${provider.id} is missing a base URL`,
+    )
   }
   return baseUrl.replace(/\/+$/g, '')
 }
@@ -78,8 +87,12 @@ function readProviderApiKey(
   const apiKeyEnv = provider.apiKeyEnv
   const apiKey = apiKeyEnv ? env[apiKeyEnv]?.trim() : ''
   if (!apiKey) {
-    const detail = apiKeyEnv ? `missing ${apiKeyEnv}` : 'missing provider apiKeyEnv'
-    throw new Error(`OpenAI-compatible provider ${provider.id} is not configured: ${detail}`)
+    const detail = apiKeyEnv
+      ? `missing ${apiKeyEnv}`
+      : 'missing provider apiKeyEnv'
+    throw new Error(
+      `OpenAI-compatible provider ${provider.id} is not configured: ${detail}`,
+    )
   }
   return apiKey
 }
