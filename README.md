@@ -15,7 +15,6 @@ packages/postgres/         persistent Postgres Event Log, Slice Store, and outbo
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
 packages/observability/    Event, projection, subscription, and Reaction signals
 packages/create-specter/   create-specter initializer CLI
-codemods/specter-envelope-api/ deterministic flat API to envelope migration
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
 apps/threadplane-reference/ Threadplane-style workspace Reference application
@@ -48,7 +47,6 @@ pnpm install
 pnpm build
 pnpm typecheck
 pnpm test
-pnpm verify:codemod
 pnpm verify:starter
 pnpm dev
 pnpm dev:booking
@@ -146,8 +144,8 @@ The unpublished `0.3.0` release set contains `@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
 `@specter-ts/reaction-outbox`, `@specter-ts/observability`, and
 `create-specter`. Release verification builds every publishable package before
-workspace typechecks/tests, validates the envelope codemod package, packs and
-tests a generated starter, and runs that starter's Playwright workflow.
+workspace typechecks/tests, packs and tests a generated starter, and runs that
+starter's Playwright workflow.
 
 `release:auth` checks all seven names. It verifies that the authenticated npm
 identity owns every package that already exists. A 404 is recorded explicitly

@@ -143,8 +143,8 @@ mechanically synchronized, and app-specific exceptions live in `AGENTS.md`.
 ## Consequences
 
 This is a breaking 0.3.0 change. Existing flat app calls and
-`defineSpecterClient` consumers require migration. The repository ships a
-deterministic codemod and migrates every reference application and starter.
+`defineSpecterClient` consumers require migration. Every reference application
+and the generated starter in this repository has been migrated.
 
 Generated projects own more visible transport code, but that code is explicit,
 inspectable, replaceable, and constrained to its actual wire format. Core has a
