@@ -1,0 +1,14 @@
+[package]
+name = "todo-cli"
+description = "Todo reference CLI for the Specter Rust port"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specter.workspace = true
+tokio.workspace = true

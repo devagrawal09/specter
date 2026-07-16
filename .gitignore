@@ -15,6 +15,7 @@ dist-ssr/
 coverage/
 playwright-report/
 test-results/
+/rust/target/
 
 # Local environment and secrets
 .env

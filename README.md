@@ -48,6 +48,25 @@ The existing Reference applications use fixed port `41731`; the Threadplane Refe
 
 Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/spec`, `@specter-ts/core/client`, and `@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app tests do not require a prebuilt `packages/core/dist`.
 
+## Rust Port Experiment
+
+An additive Rust port lives in [`rust/`](rust/README.md). It preserves Specter's
+Event, Slice Specification, Scenario, private Slice State, conformance, Command,
+Query, and Reaction concepts and proves them with Todo, Wallet, and Deployment
+CLI applications.
+
+```sh
+cd rust
+cargo test --workspace
+cargo run -p todo-cli -- demo
+cargo run -p wallet-cli -- demo
+cargo run -p deploy-cli -- demo
+```
+
+The Rust runtime is currently an experiment, not a replacement for the
+published `@specter-ts/core` package. Its parity boundaries and next steps are
+documented in the Rust workspace README.
+
 ## Slice Specifications And Implementations
 
 Each Slice separates its immutable specification from its executable implementation:
