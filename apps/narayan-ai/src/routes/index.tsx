@@ -1,17 +1,16 @@
 import { createFileRoute } from '@tanstack/solid-router'
-import { useServerFn } from '@tanstack/solid-start'
 import { For, Show, createResource, createSignal } from 'solid-js'
 
 import {
   createNarayanTestInboundMessage,
   getNarayanHomeData,
-} from '../features/narayan/server-functions'
+} from '../features/narayan/client-functions'
 
 export const Route = createFileRoute('/')({ component: Home })
 
 function Home() {
-  const homeDataFn = useServerFn(getNarayanHomeData)
-  const createTestInboundFn = useServerFn(createNarayanTestInboundMessage)
+  const homeDataFn = getNarayanHomeData
+  const createTestInboundFn = createNarayanTestInboundMessage
   const [draft, setDraft] = createSignal('Do you have Banarasi silk sarees?')
   const [from, setFrom] = createSignal('whatsapp:+15551234567')
   const [homeData, { refetch }] = createResource(() => homeDataFn(), {

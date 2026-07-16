@@ -5,6 +5,18 @@ import { narayanSpecterAppConfig } from './registry'
 
 const app = await createSpecterApp(narayanSpecterAppConfig)
 
+export async function executeNarayanSpecterOperationOnServer(
+  method: string,
+  input: unknown,
+) {
+  const operation = (app as unknown as Record<string, unknown>)[method]
+  if (typeof operation !== 'function') {
+    throw new Error(`Unknown Specter operation: ${method}`)
+  }
+
+  return runWithNarayanAiDb(() => operation(input))
+}
+
 export async function recordIncomingTwilioMessageOnServer(data: {
   inboundMessageId: string
   twilioMessageSid: string

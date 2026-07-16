@@ -3,8 +3,6 @@ import {
   defaultStreamHandler,
 } from '@tanstack/solid-start/server'
 
-import { handleTwilioIncomingWebhook } from './features/narayan/twilio-webhook.server'
-
 const startHandler = createStartHandler(defaultStreamHandler)
 
 async function fetch(request: Request, options?: unknown) {
@@ -12,10 +10,6 @@ async function fetch(request: Request, options?: unknown) {
 
   if (request.method === 'POST' && url.pathname.startsWith('/api/specter/')) {
     return handleSpecterRequest(request, url.pathname.slice(13))
-  }
-
-  if (url.pathname === '/api/twilio/incoming') {
-    return handleTwilioIncomingWebhook(request)
   }
 
   return (
@@ -28,11 +22,14 @@ async function fetch(request: Request, options?: unknown) {
 
 async function handleSpecterRequest(request: Request, method: string) {
   try {
-    const { executeNarayanSpecterOperationOnServer } = await import(
-      './features/narayan/server-runtime.server'
+    const { executeThreadplaneSpecterOperationOnServer } = await import(
+      './features/threadplane/server-runtime.server'
     )
     const input = await request.json().catch(() => ({}))
-    const result = await executeNarayanSpecterOperationOnServer(method, input)
+    const result = await executeThreadplaneSpecterOperationOnServer(
+      method,
+      input,
+    )
     return Response.json(result ?? null)
   } catch (cause) {
     const error = cause instanceof Error ? cause.message : String(cause)

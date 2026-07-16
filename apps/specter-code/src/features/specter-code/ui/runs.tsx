@@ -1,4 +1,3 @@
-import { useServerFn } from '@tanstack/solid-start'
 import {
   For,
   Show,
@@ -17,7 +16,7 @@ import {
   listSpecterCodeWorkspaceAgentRuns,
   listSpecterCodeWorkspaceChat,
   requestSpecterCodeAgentRun,
-} from '../server-functions'
+} from '../client-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import {
@@ -36,11 +35,11 @@ function createRunsModel() {
   const { activeWorkspaceId, activeRunId, setActiveRunId } =
     useSpecterCodeSelection()
 
-  const listChatFn = useServerFn(listSpecterCodeWorkspaceChat)
-  const createPostFn = useServerFn(createSpecterCodePost)
-  const requestRunFn = useServerFn(requestSpecterCodeAgentRun)
-  const listRunsFn = useServerFn(listSpecterCodeWorkspaceAgentRuns)
-  const listTimelineFn = useServerFn(listSpecterCodeAgentRunTimeline)
+  const listChatFn = listSpecterCodeWorkspaceChat
+  const createPostFn = createSpecterCodePost
+  const requestRunFn = requestSpecterCodeAgentRun
+  const listRunsFn = listSpecterCodeWorkspaceAgentRuns
+  const listTimelineFn = listSpecterCodeAgentRunTimeline
 
   const [runs, { refetch: refetchRuns }] = createPollingResource(
     () => activeWorkspaceId(),

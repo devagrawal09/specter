@@ -132,6 +132,9 @@ function isOpenCodeApiPath(pathname: string) {
 
 async function fetch(request: Request, options?: unknown) {
   const url = new URL(request.url)
+  if (request.method === 'POST' && url.pathname.startsWith('/api/specter/')) {
+    return handleSpecterRequest(request, url.pathname.slice(13))
+  }
   if (isOpenCodeApiPath(url.pathname)) {
     return apiRouter.handle(request)
   }
@@ -142,6 +145,20 @@ async function fetch(request: Request, options?: unknown) {
       options?: unknown,
     ) => Promise<Response> | Response
   )(request, options)
+}
+
+async function handleSpecterRequest(request: Request, method: string) {
+  try {
+    const { executeSpecterCodeOperationOnServer } = await import(
+      './features/specter-code/server-runtime.server'
+    )
+    const input = await request.json().catch(() => ({}))
+    const result = await executeSpecterCodeOperationOnServer(method, input)
+    return Response.json(result ?? null)
+  } catch (cause) {
+    const error = cause instanceof Error ? cause.message : String(cause)
+    return Response.json({ error }, { status: 400 })
+  }
 }
 
 export default { fetch }

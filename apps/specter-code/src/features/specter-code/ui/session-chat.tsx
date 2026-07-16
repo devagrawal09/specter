@@ -13,11 +13,11 @@ import {
 
 import {
   createSpecterCodeSession,
-  getSpecterCodeSettings,
   listSpecterCodeSessionTranscript,
   listSpecterCodeSessions,
   submitSpecterCodePrompt,
-} from '../server-functions'
+} from '../client-functions'
+import { getSpecterCodeSettings } from '../server-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import { useWorkspaces } from './workspaces'
@@ -41,11 +41,11 @@ function createSessionChatModel() {
   const { activeWorkspaceId, activeSessionId, setActiveSessionId } =
     useSpecterCodeSelection()
 
-  const createSessionFn = useServerFn(createSpecterCodeSession)
+  const createSessionFn = createSpecterCodeSession
   const getSettingsFn = useServerFn(getSpecterCodeSettings)
-  const listSessionsFn = useServerFn(listSpecterCodeSessions)
-  const submitPromptFn = useServerFn(submitSpecterCodePrompt)
-  const listTranscriptFn = useServerFn(listSpecterCodeSessionTranscript)
+  const listSessionsFn = listSpecterCodeSessions
+  const submitPromptFn = submitSpecterCodePrompt
+  const listTranscriptFn = listSpecterCodeSessionTranscript
 
   const [sessions, { refetch: refetchSessions }] = createPollingResource(
     () => activeWorkspaceId(),

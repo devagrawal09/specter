@@ -9,6 +9,18 @@ import { specterCodeReferenceSpecterAppConfig } from './registry'
 
 const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
 
+export async function executeSpecterCodeOperationOnServer(
+  method: string,
+  input: unknown,
+) {
+  const operation = (app as unknown as Record<string, unknown>)[method]
+  if (typeof operation !== 'function') {
+    throw new Error(`Unknown Specter operation: ${method}`)
+  }
+
+  return runWithSpecterCodeReferenceDb(() => operation(input))
+}
+
 const SPECTER_CODE_PREVIEW_MAX_BYTES = 256 * 1024
 
 const normalizeRelativePath = (input: string) => {

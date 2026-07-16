@@ -8,6 +8,18 @@ import { threadplaneReferenceSpecterAppConfig } from './registry'
 
 const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
 
+export async function executeThreadplaneSpecterOperationOnServer(
+  method: string,
+  input: unknown,
+) {
+  const operation = (app as unknown as Record<string, unknown>)[method]
+  if (typeof operation !== 'function') {
+    throw new Error(`Unknown Specter operation: ${method}`)
+  }
+
+  return runWithThreadplaneReferenceDb(() => operation(input))
+}
+
 const THREADPLANE_PREVIEW_MAX_BYTES = 256 * 1024
 
 const normalizeRelativePath = (input: string) => {

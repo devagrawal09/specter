@@ -20,10 +20,10 @@ import {
   listThreadplaneWorkspaceAgentRuns,
   listThreadplaneWorkspaceChat,
   listThreadplaneWorkspaces,
-  readThreadplaneWorkspaceTextFile,
   requestThreadplaneAgentRun,
   requestThreadplaneFilesystemScan,
-} from '../features/threadplane/server-functions'
+} from '../features/threadplane/client-functions'
+import { readThreadplaneWorkspaceTextFile } from '../features/threadplane/server-functions'
 import { createPollingResource } from '../lib/create-polling-resource'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -230,17 +230,17 @@ function Home() {
   )
   const [activeRunId, setActiveRunId] = createSignal<string | null>(null)
 
-  const listWorkspacesFn = useServerFn(listThreadplaneWorkspaces)
-  const createWorkspaceFn = useServerFn(createThreadplaneWorkspace)
-  const listChatFn = useServerFn(listThreadplaneWorkspaceChat)
-  const createPostFn = useServerFn(createThreadplanePost)
-  const listTreeFn = useServerFn(listThreadplaneFilesystemTree)
-  const listStatusFn = useServerFn(getThreadplaneFilesystemStatus)
+  const listWorkspacesFn = listThreadplaneWorkspaces
+  const createWorkspaceFn = createThreadplaneWorkspace
+  const listChatFn = listThreadplaneWorkspaceChat
+  const createPostFn = createThreadplanePost
+  const listTreeFn = listThreadplaneFilesystemTree
+  const listStatusFn = getThreadplaneFilesystemStatus
   const readFileFn = useServerFn(readThreadplaneWorkspaceTextFile)
-  const requestScanFn = useServerFn(requestThreadplaneFilesystemScan)
-  const requestRunFn = useServerFn(requestThreadplaneAgentRun)
-  const listRunsFn = useServerFn(listThreadplaneWorkspaceAgentRuns)
-  const listTimelineFn = useServerFn(listThreadplaneAgentRunTimeline)
+  const requestScanFn = requestThreadplaneFilesystemScan
+  const requestRunFn = requestThreadplaneAgentRun
+  const listRunsFn = listThreadplaneWorkspaceAgentRuns
+  const listTimelineFn = listThreadplaneAgentRunTimeline
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,

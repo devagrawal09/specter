@@ -1,4 +1,3 @@
-import { useServerFn } from '@tanstack/solid-start'
 import {
   For,
   Show,
@@ -15,7 +14,7 @@ import {
   createSpecterCodeWorkspace,
   listSpecterCodeWorkspaces,
   requestSpecterCodeFilesystemScan,
-} from '../server-functions'
+} from '../client-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import {
@@ -38,9 +37,9 @@ function createWorkspaceModel() {
     setActiveRunId,
   } = useSpecterCodeSelection()
 
-  const listWorkspacesFn = useServerFn(listSpecterCodeWorkspaces)
-  const createWorkspaceFn = useServerFn(createSpecterCodeWorkspace)
-  const requestScanFn = useServerFn(requestSpecterCodeFilesystemScan)
+  const listWorkspacesFn = listSpecterCodeWorkspaces
+  const createWorkspaceFn = createSpecterCodeWorkspace
+  const requestScanFn = requestSpecterCodeFilesystemScan
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,
