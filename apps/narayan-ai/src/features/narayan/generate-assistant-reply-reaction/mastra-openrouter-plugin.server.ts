@@ -9,20 +9,23 @@ export const mastraOpenRouterPlugin: ReactionPlugin<{
   type: 'generateAssistantReply'
   payload: GenerateAssistantReplyEffect
 }> = async (command) => {
-  return async (output) => {
+  return async (output, context) => {
     const effect = output.payload
     const body = await generateReply(effect)
 
-    await command({
-      type: 'recordAssistantReply',
-      payload: {
-        inboundMessageId: effect.inboundMessageId,
-        outboundMessageId: crypto.randomUUID(),
-        to: effect.from,
-        body,
-        generatedAt: new Date().toISOString(),
+    await command(
+      {
+        type: 'recordAssistantReply',
+        payload: {
+          inboundMessageId: effect.inboundMessageId,
+          outboundMessageId: context.deliveryId,
+          to: effect.from,
+          body,
+          generatedAt: context.scheduledAt,
+        },
       },
-    })
+      { idempotencyKey: context.deliveryId },
+    )
   }
 }
 

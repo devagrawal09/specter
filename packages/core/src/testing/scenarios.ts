@@ -176,12 +176,7 @@ function testQueryScenario(
 
       return decodeOptionalSchema(implementation.outputSchema, output)
     })
-    const expected = await decodeOptionalSchema(
-      implementation.outputSchema,
-      scenario.expect,
-    )
-
-    expect(result).toEqual(expected)
+    expect(result).toEqual(scenario.expect)
   })
 }
 
@@ -201,13 +196,7 @@ function testReactionScenario(
 
       return [await decodeOptionalSchema(implementation.outputSchema, output)]
     })
-    const expected = await Promise.all(
-      scenario.expect.map((output) =>
-        decodeOptionalSchema(implementation.outputSchema, output),
-      ),
-    )
-
-    expect(result).toEqual(expected)
+    expect(result).toEqual(scenario.expect)
   })
 }
 
@@ -252,7 +241,7 @@ export async function replay(
 
     const id = `scenario-event-${index + 1}`
     const order = index + 1
-    const recordedAt = new Date(0)
+    const recordedAt = '1970-01-01T00:00:00.000Z'
     const payload = await definition.decode(scenarioEvent.examplePayload)
     if (!valuesEqual(payload, scenarioEvent.examplePayload)) {
       throw new Error(

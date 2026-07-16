@@ -15,6 +15,7 @@ import spec from './spec'
 
 export const narayanConversations = sqliteTable('narayan_conversations', {
   phoneNumber: text('phone_number').primaryKey(),
+  lastMessageId: text('last_message_id').notNull(),
   lastMessageBody: text('last_message_body').notNull(),
   lastMessageDirection: text('last_message_direction', {
     enum: ['inbound', 'outbound'],
@@ -45,6 +46,7 @@ const conversationsQuery = spec
     const payload = event.payload
     await upsertConversation(db, {
       phoneNumber: payload.from,
+      messageId: payload.inboundMessageId,
       body: payload.body,
       direction: 'inbound',
       status: 'received',
@@ -56,6 +58,7 @@ const conversationsQuery = spec
     const payload = event.payload
     await upsertConversation(db, {
       phoneNumber: payload.to,
+      messageId: payload.outboundMessageId,
       body: payload.body,
       direction: 'outbound',
       status: 'requested',
@@ -64,10 +67,18 @@ const conversationsQuery = spec
     })
   })
   .apply(twilioOutboundMessageSentEvent, async (event, db) => {
-    await updateLatestOutboundStatus(db, event.payload.status ?? 'sent')
+    await updateOutboundStatus(
+      db,
+      event.payload.outboundMessageId,
+      event.payload.status ?? 'sent',
+    )
   })
   .apply(twilioOutboundMessageFailedEvent, async (event, db) => {
-    await updateLatestOutboundStatus(db, `failed: ${event.payload.error}`)
+    await updateOutboundStatus(
+      db,
+      event.payload.outboundMessageId,
+      `failed: ${event.payload.error}`,
+    )
   })
   .handle(async (_query, db) =>
     db
@@ -77,20 +88,15 @@ const conversationsQuery = spec
       .all(),
   )
 
-async function updateLatestOutboundStatus(db: ScopedSqliteDb, status: string) {
-  const rows = await db
-    .select()
-    .from(narayanConversations)
-    .orderBy(desc(narayanConversations.sortOrder))
-    .all()
-  const conversation = rows.find(
-    (row) => row.lastMessageDirection === 'outbound',
-  )
-  if (!conversation) return
+async function updateOutboundStatus(
+  db: ScopedSqliteDb,
+  outboundMessageId: string,
+  status: string,
+) {
   await db
     .update(narayanConversations)
     .set({ lastMessageStatus: status })
-    .where(eq(narayanConversations.phoneNumber, conversation.phoneNumber))
+    .where(eq(narayanConversations.lastMessageId, outboundMessageId))
     .run()
 }
 
@@ -98,6 +104,7 @@ async function upsertConversation(
   db: ScopedSqliteDb,
   input: {
     phoneNumber: string
+    messageId: string
     body: string
     direction: 'inbound' | 'outbound'
     status: string
@@ -116,6 +123,7 @@ async function upsertConversation(
       .insert(narayanConversations)
       .values({
         phoneNumber: input.phoneNumber,
+        lastMessageId: input.messageId,
         lastMessageBody: input.body,
         lastMessageDirection: input.direction,
         lastMessageStatus: input.status,
@@ -123,6 +131,7 @@ async function upsertConversation(
         messageCount: 1,
         sortOrder: input.sortOrder,
       })
+      .onConflictDoNothing()
       .run()
     return
   }
@@ -131,6 +140,7 @@ async function upsertConversation(
     .update(narayanConversations)
     .set({
       lastMessageBody: input.body,
+      lastMessageId: input.messageId,
       lastMessageDirection: input.direction,
       lastMessageStatus: input.status,
       lastMessageAt: input.at,

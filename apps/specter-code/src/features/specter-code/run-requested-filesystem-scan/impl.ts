@@ -2,153 +2,234 @@ import runRequestedFilesystemScanSpec from './spec'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
+  filesystemNodeChangedEvent,
+  filesystemNodeDeletedEvent,
+  filesystemNodeDiscoveredEvent,
   workspaceFilesystemScanCompletedEvent,
   workspaceFilesystemScanFailedEvent,
   workspaceFilesystemScanRequestedEvent,
   workspaceFilesystemScanStartedEvent,
 } from '../events'
-import { scanWorkspaceFilesystem } from '../filesystem-metadata-adapter'
+import {
+  scanWorkspaceFilesystem,
+  type FilesystemNodeSnapshot,
+} from '../filesystem-metadata-adapter'
 
-type FilesystemScanJob = {
-  scanId: string
-  workspaceId: string
+type FilesystemScanJob = { scanId: string; workspaceId: string }
+type FilesystemScanProgress = {
+  discovered: Record<string, true>
+  changed: Record<string, true>
+  deleted: Record<string, true>
 }
-
 type RunWorkspaceFilesystemScanCommand = {
   type: 'runWorkspaceFilesystemScan'
-  payload: FilesystemScanJob
+  payload: FilesystemScanJob & {
+    baseline: FilesystemNodeSnapshot[]
+    plannedSnapshot: FilesystemNodeSnapshot[] | null
+    progress: FilesystemScanProgress
+  }
 }
-
 type RunRequestedFilesystemScanState = {
   requestedScans: FilesystemScanJob[]
-  startedScanIds: Set<string>
+  plannedSnapshots: Record<string, FilesystemNodeSnapshot[]>
   terminalScanIds: Set<string>
+  nodesByWorkspace: Record<string, Record<string, FilesystemNodeSnapshot>>
+  progressByScan: Record<string, FilesystemScanProgress>
 }
 
-const lastSnapshotsByWorkspace = new Map<string, Map<string, string>>()
+const emptyProgress = (): FilesystemScanProgress => ({
+  discovered: {},
+  changed: {},
+  deleted: {},
+})
+const workspaceNodes = (
+  state: RunRequestedFilesystemScanState,
+  workspaceId: string,
+) => (state.nodesByWorkspace[workspaceId] ??= {})
+const scanProgress = (state: RunRequestedFilesystemScanState, scanId: string) =>
+  (state.progressByScan[scanId] ??= emptyProgress())
+const snapshotKey = (node: FilesystemNodeSnapshot) => JSON.stringify(node)
 
 const runRequestedFilesystemScan = runRequestedFilesystemScanSpec
   .outputSchema<RunWorkspaceFilesystemScanCommand>()
-  .plugin(async (command) => async (job) => {
+  .plugin(async (command) => async (job, context) => {
+    const dispatch = (
+      suffix: string,
+      envelope: { type: string; payload: unknown },
+    ) =>
+      command(envelope, {
+        idempotencyKey: `${context.deliveryId}:${suffix}`,
+      })
     const scanJob = job.payload
-    const previous =
-      lastSnapshotsByWorkspace.get(scanJob.workspaceId) ??
-      new Map<string, string>()
+    let plannedSnapshot = scanJob.plannedSnapshot
 
-    try {
-      const current = await scanWorkspaceFilesystem(scanJob.workspaceId)
-      const next = new Map(
-        current.map((node) => [node.path, JSON.stringify(node)]),
-      )
-      const discovered = current.filter((node) => !previous.has(node.path))
-      const changed = current.filter(
-        (node) =>
-          previous.has(node.path) &&
-          previous.get(node.path) !== JSON.stringify(node),
-      )
-      const deleted = [...previous.keys()].filter(
-        (nodePath) => !next.has(nodePath),
-      )
+    if (!plannedSnapshot) {
+      try {
+        plannedSnapshot = await scanWorkspaceFilesystem(scanJob.workspaceId)
+      } catch (error) {
+        return dispatch('failed', {
+          type: 'recordWorkspaceFilesystemScanFailed',
+          payload: {
+            scanId: scanJob.scanId,
+            workspaceId: scanJob.workspaceId,
+            error: error instanceof Error ? error.message : String(error),
+          },
+        })
+      }
 
-      lastSnapshotsByWorkspace.set(scanJob.workspaceId, next)
-
-      await command({
+      await dispatch('started', {
         type: 'recordWorkspaceFilesystemScanStarted',
         payload: {
           workspaceId: scanJob.workspaceId,
           scanId: scanJob.scanId,
+          snapshot: plannedSnapshot,
         },
-      } as never)
-      for (const node of discovered) {
-        await command({
-          type: 'recordFilesystemNodeDiscovered',
-          payload: {
-            scanId: scanJob.scanId,
-            workspaceId: scanJob.workspaceId,
-            ...node,
-          },
-        } as never)
-      }
-      for (const node of changed) {
-        await command({
-          type: 'recordFilesystemNodeChanged',
-          payload: {
-            scanId: scanJob.scanId,
-            workspaceId: scanJob.workspaceId,
-            ...node,
-          },
-        } as never)
-      }
-      for (const path of deleted) {
-        await command({
-          type: 'recordFilesystemNodeDeleted',
-          payload: {
-            scanId: scanJob.scanId,
-            workspaceId: scanJob.workspaceId,
-            path,
-          },
-        } as never)
-      }
-      return command({
-        type: 'recordWorkspaceFilesystemScanCompleted',
-        payload: {
-          scanId: scanJob.scanId,
-          workspaceId: scanJob.workspaceId,
-          discoveredNodeCount: discovered.length,
-          changedNodeCount: changed.length,
-          deletedNodeCount: deleted.length,
-        },
-      } as never)
-    } catch (error) {
-      await command({
-        type: 'recordWorkspaceFilesystemScanStarted',
-        payload: { scanId: scanJob.scanId, workspaceId: scanJob.workspaceId },
-      } as never)
-      return command({
-        type: 'recordWorkspaceFilesystemScanFailed',
-        payload: {
-          scanId: scanJob.scanId,
-          workspaceId: scanJob.workspaceId,
-          error: error instanceof Error ? error.message : String(error),
-        },
-      } as never)
+      })
     }
+
+    const previous = new Map(
+      scanJob.baseline.map((node) => [node.path, snapshotKey(node)]),
+    )
+    const next = new Map(
+      plannedSnapshot.map((node) => [node.path, snapshotKey(node)]),
+    )
+    const discovered = plannedSnapshot.filter(
+      (node) => !previous.has(node.path),
+    )
+    const changed = plannedSnapshot.filter(
+      (node) =>
+        previous.has(node.path) &&
+        previous.get(node.path) !== snapshotKey(node),
+    )
+    const deleted = [...previous.keys()].filter(
+      (nodePath) => !next.has(nodePath),
+    )
+
+    for (const node of discovered) {
+      await dispatch(`discovered:${node.path}`, {
+        type: 'recordFilesystemNodeDiscovered',
+        payload: {
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+          ...node,
+        },
+      })
+    }
+    for (const node of changed) {
+      await dispatch(`changed:${node.path}`, {
+        type: 'recordFilesystemNodeChanged',
+        payload: {
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+          ...node,
+        },
+      })
+    }
+    for (const path of deleted) {
+      await dispatch(`deleted:${path}`, {
+        type: 'recordFilesystemNodeDeleted',
+        payload: {
+          scanId: scanJob.scanId,
+          workspaceId: scanJob.workspaceId,
+          path,
+        },
+      })
+    }
+
+    return dispatch('completed', {
+      type: 'recordWorkspaceFilesystemScanCompleted',
+      payload: {
+        scanId: scanJob.scanId,
+        workspaceId: scanJob.workspaceId,
+        discoveredNodeCount:
+          Object.keys(scanJob.progress.discovered).length + discovered.length,
+        changedNodeCount:
+          Object.keys(scanJob.progress.changed).length + changed.length,
+        deletedNodeCount:
+          Object.keys(scanJob.progress.deleted).length + deleted.length,
+      },
+    })
   })
   .store(
     createMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
       requestedScans: [],
-      startedScanIds: new Set(),
+      plannedSnapshots: {},
       terminalScanIds: new Set(),
+      nodesByWorkspace: {},
+      progressByScan: {},
     })),
   )
   .apply(workspaceFilesystemScanRequestedEvent, async (event, state) => {
     const payload = event.payload
-    state.requestedScans.push({
-      scanId: payload.scanId,
-      workspaceId: payload.workspaceId,
-    })
+    if (!state.requestedScans.some((scan) => scan.scanId === payload.scanId)) {
+      state.requestedScans.push({
+        scanId: payload.scanId,
+        workspaceId: payload.workspaceId,
+      })
+    }
   })
   .apply(workspaceFilesystemScanStartedEvent, async (event, state) => {
     const payload = event.payload
-    state.startedScanIds.add(payload.scanId)
+    if (payload.snapshot)
+      state.plannedSnapshots[payload.scanId] = payload.snapshot
+  })
+  .apply(filesystemNodeDiscoveredEvent, async (event, state) => {
+    const payload = event.payload
+    workspaceNodes(state, payload.workspaceId)[payload.path] = {
+      path: payload.path,
+      parentPath: payload.parentPath,
+      name: payload.name,
+      kind: payload.kind,
+      sizeBytes: payload.sizeBytes,
+      ...(payload.modifiedAt ? { modifiedAt: payload.modifiedAt } : {}),
+    }
+    scanProgress(state, payload.scanId).discovered[payload.path] = true
+  })
+  .apply(filesystemNodeChangedEvent, async (event, state) => {
+    const payload = event.payload
+    workspaceNodes(state, payload.workspaceId)[payload.path] = {
+      path: payload.path,
+      parentPath: payload.parentPath,
+      name: payload.name,
+      kind: payload.kind,
+      sizeBytes: payload.sizeBytes,
+      ...(payload.modifiedAt ? { modifiedAt: payload.modifiedAt } : {}),
+    }
+    scanProgress(state, payload.scanId).changed[payload.path] = true
+  })
+  .apply(filesystemNodeDeletedEvent, async (event, state) => {
+    const payload = event.payload
+    const nodes = workspaceNodes(state, payload.workspaceId)
+    for (const path of Object.keys(nodes)) {
+      if (path === payload.path || path.startsWith(`${payload.path}/`)) {
+        delete nodes[path]
+      }
+    }
+    scanProgress(state, payload.scanId).deleted[payload.path] = true
   })
   .apply(workspaceFilesystemScanCompletedEvent, async (event, state) => {
-    const payload = event.payload
-    state.terminalScanIds.add(payload.scanId)
+    state.terminalScanIds.add(event.payload.scanId)
   })
   .apply(workspaceFilesystemScanFailedEvent, async (event, state) => {
-    const payload = event.payload
-    state.terminalScanIds.add(payload.scanId)
+    state.terminalScanIds.add(event.payload.scanId)
   })
   .handle(
     async (state): Promise<RunWorkspaceFilesystemScanCommand | undefined> => {
       const job = state.requestedScans.find(
-        (scan) =>
-          !state.startedScanIds.has(scan.scanId) &&
-          !state.terminalScanIds.has(scan.scanId),
+        (scan) => !state.terminalScanIds.has(scan.scanId),
       )
       if (!job) return undefined
-      return { type: 'runWorkspaceFilesystemScan', payload: job }
+      return {
+        type: 'runWorkspaceFilesystemScan',
+        payload: {
+          ...job,
+          baseline: Object.values(
+            state.nodesByWorkspace[job.workspaceId] ?? {},
+          ),
+          plannedSnapshot: state.plannedSnapshots[job.scanId] ?? null,
+          progress: state.progressByScan[job.scanId] ?? emptyProgress(),
+        },
+      }
     },
   )
 

@@ -10,7 +10,7 @@ import {
   Show,
 } from 'solid-js'
 
-import { specterClient } from './specter-client'
+import { runSpecterCommand, specterTransport } from './specter-transport'
 
 const statusOptions = ['all', 'pending', 'approved', 'checkedIn', 'released']
 
@@ -33,10 +33,17 @@ export function BookingApp() {
   const [day, setDay] = createSignal(today())
   const [status, setStatus] = createSignal('all')
   const schedule = createMemo(() =>
-    specterClient.roomScheduleQuery({ day: day(), status: status() }),
+    specterTransport.query({
+      type: 'roomScheduleQuery',
+      payload: { day: day(), status: status() },
+    }),
   )
-  const pending = createMemo(() => specterClient.pendingApprovalsQuery({}))
-  const activity = createMemo(() => specterClient.bookingActivityQuery({}))
+  const pending = createMemo(() =>
+    specterTransport.query({ type: 'pendingApprovalsQuery', payload: {} }),
+  )
+  const activity = createMemo(() =>
+    specterTransport.query({ type: 'bookingActivityQuery', payload: {} }),
+  )
   const [isBusy, setIsBusy] = createOptimistic(false)
   const [roomName, setRoomName] = createSignal('Focus Nook')
   const [capacity, setCapacity] = createSignal(4)
@@ -55,11 +62,14 @@ export function BookingApp() {
 
   const createRoom = action(function* () {
     setIsBusy(true)
-    yield specterClient.createRoom({
-      roomId: crypto.randomUUID(),
-      name: roomName(),
-      capacity: capacity(),
-      location: location(),
+    yield runSpecterCommand({
+      type: 'createRoom',
+      payload: {
+        roomId: crypto.randomUUID(),
+        name: roomName(),
+        capacity: capacity(),
+        location: location(),
+      },
     })
     refresh(schedule)
     refresh(activity)
@@ -67,14 +77,17 @@ export function BookingApp() {
 
   const requestBooking = action(function* () {
     setIsBusy(true)
-    yield specterClient.requestBooking({
-      bookingId: crypto.randomUUID(),
-      roomId: selectedRoomId(),
-      requesterName: requesterName(),
-      requesterEmail: requesterEmail(),
-      purpose: purpose(),
-      startsAt: toIso(day(), startsAt()),
-      endsAt: toIso(day(), endsAt()),
+    yield runSpecterCommand({
+      type: 'requestBooking',
+      payload: {
+        bookingId: crypto.randomUUID(),
+        roomId: selectedRoomId(),
+        requesterName: requesterName(),
+        requesterEmail: requesterEmail(),
+        purpose: purpose(),
+        startsAt: toIso(day(), startsAt()),
+        endsAt: toIso(day(), endsAt()),
+      },
     })
     refresh(schedule)
     refresh(pending)
@@ -83,10 +96,13 @@ export function BookingApp() {
 
   const approve = action(function* (bookingId: string) {
     setIsBusy(true)
-    yield specterClient.approveBooking({
-      bookingId,
-      approverName: approverName(),
-      approverEmail: approverEmail(),
+    yield runSpecterCommand({
+      type: 'approveBooking',
+      payload: {
+        bookingId,
+        approverName: approverName(),
+        approverEmail: approverEmail(),
+      },
     })
     refresh(schedule)
     refresh(pending)
@@ -95,11 +111,14 @@ export function BookingApp() {
 
   const reject = action(function* (bookingId: string) {
     setIsBusy(true)
-    yield specterClient.rejectBooking({
-      bookingId,
-      approverName: approverName(),
-      approverEmail: approverEmail(),
-      reason: 'Not enough context',
+    yield runSpecterCommand({
+      type: 'rejectBooking',
+      payload: {
+        bookingId,
+        approverName: approverName(),
+        approverEmail: approverEmail(),
+        reason: 'Not enough context',
+      },
     })
     refresh(schedule)
     refresh(pending)
@@ -108,9 +127,12 @@ export function BookingApp() {
 
   const checkIn = action(function* (bookingId: string) {
     setIsBusy(true)
-    yield specterClient.checkInBooking({
-      bookingId,
-      checkedInByEmail: requesterEmail(),
+    yield runSpecterCommand({
+      type: 'checkInBooking',
+      payload: {
+        bookingId,
+        checkedInByEmail: requesterEmail(),
+      },
     })
     refresh(schedule)
     refresh(activity)
@@ -118,9 +140,12 @@ export function BookingApp() {
 
   const release = action(function* (bookingId: string) {
     setIsBusy(true)
-    yield specterClient.releaseRoom({
-      bookingId,
-      releasedByEmail: requesterEmail(),
+    yield runSpecterCommand({
+      type: 'releaseRoom',
+      payload: {
+        bookingId,
+        releasedByEmail: requesterEmail(),
+      },
     })
     refresh(schedule)
     refresh(activity)
@@ -194,9 +219,10 @@ export function BookingApp() {
                           type="button"
                           disabled={isBusy() || room.retired}
                           onClick={() =>
-                            specterClient
-                              .retireRoom({ roomId: room.roomId })
-                              .then(() => refresh(schedule))
+                            runSpecterCommand({
+                              type: 'retireRoom',
+                              payload: { roomId: room.roomId },
+                            }).then(() => refresh(schedule))
                           }
                           class="rounded-lg border border-amber-300/30 px-3 py-2 text-xs font-bold text-amber-100 disabled:opacity-40"
                         >

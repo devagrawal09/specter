@@ -4,7 +4,7 @@ import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoCheerCreatedEvent } from '../events'
-import todoCheersSpec from './spec'
+import { todoCheersSpec } from './spec'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
   milestone: integer('milestone').primaryKey(),
@@ -14,7 +14,7 @@ export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
 export type TodoSqlCheer = typeof todoSqlCheersState.$inferSelect
 export type TodoSqlCheersState = { latestCheer: TodoSqlCheer | null }
 
-const todoCheers = todoCheersSpec
+export const todoCheers = todoCheersSpec
   .inputSchema(z.object({}))
   .outputSchema(
     z.object({
@@ -34,6 +34,7 @@ const todoCheers = todoCheersSpec
         milestone: event.payload.milestone,
         message: event.payload.message,
       })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (_query, db) => {
@@ -45,5 +46,3 @@ const todoCheers = todoCheersSpec
       .all()
     return { latestCheer: latestCheers[0] ?? null } satisfies TodoSqlCheersState
   })
-
-export default todoCheers

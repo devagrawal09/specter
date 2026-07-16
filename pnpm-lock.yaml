@@ -31,7 +31,7 @@ importers:
         version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2)
       '@effect/sql-drizzle':
         specifier: ^0.50.0
-        version: 0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3))(effect@3.21.2)
+        version: 0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0))(effect@3.21.2)
       '@hono/node-server':
         specifier: 2.0.3
         version: 2.0.3(hono@4.12.19)
@@ -50,12 +50,21 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@libsql/client@0.17.3)
+        version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
         specifier: ^3.21.2
         version: 3.21.2
@@ -105,6 +114,9 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -135,7 +147,6 @@ importers:
         specifier: ^2.11.12
         version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
-
   apps/narayan-ai:
     dependencies:
       '@libsql/client':
@@ -150,6 +161,15 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -167,7 +187,7 @@ importers:
         version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@libsql/client@0.17.3)
+        version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       solid-js:
         specifier: ^1.9.12
         version: 1.9.13
@@ -213,7 +233,7 @@ importers:
         version: 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2)
       '@effect/sql-drizzle':
         specifier: ^0.50.0
-        version: 0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3))(effect@3.21.2)
+        version: 0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0))(effect@3.21.2)
       '@hono/node-server':
         specifier: 2.0.3
         version: 2.0.3(hono@4.12.19)
@@ -232,12 +252,21 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
       drizzle-orm:
         specifier: ^0.45.2
-        version: 0.45.2(@libsql/client@0.17.3)
+        version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
         specifier: ^3.21.2
         version: 3.21.2
@@ -300,6 +329,15 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -355,6 +393,15 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
         version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
@@ -402,6 +449,15 @@ importers:
         specifier: ^4.1.5
         version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
+  codemods/specter-envelope-api:
+    devDependencies:
+      '@codemod.com/jssg-types':
+        specifier: 1.6.2
+        version: 1.6.2
+      typescript:
+        specifier: 6.0.2
+        version: 6.0.2
+
   packages/core:
     dependencies:
       '@standard-schema/spec':
@@ -439,6 +495,116 @@ importers:
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
+
+  packages/memory:
+    dependencies:
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/observability:
+    dependencies:
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../reaction-outbox
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/postgres:
+    dependencies:
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../reaction-outbox
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.20.0
+      pg:
+        specifier: ^8.16.3
+        version: 8.22.0
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/reaction-outbox:
+    dependencies:
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
+  packages/sqlite:
+    dependencies:
+      '@libsql/client':
+        specifier: ^0.17.3
+        version: 0.17.3
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../core
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../reaction-outbox
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
 packages:
 
@@ -676,6 +842,9 @@ packages:
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
 
+  '@codemod.com/jssg-types@1.6.2':
+    resolution: {integrity: sha512-YnKYEwyD+wi0/ahDpsSxxutVBkOON46SrZjj7Z8w2CAAGhuMmighTM6g/MNk1GGjVUj1dULWVof5ArKLSYvnzg==}
+
   '@csstools/color-helpers@6.0.2':
     resolution: {integrity: sha512-LMGQLS9EuADloEFkcTBR3BwV/CGHV7zyDxVRtVDTwdI2Ca4it0CCVTT9wCkxSgokjE5Ho41hEPgb8OEUwoXr6Q==}
     engines: {node: '>=20.19.0'}
@@ -824,11 +993,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.25.12':
     resolution: {integrity: sha512-Hhmwd6CInZ3dwpuGTF8fJG6yoWmsToE+vYgD4nytZVxcu1ulHpUQRAB1UJ8+N1Am3Mz4+xOByoQoSZf4D+CpkA==}
@@ -2065,6 +2234,9 @@ packages:
 
   '@types/node@24.12.4':
     resolution: {integrity: sha512-GUUEShf+PBCGW2KaXwcIt3Yk+e3pkKwWKb9GSyM9WQVE+ep2jzmHdGsHzu4wgcZy5fN9FBdVzjpBQsYlpfpgLA==}
+
+  '@types/pg@8.20.0':
+    resolution: {integrity: sha512-bEPFOaMAHTEP1EzpvHTbmwR8UsFyHSKsRisLIHVMXnpNefSbGA1bD6CVy+qKjGSqmZqNqBDV2azOBo8TgkcVow==}
 
   '@types/unist@3.0.3':
     resolution: {integrity: sha512-ko/gIFJRv177XgZsZcBwnqJN5x/Gien8qNOn0D5bQU/zAzVf9Zt3BlcUiLqhV9y4ARk0GbT3tnUiPNgnTXzc/Q==}
@@ -3356,6 +3528,40 @@ packages:
   pathe@2.0.3:
     resolution: {integrity: sha512-WUjGcAqP1gQacoQe+OBJsFA7Ld4DyXuUIjZ5cc75cLHvJ7dtNsTugphxIADwspS+AraAUePCKrSVtPLFj/F88w==}
 
+  pg-cloudflare@1.4.0:
+    resolution: {integrity: sha512-Vo7z/6rrQYxpNRylp4Tlob2elzbh+N/MOQbxFVWCxS7oEx6jF53GTJFxK2WWpKuBRkmiin4Mt+xofFDjx09R0A==}
+
+  pg-connection-string@2.14.0:
+    resolution: {integrity: sha512-XwWDGcLRGCXAR8F/AM5bG7Q+A3Wm2s6QeEjlOKZLlH3UYcguiqCWKyWXVag5TLTIjR7oOJUY8kcADaZgWPyLeg==}
+
+  pg-int8@1.0.1:
+    resolution: {integrity: sha512-WCtabS6t3c8SkpDBUlb1kjOs7l66xsGdKpIPZsg4wR+B3+u9UAum2odSsF9tnvxg80h4ZxLWMy4pRjOsFIqQpw==}
+    engines: {node: '>=4.0.0'}
+
+  pg-pool@3.14.0:
+    resolution: {integrity: sha512-gKtPkFdQPU3DksooVLi9LsjZxrsBUZIpa+7aVx+LV5pNh0KzP4Zleud2po+ConrxbuXGBJ6Hfer6hdgpIBpBaw==}
+    peerDependencies:
+      pg: '>=8.0'
+
+  pg-protocol@1.15.0:
+    resolution: {integrity: sha512-cq9sECI5s0+uPUXjbz8ioyPJni6RzsRib0US67i5IoTZKw8fNeYlVE7u8F4dG7vEJJtc5wdD1K189lCCUwqWTQ==}
+
+  pg-types@2.2.0:
+    resolution: {integrity: sha512-qTAAlrEsl8s4OiEQY69wDvcMIdQN6wdz5ojQiOy6YRMuynxenON0O5oCpJI6lshc6scgAY8qvJ2On/p+CXY0GA==}
+    engines: {node: '>=4'}
+
+  pg@8.22.0:
+    resolution: {integrity: sha512-8wih1vVIBMxoUM2oB4soJsD9tDnDpLv4OXBJ+EJzFsvycD+lfyIreC2gGHq78f8jbLLt+bvlPTFdFZfJkOuzAA==}
+    engines: {node: '>= 16.0.0'}
+    peerDependencies:
+      pg-native: '>=3.0.1'
+    peerDependenciesMeta:
+      pg-native:
+        optional: true
+
+  pgpass@1.0.5:
+    resolution: {integrity: sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug==}
+
   picocolors@1.1.1:
     resolution: {integrity: sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA==}
 
@@ -3384,6 +3590,22 @@ packages:
   postcss@8.5.15:
     resolution: {integrity: sha512-FfR8sjd4em2T6fb3I2MwAJU7HWVMr9zba+enmQeeWFfCbm+UOC/0X4DS8XtpUTMwWMGbjKYP7xjfNekzyGmB3A==}
     engines: {node: ^10 || ^12 || >=14}
+
+  postgres-array@2.0.0:
+    resolution: {integrity: sha512-VpZrUqU5A69eQyW2c5CA1jtLecCsN2U/bD6VilrFDWq5+5UIEVO7nazS3TEcHf1zuPYO/sqGvUvW62g86RXZuA==}
+    engines: {node: '>=4'}
+
+  postgres-bytea@1.0.1:
+    resolution: {integrity: sha512-5+5HqXnsZPE65IJZSMkZtURARZelel2oXUEO8rH83VS/hxH5vv1uHquPg5wZs8yMAfdv971IU+kcPUczi7NVBQ==}
+    engines: {node: '>=0.10.0'}
+
+  postgres-date@1.0.7:
+    resolution: {integrity: sha512-suDmjLVQg78nMK2UZ454hAG+OAW+HQPZ6n++TNDUX+L0+uUlLywnoxJKDou51Zm+zTCjrCl0Nq6J9C5hP9vK/Q==}
+    engines: {node: '>=0.10.0'}
+
+  postgres-interval@1.2.0:
+    resolution: {integrity: sha512-9ZhXKM/rw350N1ovuWHbGxnGh/SNJ4cnxHiM0rxE4VN41wsg8P8zWn9hv/buK00RP4WvlOyr/RBDiptyxVbkZQ==}
+    engines: {node: '>=0.10.0'}
 
   posthog-node@5.38.6:
     resolution: {integrity: sha512-Sm2mCAa9/lTTYppnKyy0AhQrriq8fOd8B2vwd3EE/9uihyIx9qkJ1xGYbvADxQJlF7HqM1/TIFCKsI0JvF8gjQ==}
@@ -3596,6 +3818,10 @@ packages:
     resolution: {integrity: sha512-i5uvt8C3ikiWeNZSVZNWcfZPItFQOsYTUAOkcUPGd8DqDy1uOUikjt5dG+uRlwyvR108Fb9DOd4GvXfT0N2/uQ==}
     engines: {node: '>= 12'}
 
+  split2@4.2.0:
+    resolution: {integrity: sha512-UcjcJOWknrNkF6PLX83qcHM6KHgVKNkV62Y8a5uYDVv9ydGQVwAHMKqHdJje1VTWpljG0WYpCDhrCdAOYH4TWg==}
+    engines: {node: '>= 10.x'}
+
   sprintf-js@1.0.3:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
 
@@ -3697,6 +3923,11 @@ packages:
   type-is@2.1.0:
     resolution: {integrity: sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==}
     engines: {node: '>= 18'}
+
+  typescript@6.0.2:
+    resolution: {integrity: sha512-bGdAIrZ0wiGDo5l8c++HWtbaNCWTS4UTv7RaTH/ThVIgjkveJt83m74bBHMJkuCbslY8ixgLBVZJIOiQlQTjfQ==}
+    engines: {node: '>=14.17'}
+    hasBin: true
 
   typescript@6.0.3:
     resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
@@ -3943,6 +4174,10 @@ packages:
 
   xmlchars@2.2.0:
     resolution: {integrity: sha512-JZnDKK8B0RCDw84FNdDAIpZK+JuJw+s7Lz8nksI7SIuU3UXJJslUthsi+uWBUYOwPFwW7W7PRLRfUKpxjtjFCw==}
+
+  xtend@4.0.2:
+    resolution: {integrity: sha512-LKYU1iAXJXUgAXn9URjiu+MWhyUXHsvfp7mcuYm9dSUKK0/CjtrUwFAxD82/mCWbtLsGjFIad0wIsod4zrTAEQ==}
+    engines: {node: '>=0.4'}
 
   xxhash-wasm@1.1.0:
     resolution: {integrity: sha512-147y/6YNh+tlp6nd/2pWq38i9h6mz/EuQ6njIrmW8D1BS5nCqs0P6DG+m6zTGnNz5I+uhZ0SHxBs9BsPrwcKDA==}
@@ -4224,6 +4459,8 @@ snapshots:
     dependencies:
       css-tree: 3.2.1
 
+  '@codemod.com/jssg-types@1.6.2': {}
+
   '@csstools/color-helpers@6.0.2': {}
 
   '@csstools/css-calc@3.2.1(@csstools/css-parser-algorithms@4.0.0(@csstools/css-tokenizer@4.0.0))(@csstools/css-tokenizer@4.0.0)':
@@ -4328,10 +4565,10 @@ snapshots:
       effect: 3.21.2
       msgpackr: 1.11.12
 
-  '@effect/sql-drizzle@0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3))(effect@3.21.2)':
+  '@effect/sql-drizzle@0.50.0(@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(drizzle-orm@0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0))(effect@3.21.2)':
     dependencies:
       '@effect/sql': 0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2)
-      drizzle-orm: 0.45.2(@libsql/client@0.17.3)
+      drizzle-orm: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect: 3.21.2
 
   '@effect/sql@0.51.1(@effect/experimental@0.60.0(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2))(@effect/platform@0.96.1(effect@3.21.2))(effect@3.21.2)':
@@ -5426,6 +5663,12 @@ snapshots:
     dependencies:
       undici-types: 7.16.0
 
+  '@types/pg@8.20.0':
+    dependencies:
+      '@types/node': 24.12.4
+      pg-protocol: 1.15.0
+      pg-types: 2.2.0
+
   '@types/unist@3.0.3': {}
 
   '@types/ws@8.18.1':
@@ -5820,9 +6063,11 @@ snapshots:
       esbuild: 0.25.12
       tsx: 4.22.3
 
-  drizzle-orm@0.45.2(@libsql/client@0.17.3):
+  drizzle-orm@0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0):
     optionalDependencies:
       '@libsql/client': 0.17.3
+      '@types/pg': 8.20.0
+      pg: 8.22.0
 
   dunder-proto@1.0.1:
     dependencies:
@@ -6858,6 +7103,41 @@ snapshots:
 
   pathe@2.0.3: {}
 
+  pg-cloudflare@1.4.0:
+    optional: true
+
+  pg-connection-string@2.14.0: {}
+
+  pg-int8@1.0.1: {}
+
+  pg-pool@3.14.0(pg@8.22.0):
+    dependencies:
+      pg: 8.22.0
+
+  pg-protocol@1.15.0: {}
+
+  pg-types@2.2.0:
+    dependencies:
+      pg-int8: 1.0.1
+      postgres-array: 2.0.0
+      postgres-bytea: 1.0.1
+      postgres-date: 1.0.7
+      postgres-interval: 1.2.0
+
+  pg@8.22.0:
+    dependencies:
+      pg-connection-string: 2.14.0
+      pg-pool: 3.14.0(pg@8.22.0)
+      pg-protocol: 1.15.0
+      pg-types: 2.2.0
+      pgpass: 1.0.5
+    optionalDependencies:
+      pg-cloudflare: 1.4.0
+
+  pgpass@1.0.5:
+    dependencies:
+      split2: 4.2.0
+
   picocolors@1.1.1: {}
 
   picomatch@2.3.2: {}
@@ -6879,6 +7159,16 @@ snapshots:
       nanoid: 3.3.12
       picocolors: 1.1.1
       source-map-js: 1.2.1
+
+  postgres-array@2.0.0: {}
+
+  postgres-bytea@1.0.1: {}
+
+  postgres-date@1.0.7: {}
+
+  postgres-interval@1.2.0:
+    dependencies:
+      xtend: 4.0.2
 
   posthog-node@5.38.6:
     dependencies:
@@ -7135,6 +7425,8 @@ snapshots:
 
   source-map@0.7.6: {}
 
+  split2@4.2.0: {}
+
   sprintf-js@1.0.3: {}
 
   srvx@0.11.16: {}
@@ -7220,6 +7512,8 @@ snapshots:
       content-type: 2.0.0
       media-typer: 1.1.0
       mime-types: 3.0.2
+
+  typescript@6.0.2: {}
 
   typescript@6.0.3: {}
 
@@ -7414,6 +7708,8 @@ snapshots:
   xmlbuilder@13.0.2: {}
 
   xmlchars@2.2.0: {}
+
+  xtend@4.0.2: {}
 
   xxhash-wasm@1.1.0: {}
 

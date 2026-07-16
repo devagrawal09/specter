@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - codemods/*
   - packages/*
 
 allowBuilds:

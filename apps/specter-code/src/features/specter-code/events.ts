@@ -159,6 +159,18 @@ export const workspaceFilesystemScanStartedEvent = createEventDefinition(
   z.object({
     scanId: z.string(),
     workspaceId: z.string(),
+    snapshot: z
+      .array(
+        z.object({
+          path: z.string(),
+          parentPath: z.string().nullable(),
+          name: z.string(),
+          kind: z.enum(['file', 'directory']),
+          sizeBytes: z.number().int().nonnegative().nullable(),
+          modifiedAt: z.string().optional(),
+        }),
+      )
+      .optional(),
   }),
 )
 

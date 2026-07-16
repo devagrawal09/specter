@@ -1,6 +1,6 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-const removeTodoSpec = createCommandSlice('removeTodo')
+export const removeTodoSpec = createCommandSlice('removeTodo')
   .description('Removes an existing todo.')
   .scenarios(
     {
@@ -25,5 +25,3 @@ const removeTodoSpec = createCommandSlice('removeTodo')
       expect: [],
     },
   )
-
-export default removeTodoSpec

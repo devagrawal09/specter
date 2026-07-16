@@ -16,9 +16,12 @@ import {
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { runGenerateCli } from './generate.js'
+
 type TemplatePackageJson = {
   name?: string
   dependencies?: Record<string, string>
+  overrides?: Record<string, string>
 }
 
 type PackageJson = {
@@ -69,15 +72,24 @@ const command = Command.make(
   ),
 )
 
-const cli = Command.run(command, {
-  name: 'Create Specter',
-  version: packageVersion(),
-})
+if (process.argv[2] === 'generate') {
+  try {
+    runGenerateCli(process.argv.slice(2))
+  } catch (cause) {
+    console.error(cause instanceof Error ? cause.message : String(cause))
+    process.exitCode = 1
+  }
+} else {
+  const cli = Command.run(command, {
+    name: 'Create Specter',
+    version: packageVersion(),
+  })
 
-cli(normalizeArgs(process.argv)).pipe(
-  Effect.provide(NodeContext.layer),
-  NodeRuntime.runMain,
-)
+  cli(normalizeArgs(process.argv)).pipe(
+    Effect.provide(NodeContext.layer),
+    NodeRuntime.runMain,
+  )
+}
 
 function packageVersion() {
   const packageJsonPath = fileURLToPath(
@@ -158,10 +170,19 @@ function patchPackageJson(targetDirectory: string, projectName: string) {
   packageJson.name = projectName
 
   const coreSpec = process.env.SPECTER_CORE_SPEC
+  const memorySpec = process.env.SPECTER_MEMORY_SPEC
+  const reactionOutboxSpec = process.env.SPECTER_REACTION_OUTBOX_SPEC
+  const sqliteSpec = process.env.SPECTER_SQLITE_SPEC
 
-  if (coreSpec) {
+  if (coreSpec || memorySpec || reactionOutboxSpec || sqliteSpec) {
     packageJson.dependencies = packageJson.dependencies ?? {}
-    packageJson.dependencies['@specter-ts/core'] = coreSpec
+    if (coreSpec) packageJson.dependencies['@specter-ts/core'] = coreSpec
+    if (memorySpec) packageJson.dependencies['@specter-ts/memory'] = memorySpec
+    if (reactionOutboxSpec) {
+      packageJson.dependencies['@specter-ts/reaction-outbox'] =
+        reactionOutboxSpec
+    }
+    if (sqliteSpec) packageJson.dependencies['@specter-ts/sqlite'] = sqliteSpec
   }
 
   writeFileSync(

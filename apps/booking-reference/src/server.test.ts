@@ -32,28 +32,47 @@ afterAll(() => {
 })
 
 test('handles command followed by immediate query without SQLITE_BUSY', async () => {
-  const roomsResponse = await postJson('/api/roomScheduleQuery', {
-    status: 'all',
+  const roomsResponse = await postJson('/api/query', {
+    envelope: {
+      type: 'roomScheduleQuery',
+      payload: { status: 'all' },
+    },
   })
   const rooms = (await roomsResponse.json()) as Array<{ roomId: string }>
 
   expect(roomsResponse.status).toBe(200)
   expect(rooms.length).toBeGreaterThan(0)
 
-  const commandResponse = await postJson('/api/requestBooking', {
-    bookingId: crypto.randomUUID(),
-    roomId: rooms[0].roomId,
-    requesterEmail: 'ada@example.com',
-    requesterName: 'Ada',
-    purpose: 'Planning',
-    startsAt: '2026-06-01T09:00:00.000Z',
-    endsAt: '2026-06-01T10:00:00.000Z',
+  const commandResponse = await postJson('/api/command', {
+    envelope: {
+      type: 'requestBooking',
+      payload: {
+        bookingId: crypto.randomUUID(),
+        roomId: rooms[0].roomId,
+        requesterEmail: 'ada@example.com',
+        requesterName: 'Ada',
+        purpose: 'Planning',
+        startsAt: '2026-06-01T09:00:00.000Z',
+        endsAt: '2026-06-01T10:00:00.000Z',
+      },
+    },
   })
 
   expect(commandResponse.status).toBe(200)
-  expect(await commandResponse.json()).toBeNull()
+  const command = (await commandResponse.json()) as { reactionId: string }
+  expect(command).toEqual(
+    expect.objectContaining({
+      duplicate: false,
+      reactionId: expect.any(String),
+    }),
+  )
+  expect(
+    (await app.request(`/api/reactions/${command.reactionId}`)).status,
+  ).toBe(204)
 
-  const queryResponse = await postJson('/api/pendingApprovalsQuery', {})
+  const queryResponse = await postJson('/api/query', {
+    envelope: { type: 'pendingApprovalsQuery', payload: {} },
+  })
   const queryBody = await queryResponse.json()
 
   expect(queryResponse.status).toBe(200)

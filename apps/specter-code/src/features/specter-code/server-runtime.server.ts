@@ -1,13 +1,38 @@
 import { lstat, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, type SpecterCommandEnvelope } from '@specter-ts/core'
 
-import { runWithSpecterCodeReferenceDb } from '../../db/client.server'
+import {
+  prepareSpecterCodeReferenceDb,
+  runWithSpecterCodeReferenceDb,
+  specterCodeProductionReactionScheduler,
+  specterCodeReactionTickets,
+} from '../../db/client.server'
 import { querySpecterSqliteEvents } from '../../db/specter-sqlite'
-import { specterCodeReferenceSpecterAppConfig } from './registry'
+import { createSpecterHttpHandler } from '../../transport/specter-http.server'
+import { createSpecterCodeReferenceSpecterAppConfig } from './registry'
 
+await prepareSpecterCodeReferenceDb()
+const specterCodeReferenceSpecterAppConfig =
+  createSpecterCodeReferenceSpecterAppConfig(
+    specterCodeProductionReactionScheduler,
+  )
 const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
+
+async function runSpecterCommand(
+  envelope: SpecterCommandEnvelope<typeof specterCodeReferenceSpecterAppConfig>,
+) {
+  const execution = await app.command(envelope)
+  await execution.reactions
+}
+
+export const handleSpecterCodeSpecterRequest = createSpecterHttpHandler({
+  app,
+  basePath: '/api/specter',
+  run: runWithSpecterCodeReferenceDb,
+  reactionTickets: specterCodeReactionTickets,
+})
 
 const SPECTER_CODE_PREVIEW_MAX_BYTES = 256 * 1024
 
@@ -66,51 +91,55 @@ const resolvePreviewPath = (workspaceId: string, filePath: string) => {
 }
 
 export async function listSpecterCodeWorkspacesOnServer() {
-  return runWithSpecterCodeReferenceDb(async () => app.workspaceList({}))
+  return runWithSpecterCodeReferenceDb(async () =>
+    app.query({ type: 'workspaceList', payload: {} }),
+  )
 }
 
 export async function createSpecterCodeWorkspaceOnServer(data: {
+  workspaceId: string
+  scanId: string
   name: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    await app.createWorkspace({
-      name: data.name,
-      workspaceId: crypto.randomUUID(),
-      scanId: crypto.randomUUID(),
-    })
-    return app.workspaceList({})
+    await runSpecterCommand({ type: 'createWorkspace', payload: data })
+    return app.query({ type: 'workspaceList', payload: {} })
   })
 }
 
 export async function createSpecterCodePostOnServer(data: {
   workspaceId: string
+  postId: string
   author: { userId?: string; displayName: string }
   content: string
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.createPost({ ...data, postId: crypto.randomUUID() }),
+    runSpecterCommand({ type: 'createPost', payload: data }),
   )
 }
 
 export async function replyToSpecterCodePostOnServer(data: {
   workspaceId: string
+  replyId: string
   parentPostId: string
   author: { userId?: string; displayName: string }
   content: string
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.replyToPost({ ...data, replyId: crypto.randomUUID() }),
+    runSpecterCommand({ type: 'replyToPost', payload: data }),
   )
 }
 
 export async function listSpecterCodeWorkspaceChatOnServer(data: {
   workspaceId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.workspaceChat(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'workspaceChat', payload: data }),
+  )
 }
 
 export async function createSpecterCodeSessionOnServer(data: {
-  sessionId?: string
+  sessionId: string
   workspaceId: string
   title: string
   directory: string
@@ -119,23 +148,24 @@ export async function createSpecterCodeSessionOnServer(data: {
   createdBy?: { userId?: string; displayName: string }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.createSession({
-      ...data,
-      sessionId: data.sessionId ?? crypto.randomUUID(),
-    }),
+    runSpecterCommand({ type: 'createSession', payload: data }),
   )
 }
 
 export async function listSpecterCodeSessionsOnServer(data: {
   workspaceId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.sessionList(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'sessionList', payload: data }),
+  )
 }
 
 export async function getSpecterCodeSessionOnServer(data: {
   sessionId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.sessionDetail(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'sessionDetail', payload: data }),
+  )
 }
 
 export async function forkSpecterCodeSessionOnServer(data: {
@@ -148,14 +178,18 @@ export async function forkSpecterCodeSessionOnServer(data: {
   model: { providerId: string; modelId: string }
   createdBy?: { userId?: string; displayName: string }
 }) {
-  await runWithSpecterCodeReferenceDb(() => app.forkSession(data))
+  await runWithSpecterCodeReferenceDb(() =>
+    runSpecterCommand({ type: 'forkSession', payload: data }),
+  )
   return getSpecterCodeSessionOnServer({ sessionId: data.newSessionId })
 }
 
 export async function listSpecterCodeSessionChildrenOnServer(data: {
   sessionId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.sessionChildren(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'sessionChildren', payload: data }),
+  )
 }
 
 export async function updateSpecterCodeSessionOnServer(data: {
@@ -166,7 +200,9 @@ export async function updateSpecterCodeSessionOnServer(data: {
   model?: { providerId: string; modelId: string }
   updatedBy?: { userId?: string; displayName: string }
 }) {
-  await runWithSpecterCodeReferenceDb(() => app.updateSession(data))
+  await runWithSpecterCodeReferenceDb(() =>
+    runSpecterCommand({ type: 'updateSession', payload: data }),
+  )
   return getSpecterCodeSessionOnServer({ sessionId: data.sessionId })
 }
 
@@ -174,13 +210,15 @@ export async function deleteSpecterCodeSessionOnServer(data: {
   sessionId: string
   deletedBy?: { userId?: string; displayName: string }
 }) {
-  await runWithSpecterCodeReferenceDb(() => app.deleteSession(data))
+  await runWithSpecterCodeReferenceDb(() =>
+    runSpecterCommand({ type: 'deleteSession', payload: data }),
+  )
   return true
 }
 
 export async function submitSpecterCodePromptOnServer(data: {
-  messageId?: string
-  runId?: string
+  messageId: string
+  runId: string
   sessionId: string
   workspaceId: string
   content: string
@@ -189,11 +227,7 @@ export async function submitSpecterCodePromptOnServer(data: {
   submittedBy: { userId?: string; displayName: string }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.submitPrompt({
-      ...data,
-      messageId: data.messageId ?? crypto.randomUUID(),
-      runId: data.runId ?? crypto.randomUUID(),
-    }),
+    runSpecterCommand({ type: 'submitPrompt', payload: data }),
   )
 }
 
@@ -205,9 +239,12 @@ export async function recordSpecterCodeSessionMessageOnServer(data: {
   submittedBy: { userId?: string; displayName: string }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.recordSessionMessage({
-      ...data,
-      messageId: data.messageId ?? crypto.randomUUID(),
+    runSpecterCommand({
+      type: 'recordSessionMessage',
+      payload: {
+        ...data,
+        messageId: data.messageId ?? crypto.randomUUID(),
+      },
     }),
   )
 }
@@ -215,7 +252,9 @@ export async function recordSpecterCodeSessionMessageOnServer(data: {
 export async function listSpecterCodeSessionTranscriptOnServer(data: {
   sessionId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.sessionTranscript(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'sessionTranscript', payload: data }),
+  )
 }
 
 export async function getSpecterCodeSessionMessageOnServer(data: {
@@ -223,8 +262,11 @@ export async function getSpecterCodeSessionMessageOnServer(data: {
   messageId: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    const transcript = await app.sessionTranscript({
-      sessionId: data.sessionId,
+    const transcript = await app.query({
+      type: 'sessionTranscript',
+      payload: {
+        sessionId: data.sessionId,
+      },
     })
     const message = transcript.find((item) => item.id === data.messageId)
     if (!message)
@@ -240,9 +282,12 @@ export async function updateSpecterCodeSessionMessagePartOnServer(data: {
   text: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    await app.updateSessionMessagePart(data)
-    const transcript = await app.sessionTranscript({
-      sessionId: data.sessionId,
+    await runSpecterCommand({ type: 'updateSessionMessagePart', payload: data })
+    const transcript = await app.query({
+      type: 'sessionTranscript',
+      payload: {
+        sessionId: data.sessionId,
+      },
     })
     const message = transcript.find((item) => item.id === data.messageId)
     if (!message)
@@ -257,9 +302,12 @@ export async function deleteSpecterCodeSessionMessagePartOnServer(data: {
   partId: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    await app.deleteSessionMessagePart(data)
-    const transcript = await app.sessionTranscript({
-      sessionId: data.sessionId,
+    await runSpecterCommand({ type: 'deleteSessionMessagePart', payload: data })
+    const transcript = await app.query({
+      type: 'sessionTranscript',
+      payload: {
+        sessionId: data.sessionId,
+      },
     })
     const message = transcript.find((item) => item.id === data.messageId)
     if (!message)
@@ -273,13 +321,14 @@ export async function deleteSpecterCodeSessionMessageOnServer(data: {
   messageId: string
 }) {
   return runWithSpecterCodeReferenceDb(async () => {
-    await app.deleteSessionMessage(data)
+    await runSpecterCommand({ type: 'deleteSessionMessage', payload: data })
     return true
   })
 }
 
 export async function requestSpecterCodeFilesystemScanOnServer(data: {
   workspaceId: string
+  scanId: string
   reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'
   requestedBy:
     | { type: 'user'; userId?: string; displayName: string }
@@ -287,9 +336,9 @@ export async function requestSpecterCodeFilesystemScanOnServer(data: {
     | { type: 'system' }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.requestWorkspaceFilesystemScan({
-      ...data,
-      scanId: crypto.randomUUID(),
+    runSpecterCommand({
+      type: 'requestWorkspaceFilesystemScan',
+      payload: data,
     }),
   )
 }
@@ -298,14 +347,16 @@ export async function listSpecterCodeFilesystemTreeOnServer(data: {
   workspaceId: string
   parentPath?: string | null
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.workspaceFilesystemTree(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'workspaceFilesystemTree', payload: data }),
+  )
 }
 
 export async function getSpecterCodeFilesystemStatusOnServer(data: {
   workspaceId: string
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.workspaceFilesystemStatus(data),
+    app.query({ type: 'workspaceFilesystemStatus', payload: data }),
   )
 }
 
@@ -334,6 +385,7 @@ export async function revertSpecterCodeWorkspaceChangesOnServer(data: {
 
 export async function requestSpecterCodeAgentRunOnServer(data: {
   workspaceId: string
+  runId: string
   postId?: string
   agentId: string
   agentName: string
@@ -343,21 +395,25 @@ export async function requestSpecterCodeAgentRunOnServer(data: {
     | { type: 'system' }
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.requestAgentRun({ ...data, runId: crypto.randomUUID() }),
+    runSpecterCommand({ type: 'requestAgentRun', payload: data }),
   )
 }
 
 export async function listSpecterCodeWorkspaceAgentRunsOnServer(data: {
   workspaceId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.workspaceAgentRuns(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'workspaceAgentRuns', payload: data }),
+  )
 }
 
 export async function listSpecterCodeAgentRunTimelineOnServer(data: {
   workspaceId: string
   runId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.agentRunTimeline(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'agentRunTimeline', payload: data }),
+  )
 }
 
 export async function readSpecterCodeWorkspaceTextFileOnServer(data: {
@@ -396,9 +452,12 @@ export async function requestSpecterCodeToolApprovalOnServer(data: {
   reason?: string
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.requestToolApproval({
-      ...data,
-      requestId: data.requestId ?? crypto.randomUUID(),
+    runSpecterCommand({
+      type: 'requestToolApproval',
+      payload: {
+        ...data,
+        requestId: data.requestId ?? crypto.randomUUID(),
+      },
     }),
   )
 }
@@ -410,13 +469,17 @@ export async function replySpecterCodeToolApprovalOnServer(data: {
   repliedBy?: { userId?: string; displayName: string }
   reason?: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.replyToolApproval(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    runSpecterCommand({ type: 'replyToolApproval', payload: data }),
+  )
 }
 
 export async function listSpecterCodePendingPermissionsOnServer(data: {
   sessionId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.pendingPermissions(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'pendingPermissions', payload: data }),
+  )
 }
 
 export async function getSpecterCodeSettingsOnServer() {
@@ -459,12 +522,15 @@ export async function updateSpecterCodeTodoListOnServer(data: {
   }>
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.updateTodoList({
-      ...data,
-      items: data.items.map((item) => ({
-        ...item,
-        id: item.id ?? crypto.randomUUID(),
-      })),
+    runSpecterCommand({
+      type: 'updateTodoList',
+      payload: {
+        ...data,
+        items: data.items.map((item) => ({
+          ...item,
+          id: item.id ?? crypto.randomUUID(),
+        })),
+      },
     }),
   )
 }
@@ -472,7 +538,9 @@ export async function updateSpecterCodeTodoListOnServer(data: {
 export async function listSpecterCodeSessionTodosOnServer(data: {
   sessionId: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.sessionTodos(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'sessionTodos', payload: data }),
+  )
 }
 
 export async function askSpecterCodeQuestionOnServer(data: {
@@ -484,13 +552,16 @@ export async function askSpecterCodeQuestionOnServer(data: {
   allowFreeform?: boolean
 }) {
   return runWithSpecterCodeReferenceDb(() =>
-    app.askQuestion({
-      ...data,
-      questionId: data.questionId ?? crypto.randomUUID(),
-      options: data.options?.map((option) => ({
-        ...option,
-        id: option.id ?? crypto.randomUUID(),
-      })),
+    runSpecterCommand({
+      type: 'askQuestion',
+      payload: {
+        ...data,
+        questionId: data.questionId ?? crypto.randomUUID(),
+        options: data.options?.map((option) => ({
+          ...option,
+          id: option.id ?? crypto.randomUUID(),
+        })),
+      },
     }),
   )
 }
@@ -501,13 +572,17 @@ export async function replySpecterCodeQuestionOnServer(data: {
   answer: string
   answeredBy?: { userId?: string; displayName: string }
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.replyQuestion(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    runSpecterCommand({ type: 'replyQuestion', payload: data }),
+  )
 }
 
 export async function listSpecterCodePendingQuestionsOnServer(data: {
   sessionId?: string
 }) {
-  return runWithSpecterCodeReferenceDb(() => app.pendingQuestions(data))
+  return runWithSpecterCodeReferenceDb(() =>
+    app.query({ type: 'pendingQuestions', payload: data }),
+  )
 }
 
 export async function listSpecterCodeEventsOnServer(data: {

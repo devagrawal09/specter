@@ -13,7 +13,13 @@ export const listThreadplaneWorkspaces = createServerFn({
 })
 
 export const createThreadplaneWorkspace = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ name: z.string() }))
+  .inputValidator(
+    z.object({
+      workspaceId: z.string(),
+      scanId: z.string(),
+      name: z.string(),
+    }),
+  )
   .handler(async ({ data }) => {
     const { createThreadplaneWorkspaceOnServer } = await import(
       './server-runtime.server'
@@ -25,6 +31,7 @@ export const createThreadplanePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      postId: z.string(),
       author: z.object({
         userId: z.string().optional(),
         displayName: z.string(),
@@ -43,6 +50,7 @@ export const replyToThreadplanePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      replyId: z.string(),
       parentPostId: z.string(),
       author: z.object({
         userId: z.string().optional(),
@@ -73,6 +81,7 @@ export const requestThreadplaneFilesystemScan = createServerFn({
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      scanId: z.string(),
       reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
       requestedBy: z.discriminatedUnion('type', [
         z.object({
@@ -123,6 +132,7 @@ export const requestThreadplaneAgentRun = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      runId: z.string(),
       postId: z.string().optional(),
       agentId: z.string(),
       agentName: z.string(),

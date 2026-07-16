@@ -64,7 +64,7 @@ function normalizeLimit(
 }
 
 function isGlobQuery(query: string) {
-  return /[*?{\[]/.test(query)
+  return /[*?{[]/.test(query)
 }
 
 function containsNullByte(buffer: Buffer) {

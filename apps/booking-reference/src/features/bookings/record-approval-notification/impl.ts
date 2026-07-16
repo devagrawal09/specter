@@ -31,6 +31,7 @@ const recordApprovalNotification = spec
     await db
       .insert(recordApprovalNotificationSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {

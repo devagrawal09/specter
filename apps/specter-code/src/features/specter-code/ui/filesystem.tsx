@@ -12,9 +12,9 @@ import {
 import {
   getSpecterCodeFilesystemStatus,
   listSpecterCodeFilesystemTree,
-  readSpecterCodeWorkspaceTextFile,
   requestSpecterCodeFilesystemScan,
-} from '../server-functions'
+} from '../client-functions'
+import { readSpecterCodeWorkspaceTextFile } from '../server-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import {
@@ -38,10 +38,10 @@ function createFilesystemModel() {
   const { activeWorkspaceId, selectedPath, selectedFilePath } =
     useSpecterCodeSelection()
 
-  const listTreeFn = useServerFn(listSpecterCodeFilesystemTree)
-  const listStatusFn = useServerFn(getSpecterCodeFilesystemStatus)
+  const listTreeFn = listSpecterCodeFilesystemTree
+  const listStatusFn = getSpecterCodeFilesystemStatus
   const readFileFn = useServerFn(readSpecterCodeWorkspaceTextFile)
-  const requestScanFn = useServerFn(requestSpecterCodeFilesystemScan)
+  const requestScanFn = requestSpecterCodeFilesystemScan
 
   const treeSource = () => {
     const workspaceId = activeWorkspaceId()
@@ -89,6 +89,7 @@ function createFilesystemModel() {
       await requestScanFn({
         data: {
           workspaceId,
+          scanId: crypto.randomUUID(),
           reason: 'userRequested',
           requestedBy: {
             type: 'user',

@@ -1,6 +1,6 @@
 import { createQuerySlice, event } from '@specter-ts/core/spec'
 
-const todosQuerySpec = createQuerySlice('todosQuery')
+export const todosQuerySpec = createQuerySlice('todosQuery')
   .description('Lists visible todos by status.')
   .scenarios(
     {
@@ -55,5 +55,3 @@ const todosQuerySpec = createQuerySlice('todosQuery')
       expect: [],
     },
   )
-
-export default todosQuerySpec

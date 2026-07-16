@@ -9,7 +9,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import createTodoCheerSpec from './spec'
+import { createTodoCheerSpec } from './spec'
 
 export const createTodoCheerSqlTodoStates = sqliteTable(
   'create_todo_cheer_sql_todo_states',
@@ -27,7 +27,7 @@ export const createTodoCheerSqlMilestoneStates = sqliteTable(
   { milestone: integer('milestone').primaryKey() },
 )
 
-const createTodoCheer = createTodoCheerSpec
+export const createTodoCheer = createTodoCheerSpec
   .inputSchema(z.object({ milestone: z.number().int().positive() }))
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {
@@ -38,6 +38,7 @@ const createTodoCheer = createTodoCheerSpec
         completed: false,
         removed: false,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(todoCompletionChangedEvent, async (event, db) => {
@@ -58,6 +59,7 @@ const createTodoCheer = createTodoCheerSpec
     await db
       .insert(createTodoCheerSqlMilestoneStates)
       .values({ milestone: event.payload.milestone })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (command, db) => {
@@ -95,5 +97,3 @@ const createTodoCheer = createTodoCheerSpec
       }),
     ]
   })
-
-export default createTodoCheer

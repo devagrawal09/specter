@@ -43,6 +43,7 @@ const pendingApprovalsQuery = spec
     await db
       .insert(pendingApprovalRows)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {

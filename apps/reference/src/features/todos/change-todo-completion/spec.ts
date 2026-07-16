@@ -1,6 +1,8 @@
 import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-const changeTodoCompletionSpec = createCommandSlice('changeTodoCompletion')
+export const changeTodoCompletionSpec = createCommandSlice(
+  'changeTodoCompletion',
+)
   .description('Changes whether an existing todo is completed.')
   .scenarios(
     {
@@ -42,5 +44,3 @@ const changeTodoCompletionSpec = createCommandSlice('changeTodoCompletion')
       expect: [],
     },
   )
-
-export default changeTodoCompletionSpec

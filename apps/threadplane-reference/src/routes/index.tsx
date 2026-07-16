@@ -20,10 +20,10 @@ import {
   listThreadplaneWorkspaceAgentRuns,
   listThreadplaneWorkspaceChat,
   listThreadplaneWorkspaces,
-  readThreadplaneWorkspaceTextFile,
   requestThreadplaneAgentRun,
   requestThreadplaneFilesystemScan,
-} from '../features/threadplane/server-functions'
+} from '../features/threadplane/client-functions'
+import { readThreadplaneWorkspaceTextFile } from '../features/threadplane/server-functions'
 import { createPollingResource } from '../lib/create-polling-resource'
 
 export const Route = createFileRoute('/')({ component: Home })
@@ -174,10 +174,6 @@ function shortId(id: string) {
   return id.length > 12 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id
 }
 
-function wait(milliseconds: number) {
-  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds))
-}
-
 const iconGlyphs = {
   activity: '≋',
   bot: '✦',
@@ -230,17 +226,17 @@ function Home() {
   )
   const [activeRunId, setActiveRunId] = createSignal<string | null>(null)
 
-  const listWorkspacesFn = useServerFn(listThreadplaneWorkspaces)
-  const createWorkspaceFn = useServerFn(createThreadplaneWorkspace)
-  const listChatFn = useServerFn(listThreadplaneWorkspaceChat)
-  const createPostFn = useServerFn(createThreadplanePost)
-  const listTreeFn = useServerFn(listThreadplaneFilesystemTree)
-  const listStatusFn = useServerFn(getThreadplaneFilesystemStatus)
+  const listWorkspacesFn = listThreadplaneWorkspaces
+  const createWorkspaceFn = createThreadplaneWorkspace
+  const listChatFn = listThreadplaneWorkspaceChat
+  const createPostFn = createThreadplanePost
+  const listTreeFn = listThreadplaneFilesystemTree
+  const listStatusFn = getThreadplaneFilesystemStatus
   const readFileFn = useServerFn(readThreadplaneWorkspaceTextFile)
-  const requestScanFn = useServerFn(requestThreadplaneFilesystemScan)
-  const requestRunFn = useServerFn(requestThreadplaneAgentRun)
-  const listRunsFn = useServerFn(listThreadplaneWorkspaceAgentRuns)
-  const listTimelineFn = useServerFn(listThreadplaneAgentRunTimeline)
+  const requestScanFn = requestThreadplaneFilesystemScan
+  const requestRunFn = requestThreadplaneAgentRun
+  const listRunsFn = listThreadplaneWorkspaceAgentRuns
+  const listTimelineFn = listThreadplaneAgentRunTimeline
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,
@@ -397,25 +393,17 @@ function Home() {
     const name = workspaceDraft().trim()
     if (!name || isCreatingWorkspace()) return
     setIsCreatingWorkspace(true)
+    const workspaceId = crypto.randomUUID()
+    const scanId = crypto.randomUUID()
     try {
-      const created = await createWorkspaceFn({ data: { name } })
+      await createWorkspaceFn({ data: { workspaceId, scanId, name } })
       await refetchWorkspaces()
-      const newest = created.at(-1)
-      if (newest) {
-        void startTransition(() => {
-          selectWorkspace(newest.id)
-          setWorkspaceFilter('')
-        })
-        await requestScanFn({
-          data: {
-            workspaceId: newest.id,
-            reason: 'workspaceCreated',
-            requestedBy: { type: 'system' },
-          },
-        })
-        await Promise.all([refetchStatus(), refetchTree()])
-        setWorkspaceDraft('')
-      }
+      void startTransition(() => {
+        selectWorkspace(workspaceId)
+        setWorkspaceFilter('')
+      })
+      await Promise.all([refetchStatus(), refetchTree()])
+      setWorkspaceDraft('')
     } finally {
       setIsCreatingWorkspace(false)
     }
@@ -430,6 +418,7 @@ function Home() {
       await createPostFn({
         data: {
           workspaceId,
+          postId: crypto.randomUUID(),
           author: { displayName: THREADPLANE_USER_DISPLAY_NAME },
           content,
         },
@@ -455,6 +444,7 @@ function Home() {
       await requestScanFn({
         data: {
           workspaceId,
+          scanId: crypto.randomUUID(),
           reason: 'userRequested',
           requestedBy: {
             type: 'user',
@@ -479,47 +469,26 @@ function Home() {
     if (activeRunId()) await refetchTimeline()
   }
 
-  async function findLatestPostIdByContent(
-    workspaceId: string,
-    content: string,
-  ) {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const latestChat = await listChatFn({ data: { workspaceId } })
-      const post = [...(latestChat ?? [])]
-        .reverse()
-        .find(
-          (item) =>
-            item.content === content &&
-            item.author.displayName === 'Threadplane Demo',
-        )
-
-      if (post) return post.id
-      await wait(50)
-    }
-
-    return undefined
-  }
-
   async function simulateAgentRun() {
     const workspaceId = activeWorkspaceId()
     if (!workspaceId || isRequestingRun()) return
     setIsRequestingRun(true)
     const requestContent = 'Simulated agent request'
+    const postId = crypto.randomUUID()
+    const runId = crypto.randomUUID()
     try {
       await createPostFn({
         data: {
           workspaceId,
+          postId,
           author: { displayName: 'Threadplane Demo' },
           content: requestContent,
         },
       })
-      const postId = await findLatestPostIdByContent(
-        workspaceId,
-        requestContent,
-      )
       await requestRunFn({
         data: {
           workspaceId,
+          runId,
           postId,
           agentId: 'simulated-agent',
           agentName: 'Simulated Agent',
@@ -529,11 +498,9 @@ function Home() {
           },
         },
       })
-      const refreshedRuns = await listRunsFn({ data: { workspaceId } })
       await Promise.all([refetchChat(), refetchRuns()])
-      const nextRun = refreshedRuns.at(-1)
-      if (nextRun) void startTransition(() => setActiveRunId(nextRun.runId))
-      if (nextRun) await refetchTimeline()
+      void startTransition(() => setActiveRunId(runId))
+      await refetchTimeline()
     } finally {
       setIsRequestingRun(false)
     }

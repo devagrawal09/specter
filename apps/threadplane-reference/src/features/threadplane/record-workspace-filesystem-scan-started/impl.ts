@@ -13,6 +13,18 @@ const recordWorkspaceFilesystemScanStarted =
       z.object({
         scanId: z.string(),
         workspaceId: z.string(),
+        snapshot: z
+          .array(
+            z.object({
+              path: z.string(),
+              parentPath: z.string().nullable(),
+              name: z.string(),
+              kind: z.enum(['file', 'directory']),
+              sizeBytes: z.number().int().nonnegative().nullable(),
+              modifiedAt: z.string().optional(),
+            }),
+          )
+          .optional(),
       }),
     )
     .store(createMemorySliceStore(() => ({})))
@@ -22,6 +34,7 @@ const recordWorkspaceFilesystemScanStarted =
         workspaceFilesystemScanStartedEvent.create({
           scanId: command.scanId,
           workspaceId: command.workspaceId,
+          ...(command.snapshot ? { snapshot: command.snapshot } : {}),
         }),
       ]
     })

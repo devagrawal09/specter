@@ -13,11 +13,11 @@ import {
 
 import {
   createSpecterCodeSession,
-  getSpecterCodeSettings,
   listSpecterCodeSessionTranscript,
   listSpecterCodeSessions,
   submitSpecterCodePrompt,
-} from '../server-functions'
+} from '../client-functions'
+import { getSpecterCodeSettings } from '../server-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
 import { useWorkspaces } from './workspaces'
@@ -41,11 +41,11 @@ function createSessionChatModel() {
   const { activeWorkspaceId, activeSessionId, setActiveSessionId } =
     useSpecterCodeSelection()
 
-  const createSessionFn = useServerFn(createSpecterCodeSession)
+  const createSessionFn = createSpecterCodeSession
   const getSettingsFn = useServerFn(getSpecterCodeSettings)
-  const listSessionsFn = useServerFn(listSpecterCodeSessions)
-  const submitPromptFn = useServerFn(submitSpecterCodePrompt)
-  const listTranscriptFn = useServerFn(listSpecterCodeSessionTranscript)
+  const listSessionsFn = listSpecterCodeSessions
+  const submitPromptFn = submitSpecterCodePrompt
+  const listTranscriptFn = listSpecterCodeSessionTranscript
 
   const [sessions, { refetch: refetchSessions }] = createPollingResource(
     () => activeWorkspaceId(),
@@ -89,6 +89,7 @@ function createSessionChatModel() {
     const workspaceId = activeWorkspaceId()
     if (!title || !workspaceId || isCreatingSession()) return
     setIsCreatingSession(true)
+    const sessionId = crypto.randomUUID()
     try {
       const settings = await getSettingsFn()
       const model = settings.defaultModel ?? {
@@ -97,6 +98,7 @@ function createSessionChatModel() {
       }
       await createSessionFn({
         data: {
+          sessionId,
           workspaceId,
           title,
           directory: '.',
@@ -109,10 +111,8 @@ function createSessionChatModel() {
         },
       })
       setSessionDraft('')
-      const refreshed = await listSessionsFn({ data: { workspaceId } })
       await refetchSessions()
-      const newest = refreshed.at(-1)
-      if (newest) void startTransition(() => setActiveSessionId(newest.id))
+      void startTransition(() => setActiveSessionId(sessionId))
     } finally {
       setIsCreatingSession(false)
     }
@@ -128,6 +128,8 @@ function createSessionChatModel() {
     try {
       await submitPromptFn({
         data: {
+          messageId: crypto.randomUUID(),
+          runId: crypto.randomUUID(),
           sessionId,
           workspaceId,
           content,

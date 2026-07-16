@@ -24,6 +24,9 @@
   },
   "dependencies": {
     "@specter-ts/core": "workspace:*",
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
+    "@specter-ts/sqlite": "workspace:*",
     "@effect/platform": "^0.96.1",
     "@effect/platform-node": "^0.106.0",
     "@effect/rpc": "^0.75.1",

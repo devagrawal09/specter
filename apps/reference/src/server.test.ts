@@ -32,15 +32,31 @@ afterAll(() => {
 })
 
 test('handles command followed by immediate query without SQLITE_BUSY', async () => {
-  const commandResponse = await postJson('/api/addTodo', {
-    todoId: 'todo-1',
-    title: 'Ship it',
+  const commandResponse = await postJson('/api/command', {
+    envelope: {
+      type: 'addTodo',
+      payload: { todoId: 'todo-1', title: 'Ship it' },
+    },
   })
 
   expect(commandResponse.status).toBe(200)
-  expect(await commandResponse.json()).toBeNull()
+  const command = (await commandResponse.json()) as { reactionId: string }
+  expect(command).toEqual(
+    expect.objectContaining({
+      duplicate: false,
+      reactionId: expect.any(String),
+      version: 1,
+    }),
+  )
 
-  const queryResponse = await postJson('/api/todosQuery', { status: 'all' })
+  const reactionResponse = await app.request(
+    `/api/reactions/${command.reactionId}`,
+  )
+  expect(reactionResponse.status).toBe(204)
+
+  const queryResponse = await postJson('/api/query', {
+    envelope: { type: 'todosQuery', payload: { status: 'all' } },
+  })
   const queryBody = await queryResponse.json()
 
   expect(queryResponse.status).toBe(200)

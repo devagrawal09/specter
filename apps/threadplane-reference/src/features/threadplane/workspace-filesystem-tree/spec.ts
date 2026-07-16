@@ -63,6 +63,7 @@ const workspaceFilesystemTreeSpec = createQuerySlice('workspaceFilesystemTree')
       when: { workspaceId: 'workspace-1' },
       expect: [
         {
+          scanId: 'scan-1',
           workspaceId: 'workspace-1',
           path: 'src',
           parentPath: null,
@@ -71,6 +72,7 @@ const workspaceFilesystemTreeSpec = createQuerySlice('workspaceFilesystemTree')
           sizeBytes: null,
         },
         {
+          scanId: 'scan-2',
           workspaceId: 'workspace-1',
           path: 'src/index.ts',
           parentPath: 'src',
@@ -106,6 +108,7 @@ const workspaceFilesystemTreeSpec = createQuerySlice('workspaceFilesystemTree')
       when: { workspaceId: 'workspace-1', parentPath: 'src' },
       expect: [
         {
+          scanId: 'scan-1',
           workspaceId: 'workspace-1',
           path: 'src/index.ts',
           parentPath: 'src',
@@ -155,6 +158,7 @@ const workspaceFilesystemTreeSpec = createQuerySlice('workspaceFilesystemTree')
       when: { workspaceId: 'workspace-1' },
       expect: [
         {
+          scanId: 'scan-1',
           workspaceId: 'workspace-1',
           path: 'README.md',
           parentPath: null,

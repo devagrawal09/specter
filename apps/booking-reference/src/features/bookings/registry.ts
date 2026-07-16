@@ -1,5 +1,9 @@
-import type { CommandRef, QueryRef } from '@specter-ts/core'
-import { sqliteEventLog } from '../../db/specter-sqlite'
+import type {
+  CommandRef,
+  EventLogAdapter,
+  QueryRef,
+  ReactionScheduler,
+} from '@specter-ts/core'
 import { reactionScheduler } from '../../reaction-scheduler'
 import approveBooking from './approve-booking/impl'
 import approvalNotificationReaction from './approval-notification-reaction/impl'
@@ -34,12 +38,21 @@ export const bookingRegistrations = [
   bookingActivityQuery,
 ] as const
 
-export const bookingSpecterAppConfig = {
-  events: bookingEventDefinitions,
-  eventLog: sqliteEventLog,
-  schedule: reactionScheduler,
-  slices: bookingRegistrations,
-} as const
+export function createBookingSpecterAppConfig(
+  eventLog: EventLogAdapter,
+  schedule: ReactionScheduler = reactionScheduler,
+) {
+  return {
+    events: bookingEventDefinitions,
+    eventLog,
+    schedule,
+    slices: bookingRegistrations,
+  } as const
+}
+
+export type BookingSpecterAppConfig = ReturnType<
+  typeof createBookingSpecterAppConfig
+>
 
 export type RoomScheduleQueryRef = QueryRef<typeof roomScheduleQuery>
 export type PendingApprovalsQueryRef = QueryRef<typeof pendingApprovalsQuery>

@@ -5,7 +5,6 @@ export default defineConfig({
     emptyOutDir: true,
     lib: {
       entry: {
-        client: './src/client-entry.ts',
         index: './src/index.ts',
         spec: './src/spec-entry.ts',
         testing: './src/testing-entry.ts',

@@ -37,7 +37,7 @@ function memoryStore<TState extends object>(
 }
 
 describe('Slice specifications', () => {
-  test('are deeply immutable and reusable across independent implementations', async () => {
+  test('freeze structural wrappers without cloning caller values and remain reusable', async () => {
     const countChanged = createEventDefinition(
       'count-changed',
       identitySchema<{ amount: number }>(),
@@ -74,6 +74,10 @@ describe('Slice specifications', () => {
     expect(Object.isFrozen(specification.scenarios[0])).toBe(true)
     expect(Object.isFrozen(specification.scenarios[0].given)).toBe(true)
     expect(Object.isFrozen(specification.scenarios[0].expect)).toBe(true)
+    expect(Object.isFrozen(specification.scenarios[0].when)).toBe(false)
+    expect(
+      Object.isFrozen(specification.scenarios[0].expect[0].examplePayload),
+    ).toBe(false)
     expect(first).not.toBe(second)
     expect(first.scenarios).toBe(specification.scenarios)
     expect(second.scenarios).toBe(specification.scenarios)
@@ -86,7 +90,7 @@ describe('Slice specifications', () => {
         type: 'count-changed',
         payload: { amount: 3 },
         id: 'first-event',
-        recordedAt: new Date(0),
+        recordedAt: '1970-01-01T00:00:00.000Z',
       },
       firstStore.write,
     )
@@ -95,7 +99,7 @@ describe('Slice specifications', () => {
         type: 'count-changed',
         payload: { amount: 3 },
         id: 'second-event',
-        recordedAt: new Date(0),
+        recordedAt: '1970-01-01T00:00:00.000Z',
       },
       secondStore.write,
     )

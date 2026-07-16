@@ -26,9 +26,12 @@ describe('ColonyBench recorded control runner', () => {
     const controlApp = await createColonyBenchControlApp({
       adapters: createMemoryColonyBenchControlAdapters(),
     })
-    const overview = controlApp.subscribe
-      .runOverview({
-        runId: 'recorded-baseline',
+    const overview = controlApp
+      .subscribe({
+        type: 'runOverview',
+        payload: {
+          runId: 'recorded-baseline',
+        },
       })
       [Symbol.asyncIterator]()
 
@@ -71,7 +74,10 @@ describe('ColonyBench recorded control runner', () => {
       },
     })
     await expect(
-      controlApp.runTimeline({ runId: 'recorded-baseline' }),
+      controlApp.query({
+        type: 'runTimeline',
+        payload: { runId: 'recorded-baseline' },
+      }),
     ).resolves.toEqual([
       expect.objectContaining({
         runId: 'recorded-baseline',

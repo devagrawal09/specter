@@ -2,11 +2,11 @@ import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
-import addTodoSpec from './spec'
+import { addTodoSpec } from './spec'
 
 const maxTitleLength = 120
 
-const addTodo = addTodoSpec
+export const addTodo = addTodoSpec
   .inputSchema(
     z.object({
       todoId: z.string().min(1),
@@ -27,5 +27,3 @@ const addTodo = addTodoSpec
 
     return [todoAddedEvent.create({ todoId: command.todoId, title })]
   })
-
-export default addTodo

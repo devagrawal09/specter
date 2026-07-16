@@ -28,6 +28,7 @@ const createRoom = spec
     await db
       .insert(createRoomSqlRooms)
       .values({ ...payload, retired: false })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomRetiredEvent, async (event, db) => {

@@ -8,7 +8,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import changeTodoCompletionSpec from './spec'
+import { changeTodoCompletionSpec } from './spec'
 
 export const todoCompletionSqlStates = sqliteTable(
   'todo_completion_sql_states',
@@ -21,7 +21,7 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-const changeTodoCompletion = changeTodoCompletionSpec
+export const changeTodoCompletion = changeTodoCompletionSpec
   .inputSchema(
     z.object({
       todoId: z.string().min(1),
@@ -33,6 +33,7 @@ const changeTodoCompletion = changeTodoCompletionSpec
     await db
       .insert(todoCompletionSqlStates)
       .values({ todoId: event.payload.todoId, completed: false })
+      .onConflictDoNothing()
       .run()
   })
   .apply(todoCompletionChangedEvent, async (event, db) => {
@@ -69,5 +70,3 @@ const changeTodoCompletion = changeTodoCompletionSpec
       }),
     ]
   })
-
-export default changeTodoCompletion

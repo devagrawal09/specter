@@ -63,6 +63,14 @@ function createDefaultSimulationApp() {
   })
 }
 
+async function commandAndWait(
+  app: ColonyBenchSimulationApp,
+  envelope: Parameters<ColonyBenchSimulationApp['command']>[0],
+) {
+  const execution = await app.command(envelope)
+  await execution.reactions
+}
+
 async function applyBotCommand({
   app,
   runId,
@@ -74,44 +82,68 @@ async function applyBotCommand({
 }) {
   switch (command.type) {
     case 'move':
-      await app.moveWorker({
-        runId,
-        workerId: command.workerId,
-        target: command.target,
+      await commandAndWait(app, {
+        type: 'moveWorker',
+        payload: {
+          runId,
+          workerId: command.workerId,
+          target: command.target,
+        },
       })
       return
     case 'harvest':
-      await app.harvestEnergy({
-        runId,
-        workerId: command.workerId,
-        sourceId: command.sourceId,
+      await commandAndWait(app, {
+        type: 'harvestEnergy',
+        payload: {
+          runId,
+          workerId: command.workerId,
+          sourceId: command.sourceId,
+        },
       })
       return
     case 'deposit':
-      await app.depositEnergy({ runId, workerId: command.workerId })
+      await commandAndWait(app, {
+        type: 'depositEnergy',
+        payload: { runId, workerId: command.workerId },
+      })
       return
     case 'upgrade':
-      await app.upgradeBase({ runId, workerId: command.workerId })
+      await commandAndWait(app, {
+        type: 'upgradeBase',
+        payload: { runId, workerId: command.workerId },
+      })
       return
     case 'build':
-      await app.buildConstructionSite({
-        runId,
-        workerId: command.workerId,
-        siteId: command.siteId,
+      await commandAndWait(app, {
+        type: 'buildConstructionSite',
+        payload: {
+          runId,
+          workerId: command.workerId,
+          siteId: command.siteId,
+        },
       })
       return
     case 'repair':
-      await app.repairRoad({
-        runId,
-        workerId: command.workerId,
-        roadId: command.roadId,
+      await commandAndWait(app, {
+        type: 'repairRoad',
+        payload: {
+          runId,
+          workerId: command.workerId,
+          roadId: command.roadId,
+        },
       })
       return
     case 'spawnWorker': {
-      const snapshot = await app.liveWorldSnapshot({ runId })
-      await app.spawnWorker({
-        runId,
-        workerId: `worker-${snapshot.workers.length + 1}`,
+      const snapshot = await app.query({
+        type: 'liveWorldSnapshot',
+        payload: { runId },
+      })
+      await commandAndWait(app, {
+        type: 'spawnWorker',
+        payload: {
+          runId,
+          workerId: `worker-${snapshot.workers.length + 1}`,
+        },
       })
       return
     }
@@ -174,9 +206,15 @@ export async function* streamColonyBenchLoop<
   assertValidTickCount(ticks)
   const app = simulationApp ?? (await createDefaultSimulationApp())
 
-  await app.initializeSimulation({ runId })
+  await commandAndWait(app, {
+    type: 'initializeSimulation',
+    payload: { runId },
+  })
 
-  const initialSnapshot = await app.liveWorldSnapshot({ runId })
+  const initialSnapshot = await app.query({
+    type: 'liveWorldSnapshot',
+    payload: { runId },
+  })
   const snapshots: ColonyBenchWorldSnapshot[] = [
     cloneRunnerValue(initialSnapshot),
   ]
@@ -220,9 +258,15 @@ export async function* streamColonyBenchLoop<
     })
 
     for (const command of commands) {
-      const beforeCommandSnapshot = await app.liveWorldSnapshot({ runId })
+      const beforeCommandSnapshot = await app.query({
+        type: 'liveWorldSnapshot',
+        payload: { runId },
+      })
       await applyBotCommand({ app, runId, command })
-      const commandSnapshot = await app.liveWorldSnapshot({ runId })
+      const commandSnapshot = await app.query({
+        type: 'liveWorldSnapshot',
+        payload: { runId },
+      })
       const commandEvents = appendedEventsBetween(
         beforeCommandSnapshot,
         commandSnapshot,
@@ -234,8 +278,11 @@ export async function* streamColonyBenchLoop<
       )
     }
 
-    await app.advanceTick({ runId })
-    const nextSnapshot = await app.liveWorldSnapshot({ runId })
+    await commandAndWait(app, { type: 'advanceTick', payload: { runId } })
+    const nextSnapshot = await app.query({
+      type: 'liveWorldSnapshot',
+      payload: { runId },
+    })
     frameEvents.push(latestEventFromSnapshot(nextSnapshot))
 
     const storedNextSnapshot = cloneRunnerValue(nextSnapshot)

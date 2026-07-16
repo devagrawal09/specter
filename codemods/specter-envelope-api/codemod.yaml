@@ -1,0 +1,23 @@
+schema_version: "1.0"
+
+name: "specter-envelope-api"
+version: "0.1.0"
+description: "Migrate Specter 0.2 flat app and client calls to 0.3 typed envelopes"
+author: "devagrawal09"
+license: "MIT"
+
+targets:
+  languages: ["typescript", "tsx"]
+
+keywords: ["specter", "typescript", "api-migration", "event-sourcing"]
+
+registry:
+  access: "public"
+  visibility: "public"
+
+capabilities: []
+
+workflows:
+  - name: main
+    default: true
+    path: workflow.yaml
