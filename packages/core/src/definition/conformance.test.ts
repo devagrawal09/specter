@@ -194,4 +194,68 @@ describe('conformance diagnostics', () => {
       ]),
     })
   })
+
+  test('requires lower camel case Slice names', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const implementation = createCommandSlice('__proto__')
+      .description('Uses an invalid operation identifier.')
+      .scenarios({
+        description: 'Records a value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(memoryStore({}))
+      .handle(async (value) => [valueRecorded.create(value)])
+
+    await expect(
+      assertConforms({
+        events: [valueRecorded],
+        slices: [implementation],
+      }),
+    ).rejects.toMatchObject({
+      code: 'SPECTER_CONFORMANCE_FAILED',
+      diagnostics: expect.arrayContaining([
+        expect.objectContaining({
+          code: 'slice-name-format',
+          sliceName: '__proto__',
+        }),
+      ]),
+    })
+  })
+
+  test('treats Query expectations as final public values after transformation', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const query = createQuerySlice('valueLabel')
+      .description('Formats a value.')
+      .scenarios({
+        description: 'Uses the public label in expect.',
+        given: [event('value-recorded', 1)],
+        when: {},
+        expect: 'Value 1',
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema(
+        schema<{ value: number }, string>(({ value }) => `Value ${value}`),
+      )
+      .store(memoryStore({ value: 0 }))
+      .apply(valueRecorded, async (applied, state) => {
+        state.value = applied.payload
+      })
+      .handle(async (_input, state) => ({ value: state.value }))
+
+    await expect(
+      assertConforms(
+        { events: [valueRecorded], slices: [query] },
+        { requireCommandSlice: false },
+      ),
+    ).resolves.toBeUndefined()
+  })
 })

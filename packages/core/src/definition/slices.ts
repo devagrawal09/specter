@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
+import type { ReactionDeliveryContext } from '../adapters/reaction-scheduler'
 import type { SliceStoreAdapter } from '../adapters/slice-store'
 import type { Event, EventDefinition, EventDraft } from './events'
 import type {
@@ -52,8 +53,8 @@ export type CommandEnvelope<
   TName extends string = string,
   TPayload = unknown,
 > = {
-  type: TName
-  payload: TPayload
+  readonly type: TName
+  readonly payload: TPayload
 }
 
 type SliceBase<
@@ -73,7 +74,7 @@ export type CommandSlice<
   TInput = unknown,
   TCommand = TInput,
   TWriteState = unknown,
-  TReadState = TWriteState,
+  TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<CommandScenario> = NonEmptyScenarios<CommandScenario>,
 > = SliceBase<TName, TScenarios> & {
@@ -94,7 +95,7 @@ export type QuerySlice<
   TResult = unknown,
   TOutput = TResult,
   TWriteState = unknown,
-  TReadState = TWriteState,
+  TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<QueryScenario> = NonEmptyScenarios<QueryScenario>,
 > = SliceBase<TName, TScenarios> & {
@@ -136,10 +137,23 @@ export type CommandRef<TRegistration> =
     ? { name: TName; payload?: TInput }
     : never
 
-export type CommandDispatch = (command: CommandEnvelope) => Promise<void>
+export type CommandDispatchOptions = {
+  readonly expectedVersion?: number
+  readonly idempotencyKey?: string
+}
 
+export type CommandDispatch = (
+  command: CommandEnvelope,
+  options?: CommandDispatchOptions,
+) => Promise<void>
+
+/**
+ * Executes an at-least-once Reaction effect. Plugins should use the stable
+ * deliveryId from context as their downstream idempotency key.
+ */
 export type ReactionExec<TOutput = unknown> = (
   reaction: TOutput,
+  context: ReactionDeliveryContext,
 ) => Promise<unknown>
 
 export type ReactionPlugin<TOutput = unknown> = (
@@ -151,7 +165,7 @@ export type ReactionSlice<
   TResult = CommandEnvelope,
   TOutput = TResult,
   TWriteState = unknown,
-  TReadState = TWriteState,
+  TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<ReactionScenario> = NonEmptyScenarios<ReactionScenario>,
 > = SliceBase<TName, TScenarios> & {

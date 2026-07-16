@@ -9,7 +9,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import todoCompletionCheerSpec from './spec'
+import { todoCompletionCheerSpec } from './spec'
 
 export const todoCompletionCheerSqlTodoStates = sqliteTable(
   'todo_completion_cheer_sql_todo_states',
@@ -27,14 +27,17 @@ export const todoCheerSqlMilestoneStates = sqliteTable(
   { milestone: integer('milestone').primaryKey() },
 )
 
-const todoCompletionCheer = todoCompletionCheerSpec
+export const todoCompletionCheer = todoCompletionCheerSpec
   .outputSchema(
     z.object({
       type: z.literal('createTodoCheer'),
       payload: z.object({ milestone: z.number().int().positive() }),
     }),
   )
-  .plugin(async (command) => async (output) => command(output))
+  .plugin(
+    async (command) => async (output, context) =>
+      command(output, { idempotencyKey: context.deliveryId }),
+  )
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {
     await db
@@ -44,6 +47,7 @@ const todoCompletionCheer = todoCompletionCheerSpec
         completed: false,
         removed: false,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(todoCompletionChangedEvent, async (event, db) => {
@@ -64,6 +68,7 @@ const todoCompletionCheer = todoCompletionCheerSpec
     await db
       .insert(todoCheerSqlMilestoneStates)
       .values({ milestone: event.payload.milestone })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (db) => {
@@ -93,5 +98,3 @@ const todoCompletionCheer = todoCompletionCheerSpec
       payload: { milestone: completedCount },
     }
   })
-
-export default todoCompletionCheer

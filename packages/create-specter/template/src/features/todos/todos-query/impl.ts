@@ -8,7 +8,7 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import todosQuerySpec from './spec'
+import { todosQuerySpec } from './spec'
 
 export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   id: text('id').primaryKey(),
@@ -28,7 +28,7 @@ const todoOutputSchema = z.array(
   }),
 )
 
-const todosQuery = todosQuerySpec
+export const todosQuery = todosQuerySpec
   .inputSchema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),
@@ -44,6 +44,7 @@ const todosQuery = todosQuerySpec
         title: event.payload.title,
         completed: false,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(todoCompletionChangedEvent, async (event, db) => {
@@ -70,5 +71,3 @@ const todosQuery = todosQuerySpec
           : visiblePredicate
     return await db.select().from(todoSqlListItems).where(statusPredicate).all()
   })
-
-export default todosQuery

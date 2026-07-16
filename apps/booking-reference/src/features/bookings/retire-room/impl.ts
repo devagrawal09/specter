@@ -37,6 +37,7 @@ const retireRoom = spec
     await db
       .insert(retireRoomSqlRooms)
       .values({ ...payload, retired: false })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomRetiredEvent, async (event, db) => {
@@ -52,6 +53,7 @@ const retireRoom = spec
     await db
       .insert(retireRoomSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (command, db) => {

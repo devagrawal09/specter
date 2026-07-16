@@ -41,7 +41,10 @@ function value(form: FormData, key: string) {
   return typeof item === 'string' ? item : ''
 }
 
-async function validateTwilioSignature(request: Request, form: FormData) {
+export async function validateTwilioSignature(
+  request: Request,
+  form: FormData,
+) {
   const authToken = process.env.TWILIO_AUTH_TOKEN
   const signature = request.headers.get('x-twilio-signature') ?? ''
   if (!authToken || !signature) return false

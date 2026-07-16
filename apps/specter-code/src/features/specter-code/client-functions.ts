@@ -1,4 +1,4 @@
-import { specterClient } from '../../specter-client'
+import { runSpecterCommand, specterTransport } from '../../specter-transport'
 
 type WithData<T> = { data: T }
 
@@ -10,23 +10,19 @@ type RequestedBy =
   | { type: 'system' }
 
 export function listSpecterCodeWorkspaces() {
-  return specterClient.workspaceList({})
+  return specterTransport.query({ type: 'workspaceList', payload: {} })
 }
 
 export async function createSpecterCodeWorkspace(
-  input: WithData<{ name: string }>,
+  input: WithData<{ workspaceId: string; scanId: string; name: string }>,
 ) {
-  await specterClient.createWorkspace({
-    name: input.data.name,
-    workspaceId: crypto.randomUUID(),
-    scanId: crypto.randomUUID(),
-  })
-  return specterClient.workspaceList({})
+  await runSpecterCommand({ type: 'createWorkspace', payload: input.data })
+  return specterTransport.query({ type: 'workspaceList', payload: {} })
 }
 
 export function createSpecterCodeSession(
   input: WithData<{
-    sessionId?: string
+    sessionId: string
     workspaceId: string
     title: string
     directory: string
@@ -35,22 +31,19 @@ export function createSpecterCodeSession(
     createdBy?: Actor
   }>,
 ) {
-  return specterClient.createSession({
-    ...input.data,
-    sessionId: input.data.sessionId ?? crypto.randomUUID(),
-  })
+  return runSpecterCommand({ type: 'createSession', payload: input.data })
 }
 
 export function listSpecterCodeSessions(
   input: WithData<{ workspaceId: string }>,
 ) {
-  return specterClient.sessionList(input.data)
+  return specterTransport.query({ type: 'sessionList', payload: input.data })
 }
 
 export function submitSpecterCodePrompt(
   input: WithData<{
-    messageId?: string
-    runId?: string
+    messageId: string
+    runId: string
     sessionId: string
     workspaceId: string
     content: string
@@ -59,17 +52,16 @@ export function submitSpecterCodePrompt(
     submittedBy: Actor
   }>,
 ) {
-  return specterClient.submitPrompt({
-    ...input.data,
-    messageId: input.data.messageId ?? crypto.randomUUID(),
-    runId: input.data.runId ?? crypto.randomUUID(),
-  })
+  return runSpecterCommand({ type: 'submitPrompt', payload: input.data })
 }
 
 export function listSpecterCodeSessionTranscript(
   input: WithData<{ sessionId: string }>,
 ) {
-  return specterClient.sessionTranscript(input.data)
+  return specterTransport.query({
+    type: 'sessionTranscript',
+    payload: input.data,
+  })
 }
 
 export function requestSpecterCodeToolApproval(
@@ -86,9 +78,12 @@ export function requestSpecterCodeToolApproval(
     reason?: string
   }>,
 ) {
-  return specterClient.requestToolApproval({
-    ...input.data,
-    requestId: input.data.requestId ?? crypto.randomUUID(),
+  return runSpecterCommand({
+    type: 'requestToolApproval',
+    payload: {
+      ...input.data,
+      requestId: input.data.requestId ?? crypto.randomUUID(),
+    },
   })
 }
 
@@ -101,96 +96,106 @@ export function replySpecterCodeToolApproval(
     reason?: string
   }>,
 ) {
-  return specterClient.replyToolApproval(input.data)
+  return runSpecterCommand({ type: 'replyToolApproval', payload: input.data })
 }
 
 export function listSpecterCodePendingPermissions(
   input: WithData<{ sessionId: string }>,
 ) {
-  return specterClient.pendingPermissions(input.data)
+  return specterTransport.query({
+    type: 'pendingPermissions',
+    payload: input.data,
+  })
 }
 
 export function createSpecterCodePost(
   input: WithData<{
     workspaceId: string
+    postId: string
     author: Actor
     content: string
   }>,
 ) {
-  return specterClient.createPost({
-    ...input.data,
-    postId: crypto.randomUUID(),
-  })
+  return runSpecterCommand({ type: 'createPost', payload: input.data })
 }
 
 export function replyToSpecterCodePost(
   input: WithData<{
     workspaceId: string
+    replyId: string
     parentPostId: string
     author: Actor
     content: string
   }>,
 ) {
-  return specterClient.replyToPost({
-    ...input.data,
-    replyId: crypto.randomUUID(),
-  })
+  return runSpecterCommand({ type: 'replyToPost', payload: input.data })
 }
 
 export function listSpecterCodeWorkspaceChat(
   input: WithData<{ workspaceId: string }>,
 ) {
-  return specterClient.workspaceChat(input.data)
+  return specterTransport.query({ type: 'workspaceChat', payload: input.data })
 }
 
 export function requestSpecterCodeFilesystemScan(
   input: WithData<{
     workspaceId: string
+    scanId: string
     reason: 'workspaceCreated' | 'userRequested' | 'agentToolChanged'
     requestedBy: RequestedBy
   }>,
 ) {
-  return specterClient.requestWorkspaceFilesystemScan({
-    ...input.data,
-    scanId: crypto.randomUUID(),
+  return runSpecterCommand({
+    type: 'requestWorkspaceFilesystemScan',
+    payload: input.data,
   })
 }
 
 export function listSpecterCodeFilesystemTree(
   input: WithData<{ workspaceId: string; parentPath?: string | null }>,
 ) {
-  return specterClient.workspaceFilesystemTree(input.data)
+  return specterTransport.query({
+    type: 'workspaceFilesystemTree',
+    payload: input.data,
+  })
 }
 
 export function getSpecterCodeFilesystemStatus(
   input: WithData<{ workspaceId: string }>,
 ) {
-  return specterClient.workspaceFilesystemStatus(input.data)
+  return specterTransport.query({
+    type: 'workspaceFilesystemStatus',
+    payload: input.data,
+  })
 }
 
 export function requestSpecterCodeAgentRun(
   input: WithData<{
     workspaceId: string
+    runId: string
     postId?: string
     agentId: string
     agentName: string
     requestedBy: RequestedBy
   }>,
 ) {
-  return specterClient.requestAgentRun({
-    ...input.data,
-    runId: crypto.randomUUID(),
-  })
+  return runSpecterCommand({ type: 'requestAgentRun', payload: input.data })
 }
 
 export function listSpecterCodeWorkspaceAgentRuns(
   input: WithData<{ workspaceId: string }>,
 ) {
-  return specterClient.workspaceAgentRuns(input.data)
+  return specterTransport.query({
+    type: 'workspaceAgentRuns',
+    payload: input.data,
+  })
 }
 
 export function listSpecterCodeAgentRunTimeline(
   input: WithData<{ workspaceId: string; runId: string }>,
 ) {
-  return specterClient.agentRunTimeline(input.data)
+  return specterTransport.query({
+    type: 'agentRunTimeline',
+    payload: input.data,
+  })
 }

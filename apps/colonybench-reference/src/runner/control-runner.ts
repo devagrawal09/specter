@@ -30,6 +30,14 @@ export function summarizeColonyBenchRunFrame(
   }
 }
 
+async function commandAndWait(
+  app: ColonyBenchControlApp,
+  envelope: Parameters<ColonyBenchControlApp['command']>[0],
+) {
+  const execution = await app.command(envelope)
+  await execution.reactions
+}
+
 export async function runColonyBenchRecordedLoop<
   TMemory extends object = ColonyBenchBotMemory,
 >({
@@ -39,21 +47,33 @@ export async function runColonyBenchRecordedLoop<
 }: RunColonyBenchRecordedLoopOptions<TMemory>): Promise<
   RunColonyBenchLoopResult<TMemory>
 > {
-  await controlApp.createRun({
-    runId: loopOptions.runId,
-    name: name ?? loopOptions.runId,
+  await commandAndWait(controlApp, {
+    type: 'createRun',
+    payload: {
+      runId: loopOptions.runId,
+      name: name ?? loopOptions.runId,
+    },
   })
-  await controlApp.startRun({ runId: loopOptions.runId })
+  await commandAndWait(controlApp, {
+    type: 'startRun',
+    payload: { runId: loopOptions.runId },
+  })
 
   const iterator = streamColonyBenchLoop(loopOptions)[Symbol.asyncIterator]()
 
   while (true) {
     const next = await iterator.next()
     if (next.done) {
-      await controlApp.completeRun({ runId: loopOptions.runId })
+      await commandAndWait(controlApp, {
+        type: 'completeRun',
+        payload: { runId: loopOptions.runId },
+      })
       return next.value
     }
 
-    await controlApp.recordRunFrame(summarizeColonyBenchRunFrame(next.value))
+    await commandAndWait(controlApp, {
+      type: 'recordRunFrame',
+      payload: summarizeColonyBenchRunFrame(next.value),
+    })
   }
 }

@@ -2,7 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 const maxTitleLength = 120
 
-const addTodoSpec = createCommandSlice('addTodo')
+export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -34,5 +34,3 @@ const addTodoSpec = createCommandSlice('addTodo')
       },
     },
   )
-
-export default addTodoSpec

@@ -4,49 +4,69 @@ export type {
   EventDraft,
   PersistedEvent,
 } from './definition'
-export {
-  createEventDefinition,
-  event,
-  SpecterConformanceError,
-} from './definition'
-export { defineSpecterClient } from './client'
-export type { SpecterClient } from './client'
-export {
-  createCommandSlice,
-  createQuerySlice,
-  createReactionSlice,
-} from './definition'
-export { createSpecterApp, ReactionRunFailure } from './runtime'
-export type {
-  ReactionRunFailureDetail,
-  SpecterApp,
-  SpecterAppConfig,
-} from './runtime'
+export { createEventDefinition, SpecterConformanceError } from './definition'
 export type {
   ApplyEventDefinition,
   ApplyRegistration,
-  CommandRef,
-  CommandEnvelope,
   CommandDispatch,
+  CommandDispatchOptions,
+  CommandEnvelope,
   CommandInputOf,
+  CommandRef,
   CommandSlice,
-  CommandSliceSpec,
   ConformanceDiagnostic,
   EventForDefinition,
   QueryInputOf,
   QueryOutputOf,
+  QueryRef,
   QuerySlice,
-  QuerySliceSpec,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,
-  ReactionSliceSpec,
-  ScenarioEvent,
   SliceRegistration,
-  QueryRef,
 } from './definition'
+export {
+  createSpecterApp,
+  ReactionRunFailure,
+  specterErrorCodes,
+  SpecterCommandRejectedError,
+  SpecterError,
+  SpecterEventLogOrderError,
+  SpecterIdempotencyConflictError,
+  SpecterInfrastructureError,
+  SpecterInvalidCommandOptionsError,
+  SpecterInvalidInputError,
+  SpecterInvalidOutputError,
+  SpecterUnknownCommandError,
+  SpecterUnknownEventError,
+  SpecterUnknownQueryError,
+  SpecterVersionConflictError,
+} from './runtime'
+export type {
+  CommandExecution,
+  CommandExecutionOptions,
+  QuerySubscriptionOptions,
+  ReactionRunFailureDetail,
+  SpecterApp,
+  SpecterAppConfig,
+  SpecterAppConfigOf,
+  SpecterCommandEnvelope,
+  SpecterCommandType,
+  SpecterErrorCode,
+  SpecterObservation,
+  SpecterOperationKind,
+  SpecterObserver,
+  SpecterQueryEnvelope,
+  SpecterQueryResult,
+  SpecterQueryType,
+} from './runtime'
 export type {
   EventLogAdapter,
+  EventLogAppendOptions,
+  EventLogAppendResult,
+  EventLogCommit,
+  EventLogTransaction,
+  ReactionDeliveryContext,
   ReactionScheduler,
   RequestReactions,
   SliceStore,

@@ -1,5 +1,6 @@
 import { sqliteEventLog } from '../../db/specter-sqlite'
 import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
+import type { ReactionScheduler } from '@specter-ts/core'
 import agentRunTimeline from './agent-run-timeline/impl'
 import createPost from './create-post/impl'
 import createWorkspace from './create-workspace/impl'
@@ -65,9 +66,16 @@ export const threadplaneScaffoldRegistrations = [
 
 export const threadplaneSliceSkeletons = threadplaneScaffoldRegistrations
 
-export const threadplaneReferenceSpecterAppConfig = {
-  events: threadplaneEventDefinitions,
-  eventLog: sqliteEventLog,
-  schedule: memoryReactionScheduler,
-  slices: threadplaneScaffoldRegistrations,
-} as const
+export function createThreadplaneReferenceSpecterAppConfig(
+  schedule: ReactionScheduler = memoryReactionScheduler,
+) {
+  return {
+    events: threadplaneEventDefinitions,
+    eventLog: sqliteEventLog,
+    schedule,
+    slices: threadplaneScaffoldRegistrations,
+  } as const
+}
+
+export const threadplaneReferenceSpecterAppConfig =
+  createThreadplaneReferenceSpecterAppConfig()

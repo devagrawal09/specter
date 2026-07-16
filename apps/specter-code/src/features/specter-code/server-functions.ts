@@ -13,7 +13,13 @@ export const listSpecterCodeWorkspaces = createServerFn({
 })
 
 export const createSpecterCodeWorkspace = createServerFn({ method: 'POST' })
-  .inputValidator(z.object({ name: z.string() }))
+  .inputValidator(
+    z.object({
+      workspaceId: z.string(),
+      scanId: z.string(),
+      name: z.string(),
+    }),
+  )
   .handler(async ({ data }) => {
     const { createSpecterCodeWorkspaceOnServer } = await import(
       './server-runtime.server'
@@ -26,7 +32,7 @@ const sessionIdInput = z.object({ sessionId: z.string() })
 export const createSpecterCodeSession = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
-      sessionId: z.string().optional(),
+      sessionId: z.string(),
       workspaceId: z.string(),
       title: z.string(),
       directory: z.string(),
@@ -56,8 +62,8 @@ export const listSpecterCodeSessions = createServerFn({ method: 'GET' })
 export const submitSpecterCodePrompt = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
-      messageId: z.string().optional(),
-      runId: z.string().optional(),
+      messageId: z.string(),
+      runId: z.string(),
       sessionId: z.string(),
       workspaceId: z.string(),
       content: z.string(),
@@ -152,6 +158,7 @@ export const createSpecterCodePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      postId: z.string(),
       author: z.object({
         userId: z.string().optional(),
         displayName: z.string(),
@@ -170,6 +177,7 @@ export const replyToSpecterCodePost = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      replyId: z.string(),
       parentPostId: z.string(),
       author: z.object({
         userId: z.string().optional(),
@@ -200,6 +208,7 @@ export const requestSpecterCodeFilesystemScan = createServerFn({
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      scanId: z.string(),
       reason: z.enum(['workspaceCreated', 'userRequested', 'agentToolChanged']),
       requestedBy: z.discriminatedUnion('type', [
         z.object({
@@ -275,6 +284,7 @@ export const requestSpecterCodeAgentRun = createServerFn({ method: 'POST' })
   .inputValidator(
     z.object({
       workspaceId: z.string(),
+      runId: z.string(),
       postId: z.string().optional(),
       agentId: z.string(),
       agentName: z.string(),

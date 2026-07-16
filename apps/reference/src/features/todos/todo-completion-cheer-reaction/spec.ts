@@ -10,7 +10,9 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-const todoCompletionCheerSpec = createReactionSlice('todoCompletionCheer')
+export const todoCompletionCheerSpec = createReactionSlice(
+  'todoCompletionCheer',
+)
   .description(
     'Requests cheer creation when completion milestones are reached.',
   )
@@ -61,5 +63,3 @@ const todoCompletionCheerSpec = createReactionSlice('todoCompletionCheer')
       expect: [],
     },
   )
-
-export default todoCompletionCheerSpec

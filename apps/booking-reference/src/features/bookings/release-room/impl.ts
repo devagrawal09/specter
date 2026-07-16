@@ -34,6 +34,7 @@ const releaseRoom = spec
     await db
       .insert(releaseRoomSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {

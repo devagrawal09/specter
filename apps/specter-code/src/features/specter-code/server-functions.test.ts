@@ -45,19 +45,25 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
   await sqliteScenario(async () => {
     expect(await listSpecterCodeWorkspacesOnServer()).toEqual([])
 
-    await createSpecterCodeWorkspaceOnServer({ name: '  Design Lab  ' })
+    await createSpecterCodeWorkspaceOnServer({
+      workspaceId: 'workspace-main',
+      scanId: 'scan-initial',
+      name: '  Design Lab  ',
+    })
     expect(await listSpecterCodeWorkspacesOnServer()).toEqual([
       expect.objectContaining({ name: 'Design Lab' }),
     ])
 
     await createSpecterCodePostOnServer({
       workspaceId: 'workspace-main',
+      postId: 'post-main',
       author: { displayName: 'Ada Lovelace' },
       content: 'Can Specter inspect this?',
     })
     await replyToSpecterCodePostOnServer({
       workspaceId: 'workspace-main',
-      parentPostId: 'generated',
+      replyId: 'reply-main',
+      parentPostId: 'post-main',
       author: { displayName: 'Grace Hopper' },
       content: 'Please check src/index.ts',
     })
@@ -70,6 +76,7 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
 
     await requestSpecterCodeFilesystemScanOnServer({
       workspaceId: 'workspace-main',
+      scanId: 'scan-user',
       reason: 'userRequested',
       requestedBy: { type: 'user', displayName: 'Ada Lovelace' },
     })
@@ -78,7 +85,7 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
       await getSpecterCodeFilesystemStatusOnServer({
         workspaceId: 'workspace-main',
       }),
-    ).toMatchObject({ initialized: false, latestScan: expect.any(Object) })
+    ).toMatchObject({ initialized: true, latestScan: expect.any(Object) })
     expect(
       await listSpecterCodeFilesystemTreeOnServer({
         workspaceId: 'workspace-main',
@@ -92,7 +99,8 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
 
     await requestSpecterCodeAgentRunOnServer({
       workspaceId: 'workspace-main',
-      postId: 'generated',
+      runId: 'run-main',
+      postId: 'post-main',
       agentId: 'specter',
       agentName: 'Specter',
       requestedBy: { type: 'user', displayName: 'Ada Lovelace' },
@@ -123,7 +131,7 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
         expect.objectContaining({
           author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
           content: 'I found the issue.',
-          parentPostId: 'generated',
+          parentPostId: 'post-main',
           sourceRunId: runId,
         }),
       ]),
@@ -391,12 +399,16 @@ test('specterCode server functions preserve database state across app reopen', a
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
         const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
-        await app.createWorkspace({
-          workspaceId: 'workspace-durable',
-          scanId: 'scan-durable',
-          name: 'Durable Lab',
+        const execution = await app.command({
+          type: 'createWorkspace',
+          payload: {
+            workspaceId: 'workspace-durable',
+            scanId: 'scan-durable',
+            name: 'Durable Lab',
+          },
         })
-        await app.workspaceList({})
+        await execution.reactions
+        await app.query({ type: 'workspaceList', payload: {} })
       })
     } finally {
       firstSqlite.close()

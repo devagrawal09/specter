@@ -36,6 +36,7 @@ const checkInBooking = spec
     await db
       .insert(checkInBookingSqlBookings)
       .values({ ...payload, status: 'pending' })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {

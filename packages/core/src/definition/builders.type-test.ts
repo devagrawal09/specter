@@ -73,7 +73,7 @@ const commandImplementation = commandApplyStep
   })
   .handle(async (command, state) => {
     type _Command = Expect<Equal<typeof command, { amount: number }>>
-    type _ReadState = Expect<Equal<typeof state, { total: number }>>
+    type _ReadState = Expect<Equal<typeof state, Readonly<{ total: number }>>>
     const commandType: _Command = true
     const stateType: _ReadState = true
     void [commandType, stateType, state]

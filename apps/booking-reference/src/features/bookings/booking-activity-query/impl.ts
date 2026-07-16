@@ -17,6 +17,7 @@ import {
 
 export const bookingActivityRows = sqliteTable('booking_activity_rows', {
   id: integer('id').primaryKey({ autoIncrement: true }),
+  eventId: text('event_id').notNull().unique(),
   bookingId: text('booking_id'),
   roomId: text('room_id'),
   kind: text('kind').notNull(),
@@ -42,10 +43,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         roomId: payload.roomId,
         kind: 'roomCreated',
         message: `Room ${payload.name} opened on ${payload.location}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomRetiredEvent, async (event, db) => {
@@ -53,10 +56,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         roomId: payload.roomId,
         kind: 'roomRetired',
         message: `Room ${payload.roomId} was retired.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingRequestedEvent, async (event, db) => {
@@ -64,11 +69,13 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         roomId: payload.roomId,
         kind: 'bookingRequested',
         message: `${payload.requesterName} requested ${payload.purpose}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingApprovedEvent, async (event, db) => {
@@ -76,10 +83,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'bookingApproved',
         message: `${payload.approverName} approved booking ${payload.bookingId}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingRejectedEvent, async (event, db) => {
@@ -87,10 +96,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'bookingRejected',
         message: `${payload.approverName} rejected booking ${payload.bookingId}: ${payload.reason}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingRescheduledEvent, async (event, db) => {
@@ -98,11 +109,13 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         roomId: payload.roomId,
         kind: 'bookingRescheduled',
         message: `Booking ${payload.bookingId} moved to ${payload.startsAt}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingCanceledEvent, async (event, db) => {
@@ -110,10 +123,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'bookingCanceled',
         message: `Booking ${payload.bookingId} was canceled: ${payload.reason}.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(bookingCheckedInEvent, async (event, db) => {
@@ -121,10 +136,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'bookingCheckedIn',
         message: `${payload.checkedInByEmail} checked in.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(roomReleasedEvent, async (event, db) => {
@@ -132,10 +149,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'roomReleased',
         message: `${payload.releasedByEmail} released the room early.`,
       })
+      .onConflictDoNothing()
       .run()
   })
   .apply(approvalNotificationRecordedEvent, async (event, db) => {
@@ -143,10 +162,12 @@ const bookingActivityQuery = spec
     await db
       .insert(bookingActivityRows)
       .values({
+        eventId: event.id,
         bookingId: payload.bookingId,
         kind: 'approvalNotificationRecorded',
         message: payload.message,
       })
+      .onConflictDoNothing()
       .run()
   })
   .handle(async (_query, db) =>

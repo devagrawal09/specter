@@ -89,6 +89,7 @@ function createFilesystemModel() {
       await requestScanFn({
         data: {
           workspaceId,
+          scanId: crypto.randomUUID(),
           reason: 'userRequested',
           requestedBy: {
             type: 'user',

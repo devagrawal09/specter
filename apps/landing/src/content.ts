@@ -113,7 +113,9 @@ export const reactionSource = `const todoCompletionCheer = todoCompletionCheerSp
       payload: z.object({ milestone: z.number().int().positive() }),
     }),
   )
-  .plugin(async (dispatch) => async (output) => dispatch(output))
+  .plugin(async (dispatch) => async (output, context) =>
+    dispatch(output, { idempotencyKey: context.deliveryId }),
+  )
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, recordTodo)
   .apply(todoCompletionChangedEvent, async (event, db) => {
@@ -133,10 +135,13 @@ export const externalApiSource = `import type { ReactionPlugin } from '@specter-
 type WelcomeEmail = { to: string; template: 'welcome' }
 
 export const emailPlugin: ReactionPlugin<WelcomeEmail> =
-  async () => async (message) => {
+  async () => async (message, context) => {
     const response = await fetch('https://email.example/v1/messages', {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        'idempotency-key': context.deliveryId,
+      },
       body: JSON.stringify(message),
     })
 
@@ -155,12 +160,12 @@ export const adapters: Adapter[] = [
   {
     slot: 'Event Log',
     detail: 'The ordered source of accepted domain facts for one Specter App.',
-    swap: 'SQLite starter · custom Event Log adapter',
+    swap: '@specter-ts/sqlite · @specter-ts/postgres · custom adapter',
   },
   {
     slot: 'Slice Store',
     detail: 'Private state that each Slice catches up from relevant Events.',
-    swap: 'SQLite starter · custom Slice Store adapter',
+    swap: '@specter-ts/sqlite · @specter-ts/postgres · custom adapter',
   },
   {
     slot: 'Client boundary',

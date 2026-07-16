@@ -2058,12 +2058,18 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
     },
     async submitPrompt(input) {
       const runtime = await import('./server-runtime.server')
+      const messageId = input.messageId ?? randomUUID()
+      const runId = input.runId ?? randomUUID()
       liveSessionStatuses.set(input.sessionId, {
         sessionId: input.sessionId,
         status: 'running',
         updatedAt: new Date().toISOString(),
       })
-      return runtime.submitSpecterCodePromptOnServer(input)
+      return runtime.submitSpecterCodePromptOnServer({
+        ...input,
+        messageId,
+        runId,
+      })
     },
     async listSessionTranscript(input) {
       const runtime = await import('./server-runtime.server')
@@ -2107,7 +2113,8 @@ function createLiveRuntime(): SpecterCodeApiRuntime {
         return toOpenCodeMessageDetail(message)
       }
       return runtime.submitSpecterCodePromptOnServer({
-        messageId: input.messageId,
+        messageId: input.messageId ?? randomUUID(),
+        runId: randomUUID(),
         sessionId: input.sessionId,
         workspaceId,
         content: input.content,

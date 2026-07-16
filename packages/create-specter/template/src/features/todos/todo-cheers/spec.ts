@@ -1,6 +1,6 @@
 import { createQuerySlice, event } from '@specter-ts/core/spec'
 
-const todoCheersSpec = createQuerySlice('todoCheers')
+export const todoCheersSpec = createQuerySlice('todoCheers')
   .description('Shows the latest todo cheer.')
   .scenarios(
     {
@@ -30,5 +30,3 @@ const todoCheersSpec = createQuerySlice('todoCheers')
       },
     },
   )
-
-export default todoCheersSpec

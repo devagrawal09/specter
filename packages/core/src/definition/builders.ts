@@ -61,7 +61,7 @@ type CommandStoreStep<
   TCommand,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
 > = {
-  store: <TWriteState, TReadState = TWriteState>(
+  store: <TWriteState, TReadState = Readonly<TWriteState>>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
   ) => CommandApplyStep<
     TName,
@@ -180,7 +180,7 @@ type QueryStoreStep<
   TOutput,
   TScenarios extends NonEmptyScenarios<QueryScenario>,
 > = {
-  store: <TWriteState, TReadState = TWriteState>(
+  store: <TWriteState, TReadState = Readonly<TWriteState>>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
   ) => QueryApplyStep<
     TName,
@@ -287,7 +287,7 @@ type ReactionStoreStep<
   TOutput,
   TScenarios extends NonEmptyScenarios<ReactionScenario>,
 > = {
-  store: <TWriteState, TReadState = TWriteState>(
+  store: <TWriteState, TReadState = Readonly<TWriteState>>(
     store: SliceStoreAdapter<TWriteState, TReadState>,
   ) => ReactionApplyStep<
     TName,
@@ -375,7 +375,7 @@ function createCommandSpec<
   return Object.freeze({
     ...specification,
     inputSchema: (schema?: StandardSchemaV1) => ({
-      store: <TWriteState, TReadState = TWriteState>(
+      store: <TWriteState, TReadState = Readonly<TWriteState>>(
         store: SliceStoreAdapter<TWriteState, TReadState>,
       ) =>
         createCommandApplyStep(specification, schema, store, Object.freeze([])),
@@ -463,7 +463,7 @@ function createQuerySpec<
     ...specification,
     inputSchema: (inputSchema?: StandardSchemaV1) => ({
       outputSchema: (outputSchema?: StandardSchemaV1) => ({
-        store: <TWriteState, TReadState = TWriteState>(
+        store: <TWriteState, TReadState = Readonly<TWriteState>>(
           store: SliceStoreAdapter<TWriteState, TReadState>,
         ) =>
           createQueryApplyStep(
@@ -559,7 +559,7 @@ function createReactionSpec<
     ...specification,
     outputSchema: (outputSchema?: StandardSchemaV1) => ({
       plugin: (plugin: ReactionPlugin) => ({
-        store: <TWriteState, TReadState = TWriteState>(
+        store: <TWriteState, TReadState = Readonly<TWriteState>>(
           store: SliceStoreAdapter<TWriteState, TReadState>,
         ) =>
           createReactionApplyStep(

@@ -1,5 +1,3 @@
-import type { CommandEnvelope } from './slices'
-
 const scenarioEventBrand: unique symbol = Symbol('ScenarioEvent')
 
 export type ScenarioEvent<TType extends string = string, TPayload = unknown> = {
@@ -63,7 +61,7 @@ export type QueryScenario<TWhen = unknown, TExpect = unknown> = {
   readonly expect: TExpect
 }
 
-export type ReactionScenario<TPayload = CommandEnvelope> = {
+export type ReactionScenario<TPayload = unknown> = {
   readonly description: string
   readonly given: readonly ScenarioEvent[]
   readonly expect: readonly TPayload[]

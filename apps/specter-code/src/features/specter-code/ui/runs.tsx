@@ -14,7 +14,6 @@ import {
   createSpecterCodePost,
   listSpecterCodeAgentRunTimeline,
   listSpecterCodeWorkspaceAgentRuns,
-  listSpecterCodeWorkspaceChat,
   requestSpecterCodeAgentRun,
 } from '../client-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
@@ -26,7 +25,6 @@ import {
   formatCount,
   runStatusTone,
   shortId,
-  wait,
   type ProviderProps,
 } from './shared/view-helpers'
 
@@ -35,7 +33,6 @@ function createRunsModel() {
   const { activeWorkspaceId, activeRunId, setActiveRunId } =
     useSpecterCodeSelection()
 
-  const listChatFn = listSpecterCodeWorkspaceChat
   const createPostFn = createSpecterCodePost
   const requestRunFn = requestSpecterCodeAgentRun
   const listRunsFn = listSpecterCodeWorkspaceAgentRuns
@@ -93,47 +90,26 @@ function createRunsModel() {
       .join(''),
   )
 
-  async function findLatestPostIdByContent(
-    workspaceId: string,
-    content: string,
-  ) {
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const latestChat = await listChatFn({ data: { workspaceId } })
-      const post = [...(latestChat ?? [])]
-        .reverse()
-        .find(
-          (item) =>
-            item.content === content &&
-            item.author.displayName === 'SpecterCode Demo',
-        )
-
-      if (post) return post.id
-      await wait(50)
-    }
-
-    return undefined
-  }
-
   async function simulateAgentRun() {
     const workspaceId = activeWorkspaceId()
     if (!workspaceId || isRequestingRun()) return
     setIsRequestingRun(true)
     const requestContent = 'Simulated agent request'
+    const postId = crypto.randomUUID()
+    const runId = crypto.randomUUID()
     try {
       await createPostFn({
         data: {
           workspaceId,
+          postId,
           author: { displayName: 'SpecterCode Demo' },
           content: requestContent,
         },
       })
-      const postId = await findLatestPostIdByContent(
-        workspaceId,
-        requestContent,
-      )
       await requestRunFn({
         data: {
           workspaceId,
+          runId,
           postId,
           agentId: 'simulated-agent',
           agentName: 'Simulated Agent',
@@ -143,11 +119,9 @@ function createRunsModel() {
           },
         },
       })
-      const refreshedRuns = await listRunsFn({ data: { workspaceId } })
       await refetchRuns()
-      const nextRun = refreshedRuns.at(-1)
-      if (nextRun) void startTransition(() => setActiveRunId(nextRun.runId))
-      if (nextRun) await refetchTimeline()
+      void startTransition(() => setActiveRunId(runId))
+      await refetchTimeline()
     } finally {
       setIsRequestingRun(false)
     }

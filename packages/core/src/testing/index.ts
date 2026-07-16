@@ -1,3 +1,12 @@
+export { eventsFor } from './events-for'
+export {
+  analyzeEventPropagation,
+  formatEventPropagation,
+  type EventApplyReference,
+  type EventPropagation,
+  type EventPropagationInput,
+  type EventScenarioReference,
+} from './event-propagation'
 export {
   replay,
   testSliceImplementation,

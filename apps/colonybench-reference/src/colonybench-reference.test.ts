@@ -16,14 +16,21 @@ test('control app records run creation in detail and list queries', async () => 
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
-  await controlApp.createRun({ runId: 'run-1', name: 'Baseline run' })
+  await controlApp.command({
+    type: 'createRun',
+    payload: { runId: 'run-1', name: 'Baseline run' },
+  })
 
-  await expect(controlApp.runDetail({ runId: 'run-1' })).resolves.toEqual({
+  await expect(
+    controlApp.query({ type: 'runDetail', payload: { runId: 'run-1' } }),
+  ).resolves.toEqual({
     runId: 'run-1',
     name: 'Baseline run',
     status: 'created',
   })
-  await expect(controlApp.runList({})).resolves.toEqual([
+  await expect(
+    controlApp.query({ type: 'runList', payload: {} }),
+  ).resolves.toEqual([
     { runId: 'run-1', name: 'Baseline run', status: 'created' },
   ])
 })
@@ -37,16 +44,24 @@ test('startRun bridge initializes the separate in-memory simulation app', async 
     bridge: connectControlRunStartedToSimulation(simulationApp),
   })
 
-  await controlApp.createRun({ runId: 'run-2', name: 'Bridge run' })
-  await controlApp.startRun({ runId: 'run-2' })
+  await controlApp.command({
+    type: 'createRun',
+    payload: { runId: 'run-2', name: 'Bridge run' },
+  })
+  await controlApp.command({ type: 'startRun', payload: { runId: 'run-2' } })
 
-  await expect(controlApp.runDetail({ runId: 'run-2' })).resolves.toEqual({
+  await expect(
+    controlApp.query({ type: 'runDetail', payload: { runId: 'run-2' } }),
+  ).resolves.toEqual({
     runId: 'run-2',
     name: 'Bridge run',
     status: 'started',
   })
   await expect(
-    simulationApp.liveSimulationStatus({ runId: 'run-2' }),
+    simulationApp.query({
+      type: 'liveSimulationStatus',
+      payload: { runId: 'run-2' },
+    }),
   ).resolves.toEqual({
     runId: 'run-2',
     initialized: true,
@@ -62,27 +77,46 @@ test('control and simulation apps expose separate command/query surfaces', async
     adapters: createMemoryColonyBenchSimulationAdapters(),
   })
 
-  expect('createRun' in controlApp).toBe(true)
-  expect('runList' in controlApp).toBe(true)
-  expect('initializeSimulation' in controlApp).toBe(false)
-  expect('liveSimulationStatus' in controlApp).toBe(false)
-
-  expect('initializeSimulation' in simulationApp).toBe(true)
-  expect('liveSimulationStatus' in simulationApp).toBe(true)
-  expect('createRun' in simulationApp).toBe(false)
-  expect('runList' in simulationApp).toBe(false)
+  expect(Object.keys(controlApp).sort()).toEqual([
+    'command',
+    'query',
+    'subscribe',
+  ])
+  expect(Object.keys(simulationApp).sort()).toEqual([
+    'command',
+    'query',
+    'subscribe',
+  ])
+  await expect(
+    controlApp.command({
+      type: 'initializeSimulation',
+      payload: { runId: 'wrong-surface' },
+    } as never),
+  ).rejects.toMatchObject({ code: 'SPECTER_UNKNOWN_COMMAND' })
+  await expect(
+    simulationApp.query({ type: 'runList', payload: {} } as never),
+  ).rejects.toMatchObject({ code: 'SPECTER_UNKNOWN_QUERY' })
 })
 
 test('control app records runner frames for live timeline subscriptions', async () => {
   const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
-  await controlApp.createRun({ runId: 'timeline-run', name: 'Timeline run' })
-  await controlApp.startRun({ runId: 'timeline-run' })
+  await controlApp.command({
+    type: 'createRun',
+    payload: { runId: 'timeline-run', name: 'Timeline run' },
+  })
+  await controlApp.command({
+    type: 'startRun',
+    payload: { runId: 'timeline-run' },
+  })
 
-  const timeline = controlApp.subscribe
-    .runTimeline({
-      runId: 'timeline-run',
+  const timeline = controlApp
+    .subscribe({
+      type: 'runTimeline',
+      payload: {
+        runId: 'timeline-run',
+      },
     })
     [Symbol.asyncIterator]()
   await expect(timeline.next()).resolves.toEqual({ done: false, value: [] })
@@ -96,16 +130,20 @@ test('control app records runner frames for live timeline subscriptions', async 
   expect(initialFrame.done).toBe(false)
   if (initialFrame.done) throw new Error('expected initial runner frame')
 
-  await controlApp.recordRunFrame({
-    runId: 'timeline-run',
-    tick: initialFrame.value.tick,
-    score: initialFrame.value.snapshot.score,
-    workerCount: initialFrame.value.snapshot.workers.length,
-    baseLevel: initialFrame.value.snapshot.base?.level ?? 0,
-    baseEnergy: initialFrame.value.snapshot.base?.energy ?? 0,
-    commandCount: initialFrame.value.commands.length,
-    eventTypes: initialFrame.value.events.map((event) => event.type),
+  const firstFrame = await controlApp.command({
+    type: 'recordRunFrame',
+    payload: {
+      runId: 'timeline-run',
+      tick: initialFrame.value.tick,
+      score: initialFrame.value.snapshot.score,
+      workerCount: initialFrame.value.snapshot.workers.length,
+      baseLevel: initialFrame.value.snapshot.base?.level ?? 0,
+      baseEnergy: initialFrame.value.snapshot.base?.energy ?? 0,
+      commandCount: initialFrame.value.commands.length,
+      eventTypes: initialFrame.value.events.map((event) => event.type),
+    },
   })
+  await firstFrame.reactions
 
   await expect(timeline.next()).resolves.toEqual({
     done: false,
@@ -127,16 +165,20 @@ test('control app records runner frames for live timeline subscriptions', async 
   expect(tickFrame.done).toBe(false)
   if (tickFrame.done) throw new Error('expected tick runner frame')
 
-  await controlApp.recordRunFrame({
-    runId: 'timeline-run',
-    tick: tickFrame.value.tick,
-    score: tickFrame.value.snapshot.score,
-    workerCount: tickFrame.value.snapshot.workers.length,
-    baseLevel: tickFrame.value.snapshot.base?.level ?? 0,
-    baseEnergy: tickFrame.value.snapshot.base?.energy ?? 0,
-    commandCount: tickFrame.value.commands.length,
-    eventTypes: tickFrame.value.events.map((event) => event.type),
+  const tickExecution = await controlApp.command({
+    type: 'recordRunFrame',
+    payload: {
+      runId: 'timeline-run',
+      tick: tickFrame.value.tick,
+      score: tickFrame.value.snapshot.score,
+      workerCount: tickFrame.value.snapshot.workers.length,
+      baseLevel: tickFrame.value.snapshot.base?.level ?? 0,
+      baseEnergy: tickFrame.value.snapshot.base?.energy ?? 0,
+      commandCount: tickFrame.value.commands.length,
+      eventTypes: tickFrame.value.events.map((event) => event.type),
+    },
   })
+  await tickExecution.reactions
 
   const nextTimeline = await timeline.next()
   expect(nextTimeline.done).toBe(false)
@@ -159,12 +201,23 @@ test('control app exposes live run overview summaries for UI polling', async () 
   const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
-  await controlApp.createRun({ runId: 'overview-run', name: 'Overview run' })
-  await controlApp.startRun({ runId: 'overview-run' })
+  const created = await controlApp.command({
+    type: 'createRun',
+    payload: { runId: 'overview-run', name: 'Overview run' },
+  })
+  await created.reactions
+  const started = await controlApp.command({
+    type: 'startRun',
+    payload: { runId: 'overview-run' },
+  })
+  await started.reactions
 
-  const overview = controlApp.subscribe
-    .runOverview({
-      runId: 'overview-run',
+  const overview = controlApp
+    .subscribe({
+      type: 'runOverview',
+      payload: {
+        runId: 'overview-run',
+      },
     })
     [Symbol.asyncIterator]()
 
@@ -177,26 +230,34 @@ test('control app exposes live run overview summaries for UI polling', async () 
     },
   })
 
-  await controlApp.recordRunFrame({
-    runId: 'overview-run',
-    tick: 0,
-    score: 0,
-    workerCount: 1,
-    baseLevel: 1,
-    baseEnergy: 0,
-    commandCount: 0,
-    eventTypes: ['colonybench-simulation-initialized'],
+  const firstFrame = await controlApp.command({
+    type: 'recordRunFrame',
+    payload: {
+      runId: 'overview-run',
+      tick: 0,
+      score: 0,
+      workerCount: 1,
+      baseLevel: 1,
+      baseEnergy: 0,
+      commandCount: 0,
+      eventTypes: ['colonybench-simulation-initialized'],
+    },
   })
-  await controlApp.recordRunFrame({
-    runId: 'overview-run',
-    tick: 1,
-    score: 100,
-    workerCount: 2,
-    baseLevel: 2,
-    baseEnergy: 5,
-    commandCount: 3,
-    eventTypes: ['colonybench-tick-advanced'],
+  await firstFrame.reactions
+  const secondFrame = await controlApp.command({
+    type: 'recordRunFrame',
+    payload: {
+      runId: 'overview-run',
+      tick: 1,
+      score: 100,
+      workerCount: 2,
+      baseLevel: 2,
+      baseEnergy: 5,
+      commandCount: 3,
+      eventTypes: ['colonybench-tick-advanced'],
+    },
   })
+  await secondFrame.reactions
 
   await expect(overview.next()).resolves.toEqual({
     done: false,
@@ -216,11 +277,17 @@ test('control app exposes live run overview summaries for UI polling', async () 
     },
   })
 
-  const firstQuery = await controlApp.runOverview({ runId: 'overview-run' })
+  const firstQuery = await controlApp.query({
+    type: 'runOverview',
+    payload: { runId: 'overview-run' },
+  })
   firstQuery.latestFrame?.eventTypes.push('mutated')
 
   await expect(
-    controlApp.runOverview({ runId: 'overview-run' }),
+    controlApp.query({
+      type: 'runOverview',
+      payload: { runId: 'overview-run' },
+    }),
   ).resolves.toEqual({
     run: { runId: 'overview-run', name: 'Overview run', status: 'started' },
     frameCount: 2,
@@ -243,12 +310,21 @@ test('control app publishes completed run status for live UI overviews', async (
   const controlApp = await createColonyBenchControlApp({
     adapters: createMemoryColonyBenchControlAdapters(),
   })
-  await controlApp.createRun({ runId: 'completed-run', name: 'Completed run' })
-  await controlApp.startRun({ runId: 'completed-run' })
+  await controlApp.command({
+    type: 'createRun',
+    payload: { runId: 'completed-run', name: 'Completed run' },
+  })
+  await controlApp.command({
+    type: 'startRun',
+    payload: { runId: 'completed-run' },
+  })
 
-  const overview = controlApp.subscribe
-    .runOverview({
-      runId: 'completed-run',
+  const overview = controlApp
+    .subscribe({
+      type: 'runOverview',
+      payload: {
+        runId: 'completed-run',
+      },
     })
     [Symbol.asyncIterator]()
   await expect(overview.next()).resolves.toEqual({
@@ -260,17 +336,25 @@ test('control app publishes completed run status for live UI overviews', async (
     },
   })
 
-  await controlApp.recordRunFrame({
-    runId: 'completed-run',
-    tick: 3,
-    score: 100,
-    workerCount: 2,
-    baseLevel: 2,
-    baseEnergy: 0,
-    commandCount: 1,
-    eventTypes: ['colonybench-tick-advanced'],
+  const recordedFrame = await controlApp.command({
+    type: 'recordRunFrame',
+    payload: {
+      runId: 'completed-run',
+      tick: 3,
+      score: 100,
+      workerCount: 2,
+      baseLevel: 2,
+      baseEnergy: 0,
+      commandCount: 1,
+      eventTypes: ['colonybench-tick-advanced'],
+    },
   })
-  await controlApp.completeRun({ runId: 'completed-run' })
+  await recordedFrame.reactions
+  const completed = await controlApp.command({
+    type: 'completeRun',
+    payload: { runId: 'completed-run' },
+  })
+  await completed.reactions
 
   await expect(overview.next()).resolves.toEqual({
     done: false,
@@ -301,18 +385,33 @@ test('control app rejects restarting completed runs', async () => {
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
-  await controlApp.createRun({
-    runId: 'restart-completed-run',
-    name: 'Restart guard',
+  await controlApp.command({
+    type: 'createRun',
+    payload: {
+      runId: 'restart-completed-run',
+      name: 'Restart guard',
+    },
   })
-  await controlApp.startRun({ runId: 'restart-completed-run' })
-  await controlApp.completeRun({ runId: 'restart-completed-run' })
+  await controlApp.command({
+    type: 'startRun',
+    payload: { runId: 'restart-completed-run' },
+  })
+  await controlApp.command({
+    type: 'completeRun',
+    payload: { runId: 'restart-completed-run' },
+  })
 
   await expect(
-    controlApp.startRun({ runId: 'restart-completed-run' }),
+    controlApp.command({
+      type: 'startRun',
+      payload: { runId: 'restart-completed-run' },
+    }),
   ).rejects.toThrow('Run already completed: restart-completed-run')
   await expect(
-    controlApp.runDetail({ runId: 'restart-completed-run' }),
+    controlApp.query({
+      type: 'runDetail',
+      payload: { runId: 'restart-completed-run' },
+    }),
   ).resolves.toEqual({
     runId: 'restart-completed-run',
     name: 'Restart guard',
@@ -325,16 +424,25 @@ test('control app rejects completing runs before they start', async () => {
     adapters: createMemoryColonyBenchControlAdapters(),
   })
 
-  await controlApp.createRun({
-    runId: 'unstarted-complete-run',
-    name: 'Complete guard',
+  await controlApp.command({
+    type: 'createRun',
+    payload: {
+      runId: 'unstarted-complete-run',
+      name: 'Complete guard',
+    },
   })
 
   await expect(
-    controlApp.completeRun({ runId: 'unstarted-complete-run' }),
+    controlApp.command({
+      type: 'completeRun',
+      payload: { runId: 'unstarted-complete-run' },
+    }),
   ).rejects.toThrow('Run not started: unstarted-complete-run')
   await expect(
-    controlApp.runDetail({ runId: 'unstarted-complete-run' }),
+    controlApp.query({
+      type: 'runDetail',
+      payload: { runId: 'unstarted-complete-run' },
+    }),
   ).resolves.toEqual({
     runId: 'unstarted-complete-run',
     name: 'Complete guard',
@@ -346,9 +454,12 @@ test('simulation app supports liveSimulationStatus subscriptions', async () => {
   const simulationApp = await createColonyBenchSimulationApp({
     adapters: createMemoryColonyBenchSimulationAdapters(),
   })
-  const subscription = simulationApp.subscribe
-    .liveSimulationStatus({
-      runId: 'run-3',
+  const subscription = simulationApp
+    .subscribe({
+      type: 'liveSimulationStatus',
+      payload: {
+        runId: 'run-3',
+      },
     })
     [Symbol.asyncIterator]()
 
@@ -357,7 +468,10 @@ test('simulation app supports liveSimulationStatus subscriptions', async () => {
     value: { runId: 'run-3', initialized: false, status: 'missing' },
   })
 
-  await simulationApp.initializeSimulation({ runId: 'run-3' })
+  await simulationApp.command({
+    type: 'initializeSimulation',
+    payload: { runId: 'run-3' },
+  })
 
   await expect(subscription.next()).resolves.toEqual({
     done: false,

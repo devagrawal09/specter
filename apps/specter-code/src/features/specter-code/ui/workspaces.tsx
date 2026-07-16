@@ -13,7 +13,6 @@ import {
 import {
   createSpecterCodeWorkspace,
   listSpecterCodeWorkspaces,
-  requestSpecterCodeFilesystemScan,
 } from '../client-functions'
 import { createPollingResource } from '../../../lib/create-polling-resource'
 import { useSpecterCodeSelection } from './selection-context'
@@ -39,7 +38,6 @@ function createWorkspaceModel() {
 
   const listWorkspacesFn = listSpecterCodeWorkspaces
   const createWorkspaceFn = createSpecterCodeWorkspace
-  const requestScanFn = requestSpecterCodeFilesystemScan
 
   const [workspaces, { refetch: refetchWorkspaces }] = createPollingResource(
     () => true,
@@ -89,24 +87,16 @@ function createWorkspaceModel() {
     const name = workspaceDraft().trim()
     if (!name || isCreatingWorkspace()) return
     setIsCreatingWorkspace(true)
+    const workspaceId = crypto.randomUUID()
+    const scanId = crypto.randomUUID()
     try {
-      const created = await createWorkspaceFn({ data: { name } })
+      await createWorkspaceFn({ data: { workspaceId, scanId, name } })
       await refetchWorkspaces()
-      const newest = created.at(-1)
-      if (newest) {
-        void startTransition(() => {
-          selectWorkspace(newest.id)
-          setWorkspaceFilter('')
-        })
-        await requestScanFn({
-          data: {
-            workspaceId: newest.id,
-            reason: 'workspaceCreated',
-            requestedBy: { type: 'system' },
-          },
-        })
-        setWorkspaceDraft('')
-      }
+      void startTransition(() => {
+        selectWorkspace(workspaceId)
+        setWorkspaceFilter('')
+      })
+      setWorkspaceDraft('')
     } finally {
       setIsCreatingWorkspace(false)
     }

@@ -5,7 +5,7 @@ import {
   implementedOpenCodeApiRoutes,
   type SpecterCodeApiRuntime,
 } from './api-routes'
-import { type RouteSpec } from './domain/openapi-compat'
+import type { RouteSpec } from './domain/openapi-compat'
 
 async function json(response: Response) {
   return response.json() as Promise<unknown>
