@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{CommandScenario, CommandSpec, command, event};
 
 pub(super) fn start_deployment_spec() -> CommandSpec {
-    command("start-deployment")
+    command("startDeployment")
         .description("Starts an approved deployment exactly once.")
         .scenarios(vec![
             CommandScenario::accepted(

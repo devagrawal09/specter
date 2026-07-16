@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{CommandScenario, CommandSpec, command, event};
 
 pub(super) fn open_wallet_spec() -> CommandSpec {
-    command("open-wallet")
+    command("openWallet")
         .description("Opens a wallet with a caller-provided domain ID.")
         .scenarios(vec![CommandScenario::accepted(
             "Opens an empty wallet.",

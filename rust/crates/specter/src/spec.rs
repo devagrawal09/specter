@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::marker::PhantomData;
 
 use crate::{CommandScenario, QueryScenario, ReactionScenario, Result};
 
@@ -32,6 +33,44 @@ impl QueryEnvelope {
             r#type: query_type.into(),
             payload: serde_json::to_value(payload)?,
         })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CommandRef<I> {
+    name: &'static str,
+    input: PhantomData<fn(I)>,
+}
+
+impl<I> CommandRef<I> {
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            input: PhantomData,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        self.name
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct QueryRef<I, O> {
+    name: &'static str,
+    types: PhantomData<fn(I) -> O>,
+}
+
+impl<I, O> QueryRef<I, O> {
+    pub const fn new(name: &'static str) -> Self {
+        Self {
+            name,
+            types: PhantomData,
+        }
+    }
+
+    pub const fn name(self) -> &'static str {
+        self.name
     }
 }
 
@@ -165,4 +204,5 @@ pub(crate) struct SliceMetadata {
     pub description: String,
     pub scenarios: Vec<ScenarioMetadata>,
     pub apply_event_types: Vec<&'static str>,
+    pub apply_event_rust_types: Vec<std::any::TypeId>,
 }

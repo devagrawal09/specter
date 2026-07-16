@@ -35,18 +35,24 @@ async fn main() -> Result<()> {
             {
                 let todo_id = format!("todo-{}", index + 1);
                 app.command_typed(
-                    "add-todo",
+                    "addTodo",
                     AddTodo {
                         todo_id: todo_id.clone(),
                         title: title.into(),
                     },
                 )
+                .await?
+                .reactions
+                .wait()
                 .await?;
-                app.command_typed("complete-todo", CompleteTodo { todo_id })
+                app.command_typed("completeTodo", CompleteTodo { todo_id })
+                    .await?
+                    .reactions
+                    .wait()
                     .await?;
             }
 
-            let todos: Vec<TodoView> = app.query_typed("list-todos", ListTodos).await?;
+            let todos: Vec<TodoView> = app.query_typed("listTodos", ListTodos).await?;
             println!("Todos:\n{}", serde_json::to_string_pretty(&todos)?);
             let history: Vec<_> = app
                 .events()

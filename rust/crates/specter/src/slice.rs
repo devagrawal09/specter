@@ -13,19 +13,24 @@ use tokio::sync::Mutex;
 
 use crate::{
     CommandEnvelope, CommandSpec, ConformanceDiagnostic, DomainEvent, EventDefinition, EventDraft,
-    PersistedEvent, QuerySpec, ReactionSpec, Result, ScenarioFailure, SpecterError,
+    PersistedEvent, QuerySpec, ReactionDeliveryContext, ReactionSpec, Result, ScenarioFailure,
+    SpecterError,
     spec::{ScenarioMetadata, SliceMetadata},
 };
 
 type BoxFuture<T> = Pin<Box<dyn Future<Output = Result<T>> + Send + 'static>>;
+pub(crate) type CommandDispatch =
+    Arc<dyn Fn(CommandEnvelope, String) -> BoxFuture<()> + Send + Sync>;
 type CommandHandler<I, S> = dyn Fn(I, S) -> BoxFuture<Vec<EventDraft>> + Send + Sync;
 type QueryHandler<I, S> = dyn Fn(I, S) -> BoxFuture<Value> + Send + Sync;
 type ReactionHandler<S> = dyn Fn(S) -> BoxFuture<Option<Value>> + Send + Sync;
-type ReactionExecutor = dyn Fn(Value) -> BoxFuture<Option<CommandEnvelope>> + Send + Sync;
+type ReactionExecutor =
+    dyn Fn(Value, ReactionDeliveryContext) -> BoxFuture<Option<CommandEnvelope>> + Send + Sync;
 type ApplyFn<S> = dyn Fn(Value, &mut S) -> Result<()> + Send + Sync;
 
 struct ApplyHandler<S> {
     event_type: &'static str,
+    rust_type: std::any::TypeId,
     handle: Arc<ApplyFn<S>>,
 }
 
@@ -33,6 +38,7 @@ impl<S> Clone for ApplyHandler<S> {
     fn clone(&self) -> Self {
         Self {
             event_type: self.event_type,
+            rust_type: self.rust_type,
             handle: Arc::clone(&self.handle),
         }
     }
@@ -271,15 +277,15 @@ where
 {
     pub fn executor<F, Fut>(self, executor: F) -> ReactionStateStep<O>
     where
-        F: Fn(O) -> Fut + Send + Sync + 'static,
+        F: Fn(O, ReactionDeliveryContext) -> Fut + Send + Sync + 'static,
         Fut: Future<Output = Result<Option<CommandEnvelope>>> + Send + 'static,
     {
         ReactionStateStep {
             spec: self.spec,
-            executor: Arc::new(move |value| {
+            executor: Arc::new(move |value, context| {
                 let decoded = serde_json::from_value(value);
                 match decoded {
-                    Ok(output) => Box::pin(executor(output)),
+                    Ok(output) => Box::pin(executor(output, context)),
                     Err(error) => {
                         Box::pin(async move { Err(SpecterError::Serialization(error.to_string())) })
                     }
@@ -365,6 +371,7 @@ where
 {
     ApplyHandler {
         event_type: E::TYPE,
+        rust_type: std::any::TypeId::of::<E>(),
         handle: Arc::new(move |payload, state| {
             let event: E = serde_json::from_value(payload).map_err(|error| {
                 SpecterError::Serialization(format!(
@@ -441,6 +448,8 @@ fn invalid_example(
 pub(crate) trait DynCommandSlice: Send + Sync {
     fn metadata(&self) -> SliceMetadata;
     fn allowed_event_types(&self) -> HashSet<String>;
+    fn applied_event_types(&self) -> Vec<String>;
+    async fn last_applied_order(&self) -> u64;
     fn validate_examples(
         &self,
         event_definitions: &HashMap<String, EventDefinition>,
@@ -470,6 +479,7 @@ where
                 })
                 .collect(),
             apply_event_types: self.apply.iter().map(|apply| apply.event_type).collect(),
+            apply_event_rust_types: self.apply.iter().map(|apply| apply.rust_type).collect(),
         }
     }
 
@@ -480,6 +490,17 @@ where
             .flat_map(|scenario| scenario.expect.iter())
             .map(|event| event.event_type.clone())
             .collect()
+    }
+
+    fn applied_event_types(&self) -> Vec<String> {
+        self.apply
+            .iter()
+            .map(|apply| apply.event_type.to_owned())
+            .collect()
+    }
+
+    async fn last_applied_order(&self) -> u64 {
+        self.data.lock().await.last_applied_order
     }
 
     fn validate_examples(
@@ -607,6 +628,8 @@ where
 #[async_trait]
 pub(crate) trait DynQuerySlice: Send + Sync {
     fn metadata(&self) -> SliceMetadata;
+    fn applied_event_types(&self) -> Vec<String>;
+    async fn last_applied_order(&self) -> u64;
     fn validate_examples(
         &self,
         event_definitions: &HashMap<String, EventDefinition>,
@@ -637,7 +660,19 @@ where
                 })
                 .collect(),
             apply_event_types: self.apply.iter().map(|apply| apply.event_type).collect(),
+            apply_event_rust_types: self.apply.iter().map(|apply| apply.rust_type).collect(),
         }
+    }
+
+    fn applied_event_types(&self) -> Vec<String> {
+        self.apply
+            .iter()
+            .map(|apply| apply.event_type.to_owned())
+            .collect()
+    }
+
+    async fn last_applied_order(&self) -> u64 {
+        self.data.lock().await.last_applied_order
     }
 
     fn validate_examples(
@@ -737,11 +772,18 @@ where
 #[async_trait]
 pub(crate) trait DynReactionSlice: Send + Sync {
     fn metadata(&self) -> SliceMetadata;
+    fn applied_event_types(&self) -> Vec<String>;
+    async fn last_applied_order(&self) -> u64;
     fn validate_examples(
         &self,
         event_definitions: &HashMap<String, EventDefinition>,
     ) -> Vec<ConformanceDiagnostic>;
-    async fn evaluate(&self, events: &[PersistedEvent]) -> Result<Option<CommandEnvelope>>;
+    async fn evaluate(
+        &self,
+        events: &[PersistedEvent],
+        context: ReactionDeliveryContext,
+        dispatch: CommandDispatch,
+    ) -> Result<bool>;
     async fn scenario_failures(&self) -> Vec<ScenarioFailure>;
 }
 
@@ -766,7 +808,19 @@ where
                 })
                 .collect(),
             apply_event_types: self.apply.iter().map(|apply| apply.event_type).collect(),
+            apply_event_rust_types: self.apply.iter().map(|apply| apply.rust_type).collect(),
         }
+    }
+
+    fn applied_event_types(&self) -> Vec<String> {
+        self.apply
+            .iter()
+            .map(|apply| apply.event_type.to_owned())
+            .collect()
+    }
+
+    async fn last_applied_order(&self) -> u64 {
+        self.data.lock().await.last_applied_order
     }
 
     fn validate_examples(
@@ -793,9 +847,14 @@ where
             .collect()
     }
 
-    async fn evaluate(&self, events: &[PersistedEvent]) -> Result<Option<CommandEnvelope>> {
-        let state = {
-            let mut data = self.data.lock().await;
+    async fn evaluate(
+        &self,
+        events: &[PersistedEvent],
+        context: ReactionDeliveryContext,
+        dispatch: CommandDispatch,
+    ) -> Result<bool> {
+        let (working_state, cursor, state) = {
+            let data = self.data.lock().await;
             let mut working_state = data.state.clone();
             let cursor = apply_events(
                 &mut working_state,
@@ -804,16 +863,28 @@ where
                 &self.apply,
             )?;
             if cursor == data.last_applied_order {
-                return Ok(None);
+                return Ok(false);
             }
-            data.state = working_state;
-            data.last_applied_order = cursor;
-            data.state.clone()
+            (working_state.clone(), cursor, working_state)
         };
-        match (self.handle)(state).await? {
-            Some(output) => (self.executor)(output).await,
-            None => Ok(None),
+
+        let delivery_id = context.delivery_id.clone();
+        let command = match (self.handle)(state).await? {
+            Some(output) => (self.executor)(output, context).await?,
+            None => None,
+        };
+
+        let dispatched = command.is_some();
+        if let Some(command) = command {
+            dispatch(command, delivery_id).await?;
         }
+
+        // A failed handler or effect must leave the cursor behind so a later
+        // at-least-once delivery retries the same durable input.
+        let mut data = self.data.lock().await;
+        data.state = working_state;
+        data.last_applied_order = cursor;
+        Ok(dispatched)
     }
 
     async fn scenario_failures(&self) -> Vec<ScenarioFailure> {

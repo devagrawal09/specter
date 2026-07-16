@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{CommandScenario, CommandSpec, command, event};
 
 pub(super) fn record_milestone_spec() -> CommandSpec {
-    command("record-todo-milestone")
+    command("recordTodoMilestone")
         .description("Records a completion milestone requested by a Reaction Slice.")
         .scenarios(vec![CommandScenario::accepted(
             "Records the three-completion milestone.",

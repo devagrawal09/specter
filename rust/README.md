@@ -1,6 +1,6 @@
 # Specter for Rust
 
-This directory is an additive, executable Rust port experiment. It tests
+This directory is an additive, executable Rust port of the Specter 0.3 model. It tests
 whether Specter's core model remains useful and ergonomic when Rust replaces
 TypeScript; it does not replace the published `@specter-ts/core` package.
 
@@ -14,10 +14,16 @@ The `specter` crate currently provides:
 - immutable Command, Query, and Reaction Slice Specifications;
 - staged implementation builders for input, output, private state, apply
   handlers, reaction executors, and terminal handlers;
-- one in-memory Event Log per app, with ordered persistence metadata;
+- a transactional Event Log adapter with filtered ordered reads, version CAS,
+  idempotency receipts, and atomic duplicate detection;
 - private event-derived state and a cursor per Slice implementation;
-- envelope dispatch with `CommandEnvelope { type, payload }` and
-  `QueryEnvelope { type, payload }`;
+- erased transport envelopes plus typed `CommandRef<I>` and `QueryRef<I, O>`
+  application APIs;
+- `CommandExecution` receipts that separate durable Event commit from
+  asynchronous Reaction completion;
+- latest-state Query subscriptions with initial delivery and coalescing;
+- stable Reaction delivery IDs, attempt metadata, aggregate failure tickets,
+  and best-effort runtime observation hooks;
 - construction-time conformance diagnostics;
 - runtime enforcement that Commands emit at least one Event and only Event
   types declared by accepted Scenario outcomes;
@@ -26,7 +32,7 @@ The `specter` crate currently provides:
   Command envelope.
 
 App construction checks the same high-value authoring invariants as the
-TypeScript runtime: unique Slice and Event names, kebab-case Event types,
+TypeScript runtime: unique lower-camel Slice names, unique kebab-case Event types,
 non-empty and uniquely described Scenarios, registered/lossless Scenario Event
 payloads, complete Event coverage, and exact equality between the union of
 Given Event types and implementation apply-handler Event types.
@@ -39,7 +45,9 @@ rust/
 └── apps/
     ├── todo-cli/     Query projection plus a three-completion milestone Reaction
     ├── wallet-cli/   Decision state plus rejected overdraft behavior
-    └── deploy-cli/   Approval Reaction that dispatches start-deployment
+    ├── deploy-cli/   Approval Reaction that dispatches start-deployment
+    ├── inventory-cli/ Typed refs, optimistic versioning, idempotency, subscriptions
+    └── incident-cli/ Reaction delivery context plus a follow-up Command
 ```
 
 Each CLI mirrors the generated TypeScript project layout. Rust uses snake_case
@@ -78,6 +86,12 @@ cargo run -p wallet-cli -- verify
 
 cargo run -p deploy-cli -- demo
 cargo run -p deploy-cli -- verify
+
+cargo run -p inventory-cli -- demo
+cargo run -p inventory-cli -- verify
+
+cargo run -p incident-cli -- demo
+cargo run -p incident-cli -- verify
 ```
 
 Run the complete Rust baseline with:
@@ -98,7 +112,7 @@ A specification uses only example data and string Event types:
 use serde_json::json;
 use specter::{CommandScenario, command, event};
 
-let add_todo_spec = command("add-todo")
+let add_todo_spec = command("addTodo")
     .description("Adds a todo to the list.")
     .scenarios(vec![CommandScenario::accepted(
         "Adds the supplied todo.",
@@ -118,7 +132,7 @@ handler:
 // features/todos/add_todo/impl.rs
 # use serde::{Deserialize, Serialize};
 # use specter::{DomainEvent, EventDraft, Result};
-# let add_todo_spec = specter::command("add-todo")
+# let add_todo_spec = specter::command("addTodo")
 #     .description("Adds a todo to the list.")
 #     .scenarios(vec![specter::CommandScenario::accepted(
 #         "Adds the supplied todo.", vec![], serde_json::json!({"todo_id":"todo-1","title":"Ship it"}),
@@ -148,26 +162,32 @@ let add_todo = add_todo_spec
 Specifications and implementations can live in separate Rust modules and one
 specification can be completed by multiple implementations.
 
-## Deliberate Gaps
+## Remaining 0.3 Gaps
 
-This first vertical slice favors a small runtime that can be exercised end to
-end. It does not yet provide:
+The port now exercises the central 0.3 execution contract end to end, but it
+does not yet provide all production adapters and exact behavioral parity:
 
-- durable Slice Store adapters or an atomic Event Log/Slice Store transaction;
-- query subscriptions and invalidation fan-out;
-- pluggable reaction scheduling, retries, or aggregate reaction failures;
+- pluggable durable Slice Store adapters (Slice state is still embedded in each
+  implementation and staged by cloning);
+- a public pluggable Reaction Scheduler or durable outbox; the built-in
+  scheduler serializes/coalesces in one process;
+- selective subscription invalidation by Query/Event dependency (the current
+  watch channel invalidates every Query subscription);
+- persistence of Reaction delivery metadata across process restarts;
+- first-party memory, SQLite, Postgres, outbox, and OpenTelemetry crates;
 - runtime schema transformations beyond Serde's lossless decode/encode check;
 - a generated-project initializer or Rust application template;
 - a network transport or UI client.
 
-The in-memory runtime serializes app operations and clones private state before
-running async handlers. Those choices make rollback and read isolation easy for
-the experiment, but a production port should replace them with explicit Event
-Log and Slice Store transaction traits.
+Project-owned transport remains deliberate: Specter core accepts envelopes but
+does not own HTTP, SSE, WebSocket, or CLI wiring.
+
+See [`REVIEW.md`](./REVIEW.md) for the independent runtime and application
+review, including ranked correctness risks and concrete next work.
 
 ## Suggested Next Slice
 
-The next useful increment is a SQLite adapter pair with one transaction
-spanning Command catch-up, private Slice State, and Event append. That would
-test the hardest portability question before expanding the public API with
-subscriptions or generators.
+The next useful increment is a `specter-memory` adapter crate that extracts the
+in-memory Event Log, Slice Store, and immediate scheduler behind the complete
+0.3 adapter contracts. A SQLite adapter and durable Reaction outbox can then
+exercise restart recovery and cross-process concurrency.

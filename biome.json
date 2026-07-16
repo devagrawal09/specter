@@ -15,6 +15,7 @@
       "**/vite.config.ts",
       "!**/.repos",
       "!**/.reference",
+      "!rust/target",
       "!**/src/routeTree.gen.ts"
     ]
   },

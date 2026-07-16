@@ -35,11 +35,14 @@ async fn main() -> Result<()> {
             println!("Wallet CLI — Command Slice decisions use private event-derived state\n");
             let wallet_id = "wallet-1".to_owned();
             app.command_typed(
-                "open-wallet",
+                "openWallet",
                 OpenWallet {
                     wallet_id: wallet_id.clone(),
                 },
             )
+            .await?
+            .reactions
+            .wait()
             .await?;
             app.command_typed(
                 "deposit",
@@ -48,6 +51,9 @@ async fn main() -> Result<()> {
                     cents: 10_000,
                 },
             )
+            .await?
+            .reactions
+            .wait()
             .await?;
             app.command_typed(
                 "withdraw",
@@ -56,6 +62,9 @@ async fn main() -> Result<()> {
                     cents: 3_500,
                 },
             )
+            .await?
+            .reactions
+            .wait()
             .await?;
 
             let rejected = app
@@ -72,7 +81,7 @@ async fn main() -> Result<()> {
 
             let balance: Balance = app
                 .query_typed(
-                    "get-balance",
+                    "getBalance",
                     GetBalance {
                         wallet_id: wallet_id.clone(),
                     },

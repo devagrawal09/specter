@@ -113,7 +113,7 @@ impl Display for ScenarioFailures {
 
 impl std::error::Error for ScenarioFailures {}
 
-#[derive(Debug, Error)]
+#[derive(Debug, Error, Clone)]
 pub enum SpecterError {
     #[error("serialization failed: {0}")]
     Serialization(String),
@@ -133,6 +133,9 @@ pub enum SpecterError {
     #[error("invalid input for {slice_name:?}: {message}")]
     InvalidInput { slice_name: String, message: String },
 
+    #[error("invalid output for {slice_name:?}: {message}")]
+    InvalidOutput { slice_name: String, message: String },
+
     #[error("command rejected: {0}")]
     RejectedCommand(String),
 
@@ -147,6 +150,29 @@ pub enum SpecterError {
 
     #[error("reaction drain exceeded {0} passes")]
     ReactionLoopLimit(usize),
+
+    #[error("Event Log version conflict: expected {expected_version}, received {actual_version}")]
+    VersionConflict {
+        expected_version: u64,
+        actual_version: u64,
+    },
+
+    #[error("idempotency key {idempotency_key:?} was already used for a different command")]
+    IdempotencyConflict { idempotency_key: String },
+
+    #[error(
+        "Event Log query after order {after_order} returned invalid ordering: {received_orders:?}"
+    )]
+    EventLogOrderViolation {
+        after_order: u64,
+        received_orders: Vec<u64>,
+    },
+
+    #[error("invalid command options: {0}")]
+    InvalidCommandOptions(String),
+
+    #[error("reaction run failed for: {slice_names:?}")]
+    ReactionRunFailed { slice_names: Vec<String> },
 
     #[error("{0}")]
     Conformance(#[from] ConformanceErrors),

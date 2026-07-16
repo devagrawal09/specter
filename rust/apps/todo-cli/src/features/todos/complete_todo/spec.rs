@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{CommandScenario, CommandSpec, command, event};
 
 pub(super) fn complete_todo_spec() -> CommandSpec {
-    command("complete-todo")
+    command("completeTodo")
         .description("Completes an existing todo once.")
         .scenarios(vec![
             CommandScenario::accepted(

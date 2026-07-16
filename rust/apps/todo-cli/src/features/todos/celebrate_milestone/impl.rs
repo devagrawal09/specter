@@ -23,9 +23,9 @@ pub(crate) struct CelebrateMilestone {
 pub(crate) fn celebrate_milestone() -> ReactionSlice<CelebrateMilestone, MilestoneState> {
     celebrate_milestone_spec()
         .output::<CelebrateMilestone>()
-        .executor(|effect| async move {
+        .executor(|effect, _context| async move {
             Ok(Some(CommandEnvelope::new(
-                "record-todo-milestone",
+                "recordTodoMilestone",
                 RecordMilestone {
                     completed_count: effect.completed_count,
                 },

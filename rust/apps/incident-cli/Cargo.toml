@@ -1,0 +1,14 @@
+[package]
+name = "incident-cli"
+description = "Incident response CLI exercising Specter 0.3 reaction delivery"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specter = { path = "../../crates/specter" }
+tokio.workspace = true

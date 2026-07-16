@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{ReactionScenario, ReactionSpec, event, reaction};
 
 pub(super) fn celebrate_milestone_spec() -> ReactionSpec {
-    reaction("celebrate-todo-milestone")
+    reaction("celebrateTodoMilestone")
         .description("Requests milestone recording after every third completion.")
         .scenarios(vec![
             ReactionScenario::new(

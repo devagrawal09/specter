@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     sync::Arc,
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -6,7 +7,7 @@ use std::{
 use async_trait::async_trait;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::Value;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 use crate::{Result, SpecterError};
 
@@ -17,6 +18,7 @@ pub trait DomainEvent: Serialize + DeserializeOwned + Send + Sync + 'static {
 #[derive(Clone)]
 pub struct EventDefinition {
     event_type: &'static str,
+    rust_type: std::any::TypeId,
     decode: fn(Value) -> Result<Value>,
 }
 
@@ -24,12 +26,17 @@ impl EventDefinition {
     pub fn of<E: DomainEvent>() -> Self {
         Self {
             event_type: E::TYPE,
+            rust_type: std::any::TypeId::of::<E>(),
             decode: decode_payload::<E>,
         }
     }
 
     pub fn event_type(&self) -> &'static str {
         self.event_type
+    }
+
+    pub fn rust_type(&self) -> std::any::TypeId {
+        self.rust_type
     }
 
     pub fn decode(&self, payload: Value) -> Result<Value> {
@@ -86,15 +93,60 @@ impl PersistedEvent {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventLogCommit {
+    pub events: Vec<PersistedEvent>,
+    pub version: u64,
+    pub idempotency_key: Option<String>,
+    pub fingerprint: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EventLogAppendResult {
+    pub commit: EventLogCommit,
+    pub duplicate: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct EventLogAppendOptions {
+    pub expected_version: Option<u64>,
+    pub idempotency_key: Option<String>,
+    pub fingerprint: Option<String>,
+}
+
+/// A serialized Event Log transaction. Implementations must keep this guard
+/// exclusive until it is dropped, so catch-up, decision, and append observe one
+/// stable durable history.
+#[async_trait]
+pub trait EventLogTransaction: Send {
+    async fn query(
+        &mut self,
+        after_order: u64,
+        event_types: &[String],
+    ) -> Result<Vec<PersistedEvent>>;
+    async fn current_version(&mut self) -> Result<u64>;
+    async fn find_commit(&mut self, idempotency_key: &str) -> Result<Option<EventLogCommit>>;
+    async fn append(
+        &mut self,
+        events: Vec<EventDraft>,
+        options: EventLogAppendOptions,
+    ) -> Result<EventLogAppendResult>;
+}
+
 #[async_trait]
 pub trait EventLog: Send + Sync {
-    async fn load(&self) -> Result<Vec<PersistedEvent>>;
-    async fn append(&self, events: Vec<EventDraft>) -> Result<Vec<PersistedEvent>>;
+    async fn transaction(&self) -> Result<Box<dyn EventLogTransaction>>;
+}
+
+#[derive(Default)]
+struct InMemoryState {
+    events: Vec<PersistedEvent>,
+    commits: HashMap<String, EventLogCommit>,
 }
 
 #[derive(Default)]
 pub struct InMemoryEventLog {
-    events: Mutex<Vec<PersistedEvent>>,
+    state: Arc<Mutex<InMemoryState>>,
 }
 
 impl InMemoryEventLog {
@@ -103,14 +155,75 @@ impl InMemoryEventLog {
     }
 }
 
+struct InMemoryTransaction {
+    state: OwnedMutexGuard<InMemoryState>,
+}
+
 #[async_trait]
 impl EventLog for InMemoryEventLog {
-    async fn load(&self) -> Result<Vec<PersistedEvent>> {
-        Ok(self.events.lock().await.clone())
+    async fn transaction(&self) -> Result<Box<dyn EventLogTransaction>> {
+        Ok(Box::new(InMemoryTransaction {
+            state: Arc::clone(&self.state).lock_owned().await,
+        }))
+    }
+}
+
+#[async_trait]
+impl EventLogTransaction for InMemoryTransaction {
+    async fn query(
+        &mut self,
+        after_order: u64,
+        event_types: &[String],
+    ) -> Result<Vec<PersistedEvent>> {
+        let selected: HashSet<_> = event_types.iter().map(String::as_str).collect();
+        Ok(self
+            .state
+            .events
+            .iter()
+            .filter(|event| {
+                event.order > after_order && selected.contains(event.event_type.as_str())
+            })
+            .cloned()
+            .collect())
     }
 
-    async fn append(&self, drafts: Vec<EventDraft>) -> Result<Vec<PersistedEvent>> {
-        let mut events = self.events.lock().await;
+    async fn current_version(&mut self) -> Result<u64> {
+        Ok(self.state.events.len() as u64)
+    }
+
+    async fn find_commit(&mut self, idempotency_key: &str) -> Result<Option<EventLogCommit>> {
+        Ok(self.state.commits.get(idempotency_key).cloned())
+    }
+
+    async fn append(
+        &mut self,
+        drafts: Vec<EventDraft>,
+        options: EventLogAppendOptions,
+    ) -> Result<EventLogAppendResult> {
+        if let Some(key) = options.idempotency_key.as_deref()
+            && let Some(commit) = self.state.commits.get(key)
+        {
+            if commit.fingerprint != options.fingerprint {
+                return Err(SpecterError::IdempotencyConflict {
+                    idempotency_key: key.to_owned(),
+                });
+            }
+            return Ok(EventLogAppendResult {
+                commit: commit.clone(),
+                duplicate: true,
+            });
+        }
+
+        let actual_version = self.state.events.len() as u64;
+        if let Some(expected_version) = options.expected_version
+            && expected_version != actual_version
+        {
+            return Err(SpecterError::VersionConflict {
+                expected_version,
+                actual_version,
+            });
+        }
+
         let recorded_at_unix_ms = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| SpecterError::EventLog(error.to_string()))?
@@ -118,7 +231,7 @@ impl EventLog for InMemoryEventLog {
         let mut appended = Vec::with_capacity(drafts.len());
 
         for draft in drafts {
-            let order = events.len() as u64 + 1;
+            let order = self.state.events.len() as u64 + 1;
             let event = PersistedEvent {
                 id: format!("event-{order}"),
                 order,
@@ -126,10 +239,23 @@ impl EventLog for InMemoryEventLog {
                 event_type: draft.event_type,
                 payload: draft.payload,
             };
-            events.push(event.clone());
+            self.state.events.push(event.clone());
             appended.push(event);
         }
 
-        Ok(appended)
+        let commit = EventLogCommit {
+            events: appended,
+            version: self.state.events.len() as u64,
+            idempotency_key: options.idempotency_key.clone(),
+            fingerprint: options.fingerprint,
+        };
+        if let Some(key) = options.idempotency_key {
+            self.state.commits.insert(key, commit.clone());
+        }
+
+        Ok(EventLogAppendResult {
+            commit,
+            duplicate: false,
+        })
     }
 }

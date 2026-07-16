@@ -1,0 +1,15 @@
+[package]
+name = "inventory-cli"
+description = "Inventory reference CLI for the Specter Rust 0.3 port"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+version.workspace = true
+
+[dependencies]
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+specter = { path = "../../crates/specter" }
+tokio.workspace = true
+

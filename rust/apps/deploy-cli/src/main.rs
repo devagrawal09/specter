@@ -33,26 +33,32 @@ async fn main() -> Result<()> {
             println!("Deploy CLI — approval triggers a Reaction Slice and command\n");
             let deployment_id = "deploy-1".to_owned();
             app.command_typed(
-                "request-deployment",
+                "requestDeployment",
                 RequestDeployment {
                     deployment_id: deployment_id.clone(),
                     service: "billing".into(),
                     version: "2026.07.16".into(),
                 },
             )
+            .await?
+            .reactions
+            .wait()
             .await?;
             app.command_typed(
-                "approve-deployment",
+                "approveDeployment",
                 ApproveDeployment {
                     deployment_id: deployment_id.clone(),
                     approver: "ada".into(),
                 },
             )
+            .await?
+            .reactions
+            .wait()
             .await?;
 
             let deployment: DeploymentView = app
                 .query_typed(
-                    "get-deployment",
+                    "getDeployment",
                     GetDeployment {
                         deployment_id: deployment_id.clone(),
                     },

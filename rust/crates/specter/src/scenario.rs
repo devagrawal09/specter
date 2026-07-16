@@ -43,6 +43,10 @@ impl CommandScenario {
         when: impl Serialize,
         expect: Vec<ScenarioEvent>,
     ) -> Self {
+        assert!(
+            !expect.is_empty(),
+            "an accepted Command Scenario must expect at least one Event"
+        );
         Self {
             description: description.into(),
             given,

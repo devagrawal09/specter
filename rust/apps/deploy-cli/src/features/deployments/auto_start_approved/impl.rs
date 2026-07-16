@@ -23,9 +23,9 @@ pub(crate) struct StartApprovedDeployment {
 pub(crate) fn auto_start_approved() -> ReactionSlice<StartApprovedDeployment, AutoStartState> {
     auto_start_approved_spec()
         .output::<StartApprovedDeployment>()
-        .executor(|effect| async move {
+        .executor(|effect, _context| async move {
             Ok(Some(CommandEnvelope::new(
-                "start-deployment",
+                "startDeployment",
                 StartDeployment {
                     deployment_id: effect.deployment_id,
                 },

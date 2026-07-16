@@ -85,7 +85,7 @@ struct Celebrate {
 }
 
 fn add_todo_slice() -> CommandSlice<AddTodo, ()> {
-    command("add-todo")
+    command("addTodo")
         .description("Adds a todo using the caller-provided domain ID.")
         .scenarios(vec![CommandScenario::accepted(
             "Creates a todo.",
@@ -118,7 +118,7 @@ fn add_todo_slice() -> CommandSlice<AddTodo, ()> {
 }
 
 fn complete_todo_slice() -> CommandSlice<CompleteTodo, CompletionState> {
-    command("complete-todo")
+    command("completeTodo")
         .description("Completes an existing active todo.")
         .scenarios(vec![
             CommandScenario::accepted(
@@ -196,7 +196,7 @@ fn complete_todo_slice() -> CommandSlice<CompleteTodo, CompletionState> {
 }
 
 fn record_celebration_slice() -> CommandSlice<RecordCelebration, ()> {
-    command("record-celebration")
+    command("recordCelebration")
         .description("Records a completion milestone selected by a Reaction Slice.")
         .scenarios(vec![CommandScenario::accepted(
             "Records the two-completion milestone.",
@@ -218,7 +218,7 @@ fn record_celebration_slice() -> CommandSlice<RecordCelebration, ()> {
 }
 
 fn todos_query_slice() -> QuerySlice<ListTodos, Vec<TodoView>, TodoProjection> {
-    query("list-todos")
+    query("listTodos")
         .description("Lists todos from an event-derived private projection.")
         .scenarios(vec![QueryScenario::new(
             "Lists completed and active todos.",
@@ -283,7 +283,7 @@ fn todos_query_slice() -> QuerySlice<ListTodos, Vec<TodoView>, TodoProjection> {
 }
 
 fn celebration_reaction_slice() -> ReactionSlice<Celebrate, CelebrationState> {
-    reaction("celebrate-completions")
+    reaction("celebrateCompletions")
         .description("Requests a command when two todos have been completed.")
         .scenarios(vec![
             ReactionScenario::new(
@@ -338,9 +338,9 @@ fn celebration_reaction_slice() -> ReactionSlice<Celebrate, CelebrationState> {
             ),
         ])
         .output::<Celebrate>()
-        .executor(|effect| async move {
+        .executor(|effect, _context| async move {
             Ok(Some(CommandEnvelope::new(
-                "record-celebration",
+                "recordCelebration",
                 RecordCelebration {
                     completed_count: effect.completed_count,
                 },
@@ -391,26 +391,32 @@ async fn commands_queries_and_reactions_share_one_event_log() -> Result<()> {
 
     for (todo_id, title) in [("todo-1", "Ship it"), ("todo-2", "Review it")] {
         app.command(CommandEnvelope::new(
-            "add-todo",
+            "addTodo",
             AddTodo {
                 todo_id: todo_id.into(),
                 title: title.into(),
             },
         )?)
+        .await?
+        .reactions
+        .wait()
         .await?;
     }
     for todo_id in ["todo-1", "todo-2"] {
         app.command_typed(
-            "complete-todo",
+            "completeTodo",
             CompleteTodo {
                 todo_id: todo_id.into(),
             },
         )
+        .await?
+        .reactions
+        .wait()
         .await?;
     }
 
     let todos: Vec<TodoView> = app
-        .query_as(QueryEnvelope::new("list-todos", ListTodos)?)
+        .query_as(QueryEnvelope::new("listTodos", ListTodos)?)
         .await?;
     assert_eq!(todos.len(), 2);
     assert!(todos.iter().all(|todo| todo.completed));
@@ -426,7 +432,7 @@ async fn rejected_commands_do_not_append_events() -> Result<()> {
     let app = app().await?;
     let error = app
         .command_typed(
-            "complete-todo",
+            "completeTodo",
             CompleteTodo {
                 todo_id: "missing".into(),
             },
@@ -440,7 +446,7 @@ async fn rejected_commands_do_not_append_events() -> Result<()> {
 
 #[tokio::test]
 async fn construction_rejects_apply_handlers_missing_from_given_scenarios() {
-    let slice = command("bad-extra-apply")
+    let slice = command("badExtraApply")
         .description("Deliberately violates exact Given/apply parity.")
         .scenarios(vec![CommandScenario::accepted(
             "Emits a covered Event.",
@@ -490,7 +496,7 @@ async fn construction_rejects_apply_handlers_missing_from_given_scenarios() {
 
 #[tokio::test]
 async fn construction_rejects_lossy_scenario_event_payloads() {
-    let slice = command("lossy-scenario")
+    let slice = command("lossyScenario")
         .description("Uses an example with an undeclared payload field.")
         .scenarios(vec![CommandScenario::accepted(
             "Contains an extra field.",
@@ -536,7 +542,7 @@ async fn construction_rejects_lossy_scenario_event_payloads() {
 
 #[tokio::test]
 async fn runtime_rejects_events_absent_from_accepted_scenarios() -> Result<()> {
-    let slice = command("malicious-command")
+    let slice = command("maliciousCommand")
         .description("Deliberately emits an Event outside its accepted outcomes.")
         .scenarios(vec![CommandScenario::accepted(
             "Claims it emits todo-added.",
@@ -569,7 +575,7 @@ async fn runtime_rejects_events_absent_from_accepted_scenarios() -> Result<()> {
 
     let error = app
         .command_typed(
-            "malicious-command",
+            "maliciousCommand",
             AddTodo {
                 todo_id: "todo-1".into(),
                 title: "Ship it".into(),

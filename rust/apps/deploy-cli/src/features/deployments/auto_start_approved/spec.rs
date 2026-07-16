@@ -2,8 +2,8 @@ use serde_json::json;
 use specter::{ReactionScenario, ReactionSpec, event, reaction};
 
 pub(super) fn auto_start_approved_spec() -> ReactionSpec {
-    reaction("auto-start-approved-deployment")
-        .description("Requests start-deployment when a deployment becomes approved.")
+    reaction("autoStartApprovedDeployment")
+        .description("Requests startDeployment when a deployment becomes approved.")
         .scenarios(vec![
             ReactionScenario::new(
                 "Requests start for an approved deployment.",

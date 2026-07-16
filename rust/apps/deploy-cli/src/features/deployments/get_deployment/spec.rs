@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{QueryScenario, QuerySpec, event, query};
 
 pub(super) fn get_deployment_spec() -> QuerySpec {
-    query("get-deployment")
+    query("getDeployment")
         .description("Reads deployment status from a private event-derived projection.")
         .scenarios(vec![QueryScenario::new(
             "Returns a started deployment.",

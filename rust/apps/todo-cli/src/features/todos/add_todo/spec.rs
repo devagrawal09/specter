@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{CommandScenario, CommandSpec, command, event};
 
 pub(super) fn add_todo_spec() -> CommandSpec {
-    command("add-todo")
+    command("addTodo")
         .description("Adds a todo with a caller-provided domain ID.")
         .scenarios(vec![CommandScenario::accepted(
             "Creates a todo and trims its title.",

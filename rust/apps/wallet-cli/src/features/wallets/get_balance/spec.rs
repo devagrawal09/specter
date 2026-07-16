@@ -2,7 +2,7 @@ use serde_json::json;
 use specter::{QueryScenario, QuerySpec, event, query};
 
 pub(super) fn get_balance_spec() -> QuerySpec {
-    query("get-balance")
+    query("getBalance")
         .description("Reads a wallet balance from a private event-derived projection.")
         .scenarios(vec![QueryScenario::new(
             "Returns the balance after deposits and withdrawals.",
