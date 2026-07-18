@@ -128,7 +128,7 @@ describe('Specter observability collector', () => {
     })
   })
 
-  it('uses batch request IDs for collector-side retry deduplication', async () => {
+  it('deduplicates by observation identity rather than batch request ID', async () => {
     const { collector, eventLog } = await setup()
     const input = batch('retryable-batch', [
       observation({
@@ -147,9 +147,21 @@ describe('Specter observability collector', () => {
     await expect(
       collector.ingest(batch('different-batch', input.observations)),
     ).resolves.toMatchObject({ accepted: 0, duplicates: 1 })
-    expect(eventLog.inspect()).toHaveLength(1)
+    await expect(
+      collector.ingest(
+        batch('retryable-batch', [
+          observation({
+            observationId: 'observation-2',
+            sequence: 2,
+            kind: 'command.completed',
+            operationId: 'command-1',
+          }),
+        ]),
+      ),
+    ).resolves.toMatchObject({ accepted: 1, duplicates: 0 })
+    expect(eventLog.inspect()).toHaveLength(2)
     await expect(collector.overview()).resolves.toMatchObject({
-      observationCount: 1,
+      observationCount: 2,
     })
   })
 
@@ -275,6 +287,75 @@ describe('Specter observability collector', () => {
 
     expect(requestIds).toHaveLength(2)
     expect(requestIds[0]).toBe(requestIds[1])
+  })
+
+  it('retries an immutable batch when queue pressure changes later observations', async () => {
+    const bodies: RuntimeObservationBatch[] = []
+    let attempts = 0
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      maxQueuedObservations: 2,
+      retryDelayMs: 60_000,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        attempts += 1
+        if (attempts === 1) throw new Error('response lost')
+        return Response.json({
+          protocolVersion: 1,
+          kind: 'observations.ack',
+          requestId: body.requestId,
+          accepted: body.observations.length,
+          duplicates: 0,
+        })
+      },
+      idFactory: (() => {
+        let id = 0
+        return () => `pressure-${++id}`
+      })(),
+      now: () => new Date('2026-07-18T12:00:01.000Z'),
+    })
+    for (const [id, sequence] of [
+      ['original-1', 1],
+      ['original-2', 2],
+    ] as const) {
+      producer.record(
+        observation({
+          observationId: id,
+          sequence,
+          kind: 'query.started',
+          operationId: id,
+        }),
+      )
+    }
+    await producer.flush()
+    for (const [id, sequence] of [
+      ['later-dropped', 3],
+      ['later-1', 4],
+      ['later-2', 5],
+    ] as const) {
+      producer.record(
+        observation({
+          observationId: id,
+          sequence,
+          kind: 'query.started',
+          operationId: id,
+        }),
+      )
+    }
+    await producer.flush()
+
+    expect(bodies).toHaveLength(3)
+    expect(bodies[1]).toEqual(bodies[0])
+    expect(bodies[2]?.requestId).not.toBe(bodies[0]?.requestId)
+    expect(bodies[2]?.observations[0]).toMatchObject({
+      kind: 'telemetry.dropped',
+      droppedCount: 1,
+    })
+    expect(
+      bodies[2]?.observations.slice(1).map((item) => item.observationId),
+    ).toEqual(['later-1', 'later-2'])
   })
 
   it('redacts unstructured runtime failures at the protocol boundary', () => {

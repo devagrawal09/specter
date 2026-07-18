@@ -11,9 +11,9 @@ import type {
   CommandRequest,
   EventReference,
   QueryRequest,
-  StructuredError,
   SubscriptionRequest,
 } from './types'
+import { structuredProtocolError } from './errors'
 import { assertJsonValue } from './validation'
 
 export type SpecterRuntimeProtocolAdapterOptions<
@@ -57,9 +57,13 @@ export function createSpecterRuntimeProtocolAdapter<
             },
           ),
         )
-        const reactionTicketId = crypto.randomUUID()
-        tickets.set(reactionTicketId, execution.reactions)
-        setTimeout(() => tickets.delete(reactionTicketId), ticketRetentionMs)
+        const reactionTicketId = request.idempotencyKey
+          ? await stableReactionTicketId(request.idempotencyKey)
+          : crypto.randomUUID()
+        if (!execution.duplicate) {
+          tickets.set(reactionTicketId, execution.reactions)
+          setTimeout(() => tickets.delete(reactionTicketId), ticketRetentionMs)
+        }
         return {
           operationId: execution.operationId ?? request.operationId,
           status: execution.duplicate ? 'duplicate' : 'committed',
@@ -82,7 +86,7 @@ export function createSpecterRuntimeProtocolAdapter<
           status: 'rejected',
           version: await options.eventLog.currentVersion(),
           events: [],
-          error: structuredError(cause),
+          error: structuredProtocolError(cause),
         }
       }
     },
@@ -126,7 +130,7 @@ export function createSpecterRuntimeProtocolAdapter<
           () => ({ status: 'completed' as const }),
           (cause) => ({
             status: 'failed' as const,
-            error: structuredError(cause),
+            error: structuredProtocolError(cause),
           }),
         ),
         Promise.resolve(pending),
@@ -159,15 +163,12 @@ async function* sequenceValues(
   }
 }
 
-function structuredError(cause: unknown): StructuredError {
-  if (cause instanceof Error) {
-    return {
-      code:
-        'code' in cause && typeof cause.code === 'string'
-          ? cause.code
-          : 'SPECTER_RUNTIME_FAILURE',
-      message: cause.message || cause.name,
-    }
-  }
-  return { code: 'SPECTER_RUNTIME_FAILURE', message: String(cause) }
+async function stableReactionTicketId(idempotencyKey: string) {
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(idempotencyKey),
+  )
+  return `reaction-${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('')}`
 }

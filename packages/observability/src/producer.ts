@@ -45,7 +45,13 @@ export function createRuntimeObservationProducer(
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let closed = false
   let telemetrySequence = 0
-  let pendingRequestId: string | undefined
+  let pending:
+    | {
+        readonly batch: RuntimeObservationBatch
+        readonly queuedObservationCount: number
+        readonly droppedCount: number
+      }
+    | undefined
 
   function record(observation: RuntimeObservation) {
     if (closed) return
@@ -59,12 +65,12 @@ export function createRuntimeObservationProducer(
   }
 
   function scheduleFlush() {
-    if (activeFlush || retryTimer || queue.length === 0) return
+    if (activeFlush || retryTimer || (!pending && queue.length === 0)) return
     queueMicrotask(() => {
-      if (!activeFlush && !retryTimer && queue.length > 0) {
+      if (!activeFlush && !retryTimer && (pending || queue.length > 0)) {
         activeFlush = drain().finally(() => {
           activeFlush = undefined
-          if (queue.length > 0 && !retryTimer) scheduleFlush()
+          if ((pending || queue.length > 0) && !retryTimer) scheduleFlush()
         })
       }
     })
@@ -86,21 +92,26 @@ export function createRuntimeObservationProducer(
   }
 
   async function drain() {
-    while (queue.length > 0) {
-      const droppedToReport = dropped - reportedDropped
-      const observations = queue.slice(
-        0,
-        Math.max(1, batchSize - (droppedToReport ? 1 : 0)),
-      )
-      if (droppedToReport > 0)
-        observations.unshift(droppedObservation(droppedToReport))
-      const requestId = pendingRequestId ?? idFactory()
-      pendingRequestId = requestId
-      const batch: RuntimeObservationBatch = {
-        protocolVersion: 1,
-        kind: 'observations.batch',
-        requestId,
-        observations,
+    while (queue.length > 0 || pending) {
+      if (!pending) {
+        const droppedToReport = dropped - reportedDropped
+        const queuedObservationCount = Math.min(
+          queue.length,
+          droppedToReport > 0 ? Math.max(0, batchSize - 1) : batchSize,
+        )
+        const observations = queue.splice(0, queuedObservationCount)
+        if (droppedToReport > 0)
+          observations.unshift(droppedObservation(droppedToReport))
+        pending = {
+          queuedObservationCount,
+          droppedCount: droppedToReport,
+          batch: {
+            protocolVersion: 1,
+            kind: 'observations.batch',
+            requestId: idFactory(),
+            observations,
+          },
+        }
       }
 
       try {
@@ -112,14 +123,13 @@ export function createRuntimeObservationProducer(
               accept: 'application/json',
               'content-type': 'application/json',
             },
-            body: JSON.stringify(batch),
+            body: JSON.stringify(pending.batch),
           },
         )
         if (!response.ok)
           throw new Error(`Collector returned HTTP ${response.status}`)
-        queue.splice(0, observations.length - (droppedToReport ? 1 : 0))
-        if (droppedToReport) reportedDropped += droppedToReport
-        pendingRequestId = undefined
+        if (pending.droppedCount) reportedDropped += pending.droppedCount
+        pending = undefined
         retryDelay = initialRetryDelay
       } catch {
         retryTimer = setTimeout(() => {
@@ -137,7 +147,7 @@ export function createRuntimeObservationProducer(
       clearTimeout(retryTimer)
       retryTimer = undefined
     }
-    if (!activeFlush && queue.length > 0) activeFlush = drain()
+    if (!activeFlush && (pending || queue.length > 0)) activeFlush = drain()
     const currentFlush = activeFlush
     await currentFlush
     if (activeFlush === currentFlush) activeFlush = undefined
@@ -152,6 +162,10 @@ export function createRuntimeObservationProducer(
     record,
     flush,
     close,
-    inspect: () => ({ queued: queue.length, dropped, closed }),
+    inspect: () => ({
+      queued: queue.length + (pending?.queuedObservationCount ?? 0),
+      dropped,
+      closed,
+    }),
   }
 }

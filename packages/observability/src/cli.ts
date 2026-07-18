@@ -65,20 +65,12 @@ async function serve(commandArgs: readonly string[]) {
   mkdirSync(dirname(databaseBase), { recursive: true })
 
   const controlClient = createClient({ url: `file:${databaseBase}-control.db` })
-  await controlClient.execute(`CREATE TABLE IF NOT EXISTS accepted_observation_batches (
-    request_id TEXT PRIMARY KEY,
-    accepted_at TEXT NOT NULL
-  )`)
   await controlClient.execute(`CREATE TABLE IF NOT EXISTS accepted_observations (
     source_key TEXT NOT NULL,
     observation_id TEXT NOT NULL,
     accepted_at TEXT NOT NULL,
     PRIMARY KEY (source_key, observation_id)
   )`)
-  await controlClient.execute({
-    sql: 'DELETE FROM accepted_observation_batches WHERE accepted_at < ?',
-    args: [new Date(Date.now() - 48 * 60 * 60 * 1_000).toISOString()],
-  })
   await controlClient.execute({
     sql: 'DELETE FROM accepted_observations WHERE accepted_at < ?',
     args: [new Date(Date.now() - 48 * 60 * 60 * 1_000).toISOString()],
@@ -108,14 +100,6 @@ async function serve(commandArgs: readonly string[]) {
       const observationBatch = isDedupeCandidate(observationInput)
         ? observationInput
         : undefined
-      const duplicate = await duplicateBatchResponse(
-        observationBatch,
-        controlClient,
-      )
-      if (duplicate) {
-        await sendWebResponse(response, duplicate)
-        return
-      }
       const filteredBatch = observationBatch
         ? await filterAcceptedObservations(observationBatch, controlClient)
         : undefined
@@ -145,8 +129,7 @@ async function serve(commandArgs: readonly string[]) {
           },
           { status: webResponse.status },
         )
-        await rememberAcceptedBatch(
-          observationBatch.requestId,
+        await rememberAcceptedObservations(
           filteredBatch.batch.observations,
           controlClient,
         )
@@ -231,19 +214,6 @@ function latestSegment(databaseBase: string) {
   return latest ? resolve(directory, latest) : undefined
 }
 
-async function duplicateBatchResponse(
-  body: RuntimeObservationBatch | undefined,
-  client: ReturnType<typeof createClient>,
-) {
-  if (!body || typeof body.requestId !== 'string') return undefined
-  const result = await client.execute({
-    sql: 'SELECT request_id FROM accepted_observation_batches WHERE request_id = ?',
-    args: [body.requestId],
-  })
-  if (!result.rows.length) return undefined
-  return observationAcknowledgement(body, 0, body.observations.length)
-}
-
 async function filterAcceptedObservations(
   batch: RuntimeObservationBatch,
   client: ReturnType<typeof createClient>,
@@ -261,22 +231,17 @@ async function filterAcceptedObservations(
   return { batch: { ...batch, observations: fresh }, duplicates }
 }
 
-async function rememberAcceptedBatch(
-  requestId: string,
+async function rememberAcceptedObservations(
   observations: readonly RuntimeObservation[],
   client: ReturnType<typeof createClient>,
 ) {
   const acceptedAt = new Date().toISOString()
-  await client.batch([
-    {
-      sql: 'INSERT OR IGNORE INTO accepted_observation_batches (request_id, accepted_at) VALUES (?, ?)',
-      args: [requestId, acceptedAt],
-    },
-    ...observations.map((observation) => ({
+  await client.batch(
+    observations.map((observation) => ({
       sql: 'INSERT OR IGNORE INTO accepted_observations (source_key, observation_id, accepted_at) VALUES (?, ?, ?)',
       args: [sourceKey(observation), observation.observationId, acceptedAt],
     })),
-  ])
+  )
 }
 
 function sourceKey(observation: RuntimeObservation) {

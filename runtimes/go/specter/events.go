@@ -27,10 +27,11 @@ type PersistedEvent struct {
 }
 
 type Commit struct {
-	Events         []PersistedEvent
-	Version        int64
-	Duplicate      bool
-	IdempotencyKey string
+	Events           []PersistedEvent
+	Version          int64
+	Duplicate        bool
+	IdempotencyKey   string
+	ReactionTicketID string
 }
 
 type storedCommit struct {
@@ -94,7 +95,7 @@ func (l *MemoryEventLog) findCommit(key, fingerprint string) (Commit, bool, erro
 	return result, true, nil
 }
 
-func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expected *int64, key, fingerprint string) (Commit, error) {
+func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expected *int64, key, fingerprint, reactionTicketID string) (Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return Commit{}, err
 	}
@@ -128,7 +129,7 @@ func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expect
 		committed[i] = PersistedEvent{ID: hex.EncodeToString(hash[:16]), Type: draft.Type, Payload: payload, Attributes: draft.Attributes, GlobalOrder: order, CommitVersion: commitVersion, RecordedAt: when}
 	}
 	l.events = append(l.events, committed...)
-	result := Commit{Events: cloneEvents(committed), Version: commitVersion, IdempotencyKey: key}
+	result := Commit{Events: cloneEvents(committed), Version: commitVersion, IdempotencyKey: key, ReactionTicketID: reactionTicketID}
 	if key != "" {
 		l.commits[key] = storedCommit{Commit: result, fingerprint: fingerprint}
 	}

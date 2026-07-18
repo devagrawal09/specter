@@ -76,11 +76,68 @@ func TestCommandQueryReactionAndDuplicate(t *testing.T) {
 	if !duplicate.Duplicate {
 		t.Fatal("expected duplicate receipt")
 	}
+	if duplicate.ReactionTicketID != execution.ReactionTicketID {
+		t.Fatalf("duplicate ticket %q does not match original %q", duplicate.ReactionTicketID, execution.ReactionTicketID)
+	}
 	if err := <-duplicate.Reactions; err != nil {
 		t.Fatal(err)
 	}
 	if reactions.Load() != 1 {
 		t.Fatal("duplicate reran Reaction")
+	}
+}
+
+func TestQueuedReactionPassesDoNotSkipLaterCommits(t *testing.T) {
+	started := make(chan struct{}, 1)
+	release := make(chan struct{})
+	var runCount atomic.Int64
+	seen := make(chan string, 3)
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	reaction := specter.ReactionDefinition{Name: "notice", Scenarios: []specter.ReactionScenario{{Description: "notices", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []any{"one"}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error { return nil }}, Handle: func(_ context.Context, _ specter.ReactionContext, events []specter.PersistedEvent) (any, error) {
+		if runCount.Add(1) == 1 {
+			started <- struct{}{}
+			<-release
+		}
+		var payload added
+		if err := json.Unmarshal(events[0].Payload, &payload); err != nil {
+			return nil, err
+		}
+		seen <- payload.ID
+		return payload.ID, nil
+	}}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions := make([]specter.CommandExecution, 0, 3)
+	first, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions = append(executions, first)
+	<-started
+	for _, id := range []string{"two", "three"} {
+		execution, err := app.Command(context.Background(), "add", addInput{ID: id}, specter.DispatchOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		executions = append(executions, execution)
+	}
+	close(release)
+	for _, execution := range executions {
+		if err := <-execution.Reactions; err != nil {
+			t.Fatal(err)
+		}
+	}
+	close(seen)
+	var got []string
+	for id := range seen {
+		got = append(got, id)
+	}
+	if len(got) != 3 || got[0] != "one" || got[1] != "two" || got[2] != "three" {
+		t.Fatalf("expected every queued commit to run, got %#v", got)
 	}
 }
 

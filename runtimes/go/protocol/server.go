@@ -210,6 +210,9 @@ func (s *Server) subscription(w http.ResponseWriter, r *http.Request) {
 			bytes, _ := json.Marshal(message)
 			_, _ = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", message.Kind, bytes)
 			flusher.Flush()
+			if item.Err != nil {
+				return
+			}
 		}
 	}
 }
@@ -319,7 +322,29 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 func publicError(err error) *specter.Error {
 	var public *specter.Error
 	if errors.As(err, &public) {
-		return public
+		if message, ok := publicErrorMessages[public.Code]; ok {
+			return &specter.Error{Code: public.Code, Message: message}
+		}
 	}
 	return &specter.Error{Code: specter.ErrInfrastructure, Message: "Runtime operation failed."}
+}
+
+var publicErrorMessages = map[specter.ErrorCode]string{
+	specter.ErrCommandRejected:         "Command was rejected.",
+	specter.ErrConformanceFailed:       "Runtime conformance failed.",
+	specter.ErrIdempotencyConflict:     "The idempotency key conflicts with an earlier Command.",
+	specter.ErrInfrastructure:          "Runtime operation failed.",
+	specter.ErrInvalidInput:            "Operation input is invalid.",
+	specter.ErrInvalidJSON:             "Request body must be valid JSON.",
+	specter.ErrInvalidMessage:          "Protocol message is invalid.",
+	specter.ErrInvalidOutput:           "Operation output is invalid.",
+	specter.ErrProtocolVersionMismatch: "Protocol major version is unsupported.",
+	specter.ErrReactionFailure:         "One or more Reactions failed.",
+	specter.ErrRouteNotFound:           "Route not found.",
+	specter.ErrTransportFailure:        "Transport operation failed.",
+	specter.ErrUnknownCommand:          "Command type is not registered.",
+	specter.ErrUnknownEvent:            "Event type is not registered.",
+	specter.ErrUnknownQuery:            "Query type is not registered.",
+	specter.ErrUnsupportedCapability:   "A required capability is unsupported.",
+	specter.ErrVersionConflict:         "Event Log version conflict.",
 }

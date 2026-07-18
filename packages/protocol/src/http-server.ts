@@ -1,5 +1,9 @@
 import { negotiateCapabilities } from './capabilities'
-import { protocolErrorCodes, SpecterProtocolError } from './errors'
+import {
+  protocolErrorCodes,
+  SpecterProtocolError,
+  structuredProtocolError,
+} from './errors'
 import { parseProtocolMessage } from './validation'
 import type {
   CapabilitiesResponse,
@@ -14,7 +18,6 @@ import type {
   ReactionTicketResponse,
   RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
-  StructuredError,
   SubscriptionMessage,
   SubscriptionRequest,
 } from './types'
@@ -111,7 +114,7 @@ export function createSpecterProtocolHttpHandler(
             kind: 'query.response',
             requestId: message.requestId,
             operationId: message.operationId,
-            error: structuredError(cause),
+            error: structuredProtocolError(cause),
           }
         }
         return json(response)
@@ -231,7 +234,7 @@ function subscriptionResponse(
               kind: 'subscription.error',
               requestId: message.requestId,
               operationId: message.operationId,
-              error: structuredError(cause),
+              error: structuredProtocolError(cause),
             }),
           )
           await cleanup(cause)
@@ -296,14 +299,6 @@ function errorResponse(cause: unknown) {
           cause,
         })
   return json({ error: error.toStructuredError() }, error.status)
-}
-function structuredError(cause: unknown): StructuredError {
-  if (cause instanceof SpecterProtocolError) return cause.toStructuredError()
-  return {
-    code: protocolErrorCodes.internal,
-    message:
-      cause instanceof Error ? cause.message : 'Runtime operation failed.',
-  }
 }
 function normalizeBasePath(path: string) {
   const normalized = `/${path.replace(/^\/+|\/+$/g, '')}`

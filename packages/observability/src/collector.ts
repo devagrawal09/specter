@@ -60,16 +60,13 @@ export async function createSpecterObservabilityCollector(
     app,
     async ingest(batch: RuntimeObservationBatch) {
       try {
-        const execution = await app.command(
-          {
-            type: 'recordRuntimeObservations',
-            payload: {
-              requestId: batch.requestId,
-              observations: batch.observations,
-            },
+        const execution = await app.command({
+          type: 'recordRuntimeObservations',
+          payload: {
+            requestId: batch.requestId,
+            observations: batch.observations,
           },
-          { idempotencyKey: batch.requestId },
-        )
+        })
         return {
           protocolVersion: 1,
           kind: 'observations.ack',

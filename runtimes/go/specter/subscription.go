@@ -99,6 +99,6 @@ func (a *App) invalidateSubscriptions(parent, correlation string) {
 	for _, sub := range subscriptions {
 		operation := newID("op")
 		a.emit(Observation{Kind: "subscription.invalidated", OperationID: operation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, QueryType: sub.query})
-		go func(s *Subscription) { _ = s.refresh() }(sub)
+		_ = sub.refresh()
 	}
 }

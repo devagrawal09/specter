@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/devagrawal09/specter/runtimes/go/protocol"
 	"github.com/devagrawal09/specter/runtimes/go/specter"
@@ -165,6 +168,76 @@ func TestSharedMalformedCommandIsRejected(t *testing.T) {
 	}
 	if body.Error == nil || body.Error.Code != specter.ErrInvalidMessage {
 		t.Fatalf("unexpected error: %#v", body.Error)
+	}
+}
+
+func TestQueryAndSubscriptionFailuresAreRedactedAndTerminal(t *testing.T) {
+	privateMessage := "postgres://admin:secret@database.internal/app"
+	var fail atomic.Bool
+	command := specter.CommandDefinition{Name: "change", Scenarios: []specter.CommandScenario{{Description: "changes", Input: struct{}{}, Expect: []specter.ScenarioEvent{{Type: "changed", Payload: struct{}{}}}}}, Handle: func(context.Context, json.RawMessage) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "changed", Payload: struct{}{}}}, nil
+	}}
+	query := specter.QueryDefinition{Name: "value", Scenarios: []specter.QueryScenario{{Description: "reads", Given: []specter.ScenarioEvent{{Type: "changed", Payload: struct{}{}}}, Expect: "ok"}}, Apply: map[string]specter.ApplyFunc{"changed": func(context.Context, specter.PersistedEvent) error { return nil }}, Handle: func(context.Context, json.RawMessage) (any, error) {
+		if fail.Load() {
+			return nil, errors.New(privateMessage)
+		}
+		return "ok", nil
+	}}
+	app, err := specter.NewApp(specter.Config{Events: []string{"changed"}, Commands: []specter.CommandDefinition{command}, Queries: []specter.QueryDefinition{query}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer((&protocol.Server{App: app}).Handler())
+	defer server.Close()
+	client := &protocol.Client{BaseURL: server.URL + "/specter/v1"}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	messages, failures, err := client.Subscribe(ctx, protocol.SubscriptionRequest{OperationID: "subscription-op", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := <-messages
+	if initial.Kind != "subscription.value" || initial.Result != "ok" {
+		t.Fatalf("unexpected initial subscription message: %#v", initial)
+	}
+	fail.Store(true)
+	queryResponse, err := client.Query(ctx, protocol.QueryRequest{OperationID: "query-op", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}})
+	if err == nil || queryResponse.Error == nil {
+		t.Fatalf("expected public Query error, got %#v", queryResponse)
+	}
+	if queryResponse.Error.Message == privateMessage {
+		t.Fatal("Query leaked a private runtime error")
+	}
+	execution, err := app.Command(ctx, "change", struct{}{}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-execution.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case message := <-messages:
+		if message.Kind != "subscription.error" || message.Error == nil {
+			t.Fatalf("expected subscription.error, got %#v", message)
+		}
+		if message.Error.Message == privateMessage {
+			t.Fatal("subscription leaked a private runtime error")
+		}
+	case <-ctx.Done():
+		t.Fatal("subscription did not emit an error")
+	}
+	select {
+	case _, open := <-messages:
+		if open {
+			t.Fatal("subscription remained open after subscription.error")
+		}
+	case <-ctx.Done():
+		t.Fatal("subscription did not close after subscription.error")
+	}
+	for failure := range failures {
+		if failure != nil {
+			t.Fatal(failure)
+		}
 	}
 }
 

@@ -37,3 +37,40 @@ export class SpecterProtocolError extends Error {
     }
   }
 }
+
+const publicRuntimeErrorMessages: Readonly<Record<string, string>> = {
+  SPECTER_COMMAND_REJECTED: 'Command was rejected.',
+  SPECTER_CONFORMANCE_FAILED: 'Runtime conformance failed.',
+  SPECTER_EVENT_LOG_ORDER_VIOLATION: 'Event Log ordering is invalid.',
+  SPECTER_IDEMPOTENCY_CONFLICT:
+    'The idempotency key conflicts with an earlier Command.',
+  SPECTER_INFRASTRUCTURE_FAILURE: 'Runtime operation failed.',
+  SPECTER_INVALID_COMMAND_OPTIONS: 'Command options are invalid.',
+  SPECTER_INVALID_INPUT: 'Operation input is invalid.',
+  SPECTER_INVALID_OUTPUT: 'Operation output is invalid.',
+  SPECTER_REACTION_FAILURE: 'One or more Reactions failed.',
+  SPECTER_UNKNOWN_COMMAND: 'Command type is not registered.',
+  SPECTER_UNKNOWN_EVENT: 'Event type is not registered.',
+  SPECTER_UNKNOWN_QUERY: 'Query type is not registered.',
+  SPECTER_VERSION_CONFLICT: 'Event Log version conflict.',
+}
+
+/** Maps an untrusted runtime failure to a public, non-sensitive protocol error. */
+export function structuredProtocolError(cause: unknown): StructuredError {
+  if (cause instanceof SpecterProtocolError) return cause.toStructuredError()
+
+  const code =
+    cause instanceof Error &&
+    'code' in cause &&
+    typeof cause.code === 'string' &&
+    cause.code in publicRuntimeErrorMessages
+      ? cause.code
+      : protocolErrorCodes.internal
+
+  return {
+    code,
+    message:
+      publicRuntimeErrorMessages[code] ??
+      'The Specter runtime could not complete the request.',
+  }
+}

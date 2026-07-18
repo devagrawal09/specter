@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { negotiateCapabilities } from './capabilities'
 import { SpecterProtocolError } from './errors'
 import { createSpecterProtocolHttpHandler } from './http-server'
+import { createSpecterRuntimeProtocolAdapter } from './specter-runtime'
 import {
   assertRuntimeObservationBatch,
   parseProtocolMessage,
@@ -193,5 +194,105 @@ describe('reference HTTP binding', () => {
     expect(await response.json()).toMatchObject({
       error: { code: 'SPECTER_UNSUPPORTED_CAPABILITY' },
     })
+  })
+
+  it('redacts arbitrary Query and subscription failures and closes error streams', async () => {
+    const privateMessage = 'postgres://admin:secret@database.internal/app'
+    const runtime = {
+      runtime: { language: 'test', version: '1' },
+      capabilities: ['queries', 'query-subscriptions'],
+      command: vi.fn(),
+      async query() {
+        throw new Error(privateMessage)
+      },
+      async *subscribe() {
+        yield { sequence: 1, result: [] }
+        throw new Error(privateMessage)
+      },
+      reactionTicket: vi.fn(),
+      ingestObservations: vi.fn(),
+    } as unknown as ProtocolRuntimeAdapter
+    const handler = createSpecterProtocolHttpHandler({ runtime })
+    const query = await handler(
+      new Request('http://localhost/specter/v1/queries', {
+        method: 'POST',
+        body: JSON.stringify({
+          protocolVersion: 1,
+          kind: 'query.request',
+          requestId: 'request-private-query',
+          operationId: 'operation-private-query',
+          query: { type: 'privateQuery', payload: {} },
+        }),
+      }),
+    )
+    const queryBody = await query.text()
+    expect(queryBody).not.toContain(privateMessage)
+    expect(JSON.parse(queryBody)).toMatchObject({
+      error: {
+        code: 'SPECTER_INTERNAL_ERROR',
+        message: 'The Specter runtime could not complete the request.',
+      },
+    })
+
+    const subscription = await handler(
+      new Request('http://localhost/specter/v1/subscriptions', {
+        method: 'POST',
+        body: JSON.stringify({
+          protocolVersion: 1,
+          kind: 'subscription.request',
+          requestId: 'request-private-subscription',
+          operationId: 'operation-private-subscription',
+          query: { type: 'privateQuery', payload: {} },
+        }),
+      }),
+    )
+    const reader = subscription.body?.getReader()
+    await reader?.read()
+    const errorFrame = await reader?.read()
+    const complete = await reader?.read()
+    const frame = new TextDecoder().decode(errorFrame?.value)
+    expect(frame).toContain('subscription.error')
+    expect(frame).not.toContain(privateMessage)
+    expect(complete?.done).toBe(true)
+  })
+
+  it('keeps Reaction ticket identity stable for idempotent Command retries', async () => {
+    let duplicate = false
+    const app = {
+      async command() {
+        const result = {
+          operationId: duplicate ? 'operation-2' : 'operation-1',
+          events: [],
+          version: 1,
+          duplicate,
+          reactions: Promise.resolve(),
+        }
+        duplicate = true
+        return result
+      },
+    }
+    const adapter = createSpecterRuntimeProtocolAdapter({
+      app: app as never,
+      eventLog: { currentVersion: async () => 1 } as never,
+      runtimeVersion: 'test',
+    })
+    const base = {
+      protocolVersion: 1 as const,
+      kind: 'command.request' as const,
+      requestId: 'request-1',
+      operationId: 'operation-1',
+      idempotencyKey: 'stable-command',
+      command: { type: 'addTodo', payload: {} },
+    }
+    const committed = await adapter.command(base)
+    const retried = await adapter.command({
+      ...base,
+      requestId: 'request-2',
+      operationId: 'operation-2',
+    })
+
+    expect(committed.reactionTicketId).toBeTruthy()
+    expect(retried.status).toBe('duplicate')
+    expect(retried.reactionTicketId).toBe(committed.reactionTicketId)
   })
 })

@@ -253,6 +253,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 		return CommandExecution{}, lookupErr
 	}
 	if !duplicate {
+		ticketID := newID("ticket")
 		drafts, handleErr := command.definition.Handle(ctx, payload)
 		if handleErr != nil {
 			var public *Error
@@ -279,7 +280,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 			}
 		}
 		var appendErr error
-		commit, appendErr = a.log.append(ctx, drafts, options.ExpectedVersion, options.IdempotencyKey, fingerprintString)
+		commit, appendErr = a.log.append(ctx, drafts, options.ExpectedVersion, options.IdempotencyKey, fingerprintString, ticketID)
 		if appendErr != nil {
 			a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", appendErr)
 			return CommandExecution{}, appendErr
@@ -297,17 +298,22 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 		}
 		a.emit(Observation{Kind: "events.persisted", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Events: references, Version: commit.Version})
 	}
-	ticketID := newID("ticket")
+	ticketID := commit.ReactionTicketID
+	if ticketID == "" {
+		ticketID = newID("ticket")
+	}
+	if commit.Duplicate {
+		result := a.reactionResult(ticketID)
+		execution := CommandExecution{OperationID: operationID, Events: commit.Events, Version: commit.Version, Duplicate: true, ReactionTicketID: ticketID, Reactions: result}
+		a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Version: commit.Version, Duplicate: true, ReactionTicketID: ticketID})
+		return execution, nil
+	}
 	ticket := &reactionTicket{done: make(chan struct{})}
 	a.tickets.Store(ticketID, ticket)
 	reactionResult := make(chan error, 1)
 	execution := CommandExecution{OperationID: operationID, Events: commit.Events, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID, Reactions: reactionResult}
 	a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID})
-	passEvents := commit.Events
-	if commit.Duplicate {
-		passEvents = nil
-	}
-	a.reactionQueue <- reactionPass{parent: operationID, correlation: options.CorrelationID, ticketID: ticketID, events: passEvents, ticket: ticket, result: reactionResult}
+	a.reactionQueue <- reactionPass{parent: operationID, correlation: options.CorrelationID, ticketID: ticketID, events: commit.Events, ticket: ticket, result: reactionResult}
 	return execution, nil
 }
 
@@ -358,6 +364,21 @@ func (a *App) QueryJSON(ctx context.Context, name string, payload json.RawMessag
 
 func (a *App) catchUp(ctx context.Context, slice *sliceRuntime, sliceName, operationID, correlationID string) error {
 	events := a.log.Query(slice.cursor, nil)
+	return a.catchUpEvents(ctx, slice, sliceName, operationID, correlationID, events)
+}
+
+func (a *App) catchUpThrough(ctx context.Context, slice *sliceRuntime, sliceName, operationID, correlationID string, through int64) error {
+	events := a.log.Query(slice.cursor, nil)
+	for index, event := range events {
+		if event.GlobalOrder > through {
+			events = events[:index]
+			break
+		}
+	}
+	return a.catchUpEvents(ctx, slice, sliceName, operationID, correlationID, events)
+}
+
+func (a *App) catchUpEvents(ctx context.Context, slice *sliceRuntime, sliceName, operationID, correlationID string, events []PersistedEvent) error {
 	if len(events) == 0 {
 		return nil
 	}
@@ -395,7 +416,11 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 	for name, reaction := range a.reactions {
 		reaction.slice.mu.Lock()
 		before := reaction.slice.cursor
-		if err := a.catchUp(ctx, &reaction.slice, name, passOperation, correlation); err != nil {
+		through := before
+		if len(events) > 0 {
+			through = events[len(events)-1].GlobalOrder
+		}
+		if err := a.catchUpThrough(ctx, &reaction.slice, name, passOperation, correlation, through); err != nil {
 			failures = append(failures, err)
 			reaction.slice.mu.Unlock()
 			continue
@@ -475,6 +500,25 @@ func (a *App) ReactionTicket(id string) (ReactionTicketStatus, bool) {
 	default:
 		return ReactionTicketStatus{ID: id, Status: "pending"}, true
 	}
+}
+
+func (a *App) reactionResult(id string) <-chan error {
+	result := make(chan error, 1)
+	value, ok := a.tickets.Load(id)
+	if !ok {
+		result <- newError(ErrReactionFailure, "Reaction ticket was not found or expired.", nil, nil)
+		close(result)
+		return result
+	}
+	ticket := value.(*reactionTicket)
+	go func() {
+		defer close(result)
+		<-ticket.done
+		ticket.mu.RLock()
+		defer ticket.mu.RUnlock()
+		result <- ticket.err
+	}()
+	return result
 }
 
 func marshalInput(value any) (json.RawMessage, error) {
