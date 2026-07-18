@@ -97,6 +97,8 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
           fail('$.error is required for a rejected command')
         if ((message.events as readonly unknown[]).length > 0)
           fail('$.events must be empty for a rejected command')
+      } else if (message.error !== undefined) {
+        fail('$.error is only allowed for a rejected command')
       }
       break
     case 'query.request':
@@ -113,6 +115,8 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
       if (message.error !== undefined) structuredError(message.error, '$.error')
       if (message.result === undefined && message.error === undefined)
         fail('$.result or $.error is required')
+      if (message.result !== undefined && message.error !== undefined)
+        fail('$.result and $.error are mutually exclusive')
       break
     case 'subscription.value':
       string(message.operationId, '$.operationId')
@@ -139,6 +143,8 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
       if (message.error !== undefined) structuredError(message.error, '$.error')
       if (message.status === 'failed' && message.error === undefined)
         fail('$.error is required for a failed reaction ticket')
+      if (message.status !== 'failed' && message.error !== undefined)
+        fail('$.error is only allowed for a failed reaction ticket')
       break
     case 'observations.batch': {
       const observations = array(message.observations, '$.observations')
@@ -213,6 +219,7 @@ function runtimeObservation(value: unknown, path: string) {
   if (input.error !== undefined) structuredError(input.error, `${path}.error`)
   optionalString(input.reactionPassId, `${path}.reactionPassId`)
   optionalString(input.deliveryId, `${path}.deliveryId`)
+  optionalString(input.attemptId, `${path}.attemptId`)
   optionalString(input.commandType, `${path}.commandType`)
   optionalString(input.queryType, `${path}.queryType`)
   optionalString(input.slice, `${path}.slice`)

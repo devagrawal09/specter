@@ -68,6 +68,7 @@ func (p *Producer) Close(ctx context.Context) error {
 func (p *Producer) run() {
 	defer close(p.done)
 	pending := make([]protocol.RuntimeObservation, 0, MaximumBatchSize)
+	pendingRequestID := ""
 	retry := time.NewTimer(time.Hour)
 	if !retry.Stop() {
 		<-retry.C
@@ -83,7 +84,10 @@ func (p *Producer) run() {
 					pending = append(pending, observation)
 				case <-p.stop:
 					p.drain(&pending)
-					p.send(pending)
+					if len(pending) > 0 {
+						pendingRequestID = p.requestID()
+						p.send(protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending})
+					}
 					return
 				}
 			}
@@ -102,16 +106,20 @@ func (p *Producer) run() {
 				pending = append(pending, p.lossObservation(dropped))
 			}
 		}
-		if p.send(pending) {
+		if pendingRequestID == "" {
+			pendingRequestID = p.requestID()
+		}
+		batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending}
+		if p.send(batch) {
 			pending = pending[:0]
+			pendingRequestID = ""
 			continue
 		}
 		retry.Reset(time.Second)
 		select {
 		case <-retry.C:
 		case <-p.stop:
-			p.drain(&pending)
-			p.send(pending)
+			p.send(batch)
 			return
 		}
 	}
@@ -132,12 +140,15 @@ func (p *Producer) drain(pending *[]protocol.RuntimeObservation) {
 		}
 	}
 }
-func (p *Producer) send(observations []protocol.RuntimeObservation) bool {
-	if len(observations) == 0 {
+func (p *Producer) requestID() string {
+	return fmt.Sprintf("telemetry_%d_%d", time.Now().UTC().UnixNano(), p.sequence.Load())
+}
+func (p *Producer) send(batch protocol.RuntimeObservationBatch) bool {
+	if len(batch.Observations) == 0 {
 		return true
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	ack, err := p.client.SendObservations(ctx, protocol.RuntimeObservationBatch{Observations: observations})
-	return err == nil && len(ack.RejectedObservationIDs) == 0
+	_, err := p.client.SendObservations(ctx, batch)
+	return err == nil
 }

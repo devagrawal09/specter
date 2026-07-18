@@ -11,6 +11,7 @@ import type {
   CommandRequest,
   EventReference,
   QueryRequest,
+  ReactionTicketResult,
   SubscriptionRequest,
 } from './types'
 import { structuredProtocolError } from './errors'
@@ -31,7 +32,13 @@ export function createSpecterRuntimeProtocolAdapter<
 >(
   options: SpecterRuntimeProtocolAdapterOptions<TConfig>,
 ): ProtocolRuntimeAdapter {
-  const tickets = new Map<string, Promise<void>>()
+  const tickets = new Map<
+    string,
+    {
+      readonly completion: Promise<ReactionTicketResult>
+      readonly expiry: ReturnType<typeof setTimeout>
+    }
+  >()
   const ticketRetentionMs = options.ticketRetentionMs ?? 5 * 60_000
   const run = options.run ?? ((operation) => operation())
 
@@ -61,8 +68,24 @@ export function createSpecterRuntimeProtocolAdapter<
           ? await stableReactionTicketId(request.idempotencyKey)
           : crypto.randomUUID()
         if (!execution.duplicate) {
-          tickets.set(reactionTicketId, execution.reactions)
-          setTimeout(() => tickets.delete(reactionTicketId), ticketRetentionMs)
+          const previous = tickets.get(reactionTicketId)
+          if (previous) clearTimeout(previous.expiry)
+          const completion = execution.reactions.then(
+            () => ({ status: 'completed' as const }),
+            (cause) => ({
+              status: 'failed' as const,
+              error: structuredProtocolError(cause),
+            }),
+          )
+          const expiry = setTimeout(
+            () => {
+              if (tickets.get(reactionTicketId)?.completion === completion)
+                tickets.delete(reactionTicketId)
+            },
+            Math.max(0, ticketRetentionMs),
+          )
+          unrefTimer(expiry)
+          tickets.set(reactionTicketId, { completion, expiry })
         }
         return {
           operationId: execution.operationId ?? request.operationId,
@@ -126,13 +149,7 @@ export function createSpecterRuntimeProtocolAdapter<
       }
       const pending = Symbol('pending')
       const result = await Promise.race([
-        ticket.then(
-          () => ({ status: 'completed' as const }),
-          (cause) => ({
-            status: 'failed' as const,
-            error: structuredProtocolError(cause),
-          }),
-        ),
+        ticket.completion,
         Promise.resolve(pending),
       ])
       return result === pending ? { status: 'pending' } : result
@@ -171,4 +188,9 @@ async function stableReactionTicketId(idempotencyKey: string) {
   return `reaction-${[...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')}`
+}
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>) {
+  const timerWithUnref = timer as unknown as { unref?: () => void }
+  timerWithUnref.unref?.()
 }

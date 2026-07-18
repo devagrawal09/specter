@@ -56,12 +56,13 @@ type EventOrderRange struct {
 type Observer func(Observation)
 
 type Config struct {
-	Events    []string
-	EventLog  *MemoryEventLog
-	Commands  []CommandDefinition
-	Queries   []QueryDefinition
-	Reactions []ReactionDefinition
-	Observe   Observer
+	Events                  []string
+	EventLog                *MemoryEventLog
+	Commands                []CommandDefinition
+	Queries                 []QueryDefinition
+	Reactions               []ReactionDefinition
+	Observe                 Observer
+	ReactionTicketRetention time.Duration
 }
 
 type sliceRuntime struct {
@@ -93,7 +94,45 @@ type App struct {
 	subscriptions    map[uint64]*Subscription
 	nextSubscription atomic.Uint64
 	tickets          sync.Map
-	reactionQueue    chan reactionPass
+	ticketRetention  time.Duration
+	reactionQueue    reactionScheduler
+}
+
+const DefaultReactionTicketRetention = 5 * time.Minute
+
+type reactionScheduler struct {
+	mu    sync.Mutex
+	queue []reactionPass
+	wake  chan struct{}
+}
+
+func newReactionScheduler() reactionScheduler {
+	return reactionScheduler{wake: make(chan struct{}, 1)}
+}
+
+func (s *reactionScheduler) enqueue(pass reactionPass) {
+	s.mu.Lock()
+	s.queue = append(s.queue, pass)
+	s.mu.Unlock()
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *reactionScheduler) next() reactionPass {
+	for {
+		s.mu.Lock()
+		if len(s.queue) > 0 {
+			pass := s.queue[0]
+			s.queue[0] = reactionPass{}
+			s.queue = s.queue[1:]
+			s.mu.Unlock()
+			return pass
+		}
+		s.mu.Unlock()
+		<-s.wake
+	}
 }
 
 type reactionPass struct {
@@ -150,7 +189,10 @@ func NewApp(config Config) (*App, error) {
 	if config.EventLog == nil {
 		config.EventLog = NewMemoryEventLog()
 	}
-	app := &App{log: config.EventLog, events: map[string]struct{}{}, commands: map[string]*commandRuntime{}, queries: map[string]*queryRuntime{}, reactions: map[string]*reactionRuntime{}, observe: config.Observe, subscriptions: map[uint64]*Subscription{}, reactionQueue: make(chan reactionPass, 1024)}
+	if config.ReactionTicketRetention <= 0 {
+		config.ReactionTicketRetention = DefaultReactionTicketRetention
+	}
+	app := &App{log: config.EventLog, events: map[string]struct{}{}, commands: map[string]*commandRuntime{}, queries: map[string]*queryRuntime{}, reactions: map[string]*reactionRuntime{}, observe: config.Observe, subscriptions: map[uint64]*Subscription{}, ticketRetention: config.ReactionTicketRetention, reactionQueue: newReactionScheduler()}
 	for _, name := range config.Events {
 		if name == "" {
 			return nil, newError(ErrConformanceFailed, "Event type must not be empty.", nil, nil)
@@ -204,7 +246,8 @@ func NewApp(config Config) (*App, error) {
 		app.reactions[d.Name] = &reactionRuntime{definition: d, slice: sliceRuntime{apply: d.Apply}}
 	}
 	go func() {
-		for pass := range app.reactionQueue {
+		for {
+			pass := app.reactionQueue.next()
 			app.afterCommit(context.Background(), pass.parent, pass.correlation, pass.ticketID, pass.events, pass.ticket, pass.result)
 		}
 	}()
@@ -288,7 +331,11 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	}
 	if !commit.Duplicate {
 		if err := a.applyEvents(ctx, &command.slice, commit.Events); err != nil {
-			return CommandExecution{}, err
+			var public *Error
+			if !errors.As(err, &public) {
+				public = newError(ErrInfrastructure, "Slice projection failed.", nil, err)
+			}
+			a.emit(Observation{Kind: "slice.catch-up.failed", OperationID: operationID, CorrelationID: options.CorrelationID, Slice: name, Cursor: command.slice.cursor, Error: public, Attributes: map[string]any{"durableCommitVersion": commit.Version, "repairRequired": true}})
 		}
 	}
 	if !commit.Duplicate {
@@ -313,7 +360,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	reactionResult := make(chan error, 1)
 	execution := CommandExecution{OperationID: operationID, Events: commit.Events, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID, Reactions: reactionResult}
 	a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID})
-	a.reactionQueue <- reactionPass{parent: operationID, correlation: options.CorrelationID, ticketID: ticketID, events: commit.Events, ticket: ticket, result: reactionResult}
+	a.reactionQueue.enqueue(reactionPass{parent: operationID, correlation: options.CorrelationID, ticketID: ticketID, events: commit.Events, ticket: ticket, result: reactionResult})
 	return execution, nil
 }
 
@@ -408,8 +455,13 @@ func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []Per
 }
 
 func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID string, events []PersistedEvent, ticket *reactionTicket, result chan<- error) {
-	defer close(ticket.done)
-	defer close(result)
+	defer func() {
+		close(ticket.done)
+		close(result)
+		time.AfterFunc(a.ticketRetention, func() {
+			a.tickets.CompareAndDelete(ticketID, ticket)
+		})
+	}()
 	passOperation := newID("op")
 	a.emit(Observation{Kind: "reaction.pass.started", OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID})
 	var failures []error

@@ -162,7 +162,11 @@ export function createSpecterProtocolHttpClient(
       )
         continue
       yield parsed
-      if (parsed.kind === 'subscription.complete') return
+      if (
+        parsed.kind === 'subscription.error' ||
+        parsed.kind === 'subscription.complete'
+      )
+        return
     }
   }
 }

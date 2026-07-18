@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 
@@ -47,11 +48,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if failure := validateEnvelope(request.Envelope, "capabilities.request"); failure != nil {
-		status := http.StatusBadRequest
-		if failure.Code == specter.ErrProtocolVersionMismatch {
-			status = http.StatusUpgradeRequired
-		}
-		writeJSON(w, status, CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Error: failure})
+		writeJSON(w, protocolErrorStatus(failure), CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Error: failure})
 		return
 	}
 	available := s.availableCapabilities()
@@ -66,7 +63,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(missing) > 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrUnsupportedCapability, Message: "Required capabilities are unsupported.", Details: map[string]any{"missing": missing}}})
+		writeJSON(w, http.StatusBadRequest, CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Error: &specter.Error{Code: specter.ErrUnsupportedCapability, Message: "Required capabilities are unsupported.", Details: map[string]any{"missing": missing}}})
 		return
 	}
 	negotiated := []string{}
@@ -97,15 +94,15 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if failure := validateEnvelope(request.Envelope, "command.request"); failure != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": failure})
+		writeJSON(w, protocolErrorStatus(failure), CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: failure})
 		return
 	}
 	if request.OperationID == "" || request.Command.Type == "" || len(request.Command.Payload) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and command type/payload are required."}})
+		writeJSON(w, http.StatusBadRequest, CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and command type/payload are required."}})
 		return
 	}
 	if request.ExpectedVersion != nil && (*request.ExpectedVersion < 0 || *request.ExpectedVersion > maxSafeInteger) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "expectedVersion must be a non-negative safe integer."}})
+		writeJSON(w, http.StatusBadRequest, CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "expectedVersion must be a non-negative safe integer."}})
 		return
 	}
 	execution, err := s.App.CommandJSON(r.Context(), request.Command.Type, request.Command.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID, IdempotencyKey: request.IdempotencyKey, ExpectedVersion: request.ExpectedVersion})
@@ -135,11 +132,11 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if failure := validateEnvelope(request.Envelope, "query.request"); failure != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": failure})
+		writeJSON(w, protocolErrorStatus(failure), QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: failure})
 		return
 	}
 	if request.OperationID == "" || request.Query.Type == "" || len(request.Query.Payload) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
+		writeJSON(w, http.StatusBadRequest, QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
 		return
 	}
 	result, err := s.App.QueryJSON(r.Context(), request.Query.Type, request.Query.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID})
@@ -156,15 +153,15 @@ func (s *Server) subscription(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if failure := validateEnvelope(request.Envelope, "subscription.request"); failure != nil {
-		writeJSON(w, http.StatusBadRequest, SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: failure})
+		writeJSON(w, protocolErrorStatus(failure), SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: failure})
 		return
 	}
 	if request.OperationID == "" || request.Query.Type == "" || len(request.Query.Payload) == 0 {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
+		writeJSON(w, http.StatusBadRequest, SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
 		return
 	}
 	if request.AfterSequence != nil && (*request.AfterSequence < 0 || *request.AfterSequence > maxSafeInteger) {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "afterSequence must be a non-negative safe integer."}})
+		writeJSON(w, http.StatusBadRequest, SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "afterSequence must be a non-negative safe integer."}})
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -238,7 +235,7 @@ func (s *Server) observations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if failure := validateEnvelope(request.Envelope, "observations.batch"); failure != nil {
-		writeJSON(w, http.StatusBadRequest, ObservationAcknowledgement{Envelope: responseEnvelope(request.Envelope, "observations.ack"), Error: failure})
+		writeJSON(w, protocolErrorStatus(failure), ObservationAcknowledgement{Envelope: responseEnvelope(request.Envelope, "observations.ack"), Error: failure})
 		return
 	}
 	if len(request.Observations) > 100 {
@@ -311,7 +308,19 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON request."}})
 		return false
 	}
+	var trailing any
+	if err := decoder.Decode(&trailing); err != io.EOF {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON request."}})
+		return false
+	}
 	return true
+}
+
+func protocolErrorStatus(failure *specter.Error) int {
+	if failure != nil && failure.Code == specter.ErrProtocolVersionMismatch {
+		return http.StatusUpgradeRequired
+	}
+	return http.StatusBadRequest
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

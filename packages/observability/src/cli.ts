@@ -11,7 +11,10 @@ import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
-import { assertRuntimeObservationBatch } from '@specter-ts/protocol'
+import {
+  assertRuntimeObservationBatch,
+  structuredProtocolError,
+} from '@specter-ts/protocol'
 import type {
   RuntimeObservation,
   RuntimeObservationAcknowledgement,
@@ -24,6 +27,7 @@ import {
   type SpecterObservabilityCollector,
 } from './collector'
 import { createSpecterObservabilityHttpHandler } from './http-handler'
+import { SegmentCoordinator } from './segment-coordinator'
 
 type ActiveSegment = {
   readonly collector: SpecterObservabilityCollector
@@ -76,21 +80,28 @@ async function serve(commandArgs: readonly string[]) {
     args: [new Date(Date.now() - 48 * 60 * 60 * 1_000).toISOString()],
   })
 
-  let active = await openSegment(databaseBase, latestSegment(databaseBase))
-
-  async function maybeRotate() {
-    const age = Date.now() - active.openedAt
-    const bytes = fileSize(active.path)
-    if (age < maxAgeMs && bytes < maxBytes) return
-    const previous = active
-    active = await openSegment(databaseBase)
-    previous.abort.abort(new Error('Observability segment rotated'))
-    previous.client.close()
-  }
+  const initial = await openSegment(databaseBase, latestSegment(databaseBase))
+  const segments = new SegmentCoordinator({
+    initial,
+    shouldRotate(segment: ActiveSegment) {
+      const age = Date.now() - segment.openedAt
+      return age >= maxAgeMs || fileSize(segment.path) >= maxBytes
+    },
+    open: () => openSegment(databaseBase),
+    retire(segment: ActiveSegment) {
+      segment.abort.abort(new Error('Observability segment rotated'))
+    },
+    close(segment: ActiveSegment) {
+      segment.client.close()
+    },
+  })
 
   const server = createServer(async (request, response) => {
+    let releaseSegment: (() => void) | undefined
     try {
-      await maybeRotate()
+      const lease = await segments.acquire()
+      releaseSegment = lease.release
+      const active = lease.segment
       const webRequest = await toWebRequest(request, `http://${host}:${port}`)
       const observationInput =
         webRequest.method === 'POST' &&
@@ -136,15 +147,18 @@ async function serve(commandArgs: readonly string[]) {
       }
       await sendWebResponse(response, webResponse)
     } catch (cause) {
+      const error = structuredProtocolError(cause)
       response.writeHead(500, { 'content-type': 'application/json' })
       response.end(
         JSON.stringify({
           error: {
             code: 'SPECTER_OBSERVABILITY_SERVER_FAILURE',
-            message: cause instanceof Error ? cause.message : String(cause),
+            message: error.message,
           },
         }),
       )
+    } finally {
+      releaseSegment?.()
     }
   })
 
@@ -155,14 +169,14 @@ async function serve(commandArgs: readonly string[]) {
   console.log(
     `Specter observability collector listening on http://${host}:${port}`,
   )
-  console.log(`Active segment: ${active.path}`)
+  console.log(`Active segment: ${initial.path}`)
 
   const shutdown = async () => {
-    active.abort.abort(new Error('Collector shutting down'))
+    const segmentShutdown = segments.shutdown()
     await new Promise<void>((resolvePromise) =>
       server.close(() => resolvePromise()),
     )
-    active.client.close()
+    await segmentShutdown
     controlClient.close()
   }
   process.once('SIGINT', () => void shutdown())
@@ -335,11 +349,14 @@ async function watch(commandArgs: readonly string[]) {
       Boolean(entry[1]),
     ),
   )
-  const response = await fetch(`${endpoint(commandArgs)}/v1/stream?${query}`)
-  if (!response.ok || !response.body) {
-    throw new Error(`Collector stream returned HTTP ${response.status}`)
+  for (;;) {
+    const response = await fetch(`${endpoint(commandArgs)}/v1/stream?${query}`)
+    if (!response.ok || !response.body) {
+      throw new Error(`Collector stream returned HTTP ${response.status}`)
+    }
+    for await (const data of decodeSse(response.body)) console.log(data)
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 250))
   }
-  for await (const data of decodeSse(response.body)) console.log(data)
 }
 
 function filterOptions(commandArgs: readonly string[]): Record<string, string> {

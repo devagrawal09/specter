@@ -70,7 +70,13 @@ export function copyCollectorState(state: CollectorState): CollectorState {
 export function runtimeObservationIdentity(
   observation: Pick<RuntimeObservation, 'source' | 'observationId'>,
 ) {
-  const source = observation.source
+  return [
+    runtimeSourceIdentity(observation.source),
+    observation.observationId,
+  ].join('\u0000')
+}
+
+export function runtimeSourceIdentity(source: RuntimeSource) {
   return [
     source.application,
     source.environment,
@@ -78,6 +84,5 @@ export function runtimeObservationIdentity(
     source.runtimeVersion,
     source.instanceId,
     source.eventLogId,
-    observation.observationId,
   ].join('\u0000')
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -139,6 +141,146 @@ func TestQueuedReactionPassesDoNotSkipLaterCommits(t *testing.T) {
 	if len(got) != 3 || got[0] != "one" || got[1] != "two" || got[2] != "three" {
 		t.Fatalf("expected every queued commit to run, got %#v", got)
 	}
+}
+
+func TestReactionQueueDoesNotBlockCommandsBeyondFormerCapacity(t *testing.T) {
+	const commandCount = 1_100
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce sync.Once
+	var runs atomic.Int64
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	reaction := specter.ReactionDefinition{Name: "blocked", Scenarios: []specter.ReactionScenario{{Description: "handles an add", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []any{"ok"}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error { return nil }}, Handle: func(context.Context, specter.ReactionContext, []specter.PersistedEvent) (any, error) {
+		startOnce.Do(func() {
+			close(started)
+			<-release
+		})
+		runs.Add(1)
+		return "ok", nil
+	}}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions := make([]specter.CommandExecution, 0, commandCount)
+	first, err := app.Command(context.Background(), "add", addInput{ID: "0"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions = append(executions, first)
+	<-started
+	issued := make(chan error, 1)
+	go func() {
+		for index := 1; index < commandCount; index++ {
+			execution, commandErr := app.Command(context.Background(), "add", addInput{ID: fmt.Sprintf("%d", index)}, specter.DispatchOptions{})
+			if commandErr != nil {
+				issued <- commandErr
+				return
+			}
+			executions = append(executions, execution)
+		}
+		issued <- nil
+	}()
+	select {
+	case err := <-issued:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Commands blocked behind the Reaction scheduler")
+	}
+	close(release)
+	for _, execution := range executions {
+		if err := <-execution.Reactions; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := runs.Load(); got != commandCount {
+		t.Fatalf("expected %d Reaction runs, got %d", commandCount, got)
+	}
+}
+
+func TestDurableCommandSurvivesProjectionFailureAndRepairsOnNextCommand(t *testing.T) {
+	var attempts atomic.Int64
+	var observationsMu sync.Mutex
+	var observations []specter.Observation
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "prior"}}}, Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error {
+		if attempts.Add(1) == 1 {
+			return errors.New("projection unavailable")
+		}
+		return nil
+	}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Observe: func(observation specter.Observation) {
+		observationsMu.Lock()
+		observations = append(observations, observation)
+		observationsMu.Unlock()
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatalf("durable Command was reported as rejected: %v", err)
+	}
+	if first.Version != 1 || len(first.Events) != 1 || app.EventLog().Version() != 1 {
+		t.Fatalf("durable commit was not preserved: %#v", first)
+	}
+	if err := <-first.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	observationsMu.Lock()
+	foundRepair := false
+	for _, observation := range observations {
+		if observation.Kind == "slice.catch-up.failed" && observation.Attributes["repairRequired"] == true {
+			foundRepair = true
+		}
+	}
+	observationsMu.Unlock()
+	if !foundRepair {
+		t.Fatal("projection repair requirement was not observed")
+	}
+	second, err := app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatalf("next Command did not repair the projection: %v", err)
+	}
+	if err := <-second.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	if attempts.Load() != 3 {
+		t.Fatalf("expected failed apply, repaired apply, and new apply; got %d attempts", attempts.Load())
+	}
+}
+
+func TestCompletedReactionTicketsExpire(t *testing.T) {
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, ReactionTicketRetention: 10 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-execution.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := app.ReactionTicket(execution.ReactionTicketID); !ok {
+		t.Fatal("ticket disappeared before its retention window")
+	}
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if _, ok := app.ReactionTicket(execution.ReactionTicketID); !ok {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("completed Reaction ticket did not expire")
 }
 
 func TestSubscriptionKeepsLatestValue(t *testing.T) {

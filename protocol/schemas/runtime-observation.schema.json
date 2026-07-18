@@ -45,6 +45,7 @@
     },
     "reactionPassId": { "type": "string", "minLength": 1 },
     "deliveryId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
     "events": { "type": "array", "items": { "$ref": "#/$defs/eventReference" } },
     "cursor": { "$ref": "#/$defs/safeInteger" },
     "droppedCount": { "$ref": "#/$defs/safeInteger" },

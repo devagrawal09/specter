@@ -1,0 +1,1 @@
+{ "protocolVersion": 1, "kind": "reaction-ticket.response", "requestId": "response-3", "reactionTicketId": "ticket-1", "status": "completed", "error": { "code": "SPECTER_INTERNAL_ERROR", "message": "Failed." } }

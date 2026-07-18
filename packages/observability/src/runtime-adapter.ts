@@ -11,6 +11,7 @@ import type {
   RuntimeSource,
   StructuredError,
 } from '@specter-ts/protocol'
+import { structuredProtocolError } from '@specter-ts/protocol'
 import type { ReactionOutboxTransitionListener } from '@specter-ts/reaction-outbox'
 
 import type { RuntimeObservationProducer } from './producer'
@@ -272,7 +273,8 @@ function fromSpecterObservation(
         ...base,
         kind: 'reaction.pass.started',
         reactionPassId: observation.passId,
-        deliveryId: observation.attemptId,
+        deliveryId: observation.passId,
+        attemptId: observation.attemptId,
         attributes: { attemptNumber: observation.attemptNumber },
       }
     case 'reaction-pass-completed':
@@ -288,7 +290,8 @@ function fromSpecterObservation(
             ? 'succeeded'
             : 'failed',
         reactionPassId: observation.passId,
-        deliveryId: observation.attemptId,
+        deliveryId: observation.passId,
+        attemptId: observation.attemptId,
         ...(observation.type === 'reaction-pass-failed'
           ? { error: publicError(observation.cause) }
           : {}),
@@ -313,7 +316,8 @@ function fromSpecterObservation(
         kind,
         reaction: observation.reactionName,
         reactionPassId: observation.passId,
-        deliveryId: observation.attemptId,
+        deliveryId: reactionDeliveryId(observation),
+        attemptId: reactionAttemptId(observation),
         ...(observation.type === 'reaction-run-completed'
           ? { outcome: 'succeeded' as const }
           : {}),
@@ -373,15 +377,25 @@ function causes(events: readonly SpecterEventReference[]) {
 }
 
 function publicError(cause: unknown): StructuredError {
-  if (cause instanceof Error) {
-    if ('code' in cause && typeof cause.code === 'string') {
-      return { code: cause.code, message: cause.message || cause.name }
-    }
+  return structuredProtocolError(cause)
+}
+
+type ReactionRunObservation = Extract<
+  SpecterObservation,
+  {
+    readonly type:
+      | 'reaction-run-started'
+      | 'reaction-run-completed'
+      | 'reaction-run-failed'
   }
-  return {
-    code: 'SPECTER_RUNTIME_FAILURE',
-    message: 'Runtime operation failed.',
-  }
+>
+
+function reactionDeliveryId(observation: ReactionRunObservation) {
+  return `${observation.passId}:${observation.reactionName}:${observation.eventRange?.toOrder ?? 'pending'}`
+}
+
+function reactionAttemptId(observation: ReactionRunObservation) {
+  return `${observation.attemptId}:${observation.reactionName}:${observation.eventRange?.toOrder ?? 'pending'}`
 }
 
 const _jsonValueCheck: JsonValue = null

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type {
   RuntimeObservation,
+  RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
   RuntimeSource,
 } from '@specter-ts/protocol'
@@ -56,6 +57,20 @@ function batch(
     requestId,
     observations,
   }
+}
+
+function acknowledgement(
+  input: RuntimeObservationBatch,
+  overrides: Partial<RuntimeObservationAcknowledgement> = {},
+) {
+  return Response.json({
+    protocolVersion: 1,
+    kind: 'observations.ack',
+    requestId: input.requestId,
+    accepted: input.observations.length,
+    duplicates: 0,
+    ...overrides,
+  } satisfies RuntimeObservationAcknowledgement)
 }
 
 async function setup() {
@@ -128,6 +143,74 @@ describe('Specter observability collector', () => {
     })
   })
 
+  it('scopes causal event and operation identities to their runtime source', async () => {
+    const { collector } = await setup()
+    const otherSource: RuntimeSource = {
+      ...source,
+      application: 'booking-reference',
+      instanceId: 'booking-instance',
+      eventLogId: 'booking-log',
+    }
+    const todoParent = observation({
+      observationId: 'todo-parent',
+      sequence: 1,
+      kind: 'command.completed',
+      operationId: 'shared-parent-operation',
+      events: [eventReference],
+    })
+    const bookingParent = observation({
+      source: otherSource,
+      observationId: 'booking-parent',
+      sequence: 1,
+      kind: 'command.completed',
+      operationId: 'foreign-operation',
+      events: [{ ...eventReference, type: 'booking-created' }],
+    })
+    const todoChild = observation({
+      observationId: 'todo-child',
+      sequence: 2,
+      kind: 'reaction.run.completed',
+      operationId: 'todo-reaction',
+      parentOperationIds: ['shared-parent-operation'],
+      triggeringEventIds: [eventReference.eventId],
+    })
+    const bookingChildWithCollidingParentId = observation({
+      source: otherSource,
+      observationId: 'booking-child',
+      sequence: 2,
+      kind: 'reaction.run.completed',
+      operationId: 'foreign-reaction',
+      parentOperationIds: ['shared-parent-operation'],
+    })
+
+    await collector.ingest(
+      batch('source-collisions', [
+        todoParent,
+        bookingParent,
+        todoChild,
+        bookingChildWithCollidingParentId,
+      ]),
+    )
+
+    const trace = await collector.trace('todo-reaction')
+    expect(trace.observations.map((item) => item.observationId)).toEqual([
+      'todo-parent',
+      'todo-child',
+    ])
+    expect(trace.edges).toEqual([
+      {
+        from: 'shared-parent-operation',
+        to: 'todo-reaction',
+        relation: 'parent-operation',
+      },
+      {
+        from: 'shared-parent-operation',
+        to: 'todo-reaction',
+        relation: 'caused-by-event',
+      },
+    ])
+  })
+
   it('deduplicates by observation identity rather than batch request ID', async () => {
     const { collector, eventLog } = await setup()
     const input = batch('retryable-batch', [
@@ -194,6 +277,37 @@ describe('Specter observability collector', () => {
     expect(html).not.toContain('<private>')
   })
 
+  it('redacts unexpected HTTP and activity-stream failures', async () => {
+    const credential = 'postgres://admin:secret@collector.internal/runtime'
+    const handler = createSpecterObservabilityHttpHandler({
+      collector: {
+        async overview() {
+          throw new Error(credential)
+        },
+        async *subscribeActivity() {
+          yield await Promise.reject(new Error(credential))
+        },
+      } as never,
+    })
+
+    const response = await handler(new Request('http://collector/v1/overview'))
+    const body = await response.text()
+    expect(response.status).toBe(500)
+    expect(body).not.toContain(credential)
+    expect(JSON.parse(body)).toMatchObject({
+      error: {
+        code: 'SPECTER_INTERNAL_ERROR',
+        message: 'The Specter runtime could not complete the request.',
+      },
+    })
+
+    const stream = await handler(new Request('http://collector/v1/stream'))
+    const frame = await stream.body?.getReader().read()
+    const text = new TextDecoder().decode(frame?.value)
+    expect(text).not.toContain(credential)
+    expect(text).toContain('SPECTER_INTERNAL_ERROR')
+  })
+
   it('drops oldest queued telemetry without backpressuring the caller', async () => {
     const bodies: RuntimeObservationBatch[] = []
     const producer = createRuntimeObservationProducer({
@@ -201,8 +315,9 @@ describe('Specter observability collector', () => {
       source,
       maxQueuedObservations: 2,
       fetch: async (_input, init) => {
-        bodies.push(JSON.parse(String(init?.body)) as RuntimeObservationBatch)
-        return Response.json({ ok: true })
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        return acknowledgement(body)
       },
       idFactory: (() => {
         let id = 0
@@ -239,13 +354,61 @@ describe('Specter observability collector', () => {
 
     expect(producer.inspect()).toMatchObject({ queued: 0, dropped: 1 })
     expect(bodies[0]?.observations.map((item) => item.kind)).toEqual([
+      'query.started',
+      'query.started',
       'telemetry.dropped',
-      'query.started',
-      'query.started',
+    ])
+    expect(bodies[0]?.observations.map((item) => item.sequence)).toEqual([
+      2, 3, 4,
     ])
     expect(
       bodies[0]?.observations.some((item) => item.observationId === 'oldest'),
     ).toBe(false)
+  })
+
+  it('reports dropped telemetry after earlier sequences across batch boundaries', async () => {
+    const bodies: RuntimeObservationBatch[] = []
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      maxQueuedObservations: 1,
+      maxBatchSize: 1,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        return acknowledgement(body)
+      },
+      idFactory: (() => {
+        let id = 0
+        return () => `ordered-${++id}`
+      })(),
+    })
+    producer.record(
+      observation({
+        observationId: 'dropped',
+        sequence: 1,
+        kind: 'query.started',
+        operationId: 'query-1',
+      }),
+    )
+    producer.record(
+      observation({
+        observationId: 'retained',
+        sequence: 2,
+        kind: 'query.started',
+        operationId: 'query-2',
+      }),
+    )
+
+    await producer.flush()
+
+    expect(bodies.map((body) => body.observations[0]?.kind)).toEqual([
+      'query.started',
+      'telemetry.dropped',
+    ])
+    expect(
+      bodies.flatMap((body) => body.observations.map((item) => item.sequence)),
+    ).toEqual([2, 3])
   })
 
   it('keeps the batch request ID stable across transport retries', async () => {
@@ -349,13 +512,96 @@ describe('Specter observability collector', () => {
     expect(bodies).toHaveLength(3)
     expect(bodies[1]).toEqual(bodies[0])
     expect(bodies[2]?.requestId).not.toBe(bodies[0]?.requestId)
-    expect(bodies[2]?.observations[0]).toMatchObject({
+    expect(bodies[2]?.observations.at(-1)).toMatchObject({
       kind: 'telemetry.dropped',
       droppedCount: 1,
     })
     expect(
-      bodies[2]?.observations.slice(1).map((item) => item.observationId),
+      bodies[2]?.observations.slice(0, -1).map((item) => item.observationId),
     ).toEqual(['later-1', 'later-2'])
+  })
+
+  it.each([
+    ['malformed', () => Response.json({ ok: true })],
+    [
+      'mismatched request',
+      (input: RuntimeObservationBatch) =>
+        acknowledgement(input, { requestId: 'another-request' }),
+    ],
+    [
+      'partial accounting',
+      (input: RuntimeObservationBatch) =>
+        acknowledgement(input, { accepted: 0 }),
+    ],
+    ['empty', () => new Response(null, { status: 202 })],
+    [
+      'non-success HTTP',
+      (input: RuntimeObservationBatch) =>
+        new Response(JSON.stringify(acknowledgementBody(input)), {
+          status: 503,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ],
+  ])('retains an immutable batch after a %s acknowledgement', async (_, invalid) => {
+    const bodies: RuntimeObservationBatch[] = []
+    let attempt = 0
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      retryDelayMs: 60_000,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        attempt += 1
+        return attempt === 1 ? invalid(body) : acknowledgement(body)
+      },
+    })
+    producer.record(
+      observation({
+        observationId: 'kept-until-acknowledged',
+        sequence: 1,
+        kind: 'command.started',
+        operationId: 'command-1',
+      }),
+    )
+
+    await producer.flush()
+    expect(producer.inspect().queued).toBe(1)
+    await producer.flush()
+
+    expect(bodies).toHaveLength(2)
+    expect(bodies[1]).toEqual(bodies[0])
+    expect(producer.inspect().queued).toBe(0)
+  })
+
+  it('accepts an acknowledgement that explicitly rejects the complete batch', async () => {
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      maxQueuedObservations: 0,
+      maxBatchSize: 0,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        return acknowledgement(body, {
+          accepted: 0,
+          rejectedObservationIds: body.observations.map(
+            (item) => item.observationId,
+          ),
+        })
+      },
+    })
+    producer.record(
+      observation({
+        observationId: 'explicitly-rejected',
+        sequence: 1,
+        kind: 'command.started',
+        operationId: 'command-1',
+      }),
+    )
+
+    await producer.flush()
+
+    expect(producer.inspect().queued).toBe(0)
   })
 
   it('redacts unstructured runtime failures at the protocol boundary', () => {
@@ -383,10 +629,99 @@ describe('Specter observability collector', () => {
     expect(recorded[0]).toMatchObject({
       kind: 'reaction.run.failed',
       error: {
-        code: 'SPECTER_RUNTIME_FAILURE',
-        message: 'Runtime operation failed.',
+        code: 'SPECTER_INTERNAL_ERROR',
+        message: 'The Specter runtime could not complete the request.',
       },
     })
     expect(JSON.stringify(recorded)).not.toContain('private database')
   })
+
+  it('redacts coded failures and preserves retry-stable Reaction identities', () => {
+    const recorded: RuntimeObservation[] = []
+    const emitter = createRuntimeObservationEmitter({
+      source,
+      producer: { record: (item) => recorded.push(item) },
+    })
+    const credential = new Error('password=hunter2') as Error & {
+      code: string
+    }
+    credential.code = 'SPECTER_INFRASTRUCTURE_FAILURE'
+
+    for (const [attemptId, attemptNumber] of [
+      ['pass-attempt-1', 1],
+      ['pass-attempt-2', 2],
+    ] as const) {
+      emitter.observe({
+        type: 'reaction-pass-started',
+        observationId: `reaction-pass-started-${attemptNumber}`,
+        observedAt: '2026-07-18T12:00:00.000Z',
+        operationId: `pass-operation-${attemptNumber}`,
+        parentOperationIds: [],
+        causedByEvents: [],
+        passId: 'stable-pass',
+        attemptId,
+        attemptNumber,
+      })
+      emitter.observe({
+        type: 'reaction-pass-failed',
+        observationId: `reaction-pass-failed-${attemptNumber}`,
+        observedAt: '2026-07-18T12:00:00.000Z',
+        operationId: `pass-operation-${attemptNumber}`,
+        parentOperationIds: [],
+        causedByEvents: [],
+        passId: 'stable-pass',
+        attemptId,
+        attemptNumber,
+        eventRanges: [],
+        failureCount: 1,
+        durationMs: 2,
+        cause: credential,
+      })
+      emitter.observe({
+        type: 'reaction-run-failed',
+        observationId: `run-${attemptNumber}`,
+        observedAt: '2026-07-18T12:00:00.000Z',
+        operationId: `run-operation-${attemptNumber}`,
+        parentOperationIds: [],
+        causedByEvents: [],
+        reactionName: 'sendEmail',
+        runId: `run-attempt-${attemptNumber}`,
+        passId: 'stable-pass',
+        attemptId,
+        eventRange: { fromOrder: 2, toOrder: 4, eventCount: 3 },
+        durationMs: 2,
+        cause: credential,
+      })
+    }
+
+    const passes = recorded.filter((item) =>
+      item.kind.startsWith('reaction.pass.'),
+    )
+    const runs = recorded.filter((item) => item.reaction === 'sendEmail')
+    expect(passes.map((item) => item.deliveryId)).toEqual(
+      Array(passes.length).fill('stable-pass'),
+    )
+    expect(new Set(passes.map((item) => item.attemptId))).toEqual(
+      new Set(['pass-attempt-1', 'pass-attempt-2']),
+    )
+    expect(runs.map((item) => item.deliveryId)).toEqual([
+      'stable-pass:sendEmail:4',
+      'stable-pass:sendEmail:4',
+    ])
+    expect(runs.map((item) => item.attemptId)).toEqual([
+      'pass-attempt-1:sendEmail:4',
+      'pass-attempt-2:sendEmail:4',
+    ])
+    expect(JSON.stringify(recorded)).not.toContain('hunter2')
+  })
 })
+
+function acknowledgementBody(input: RuntimeObservationBatch) {
+  return {
+    protocolVersion: 1,
+    kind: 'observations.ack',
+    requestId: input.requestId,
+    accepted: input.observations.length,
+    duplicates: 0,
+  }
+}

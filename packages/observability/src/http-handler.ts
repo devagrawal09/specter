@@ -2,6 +2,8 @@ import {
   assertRuntimeObservationBatch,
   negotiateCapabilities,
   parseProtocolMessage,
+  SpecterProtocolError,
+  structuredProtocolError,
 } from '@specter-ts/protocol'
 
 import type { RuntimeActivityFilter } from './collector-model'
@@ -109,10 +111,11 @@ export function createSpecterObservabilityHttpHandler(
         'Route not found.',
       )
     } catch (cause) {
+      const error = structuredProtocolError(cause)
       return errorResponse(
-        400,
-        'SPECTER_OBSERVABILITY_INVALID_REQUEST',
-        cause instanceof Error ? cause.message : String(cause),
+        cause instanceof SpecterProtocolError ? cause.status : 500,
+        error.code,
+        error.message,
       )
     }
   }
@@ -185,9 +188,10 @@ function streamActivity(
             ),
           )
         } catch (cause) {
+          const error = structuredProtocolError(cause)
           controller.enqueue(
             encoder.encode(
-              `event: error\ndata: ${JSON.stringify({ error: String(cause) })}\n\n`,
+              `event: error\ndata: ${JSON.stringify({ error })}\n\n`,
             ),
           )
           controller.close()

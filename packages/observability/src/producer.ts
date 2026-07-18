@@ -1,8 +1,10 @@
 import type {
   RuntimeObservation,
+  RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
   RuntimeSource,
 } from '@specter-ts/protocol'
+import { parseProtocolMessage } from '@specter-ts/protocol'
 
 export type RuntimeObservationProducerOptions = {
   readonly endpoint: string
@@ -33,8 +35,8 @@ export function createRuntimeObservationProducer(
   const fetchImplementation = options.fetch ?? globalThis.fetch
   const idFactory = options.idFactory ?? (() => crypto.randomUUID())
   const now = options.now ?? (() => new Date())
-  const capacity = options.maxQueuedObservations ?? 10_000
-  const batchSize = Math.min(options.maxBatchSize ?? 100, 100)
+  const capacity = boundedPositiveInteger(options.maxQueuedObservations, 10_000)
+  const batchSize = boundedPositiveInteger(options.maxBatchSize, 100, 100)
   const initialRetryDelay = options.retryDelayMs ?? 100
   const maxRetryDelay = options.maxRetryDelayMs ?? 5_000
   const queue: RuntimeObservation[] = []
@@ -65,15 +67,19 @@ export function createRuntimeObservationProducer(
   }
 
   function scheduleFlush() {
-    if (activeFlush || retryTimer || (!pending && queue.length === 0)) return
+    if (activeFlush || retryTimer || !hasWork()) return
     queueMicrotask(() => {
-      if (!activeFlush && !retryTimer && (pending || queue.length > 0)) {
+      if (!activeFlush && !retryTimer && hasWork()) {
         activeFlush = drain().finally(() => {
           activeFlush = undefined
-          if ((pending || queue.length > 0) && !retryTimer) scheduleFlush()
+          if (hasWork() && !retryTimer) scheduleFlush()
         })
       }
     })
+  }
+
+  function hasWork() {
+    return Boolean(pending) || queue.length > 0 || dropped > reportedDropped
   }
 
   function droppedObservation(count: number): RuntimeObservation {
@@ -92,19 +98,20 @@ export function createRuntimeObservationProducer(
   }
 
   async function drain() {
-    while (queue.length > 0 || pending) {
+    while (hasWork()) {
       if (!pending) {
         const droppedToReport = dropped - reportedDropped
-        const queuedObservationCount = Math.min(
-          queue.length,
-          droppedToReport > 0 ? Math.max(0, batchSize - 1) : batchSize,
-        )
+        const queuedObservationCount = Math.min(queue.length, batchSize)
         const observations = queue.splice(0, queuedObservationCount)
-        if (droppedToReport > 0)
-          observations.unshift(droppedObservation(droppedToReport))
+        const droppedCount =
+          droppedToReport > 0 && observations.length < batchSize
+            ? droppedToReport
+            : 0
+        if (droppedCount > 0)
+          observations.push(droppedObservation(droppedToReport))
         pending = {
           queuedObservationCount,
-          droppedCount: droppedToReport,
+          droppedCount,
           batch: {
             protocolVersion: 1,
             kind: 'observations.batch',
@@ -128,6 +135,8 @@ export function createRuntimeObservationProducer(
         )
         if (!response.ok)
           throw new Error(`Collector returned HTTP ${response.status}`)
+        const acknowledgement = parseProtocolMessage(await response.json())
+        assertCompleteAcknowledgement(pending.batch, acknowledgement)
         if (pending.droppedCount) reportedDropped += pending.droppedCount
         pending = undefined
         retryDelay = initialRetryDelay
@@ -147,7 +156,7 @@ export function createRuntimeObservationProducer(
       clearTimeout(retryTimer)
       retryTimer = undefined
     }
-    if (!activeFlush && (pending || queue.length > 0)) activeFlush = drain()
+    if (!activeFlush && hasWork()) activeFlush = drain()
     const currentFlush = activeFlush
     await currentFlush
     if (activeFlush === currentFlush) activeFlush = undefined
@@ -168,4 +177,42 @@ export function createRuntimeObservationProducer(
       closed,
     }),
   }
+}
+
+function boundedPositiveInteger(
+  value: number | undefined,
+  fallback: number,
+  maximum = Number.MAX_SAFE_INTEGER,
+) {
+  if (value === undefined) return fallback
+  if (!Number.isSafeInteger(value)) return fallback
+  return Math.min(Math.max(1, value), maximum)
+}
+
+function assertCompleteAcknowledgement(
+  batch: RuntimeObservationBatch,
+  message: ReturnType<typeof parseProtocolMessage>,
+): asserts message is RuntimeObservationAcknowledgement {
+  if (message.kind !== 'observations.ack')
+    throw new Error('Collector returned the wrong protocol message kind.')
+  if (message.requestId !== batch.requestId)
+    throw new Error('Collector acknowledgement request ID does not match.')
+  if (message.accepted < 0 || message.duplicates < 0)
+    throw new Error('Collector acknowledgement counts cannot be negative.')
+
+  const observationIds = new Set(
+    batch.observations.map((observation) => observation.observationId),
+  )
+  const rejectedIds = message.rejectedObservationIds ?? []
+  const rejected = new Set(rejectedIds)
+  if (
+    rejected.size !== rejectedIds.length ||
+    rejectedIds.some((observationId) => !observationIds.has(observationId))
+  )
+    throw new Error('Collector acknowledgement has invalid rejected IDs.')
+  if (
+    message.accepted + message.duplicates + rejected.size !==
+    batch.observations.length
+  )
+    throw new Error('Collector acknowledgement does not account for the batch.')
 }

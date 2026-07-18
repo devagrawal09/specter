@@ -5,9 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -51,6 +54,127 @@ func TestRejectsVersionMismatch(t *testing.T) {
 	if response.StatusCode != http.StatusUpgradeRequired {
 		t.Fatalf("got HTTP %d", response.StatusCode)
 	}
+}
+
+func TestAllPostFamiliesRejectVersionMismatchAndTrailingJSON(t *testing.T) {
+	handler := (&protocol.Server{App: emptyApp(t)}).Handler()
+	families := []struct {
+		path string
+		kind string
+	}{
+		{path: "/specter/v1/capabilities", kind: "capabilities.request"},
+		{path: "/specter/v1/commands", kind: "command.request"},
+		{path: "/specter/v1/queries", kind: "query.request"},
+		{path: "/specter/v1/subscriptions", kind: "subscription.request"},
+		{path: "/specter/v1/observations", kind: "observations.batch"},
+	}
+	for _, family := range families {
+		t.Run(family.kind+" version", func(t *testing.T) {
+			body := fmt.Sprintf(`{"protocolVersion":2,"kind":%q,"requestId":"request-1"}`, family.kind)
+			request := httptest.NewRequest(http.MethodPost, family.path, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusUpgradeRequired {
+				t.Fatalf("got HTTP %d", response.Code)
+			}
+		})
+		t.Run(family.kind+" trailing JSON", func(t *testing.T) {
+			body := fmt.Sprintf(`{"protocolVersion":1,"kind":%q,"requestId":"request-1"} {}`, family.kind)
+			request := httptest.NewRequest(http.MethodPost, family.path, strings.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("got HTTP %d", response.Code)
+			}
+			var result struct {
+				Error *specter.Error `json:"error"`
+			}
+			if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Error == nil || result.Error.Code != specter.ErrInvalidJSON {
+				t.Fatalf("unexpected error: %#v", result.Error)
+			}
+		})
+	}
+}
+
+func TestClientRejectsMalformedAndContradictoryResponses(t *testing.T) {
+	queryRequest := protocol.QueryRequest{Envelope: protocol.Envelope{RequestID: "query-request"}, OperationID: "operation-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
+	queryCases := []struct {
+		name string
+		body string
+	}{
+		{name: "result and error", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","operationId":"operation-1","result":"secret","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`},
+		{name: "neither result nor error", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","operationId":"operation-1"}`},
+	}
+	for _, test := range queryCases {
+		t.Run(test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, test.body), nil
+			})}}
+			if _, err := client.Query(context.Background(), queryRequest); err == nil {
+				t.Fatal("expected contradictory Query response to be rejected")
+			}
+		})
+	}
+	commandRequest := protocol.CommandRequest{Envelope: protocol.Envelope{RequestID: "command-request"}, OperationID: "operation-1", Command: protocol.OperationEnvelope{Type: "set", Payload: json.RawMessage(`{}`)}}
+	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":[],"error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`), nil
+	})}}
+	if _, err := client.Command(context.Background(), commandRequest); err == nil {
+		t.Fatal("expected contradictory Command response to be rejected")
+	}
+	ticketClient := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"protocolVersion":1,"kind":"reaction-ticket.response","requestId":"ticket-request","reactionTicketId":"ticket-1","status":"completed","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`), nil
+	})}}
+	if _, err := ticketClient.ReactionTicket(context.Background(), "ticket-1", "ticket-request"); err == nil {
+		t.Fatal("expected contradictory Reaction ticket response to be rejected")
+	}
+}
+
+func TestObservationClientRequiresExactAcknowledgement(t *testing.T) {
+	batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: "observation-request"}, Observations: []protocol.RuntimeObservation{{Observation: specter.Observation{ObservationID: "observation-1"}}}}
+	tests := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{name: "malformed", status: http.StatusOK, body: `{`},
+		{name: "mismatched request", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"different","accepted":1,"duplicates":0}`},
+		{name: "partial", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0}`},
+		{name: "empty", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request"}`},
+		{name: "non-2xx", status: http.StatusServiceUnavailable, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":0}`},
+		{name: "unknown rejected id", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0,"rejectedObservationIds":["different"]}`},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(test.status, test.body), nil
+			})}}
+			if _, err := client.SendObservations(context.Background(), batch); err == nil {
+				t.Fatal("expected acknowledgement to be rejected")
+			}
+		})
+	}
+	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0,"rejectedObservationIds":["observation-1"]}`), nil
+	})}}
+	if _, err := client.SendObservations(context.Background(), batch); err != nil {
+		t.Fatalf("explicitly rejected observation was not exactly accounted for: %v", err)
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
+func jsonResponse(status int, body string) *http.Response {
+	return &http.Response{StatusCode: status, Status: fmt.Sprintf("%d test", status), Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func TestClientServerCommandAndQuery(t *testing.T) {

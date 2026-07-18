@@ -63,7 +63,7 @@ export function structuredProtocolError(cause: unknown): StructuredError {
     cause instanceof Error &&
     'code' in cause &&
     typeof cause.code === 'string' &&
-    cause.code in publicRuntimeErrorMessages
+    Object.hasOwn(publicRuntimeErrorMessages, cause.code)
       ? cause.code
       : protocolErrorCodes.internal
 

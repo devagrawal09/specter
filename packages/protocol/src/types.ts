@@ -63,6 +63,7 @@ export type Causality = {
   }
   readonly reactionPassId?: string
   readonly deliveryId?: string
+  readonly attemptId?: string
 }
 
 export type CommandRequest = ProtocolEnvelope<'command.request'> &

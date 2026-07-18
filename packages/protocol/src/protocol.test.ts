@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { negotiateCapabilities } from './capabilities'
-import { SpecterProtocolError } from './errors'
+import { SpecterProtocolError, structuredProtocolError } from './errors'
+import { createSpecterProtocolHttpClient } from './http-client'
 import { createSpecterProtocolHttpHandler } from './http-server'
 import { createSpecterRuntimeProtocolAdapter } from './specter-runtime'
 import {
@@ -20,6 +21,16 @@ const source = {
 }
 
 describe('protocol validation', () => {
+  it('does not treat inherited object keys as public runtime error codes', () => {
+    const cause = new Error('private credential') as Error & { code: string }
+    cause.code = 'toString'
+
+    expect(structuredProtocolError(cause)).toEqual({
+      code: 'SPECTER_INTERNAL_ERROR',
+      message: 'The Specter runtime could not complete the request.',
+    })
+  })
+
   it('accepts unknown optional fields', () => {
     expect(
       parseProtocolMessage({
@@ -61,6 +72,7 @@ describe('protocol validation', () => {
       source,
       kind: 'command.started',
       operationId: 'operation-1',
+      attemptId: 'attempt-1',
     }
     const batch = {
       protocolVersion: 1,
@@ -72,12 +84,53 @@ describe('protocol validation', () => {
     expect(() =>
       assertRuntimeObservationBatch({
         ...batch,
+        observations: [{ ...observation, attemptId: '' }],
+      }),
+    ).toThrowError(expect.objectContaining({ code: 'SPECTER_INVALID_MESSAGE' }))
+    expect(() =>
+      assertRuntimeObservationBatch({
+        ...batch,
         observations: Array.from({ length: 101 }, (_, index) => ({
           ...observation,
           observationId: `observation-${index}`,
         })),
       }),
     ).toThrow()
+  })
+
+  it('rejects contradictory response states', () => {
+    const envelope = { protocolVersion: 1, requestId: 'response-1' }
+    const error = { code: 'SPECTER_INTERNAL_ERROR', message: 'Failed.' }
+
+    for (const message of [
+      {
+        ...envelope,
+        kind: 'command.response',
+        operationId: 'command-1',
+        status: 'committed',
+        version: 1,
+        events: [],
+        error,
+      },
+      {
+        ...envelope,
+        kind: 'query.response',
+        operationId: 'query-1',
+        result: null,
+        error,
+      },
+      {
+        ...envelope,
+        kind: 'reaction-ticket.response',
+        reactionTicketId: 'ticket-1',
+        status: 'completed',
+        error,
+      },
+    ]) {
+      expect(() => parseProtocolMessage(message)).toThrowError(
+        expect.objectContaining({ code: 'SPECTER_INVALID_MESSAGE' }),
+      )
+    }
   })
 })
 
@@ -96,6 +149,53 @@ describe('capabilities', () => {
 })
 
 describe('reference HTTP binding', () => {
+  it('treats subscription errors as terminal even if a server sends later frames', async () => {
+    const encoder = new TextEncoder()
+    const frames = [
+      {
+        protocolVersion: 1,
+        kind: 'subscription.error',
+        requestId: 'request-1',
+        operationId: 'operation-1',
+        error: { code: 'SPECTER_INTERNAL_ERROR', message: 'Failed.' },
+      },
+      {
+        protocolVersion: 1,
+        kind: 'subscription.value',
+        requestId: 'request-1',
+        operationId: 'operation-1',
+        sequence: 1,
+        result: [],
+      },
+    ]
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const frame of frames) {
+                controller.enqueue(
+                  encoder.encode(`data: ${JSON.stringify(frame)}\n\n`),
+                )
+              }
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    })
+
+    const received = []
+    for await (const frame of client.subscribe({
+      operationId: 'operation-1',
+      query: { type: 'todosQuery', payload: {} },
+    }))
+      received.push(frame)
+
+    expect(received.map((frame) => frame.kind)).toEqual(['subscription.error'])
+  })
+
   it('dispatches commands and propagates subscription cancellation', async () => {
     let subscriptionCancelled = false
     const runtime: ProtocolRuntimeAdapter = {
@@ -294,5 +394,95 @@ describe('reference HTTP binding', () => {
     expect(committed.reactionTicketId).toBeTruthy()
     expect(retried.status).toBe('duplicate')
     expect(retried.reactionTicketId).toBe(committed.reactionTicketId)
+  })
+
+  it('handles rejected Reaction promises immediately and unreferences the expiry timer', async () => {
+    const timerSpy = vi.spyOn(globalThis, 'setTimeout')
+    const app = {
+      async command() {
+        return {
+          operationId: 'operation-1',
+          events: [],
+          version: 1,
+          duplicate: false,
+          reactions: Promise.reject(
+            new Error('postgres://admin:secret@database/reactions'),
+          ),
+        }
+      },
+    }
+    const adapter = createSpecterRuntimeProtocolAdapter({
+      app: app as never,
+      eventLog: { currentVersion: async () => 1 } as never,
+      runtimeVersion: 'test',
+      ticketRetentionMs: 60_000,
+    })
+    const command = await adapter.command({
+      protocolVersion: 1,
+      kind: 'command.request',
+      requestId: 'request-1',
+      operationId: 'operation-1',
+      command: { type: 'addTodo', payload: {} },
+    })
+
+    await expect(
+      adapter.reactionTicket(command.reactionTicketId as string),
+    ).resolves.toEqual({
+      status: 'failed',
+      error: {
+        code: 'SPECTER_INTERNAL_ERROR',
+        message: 'The Specter runtime could not complete the request.',
+      },
+    })
+    const expiry = timerSpy.mock.results.at(-1)?.value as
+      | ReturnType<typeof setTimeout>
+      | undefined
+    expect(expiry).toBeDefined()
+    if (expiry && typeof expiry === 'object' && 'hasRef' in expiry)
+      expect(expiry.hasRef()).toBe(false)
+    if (expiry) clearTimeout(expiry)
+    timerSpy.mockRestore()
+  })
+
+  it('expires Reaction tickets after the configured retention window', async () => {
+    vi.useFakeTimers()
+    try {
+      const adapter = createSpecterRuntimeProtocolAdapter({
+        app: {
+          async command() {
+            return {
+              operationId: 'operation-1',
+              events: [],
+              version: 1,
+              duplicate: false,
+              reactions: Promise.resolve(),
+            }
+          },
+        } as never,
+        eventLog: { currentVersion: async () => 1 } as never,
+        runtimeVersion: 'test',
+        ticketRetentionMs: 25,
+      })
+      const command = await adapter.command({
+        protocolVersion: 1,
+        kind: 'command.request',
+        requestId: 'request-expiring',
+        operationId: 'operation-expiring',
+        command: { type: 'addTodo', payload: {} },
+      })
+      const ticketId = command.reactionTicketId as string
+      await expect(adapter.reactionTicket(ticketId)).resolves.toEqual({
+        status: 'completed',
+      })
+
+      await vi.advanceTimersByTimeAsync(25)
+
+      await expect(adapter.reactionTicket(ticketId)).resolves.toMatchObject({
+        status: 'failed',
+        error: { code: 'SPECTER_REACTION_TICKET_NOT_FOUND' },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

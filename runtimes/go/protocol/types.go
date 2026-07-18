@@ -92,7 +92,7 @@ type QueryRequest struct {
 type QueryResponse struct {
 	Envelope
 	OperationID string         `json:"operationId"`
-	Result      any            `json:"result"`
+	Result      any            `json:"result,omitempty"`
 	Error       *specter.Error `json:"error,omitempty"`
 }
 
@@ -112,7 +112,7 @@ type SubscriptionMessage struct {
 	Envelope
 	OperationID string         `json:"operationId"`
 	Sequence    int64          `json:"sequence,omitempty"`
-	Result      any            `json:"result"`
+	Result      any            `json:"result,omitempty"`
 	Error       *specter.Error `json:"error,omitempty"`
 }
 
