@@ -320,6 +320,33 @@ describe('verifyGreenfieldAttempt', () => {
     )
   })
 
+  it('converts malformed driver observations into isolated check errors', async () => {
+    const plan = validPlan()
+    const first = plan.checks[0] as CheckDefinition
+    const base = passingDriver()
+    const driver = passingDriver()
+    driver.runCheck = async (context) => {
+      if (context.check.id !== first.id) return base.runCheck(context)
+      return {
+        claims: {},
+        comparisons: {} as never,
+        artifacts: [42] as never,
+      }
+    }
+
+    const result = await verifyGreenfieldAttempt(plan, driver, {
+      now: () => 100,
+    })
+
+    assert.equal(result.firstAttempt.checks[0]?.status, 'error')
+    assert.match(
+      result.firstAttempt.checks[0]?.diagnostics.join('\n') ?? '',
+      /comparisons must be an array.*artifacts must contain/,
+    )
+    assert.equal(result.firstAttempt.checks[1]?.status, 'passed')
+    assert.equal(result.firstAttempt.isolationCompromised, false)
+  })
+
   it('resets every check and waits for abort-aware work before continuing', async () => {
     const plan = validPlan()
     const first = plan.checks[0] as CheckDefinition

@@ -25,7 +25,7 @@
     "release:auth": "node scripts/verify-release-auth.mjs",
     "verify:starter": "node scripts/verify-generated-project.mjs",
     "verify:codemod": "pnpm --dir codemods/specter-envelope-api verify",
-    "verify:greenfield": "pnpm --filter @specter-ts/greenfield-verifier typecheck && pnpm --filter @specter-ts/greenfield-verifier test && pnpm --filter @specter-ts/greenfield-verifier build && pnpm --filter @specter/evaluation-runner typecheck && pnpm --filter @specter/evaluation-runner test && pnpm --filter @specter/evaluation-runner build",
+    "verify:greenfield": "pnpm --filter @specter-ts/greenfield-verifier typecheck && pnpm --filter @specter-ts/greenfield-verifier test && pnpm --filter @specter-ts/greenfield-verifier build && pnpm --filter @specter/evaluation-runner typecheck && pnpm --filter @specter/evaluation-runner test && pnpm --filter @specter/evaluation-runner build && node scripts/verify-greenfield-contracts.mjs",
     "release:verify": "pnpm check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:starter",
     "release:pack": "pnpm -r --filter @specter-ts/core --filter @specter-ts/memory --filter @specter-ts/sqlite --filter @specter-ts/postgres --filter @specter-ts/reaction-outbox --filter @specter-ts/observability --filter create-specter pack --pack-destination /tmp/specter",
     "release:dry-run": "pnpm release:auth && pnpm release:verify && pnpm -r --filter @specter-ts/core --filter @specter-ts/memory --filter @specter-ts/sqlite --filter @specter-ts/postgres --filter @specter-ts/reaction-outbox --filter @specter-ts/observability --filter create-specter publish --dry-run --access public",

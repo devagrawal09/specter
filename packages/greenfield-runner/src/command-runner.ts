@@ -5,6 +5,7 @@ import type {
   CommandExecutionResult,
   CommandRunner,
 } from './types.js'
+import { terminateProcessTree } from './process-tree.js'
 
 export class ProcessCommandRunner implements CommandRunner {
   run(request: CommandExecutionRequest): Promise<CommandExecutionResult> {
@@ -13,6 +14,7 @@ export class ProcessCommandRunner implements CommandRunner {
       const child = spawn(request.command.file, [...request.command.args], {
         cwd: request.cwd,
         env: { ...process.env, ...request.command.env },
+        detached: process.platform !== 'win32',
         shell: false,
         stdio: ['ignore', 'pipe', 'pipe'],
       })
@@ -51,9 +53,12 @@ export class ProcessCommandRunner implements CommandRunner {
 
       const timeout = setTimeout(() => {
         timedOut = true
-        child.kill('SIGTERM')
+        if (child.pid !== undefined) terminateProcessTree(child.pid, 'SIGTERM')
         setTimeout(() => {
-          if (!settled) child.kill('SIGKILL')
+          if (!settled) {
+            if (child.pid !== undefined)
+              terminateProcessTree(child.pid, 'SIGKILL')
+          }
         }, 5000).unref()
       }, request.timeoutMs)
       timeout.unref()

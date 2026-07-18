@@ -30,6 +30,11 @@ export {
   type WatchdogScheduler,
 } from './runner.js'
 export { stableJson } from './storage.js'
+export {
+  superviseActiveLimit,
+  type ActiveLimitSupervisorOptions,
+  type ActiveLimitSupervisorResult,
+} from './supervisor.js'
 export * from './types.js'
 export {
   safeRelativePath,

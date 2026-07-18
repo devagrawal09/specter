@@ -24,6 +24,37 @@ const defaultAbortGraceMs = 5_000
 const comparisonRequiredKinds = new Set([
   'acceptedCommandExactEvents',
   'rejectedCommandNoCommit',
+  'invalidInputNoCommit',
+  'idempotentDuplicate',
+  'concurrentDecision',
+  'restartEquivalence',
+  'projectionCatchUp',
+  'projectionReplayRepair',
+  'cursorPublicationSafety',
+  'eventGlobalOrder',
+  'commandReactionCompletion',
+  'reactionDeliveryRecovery',
+  'httpJsonBoundary',
+  'httpErrorBoundary',
+  'sseLifecycle',
+  'browserJourney',
+  'sqliteRecovery',
+  'postgresSerialization',
+  'postgresOutboxClaim',
+])
+const artifactRequiredKinds = new Set([
+  'starterBaseline',
+  'scenarioCoverage',
+  'wholeAppScenarioCoverage',
+  'restartEquivalence',
+  'projectionReplayRepair',
+  'cursorPublicationSafety',
+  'reactionDeliveryRecovery',
+  'sseLifecycle',
+  'browserJourney',
+  'sqliteRecovery',
+  'postgresSerialization',
+  'postgresOutboxClaim',
 ])
 
 type Settled<T> =
@@ -120,18 +151,13 @@ function evaluateObservation(
   observation: EvidenceObservation,
   durationMs: number,
 ): CheckResult {
-  if (
-    typeof observation !== 'object' ||
-    observation === null ||
-    typeof observation.claims !== 'object' ||
-    observation.claims === null ||
-    Array.isArray(observation.claims)
-  ) {
+  const shapeIssues = validateObservationShape(observation)
+  if (shapeIssues.length > 0) {
     return emptyFailure(
       check,
       'error',
       durationMs,
-      'driver returned an invalid observation: claims must be an object',
+      `driver returned an invalid observation: ${shapeIssues.join('; ')}`,
     )
   }
 
@@ -158,6 +184,9 @@ function evaluateObservation(
     }))
   const missingComparison =
     comparisonRequiredKinds.has(check.evidence.kind) && comparisons.length === 0
+  const artifacts = observation.artifacts ?? []
+  const missingArtifacts =
+    artifactRequiredKinds.has(check.evidence.kind) && artifacts.length === 0
   const diagnostics: string[] = []
   if (failedClaims.length > 0) {
     diagnostics.push(`required claims failed: ${failedClaims.join(', ')}`)
@@ -175,11 +204,17 @@ function evaluateObservation(
       `${check.evidence.kind} requires at least one exact oracle/actual comparison`,
     )
   }
+  if (missingArtifacts) {
+    diagnostics.push(
+      `${check.evidence.kind} requires at least one coordinator-captured artifact`,
+    )
+  }
   const passed =
     failedClaims.length === 0 &&
     invalidClaims.length === 0 &&
     mismatches.length === 0 &&
-    !missingComparison
+    !missingComparison &&
+    !missingArtifacts
   return {
     id: check.id,
     title: check.title,
@@ -200,8 +235,78 @@ function evaluateObservation(
             JsonValue
           >,
         }),
-    artifacts: [...(observation.artifacts ?? [])].sort(),
+    artifacts: [...artifacts].sort(),
   }
+}
+
+function validateObservationShape(value: unknown): string[] {
+  const issues: string[] = []
+  if (!isRecord(value)) return ['observation must be an object']
+  if (!isRecord(value.claims)) {
+    issues.push('claims must be an object')
+  }
+  if (value.comparisons !== undefined) {
+    if (!Array.isArray(value.comparisons)) {
+      issues.push('comparisons must be an array')
+    } else {
+      value.comparisons.forEach((comparison, index) => {
+        if (!isRecord(comparison)) {
+          issues.push(`comparisons[${index}] must be an object`)
+          return
+        }
+        if (
+          typeof comparison.label !== 'string' ||
+          comparison.label.trim().length === 0
+        ) {
+          issues.push(`comparisons[${index}].label must be non-empty`)
+        }
+        if (!('expected' in comparison) || !isJsonValue(comparison.expected)) {
+          issues.push(`comparisons[${index}].expected must be JSON-compatible`)
+        }
+        if (!('actual' in comparison) || !isJsonValue(comparison.actual)) {
+          issues.push(`comparisons[${index}].actual must be JSON-compatible`)
+        }
+      })
+    }
+  }
+  if (value.details !== undefined && !isJsonObject(value.details)) {
+    issues.push('details must be a JSON-compatible object')
+  }
+  if (value.artifacts !== undefined) {
+    if (
+      !Array.isArray(value.artifacts) ||
+      value.artifacts.some(
+        (artifact) =>
+          typeof artifact !== 'string' ||
+          artifact.trim().length === 0 ||
+          artifact.includes('\0'),
+      )
+    ) {
+      issues.push('artifacts must contain non-empty path strings')
+    }
+  }
+  return issues
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isJsonObject(value: unknown): value is Record<string, JsonValue> {
+  return isRecord(value) && Object.values(value).every(isJsonValue)
+}
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null ||
+    typeof value === 'string' ||
+    typeof value === 'boolean'
+  ) {
+    return true
+  }
+  if (typeof value === 'number') return Number.isFinite(value)
+  if (Array.isArray(value)) return value.every(isJsonValue)
+  return isJsonObject(value)
 }
 
 async function teardownCheck(
