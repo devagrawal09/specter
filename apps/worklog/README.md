@@ -32,6 +32,30 @@ Open `http://127.0.0.1:41736`. The server and CLI use
 `WORKLOG_SQLITE_PATH` when set and otherwise use `./data/worklog.db` relative
 to the app directory.
 
+### Verification data isolation
+
+`data/worklog.db` is live, user-owned data. Never use the default `dev` command
+for tests, browser QA, screenshots, demos, or seeded examples. Start a
+verification instance instead:
+
+```sh
+pnpm --filter @specter/worklog dev:verify
+```
+
+That command creates a temporary SQLite database outside the app directory and
+removes it when the server exits. Playwright uses this command automatically and
+refuses to reuse an existing server, so it cannot silently attach to a live
+Worklog instance.
+
+CLI verification must likewise use an explicit temporary database:
+
+```sh
+verification_dir="$(mktemp -d)"
+pnpm --filter @specter/worklog worklog -- query --db \
+  "$verification_dir/worklog.db" --json \
+  '{"type":"scoreQuery","payload":{}}'
+```
+
 The agent-facing CLI accepts raw Specter envelopes and always returns JSON:
 
 ```sh

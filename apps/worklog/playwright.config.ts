@@ -15,7 +15,7 @@ export default defineConfig({
     trace: 'on-first-retry',
   },
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev:verify',
     url: baseURL,
     reuseExistingServer: false,
     timeout: 120_000,

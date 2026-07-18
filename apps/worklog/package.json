@@ -6,6 +6,7 @@
   "license": "MIT",
   "scripts": {
     "dev": "vite dev",
+    "dev:verify": "node scripts/run-verification-server.mjs",
     "dev:kill": "fuser -k 41736/tcp || true",
     "build": "vite build --mode client && vite build",
     "start": "node dist/index.js",
@@ -19,7 +20,7 @@
     "format": "biome format",
     "lint": "biome lint && npm run lint:boundaries",
     "lint:boundaries": "node scripts/check-slice-imports.mjs && node scripts/check-client-server-imports.mjs",
-    "check": "biome check"
+    "check": "biome check && node --check scripts/run-verification-server.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.0.3",
