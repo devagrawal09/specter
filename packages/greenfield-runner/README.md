@@ -14,16 +14,26 @@ interface, records evidence, and reports the four cumulative evaluation gates.
   array with `shell: false`; command-shell executables are rejected.
 - Every command has an explicit timeout. Visible commands must run before
   held-out commands.
-- A successful held-out command set must write the coordinator verifier result
+- Every held-out phase command set must write the coordinator verifier result
   to `workspace/specter-evaluation/verifier-result.json` in its disposable
-  verification copy. Gate reports are derived from that signed-off result, not
-  from adopter readiness markers or command exit status alone.
-- The scored workspace is copied to `first-attempt/artifacts` before any
-  verification or remediation. Symlinks are prohibited throughout every frozen
-  artifact tree. Each verifier suite runs against its own fresh
-  `verification/<suite>/artifacts` copy whose manifest must match the freeze,
+  verification copy. Exit `0` means all gates passed; exit `1` is a valid
+  verifier completion with partial gates. Exit `2`, timeout, a missing/invalid
+  result, or a binding mismatch is a harness failure.
+- `mark bootstrap` and `mark checkpoint` create immutable phase snapshots;
+  `freeze` creates the immutable final snapshot. Held-out verification runs
+  independently against all three and takes bootstrap only from the bootstrap
+  snapshot, vertical-path only from checkpoint, and the final two gates only
+  from final. Later work therefore cannot retroactively pass an earlier gate.
+  Symlinks are prohibited throughout every frozen artifact tree. Each verifier
+  run uses a fresh `verification/<suite>/<phase>/artifacts` copy,
+  whose manifest must match its phase snapshot,
   and the original freeze is re-hashed afterward. Existing frozen artifacts,
   suite workspaces, and results are never overwritten.
+- The runner injects attempt, prepared-config, phase, and snapshot digests into
+  held-out command environments. The verifier CLI copies those values plus the
+  SHA-256 of its verification plan into `coordinatorBinding`; the runner checks
+  the binding, attempt descriptor, gate set, and result consistency before
+  copying and hashing the result outside the disposable workspace.
 - Active work uses explicit start/stop sessions and a fixed 10,800,000ms
   (180-minute) limit. Markers after the limit become `time-expired`; the report
   can never classify such an attempt as a first-attempt success. Coordinators
@@ -115,7 +125,12 @@ specter-greenfield report \
 specter-greenfield remediation-start \
   --attempt /evaluation/attempts/emergency-department-1
 
-# After the unscored repair and verifier rerun outside the frozen tree:
+# After the unscored repair, freeze it before running the verifier:
+specter-greenfield remediation-freeze \
+  --attempt /evaluation/attempts/emergency-department-1
+
+# Run the verifier against remediation/artifacts with the binding environment
+# returned by the coordinator state, then record that exact result:
 specter-greenfield remediation-finish \
   --attempt /evaluation/attempts/emergency-department-1 \
   --result /evaluation/remediation/emergency-department-1/verifier-result.json
@@ -136,9 +151,11 @@ Start an `enforceActiveLimit` watchdog after every `timer-start`; cancel it when
 the timer is intentionally stopped. `setupWallMs` ends at the first timer start,
 and `scoredWallMs` begins there, so pre-attempt coordinator delay is not scored.
 
-The remediation finish command copies and hashes a completed verifier result,
-derives eventual success from it, and reports elapsed remediation wall time
-separately; it never changes scored gates. The final-freeze outcome records whether the complete app appeared ready at the
+The remediation finish command requires the remediation snapshot, exact attempt
+and coordinator binding, a complete four-gate remediation phase, and an
+`eventualSuccess` value consistent with those gates. It copies and hashes the
+result and reports elapsed remediation wall time separately; it never changes
+scored gates. The final-freeze outcome records whether the complete app appeared ready at the
 end of scored work. Domain completeness additionally requires the visible suite
 to pass. Robustness requires all earlier gates plus the held-out suite.
 
@@ -152,10 +169,13 @@ to pass. Robustness requires all earlier gates plus the held-out suite.
   logs/chronology.jsonl
   logs/commands/*.stdout.log
   logs/commands/*.stderr.log
+  phase-snapshots/bootstrap/{artifacts/,manifest.json}
+  phase-snapshots/checkpoint/{artifacts/,manifest.json}
   first-attempt/artifacts/
   first-attempt/manifest.json
-  verification/visible/artifacts/
-  verification/held-out/artifacts/
+  verification/visible/final/artifacts/
+  verification/held-out/{bootstrap,checkpoint,final}/artifacts/
+  verifier-results/held-out/{bootstrap,checkpoint,final}.json
   visible-results.json
   held-out-results.json
   attempt-report.json

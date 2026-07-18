@@ -175,3 +175,11 @@ The CLI exits `0` only for full first-attempt success, `1` for a valid verified
 attempt that did not fully pass, and `2` for invalid configuration or harness
 failure. Library callers can use `validateVerificationPlan`,
 `verifyGreenfieldAttempt`, and `stringifyVerificationResult` directly.
+
+When launched by `@specter/evaluation-runner`, the CLI also receives
+`SPECTER_EVALUATION_ATTEMPT_ID`, `SPECTER_EVALUATION_CONFIG_SHA256`,
+`SPECTER_EVALUATION_SNAPSHOT_KIND`, and
+`SPECTER_EVALUATION_SNAPSHOT_SHA256`. All four or none must be present. The CLI
+checks the attempt ID and emits them as `coordinatorBinding`, together with the
+SHA-256 of the exact plan bytes. The runner rejects absent, partial, stale, or
+cross-phase bindings before using any gates.

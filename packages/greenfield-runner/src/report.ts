@@ -4,9 +4,9 @@ import { join, resolve } from 'node:path'
 import { writeJsonAtomic } from './storage.js'
 import {
   activeElapsedMs,
+  type Clock,
   loadPrepared,
   loadState,
-  type Clock,
 } from './runner.js'
 import type {
   AggregateGroup,
@@ -26,14 +26,26 @@ export function buildAttemptReport(
   const state = loadState(attemptDirectory)
   const elapsed = activeElapsedMs(state, clock)
   const verified = state.suites['held-out']?.verifierGates
-  const bootstrap = verified ? gateOutcome(verified.bootstrap) : 'not-reached'
+  const visiblePassed = state.suites.visible?.passed === true
+  const heldOutHarnessPassed =
+    state.suites['held-out'] !== undefined &&
+    state.suites['held-out'].harnessFailure === undefined
+  const bootstrapPassed = verified?.bootstrap === true
+  const verticalPathPassed = bootstrapPassed && verified?.verticalPath === true
+  const domainCompletenessPassed =
+    verticalPathPassed && visiblePassed && verified?.domainCompleteness === true
+  const robustnessPassed =
+    domainCompletenessPassed &&
+    heldOutHarnessPassed &&
+    verified?.robustness === true
+  const bootstrap = verified ? gateOutcome(bootstrapPassed) : 'not-reached'
   const verticalPath = verified
-    ? gateOutcome(verified.verticalPath)
+    ? gateOutcome(verticalPathPassed)
     : 'not-reached'
   const domainCompleteness = verified
-    ? gateOutcome(verified.domainCompleteness)
+    ? gateOutcome(domainCompletenessPassed)
     : 'not-reached'
-  const robustness = verified ? gateOutcome(verified.robustness) : 'not-reached'
+  const robustness = verified ? gateOutcome(robustnessPassed) : 'not-reached'
   const gates = {
     bootstrap,
     verticalPath,
@@ -112,6 +124,8 @@ export function buildAttemptReport(
     fullFirstAttemptSuccess:
       !state.timer.runningSince &&
       elapsed <= state.timer.limitMs &&
+      state.suites.visible?.passed === true &&
+      state.suites['held-out']?.passed === true &&
       Object.values(gates).every((gate) => gate === 'passed'),
     frozen: Boolean(state.freeze),
     visibleVerificationPassed: state.suites.visible?.passed ?? null,

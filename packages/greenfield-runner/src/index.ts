@@ -15,18 +15,19 @@ export {
 export {
   activeElapsedMs,
   beginRemediation,
-  finishRemediation,
+  type Clock,
   enforceActiveLimit,
+  finishRemediation,
   freezeFirstAttempt,
+  freezeRemediation,
   loadPrepared,
   loadState,
   prepareAttempt,
+  type PrepareAttemptOptions,
   recordMarker,
   runVerificationSuite,
   startActiveTime,
   stopActiveTime,
-  type Clock,
-  type PrepareAttemptOptions,
   type WatchdogScheduler,
 } from './runner.js'
 export { stableJson } from './storage.js'

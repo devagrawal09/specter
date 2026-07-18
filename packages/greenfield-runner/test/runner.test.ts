@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import {
   existsSync,
-  mkdtempSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -17,19 +17,20 @@ import {
   beginRemediation,
   buildAggregateReport,
   buildAttemptReport,
+  type Clock,
+  type CommandExecutionRequest,
+  type CommandExecutionResult,
+  type CommandRunner,
   enforceActiveLimit,
   finishRemediation,
   freezeFirstAttempt,
+  freezeRemediation,
   prepareAttempt,
   recordMarker,
   runVerificationSuite,
   startActiveTime,
   validateMatrixEntry,
   validateProvenance,
-  type Clock,
-  type CommandExecutionRequest,
-  type CommandExecutionResult,
-  type CommandRunner,
   type WatchdogScheduler,
 } from '../dist/index.js'
 
@@ -62,13 +63,18 @@ describe('greenfield evaluation runner', () => {
       /Refusing to overwrite existing attempt/,
     )
 
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
+    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'bootstrap version\n')
     clock.advance(5_000)
     startActiveTime(attempt, clock)
     clock.advance(10_000)
     recordMarker(attempt, 'bootstrap', 'passed', undefined, clock)
+    writeFileSync(
+      join(attempt, 'workspace', 'app.txt'),
+      'checkpoint version\n',
+    )
     clock.advance(20_000)
     recordMarker(attempt, 'checkpoint', 'passed', undefined, clock)
+    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
     clock.advance(30_000)
     freezeFirstAttempt(attempt, 'passed', undefined, clock)
 
@@ -90,15 +96,18 @@ describe('greenfield evaluation runner', () => {
     await runVerificationSuite(attempt, 'held-out', runner, clock)
     const state = beginRemediation(attempt, clock)
     assert.ok(state.remediation?.startedAt)
+    freezeRemediation(attempt, clock)
     clock.advance(15_000)
     const remediationResult = join(root, 'remediation-verifier-result.json')
     writeFileSync(
       remediationResult,
-      JSON.stringify({
-        schemaVersion: 1,
-        remediation: { allMandatoryChecksPassed: true },
-        eventualSuccess: true,
-      }),
+      JSON.stringify(
+        verifierResult(
+          remediationBinding(attempt),
+          allGates(true),
+          { remediation: true },
+        ),
+      ),
     )
     finishRemediation(attempt, remediationResult, undefined, clock)
 
@@ -127,16 +136,27 @@ describe('greenfield evaluation runner', () => {
     })
     assert.deepEqual(
       runner.requests.map((request) => request.command.id),
-      ['visible-check', 'robustness-check'],
+      [
+        'visible-check',
+        'robustness-check',
+        'robustness-check',
+        'robustness-check',
+      ],
     )
-    assert.ok(runner.requests[0]?.cwd.endsWith('verification/visible/artifacts/workspace'))
+    assert.ok(
+      runner.requests[0]?.cwd.endsWith(
+        'verification/visible/final/artifacts/workspace',
+      ),
+    )
     assert.ok(
       runner.requests[1]?.cwd.endsWith(
-        'verification/held-out/artifacts/workspace',
+        'verification/held-out/bootstrap/artifacts/workspace',
       ),
     )
     assert.deepEqual(runner.observedContents, [
       'scored version\n',
+      'bootstrap version\n',
+      'checkpoint version\n',
       'scored version\n',
     ])
     assert.equal(
@@ -234,7 +254,8 @@ describe('greenfield evaluation runner', () => {
       /must not invoke a command shell/,
     )
     assert.throws(
-      () => validateMatrixEntry({ ...assignment(), freezePaths: ['../escape'] }),
+      () =>
+        validateMatrixEntry({ ...assignment(), freezePaths: ['../escape'] }),
       /safe relative path|stay below/,
     )
     assert.throws(
@@ -311,7 +332,9 @@ describe('greenfield evaluation runner', () => {
     writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
     startActiveTime(attempt, clock)
     freezeFirstAttempt(attempt, 'failed', undefined, clock)
-    mkdirSync(join(attempt, 'verification', 'visible'), { recursive: true })
+    mkdirSync(join(attempt, 'verification', 'visible', 'final'), {
+      recursive: true,
+    })
     await assert.rejects(
       runVerificationSuite(attempt, 'visible', new FakeRunner(), clock),
       /Refusing to overwrite verification workspace/,
@@ -333,8 +356,139 @@ describe('greenfield evaluation runner', () => {
     const runner = new FrozenMutationRunner(attempt)
     await assert.rejects(
       runVerificationSuite(attempt, 'visible', runner, clock),
-      /Frozen artifact integrity check failed/,
+      /Frozen final snapshot integrity check failed/,
     )
+  })
+
+  it('scores bootstrap and checkpoint from their immutable phase snapshots', async () => {
+    const { attempt, clock } = readyAttempt()
+    const runner = new PhaseVerifierRunner({
+      gatesByPhase: {
+        bootstrap: [false, false, false, false],
+        checkpoint: [true, false, false, false],
+        final: [true, true, true, true],
+      },
+    })
+    await runVerificationSuite(attempt, 'visible', runner, clock)
+    const heldOut = await runVerificationSuite(
+      attempt,
+      'held-out',
+      runner,
+      clock,
+    )
+    assert.deepEqual(heldOut.verifierGates, {
+      bootstrap: false,
+      verticalPath: false,
+      domainCompleteness: true,
+      robustness: true,
+    })
+    assert.equal(
+      buildAttemptReport(attempt, clock).fullFirstAttemptSuccess,
+      false,
+    )
+    assert.deepEqual(runner.heldOutContents, [
+      'bootstrap version\n',
+      'checkpoint version\n',
+      'final version\n',
+    ])
+  })
+
+  it('preserves valid partial gates from verifier exit 1', async () => {
+    const { attempt, clock } = readyAttempt()
+    const runner = new PhaseVerifierRunner({
+      exitCode: 1,
+      gatesByPhase: {
+        bootstrap: [true, false, false, false],
+        checkpoint: [true, true, false, false],
+        final: [true, true, false, false],
+      },
+    })
+    await runVerificationSuite(attempt, 'visible', new FakeRunner(), clock)
+    const heldOut = await runVerificationSuite(
+      attempt,
+      'held-out',
+      runner,
+      clock,
+    )
+    assert.equal(heldOut.harnessFailure, undefined)
+    assert.deepEqual(heldOut.verifierGates, {
+      bootstrap: true,
+      verticalPath: true,
+      domainCompleteness: false,
+      robustness: false,
+    })
+    assert.equal(heldOut.passed, false)
+    assert.equal(heldOut.phaseRuns.every((run) => run.verifierResult), true)
+  })
+
+  it('does not report full success when the visible suite fails', async () => {
+    const { attempt, clock } = readyAttempt()
+    await runVerificationSuite(
+      attempt,
+      'visible',
+      new ExitCodeRunner(1),
+      clock,
+    )
+    await runVerificationSuite(
+      attempt,
+      'held-out',
+      new PhaseVerifierRunner(),
+      clock,
+    )
+    const report = buildAttemptReport(attempt, clock)
+    assert.equal(report.visibleVerificationPassed, false)
+    assert.equal(report.gates.domainCompleteness, 'failed')
+    assert.equal(report.gates.robustness, 'failed')
+    assert.equal(report.fullFirstAttemptSuccess, false)
+  })
+
+  it('fails the harness for stale or mismatched verifier results', async () => {
+    const { attempt, clock } = readyAttempt()
+    await runVerificationSuite(attempt, 'visible', new FakeRunner(), clock)
+    const heldOut = await runVerificationSuite(
+      attempt,
+      'held-out',
+      new PhaseVerifierRunner({ bindingAttemptId: 'inventory-2' }),
+      clock,
+    )
+    assert.match(
+      heldOut.harnessFailure ?? '',
+      /binding mismatch for attemptId/,
+    )
+    assert.equal(heldOut.verifierGates, undefined)
+    assert.equal(heldOut.passed, false)
+  })
+
+  it('fails the harness for missing results and verifier exit 2', async () => {
+    const missing = readyAttempt()
+    await runVerificationSuite(
+      missing.attempt,
+      'visible',
+      new FakeRunner(),
+      missing.clock,
+    )
+    const missingRun = await runVerificationSuite(
+      missing.attempt,
+      'held-out',
+      new FakeRunner(),
+      missing.clock,
+    )
+    assert.match(missingRun.harnessFailure ?? '', /did not write/)
+
+    const exitTwo = readyAttempt()
+    await runVerificationSuite(
+      exitTwo.attempt,
+      'visible',
+      new FakeRunner(),
+      exitTwo.clock,
+    )
+    const exitTwoRun = await runVerificationSuite(
+      exitTwo.attempt,
+      'held-out',
+      new ExitCodeRunner(2),
+      exitTwo.clock,
+    )
+    assert.match(exitTwoRun.harnessFailure ?? '', /command failed/)
   })
 
   it('aggregates replication and persistence cohorts deterministically', () => {
@@ -424,33 +578,166 @@ class FakeRunner implements CommandRunner {
   }
 }
 
+class ExitCodeRunner extends FakeRunner {
+  private readonly configuredExitCode: number
+
+  constructor(exitCode: number) {
+    super()
+    this.configuredExitCode = exitCode
+  }
+
+  override async run(
+    request: CommandExecutionRequest,
+  ): Promise<CommandExecutionResult> {
+    const result = await super.run(request)
+    return { ...result, exitCode: this.configuredExitCode }
+  }
+}
+
+class PhaseVerifierRunner extends FakeRunner {
+  readonly heldOutContents: string[] = []
+  private readonly options: {
+    exitCode?: number
+    bindingAttemptId?: string
+    gatesByPhase?: Partial<Record<string, boolean[]>>
+  }
+
+  constructor(options: {
+    exitCode?: number
+    bindingAttemptId?: string
+    gatesByPhase?: Partial<Record<string, boolean[]>>
+  } = {}) {
+    super()
+    this.options = options
+  }
+
+  override async run(
+    request: CommandExecutionRequest,
+  ): Promise<CommandExecutionResult> {
+    const phase = request.command.env?.SPECTER_EVALUATION_SNAPSHOT_KIND
+    if (!phase) return super.run(request)
+    this.heldOutContents.push(
+      readFileSync(join(request.cwd, 'app.txt'), 'utf8'),
+    )
+    const values = this.options.gatesByPhase?.[phase] ??
+      [true, true, true, true]
+    const gates = [
+      'bootstrap',
+      'verticalPath',
+      'domainCompleteness',
+      'robustness',
+    ].map((gate, index) => ({ gate, passed: values[index] ?? false }))
+    const binding = bindingFromRequest(request)
+    if (this.options.bindingAttemptId) {
+      binding.attemptId = this.options.bindingAttemptId
+    }
+    const resultDirectory = join(request.cwd, 'specter-evaluation')
+    mkdirSync(resultDirectory, { recursive: true })
+    writeFileSync(
+      join(resultDirectory, 'verifier-result.json'),
+      JSON.stringify(verifierResult(binding, gates)),
+    )
+    const base = await super.run(request)
+    return {
+      ...base,
+      exitCode: this.options.exitCode ?? (values.every(Boolean) ? 0 : 1),
+    }
+  }
+}
+
 class MutatingFakeRunner extends FakeRunner {
   readonly observedContents: string[] = []
 
   override run(
     request: CommandExecutionRequest,
   ): Promise<CommandExecutionResult> {
-    this.observedContents.push(readFileSync(join(request.cwd, 'app.txt'), 'utf8'))
+    this.observedContents.push(
+      readFileSync(join(request.cwd, 'app.txt'), 'utf8'),
+    )
     writeFileSync(join(request.cwd, 'app.txt'), `${request.command.id}\n`)
     if (request.command.id === 'robustness-check') {
       const resultDirectory = join(request.cwd, 'specter-evaluation')
       mkdirSync(resultDirectory, { recursive: true })
       writeFileSync(
         join(resultDirectory, 'verifier-result.json'),
-        JSON.stringify({
-          schemaVersion: 1,
-          firstAttempt: {
-            gates: [
-              { gate: 'bootstrap', passed: true },
-              { gate: 'verticalPath', passed: true },
-              { gate: 'domainCompleteness', passed: true },
-              { gate: 'robustness', passed: true },
-            ],
-          },
-        }),
+        JSON.stringify(
+          verifierResult(bindingFromRequest(request), allGates(true)),
+        ),
       )
     }
     return super.run(request)
+  }
+}
+
+function bindingFromRequest(
+  request: CommandExecutionRequest,
+): Record<string, string> {
+  const env = request.command.env ?? {}
+  return {
+    attemptId: env.SPECTER_EVALUATION_ATTEMPT_ID ?? '',
+    configSha256: env.SPECTER_EVALUATION_CONFIG_SHA256 ?? '',
+    snapshotKind: env.SPECTER_EVALUATION_SNAPSHOT_KIND ?? '',
+    snapshotManifestSha256: env.SPECTER_EVALUATION_SNAPSHOT_SHA256 ?? '',
+    verificationPlanSha256: 'b'.repeat(64),
+  }
+}
+
+function allGates(passed: boolean): object[] {
+  return [
+    { gate: 'bootstrap', passed },
+    { gate: 'verticalPath', passed },
+    { gate: 'domainCompleteness', passed },
+    { gate: 'robustness', passed },
+  ]
+}
+
+function verifierResult(
+  coordinatorBinding: Record<string, string>,
+  gates: object[],
+  options: { remediation?: boolean } = {},
+): object {
+  const gateValues = gates.map((gate) => (gate as { passed: boolean }).passed)
+  const allPassed = gateValues.every(Boolean)
+  return {
+    schemaVersion: 1,
+    attempt: {
+      id: 'inventory-1',
+      domain: 'inventory',
+      persistence: 'sqlite',
+      topology: 'singleProcess',
+      port: 41741,
+      activeLimitMinutes: 180,
+    },
+    coordinatorBinding,
+    firstAttempt: { gates },
+    fullFirstAttemptSuccess: allPassed,
+    remediation: options.remediation
+      ? {
+        phase: 'remediation',
+        gates,
+        isolationCompromised: false,
+        allMandatoryChecksPassed: allPassed,
+      }
+      : null,
+    eventualSuccess: options.remediation ? allPassed : null,
+  }
+}
+
+function remediationBinding(attempt: string): Record<string, string> {
+  const prepared = JSON.parse(
+    readFileSync(join(attempt, 'frozen-provenance.json'), 'utf8'),
+  ) as { configSha256: string; assignment: { attemptId: string } }
+  const state = JSON.parse(
+    readFileSync(join(attempt, 'state.json'), 'utf8'),
+  ) as {
+    remediation: { snapshot: { kind: string; manifestSha256: string } }
+  }
+  return {
+    attemptId: prepared.assignment.attemptId,
+    configSha256: prepared.configSha256,
+    snapshotKind: state.remediation.snapshot.kind,
+    snapshotManifestSha256: state.remediation.snapshot.manifestSha256,
+    verificationPlanSha256: 'b'.repeat(64),
   }
 }
 
@@ -483,6 +770,25 @@ function temporaryRoot(): string {
   const directory = mkdtempSync(join(tmpdir(), 'specter-greenfield-runner-'))
   temporaryDirectories.push(directory)
   return directory
+}
+
+function readyAttempt(): { attempt: string; clock: TestClock } {
+  const root = temporaryRoot()
+  const clock = new TestClock('2026-07-18T00:00:00.000Z')
+  const attempt = prepareAttempt({
+    attemptsRoot: root,
+    assignment: assignment(),
+    provenance: provenance(),
+    clock,
+  })
+  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'bootstrap version\n')
+  startActiveTime(attempt, clock)
+  recordMarker(attempt, 'bootstrap', 'passed', undefined, clock)
+  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'checkpoint version\n')
+  recordMarker(attempt, 'checkpoint', 'passed', undefined, clock)
+  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'final version\n')
+  freezeFirstAttempt(attempt, 'passed', undefined, clock)
+  return { attempt, clock }
 }
 
 function assignment(): object {

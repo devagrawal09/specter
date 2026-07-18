@@ -4,6 +4,7 @@ export type DomainKind = 'replication' | 'transfer'
 export type PersistenceProfile = 'sqlite' | 'postgres'
 export type ProcessTopology = 'single-process' | 'multi-process'
 export type MarkerKind = 'bootstrap' | 'checkpoint' | 'final-freeze'
+export type SnapshotKind = 'bootstrap' | 'checkpoint' | 'final' | 'remediation'
 export type MarkerOutcome = 'passed' | 'failed' | 'time-expired'
 export type SuiteKind = 'visible' | 'held-out'
 
@@ -171,6 +172,43 @@ export interface RecordedCommandResult {
   readonly passed: boolean
 }
 
+export interface SnapshotRecord {
+  readonly kind: SnapshotKind
+  readonly capturedAt: string
+  readonly sourcePaths: readonly string[]
+  readonly manifestSha256: string
+}
+
+export interface VerifierBinding {
+  readonly attemptId: string
+  readonly configSha256: string
+  readonly snapshotKind: SnapshotKind
+  readonly snapshotManifestSha256: string
+  readonly verificationPlanSha256: string
+}
+
+export interface VerifierResultRecord {
+  readonly path: string
+  readonly sha256: string
+  readonly binding: VerifierBinding
+  readonly fullFirstAttemptSuccess: boolean
+  readonly gates: Readonly<{
+    bootstrap: boolean
+    verticalPath: boolean
+    domainCompleteness: boolean
+    robustness: boolean
+  }>
+}
+
+export interface PhaseSuiteRun {
+  readonly snapshot: SnapshotRecord
+  readonly verificationArtifacts: string
+  readonly commands: readonly RecordedCommandResult[]
+  readonly commandPassed: boolean
+  readonly harnessFailure?: string
+  readonly verifierResult?: VerifierResultRecord
+}
+
 export interface SuiteRun {
   readonly kind: SuiteKind
   readonly startedAt: string
@@ -178,6 +216,8 @@ export interface SuiteRun {
   readonly passed: boolean
   readonly verificationArtifacts: string
   readonly commands: readonly RecordedCommandResult[]
+  readonly phaseRuns: readonly PhaseSuiteRun[]
+  readonly harnessFailure?: string
   readonly verifierGates?: Readonly<{
     bootstrap: boolean
     verticalPath: boolean
@@ -198,6 +238,7 @@ export interface AttemptState {
   readonly preparedAt: string
   readonly timer: ActiveTimer
   readonly markers: readonly AttemptMarker[]
+  readonly snapshots: Partial<Record<SnapshotKind, SnapshotRecord>>
   readonly suites: Partial<Record<SuiteKind, SuiteRun>>
   readonly freeze?: FreezeRecord
   readonly remediation?: {
@@ -205,6 +246,8 @@ export interface AttemptState {
     readonly finishedAt?: string
     readonly outcome?: 'passed' | 'failed'
     readonly resultSha256?: string
+    readonly snapshot?: SnapshotRecord
+    readonly verifierBinding?: VerifierBinding
     readonly note?: string
   }
 }

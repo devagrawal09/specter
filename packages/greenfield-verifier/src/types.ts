@@ -15,6 +15,19 @@ export type Gate = (typeof gates)[number]
 export type CheckVisibility = 'visible' | 'heldOut'
 export type PersistenceProfile = 'sqlite' | 'postgres'
 export type AttemptPhase = 'firstAttempt' | 'remediation'
+export type CoordinatorSnapshotKind =
+  | 'bootstrap'
+  | 'checkpoint'
+  | 'final'
+  | 'remediation'
+
+export interface CoordinatorBinding {
+  attemptId: string
+  configSha256: string
+  snapshotKind: CoordinatorSnapshotKind
+  snapshotManifestSha256: string
+  verificationPlanSha256: string
+}
 
 export const evidenceKinds = [
   'starterBaseline',
@@ -292,6 +305,8 @@ export interface VerificationResult {
   firstAttemptWithinActiveLimit: boolean
   remediation: PhaseVerificationResult | null
   eventualSuccess: boolean | null
+  /** Added by the CLI when invoked by the phase-aware coordinator runner. */
+  coordinatorBinding?: CoordinatorBinding
 }
 
 export interface VerificationOptions {

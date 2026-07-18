@@ -12,6 +12,7 @@ import {
   beginRemediation,
   finishRemediation,
   freezeFirstAttempt,
+  freezeRemediation,
   prepareAttempt,
   recordMarker,
   runVerificationSuite,
@@ -71,6 +72,9 @@ try {
       break
     case 'remediation-start':
       result = beginRemediation(required(args, 'attempt'))
+      break
+    case 'remediation-freeze':
+      result = freezeRemediation(required(args, 'attempt'))
       break
     case 'remediation-finish': {
       result = finishRemediation(
@@ -167,6 +171,7 @@ function help(): string {
   freeze --attempt DIR --outcome OUTCOME [--note TEXT]
   verify --attempt DIR --suite visible|held-out
   remediation-start --attempt DIR
+  remediation-freeze --attempt DIR
   remediation-finish --attempt DIR --result verifier-result.json [--note TEXT]
   report --attempt DIR
   aggregate --attempts-root DIR

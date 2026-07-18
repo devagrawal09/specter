@@ -27,12 +27,18 @@ import {
   type AttemptState,
   type CommandExecutionResult,
   type CommandRunner,
+  type EvaluationCommand,
   type MarkerKind,
   type MarkerOutcome,
+  type PhaseSuiteRun,
   type PreparedAttempt,
   type RecordedCommandResult,
+  type SnapshotKind,
+  type SnapshotRecord,
   type SuiteKind,
   type SuiteRun,
+  type VerifierBinding,
+  type VerifierResultRecord,
 } from './types.js'
 import { validateMatrixEntry, validateProvenance } from './validation.js'
 
@@ -90,6 +96,7 @@ export function prepareAttempt(options: PrepareAttemptOptions): string {
       sessions: [],
     },
     markers: [],
+    snapshots: {},
     suites: {},
   }
 
@@ -279,7 +286,20 @@ export function recordMarker(
     activeElapsedMs: elapsed,
     ...(note ? { note } : {}),
   }
-  const updated = { ...state, markers: [...state.markers, marker] }
+  const snapshotKind: SnapshotKind =
+    kind === 'bootstrap' ? 'bootstrap' : 'checkpoint'
+  const prepared = loadPrepared(attemptDirectory)
+  const snapshot = captureSnapshot(
+    attemptDirectory,
+    prepared.assignment.freezePaths,
+    snapshotKind,
+    clock,
+  )
+  const updated: AttemptState = {
+    ...state,
+    markers: [...state.markers, marker],
+    snapshots: { ...state.snapshots, [snapshotKind]: snapshot },
+  }
   saveState(attemptDirectory, updated)
   appendChronology(attemptDirectory, clock, 'marker-recorded', marker)
   return updated
@@ -301,43 +321,13 @@ export function freezeFirstAttempt(
 
   const prepared = loadPrepared(attemptDirectory)
   const sourcePaths = prepared.assignment.freezePaths
-  for (const sourcePath of sourcePaths) {
-    const source = resolveBelow(attemptDirectory, sourcePath)
-    if (!existsSync(source)) {
-      throw new Error(`Cannot freeze missing artifact path: ${sourcePath}`)
-    }
-    assertNoSymlinkComponents(attemptDirectory, sourcePath)
-    assertArtifactTreeHasNoSymlinks(source, sourcePath)
-  }
-
-  const firstAttemptDirectory = join(attemptDirectory, 'first-attempt')
-  if (existsSync(firstAttemptDirectory)) {
-    throw new Error(`Refusing to overwrite ${firstAttemptDirectory}`)
-  }
-  const temporaryDirectory = `${firstAttemptDirectory}.tmp-${randomUUID()}`
-  mkdirSync(join(temporaryDirectory, 'artifacts'), { recursive: true })
-  for (const sourcePath of sourcePaths) {
-    const source = resolveBelow(attemptDirectory, sourcePath)
-    const destination = resolveBelow(
-      join(temporaryDirectory, 'artifacts'),
-      sourcePath,
-    )
-    mkdirSync(resolve(destination, '..'), { recursive: true })
-    cpSync(source, destination, {
-      recursive: true,
-      errorOnExist: true,
-      force: false,
-      preserveTimestamps: true,
-    })
-  }
-  const manifest = artifactManifest(join(temporaryDirectory, 'artifacts'))
-  const manifestSha256 = sha256(stableJson(manifest))
-  writeFileSync(
-    join(temporaryDirectory, 'manifest.json'),
-    `${stableJson({ files: manifest, manifestSha256 })}\n`,
-    { flag: 'wx' },
+  const snapshot = captureSnapshot(
+    attemptDirectory,
+    sourcePaths,
+    'final',
+    clock,
   )
-  renameSync(temporaryDirectory, firstAttemptDirectory)
+  const manifestSha256 = snapshot.manifestSha256
 
   const frozenAt = clock.now().toISOString()
   const elapsed = activeElapsedMs(state, clock)
@@ -351,6 +341,7 @@ export function freezeFirstAttempt(
   const updated: AttemptState = {
     ...state,
     markers: [...state.markers, marker],
+    snapshots: { ...state.snapshots, final: snapshot },
     freeze: { frozenAt, sourcePaths, manifestSha256 },
   }
   saveState(attemptDirectory, updated)
@@ -384,104 +375,167 @@ export async function runVerificationSuite(
     kind === 'visible'
       ? prepared.assignment.visibleCommands
       : prepared.assignment.heldOutCommands
-  verifyFrozenIntegrity(attemptDirectory, state)
-  const frozenRoot = prepareVerificationWorkspace(
-    attemptDirectory,
-    kind,
-    state.freeze.manifestSha256,
-  )
-  const verificationArtifacts = relative(attemptDirectory, frozenRoot)
+  verifyAllSnapshotIntegrity(attemptDirectory, state)
   const logDirectory = join(attemptDirectory, 'logs', 'commands')
   mkdirSync(logDirectory, { recursive: true })
   const startedAt = clock.now().toISOString()
-  const results: RecordedCommandResult[] = []
+  const snapshots = snapshotsForSuite(state, kind)
+  const phaseRuns: PhaseSuiteRun[] = []
 
-  for (const [index, command] of commands.entries()) {
-    const cwd = resolveBelow(frozenRoot, command.cwd)
-    if (!existsSync(cwd) || !lstatSync(cwd).isDirectory()) {
-      throw new Error(`Command cwd is not a frozen directory: ${command.cwd}`)
+  for (const snapshot of snapshots) {
+    const frozenRoot = prepareVerificationWorkspace(
+      attemptDirectory,
+      kind,
+      snapshot,
+    )
+    const resultPath = join(
+      frozenRoot,
+      prepared.assignment.workspacePath,
+      'specter-evaluation',
+      'verifier-result.json',
+    )
+    if (kind === 'held-out' && existsSync(resultPath)) {
+      throw new Error(
+        `Frozen ${snapshot.kind} snapshot contains a stale verifier result`,
+      )
     }
-    const commandStartedAt = clock.now().toISOString()
-    appendChronology(attemptDirectory, clock, 'command-started', {
-      suite: kind,
-      id: command.id,
-      file: command.file,
-      args: command.args,
-      cwd: command.cwd,
-    })
-    const realStartedAt = Date.now()
-    let result: CommandExecutionResult
-    try {
-      result = await runner.run({
-        command,
-        cwd,
-        timeoutMs: command.timeoutMs,
+    const results: RecordedCommandResult[] = []
+    for (const [index, configuredCommand] of commands.entries()) {
+      const command =
+        kind === 'held-out'
+          ? commandWithBinding(configuredCommand, prepared, snapshot)
+          : configuredCommand
+      const cwd = resolveBelow(frozenRoot, command.cwd)
+      if (!existsSync(cwd) || !lstatSync(cwd).isDirectory()) {
+        throw new Error(`Command cwd is not a frozen directory: ${command.cwd}`)
+      }
+      const commandStartedAt = clock.now().toISOString()
+      appendChronology(attemptDirectory, clock, 'command-started', {
+        suite: kind,
+        snapshot: snapshot.kind,
+        id: command.id,
+        file: command.file,
+        args: command.args,
+        cwd: command.cwd,
       })
-    } catch (cause) {
-      result = {
-        exitCode: null,
-        signal: null,
-        stdout: '',
-        stderr: cause instanceof Error ? cause.message : String(cause),
-        timedOut: false,
-        durationMs: Date.now() - realStartedAt,
+      const realStartedAt = Date.now()
+      let result: CommandExecutionResult
+      try {
+        result = await runner.run({
+          command,
+          cwd,
+          timeoutMs: command.timeoutMs,
+        })
+      } catch (cause) {
+        result = {
+          exitCode: null,
+          signal: null,
+          stdout: '',
+          stderr: cause instanceof Error ? cause.message : String(cause),
+          timedOut: false,
+          durationMs: Date.now() - realStartedAt,
+        }
+      }
+      const commandFinishedAt = clock.now().toISOString()
+      const baseName = `${kind}-${snapshot.kind}-${String(index + 1).padStart(
+        2,
+        '0',
+      )}-${command.id}`
+      const stdoutLog = join('logs', 'commands', `${baseName}.stdout.log`)
+      const stderrLog = join('logs', 'commands', `${baseName}.stderr.log`)
+      writeFileSync(join(attemptDirectory, stdoutLog), result.stdout, {
+        flag: 'wx',
+      })
+      writeFileSync(join(attemptDirectory, stderrLog), result.stderr, {
+        flag: 'wx',
+      })
+      const recorded: RecordedCommandResult = {
+        id: command.id,
+        file: command.file,
+        args: command.args,
+        cwd: command.cwd,
+        startedAt: commandStartedAt,
+        finishedAt: commandFinishedAt,
+        durationMs: result.durationMs,
+        exitCode: result.exitCode,
+        signal: result.signal,
+        timedOut: result.timedOut,
+        stdoutLog,
+        stderrLog,
+        passed: result.exitCode === 0 && !result.timedOut,
+      }
+      results.push(recorded)
+      appendChronology(attemptDirectory, clock, 'command-finished', {
+        suite: kind,
+        snapshot: snapshot.kind,
+        ...recorded,
+      })
+    }
+
+    const commandPassed = commandsCompleted(results, kind)
+    let verifierResult: VerifierResultRecord | undefined
+    let harnessFailure: string | undefined
+    if (kind === 'held-out') {
+      if (!commandPassed) {
+        harnessFailure =
+          'held-out command failed before producing a valid verifier result'
+      } else {
+        try {
+          verifierResult = readAndPreserveVerifierResult(
+            attemptDirectory,
+            resultPath,
+            prepared,
+            snapshot,
+          )
+          const verifierExitCode = results.at(-1)?.exitCode
+          if (
+            (verifierExitCode === 0 &&
+              !verifierResult.fullFirstAttemptSuccess) ||
+            (verifierExitCode === 1 && verifierResult.fullFirstAttemptSuccess)
+          ) {
+            throw new Error(
+              `Verifier exit ${verifierExitCode} disagrees with fullFirstAttemptSuccess`,
+            )
+          }
+        } catch (cause) {
+          harnessFailure =
+            cause instanceof Error ? cause.message : String(cause)
+        }
       }
     }
-    const commandFinishedAt = clock.now().toISOString()
-    const baseName = `${kind}-${String(index + 1).padStart(2, '0')}-${command.id}`
-    const stdoutLog = join('logs', 'commands', `${baseName}.stdout.log`)
-    const stderrLog = join('logs', 'commands', `${baseName}.stderr.log`)
-    writeFileSync(join(attemptDirectory, stdoutLog), result.stdout, {
-      flag: 'wx',
-    })
-    writeFileSync(join(attemptDirectory, stderrLog), result.stderr, {
-      flag: 'wx',
-    })
-    const recorded: RecordedCommandResult = {
-      id: command.id,
-      file: command.file,
-      args: command.args,
-      cwd: command.cwd,
-      startedAt: commandStartedAt,
-      finishedAt: commandFinishedAt,
-      durationMs: result.durationMs,
-      exitCode: result.exitCode,
-      signal: result.signal,
-      timedOut: result.timedOut,
-      stdoutLog,
-      stderrLog,
-      passed: result.exitCode === 0 && !result.timedOut,
-    }
-    results.push(recorded)
-    appendChronology(attemptDirectory, clock, 'command-finished', {
-      suite: kind,
-      ...recorded,
+    phaseRuns.push({
+      snapshot,
+      verificationArtifacts: relative(attemptDirectory, frozenRoot),
+      commands: results,
+      commandPassed,
+      ...(harnessFailure ? { harnessFailure } : {}),
+      ...(verifierResult ? { verifierResult } : {}),
     })
   }
 
+  const results = phaseRuns.flatMap((phase) => phase.commands)
+  const verifierGates =
+    kind === 'held-out' ? phaseSpecificGates(phaseRuns) : undefined
+  const harnessFailure = phaseRuns.find(
+    (phase) => phase.harnessFailure,
+  )?.harnessFailure
   const suite: SuiteRun = {
     kind,
     startedAt,
     finishedAt: clock.now().toISOString(),
-    passed: results.every((result) => result.passed),
-    verificationArtifacts,
+    passed:
+      kind === 'visible'
+        ? phaseRuns.every((phase) => phase.commandPassed)
+        : !harnessFailure &&
+          verifierGates !== undefined &&
+          Object.values(verifierGates).every(Boolean),
+    verificationArtifacts: phaseRuns.at(-1)?.verificationArtifacts ?? '',
     commands: results,
+    phaseRuns,
+    ...(harnessFailure ? { harnessFailure } : {}),
+    ...(verifierGates ? { verifierGates } : {}),
   }
-  if (kind === 'held-out' && suite.passed) {
-    const verifierGates = readVerifierGates(
-      join(
-        frozenRoot,
-        'workspace',
-        'specter-evaluation',
-        'verifier-result.json',
-      ),
-    )
-    Object.assign(suite, {
-      verifierGates,
-      passed: Object.values(verifierGates).every(Boolean),
-    })
-  }
-  verifyFrozenIntegrity(attemptDirectory, state)
+  verifyAllSnapshotIntegrity(attemptDirectory, state)
   const latestState = loadState(attemptDirectory)
   const updated: AttemptState = {
     ...latestState,
@@ -516,6 +570,37 @@ export function beginRemediation(
   return updated
 }
 
+export function freezeRemediation(
+  attemptDirectory: string,
+  clock: Clock = systemClock,
+): AttemptState {
+  const state = loadState(attemptDirectory)
+  if (!state.remediation) throw new Error('Remediation has not started')
+  if (state.remediation.finishedAt) {
+    throw new Error('Remediation has already finished')
+  }
+  if (state.remediation.snapshot) {
+    throw new Error('Remediation artifacts are already frozen')
+  }
+  const prepared = loadPrepared(attemptDirectory)
+  const snapshot = captureSnapshot(
+    attemptDirectory,
+    prepared.assignment.freezePaths,
+    'remediation',
+    clock,
+  )
+  const updated: AttemptState = {
+    ...state,
+    snapshots: { ...state.snapshots, remediation: snapshot },
+    remediation: { ...state.remediation, snapshot },
+  }
+  saveState(attemptDirectory, updated)
+  appendChronology(attemptDirectory, clock, 'remediation-frozen', {
+    manifestSha256: snapshot.manifestSha256,
+  })
+  return updated
+}
+
 export function finishRemediation(
   attemptDirectory: string,
   verificationResultPath: string,
@@ -527,24 +612,52 @@ export function finishRemediation(
   if (state.remediation.finishedAt) {
     throw new Error('Remediation has already finished')
   }
+  if (!state.remediation.snapshot) {
+    throw new Error('Freeze remediation artifacts before recording a result')
+  }
+  verifySnapshotIntegrity(attemptDirectory, state.remediation.snapshot)
+  const prepared = loadPrepared(attemptDirectory)
   const resultBytes = readFileSync(resolve(verificationResultPath))
-  const result = JSON.parse(resultBytes.toString('utf8')) as unknown
+  let rawResult: unknown
+  try {
+    rawResult = JSON.parse(resultBytes.toString('utf8')) as unknown
+  } catch {
+    throw new Error('Remediation verifier result is not valid JSON')
+  }
+  const result = object(rawResult, 'Remediation verifier result')
+  if (result.schemaVersion !== 1) {
+    throw new Error('Remediation verifier result has an invalid schemaVersion')
+  }
+  validateAttemptIdentity(result.attempt, prepared)
+  const binding = validateBinding(
+    result.coordinatorBinding,
+    prepared,
+    state.remediation.snapshot,
+  )
+  const remediationPhase = object(
+    result.remediation,
+    'Remediation verifier phase',
+  )
   if (
-    typeof result !== 'object' ||
-    result === null ||
-    (result as { schemaVersion?: unknown }).schemaVersion !== 1 ||
-    typeof (result as { eventualSuccess?: unknown }).eventualSuccess !==
-      'boolean' ||
-    (result as { remediation?: unknown }).remediation === null
+    remediationPhase.phase !== 'remediation' ||
+    typeof remediationPhase.isolationCompromised !== 'boolean' ||
+    typeof remediationPhase.allMandatoryChecksPassed !== 'boolean'
   ) {
+    throw new Error('Remediation verifier phase has an invalid result shape')
+  }
+  const remediationGates = readStrictGates(
+    remediationPhase.gates,
+    'remediation',
+  )
+  const expectedSuccess =
+    !remediationPhase.isolationCompromised &&
+    Object.values(remediationGates).every(Boolean)
+  if (result.eventualSuccess !== expectedSuccess) {
     throw new Error(
-      'Remediation result must be a verifier result with a completed remediation phase',
+      'Remediation eventualSuccess disagrees with its cumulative gates',
     )
   }
-  const outcome: 'passed' | 'failed' = (result as { eventualSuccess: boolean })
-    .eventualSuccess
-    ? 'passed'
-    : 'failed'
+  const outcome: 'passed' | 'failed' = expectedSuccess ? 'passed' : 'failed'
   writeFileSync(
     join(resolve(attemptDirectory), 'remediation-results.json'),
     resultBytes,
@@ -558,6 +671,7 @@ export function finishRemediation(
     finishedAt,
     outcome,
     resultSha256: sha256(resultBytes),
+    verifierBinding: binding,
     ...(note ? { note } : {}),
   }
   const updated = { ...state, remediation }
@@ -569,57 +683,200 @@ export function finishRemediation(
   return updated
 }
 
-function readVerifierGates(path: string): {
-  bootstrap: boolean
-  verticalPath: boolean
-  domainCompleteness: boolean
-  robustness: boolean
-} {
+const gateNames = [
+  'bootstrap',
+  'verticalPath',
+  'domainCompleteness',
+  'robustness',
+] as const
+
+function commandWithBinding(
+  command: EvaluationCommand,
+  prepared: PreparedAttempt,
+  snapshot: SnapshotRecord,
+): EvaluationCommand {
+  return {
+    ...command,
+    env: {
+      ...command.env,
+      SPECTER_EVALUATION_ATTEMPT_ID: prepared.assignment.attemptId,
+      SPECTER_EVALUATION_CONFIG_SHA256: prepared.configSha256,
+      SPECTER_EVALUATION_SNAPSHOT_KIND: snapshot.kind,
+      SPECTER_EVALUATION_SNAPSHOT_SHA256: snapshot.manifestSha256,
+    },
+  }
+}
+
+function commandsCompleted(
+  results: readonly RecordedCommandResult[],
+  kind: SuiteKind,
+): boolean {
+  if (results.some((result) => result.timedOut || result.exitCode === null)) {
+    return false
+  }
+  if (kind === 'visible') {
+    return results.every((result) => result.exitCode === 0)
+  }
+  return results.every(
+    (result, index) =>
+      result.exitCode === 0 ||
+      (index === results.length - 1 && result.exitCode === 1),
+  )
+}
+
+function phaseSpecificGates(
+  runs: readonly PhaseSuiteRun[],
+): Readonly<Record<(typeof gateNames)[number], boolean>> | undefined {
+  const bootstrap = runs.find((run) => run.snapshot.kind === 'bootstrap')
+  const checkpoint = runs.find((run) => run.snapshot.kind === 'checkpoint')
+  const final = runs.find((run) => run.snapshot.kind === 'final')
+  if (
+    !bootstrap?.verifierResult ||
+    !checkpoint?.verifierResult ||
+    !final?.verifierResult
+  ) {
+    return undefined
+  }
+  return {
+    bootstrap: bootstrap.verifierResult.gates.bootstrap,
+    verticalPath: checkpoint.verifierResult.gates.verticalPath,
+    domainCompleteness: final.verifierResult.gates.domainCompleteness,
+    robustness: final.verifierResult.gates.robustness,
+  }
+}
+
+function readAndPreserveVerifierResult(
+  attemptDirectory: string,
+  path: string,
+  prepared: PreparedAttempt,
+  snapshot: SnapshotRecord,
+): VerifierResultRecord {
   if (!existsSync(path)) {
     throw new Error(`Held-out verifier did not write ${path}`)
   }
-  const value = readJson(path) as {
-    schemaVersion?: unknown
-    firstAttempt?: { gates?: unknown }
+  const bytes = readFileSync(path)
+  let value: unknown
+  try {
+    value = JSON.parse(bytes.toString('utf8')) as unknown
+  } catch {
+    throw new Error('Held-out verifier result is not valid JSON')
   }
-  if (value.schemaVersion !== 1 || !Array.isArray(value.firstAttempt?.gates)) {
-    throw new Error('Held-out verifier result has an invalid result shape')
+  const result = object(value, 'Held-out verifier result')
+  if (result.schemaVersion !== 1) {
+    throw new Error('Held-out verifier result has an invalid schemaVersion')
+  }
+  validateAttemptIdentity(result.attempt, prepared)
+  const binding = validateBinding(result.coordinatorBinding, prepared, snapshot)
+  const firstAttempt = object(
+    result.firstAttempt,
+    'Held-out verifier firstAttempt',
+  )
+  const gates = readStrictGates(firstAttempt.gates, 'firstAttempt')
+  const gatesAllPassed = Object.values(gates).every(Boolean)
+  if (
+    typeof result.fullFirstAttemptSuccess !== 'boolean' ||
+    (result.fullFirstAttemptSuccess && !gatesAllPassed)
+  ) {
+    throw new Error(
+      'Held-out verifier fullFirstAttemptSuccess is invalid for its cumulative gates',
+    )
+  }
+  const resultRoot = join(attemptDirectory, 'verifier-results', 'held-out')
+  mkdirSync(resultRoot, { recursive: true })
+  const preservedPath = join(resultRoot, `${snapshot.kind}.json`)
+  writeFileSync(preservedPath, bytes, { flag: 'wx' })
+  return {
+    path: relative(attemptDirectory, preservedPath),
+    sha256: sha256(bytes),
+    binding,
+    fullFirstAttemptSuccess: result.fullFirstAttemptSuccess,
+    gates,
+  }
+}
+
+function validateAttemptIdentity(
+  value: unknown,
+  prepared: PreparedAttempt,
+): void {
+  const attempt = object(value, 'verifier attempt')
+  const expectedTopology =
+    prepared.assignment.topology === 'single-process'
+      ? 'singleProcess'
+      : 'multiProcess'
+  const expected = {
+    id: prepared.assignment.attemptId,
+    domain: prepared.assignment.domainId,
+    persistence: prepared.assignment.persistence,
+    topology: expectedTopology,
+    port: prepared.assignment.port,
+    activeLimitMinutes: 180,
+  }
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (attempt[key] !== expectedValue) {
+      throw new Error(
+        `Verifier result identity mismatch for ${key}: expected ${expectedValue}`,
+      )
+    }
+  }
+}
+
+function validateBinding(
+  value: unknown,
+  prepared: PreparedAttempt,
+  snapshot: SnapshotRecord,
+): VerifierBinding {
+  const binding = object(value, 'coordinatorBinding')
+  const expected = {
+    attemptId: prepared.assignment.attemptId,
+    configSha256: prepared.configSha256,
+    snapshotKind: snapshot.kind,
+    snapshotManifestSha256: snapshot.manifestSha256,
+  }
+  for (const [key, expectedValue] of Object.entries(expected)) {
+    if (binding[key] !== expectedValue) {
+      throw new Error(
+        `Verifier result binding mismatch for ${key}: expected ${expectedValue}`,
+      )
+    }
+  }
+  if (
+    typeof binding.verificationPlanSha256 !== 'string' ||
+    !/^[a-f0-9]{64}$/.test(binding.verificationPlanSha256)
+  ) {
+    throw new Error(
+      'Verifier result binding has an invalid verificationPlanSha256',
+    )
+  }
+  return binding as unknown as VerifierBinding
+}
+
+function readStrictGates(
+  value: unknown,
+  label: string,
+): Readonly<Record<(typeof gateNames)[number], boolean>> {
+  if (!Array.isArray(value) || value.length !== gateNames.length) {
+    throw new Error(`${label} must contain exactly four verifier gates`)
   }
   const output = {} as Record<string, boolean>
-  for (const entry of value.firstAttempt.gates) {
+  for (const entry of value) {
+    const gate = object(entry, `${label} gate`)
     if (
-      typeof entry !== 'object' ||
-      entry === null ||
-      ![
-        'bootstrap',
-        'verticalPath',
-        'domainCompleteness',
-        'robustness',
-      ].includes(String((entry as { gate?: unknown }).gate)) ||
-      typeof (entry as { passed?: unknown }).passed !== 'boolean'
+      !gateNames.includes(gate.gate as (typeof gateNames)[number]) ||
+      typeof gate.passed !== 'boolean' ||
+      output[String(gate.gate)] !== undefined
     ) {
-      throw new Error('Held-out verifier result contains an invalid gate')
+      throw new Error(`${label} contains an invalid or duplicate gate`)
     }
-    output[String((entry as { gate: string }).gate)] = (
-      entry as { passed: boolean }
-    ).passed
+    output[String(gate.gate)] = gate.passed
   }
-  for (const gate of [
-    'bootstrap',
-    'verticalPath',
-    'domainCompleteness',
-    'robustness',
-  ]) {
-    if (typeof output[gate] !== 'boolean') {
-      throw new Error(`Held-out verifier result is missing gate ${gate}`)
-    }
+  return output as Record<(typeof gateNames)[number], boolean>
+}
+
+function object(value: unknown, label: string): Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`)
   }
-  return output as {
-    bootstrap: boolean
-    verticalPath: boolean
-    domainCompleteness: boolean
-    robustness: boolean
-  }
+  return value as Record<string, unknown>
 }
 
 export function loadState(attemptDirectory: string): AttemptState {
@@ -684,10 +941,85 @@ function artifactManifest(root: string): readonly object[] {
   }
 }
 
+function captureSnapshot(
+  attemptDirectory: string,
+  sourcePaths: readonly string[],
+  kind: SnapshotKind,
+  clock: Clock,
+): SnapshotRecord {
+  for (const sourcePath of sourcePaths) {
+    const source = resolveBelow(attemptDirectory, sourcePath)
+    if (!existsSync(source)) {
+      throw new Error(`Cannot snapshot missing artifact path: ${sourcePath}`)
+    }
+    assertNoSymlinkComponents(attemptDirectory, sourcePath)
+    assertArtifactTreeHasNoSymlinks(source, sourcePath)
+  }
+  const snapshotDirectory = snapshotDirectoryFor(attemptDirectory, kind)
+  if (existsSync(snapshotDirectory)) {
+    throw new Error(`Refusing to overwrite snapshot: ${snapshotDirectory}`)
+  }
+  const temporaryDirectory = `${snapshotDirectory}.tmp-${randomUUID()}`
+  mkdirSync(join(temporaryDirectory, 'artifacts'), { recursive: true })
+  for (const sourcePath of sourcePaths) {
+    const source = resolveBelow(attemptDirectory, sourcePath)
+    const destination = resolveBelow(
+      join(temporaryDirectory, 'artifacts'),
+      sourcePath,
+    )
+    mkdirSync(resolve(destination, '..'), { recursive: true })
+    cpSync(source, destination, {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+      preserveTimestamps: true,
+    })
+  }
+  const manifest = artifactManifest(join(temporaryDirectory, 'artifacts'))
+  const manifestSha256 = sha256(stableJson(manifest))
+  writeFileSync(
+    join(temporaryDirectory, 'manifest.json'),
+    `${stableJson({ files: manifest, manifestSha256 })}\n`,
+    { flag: 'wx' },
+  )
+  mkdirSync(resolve(snapshotDirectory, '..'), { recursive: true })
+  renameSync(temporaryDirectory, snapshotDirectory)
+  return {
+    kind,
+    capturedAt: clock.now().toISOString(),
+    sourcePaths,
+    manifestSha256,
+  }
+}
+
+function snapshotDirectoryFor(
+  attemptDirectory: string,
+  kind: SnapshotKind,
+): string {
+  if (kind === 'final') return join(attemptDirectory, 'first-attempt')
+  if (kind === 'remediation') return join(attemptDirectory, 'remediation')
+  return join(attemptDirectory, 'phase-snapshots', kind)
+}
+
+function snapshotsForSuite(
+  state: AttemptState,
+  kind: SuiteKind,
+): SnapshotRecord[] {
+  const required: SnapshotKind[] =
+    kind === 'visible' ? ['final'] : ['bootstrap', 'checkpoint', 'final']
+  return required.map((snapshotKind) => {
+    const snapshot = state.snapshots[snapshotKind]
+    if (!snapshot) {
+      throw new Error(`Missing immutable ${snapshotKind} snapshot`)
+    }
+    return snapshot
+  })
+}
+
 function prepareVerificationWorkspace(
   attemptDirectory: string,
   kind: SuiteKind,
-  expectedManifestSha256: string,
+  snapshot: SnapshotRecord,
 ): string {
   const verificationRoot = join(attemptDirectory, 'verification')
   if (
@@ -697,19 +1029,20 @@ function prepareVerificationWorkspace(
     throw new Error('Symlinks are not allowed in the verification directory')
   }
   mkdirSync(verificationRoot, { recursive: true })
-  const suiteDirectory = join(verificationRoot, kind)
+  const suiteDirectory = join(verificationRoot, kind, snapshot.kind)
   if (existsSync(suiteDirectory)) {
     throw new Error(
       `Refusing to overwrite verification workspace: ${suiteDirectory}`,
     )
   }
+  mkdirSync(join(verificationRoot, kind), { recursive: true })
   const temporaryDirectory = join(
     verificationRoot,
-    `.${kind}.tmp-${randomUUID()}`,
+    `.${kind}-${snapshot.kind}.tmp-${randomUUID()}`,
   )
   const artifactsDirectory = join(temporaryDirectory, 'artifacts')
   cpSync(
-    join(attemptDirectory, 'first-attempt', 'artifacts'),
+    join(snapshotDirectoryFor(attemptDirectory, snapshot.kind), 'artifacts'),
     artifactsDirectory,
     {
       recursive: true,
@@ -720,31 +1053,46 @@ function prepareVerificationWorkspace(
   )
   assertArtifactTreeHasNoSymlinks(
     artifactsDirectory,
-    `verification/${kind}/artifacts`,
+    `verification/${kind}/${snapshot.kind}/artifacts`,
   )
   const copiedManifestSha256 = sha256(
     stableJson(artifactManifest(artifactsDirectory)),
   )
-  if (copiedManifestSha256 !== expectedManifestSha256) {
+  if (copiedManifestSha256 !== snapshot.manifestSha256) {
     throw new Error(
-      `Verification artifact copy failed integrity check: expected ${expectedManifestSha256}, received ${copiedManifestSha256}`,
+      `Verification artifact copy failed integrity check: expected ${snapshot.manifestSha256}, received ${copiedManifestSha256}`,
     )
   }
   renameSync(temporaryDirectory, suiteDirectory)
   return join(suiteDirectory, 'artifacts')
 }
 
-function verifyFrozenIntegrity(
+function verifyAllSnapshotIntegrity(
   attemptDirectory: string,
   state: AttemptState,
 ): void {
-  if (!state.freeze) throw new Error('First-attempt freeze metadata is missing')
-  const frozenRoot = join(attemptDirectory, 'first-attempt', 'artifacts')
-  assertArtifactTreeHasNoSymlinks(frozenRoot, 'first-attempt/artifacts')
-  const actualSha256 = sha256(stableJson(artifactManifest(frozenRoot)))
-  if (actualSha256 !== state.freeze.manifestSha256) {
+  if (!state.freeze) {
+    throw new Error('First-attempt freeze metadata is missing')
+  }
+  for (const snapshot of Object.values(state.snapshots)) {
+    if (!snapshot) continue
+    verifySnapshotIntegrity(attemptDirectory, snapshot)
+  }
+}
+
+function verifySnapshotIntegrity(
+  attemptDirectory: string,
+  snapshot: SnapshotRecord,
+): void {
+  const root = join(
+    snapshotDirectoryFor(attemptDirectory, snapshot.kind),
+    'artifacts',
+  )
+  assertArtifactTreeHasNoSymlinks(root, `${snapshot.kind}/artifacts`)
+  const actualSha256 = sha256(stableJson(artifactManifest(root)))
+  if (actualSha256 !== snapshot.manifestSha256) {
     throw new Error(
-      `Frozen artifact integrity check failed: expected ${state.freeze.manifestSha256}, received ${actualSha256}`,
+      `Frozen ${snapshot.kind} snapshot integrity check failed: expected ${snapshot.manifestSha256}, received ${actualSha256}`,
     )
   }
 }
