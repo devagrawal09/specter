@@ -1,0 +1,508 @@
+{
+  "schemaVersion": 1,
+  "audience": "coordinator-only",
+  "materialization": {
+    "instructions": "For one attempt, retain definitions whose appliesTo is all or matches attempt.persistence, resolve semanticRoles through that domain's roleBindings, and pass only each nested check object to VerificationPlan.checks. Never copy this file, resolved check IDs, inputs, claims, schedules, or expected values into an adopter kit or ProjectSemanticAdapter request.",
+    "checkDefinitionPath": "definitions[].check",
+    "semanticCatalog": "../semantic-catalog.json"
+  },
+  "definitions": [
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["processControl"],
+      "check": {
+        "id": "bootstrap.starter-baseline",
+        "title": "Generated starter baseline",
+        "gate": "bootstrap",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "starterBaseline",
+          "description": "The unchanged initialized starter passes typecheck, tests, build, browser preflight, and browser workflow on the assigned strict port."
+        },
+        "timeoutMs": 600000,
+        "tags": ["starter", "toolchain"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["primaryQuery", "eventLog"],
+      "check": {
+        "id": "vertical.scenario-coverage",
+        "title": "Checkpoint Scenario coverage",
+        "gate": "verticalPath",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "scenarioCoverage",
+          "description": "The checkpoint's registered Slices and Events have exact executable focused Scenario coverage."
+        },
+        "timeoutMs": 180000,
+        "tags": ["checkpoint", "scenarios"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["checkpointCommand", "eventLog"],
+      "check": {
+        "id": "vertical.accepted-exact-events",
+        "title": "Checkpoint accepted command facts",
+        "gate": "verticalPath",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "acceptedCommandExactEvents",
+          "description": "An accepted checkpoint command commits exactly the brief-defined canonical domain facts."
+        },
+        "tags": ["checkpoint", "command", "event-log"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["checkpointCommand", "eventLog"],
+      "check": {
+        "id": "vertical.rejected-no-commit",
+        "title": "Checkpoint rejection commits no facts",
+        "gate": "verticalPath",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "rejectedCommandNoCommit",
+          "description": "A brief-defined prior-history rejection returns the exact public rejection and commits no domain facts."
+        },
+        "tags": ["checkpoint", "guard", "event-log"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["checkpointCommand", "eventLog"],
+      "check": {
+        "id": "vertical.invalid-input-no-commit",
+        "title": "Checkpoint schema rejection commits no facts",
+        "gate": "verticalPath",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "invalidInputNoCommit",
+          "description": "A schema-invalid checkpoint request is rejected at the public boundary and commits no facts."
+        },
+        "tags": ["checkpoint", "schema", "event-log"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["primaryQuery", "detailQuery", "eventLog"],
+      "check": {
+        "id": "domain.whole-app-scenarios",
+        "title": "Whole-app Scenario coverage",
+        "gate": "domainCompleteness",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "wholeAppScenarioCoverage",
+          "description": "Every completed app Slice and registered Event is covered by exact whole-app Scenarios, with focused catalogs in focused tests."
+        },
+        "timeoutMs": 300000,
+        "tags": ["whole-app", "scenarios"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["browserJourneyA", "primaryQuery", "detailQuery"],
+      "check": {
+        "id": "domain.browser-journey-a",
+        "title": "Brief browser journey A",
+        "gate": "domainCompleteness",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "browserJourney",
+          "description": "The first named browser journey satisfies its complete brief outcome through public transport."
+        },
+        "timeoutMs": 300000,
+        "tags": ["browser", "journey-a"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["browserJourneyB", "primaryQuery", "detailQuery"],
+      "check": {
+        "id": "domain.browser-journey-b",
+        "title": "Brief browser journey B",
+        "gate": "domainCompleteness",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "browserJourney",
+          "description": "The second named browser journey satisfies its complete brief outcome through public transport."
+        },
+        "timeoutMs": 300000,
+        "tags": ["browser", "journey-b"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["reactionTriggerCommand", "reactionDelivery"],
+      "check": {
+        "id": "domain.command-reaction-completion",
+        "title": "Command and Reaction completion remain distinct",
+        "gate": "domainCompleteness",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "commandReactionCompletion",
+          "description": "The Reaction-triggering command commit is observable before and separately from Reaction completion."
+        },
+        "tags": ["reaction", "completion"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["idempotencyCommand", "eventLog"],
+      "check": {
+        "id": "robustness.idempotent-duplicate",
+        "title": "Duplicate idempotency key returns original commit",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "idempotentDuplicate",
+          "description": "The brief-selected duplicate request returns the original commit and appends no additional facts."
+        },
+        "tags": ["idempotency", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["concurrentCommand", "processControl", "eventLog"],
+      "check": {
+        "id": "robustness.concurrent-decision",
+        "title": "Conflicting decisions serialize",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "concurrentDecision",
+          "description": "The brief-defined race produces at most one valid conflicting transition."
+        },
+        "timeoutMs": 180000,
+        "tags": ["concurrency", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["restart", "primaryQuery", "detailQuery", "eventLog"],
+      "check": {
+        "id": "robustness.restart-equivalence",
+        "title": "Restart reconstructs equivalent state",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "restartEquivalence",
+          "description": "Restart against the same database reconstructs equivalent decision and public Query state from the Event Log."
+        },
+        "timeoutMs": 180000,
+        "tags": ["restart", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["eventLog", "replay", "primaryQuery"],
+      "check": {
+        "id": "robustness.projection-catch-up",
+        "title": "Projection catch-up obeys cursor semantics",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "projectionCatchUp",
+          "description": "Catch-up reads facts strictly after its cursor and reaches equivalent public state."
+        },
+        "tags": ["projection", "cursor", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["replay", "primaryQuery", "detailQuery", "eventLog"],
+      "check": {
+        "id": "robustness.projection-replay-repair",
+        "title": "Replay repairs projection loss",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "projectionReplayRepair",
+          "description": "Cleared or lagging projections are repaired from durable Events without rewriting history."
+        },
+        "timeoutMs": 180000,
+        "tags": ["replay", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["projectionFault", "replay", "primaryQuery", "eventLog"],
+      "check": {
+        "id": "robustness.cursor-publication-safety",
+        "title": "Projection apply and cursor publication are safe",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "cursorPublicationSafety",
+          "description": "An injected apply/cursor interruption is atomic or safely repeatable."
+        },
+        "tags": ["fault-injection", "cursor", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["eventLog"],
+      "check": {
+        "id": "robustness.event-global-order",
+        "title": "Durable Events have unique global order",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "eventGlobalOrder",
+          "description": "Durable Event IDs are unique and global order is strictly ascending."
+        },
+        "tags": ["event-log", "order", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["reactionTriggerCommand", "reactionEffectCommand", "reactionDelivery", "reactionFault", "restart", "outbox"],
+      "check": {
+        "id": "robustness.reaction-delivery-recovery",
+        "title": "Durable Reaction delivery recovers safely",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "reactionDeliveryRecovery",
+          "description": "A persisted failed effect retains stable delivery metadata across retry/restart, changes attempt identity, avoids duplicate domain work, and reaches visible success or dead letter."
+        },
+        "timeoutMs": 300000,
+        "tags": ["reaction", "outbox", "fault-injection", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["checkpointCommand", "primaryQuery"],
+      "check": {
+        "id": "domain.http-json-boundary",
+        "title": "HTTP accepts only registered JSON envelopes",
+        "gate": "domainCompleteness",
+        "visibility": "visible",
+        "mandatory": true,
+        "evidence": {
+          "kind": "httpJsonBoundary",
+          "description": "The public HTTP transport allowlists registered envelopes and accepts/returns only JSON-compatible values."
+        },
+        "tags": ["http", "transport"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["checkpointCommand", "eventLog"],
+      "check": {
+        "id": "robustness.http-error-boundary",
+        "title": "HTTP errors are stable and non-leaking",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "httpErrorBoundary",
+          "description": "Structured Specter errors remain stable while unexpected internal failures are not leaked."
+        },
+        "tags": ["http", "errors", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "all",
+      "semanticRoles": ["subscription", "reactionTriggerCommand", "primaryQuery"],
+      "check": {
+        "id": "robustness.sse-lifecycle",
+        "title": "SSE initial, update, reconnect, and abort lifecycle",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "sseLifecycle",
+          "description": "SSE emits initial and independently caused updates, reconnects without losing latest state, and cleans up on abort."
+        },
+        "tags": ["sse", "subscription", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "sqlite",
+      "semanticRoles": ["processControl", "restart", "replay", "eventLog"],
+      "check": {
+        "id": "robustness.sqlite-recovery",
+        "title": "SQLite on-disk recovery",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "sqliteRecovery",
+          "description": "Restart and replay run against the attempt's real on-disk SQLite database."
+        },
+        "timeoutMs": 180000,
+        "tags": ["sqlite", "profile", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "postgres",
+      "semanticRoles": ["processControl", "concurrentCommand", "eventLog"],
+      "check": {
+        "id": "robustness.postgres-serialization",
+        "title": "PostgreSQL multi-process serialization",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "postgresSerialization",
+          "description": "Two independent app runtimes share PostgreSQL and serialize the brief-defined conflicting commands."
+        },
+        "timeoutMs": 180000,
+        "tags": ["postgres", "profile", "multi-process", "held-out"]
+      }
+    },
+    {
+      "appliesTo": "postgres",
+      "semanticRoles": ["processControl", "outbox", "reactionDelivery"],
+      "check": {
+        "id": "robustness.postgres-outbox-claim",
+        "title": "PostgreSQL multi-worker outbox claim",
+        "gate": "robustness",
+        "visibility": "heldOut",
+        "mandatory": true,
+        "evidence": {
+          "kind": "postgresOutboxClaim",
+          "description": "Two independent workers compete for one due outbox ticket and claim it at most once."
+        },
+        "timeoutMs": 180000,
+        "tags": ["postgres", "outbox", "multi-worker", "held-out"]
+      }
+    }
+  ],
+  "domainBindings": [
+    {
+      "domainId": "ed-operations",
+      "roleBindings": {
+        "checkpointCommand": "ed-operations.command.assign-treatment-bed",
+        "idempotencyCommand": "ed-operations.command.register-encounter",
+        "concurrentCommand": "ed-operations.command.assign-treatment-bed",
+        "reactionTriggerCommand": "ed-operations.command.record-critical-result",
+        "reactionEffectCommand": "ed-operations.command.open-critical-alert",
+        "primaryQuery": "ed-operations.query.department-board",
+        "detailQuery": "ed-operations.query.encounter-detail",
+        "subscription": "ed-operations.subscription.department-board",
+        "eventLog": "ed-operations.event-log.domain-events",
+        "reactionDelivery": "ed-operations.reaction-delivery.critical-alert",
+        "restart": "ed-operations.restart.runtime",
+        "replay": "ed-operations.replay.projections",
+        "projectionFault": "ed-operations.fault-injection.projection-cursor",
+        "reactionFault": "ed-operations.fault-injection.alert-effect",
+        "processControl": "ed-operations.process-control.runtime-instance",
+        "outbox": "ed-operations.outbox.critical-alert",
+        "browserJourneyA": "ed-operations.browser.journey-a",
+        "browserJourneyB": "ed-operations.browser.journey-b"
+      }
+    },
+    {
+      "domainId": "cold-chain-freight",
+      "roleBindings": {
+        "checkpointCommand": "cold-chain-freight.command.dispatch-shipment",
+        "idempotencyCommand": "cold-chain-freight.command.record-temperature-sample",
+        "concurrentCommand": "cold-chain-freight.command.dispatch-shipment",
+        "reactionTriggerCommand": "cold-chain-freight.command.record-temperature-sample",
+        "reactionEffectCommand": "cold-chain-freight.command.open-excursion",
+        "primaryQuery": "cold-chain-freight.query.shipment-board",
+        "detailQuery": "cold-chain-freight.query.shipment-detail",
+        "subscription": "cold-chain-freight.subscription.shipment-board",
+        "eventLog": "cold-chain-freight.event-log.domain-events",
+        "reactionDelivery": "cold-chain-freight.reaction-delivery.excursion",
+        "restart": "cold-chain-freight.restart.runtime",
+        "replay": "cold-chain-freight.replay.projections",
+        "projectionFault": "cold-chain-freight.fault-injection.projection-cursor",
+        "reactionFault": "cold-chain-freight.fault-injection.excursion-effect",
+        "processControl": "cold-chain-freight.process-control.runtime-instance",
+        "outbox": "cold-chain-freight.outbox.excursion",
+        "browserJourneyA": "cold-chain-freight.browser.journey-a",
+        "browserJourneyB": "cold-chain-freight.browser.journey-b"
+      }
+    },
+    {
+      "domainId": "property-claims",
+      "roleBindings": {
+        "checkpointCommand": "property-claims.command.record-assessment",
+        "idempotencyCommand": "property-claims.command.confirm-payment",
+        "concurrentCommand": "property-claims.command.authorize-payment",
+        "reactionTriggerCommand": "property-claims.command.record-assessment",
+        "reactionEffectCommand": "property-claims.command.open-fraud-referral",
+        "primaryQuery": "property-claims.query.work-queue",
+        "detailQuery": "property-claims.query.claim-detail",
+        "subscription": "property-claims.subscription.work-queue",
+        "eventLog": "property-claims.event-log.domain-events",
+        "reactionDelivery": "property-claims.reaction-delivery.fraud-referral",
+        "restart": "property-claims.restart.runtime",
+        "replay": "property-claims.replay.projections",
+        "projectionFault": "property-claims.fault-injection.projection-cursor",
+        "reactionFault": "property-claims.fault-injection.referral-effect",
+        "processControl": "property-claims.process-control.runtime-instance",
+        "outbox": "property-claims.outbox.fraud-referral",
+        "browserJourneyA": "property-claims.browser.journey-a",
+        "browserJourneyB": "property-claims.browser.journey-b"
+      }
+    },
+    {
+      "domainId": "aircraft-turnaround",
+      "roleBindings": {
+        "checkpointCommand": "aircraft-turnaround.command.assign-gate",
+        "idempotencyCommand": "aircraft-turnaround.command.complete-service-task",
+        "concurrentCommand": "aircraft-turnaround.command.assign-gate",
+        "reactionTriggerCommand": "aircraft-turnaround.command.record-fuel-reconciliation",
+        "reactionEffectCommand": "aircraft-turnaround.command.open-safety-hold",
+        "primaryQuery": "aircraft-turnaround.query.turnaround-board",
+        "detailQuery": "aircraft-turnaround.query.turnaround-detail",
+        "subscription": "aircraft-turnaround.subscription.turnaround-board",
+        "eventLog": "aircraft-turnaround.event-log.domain-events",
+        "reactionDelivery": "aircraft-turnaround.reaction-delivery.safety-hold",
+        "restart": "aircraft-turnaround.restart.runtime",
+        "replay": "aircraft-turnaround.replay.projections",
+        "projectionFault": "aircraft-turnaround.fault-injection.projection-cursor",
+        "reactionFault": "aircraft-turnaround.fault-injection.safety-hold-effect",
+        "processControl": "aircraft-turnaround.process-control.runtime-instance",
+        "outbox": "aircraft-turnaround.outbox.safety-hold",
+        "browserJourneyA": "aircraft-turnaround.browser.journey-a",
+        "browserJourneyB": "aircraft-turnaround.browser.journey-b"
+      }
+    },
+    {
+      "domainId": "municipal-water-restoration",
+      "roleBindings": {
+        "checkpointCommand": "municipal-water-restoration.command.assign-crew",
+        "idempotencyCommand": "municipal-water-restoration.command.complete-repair",
+        "concurrentCommand": "municipal-water-restoration.command.assign-crew",
+        "reactionTriggerCommand": "municipal-water-restoration.command.record-contaminated-sample",
+        "reactionEffectCommand": "municipal-water-restoration.command.open-boil-advisory",
+        "primaryQuery": "municipal-water-restoration.query.incident-map",
+        "detailQuery": "municipal-water-restoration.query.incident-detail",
+        "subscription": "municipal-water-restoration.subscription.incident-map",
+        "eventLog": "municipal-water-restoration.event-log.domain-events",
+        "reactionDelivery": "municipal-water-restoration.reaction-delivery.boil-advisory",
+        "restart": "municipal-water-restoration.restart.runtime",
+        "replay": "municipal-water-restoration.replay.projections",
+        "projectionFault": "municipal-water-restoration.fault-injection.projection-cursor",
+        "reactionFault": "municipal-water-restoration.fault-injection.advisory-effect",
+        "processControl": "municipal-water-restoration.process-control.runtime-instance",
+        "outbox": "municipal-water-restoration.outbox.boil-advisory",
+        "browserJourneyA": "municipal-water-restoration.browser.journey-a",
+        "browserJourneyB": "municipal-water-restoration.browser.journey-b"
+      }
+    }
+  ]
+}

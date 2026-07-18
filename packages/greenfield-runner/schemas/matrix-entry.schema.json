@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/schemas/greenfield-matrix-entry.schema.json",
+  "title": "Specter greenfield evaluation matrix entry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "attemptId",
+    "domainId",
+    "domainName",
+    "domainKind",
+    "attemptNumber",
+    "persistence",
+    "topology",
+    "port",
+    "workspacePath",
+    "freezePaths",
+    "visibleCommands",
+    "heldOutCommands"
+  ],
+  "properties": {
+    "attemptId": { "$ref": "#/$defs/id" },
+    "domainId": { "$ref": "#/$defs/id" },
+    "domainName": { "type": "string", "minLength": 1 },
+    "domainKind": { "enum": ["replication", "transfer"] },
+    "attemptNumber": { "enum": [1, 2] },
+    "persistence": { "enum": ["sqlite", "postgres"] },
+    "topology": { "enum": ["single-process", "multi-process"] },
+    "port": { "type": "integer", "minimum": 10000, "maximum": 65535 },
+    "workspacePath": { "$ref": "#/$defs/relativePath" },
+    "freezePaths": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "$ref": "#/$defs/relativePath" }
+    },
+    "visibleCommands": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/command" }
+    },
+    "heldOutCommands": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/command" }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "^(?:/|\\\\|[A-Za-z]:|\\.\\.(?:/|\\\\|$))" }
+    },
+    "command": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "file", "args", "cwd", "timeoutMs"],
+      "properties": {
+        "id": { "$ref": "#/$defs/id" },
+        "file": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "cwd": { "$ref": "#/$defs/relativePath" },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 3600000
+        },
+        "env": {
+          "type": "object",
+          "propertyNames": { "pattern": "^[A-Z_][A-Z0-9_]*$" },
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    }
+  }
+}

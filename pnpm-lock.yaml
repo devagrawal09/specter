@@ -496,6 +496,24 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
 
+  packages/greenfield-runner:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
+  packages/greenfield-verifier:
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.3
+
   packages/memory:
     dependencies:
       '@specter-ts/core':

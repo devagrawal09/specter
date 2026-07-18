@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/schemas/greenfield-provenance-build.schema.json",
+  "title": "Specter greenfield provenance build input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "specterCommit",
+    "promptPath",
+    "guidanceFiles",
+    "briefPath",
+    "semanticCatalogPath",
+    "verifierArtifactPath",
+    "packageTarballs",
+    "model",
+    "reasoningSetting"
+  ],
+  "properties": {
+    "specterCommit": { "type": "string", "pattern": "^[a-f0-9]{7,64}$" },
+    "promptPath": { "$ref": "#/$defs/path" },
+    "guidanceFiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path"],
+        "properties": {
+          "id": { "$ref": "#/$defs/id" },
+          "path": { "$ref": "#/$defs/path" }
+        }
+      }
+    },
+    "briefPath": { "$ref": "#/$defs/path" },
+    "semanticCatalogPath": { "$ref": "#/$defs/path" },
+    "verifierArtifactPath": { "$ref": "#/$defs/path" },
+    "packageTarballs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "version", "path"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "version": { "type": "string", "minLength": 1 },
+          "path": { "$ref": "#/$defs/path" }
+        }
+      }
+    },
+    "model": { "type": "string", "minLength": 1 },
+    "reasoningSetting": { "type": "string", "minLength": 1 },
+    "expected": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "promptSha256": { "$ref": "#/$defs/sha256" },
+        "guidanceSha256": { "$ref": "#/$defs/sha256" },
+        "guidanceFiles": { "$ref": "#/$defs/digestRecord" },
+        "briefSha256": { "$ref": "#/$defs/sha256" },
+        "semanticCatalogSha256": { "$ref": "#/$defs/sha256" },
+        "verifierSha256": { "$ref": "#/$defs/sha256" },
+        "packageTarballs": { "$ref": "#/$defs/digestRecord" }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "path": { "type": "string", "minLength": 1 },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "digestRecord": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/sha256" }
+    }
+  }
+}

@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/evaluations/greenfield-semantic-catalog.schema.json",
+  "title": "Visible greenfield adopter semantic catalog",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "domains"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "schemaVersion": { "const": 1 },
+    "domains": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "items": { "$ref": "#/$defs/domain" }
+    }
+  },
+  "$defs": {
+    "jsonValue": {
+      "type": ["array", "boolean", "null", "number", "object", "string"]
+    },
+    "probe": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "semanticId",
+        "capability",
+        "purpose",
+        "sampleInput",
+        "resultContract"
+      ],
+      "properties": {
+        "semanticId": {
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*(?:\\.[a-z0-9]+(?:-[a-z0-9]+)*)+$"
+        },
+        "capability": {
+          "enum": [
+            "command",
+            "query",
+            "subscription",
+            "eventLog",
+            "reactionDelivery",
+            "restart",
+            "replay",
+            "faultInjection",
+            "processControl",
+            "outbox",
+            "browser"
+          ]
+        },
+        "purpose": { "type": "string", "minLength": 1 },
+        "sampleInput": { "$ref": "#/$defs/jsonValue" },
+        "resultContract": { "type": "string", "minLength": 1 }
+      }
+    },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "brief", "probes"],
+      "properties": {
+        "id": {
+          "enum": [
+            "ed-operations",
+            "cold-chain-freight",
+            "property-claims",
+            "aircraft-turnaround",
+            "municipal-water-restoration"
+          ]
+        },
+        "brief": { "type": "string", "minLength": 1 },
+        "probes": {
+          "type": "array",
+          "minItems": 17,
+          "items": { "$ref": "#/$defs/probe" },
+          "allOf": [
+            { "contains": { "type": "object", "properties": { "capability": { "const": "command" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "query" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "subscription" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "eventLog" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "reactionDelivery" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "restart" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "replay" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "faultInjection" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "processControl" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "outbox" } }, "required": ["capability"] } },
+            { "contains": { "type": "object", "properties": { "capability": { "const": "browser" } }, "required": ["capability"] } }
+          ]
+        }
+      }
+    }
+  }
+}

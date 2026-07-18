@@ -1,0 +1,180 @@
+{
+  "schemaVersion": 1,
+  "evaluationId": "specter-0.3-greenfield-adoption",
+  "plan": "docs/evaluations/2026-07-17-greenfield-adoption-plan.md",
+  "adopterPrompt": "docs/evaluations/greenfield-adoption/adopter-prompt.md",
+  "attemptsPerDomain": 2,
+  "activeMinutesPerAttempt": 180,
+  "totalAttempts": 10,
+  "standardVisibleCommands": [
+    "npm run check",
+    "npm run lint",
+    "npm run typecheck",
+    "npm run test",
+    "npm run build",
+    "npm run test:e2e:preflight",
+    "npm run test:e2e"
+  ],
+  "domains": [
+    {
+      "id": "ed-operations",
+      "title": "Emergency-Department Operations",
+      "cohort": "replication",
+      "brief": "docs/evaluations/greenfield-adoption/briefs/ed-operations.md",
+      "port": 41911,
+      "persistence": {
+        "adapter": "postgresql",
+        "database": "coordinator-provided DATABASE_URL",
+        "serviceSetup": "coordinator provisions and migrates a fresh PostgreSQL database before the attempt",
+        "topology": "one public web process plus two independent verifier runtime processes sharing one database",
+        "recoveryHarness": "coordinator-provided PostgreSQL service harness"
+      },
+      "checkpointOperation": "treatment-bed assignment",
+      "requiredReaction": "critical diagnostic result opens one guarded critical alert",
+      "concurrencyCase": "two encounters race for one available bed",
+      "idempotencyCase": "duplicate registration with one idempotency key returns the original receipt",
+      "liveUpdate": "an open department board receives a critical-result and automatic-alert change from another request",
+      "browserJourneys": [
+        "ambulance escalation and live alert",
+        "guarded walk-in discharge and bed race"
+      ],
+      "visibleCommands": [
+        "npm run check",
+        "npm run lint",
+        "npm run typecheck",
+        "npm run test",
+        "npm run build",
+        "npm run test:e2e:preflight",
+        "npm run test:e2e"
+      ]
+    },
+    {
+      "id": "cold-chain-freight",
+      "title": "Cold-Chain Freight Control",
+      "cohort": "replication",
+      "brief": "docs/evaluations/greenfield-adoption/briefs/cold-chain-freight.md",
+      "port": 41912,
+      "persistence": {
+        "adapter": "postgresql",
+        "database": "coordinator-provided DATABASE_URL",
+        "serviceSetup": "coordinator provisions and migrates a fresh PostgreSQL database before the attempt",
+        "topology": "one public web process plus two independent verifier runtime processes sharing one database",
+        "recoveryHarness": "coordinator-provided PostgreSQL service harness"
+      },
+      "checkpointOperation": "dispatching a registered shipment",
+      "requiredReaction": "out-of-range telemetry opens one guarded excursion investigation and quality hold",
+      "concurrencyCase": "two processes race to dispatch one shipment at the same expected version",
+      "idempotencyCase": "duplicate telemetry with one idempotency key creates one sample and one excursion",
+      "liveUpdate": "an open shipment board receives telemetry and automatic quality-hold changes from another request",
+      "browserJourneys": [
+        "excursion, quality control, and delivery",
+        "decision gates and rejection"
+      ],
+      "visibleCommands": [
+        "npm run check",
+        "npm run lint",
+        "npm run typecheck",
+        "npm run test",
+        "npm run build",
+        "npm run test:e2e:preflight",
+        "npm run test:e2e"
+      ]
+    },
+    {
+      "id": "property-claims",
+      "title": "Property-Insurance Claims",
+      "cohort": "replication",
+      "brief": "docs/evaluations/greenfield-adoption/briefs/property-claims.md",
+      "port": 41913,
+      "persistence": {
+        "adapter": "sqlite",
+        "database": "real on-disk database unique to the attempt",
+        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "topology": "one application and web process",
+        "recoveryHarness": "generated SQLite persistent harness"
+      },
+      "checkpointOperation": "coverage and reserve assessment",
+      "requiredReaction": "high fraud score opens one guarded special-investigation referral",
+      "concurrencyCase": "two payment authorizations race at one observed claim version",
+      "idempotencyCase": "duplicate payment confirmation with one idempotency key records one payment",
+      "liveUpdate": "an open claim queue receives high-risk assessment and automatic-referral changes from another request",
+      "browserJourneys": [
+        "high-risk approval and payment",
+        "denial, appeal, and reopened queue"
+      ],
+      "visibleCommands": [
+        "npm run check",
+        "npm run lint",
+        "npm run typecheck",
+        "npm run test",
+        "npm run build",
+        "npm run test:e2e:preflight",
+        "npm run test:e2e"
+      ]
+    },
+    {
+      "id": "aircraft-turnaround",
+      "title": "Aircraft Turnaround Control",
+      "cohort": "transfer",
+      "brief": "docs/evaluations/greenfield-adoption/briefs/aircraft-turnaround.md",
+      "port": 41914,
+      "persistence": {
+        "adapter": "sqlite",
+        "database": "real on-disk database unique to the attempt",
+        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "topology": "one application and web process",
+        "recoveryHarness": "generated SQLite persistent harness"
+      },
+      "checkpointOperation": "gate assignment",
+      "requiredReaction": "out-of-tolerance fuel reconciliation opens one guarded safety hold",
+      "concurrencyCase": "two turnarounds race for one available gate",
+      "idempotencyCase": "duplicate service-task completion with one idempotency key records one completion",
+      "liveUpdate": "an open turnaround board receives fuel-discrepancy and automatic-hold changes from another request",
+      "browserJourneys": [
+        "discrepancy, live hold, and safe pushback",
+        "gate race and incomplete turnaround"
+      ],
+      "visibleCommands": [
+        "npm run check",
+        "npm run lint",
+        "npm run typecheck",
+        "npm run test",
+        "npm run build",
+        "npm run test:e2e:preflight",
+        "npm run test:e2e"
+      ]
+    },
+    {
+      "id": "municipal-water-restoration",
+      "title": "Municipal Water Restoration",
+      "cohort": "transfer",
+      "brief": "docs/evaluations/greenfield-adoption/briefs/municipal-water-restoration.md",
+      "port": 41915,
+      "persistence": {
+        "adapter": "sqlite",
+        "database": "real on-disk database unique to the attempt",
+        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "topology": "one application and web process",
+        "recoveryHarness": "generated SQLite persistent harness"
+      },
+      "checkpointOperation": "crew assignment",
+      "requiredReaction": "detected contamination opens one guarded boil-water advisory",
+      "concurrencyCase": "two incidents race for one available crew",
+      "idempotencyCase": "duplicate repair completion with one idempotency key records one completion",
+      "liveUpdate": "an open incident map receives contamination and automatic-advisory changes from another request",
+      "browserJourneys": [
+        "contamination advisory and safe restoration",
+        "crew race and quality gate"
+      ],
+      "visibleCommands": [
+        "npm run check",
+        "npm run lint",
+        "npm run typecheck",
+        "npm run test",
+        "npm run build",
+        "npm run test:e2e:preflight",
+        "npm run test:e2e"
+      ]
+    }
+  ]
+}

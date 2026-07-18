@@ -1,0 +1,631 @@
+{
+  "$schema": "./semantic-catalog-schema.json",
+  "schemaVersion": 1,
+  "domains": [
+    {
+      "id": "ed-operations",
+      "brief": "briefs/ed-operations.md",
+      "probes": [
+        {
+          "semanticId": "ed-operations.command.assign-treatment-bed",
+          "capability": "command",
+          "purpose": "Submit the checkpoint treatment-bed assignment through the app's public command boundary.",
+          "sampleInput": { "request": "<brief-defined bed-assignment payload>" },
+          "resultContract": "Canonical committed receipt or structured domain rejection, without app-specific command names."
+        },
+        {
+          "semanticId": "ed-operations.command.register-encounter",
+          "capability": "command",
+          "purpose": "Submit the registration operation used by the idempotency probe.",
+          "sampleInput": { "request": "<brief-defined encounter-registration payload>", "idempotencyKey": "<deterministic-placeholder-key>" },
+          "resultContract": "Canonical committed receipt including stable commit identity."
+        },
+        {
+          "semanticId": "ed-operations.command.record-critical-result",
+          "capability": "command",
+          "purpose": "Record the critical diagnostic result that schedules alert-opening work.",
+          "sampleInput": { "request": "<brief-defined critical-result payload>" },
+          "resultContract": "Canonical command receipt with separately observable Reaction completion."
+        },
+        {
+          "semanticId": "ed-operations.command.open-critical-alert",
+          "capability": "command",
+          "purpose": "Submit or observe the normal guarded alert-opening operation used by the required Reaction.",
+          "sampleInput": { "request": "<brief-defined alert-opening payload>", "idempotencyKey": "<delivery-id-placeholder>" },
+          "resultContract": "Canonical alert-opening receipt or duplicate-safe guarded outcome."
+        },
+        {
+          "semanticId": "ed-operations.query.department-board",
+          "capability": "query",
+          "purpose": "Read the normalized department board, including brief-defined filters.",
+          "sampleInput": { "filters": { "status": "<status-placeholder>" } },
+          "resultContract": "JSON board rows using brief field meanings rather than app projection names."
+        },
+        {
+          "semanticId": "ed-operations.query.encounter-detail",
+          "capability": "query",
+          "purpose": "Read normalized encounter diagnostic, alert, readiness, and discharge detail.",
+          "sampleInput": { "encounterId": "<encounter-id-placeholder>" },
+          "resultContract": "JSON detail value defined by the product brief."
+        },
+        {
+          "semanticId": "ed-operations.subscription.department-board",
+          "capability": "subscription",
+          "purpose": "Observe initial and subsequent department-board values through public SSE.",
+          "sampleInput": { "filters": {} },
+          "resultContract": "A normalized sequence with initial/update values and reconnect/cleanup metadata."
+        },
+        {
+          "semanticId": "ed-operations.event-log.domain-events",
+          "capability": "eventLog",
+          "purpose": "Read normalized durable domain facts and raw log identity/order metadata.",
+          "sampleInput": { "afterCursor": "<cursor-placeholder>" },
+          "resultContract": "Canonical fact payloads plus event ID, global order, and cursor metadata; internal Event type names may be normalized."
+        },
+        {
+          "semanticId": "ed-operations.reaction-delivery.critical-alert",
+          "capability": "reactionDelivery",
+          "purpose": "Inspect retry-stable delivery metadata for critical-alert work.",
+          "sampleInput": { "resultId": "<result-id-placeholder>" },
+          "resultContract": "Delivery ID, scheduled time, attempt IDs/statuses, and terminal outcome."
+        },
+        {
+          "semanticId": "ed-operations.restart.runtime",
+          "capability": "restart",
+          "purpose": "Stop and restart the assigned runtime against the same durable database.",
+          "sampleInput": { "mode": "same-database" },
+          "resultContract": "Lifecycle evidence identifying the restarted runtime and preserved database."
+        },
+        {
+          "semanticId": "ed-operations.replay.projections",
+          "capability": "replay",
+          "purpose": "Clear or lag decision/query projections and invoke the app's supported replay/catch-up path.",
+          "sampleInput": { "projection": "<projection-role-placeholder>", "mode": "clear-and-replay" },
+          "resultContract": "Before/after cursor and normalized state evidence."
+        },
+        {
+          "semanticId": "ed-operations.fault-injection.projection-cursor",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled interruption seam between projection apply and cursor publication.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation and recovery evidence without encoding an expected verifier result."
+        },
+        {
+          "semanticId": "ed-operations.fault-injection.alert-effect",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled failure seam for a matching alert effect.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation metadata for the next matching effect attempt."
+        },
+        {
+          "semanticId": "ed-operations.process-control.runtime-instance",
+          "capability": "processControl",
+          "purpose": "Start, stop, or inspect an independent app runtime sharing the assigned PostgreSQL database.",
+          "sampleInput": { "action": "<start-stop-inspect>", "instance": "<instance-placeholder>" },
+          "resultContract": "Process identity, lifecycle state, and assigned database/port role."
+        },
+        {
+          "semanticId": "ed-operations.outbox.critical-alert",
+          "capability": "outbox",
+          "purpose": "Inspect, claim, retry, or dead-letter the durable alert work item through coordinator controls.",
+          "sampleInput": { "action": "<inspect-claim-retry>", "deliveryId": "<delivery-id-placeholder>" },
+          "resultContract": "Normalized ticket state and claim/attempt metadata."
+        },
+        {
+          "semanticId": "ed-operations.browser.journey-a",
+          "capability": "browser",
+          "purpose": "Drive the ambulance escalation and live-alert journey through public UI and transport.",
+          "sampleInput": { "fixtureSet": "brief-journey-a" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        },
+        {
+          "semanticId": "ed-operations.browser.journey-b",
+          "capability": "browser",
+          "purpose": "Drive the guarded walk-in discharge and bed-race journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-b" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        }
+      ]
+    },
+    {
+      "id": "cold-chain-freight",
+      "brief": "briefs/cold-chain-freight.md",
+      "probes": [
+        {
+          "semanticId": "cold-chain-freight.command.dispatch-shipment",
+          "capability": "command",
+          "purpose": "Submit the checkpoint dispatch operation through the public command boundary.",
+          "sampleInput": { "request": "<brief-defined dispatch payload>" },
+          "resultContract": "Canonical committed receipt or structured domain rejection."
+        },
+        {
+          "semanticId": "cold-chain-freight.command.record-temperature-sample",
+          "capability": "command",
+          "purpose": "Record telemetry used by both the idempotency and Reaction probes.",
+          "sampleInput": { "request": "<brief-defined temperature-sample payload>", "idempotencyKey": "<deterministic-placeholder-key>" },
+          "resultContract": "Canonical receipt with stable commit identity and separately observable Reaction completion."
+        },
+        {
+          "semanticId": "cold-chain-freight.command.open-excursion",
+          "capability": "command",
+          "purpose": "Submit or observe the normal guarded excursion-opening operation used by the Reaction.",
+          "sampleInput": { "request": "<brief-defined excursion payload>", "idempotencyKey": "<delivery-id-placeholder>" },
+          "resultContract": "Canonical excursion/hold receipt or duplicate-safe outcome."
+        },
+        {
+          "semanticId": "cold-chain-freight.command.register-shipment",
+          "capability": "command",
+          "purpose": "Register deterministic setup shipments for public and concurrency probes.",
+          "sampleInput": { "request": "<brief-defined registration payload>" },
+          "resultContract": "Canonical committed registration receipt."
+        },
+        {
+          "semanticId": "cold-chain-freight.query.shipment-board",
+          "capability": "query",
+          "purpose": "Read the normalized shipment board and brief-defined filters.",
+          "sampleInput": { "filters": { "controlStatus": "<status-placeholder>" } },
+          "resultContract": "JSON shipment rows with brief-defined field meanings."
+        },
+        {
+          "semanticId": "cold-chain-freight.query.shipment-detail",
+          "capability": "query",
+          "purpose": "Read checkpoints, samples, investigation decisions, and delivery detail.",
+          "sampleInput": { "shipmentId": "<shipment-id-placeholder>" },
+          "resultContract": "Normalized JSON detail value."
+        },
+        {
+          "semanticId": "cold-chain-freight.subscription.shipment-board",
+          "capability": "subscription",
+          "purpose": "Observe initial and background-updated shipment-board values over SSE.",
+          "sampleInput": { "filters": {} },
+          "resultContract": "Normalized value sequence with reconnect and cleanup metadata."
+        },
+        {
+          "semanticId": "cold-chain-freight.event-log.domain-events",
+          "capability": "eventLog",
+          "purpose": "Read normalized durable freight facts plus raw log ordering metadata.",
+          "sampleInput": { "afterCursor": "<cursor-placeholder>" },
+          "resultContract": "Canonical fact payloads plus event ID, global order, and cursor metadata."
+        },
+        {
+          "semanticId": "cold-chain-freight.reaction-delivery.excursion",
+          "capability": "reactionDelivery",
+          "purpose": "Inspect retry-stable excursion delivery metadata.",
+          "sampleInput": { "sampleId": "<sample-id-placeholder>" },
+          "resultContract": "Delivery ID, scheduled time, attempt IDs/statuses, and terminal outcome."
+        },
+        {
+          "semanticId": "cold-chain-freight.restart.runtime",
+          "capability": "restart",
+          "purpose": "Restart runtime processes against the same PostgreSQL database.",
+          "sampleInput": { "mode": "same-database" },
+          "resultContract": "Lifecycle evidence for restarted processes and preserved database."
+        },
+        {
+          "semanticId": "cold-chain-freight.replay.projections",
+          "capability": "replay",
+          "purpose": "Clear or lag freight projections and invoke replay/catch-up.",
+          "sampleInput": { "projection": "<projection-role-placeholder>", "mode": "clear-and-replay" },
+          "resultContract": "Before/after cursor and normalized state evidence."
+        },
+        {
+          "semanticId": "cold-chain-freight.fault-injection.projection-cursor",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled interruption seam between board apply and cursor advancement.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation and recovery metadata."
+        },
+        {
+          "semanticId": "cold-chain-freight.fault-injection.excursion-effect",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled failure seam for a matching excursion effect.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation metadata for the next matching effect attempt."
+        },
+        {
+          "semanticId": "cold-chain-freight.process-control.runtime-instance",
+          "capability": "processControl",
+          "purpose": "Start, stop, or inspect independent runtimes sharing PostgreSQL.",
+          "sampleInput": { "action": "<start-stop-inspect>", "instance": "<instance-placeholder>" },
+          "resultContract": "Process identity, lifecycle state, and database role."
+        },
+        {
+          "semanticId": "cold-chain-freight.outbox.excursion",
+          "capability": "outbox",
+          "purpose": "Inspect, claim, retry, or dead-letter the excursion ticket.",
+          "sampleInput": { "action": "<inspect-claim-retry>", "deliveryId": "<delivery-id-placeholder>" },
+          "resultContract": "Normalized ticket state and claim/attempt metadata."
+        },
+        {
+          "semanticId": "cold-chain-freight.browser.journey-a",
+          "capability": "browser",
+          "purpose": "Drive the excursion, quality-control, and delivery journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-a" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        },
+        {
+          "semanticId": "cold-chain-freight.browser.journey-b",
+          "capability": "browser",
+          "purpose": "Drive the decision-gates and rejection journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-b" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        }
+      ]
+    },
+    {
+      "id": "property-claims",
+      "brief": "briefs/property-claims.md",
+      "probes": [
+        {
+          "semanticId": "property-claims.command.record-assessment",
+          "capability": "command",
+          "purpose": "Submit the checkpoint coverage/reserve assessment and the high-risk Reaction trigger.",
+          "sampleInput": { "request": "<brief-defined assessment payload>" },
+          "resultContract": "Canonical receipt or structured rejection with separately observable Reaction completion."
+        },
+        {
+          "semanticId": "property-claims.command.confirm-payment",
+          "capability": "command",
+          "purpose": "Submit payment confirmation used by the idempotency probe.",
+          "sampleInput": { "request": "<brief-defined payment-confirmation payload>", "idempotencyKey": "<deterministic-placeholder-key>" },
+          "resultContract": "Canonical receipt including stable commit identity."
+        },
+        {
+          "semanticId": "property-claims.command.authorize-payment",
+          "capability": "command",
+          "purpose": "Submit payment authorization used by the concurrent-decision probe.",
+          "sampleInput": { "request": "<brief-defined payment-authorization payload>" },
+          "resultContract": "Canonical receipt, stale/conflict result, or guarded rejection."
+        },
+        {
+          "semanticId": "property-claims.command.open-fraud-referral",
+          "capability": "command",
+          "purpose": "Submit or observe the guarded referral-opening operation used by the Reaction.",
+          "sampleInput": { "request": "<brief-defined referral payload>", "idempotencyKey": "<delivery-id-placeholder>" },
+          "resultContract": "Canonical referral receipt or duplicate-safe outcome."
+        },
+        {
+          "semanticId": "property-claims.query.work-queue",
+          "capability": "query",
+          "purpose": "Read the normalized adjuster work queue and brief-defined filters.",
+          "sampleInput": { "filters": { "workflowStatus": "<status-placeholder>" } },
+          "resultContract": "JSON queue rows using brief-defined field meanings."
+        },
+        {
+          "semanticId": "property-claims.query.claim-detail",
+          "capability": "query",
+          "purpose": "Read normalized evidence, assessment, referral, decision, payment, and appeal history.",
+          "sampleInput": { "claimId": "<claim-id-placeholder>" },
+          "resultContract": "Normalized JSON claim detail."
+        },
+        {
+          "semanticId": "property-claims.subscription.work-queue",
+          "capability": "subscription",
+          "purpose": "Observe initial and background-updated queue values over SSE.",
+          "sampleInput": { "filters": {} },
+          "resultContract": "Normalized value sequence with reconnect and cleanup metadata."
+        },
+        {
+          "semanticId": "property-claims.event-log.domain-events",
+          "capability": "eventLog",
+          "purpose": "Read normalized durable claim facts plus raw log ordering metadata.",
+          "sampleInput": { "afterCursor": "<cursor-placeholder>" },
+          "resultContract": "Canonical fact payloads plus event ID, global order, and cursor metadata."
+        },
+        {
+          "semanticId": "property-claims.reaction-delivery.fraud-referral",
+          "capability": "reactionDelivery",
+          "purpose": "Inspect retry-stable referral delivery metadata.",
+          "sampleInput": { "claimId": "<claim-id-placeholder>" },
+          "resultContract": "Delivery ID, scheduled time, attempt IDs/statuses, and terminal outcome."
+        },
+        {
+          "semanticId": "property-claims.restart.runtime",
+          "capability": "restart",
+          "purpose": "Restart the runtime against the same SQLite file.",
+          "sampleInput": { "mode": "same-database" },
+          "resultContract": "Lifecycle evidence identifying the preserved on-disk database."
+        },
+        {
+          "semanticId": "property-claims.replay.projections",
+          "capability": "replay",
+          "purpose": "Clear or lag claim projections and invoke replay/catch-up.",
+          "sampleInput": { "projection": "<projection-role-placeholder>", "mode": "clear-and-replay" },
+          "resultContract": "Before/after cursor and normalized state evidence."
+        },
+        {
+          "semanticId": "property-claims.fault-injection.projection-cursor",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled interruption seam between claim projection apply and cursor publication.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation and recovery metadata."
+        },
+        {
+          "semanticId": "property-claims.fault-injection.referral-effect",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled failure seam for a matching referral effect.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation metadata for the next matching effect attempt."
+        },
+        {
+          "semanticId": "property-claims.process-control.runtime-instance",
+          "capability": "processControl",
+          "purpose": "Start, stop, or inspect the single assigned runtime.",
+          "sampleInput": { "action": "<start-stop-inspect>", "instance": "primary" },
+          "resultContract": "Process identity, lifecycle state, and database-file role."
+        },
+        {
+          "semanticId": "property-claims.outbox.fraud-referral",
+          "capability": "outbox",
+          "purpose": "Inspect, retry, or dead-letter the durable referral ticket.",
+          "sampleInput": { "action": "<inspect-retry>", "deliveryId": "<delivery-id-placeholder>" },
+          "resultContract": "Normalized ticket state and attempt metadata."
+        },
+        {
+          "semanticId": "property-claims.browser.journey-a",
+          "capability": "browser",
+          "purpose": "Drive the high-risk approval and payment journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-a" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        },
+        {
+          "semanticId": "property-claims.browser.journey-b",
+          "capability": "browser",
+          "purpose": "Drive the denial, appeal, and reopened-queue journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-b" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        }
+      ]
+    },
+    {
+      "id": "aircraft-turnaround",
+      "brief": "briefs/aircraft-turnaround.md",
+      "probes": [
+        {
+          "semanticId": "aircraft-turnaround.command.assign-gate",
+          "capability": "command",
+          "purpose": "Submit the checkpoint gate-assignment operation.",
+          "sampleInput": { "request": "<brief-defined gate-assignment payload>" },
+          "resultContract": "Canonical receipt or structured domain rejection."
+        },
+        {
+          "semanticId": "aircraft-turnaround.command.complete-service-task",
+          "capability": "command",
+          "purpose": "Submit service-task completion used by the idempotency probe.",
+          "sampleInput": { "request": "<brief-defined task-completion payload>", "idempotencyKey": "<deterministic-placeholder-key>" },
+          "resultContract": "Canonical receipt including stable commit identity."
+        },
+        {
+          "semanticId": "aircraft-turnaround.command.record-fuel-reconciliation",
+          "capability": "command",
+          "purpose": "Record the out-of-tolerance fuel check that schedules safety-hold work.",
+          "sampleInput": { "request": "<brief-defined fuel-reconciliation payload>" },
+          "resultContract": "Canonical receipt with separately observable Reaction completion."
+        },
+        {
+          "semanticId": "aircraft-turnaround.command.open-safety-hold",
+          "capability": "command",
+          "purpose": "Submit or observe the guarded safety-hold operation used by the Reaction.",
+          "sampleInput": { "request": "<brief-defined hold payload>", "idempotencyKey": "<delivery-id-placeholder>" },
+          "resultContract": "Canonical hold receipt or duplicate-safe outcome."
+        },
+        {
+          "semanticId": "aircraft-turnaround.query.turnaround-board",
+          "capability": "query",
+          "purpose": "Read the normalized operations board and brief-defined filters.",
+          "sampleInput": { "filters": { "safetyStatus": "<status-placeholder>" } },
+          "resultContract": "JSON turnaround rows using brief-defined field meanings."
+        },
+        {
+          "semanticId": "aircraft-turnaround.query.turnaround-detail",
+          "capability": "query",
+          "purpose": "Read normalized task, fuel, hold, and pushback history.",
+          "sampleInput": { "turnaroundId": "<turnaround-id-placeholder>" },
+          "resultContract": "Normalized JSON turnaround detail."
+        },
+        {
+          "semanticId": "aircraft-turnaround.subscription.turnaround-board",
+          "capability": "subscription",
+          "purpose": "Observe initial and background-updated board values over SSE.",
+          "sampleInput": { "filters": {} },
+          "resultContract": "Normalized value sequence with reconnect and cleanup metadata."
+        },
+        {
+          "semanticId": "aircraft-turnaround.event-log.domain-events",
+          "capability": "eventLog",
+          "purpose": "Read normalized durable turnaround facts plus raw ordering metadata.",
+          "sampleInput": { "afterCursor": "<cursor-placeholder>" },
+          "resultContract": "Canonical fact payloads plus event ID, global order, and cursor metadata."
+        },
+        {
+          "semanticId": "aircraft-turnaround.reaction-delivery.safety-hold",
+          "capability": "reactionDelivery",
+          "purpose": "Inspect retry-stable safety-hold delivery metadata.",
+          "sampleInput": { "checkId": "<fuel-check-id-placeholder>" },
+          "resultContract": "Delivery ID, scheduled time, attempt IDs/statuses, and terminal outcome."
+        },
+        {
+          "semanticId": "aircraft-turnaround.restart.runtime",
+          "capability": "restart",
+          "purpose": "Restart the runtime against the same SQLite file.",
+          "sampleInput": { "mode": "same-database" },
+          "resultContract": "Lifecycle evidence identifying the preserved on-disk database."
+        },
+        {
+          "semanticId": "aircraft-turnaround.replay.projections",
+          "capability": "replay",
+          "purpose": "Clear or lag turnaround projections and invoke replay/catch-up.",
+          "sampleInput": { "projection": "<projection-role-placeholder>", "mode": "clear-and-replay" },
+          "resultContract": "Before/after cursor and normalized state evidence."
+        },
+        {
+          "semanticId": "aircraft-turnaround.fault-injection.projection-cursor",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled interruption seam between board apply and cursor advancement.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation and recovery metadata."
+        },
+        {
+          "semanticId": "aircraft-turnaround.fault-injection.safety-hold-effect",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled failure seam for a matching safety-hold effect.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation metadata for the next matching effect attempt."
+        },
+        {
+          "semanticId": "aircraft-turnaround.process-control.runtime-instance",
+          "capability": "processControl",
+          "purpose": "Start, stop, or inspect the single assigned runtime.",
+          "sampleInput": { "action": "<start-stop-inspect>", "instance": "primary" },
+          "resultContract": "Process identity, lifecycle state, and database-file role."
+        },
+        {
+          "semanticId": "aircraft-turnaround.outbox.safety-hold",
+          "capability": "outbox",
+          "purpose": "Inspect, retry, or dead-letter the durable safety-hold ticket.",
+          "sampleInput": { "action": "<inspect-retry>", "deliveryId": "<delivery-id-placeholder>" },
+          "resultContract": "Normalized ticket state and attempt metadata."
+        },
+        {
+          "semanticId": "aircraft-turnaround.browser.journey-a",
+          "capability": "browser",
+          "purpose": "Drive the discrepancy, live-hold, and safe-pushback journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-a" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        },
+        {
+          "semanticId": "aircraft-turnaround.browser.journey-b",
+          "capability": "browser",
+          "purpose": "Drive the gate-race and incomplete-turnaround journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-b" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        }
+      ]
+    },
+    {
+      "id": "municipal-water-restoration",
+      "brief": "briefs/municipal-water-restoration.md",
+      "probes": [
+        {
+          "semanticId": "municipal-water-restoration.command.assign-crew",
+          "capability": "command",
+          "purpose": "Submit the checkpoint crew-assignment operation.",
+          "sampleInput": { "request": "<brief-defined crew-assignment payload>" },
+          "resultContract": "Canonical receipt or structured domain rejection."
+        },
+        {
+          "semanticId": "municipal-water-restoration.command.complete-repair",
+          "capability": "command",
+          "purpose": "Submit repair completion used by the idempotency probe.",
+          "sampleInput": { "request": "<brief-defined repair-completion payload>", "idempotencyKey": "<deterministic-placeholder-key>" },
+          "resultContract": "Canonical receipt including stable commit identity."
+        },
+        {
+          "semanticId": "municipal-water-restoration.command.record-contaminated-sample",
+          "capability": "command",
+          "purpose": "Record the contamination result that schedules advisory-opening work.",
+          "sampleInput": { "request": "<brief-defined contaminated-sample payload>" },
+          "resultContract": "Canonical receipt with separately observable Reaction completion."
+        },
+        {
+          "semanticId": "municipal-water-restoration.command.open-boil-advisory",
+          "capability": "command",
+          "purpose": "Submit or observe the guarded advisory-opening operation used by the Reaction.",
+          "sampleInput": { "request": "<brief-defined advisory payload>", "idempotencyKey": "<delivery-id-placeholder>" },
+          "resultContract": "Canonical advisory receipt or duplicate-safe outcome."
+        },
+        {
+          "semanticId": "municipal-water-restoration.query.incident-map",
+          "capability": "query",
+          "purpose": "Read the normalized incident map/list and brief-defined filters.",
+          "sampleInput": { "filters": { "workflowStatus": "<status-placeholder>" } },
+          "resultContract": "JSON incident rows using brief-defined field meanings."
+        },
+        {
+          "semanticId": "municipal-water-restoration.query.incident-detail",
+          "capability": "query",
+          "purpose": "Read normalized response, repair, quality, advisory, and restoration history.",
+          "sampleInput": { "incidentId": "<incident-id-placeholder>" },
+          "resultContract": "Normalized JSON incident detail."
+        },
+        {
+          "semanticId": "municipal-water-restoration.subscription.incident-map",
+          "capability": "subscription",
+          "purpose": "Observe initial and background-updated map values over SSE.",
+          "sampleInput": { "filters": {} },
+          "resultContract": "Normalized value sequence with reconnect and cleanup metadata."
+        },
+        {
+          "semanticId": "municipal-water-restoration.event-log.domain-events",
+          "capability": "eventLog",
+          "purpose": "Read normalized durable restoration facts plus raw ordering metadata.",
+          "sampleInput": { "afterCursor": "<cursor-placeholder>" },
+          "resultContract": "Canonical fact payloads plus event ID, global order, and cursor metadata."
+        },
+        {
+          "semanticId": "municipal-water-restoration.reaction-delivery.boil-advisory",
+          "capability": "reactionDelivery",
+          "purpose": "Inspect retry-stable advisory delivery metadata.",
+          "sampleInput": { "sampleId": "<sample-id-placeholder>" },
+          "resultContract": "Delivery ID, scheduled time, attempt IDs/statuses, and terminal outcome."
+        },
+        {
+          "semanticId": "municipal-water-restoration.restart.runtime",
+          "capability": "restart",
+          "purpose": "Restart the runtime against the same SQLite file.",
+          "sampleInput": { "mode": "same-database" },
+          "resultContract": "Lifecycle evidence identifying the preserved on-disk database."
+        },
+        {
+          "semanticId": "municipal-water-restoration.replay.projections",
+          "capability": "replay",
+          "purpose": "Clear or lag restoration projections and invoke replay/catch-up.",
+          "sampleInput": { "projection": "<projection-role-placeholder>", "mode": "clear-and-replay" },
+          "resultContract": "Before/after cursor and normalized state evidence."
+        },
+        {
+          "semanticId": "municipal-water-restoration.fault-injection.projection-cursor",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled interruption seam between incident projection apply and cursor publication.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation and recovery metadata."
+        },
+        {
+          "semanticId": "municipal-water-restoration.fault-injection.advisory-effect",
+          "capability": "faultInjection",
+          "purpose": "Expose a coordinator-controlled failure seam for a matching advisory effect.",
+          "sampleInput": { "faultToken": "<coordinator-supplied>" },
+          "resultContract": "Fault activation metadata for the next matching effect attempt."
+        },
+        {
+          "semanticId": "municipal-water-restoration.process-control.runtime-instance",
+          "capability": "processControl",
+          "purpose": "Start, stop, or inspect the single assigned runtime.",
+          "sampleInput": { "action": "<start-stop-inspect>", "instance": "primary" },
+          "resultContract": "Process identity, lifecycle state, and database-file role."
+        },
+        {
+          "semanticId": "municipal-water-restoration.outbox.boil-advisory",
+          "capability": "outbox",
+          "purpose": "Inspect, retry, or dead-letter the durable advisory ticket.",
+          "sampleInput": { "action": "<inspect-retry>", "deliveryId": "<delivery-id-placeholder>" },
+          "resultContract": "Normalized ticket state and attempt metadata."
+        },
+        {
+          "semanticId": "municipal-water-restoration.browser.journey-a",
+          "capability": "browser",
+          "purpose": "Drive the contamination-advisory and safe-restoration journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-a" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        },
+        {
+          "semanticId": "municipal-water-restoration.browser.journey-b",
+          "capability": "browser",
+          "purpose": "Drive the crew-race and quality-gate journey.",
+          "sampleInput": { "fixtureSet": "brief-journey-b" },
+          "resultContract": "Normalized journey observations and browser artifacts."
+        }
+      ]
+    }
+  ]
+}

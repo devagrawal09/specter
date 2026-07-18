@@ -1,5 +1,10 @@
 # Specter Greenfield Adoption Evaluation
 
+Related evaluations: [multi-app Specter evaluation](2026-07-16-multi-app-specter-evaluation.md)
+and [brownfield adoption plan](2026-07-17-brownfield-adoption-plan.md). The
+[coordinator runbook](greenfield-adoption/README.md) defines the frozen artifact
+boundary and execution procedure for this plan.
+
 ## Purpose
 
 Evaluate best-case guided adoption of Specter 0.3 in new TypeScript
@@ -66,13 +71,17 @@ Give each agent:
 - The Specter skill, generated project guidance, runtime-boundary guide, package
   READMEs, and reference apps.
 - The implementation-neutral product brief and runnable visible acceptance
-  suite.
+  suite, plus the brief-owned semantic-ID catalog and self-contained typed
+  app-adapter contract. The coordinator verifier package is not supplied.
 - Prepared dependencies, database services, browser revision, and assigned port.
 
 The coordinator separately freezes held-out robustness tests for concurrency,
 restart, fault injection, transport abuse, subscription cleanup, and durable
 Reaction recovery. These tests exercise published or brief-defined behavior and
 must not depend on an agent's internal names, file layout, or Slice decomposition.
+Each app maps the visible semantic IDs to its unconstrained public envelopes,
+normalized durable facts, and operational hooks. Private coordinator drivers
+own all check IDs, inputs, schedules, faults, claims, and expected values.
 
 Freeze both kits before scoring. Agents may inspect supplied source and use local
 tools but receive no outside materials, clarification, coaching, or fixes. Allow
@@ -97,8 +106,9 @@ The brief identifies one representative guarded operation as the checkpoint
 target. The agent must replace the sample domain with a minimal end-to-end path
 for that operation: exact accepted and prior-Event rejection Scenarios, runtime
 input validation, Event Definitions, private decision State, app registration,
-one query projection, a public envelope call, and visible UI behavior. Domain IDs
-and timestamps originate at the initiating boundary.
+one query projection, a public envelope call, visible UI behavior, and the
+checkpoint's semantic-adapter mappings. Domain IDs and timestamps originate at
+the initiating boundary.
 
 For the first Slice of each kind used in the app, run `create-specter generate
 slice` in dry-run mode before generation. In SQLite attempts, run the
@@ -163,7 +173,9 @@ all visible checks and then runs the held-out suite without modifying the app.
 Run the app's check, lint, boundary lint, typecheck, tests, production build,
 browser preflight, and complete Playwright workflow. Verify that every registered
 Event Definition and Slice is covered by whole-app Scenario execution and that
-focused tests use a focused Event catalog.
+focused tests use a focused Event catalog. The coordinator driver may call only
+the frozen app semantic adapter; verifier check IDs and oracles never cross that
+boundary.
 
 For every app, the verifier must also prove:
 

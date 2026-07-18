@@ -1,0 +1,416 @@
+{
+  "schemaVersion": 1,
+  "attempt": {
+    "id": "replace-me-property-claims-attempt-1",
+    "domain": "property-claims",
+    "persistence": "sqlite",
+    "topology": "singleProcess",
+    "port": 41913,
+    "specterVersion": "0.3.0-replace-with-frozen-package-version",
+    "activeLimitMinutes": 180,
+    "firstAttempt": {
+      "startedAt": "2026-08-01T00:00:00.000Z",
+      "frozenAt": "2026-08-01T03:00:00.000Z",
+      "activeMinutes": 60,
+      "wallMinutes": 180,
+      "iterations": 6,
+      "sliceKindsUsed": ["command", "query", "reaction"],
+      "firstSliceUses": [
+        {
+          "sliceKind": "command",
+          "target": "replaceMeCheckpointCommand",
+          "activeMinute": 12
+        },
+        {
+          "sliceKind": "query",
+          "target": "replaceMeCheckpointQuery",
+          "activeMinute": 22
+        },
+        {
+          "sliceKind": "reaction",
+          "target": "replaceMeRequiredReaction",
+          "activeMinute": 42
+        }
+      ],
+      "persistentHarnessFirstUse": {
+        "target": "sqlite-recovery",
+        "activeMinute": 32
+      },
+      "phases": [
+        {
+          "phase": "bootstrap",
+          "activeMinutes": 5,
+          "wallMinutes": 10,
+          "iterations": 1,
+          "sourceConsultations": [],
+          "generatorInvocations": []
+        },
+        {
+          "phase": "verticalPath",
+          "activeMinutes": 35,
+          "wallMinutes": 80,
+          "iterations": 3,
+          "sourceConsultations": [],
+          "generatorInvocations": [
+            {
+              "generator": "slice",
+              "mode": "dryRun",
+              "target": "replaceMeCheckpointCommand",
+              "sliceKind": "command",
+              "activeMinute": 10,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true
+            },
+            {
+              "generator": "slice",
+              "mode": "generate",
+              "target": "replaceMeCheckpointCommand",
+              "sliceKind": "command",
+              "activeMinute": 11,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true,
+              "disposition": "changed",
+              "rationale": "Replace with the adopter's recorded disposition and rationale."
+            },
+            {
+              "generator": "slice",
+              "mode": "dryRun",
+              "target": "replaceMeCheckpointQuery",
+              "sliceKind": "query",
+              "activeMinute": 20,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true
+            },
+            {
+              "generator": "slice",
+              "mode": "generate",
+              "target": "replaceMeCheckpointQuery",
+              "sliceKind": "query",
+              "activeMinute": 21,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true,
+              "disposition": "changed",
+              "rationale": "Replace with the adopter's recorded disposition and rationale."
+            },
+            {
+              "generator": "persistentHarness",
+              "mode": "dryRun",
+              "target": "sqlite-recovery",
+              "activeMinute": 30,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true
+            },
+            {
+              "generator": "persistentHarness",
+              "mode": "generate",
+              "target": "sqlite-recovery",
+              "activeMinute": 31,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true,
+              "disposition": "changed",
+              "rationale": "Replace with the adopter's recorded harness disposition and rationale."
+            }
+          ]
+        },
+        {
+          "phase": "completeApp",
+          "activeMinutes": 20,
+          "wallMinutes": 90,
+          "iterations": 2,
+          "sourceConsultations": [],
+          "generatorInvocations": [
+            {
+              "generator": "slice",
+              "mode": "dryRun",
+              "target": "replaceMeRequiredReaction",
+              "sliceKind": "reaction",
+              "activeMinute": 40,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true
+            },
+            {
+              "generator": "slice",
+              "mode": "generate",
+              "target": "replaceMeRequiredReaction",
+              "sliceKind": "reaction",
+              "activeMinute": 41,
+              "transcriptSha256": "0000000000000000000000000000000000000000000000000000000000000000",
+              "succeeded": true,
+              "disposition": "changed",
+              "rationale": "Replace with the adopter's recorded disposition and rationale."
+            }
+          ]
+        }
+      ],
+      "implementationSize": {
+        "filesChanged": 0,
+        "linesAdded": 0,
+        "linesDeleted": 0
+      }
+    }
+  },
+  "checks": [
+    {
+      "id": "bootstrap.starter-baseline",
+      "title": "Generated starter baseline",
+      "gate": "bootstrap",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "starterBaseline",
+        "description": "The unchanged initialized starter passes the complete required baseline on the assigned strict port."
+      },
+      "timeoutMs": 600000,
+      "tags": ["starter", "toolchain"]
+    },
+    {
+      "id": "vertical.scenario-coverage",
+      "title": "Checkpoint Scenario coverage",
+      "gate": "verticalPath",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "scenarioCoverage",
+        "description": "The checkpoint has exact executable focused Scenario coverage."
+      },
+      "timeoutMs": 180000,
+      "tags": ["checkpoint", "scenarios"]
+    },
+    {
+      "id": "vertical.accepted-exact-events",
+      "title": "Checkpoint accepted command facts",
+      "gate": "verticalPath",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "acceptedCommandExactEvents",
+        "description": "An accepted checkpoint command commits exactly the canonical brief-owned facts."
+      },
+      "tags": ["checkpoint", "command", "event-log"]
+    },
+    {
+      "id": "vertical.rejected-no-commit",
+      "title": "Checkpoint rejection commits no facts",
+      "gate": "verticalPath",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "rejectedCommandNoCommit",
+        "description": "A brief-defined rejection is exact and commits no facts."
+      },
+      "tags": ["checkpoint", "guard", "event-log"]
+    },
+    {
+      "id": "vertical.invalid-input-no-commit",
+      "title": "Checkpoint schema rejection commits no facts",
+      "gate": "verticalPath",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "invalidInputNoCommit",
+        "description": "A schema-invalid checkpoint request commits no facts."
+      },
+      "tags": ["checkpoint", "schema", "event-log"]
+    },
+    {
+      "id": "domain.whole-app-scenarios",
+      "title": "Whole-app Scenario coverage",
+      "gate": "domainCompleteness",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "wholeAppScenarioCoverage",
+        "description": "Every registered Slice and Event has exact whole-app Scenario coverage."
+      },
+      "timeoutMs": 300000,
+      "tags": ["whole-app", "scenarios"]
+    },
+    {
+      "id": "domain.browser-journey-a",
+      "title": "Brief browser journey A",
+      "gate": "domainCompleteness",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "browserJourney",
+        "description": "The first named browser journey satisfies its complete brief outcome."
+      },
+      "timeoutMs": 300000,
+      "tags": ["browser", "journey-a"]
+    },
+    {
+      "id": "domain.browser-journey-b",
+      "title": "Brief browser journey B",
+      "gate": "domainCompleteness",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "browserJourney",
+        "description": "The second named browser journey satisfies its complete brief outcome."
+      },
+      "timeoutMs": 300000,
+      "tags": ["browser", "journey-b"]
+    },
+    {
+      "id": "domain.command-reaction-completion",
+      "title": "Command and Reaction completion remain distinct",
+      "gate": "domainCompleteness",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "commandReactionCompletion",
+        "description": "The triggering command commit is observable before and separately from Reaction completion."
+      },
+      "tags": ["reaction", "completion"]
+    },
+    {
+      "id": "robustness.idempotent-duplicate",
+      "title": "Duplicate idempotency key returns original commit",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "idempotentDuplicate",
+        "description": "The brief-selected duplicate returns the original commit and appends no facts."
+      },
+      "tags": ["idempotency", "held-out"]
+    },
+    {
+      "id": "robustness.concurrent-decision",
+      "title": "Conflicting decisions serialize",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "concurrentDecision",
+        "description": "The brief-defined race produces at most one valid conflicting transition."
+      },
+      "timeoutMs": 180000,
+      "tags": ["concurrency", "held-out"]
+    },
+    {
+      "id": "robustness.restart-equivalence",
+      "title": "Restart reconstructs equivalent state",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "restartEquivalence",
+        "description": "Restart reconstructs equivalent decision and public state from the durable Event Log."
+      },
+      "timeoutMs": 180000,
+      "tags": ["restart", "held-out"]
+    },
+    {
+      "id": "robustness.projection-catch-up",
+      "title": "Projection catch-up obeys cursor semantics",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "projectionCatchUp",
+        "description": "Catch-up reads facts strictly after its cursor and reaches equivalent state."
+      },
+      "tags": ["projection", "cursor", "held-out"]
+    },
+    {
+      "id": "robustness.projection-replay-repair",
+      "title": "Replay repairs projection loss",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "projectionReplayRepair",
+        "description": "Cleared or lagging projections are repaired from Events without rewriting history."
+      },
+      "timeoutMs": 180000,
+      "tags": ["replay", "held-out"]
+    },
+    {
+      "id": "robustness.cursor-publication-safety",
+      "title": "Projection apply and cursor publication are safe",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "cursorPublicationSafety",
+        "description": "An injected apply/cursor interruption is atomic or safely repeatable."
+      },
+      "tags": ["fault-injection", "cursor", "held-out"]
+    },
+    {
+      "id": "robustness.event-global-order",
+      "title": "Durable Events have unique global order",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "eventGlobalOrder",
+        "description": "Durable Event IDs are unique and global order is strictly ascending."
+      },
+      "tags": ["event-log", "order", "held-out"]
+    },
+    {
+      "id": "robustness.reaction-delivery-recovery",
+      "title": "Durable Reaction delivery recovers safely",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "reactionDeliveryRecovery",
+        "description": "A persisted failed effect retains retry-stable metadata, avoids duplicate work, and reaches visible success or dead letter."
+      },
+      "timeoutMs": 300000,
+      "tags": ["reaction", "outbox", "fault-injection", "held-out"]
+    },
+    {
+      "id": "domain.http-json-boundary",
+      "title": "HTTP accepts only registered JSON envelopes",
+      "gate": "domainCompleteness",
+      "visibility": "visible",
+      "mandatory": true,
+      "evidence": {
+        "kind": "httpJsonBoundary",
+        "description": "HTTP allowlists registered envelopes and accepts/returns only JSON values."
+      },
+      "tags": ["http", "transport"]
+    },
+    {
+      "id": "robustness.http-error-boundary",
+      "title": "HTTP errors are stable and non-leaking",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "httpErrorBoundary",
+        "description": "Structured errors remain stable while internal failures are not leaked."
+      },
+      "tags": ["http", "errors", "held-out"]
+    },
+    {
+      "id": "robustness.sse-lifecycle",
+      "title": "SSE initial, update, reconnect, and abort lifecycle",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "sseLifecycle",
+        "description": "SSE emits initial and independent updates, reconnects, and cleans up on abort."
+      },
+      "tags": ["sse", "subscription", "held-out"]
+    },
+    {
+      "id": "robustness.sqlite-recovery",
+      "title": "SQLite on-disk recovery",
+      "gate": "robustness",
+      "visibility": "heldOut",
+      "mandatory": true,
+      "evidence": {
+        "kind": "sqliteRecovery",
+        "description": "Restart and replay run against the real attempt-local on-disk SQLite database."
+      },
+      "timeoutMs": 180000,
+      "tags": ["sqlite", "profile", "held-out"]
+    }
+  ]
+}

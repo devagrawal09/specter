@@ -1,0 +1,86 @@
+{
+  "$schema": "../../../../packages/greenfield-runner/schemas/coordinator-catalog.schema.json",
+  "workspacePath": "workspace",
+  "freezePaths": ["workspace", "ADOPTION_LOG.md"],
+  "domains": [
+    {
+      "domainId": "ed-operations",
+      "domainName": "Emergency-Department Operations",
+      "domainKind": "replication",
+      "persistence": "postgres",
+      "port": 41911
+    },
+    {
+      "domainId": "cold-chain-freight",
+      "domainName": "Cold-Chain Freight Control",
+      "domainKind": "replication",
+      "persistence": "postgres",
+      "port": 41912
+    },
+    {
+      "domainId": "property-claims",
+      "domainName": "Property-Insurance Claims",
+      "domainKind": "replication",
+      "persistence": "sqlite",
+      "port": 41913
+    },
+    {
+      "domainId": "aircraft-turnaround",
+      "domainName": "Aircraft Turnaround Control",
+      "domainKind": "transfer",
+      "persistence": "sqlite",
+      "port": 41914
+    },
+    {
+      "domainId": "municipal-water-restoration",
+      "domainName": "Municipal Water Restoration",
+      "domainKind": "transfer",
+      "persistence": "sqlite",
+      "port": 41915
+    }
+  ],
+  "visibleCommands": [
+    {
+      "id": "visible-acceptance",
+      "file": "node",
+      "args": [
+        "/evaluation/coordinator/visible-suite.mjs",
+        "--attempt-id",
+        "{attemptId}",
+        "--domain-id",
+        "{domainId}",
+        "--port",
+        "{port}"
+      ],
+      "cwd": "workspace",
+      "timeoutMs": 1800000,
+      "env": {
+        "SPECTER_EVALUATION_PERSISTENCE": "{persistence}",
+        "SPECTER_EVALUATION_TOPOLOGY": "{topology}"
+      }
+    }
+  ],
+  "heldOutCommands": [
+    {
+      "id": "held-out-verification",
+      "file": "node",
+      "args": [
+        "/evaluation/coordinator/held-out-suite.mjs",
+        "--attempt-id",
+        "{attemptId}",
+        "--domain-id",
+        "{domainId}",
+        "--attempt-number",
+        "{attemptNumber}",
+        "--port",
+        "{port}"
+      ],
+      "cwd": "workspace",
+      "timeoutMs": 3600000,
+      "env": {
+        "SPECTER_EVALUATION_PERSISTENCE": "{persistence}",
+        "SPECTER_EVALUATION_TOPOLOGY": "{topology}"
+      }
+    }
+  ]
+}
