@@ -1,0 +1,4 @@
+overrides:
+  '@specter-ts/core': file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
+allowBuilds:
+  esbuild: true

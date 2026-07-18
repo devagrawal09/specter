@@ -1,0 +1,39 @@
+{
+  "name": "postgres-work-orders",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Brownfield-style work order service with durable PostgreSQL jobs",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --exclude test/live/**",
+    "test:unit": "vitest run test/domain.test.ts",
+    "test:http": "vitest run test/http.test.ts",
+    "test:live": "RUN_LIVE_TESTS=1 vitest run test/live",
+    "db:wait": "tsx src/cli/wait-for-db.ts",
+    "db:migrate": "tsx src/cli/migrate.ts up",
+    "db:rollback": "tsx src/cli/migrate.ts down",
+    "db:seed": "tsx src/cli/seed.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.6.1",
+    "pg": "^8.16.3",
+    "pg-boss": "^12.7.0",
+    "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "@specter-ts/brownfield-verifier": "file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+    "@specter-ts/core": "file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+    "@types/node": "^24.10.0",
+    "@types/pg": "^8.15.6",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.4"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

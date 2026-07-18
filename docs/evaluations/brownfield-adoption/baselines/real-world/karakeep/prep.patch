@@ -1,0 +1,977 @@
+diff --git a/.gitignore b/.gitignore
+index b857bbb49eac561f870d37e5cee0c5f345c8f010..9bb968bb511d16d38b2fdcff199da7e5468eabc3 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -73,3 +73,6 @@ auth_failures.log
+ .codex
+ .claude/worktrees
+ jean.json
++
++# Frozen brownfield guidance is extracted locally before the scored clock.
++/specter-evaluation/guidance/
+diff --git a/package.json b/package.json
+index 3e20970e2ad894e944f3e6958aef3bb86cbb8a79..baf6b400c95da6c75b37d97f24cbc6c98675def3 100644
+--- a/package.json
++++ b/package.json
+@@ -32,6 +32,8 @@
+     "husky": "^9.0.11"
+   },
+   "devDependencies": {
++    "@specter-ts/brownfield-verifier": "file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
++    "@specter-ts/core": "file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+     "@types/node": "^24",
+     "oxfmt": "^0.45.0",
+     "oxlint": "^1.60.0",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index f51b4cb896eea3e8aeff000def3877e6b738862a..f850b7c65e805d34898050a45706ce2368957089 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -5,6 +5,7 @@ settings:
+   excludeLinksFromLockfile: false
+ 
+ overrides:
++  '@specter-ts/core': file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
+   i18next-fs-backend: 2.6.6
+   shell-quote: 1.8.4
+   vite: 7.0.6
+@@ -25,6 +26,12 @@ importers:
+         specifier: ^9.0.11
+         version: 9.1.7
+     devDependencies:
++      '@specter-ts/brownfield-verifier':
++        specifier: file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz
++        version: file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz
++      '@specter-ts/core':
++        specifier: file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
++        version: file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
+       '@types/node':
+         specifier: ^24
+         version: 24.10.3
+@@ -7241,6 +7248,19 @@ packages:
+     resolution: {integrity: sha512-O/IEdcCUKkubz60tFbGA7ceITTAJsty+lBjNoorP4Z6XRqaFb/OjQjZODophEcuq68nKm6/0r+6/lLQ+XVpk8g==}
+     engines: {node: '>=18.0.0'}
+ 
++  '@specter-ts/brownfield-verifier@file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz':
++    resolution: {integrity: sha512-ZZJh+XiZMe2f9icGmo1hG80tX76qZHSbXFanIJAdpcKDOGKAyilPBuPc6s0jiZTmMu8VtYo+PfvxZ7wR8UiBlQ==, tarball: file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz}
++    version: 0.0.0
++
++  '@specter-ts/core@file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz':
++    resolution: {integrity: sha512-QcPsP3+5CcCZFofxeujmHT8RU9qIv7APisZP/TwnO3tICQQmnTty/uknsQMGOXeRHg0t9IdRzfoZOuSs/RyJLw==, tarball: file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz}
++    version: 0.3.0
++    peerDependencies:
++      vitest: ^4.1.5
++    peerDependenciesMeta:
++      vitest:
++        optional: true
++
+   '@standard-schema/spec@1.1.0':
+     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
+ 
+@@ -17628,6 +17648,9 @@ packages:
+   zod@4.3.6:
+     resolution: {integrity: sha512-rftlrkhHZOcjDwkGlnUtZZkvaPHCsDATp4pGpuOOMDaTdDDXF91wuVDJoWoPsKX/3YPQ5fHuF3STjcYyKr+Qhg==}
+ 
++  zod@4.4.3:
++    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
++
+   zustand@5.0.8:
+     resolution: {integrity: sha512-gyPKpIaxY9XcO2vSMrLbiER7QMAMGOQZVRdJ6Zi782jkbzZygq5GI9nG8g+sMgitRtndwaBSl7uiqC49o1SSiw==}
+     engines: {node: '>=12.20.0'}
+@@ -24715,6 +24738,17 @@ snapshots:
+     dependencies:
+       tslib: 2.8.1
+ 
++  '@specter-ts/brownfield-verifier@file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz':
++    dependencies:
++      '@specter-ts/core': file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
++      zod: 4.4.3
++    transitivePeerDependencies:
++      - vitest
++
++  '@specter-ts/core@file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz':
++    dependencies:
++      '@standard-schema/spec': 1.1.0
++
+   '@standard-schema/spec@1.1.0': {}
+ 
+   '@standard-schema/utils@0.3.0': {}
+@@ -37361,6 +37395,8 @@ snapshots:
+ 
+   zod@4.3.6: {}
+ 
++  zod@4.4.3: {}
++
+   zustand@5.0.8(@types/react@19.2.15)(immer@9.0.21)(react@19.2.6)(use-sync-external-store@1.5.0(react@19.2.6)):
+     optionalDependencies:
+       '@types/react': 19.2.15
+diff --git a/pnpm-workspace.yaml b/pnpm-workspace.yaml
+index c4f324b70fcd2656aeb4a1360b62340aa83979b3..a1434fc8e38d35a6ac79252b4c56b2d4569cf425 100644
+--- a/pnpm-workspace.yaml
++++ b/pnpm-workspace.yaml
+@@ -38,6 +38,8 @@ patchedDependencies:
+ allowUnusedPatches: true
+ 
+ minimumReleaseAgeExclude:
++  - '@specter-ts/brownfield-verifier@0.0.0'
++  - '@specter-ts/core@0.3.0'
+   - '@restatedev/restate-sdk-clients@1.15.1'
+   - '@restatedev/restate-sdk-core@1.15.1'
+   - '@restatedev/restate-sdk@1.15.1'
+@@ -48,6 +50,7 @@ minimumReleaseAgeExclude:
+ # 7.3.x were already in the lockfile before this PR; this just makes
+ # 7.0.6 the workspace-wide resolution.
+ overrides:
++  '@specter-ts/core': file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz
+   i18next-fs-backend: 2.6.6
+   shell-quote: 1.8.4
+   vite: 7.0.6
+diff --git a/specter-assignment.json b/specter-assignment.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..8a14524d495559b7320c198b2cd4dcda1c36ea59
+--- /dev/null
++++ b/specter-assignment.json
+@@ -0,0 +1,69 @@
++{
++  "schemaVersion": 1,
++  "assignmentId": "karakeep-lists-add-to-list-2026-07-18",
++  "application": {
++    "id": "karakeep",
++    "kind": "real-world",
++    "source": "https://github.com/karakeep-app/karakeep.git",
++    "revision": "ca48579b7c1e22016e6ca00bfaf91c3fdc84f949"
++  },
++  "stack": {
++    "framework": "Next.js 16 with a Hono-mounted tRPC API",
++    "database": "SQLite through Drizzle ORM at DATA_DIR/db.db",
++    "scheduler": "Liteque durable SQLite queues at DATA_DIR/queue.db",
++    "transport": "Batched tRPC HTTP over Hono",
++    "testRunner": "Vitest 3.2.4",
++    "ports": [41736, 41737]
++  },
++  "selectedOperation": {
++    "name": "lists.addToList",
++    "route": "POST /api/trpc/lists.addToList",
++    "guard": "Only manual bookmarkLists may accept membership. Smart lists reject with BAD_REQUEST and `Smart lists cannot be added to`; a repeated manual add is a successful no-op and must not emit another Rule Engine event.",
++    "legacyReaders": [
++      "lists.getListsOfBookmark({ bookmarkId })",
++      "bookmarks.getBookmarks({ listId })",
++      "lists.get({ listId })",
++      "lists.stats()",
++      "existing list-management UI"
++    ],
++    "backgroundWork": "RuleEngine.triggerOnEvent emits addedToList to the durable Liteque rule_engine_queue in DATA_DIR/queue.db; the real ruleEngine worker serves health on port 41737 and consumes it without external services."
++  },
++  "legacySnapshot": {
++    "path": "snapshots/seed-data-2026-05-20-163735.tar.gz",
++    "sha256": "0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367"
++  },
++  "packages": {
++    "core": {
++      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
++      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
++    },
++    "verifier": {
++      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
++      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
++    }
++  },
++  "commands": {
++    "baseline": [
++      "printf '%s  %s\\n' '0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367' 'snapshots/seed-data-2026-05-20-163735.tar.gz' 'f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c' 'specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz' 'eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1' 'specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz' '86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1' 'specter-evaluation/frozen-kit/guidance.tar.gz' | shasum -a 256 -c -",
++      "sqlite3 -readonly data/db.db < specter-evaluation/verify-snapshot.sql",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/api typecheck",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc typecheck",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/shared-server typecheck",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/workers typecheck",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/specter-evaluation/next-font-mock.cjs npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/web exec next build --webpack"
++    ],
++    "adapterVerifier": [
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false DATA_DIR=$PWD/data node --import tsx specter-evaluation/run-adapter-verifier.ts"
++    ],
++    "domainAcceptance": [
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc exec vitest run routers/lists.test.ts -t 'add and remove from list'",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc exec vitest run routers/sharedLists.test.ts -t 'should allow editor to add their own bookmark to shared list via addToList|should not allow viewer to add their own bookmark to shared list via addToList'",
++      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm exec vitest run --config specter-evaluation/vitest.config.ts"
++    ]
++  },
++  "agentConfiguration": {
++    "model": "gpt-5.6-sol",
++    "reasoning": "high"
++  },
++  "activeWorkLimitMinutes": 90
++}
+diff --git a/specter-evaluation/README.md b/specter-evaluation/README.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..e199c5e036fb4efc292d886d0df000e50fc4bbe7
+--- /dev/null
++++ b/specter-evaluation/README.md
+@@ -0,0 +1,180 @@
++# Karakeep Brownfield Evaluation Preparation
++
++This directory is coordinator-owned preparation for the frozen
++`lists.addToList` evaluation. The frozen Specter core and verifier are installed
++only as local development inputs; no adapter or domain migration is implemented
++and the production operation is unchanged. The scored adopter owns those
++changes.
++
++## Fixed runtime
++
++- Parent revision: `bc50630767079b060488d1d790b96de1e06ea6ba`
++- Node: `24.14.0` from the bundled Codex runtime
++- pnpm: `11.2.1`, matching `package.json`
++- Web: `127.0.0.1:41736`
++- Rule Engine worker health: `127.0.0.1:41737`
++
++Coordinator preflight on 2026-07-18 completed every check below except the web
++health request: fixed port `41736` was already owned by an unrelated worklog
++process whose working directory was `/private/tmp/specter-worklog-core/apps/worklog`.
++Per repository policy, the coordinator neither stopped that process nor chose a
++replacement port. Re-run the web smoke only after the external conflict clears.
++
++Use the bundled Node runtime and the prewarmed npm cache in each terminal. The
++`pnpm11` function resolves the pinned package through npm's offline cache; it
++does not depend on npm's internal `_npx` hash directory and does not use the
++network.
++
++```sh
++NODE24=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node
++KARAKEEP_NPM_CACHE=/private/tmp/karakeep-npm-cache
++KARAKEEP_PNPM_STORE=/Users/devagr/Library/pnpm/store/v11
++export PATH="$(dirname "$NODE24"):/opt/homebrew/bin:/usr/bin:/bin"
++pnpm11() {
++  npm_config_cache="$KARAKEEP_NPM_CACHE" \
++    pnpm_config_store_dir="$KARAKEEP_PNPM_STORE" \
++    npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm "$@"
++}
++node --version
++pnpm11 --version
++```
++
++`NO_COLOR=false` is explicit because some coordinator environments export the
++unsupported value `NO_COLOR=1`.
++
++## Frozen scored inputs
++
++`specter-assignment.json` records the immutable package and snapshot digests,
++the exact preparation revision, the selected operation, and every scored
++command. The committed package archives are under
++`specter-evaluation/frozen-kit/`; pnpm's override forces the verifier's core
++dependency to resolve to that local archive.
++
++The frozen guidance archive SHA-256 is
++`86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1`.
++
++The coordinator extracted `guidance.tar.gz` before the active-work clock. Its
++contents are available in the ignored, uncommitted
++`specter-evaluation/guidance/` directory. Do not edit the committed archives or
++replace them from the network.
++
++## Clean setup
++
++Begin without a `data/` directory. The seed command intentionally refuses to
++overwrite one.
++
++```sh
++pnpm11 install --offline --frozen-lockfile
++NO_COLOR=false pnpm11 seed:apply
++NO_COLOR=false DATA_DIR="$PWD/data" pnpm11 db:migrate
++shasum -a 256 snapshots/seed-data-2026-05-20-163735.tar.gz
++```
++
++The required digest is recorded in `legacy-snapshot.json`. Verify the selected
++rows without changing them:
++
++```sh
++sqlite3 -readonly data/db.db < specter-evaluation/verify-snapshot.sql
++```
++
++## Focused validation
++
++```sh
++NO_COLOR=false pnpm11 --filter @karakeep/trpc exec vitest run \
++  routers/lists.test.ts -t "add and remove from list"
++NO_COLOR=false pnpm11 --filter @karakeep/trpc exec vitest run \
++  routers/sharedLists.test.ts \
++  -t "should allow editor to add their own bookmark to shared list via addToList|should not allow viewer to add their own bookmark to shared list via addToList"
++NO_COLOR=false pnpm11 exec vitest run \
++  --config specter-evaluation/vitest.config.ts
++NO_COLOR=false pnpm11 --filter @karakeep/api typecheck
++NO_COLOR=false pnpm11 --filter @karakeep/trpc typecheck
++NO_COLOR=false pnpm11 --filter @karakeep/shared-server typecheck
++NO_COLOR=false pnpm11 --filter @karakeep/workers typecheck
++NO_COLOR=false \
++  NEXT_FONT_GOOGLE_MOCKED_RESPONSES="$PWD/specter-evaluation/next-font-mock.cjs" \
++  pnpm11 --filter @karakeep/web exec next build --webpack
++```
++
++The production build uses Next's supported webpack path because Turbopack
++does not complete in the coordinator sandbox. The committed Google Fonts mock
++keeps the existing `next/font` integration offline; it is build input only and
++does not alter production source or runtime behavior.
++
++The seed archive intentionally contains nine `searching_indexing` queue rows:
++eight pending and one running. They are fixed legacy snapshot state, not leaked
++evaluation work, and the Rule Engine-only worker does not consume them. The
++snapshot SQL verifies those counts, the running job's idempotency key, and that
++the verifier-owned Rule Engine key is absent before the probe. Preserve these
++unrelated rows throughout setup and cleanup.
++
++## Fixed-port web and durable queue smoke
++
++Use `/private/tmp/karakeep-specter-evaluation-runtime` for coordinator logs and
++PID files. Start the web server:
++
++```sh
++mkdir -p /private/tmp/karakeep-specter-evaluation-runtime
++NO_COLOR=false DATA_DIR="$PWD/data" PORT=41736 \
++  API_URL=http://127.0.0.1:41736 \
++  NEXTAUTH_URL=http://127.0.0.1:41736 \
++  NEXTAUTH_SECRET=specter-brownfield-local-only \
++  PROMETHEUS_AUTH_TOKEN=specter-brownfield \
++  pnpm11 web \
++  > /private/tmp/karakeep-specter-evaluation-runtime/web.log 2>&1 &
++echo $! > /private/tmp/karakeep-specter-evaluation-runtime/web.pid
++curl --fail http://127.0.0.1:41736/api/health
++```
++
++Enqueue in one process and assert the SQLite-backed pending job from a fresh
++process before starting the worker:
++
++```sh
++NO_COLOR=false DATA_DIR="$PWD/data" "$NODE24" --import tsx \
++  specter-evaluation/queue-probe.ts enqueue
++NO_COLOR=false DATA_DIR="$PWD/data" "$NODE24" --import tsx \
++  specter-evaluation/queue-probe.ts assert-pending
++```
++
++Start only the Rule Engine worker, then wait for the missing-bookmark probe to
++be consumed locally without any external service:
++
++```sh
++NO_COLOR=false DATA_DIR="$PWD/data" WORKERS_HOST=127.0.0.1 \
++  WORKERS_PORT=41737 WORKERS_ENABLED_WORKERS=ruleEngine \
++  API_URL=http://127.0.0.1:41736 \
++  NEXTAUTH_URL=http://127.0.0.1:41736 \
++  NEXTAUTH_SECRET=specter-brownfield-local-only \
++  PROMETHEUS_AUTH_TOKEN=specter-brownfield \
++  pnpm11 workers \
++  > /private/tmp/karakeep-specter-evaluation-runtime/worker.log 2>&1 &
++echo $! > /private/tmp/karakeep-specter-evaluation-runtime/worker.pid
++curl --fail http://127.0.0.1:41737/health
++NO_COLOR=false DATA_DIR="$PWD/data" "$NODE24" --import tsx \
++  specter-evaluation/queue-probe.ts wait-drained
++```
++
++## Cleanup
++
++Stop exactly the recorded processes and remove only the verifier-owned queue
++record and temporary runtime files:
++
++```sh
++kill "$(cat /private/tmp/karakeep-specter-evaluation-runtime/worker.pid)"
++kill "$(cat /private/tmp/karakeep-specter-evaluation-runtime/web.pid)"
++sqlite3 data/queue.db \
++  "delete from tasks where queue='rule_engine_queue' and idempotencyKey='specter-evaluation-rule-engine-restart';"
++rm -f /private/tmp/karakeep-specter-evaluation-runtime/worker.pid \
++  /private/tmp/karakeep-specter-evaluation-runtime/web.pid
++```
++
++Confirm the Karakeep worker is stopped, inspect the fixed web-port owner, and
++verify that the verifier-owned task is absent:
++
++```sh
++lsof -nP -iTCP:41736 -sTCP:LISTEN
++lsof -nP -iTCP:41737 -sTCP:LISTEN
++sqlite3 -readonly data/queue.db \
++  "select queue, status, count(*) from tasks group by queue, status order by queue, status;
++   select count(*) from tasks where queue='rule_engine_queue' and idempotencyKey='specter-evaluation-rule-engine-restart';"
++```
+diff --git a/specter-evaluation/driver.ts b/specter-evaluation/driver.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..642524e926f5ac00dcbc2d17113f87ce7f816fd6
+--- /dev/null
++++ b/specter-evaluation/driver.ts
+@@ -0,0 +1,23 @@
++import type { AdapterHarnessDriver } from "@specter-ts/brownfield-verifier";
++
++function unfinished(boundary: string): never {
++  throw new Error(`Adapter verifier driver is not implemented: ${boundary}`);
++}
++
++// TODO(scored-adopter): Back this driver with Karakeep's existing SQLite and
++// Liteque infrastructure.
++export const adapterHarnessDriver: AdapterHarnessDriver = {
++  name: "karakeep-lists-add-to-list",
++  async reset() {
++    unfinished("reset");
++  },
++  async open() {
++    unfinished("open");
++  },
++  async deliveries() {
++    unfinished("deliveries");
++  },
++  async retryDeadLetter() {
++    unfinished("retryDeadLetter");
++  },
++};
+diff --git a/specter-evaluation/legacy-snapshot.json b/specter-evaluation/legacy-snapshot.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..8185ef8fce51be20dde1b830d380fb9410bd8c99
+--- /dev/null
++++ b/specter-evaluation/legacy-snapshot.json
+@@ -0,0 +1,60 @@
++{
++  "schemaVersion": 1,
++  "archive": {
++    "path": "snapshots/seed-data-2026-05-20-163735.tar.gz",
++    "sha256": "0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367",
++    "sourceRevision": "021cb12579bdf4cc5e2b50f09170c23f99ed6eab",
++    "requiresMigrationsAtPinnedRevision": true
++  },
++  "records": {
++    "user": {
++      "id": "swx5usbrq7q2akkgcz609eu6",
++      "email": "test1@example.com",
++      "password": "test1234",
++      "role": "admin"
++    },
++    "bookmark": {
++      "id": "km2jba5wyxzsa07ea1rvlkw6",
++      "title": "Seed snapshot bookmark 1",
++      "ownerId": "swx5usbrq7q2akkgcz609eu6"
++    },
++    "acceptedManualList": {
++      "id": "qxhgpg4iyzxcx5i50uzugf6p",
++      "name": "Reference",
++      "type": "manual",
++      "initiallyContainsBookmark": false
++    },
++    "rejectedSmartList": {
++      "id": "ku2yic4o203piiv3s2niwaiw",
++      "name": "Research Smart",
++      "type": "smart",
++      "query": "tag:research"
++    },
++    "baselineMembership": {
++      "listId": "wugrjqiw98lef9z7g38b6v5m",
++      "listName": "Reading Queue",
++      "bookmarkId": "km2jba5wyxzsa07ea1rvlkw6"
++    }
++  },
++  "snapshotCounts": {
++    "users": 3,
++    "bookmarks": 24,
++    "lists": 8,
++    "memberships": 24,
++    "ruleEngineRules": 0
++  },
++  "legacyQueueState": {
++    "source": "snapshots/seed-data-2026-05-20-163735.tar.gz:queue.db",
++    "classification": "Preserved legacy Search Indexing work, not verifier residue. The fixed Rule Engine worker does not consume this queue.",
++    "searchingIndexing": {
++      "pending": 8,
++      "running": 1,
++      "runningIdempotencyKey": "index:zcbcwbus69sc701khrtmyccz"
++    },
++    "ruleEngine": {
++      "queue": "rule_engine_queue",
++      "recordsBeforeProbe": 0,
++      "verifierIdempotencyKey": "specter-evaluation-rule-engine-restart"
++    }
++  }
++}
+diff --git a/specter-evaluation/list-operation.acceptance.test.ts b/specter-evaluation/list-operation.acceptance.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..eaaf170d587b3f718f996be7a769caa7b2a1fb81
+--- /dev/null
++++ b/specter-evaluation/list-operation.acceptance.test.ts
+@@ -0,0 +1,216 @@
++import { and, eq } from "drizzle-orm";
++import { Hono } from "hono";
++import { createTRPCClient, httpBatchLink } from "@trpc/client";
++import superjson from "superjson";
++import { beforeEach, describe, expect, test, vi } from "vitest";
++
++import { bookmarksInLists } from "@karakeep/db/schema";
++import { BookmarkTypes } from "@karakeep/shared/types/bookmarks";
++import type { Context } from "@karakeep/trpc";
++import type { AppRouter } from "@karakeep/trpc/routers/_app";
++
++import apiApp from "../packages/api/index";
++import type {
++  APICallerType,
++  CustomTestContext,
++} from "../packages/trpc/testUtils";
++import { buildTestContext } from "../packages/trpc/testUtils";
++import { RuleEngine } from "../packages/trpc/lib/ruleEngine";
++
++vi.mock("@karakeep/shared-server", async (original) => {
++  const actual = (await original()) as typeof import("@karakeep/shared-server");
++  return {
++    ...actual,
++    LinkCrawlerQueue: { enqueue: vi.fn() },
++    OpenAIQueue: { enqueue: vi.fn() },
++    EmbeddingsQueue: { enqueue: vi.fn() },
++    SearchIndexingQueue: { enqueue: vi.fn() },
++    RuleEngineQueue: { enqueue: vi.fn() },
++    triggerSearchReindex: vi.fn(),
++  };
++});
++
++async function createTextBookmark(api: APICallerType) {
++  return await api.bookmarks.createBookmark({
++    type: BookmarkTypes.TEXT,
++    text: "Specter evaluation bookmark",
++  });
++}
++
++function createPublicHttpApp(context: Context) {
++  return new Hono<{ Variables: { ctx: Context } }>()
++    .basePath("/api")
++    .use("*", async (requestContext, next) => {
++      requestContext.set("ctx", context);
++      await next();
++    })
++    .route("/", apiApp);
++}
++
++function createPublicTrpcClient(context: Context) {
++  const app = createPublicHttpApp(context);
++  let lastResponse: Response | undefined;
++  const client = createTRPCClient<AppRouter>({
++    links: [
++      httpBatchLink({
++        transformer: superjson,
++        url: "http://localhost/api/trpc",
++        fetch: async (input, init) => {
++          const response = await app.request(new Request(input, init));
++          lastResponse = response.clone();
++          return response;
++        },
++      }),
++    ],
++  });
++  return {
++    client,
++    lastResponse() {
++      if (!lastResponse) throw new Error("Expected a public HTTP response");
++      return lastResponse;
++    },
++  };
++}
++
++beforeEach<CustomTestContext>(async (context) => {
++  vi.clearAllMocks();
++  Object.assign(context, await buildTestContext(true));
++});
++
++describe("coordinator-owned lists.addToList acceptance", () => {
++  test<CustomTestContext>("manual add is idempotent, preserves reader parity, and emits one Rule Engine event", async ({
++    apiCallers,
++    db,
++  }) => {
++    const api = apiCallers[0];
++    const user = await db.query.users.findFirst();
++    if (!user) throw new Error("Expected a seeded HTTP actor");
++    const httpContext: Context = {
++      user,
++      auth: { type: "session" },
++      db,
++      req: { ip: "127.0.0.1" },
++    };
++    const transport = createPublicTrpcClient(httpContext);
++    const bookmark = await createTextBookmark(api);
++    const list = await api.lists.create({
++      name: "Specter Reference",
++      type: "manual",
++      icon: "📚",
++    });
++    await api.rules.create({
++      name: "Specter added-to-list probe",
++      description: "Coordinator-owned queue assertion",
++      enabled: true,
++      event: { type: "addedToList", listIds: [list.id] },
++      condition: { type: "alwaysTrue" },
++      actions: [{ type: "favouriteBookmark" }],
++    });
++    const persistedBookmark = await db.query.bookmarks.findFirst({
++      where: (table, { eq }) => eq(table.id, bookmark.id),
++      columns: { userId: true },
++    });
++    expect(
++      await RuleEngine.matchesAnyRule(
++        persistedBookmark?.userId ?? "",
++        [{ type: "addedToList", listId: list.id }],
++        db,
++      ),
++    ).toBe(true);
++    const triggerOnEvent = vi.spyOn(RuleEngine, "triggerOnEvent");
++
++    await transport.client.lists.addToList.mutate({
++      listId: list.id,
++      bookmarkId: bookmark.id,
++    });
++    expect(transport.lastResponse().status).toBe(200);
++    await transport.client.lists.addToList.mutate({
++      listId: list.id,
++      bookmarkId: bookmark.id,
++    });
++    expect(transport.lastResponse().status).toBe(200);
++
++    const memberships = await db
++      .select()
++      .from(bookmarksInLists)
++      .where(
++        and(
++          eq(bookmarksInLists.listId, list.id),
++          eq(bookmarksInLists.bookmarkId, bookmark.id),
++        ),
++      );
++    expect(memberships).toHaveLength(1);
++
++    const listsReader = await api.lists.getListsOfBookmark({
++      bookmarkId: bookmark.id,
++    });
++    expect(listsReader.lists.map((entry) => entry.id)).toContain(list.id);
++
++    const bookmarksReader = await api.bookmarks.getBookmarks({
++      listId: list.id,
++    });
++    expect(bookmarksReader.bookmarks.map((entry) => entry.id)).toContain(
++      bookmark.id,
++    );
++
++    const listReader = await api.lists.get({ listId: list.id });
++    expect(listReader).toMatchObject({ id: list.id, type: "manual" });
++
++    const statsReader = await api.lists.stats();
++    expect(statsReader.stats.get(list.id)).toBe(1);
++
++    expect(triggerOnEvent).toHaveBeenCalledTimes(1);
++    expect(triggerOnEvent.mock.calls[0]?.slice(0, 3)).toEqual([
++      persistedBookmark?.userId,
++      bookmark.id,
++      [{ type: "addedToList", listId: list.id }],
++    ]);
++  });
++
++  test<CustomTestContext>("smart-list add preserves the public rejection and creates no membership", async ({
++    apiCallers,
++    db,
++  }) => {
++    const api = apiCallers[0];
++    const user = await db.query.users.findFirst();
++    if (!user) throw new Error("Expected a seeded HTTP actor");
++    const httpContext: Context = {
++      user,
++      auth: { type: "session" },
++      db,
++      req: { ip: "127.0.0.1" },
++    };
++    const transport = createPublicTrpcClient(httpContext);
++    const bookmark = await createTextBookmark(api);
++    const list = await api.lists.create({
++      name: "Specter Research Smart",
++      type: "smart",
++      query: "tag:research",
++      icon: "🔎",
++    });
++    const triggerOnEvent = vi.spyOn(RuleEngine, "triggerOnEvent");
++
++    await expect(
++      transport.client.lists.addToList.mutate({
++        listId: list.id,
++        bookmarkId: bookmark.id,
++      }),
++    ).rejects.toThrow("Smart lists cannot be added to");
++    expect(transport.lastResponse().status).toBe(400);
++    expect(await transport.lastResponse().text()).toContain(
++      "Smart lists cannot be added to",
++    );
++
++    const memberships = await db
++      .select()
++      .from(bookmarksInLists)
++      .where(
++        and(
++          eq(bookmarksInLists.listId, list.id),
++          eq(bookmarksInLists.bookmarkId, bookmark.id),
++        ),
++      );
++    expect(memberships).toHaveLength(0);
++    expect(triggerOnEvent).not.toHaveBeenCalled();
++  });
++});
+diff --git a/specter-evaluation/next-font-mock.cjs b/specter-evaluation/next-font-mock.cjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..396db12ecfb100c15a23783ad1dd5331f9dbbb2c
+--- /dev/null
++++ b/specter-evaluation/next-font-mock.cjs
+@@ -0,0 +1,12 @@
++module.exports = {
++  "https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap": `
++    /* latin */
++    @font-face {
++      font-family: 'Inter';
++      font-style: normal;
++      font-weight: 100 900;
++      font-display: swap;
++      src: url(https://fonts.gstatic.com/s/inter/v18/specter-evaluation.woff2) format('woff2');
++    }
++  `,
++};
+diff --git a/specter-evaluation/operation.json b/specter-evaluation/operation.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..8d03bc5107e3a6acc2b9d71f3cc8d1836fe9b3c8
+--- /dev/null
++++ b/specter-evaluation/operation.json
+@@ -0,0 +1,44 @@
++{
++  "schemaVersion": 1,
++  "application": "karakeep",
++  "parentRevision": "bc50630767079b060488d1d790b96de1e06ea6ba",
++  "selectedOperation": {
++    "name": "lists.addToList",
++    "transport": "tRPC over Hono",
++    "publicRoute": "POST /api/trpc/lists.addToList",
++    "input": {
++      "listId": "string",
++      "bookmarkId": "string"
++    },
++    "success": "void",
++    "guard": {
++      "source": "bookmarkLists.type",
++      "accepted": "manual",
++      "rejected": "smart",
++      "rejectionCode": "BAD_REQUEST",
++      "rejectionMessage": "Smart lists cannot be added to"
++    },
++    "repeatBehavior": "A repeated manual-list add is a successful no-op after the bookmarksInLists composite primary-key conflict and must not emit another Rule Engine event.",
++    "authorization": [
++      "authenticated lists scope",
++      "list viewer access",
++      "list editor access",
++      "bookmark ownership"
++    ],
++    "unchangedReaders": [
++      "lists.getListsOfBookmark({ bookmarkId })",
++      "bookmarks.getBookmarks({ listId })",
++      "lists.get({ listId })",
++      "lists.stats()",
++      "existing list-management UI"
++    ],
++    "backgroundWork": {
++      "trigger": "RuleEngine.triggerOnEvent",
++      "event": "addedToList",
++      "queue": "rule_engine_queue",
++      "durability": "Liteque SQLite at DATA_DIR/queue.db",
++      "worker": "ruleEngine"
++    }
++  },
++  "productionSemanticsChangedByPreparation": false
++}
+diff --git a/specter-evaluation/queue-probe.ts b/specter-evaluation/queue-probe.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..8bc73512e0cb23a6db09f7f14fcff702815cf506
+--- /dev/null
++++ b/specter-evaluation/queue-probe.ts
+@@ -0,0 +1,70 @@
++import {
++  RuleEngineQueue,
++  prepareQueue,
++} from "../packages/shared-server/index.ts";
++
++async function main() {
++  const mode = process.argv[2];
++  const expectedModes = ["enqueue", "assert-pending", "wait-drained"] as const;
++  if (!expectedModes.includes(mode as (typeof expectedModes)[number])) {
++    throw new Error(`Expected one of: ${expectedModes.join(", ")}`);
++  }
++
++  await prepareQueue();
++
++  if (mode === "enqueue") {
++    const before = await RuleEngineQueue.stats();
++    if (before.pending !== 0 || before.running !== 0) {
++      throw new Error(
++        `Rule Engine queue is not clean: ${JSON.stringify(before)}`,
++      );
++    }
++    const jobId = await RuleEngineQueue.enqueue(
++      {
++        bookmarkId: "specter-evaluation-missing-bookmark",
++        events: [
++          {
++            type: "addedToList",
++            listId: "qxhgpg4iyzxcx5i50uzugf6p",
++          },
++        ],
++      },
++      { idempotencyKey: "specter-evaluation-rule-engine-restart" },
++    );
++    const after = await RuleEngineQueue.stats();
++    if (after.pending !== 1 || after.running !== 0) {
++      throw new Error(
++        `Expected one durable pending job: ${JSON.stringify(after)}`,
++      );
++    }
++    process.stdout.write(`${JSON.stringify({ mode, jobId, stats: after })}\n`);
++  } else if (mode === "assert-pending") {
++    const stats = await RuleEngineQueue.stats();
++    if (stats.pending !== 1 || stats.running !== 0) {
++      throw new Error(
++        `Pending job did not survive restart: ${JSON.stringify(stats)}`,
++      );
++    }
++    process.stdout.write(`${JSON.stringify({ mode, stats })}\n`);
++  } else {
++    const deadline = Date.now() + 15_000;
++    while (Date.now() < deadline) {
++      const stats = await RuleEngineQueue.stats();
++      if (stats.pending === 0 && stats.running === 0) {
++        process.stdout.write(`${JSON.stringify({ mode, stats })}\n`);
++        return;
++      }
++      await new Promise((resolve) => setTimeout(resolve, 100));
++    }
++    throw new Error(
++      `Rule Engine queue did not drain: ${JSON.stringify(await RuleEngineQueue.stats())}`,
++    );
++  }
++}
++
++void main().catch((cause: unknown) => {
++  process.stderr.write(
++    `${cause instanceof Error ? cause.stack : String(cause)}\n`,
++  );
++  process.exitCode = 1;
++});
+diff --git a/specter-evaluation/run-adapter-verifier.ts b/specter-evaluation/run-adapter-verifier.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..48c5d5f86334b959803cacd856f1f052a5c5ee38
+--- /dev/null
++++ b/specter-evaluation/run-adapter-verifier.ts
+@@ -0,0 +1,22 @@
++import { runAdapterContractSuite } from "@specter-ts/brownfield-verifier";
++
++import { adapterHarnessDriver } from "./driver.js";
++
++async function main() {
++  const report = await runAdapterContractSuite(adapterHarnessDriver);
++
++  await new Promise<void>((resolve, reject) => {
++    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`, (error) => {
++      if (error) reject(error);
++      else resolve();
++    });
++  });
++  process.exit(report.passed ? 0 : 1);
++}
++
++void main().catch((cause: unknown) => {
++  process.stderr.write(
++    `${cause instanceof Error ? cause.stack : String(cause)}\n`,
++    () => process.exit(1),
++  );
++});
+diff --git a/specter-evaluation/verify-snapshot.sql b/specter-evaluation/verify-snapshot.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..c3d3fce5b3f819e4c0cad8e5a430a8e3a2cd43b6
+--- /dev/null
++++ b/specter-evaluation/verify-snapshot.sql
+@@ -0,0 +1,44 @@
++.headers on
++.mode column
++
++select id, email, name, role
++from user
++where id = 'swx5usbrq7q2akkgcz609eu6';
++
++select id, title, type, userId
++from bookmarks
++where id = 'km2jba5wyxzsa07ea1rvlkw6';
++
++select id, name, type, query, userId
++from bookmarkLists
++where id in (
++  'qxhgpg4iyzxcx5i50uzugf6p',
++  'ku2yic4o203piiv3s2niwaiw',
++  'wugrjqiw98lef9z7g38b6v5m'
++)
++order by id;
++
++select listId, bookmarkId, listMembershipId
++from bookmarksInLists
++where bookmarkId = 'km2jba5wyxzsa07ea1rvlkw6';
++
++select count(*) as ruleEngineRules
++from ruleEngineRules;
++
++attach database 'data/queue.db' as legacyQueue;
++
++select queue, status, count(*) as records
++from legacyQueue.tasks
++group by queue, status
++order by queue, status;
++
++select idempotencyKey
++from legacyQueue.tasks
++where queue = 'searching_indexing' and status = 'running';
++
++select count(*) as verifierOwnedRuleEngineRecords
++from legacyQueue.tasks
++where queue = 'rule_engine_queue'
++  and idempotencyKey = 'specter-evaluation-rule-engine-restart';
++
++detach database legacyQueue;
+diff --git a/specter-evaluation/vitest.config.ts b/specter-evaluation/vitest.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7debc336a9e157f5c9c2a25ff129e2aeb3e4edae
+--- /dev/null
++++ b/specter-evaluation/vitest.config.ts
+@@ -0,0 +1,44 @@
++import { fileURLToPath } from "node:url";
++
++import tsconfigPaths from "vite-tsconfig-paths";
++import { defineConfig } from "vitest/config";
++
++const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
++
++export default defineConfig({
++  root: repositoryRoot,
++  resolve: {
++    alias: [
++      {
++        find: "@karakeep/db/schema",
++        replacement: fileURLToPath(
++          new URL("../packages/db/schema.ts", import.meta.url),
++        ),
++      },
++      {
++        find: "@karakeep/shared-server",
++        replacement: fileURLToPath(
++          new URL("../packages/shared-server/index.ts", import.meta.url),
++        ),
++      },
++      {
++        find: "@karakeep/shared/types/bookmarks",
++        replacement: fileURLToPath(
++          new URL("../packages/shared/types/bookmarks.ts", import.meta.url),
++        ),
++      },
++    ],
++  },
++  plugins: [
++    tsconfigPaths({
++      projects: ["packages/trpc/tsconfig.json"],
++      skip: (dir) => dir === ".claude",
++    }),
++  ],
++  test: {
++    include: ["specter-evaluation/list-operation.acceptance.test.ts"],
++    alias: {
++      "@/*": "./*",
++    },
++  },
++});

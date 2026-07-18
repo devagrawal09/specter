@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "assignmentId": "mongo-returns-brownfield-adoption",
+  "application": {
+    "id": "mongo-returns",
+    "kind": "controlled",
+    "source": "controlled/mongo-returns",
+    "revision": "db5914d6390796bce69c77e3e9b3e7c93103b3b3"
+  },
+  "stack": {
+    "framework": "Express",
+    "database": "MongoDB replica set",
+    "scheduler": "Agenda",
+    "transport": "HTTP JSON",
+    "testRunner": "Vitest",
+    "ports": [42132, 42133]
+  },
+  "selectedOperation": {
+    "name": "approve-refund",
+    "route": "POST /returns/:id/approve-refund",
+    "guard": "The persisted return must be inspected with an accepted result and must not already have a refund approval.",
+    "legacyReaders": [
+      "GET /returns",
+      "GET /returns/:id"
+    ],
+    "backgroundWork": "Process the committed refund approval through the existing durable Agenda job and record one provider reference and refund.processed history fact after restart-safe delivery."
+  },
+  "legacySnapshot": {
+    "path": "specter-evaluation/legacy-snapshot.json",
+    "sha256": "94650001d3e0b1ca7494c26aea27154fc5382ea64f34ce581f2a582707b3d0d8"
+  },
+  "packages": {
+    "core": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    }
+  },
+  "commands": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "adapterVerifier": [
+      "pnpm exec tsx specter-evaluation/verifier/runner.ts"
+    ],
+    "domainAcceptance": [
+      "RUN_LIVE_TESTS=1 pnpm test:live"
+    ]
+  },
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90
+}

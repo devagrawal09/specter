@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "postgres-work-orders-legacy-v1",
+  "captureBoundary": "after pnpm db:seed completes on the audited builder baseline",
+  "source": {
+    "builderCommit": "a131c2e1ea9d80fc0c1affdd72f9983712c35e0b",
+    "seedCommand": "pnpm db:seed",
+    "authoritativeFiles": [
+      "src/seed.ts",
+      "test/live/postgres.test.ts"
+    ]
+  },
+  "workOrders": [
+    {
+      "id": "WO-1001",
+      "title": "Hydraulic pump overhaul",
+      "status": "in_progress",
+      "inspectionPassed": true,
+      "closedAt": null,
+      "version": 3,
+      "createdAt": "2025-01-02T09:00:00.000Z",
+      "updatedAt": "2025-01-08T15:30:00.000Z"
+    },
+    {
+      "id": "WO-1002",
+      "title": "Loading dock light replacement",
+      "status": "open",
+      "inspectionPassed": true,
+      "closedAt": null,
+      "version": 1,
+      "createdAt": "2025-01-03T10:00:00.000Z",
+      "updatedAt": "2025-01-03T10:00:00.000Z"
+    },
+    {
+      "id": "WO-1003",
+      "title": "Conveyor guard alignment",
+      "status": "in_progress",
+      "inspectionPassed": false,
+      "closedAt": null,
+      "version": 4,
+      "createdAt": "2025-01-04T11:00:00.000Z",
+      "updatedAt": "2025-01-09T12:00:00.000Z"
+    },
+    {
+      "id": "WO-1004",
+      "title": "Boiler pressure calibration",
+      "status": "closed",
+      "inspectionPassed": true,
+      "closedAt": "2025-01-08T17:00:00.000Z",
+      "version": 7,
+      "createdAt": "2025-01-01T08:00:00.000Z",
+      "updatedAt": "2025-01-08T17:00:00.000Z"
+    },
+    {
+      "id": "WO-1005",
+      "title": "Retired compressor inspection",
+      "status": "cancelled",
+      "inspectionPassed": true,
+      "closedAt": null,
+      "version": 2,
+      "createdAt": "2025-01-05T13:00:00.000Z",
+      "updatedAt": "2025-01-06T09:00:00.000Z"
+    },
+    {
+      "id": "WO-1006",
+      "title": "Emergency generator service",
+      "status": "in_progress",
+      "inspectionPassed": true,
+      "closedAt": null,
+      "version": 5,
+      "createdAt": "2025-01-06T14:00:00.000Z",
+      "updatedAt": "2025-01-10T16:00:00.000Z"
+    }
+  ],
+  "ownedSupportingState": {
+    "history": [
+      { "workOrderId": "WO-1001", "action": "seed_snapshot", "fromStatus": null, "toStatus": "in_progress", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-08T15:30:00.000Z" },
+      { "workOrderId": "WO-1002", "action": "seed_snapshot", "fromStatus": null, "toStatus": "open", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-03T10:00:00.000Z" },
+      { "workOrderId": "WO-1003", "action": "seed_snapshot", "fromStatus": null, "toStatus": "in_progress", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-09T12:00:00.000Z" },
+      { "workOrderId": "WO-1004", "action": "seed_snapshot", "fromStatus": null, "toStatus": "closed", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-08T17:00:00.000Z" },
+      { "workOrderId": "WO-1005", "action": "seed_snapshot", "fromStatus": null, "toStatus": "cancelled", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-06T09:00:00.000Z" },
+      { "workOrderId": "WO-1006", "action": "seed_snapshot", "fromStatus": null, "toStatus": "in_progress", "details": { "snapshot": "legacy-v1" }, "createdAt": "2025-01-10T16:00:00.000Z" }
+    ],
+    "applicationEvents": [],
+    "deliveries": [],
+    "fixtureSchedulerRows": []
+  },
+  "exactCounts": {
+    "workOrders": 6,
+    "history": 6,
+    "applicationEvents": 0,
+    "deliveries": 0,
+    "fixtureSchedulerRows": 0
+  }
+}

@@ -1,0 +1,110 @@
+name: mysql-shipments-brownfield
+
+x-runtime-env: &runtime-env
+  MYSQL_URL: mysql://shipments:shipments@db:3306/shipments
+  REDIS_URL: redis://redis:6379
+  REDIS_COMMAND_TIMEOUT_MS: "750"
+
+services:
+  db:
+    image: mysql:8.4.6
+    container_name: mysql-shipments-db-42133
+    environment:
+      MYSQL_DATABASE: shipments
+      MYSQL_USER: shipments
+      MYSQL_PASSWORD: shipments
+      MYSQL_ROOT_PASSWORD: local-root-only
+    ports:
+      - "127.0.0.1:42134:3306"
+    volumes:
+      - mysql-shipments-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4.5-alpine
+    container_name: mysql-shipments-redis-42133
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "127.0.0.1:42135:6379"
+    volumes:
+      - mysql-shipments-redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    container_name: mysql-shipments-migrate-42133
+    environment: *runtime-env
+    command: ["node", "dist/cli/migrate.js"]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build: .
+    container_name: mysql-shipments-app-42133
+    init: true
+    environment:
+      <<: *runtime-env
+      PORT: "42133"
+    ports:
+      - "42133:42133"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:42133/health/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    container_name: mysql-shipments-worker-42133
+    init: true
+    environment: *runtime-env
+    command: ["node", "dist/worker.js"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  reconciler:
+    build: .
+    container_name: mysql-shipments-reconciler-42133
+    init: true
+    environment:
+      <<: *runtime-env
+      RECONCILE_INTERVAL_MS: "2000"
+    command: ["node", "dist/cli/reconcile.js", "--loop"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+volumes:
+  mysql-shipments-data:
+    name: mysql-shipments-data-42133
+  mysql-shipments-redis:
+    name: mysql-shipments-redis-42133

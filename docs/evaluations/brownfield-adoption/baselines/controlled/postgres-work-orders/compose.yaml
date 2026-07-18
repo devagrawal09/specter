@@ -1,0 +1,24 @@
+name: pgbw-work-orders-42131
+
+services:
+  db:
+    image: postgres:16.4-alpine
+    container_name: pgbw-work-orders-db-55431
+    environment:
+      POSTGRES_DB: work_orders
+      POSTGRES_USER: work_orders
+      POSTGRES_PASSWORD: work_orders
+    ports:
+      - "55431:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U work_orders -d work_orders"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+    volumes:
+      - pgbw_work_orders_data:/var/lib/postgresql/data
+
+volumes:
+  pgbw_work_orders_data:
+    name: pgbw-work-orders-data-55431

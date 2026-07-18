@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "assignmentId": "postgres-work-orders-brownfield-adoption",
+  "application": {
+    "id": "postgres-work-orders",
+    "kind": "controlled",
+    "source": "controlled/postgres-work-orders",
+    "revision": "ad096f431f37cf0863095c39aba0eb17755421d1"
+  },
+  "stack": {
+    "framework": "Fastify",
+    "database": "PostgreSQL",
+    "scheduler": "pg-boss",
+    "transport": "HTTP JSON",
+    "testRunner": "Vitest",
+    "ports": [42131, 55431]
+  },
+  "selectedOperation": {
+    "name": "close-work-order",
+    "route": "POST /work-orders/:id/close",
+    "guard": "The persisted work order must be in_progress with inspectionPassed=true and must not already be closed.",
+    "legacyReaders": [
+      "GET /work-orders",
+      "GET /work-orders/:id",
+      "GET /work-orders/:id/history"
+    ],
+    "backgroundWork": "Deliver the committed WorkOrderClosed fact exactly once through the existing durable pg-boss path, including restart recovery."
+  },
+  "legacySnapshot": {
+    "path": "specter-evaluation/legacy-snapshot.json",
+    "sha256": "04937ebdd49cf1de65e1bad36d258e9b85b527e3dc717c7cd266590a17dc5727"
+  },
+  "packages": {
+    "core": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    }
+  },
+  "commands": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "adapterVerifier": [
+      "pnpm exec tsx specter-evaluation/verifier/runner.ts"
+    ],
+    "domainAcceptance": [
+      "pnpm test:live"
+    ]
+  },
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90
+}

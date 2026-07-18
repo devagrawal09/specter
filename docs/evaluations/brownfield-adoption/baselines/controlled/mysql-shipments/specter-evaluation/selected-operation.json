@@ -1,0 +1,66 @@
+{
+  "schemaVersion": 1,
+  "operationId": "dispatch-shipment",
+  "selectionStatus": "coordinator-prepared",
+  "kind": "command",
+  "http": {
+    "method": "POST",
+    "pathTemplate": "/shipments/:id/dispatch",
+    "acceptedExample": {
+      "path": "/shipments/shp-ready-001/dispatch",
+      "body": null,
+      "status": 200
+    }
+  },
+  "decisionInputs": [
+    "persisted shipment existence",
+    "persisted pending status",
+    "persisted paymentCaptured",
+    "persisted inventoryAllocated"
+  ],
+  "acceptedTransition": {
+    "fixtureId": "shp-ready-001",
+    "fromStatus": "pending",
+    "toStatus": "dispatched"
+  },
+  "rejectedExamples": [
+    { "fixtureId": "shp-payment-002", "status": 409, "code": "PAYMENT_NOT_CAPTURED" },
+    { "fixtureId": "shp-inventory-003", "status": 409, "code": "INVENTORY_NOT_ALLOCATED" },
+    { "fixtureId": "shp-cancelled-004", "status": 409, "code": "INVALID_TRANSITION" },
+    { "fixtureId": "shp-dispatched-005", "status": 409, "code": "INVALID_TRANSITION" },
+    { "fixtureId": "shp-missing", "status": 404, "code": "NOT_FOUND" }
+  ],
+  "atomicEffects": [
+    "update the shipment to dispatched once",
+    "append one shipment.dispatched history row",
+    "insert one deterministic notification outbox row"
+  ],
+  "durableFollowUp": [
+    "enqueue through the existing BullMQ queue with bounded Redis failure",
+    "persist exactly one notification",
+    "record final-attempt dead-letter state and recover through a new deterministic generation"
+  ],
+  "legacyCompatibility": [
+    "GET /shipments",
+    "GET /shipments/:id",
+    "GET /shipments/:id/history",
+    "POST /shipments"
+  ],
+  "existingVerification": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "live": [
+      "RUN_LIVE_TESTS=1 pnpm test:live"
+    ],
+    "focusedFiles": [
+      "tests/domain.test.ts",
+      "tests/public-routes.test.ts",
+      "tests/live-db.test.ts",
+      "tests/live-http.test.ts",
+      "tests/live-queue.test.ts"
+    ]
+  }
+}

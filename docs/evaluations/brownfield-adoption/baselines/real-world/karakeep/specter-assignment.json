@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "assignmentId": "karakeep-lists-add-to-list-2026-07-18",
+  "application": {
+    "id": "karakeep",
+    "kind": "real-world",
+    "source": "https://github.com/karakeep-app/karakeep.git",
+    "revision": "ca48579b7c1e22016e6ca00bfaf91c3fdc84f949"
+  },
+  "stack": {
+    "framework": "Next.js 16 with a Hono-mounted tRPC API",
+    "database": "SQLite through Drizzle ORM at DATA_DIR/db.db",
+    "scheduler": "Liteque durable SQLite queues at DATA_DIR/queue.db",
+    "transport": "Batched tRPC HTTP over Hono",
+    "testRunner": "Vitest 3.2.4",
+    "ports": [41736, 41737]
+  },
+  "selectedOperation": {
+    "name": "lists.addToList",
+    "route": "POST /api/trpc/lists.addToList",
+    "guard": "Only manual bookmarkLists may accept membership. Smart lists reject with BAD_REQUEST and `Smart lists cannot be added to`; a repeated manual add is a successful no-op and must not emit another Rule Engine event.",
+    "legacyReaders": [
+      "lists.getListsOfBookmark({ bookmarkId })",
+      "bookmarks.getBookmarks({ listId })",
+      "lists.get({ listId })",
+      "lists.stats()",
+      "existing list-management UI"
+    ],
+    "backgroundWork": "RuleEngine.triggerOnEvent emits addedToList to the durable Liteque rule_engine_queue in DATA_DIR/queue.db; the real ruleEngine worker serves health on port 41737 and consumes it without external services."
+  },
+  "legacySnapshot": {
+    "path": "snapshots/seed-data-2026-05-20-163735.tar.gz",
+    "sha256": "0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367"
+  },
+  "packages": {
+    "core": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    }
+  },
+  "commands": {
+    "baseline": [
+      "printf '%s  %s\\n' '0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367' 'snapshots/seed-data-2026-05-20-163735.tar.gz' 'f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c' 'specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz' 'eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1' 'specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz' '86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1' 'specter-evaluation/frozen-kit/guidance.tar.gz' | shasum -a 256 -c -",
+      "sqlite3 -readonly data/db.db < specter-evaluation/verify-snapshot.sql",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/api typecheck",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc typecheck",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/shared-server typecheck",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/workers typecheck",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false NEXT_FONT_GOOGLE_MOCKED_RESPONSES=$PWD/specter-evaluation/next-font-mock.cjs npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/web exec next build --webpack"
+    ],
+    "adapterVerifier": [
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false DATA_DIR=$PWD/data node --import tsx specter-evaluation/run-adapter-verifier.ts"
+    ],
+    "domainAcceptance": [
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc exec vitest run routers/lists.test.ts -t 'add and remove from list'",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm --filter @karakeep/trpc exec vitest run routers/sharedLists.test.ts -t 'should allow editor to add their own bookmark to shared list via addToList|should not allow viewer to add their own bookmark to shared list via addToList'",
+      "PATH=/Users/devagr/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/opt/homebrew/bin:/usr/bin:/bin NO_COLOR=false npm_config_cache=/private/tmp/karakeep-npm-cache npm exec --offline --yes --package=pnpm@11.2.1 -- pnpm exec vitest run --config specter-evaluation/vitest.config.ts"
+    ]
+  },
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90
+}

@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "mysql-shipments-legacy-v1",
+  "captureBoundary": "stable legacy rows inserted by seedLegacyData; queue-managed delivery state is explicitly excluded",
+  "source": {
+    "builderCommit": "057fa263d32cd79f3827f071a06639a15e2f6667",
+    "seedCommand": "pnpm seed",
+    "authoritativeFiles": [
+      "src/seed.ts",
+      "tests/live-http.test.ts"
+    ]
+  },
+  "shipments": [
+    {
+      "id": "shp-ready-001",
+      "reference": "LEGACY-READY-001",
+      "recipientName": "Ada Lovelace",
+      "status": "pending",
+      "paymentCaptured": true,
+      "inventoryAllocated": true,
+      "dispatchedAt": null,
+      "createdAt": "2025-01-10T10:00:00.000Z",
+      "updatedAt": "2025-01-10T10:00:00.000Z"
+    },
+    {
+      "id": "shp-payment-002",
+      "reference": "LEGACY-PAYMENT-002",
+      "recipientName": "Grace Hopper",
+      "status": "pending",
+      "paymentCaptured": false,
+      "inventoryAllocated": true,
+      "dispatchedAt": null,
+      "createdAt": "2025-01-10T10:01:00.000Z",
+      "updatedAt": "2025-01-10T10:01:00.000Z"
+    },
+    {
+      "id": "shp-inventory-003",
+      "reference": "LEGACY-INVENTORY-003",
+      "recipientName": "Katherine Johnson",
+      "status": "pending",
+      "paymentCaptured": true,
+      "inventoryAllocated": false,
+      "dispatchedAt": null,
+      "createdAt": "2025-01-10T10:02:00.000Z",
+      "updatedAt": "2025-01-10T10:02:00.000Z"
+    },
+    {
+      "id": "shp-cancelled-004",
+      "reference": "LEGACY-CANCELLED-004",
+      "recipientName": "Margaret Hamilton",
+      "status": "cancelled",
+      "paymentCaptured": true,
+      "inventoryAllocated": true,
+      "dispatchedAt": null,
+      "createdAt": "2025-01-10T10:03:00.000Z",
+      "updatedAt": "2025-01-10T10:03:00.000Z"
+    },
+    {
+      "id": "shp-dispatched-005",
+      "reference": "LEGACY-DISPATCHED-005",
+      "recipientName": "Dorothy Vaughan",
+      "status": "dispatched",
+      "paymentCaptured": true,
+      "inventoryAllocated": true,
+      "dispatchedAt": "2025-01-10T11:04:00.000Z",
+      "createdAt": "2025-01-10T10:04:00.000Z",
+      "updatedAt": "2025-01-10T10:04:00.000Z"
+    }
+  ],
+  "ownedSupportingState": {
+    "history": [
+      { "id": "hist-import-shp-ready-001", "shipmentId": "shp-ready-001", "eventKey": "shipment-imported-shp-ready-001", "eventType": "shipment.imported", "fromStatus": null, "toStatus": "pending", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T10:00:00.000Z" },
+      { "id": "hist-import-shp-payment-002", "shipmentId": "shp-payment-002", "eventKey": "shipment-imported-shp-payment-002", "eventType": "shipment.imported", "fromStatus": null, "toStatus": "pending", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T10:01:00.000Z" },
+      { "id": "hist-import-shp-inventory-003", "shipmentId": "shp-inventory-003", "eventKey": "shipment-imported-shp-inventory-003", "eventType": "shipment.imported", "fromStatus": null, "toStatus": "pending", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T10:02:00.000Z" },
+      { "id": "hist-import-shp-cancelled-004", "shipmentId": "shp-cancelled-004", "eventKey": "shipment-imported-shp-cancelled-004", "eventType": "shipment.imported", "fromStatus": null, "toStatus": "cancelled", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T10:03:00.000Z" },
+      { "id": "hist-import-shp-dispatched-005", "shipmentId": "shp-dispatched-005", "eventKey": "shipment-imported-shp-dispatched-005", "eventType": "shipment.imported", "fromStatus": null, "toStatus": "dispatched", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T10:04:00.000Z" },
+      { "id": "hist-dispatch-shp-dispatched-005", "shipmentId": "shp-dispatched-005", "eventKey": "shipment-dispatched-shp-dispatched-005", "eventType": "shipment.dispatched", "fromStatus": "pending", "toStatus": "dispatched", "metadata": { "source": "legacy-snapshot" }, "occurredAt": "2025-01-10T11:04:00.000Z" }
+    ],
+    "outboxDeterministicIdentity": [
+      {
+        "id": "outbox-dispatch-shp-dispatched-005",
+        "shipmentId": "shp-dispatched-005",
+        "eventKey": "shipment-dispatched-shp-dispatched-005",
+        "jobId": "notify-dispatch-shp-dispatched-005",
+        "payload": {
+          "shipmentId": "shp-dispatched-005",
+          "reference": "LEGACY-DISPATCHED-005",
+          "kind": "shipment.dispatched"
+        },
+        "createdAt": "2025-01-10T11:04:00.000Z"
+      }
+    ],
+    "queueManagedFieldsExcludedFromSnapshot": [
+      "status",
+      "attempts",
+      "deliveryAttempts",
+      "retryGeneration",
+      "deadLetterCount",
+      "lastFailedJobId",
+      "lastError",
+      "enqueuedAt",
+      "completedAt",
+      "deadLetteredAt",
+      "updatedAt"
+    ]
+  },
+  "exactStableCounts": {
+    "shipments": 5,
+    "history": 6,
+    "outboxDeterministicIdentity": 1
+  }
+}

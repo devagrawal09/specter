@@ -1,0 +1,184 @@
+{
+  "schemaVersion": 1,
+  "snapshotId": "mongo-returns-legacy-v1",
+  "captureBoundary": "after pnpm seed completes on the audited builder baseline",
+  "source": {
+    "builderCommit": "a4b21a424f43c6fc2f25f1074217be8ea44d97db",
+    "seedCommand": "pnpm seed",
+    "authoritativeFiles": [
+      "scripts/seed.ts",
+      "tests/live/replica-set.test.ts"
+    ]
+  },
+  "returns": [
+    {
+      "id": "ret-1001",
+      "orderId": "ord-5001",
+      "customerId": "cus-301",
+      "itemSku": "JACKET-NAVY-M",
+      "reason": "Sleeves are too short",
+      "status": "inspected",
+      "refundAmountCents": 12900,
+      "currency": "USD",
+      "receivedAt": "2025-01-03T10:00:00.000Z",
+      "inspectedAt": "2025-01-03T14:00:00.000Z",
+      "inspectionResult": "accepted",
+      "createdAt": "2025-01-01T09:00:00.000Z",
+      "updatedAt": "2025-01-03T14:00:00.000Z",
+      "version": 3
+    },
+    {
+      "id": "ret-1002",
+      "orderId": "ord-5002",
+      "customerId": "cus-302",
+      "itemSku": "SHOE-WHITE-9",
+      "reason": "Wrong size",
+      "status": "refunded",
+      "refundAmountCents": 8900,
+      "currency": "USD",
+      "receivedAt": "2025-01-04T10:00:00.000Z",
+      "inspectedAt": "2025-01-04T12:00:00.000Z",
+      "inspectionResult": "accepted",
+      "createdAt": "2025-01-02T09:00:00.000Z",
+      "updatedAt": "2025-01-04T13:00:00.000Z",
+      "version": 4
+    },
+    {
+      "id": "ret-1003",
+      "orderId": "ord-5003",
+      "customerId": "cus-303",
+      "itemSku": "MUG-GREEN",
+      "reason": "Changed mind",
+      "status": "requested",
+      "refundAmountCents": 2400,
+      "currency": "USD",
+      "receivedAt": null,
+      "inspectedAt": null,
+      "inspectionResult": null,
+      "createdAt": "2025-01-05T09:00:00.000Z",
+      "updatedAt": "2025-01-05T09:00:00.000Z",
+      "version": 1
+    },
+    {
+      "id": "ret-1004",
+      "orderId": "ord-5004",
+      "customerId": "cus-304",
+      "itemSku": "LAMP-DESK-BLK",
+      "reason": "Shade was scratched",
+      "status": "received",
+      "refundAmountCents": 6700,
+      "currency": "USD",
+      "receivedAt": "2025-01-07T11:00:00.000Z",
+      "inspectedAt": null,
+      "inspectionResult": null,
+      "createdAt": "2025-01-06T09:00:00.000Z",
+      "updatedAt": "2025-01-07T11:00:00.000Z",
+      "version": 2
+    },
+    {
+      "id": "ret-1005",
+      "orderId": "ord-5005",
+      "customerId": "cus-305",
+      "itemSku": "HEADPHONE-BLU",
+      "reason": "Intermittent audio",
+      "status": "rejected",
+      "refundAmountCents": 15900,
+      "currency": "USD",
+      "receivedAt": "2025-01-08T10:00:00.000Z",
+      "inspectedAt": "2025-01-08T15:00:00.000Z",
+      "inspectionResult": "rejected",
+      "createdAt": "2025-01-07T09:00:00.000Z",
+      "updatedAt": "2025-01-08T15:00:00.000Z",
+      "version": 3
+    },
+    {
+      "id": "ret-1006",
+      "orderId": "ord-5006",
+      "customerId": "cus-306",
+      "itemSku": "THROW-OCHRE",
+      "reason": "Color differs from listing",
+      "status": "inspected",
+      "refundAmountCents": 5400,
+      "currency": "USD",
+      "receivedAt": "2025-01-10T10:00:00.000Z",
+      "inspectedAt": "2025-01-10T12:00:00.000Z",
+      "inspectionResult": "accepted",
+      "createdAt": "2025-01-09T09:00:00.000Z",
+      "updatedAt": "2025-01-10T12:00:00.000Z",
+      "version": 3
+    }
+  ],
+  "ownedSupportingState": {
+    "approvals": [
+      {
+        "id": "approval:ret-1002",
+        "returnId": "ret-1002",
+        "amountCents": 8900,
+        "currency": "USD",
+        "approvedAt": "2025-01-04T13:00:00.000Z",
+        "processedAt": "2025-01-04T13:01:00.000Z",
+        "providerReference": "refund-ret-1002"
+      }
+    ],
+    "reminders": [
+      {
+        "id": "reminder:ret-1003",
+        "returnId": "ret-1003",
+        "dueAt": "2035-01-06T09:00:00.000Z",
+        "state": "scheduled",
+        "cancelledAt": null,
+        "sentAt": null
+      }
+    ],
+    "history": [
+      { "id": "history:ret-1001:requested", "returnId": "ret-1001", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-01T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1001:received", "returnId": "ret-1001", "eventKey": "received", "eventType": "return.received", "occurredAt": "2025-01-03T10:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1001:inspected", "returnId": "ret-1001", "eventKey": "inspected", "eventType": "return.inspected", "occurredAt": "2025-01-03T14:00:00.000Z", "metadata": { "outcome": "accepted" } },
+      { "id": "history:ret-1002:requested", "returnId": "ret-1002", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-02T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1002:received", "returnId": "ret-1002", "eventKey": "received", "eventType": "return.received", "occurredAt": "2025-01-04T10:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1002:inspected", "returnId": "ret-1002", "eventKey": "inspected", "eventType": "return.inspected", "occurredAt": "2025-01-04T12:00:00.000Z", "metadata": { "outcome": "accepted" } },
+      { "id": "history:ret-1002:refund-approved", "returnId": "ret-1002", "eventKey": "refund-approved", "eventType": "refund.approved", "occurredAt": "2025-01-04T13:00:00.000Z", "metadata": { "amountCents": 8900, "currency": "USD" } },
+      { "id": "history:ret-1002:refund-processed", "returnId": "ret-1002", "eventKey": "refund-processed", "eventType": "refund.processed", "occurredAt": "2025-01-04T13:01:00.000Z", "metadata": { "providerReference": "refund-ret-1002" } },
+      { "id": "history:ret-1003:requested", "returnId": "ret-1003", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-05T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1004:requested", "returnId": "ret-1004", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-06T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1004:received", "returnId": "ret-1004", "eventKey": "received", "eventType": "return.received", "occurredAt": "2025-01-07T11:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1005:requested", "returnId": "ret-1005", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-07T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1005:received", "returnId": "ret-1005", "eventKey": "received", "eventType": "return.received", "occurredAt": "2025-01-08T10:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1005:inspected", "returnId": "ret-1005", "eventKey": "inspected", "eventType": "return.inspected", "occurredAt": "2025-01-08T15:00:00.000Z", "metadata": { "outcome": "rejected" } },
+      { "id": "history:ret-1006:requested", "returnId": "ret-1006", "eventKey": "requested", "eventType": "return.requested", "occurredAt": "2025-01-09T09:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1006:received", "returnId": "ret-1006", "eventKey": "received", "eventType": "return.received", "occurredAt": "2025-01-10T10:00:00.000Z", "metadata": {} },
+      { "id": "history:ret-1006:inspected", "returnId": "ret-1006", "eventKey": "inspected", "eventType": "return.inspected", "occurredAt": "2025-01-10T12:00:00.000Z", "metadata": { "outcome": "accepted" } }
+    ],
+    "agendaJobs": [
+      {
+        "id": "64a000000000000000000002",
+        "name": "returns:process-refund",
+        "data": { "returnId": "ret-1002", "idempotencyKey": "refund:ret-1002", "seedOwner": "mongo-returns-baseline" },
+        "type": "normal",
+        "priority": 10,
+        "nextRunAt": null,
+        "lockedAt": null,
+        "disabled": false,
+        "lastRunAt": "2025-01-04T13:01:00.000Z",
+        "lastFinishedAt": "2025-01-04T13:01:00.000Z"
+      },
+      {
+        "id": "64a000000000000000000003",
+        "name": "returns:send-receipt-reminder",
+        "data": { "returnId": "ret-1003", "idempotencyKey": "reminder:ret-1003", "seedOwner": "mongo-returns-baseline" },
+        "type": "normal",
+        "priority": 0,
+        "nextRunAt": "2035-01-06T09:00:00.000Z",
+        "lockedAt": null,
+        "disabled": false
+      }
+    ]
+  },
+  "exactCounts": {
+    "returns": 6,
+    "approvals": 1,
+    "reminders": 1,
+    "history": 17,
+    "agendaJobs": 2
+  }
+}

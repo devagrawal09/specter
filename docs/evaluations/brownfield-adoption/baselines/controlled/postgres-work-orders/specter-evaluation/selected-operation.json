@@ -1,0 +1,69 @@
+{
+  "schemaVersion": 1,
+  "operationId": "close-work-order",
+  "selectionStatus": "coordinator-prepared",
+  "kind": "command",
+  "http": {
+    "method": "POST",
+    "pathTemplate": "/work-orders/:id/close",
+    "acceptedExample": {
+      "path": "/work-orders/WO-1001/close",
+      "body": { "requestedBy": "evaluation-coordinator" },
+      "status": 200
+    }
+  },
+  "decisionInputs": [
+    "persisted work-order existence",
+    "persisted status",
+    "persisted inspectionPassed",
+    "strict optional requestedBy body"
+  ],
+  "acceptedTransition": {
+    "fixtureId": "WO-1001",
+    "fromStatus": "in_progress",
+    "toStatus": "closed",
+    "fromVersion": 3,
+    "toVersion": 4
+  },
+  "rejectedExamples": [
+    { "fixtureId": "WO-1002", "status": 409, "code": "INVALID_STATUS" },
+    { "fixtureId": "WO-1003", "status": 409, "code": "INSPECTION_REQUIRED" },
+    { "fixtureId": "WO-1004", "status": 409, "code": "ALREADY_CLOSED" },
+    { "fixtureId": "WO-1005", "status": 409, "code": "INVALID_STATUS" },
+    { "fixtureId": "WO-9999", "status": 404, "code": "WORK_ORDER_NOT_FOUND" }
+  ],
+  "atomicEffects": [
+    "update work_orders once",
+    "append one closed history row",
+    "append one WorkOrderClosed application event"
+  ],
+  "durableFollowUp": [
+    "enqueue the committed event through the existing pg-boss queue",
+    "persist exactly one idempotent delivery"
+  ],
+  "legacyCompatibility": [
+    "GET /work-orders",
+    "GET /work-orders/:id",
+    "GET /work-orders/:id/history",
+    "POST /work-orders",
+    "PATCH /work-orders/:id/inspection",
+    "POST /work-orders/:id/remind"
+  ],
+  "existingVerification": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "live": [
+      "pnpm db:migrate",
+      "pnpm db:seed",
+      "pnpm test:live"
+    ],
+    "focusedFiles": [
+      "test/domain.test.ts",
+      "test/http.test.ts",
+      "test/live/postgres.test.ts"
+    ]
+  }
+}

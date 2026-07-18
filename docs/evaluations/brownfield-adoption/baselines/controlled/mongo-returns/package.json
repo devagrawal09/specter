@@ -1,0 +1,38 @@
+{
+  "name": "mongo-returns",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.build.json",
+    "start": "node dist/src/index.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run --exclude tests/live/**",
+    "test:live": "RUN_LIVE_TESTS=1 vitest run tests/live",
+    "migrate": "tsx scripts/migrate.ts",
+    "seed": "tsx scripts/seed.ts"
+  },
+  "dependencies": {
+    "agenda": "^5.0.0",
+    "dotenv": "^16.6.1",
+    "express": "^5.1.0",
+    "mongodb": "^6.17.0",
+    "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@specter-ts/brownfield-verifier": "file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+    "@specter-ts/core": "file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+    "@types/express": "^5.0.3",
+    "@types/node": "^22.15.33",
+    "@types/supertest": "^6.0.3",
+    "supertest": "^7.1.1",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
+  },
+  "packageManager": "pnpm@11.9.0"
+}

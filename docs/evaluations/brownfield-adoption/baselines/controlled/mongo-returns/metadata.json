@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "id": "mongo-returns",
+    "kind": "controlled"
+  },
+  "commits": {
+    "builder": "a4b21a424f43c6fc2f25f1074217be8ea44d97db",
+    "preparation": "db5914d6390796bce69c77e3e9b3e7c93103b3b3",
+    "assignment": "184e1713cd1d7eccaa9df62e88764c410b2e48ae"
+  },
+  "validation": {
+    "assignmentSchemaSha256": "de09b9b09e54dcf4b866e896d7ab612f97fc81e219929a2441e43211d306f8b4",
+    "snapshotSha256": "94650001d3e0b1ca7494c26aea27154fc5382ea64f34ce581f2a582707b3d0d8",
+    "coreArchiveSha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c",
+    "verifierArchiveSha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1",
+    "guidanceArchiveSha256": "86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1",
+    "offlineFrozenLockfileInstall": "passed with pnpm 11.9.0",
+    "packageResolution": "@specter-ts/core 0.3.0 and @specter-ts/brownfield-verifier 0.0.0 resolved from committed archives",
+    "baseline": "typecheck and build passed; 11 non-live tests passed",
+    "verifierStubTypecheck": "passed",
+    "prewarm": "replica set initialized; two migrations applied; exact 6/1/1/17/2 seed snapshot created; services stopped with named volume retained",
+    "publication": "tracked tree copied from git archive of the assignment commit"
+  }
+}

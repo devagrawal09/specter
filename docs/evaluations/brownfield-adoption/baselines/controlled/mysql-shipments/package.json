@@ -1,0 +1,38 @@
+{
+  "name": "mysql-shipments-brownfield",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.9.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run tests/domain.test.ts tests/dead-letter.test.ts tests/public-routes.test.ts",
+    "test:live": "RUN_LIVE_TESTS=1 vitest run tests/live-db.test.ts tests/live-http.test.ts tests/live-queue.test.ts",
+    "start": "node dist/server.js",
+    "dev": "tsx watch src/server.ts",
+    "migrate": "tsx src/cli/migrate.ts",
+    "seed": "tsx src/cli/seed.ts",
+    "reconcile": "tsx src/cli/reconcile.ts",
+    "worker": "tsx src/worker.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^1.19.1",
+    "bullmq": "^5.58.5",
+    "dotenv": "^17.2.2",
+    "hono": "^4.9.7",
+    "ioredis": "^5.7.0",
+    "mysql2": "^3.14.5",
+    "zod": "^4.1.8"
+  },
+  "devDependencies": {
+    "@specter-ts/brownfield-verifier": "file:specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+    "@specter-ts/core": "file:specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+    "@types/node": "^24.3.1",
+    "tsx": "^4.20.5",
+    "typescript": "^5.9.2",
+    "vitest": "^3.2.4"
+  }
+}

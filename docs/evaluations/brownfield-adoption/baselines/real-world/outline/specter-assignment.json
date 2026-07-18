@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "assignmentId": "outline-access-request-create",
+  "application": {
+    "id": "outline",
+    "kind": "real-world",
+    "source": "https://github.com/outline/outline.git",
+    "revision": "1e63d0bead1d33e9f91378d8ac27c407923b8f89"
+  },
+  "stack": {
+    "framework": "Koa 2 with TypeScript",
+    "database": "PostgreSQL through Sequelize",
+    "scheduler": "Bull 4 backed by Redis",
+    "transport": "Koa HTTP JSON API",
+    "testRunner": "Vitest 4.1.5",
+    "ports": [42135]
+  },
+  "selectedOperation": {
+    "name": "createDocumentAccessRequest",
+    "route": "POST /api/accessRequests.create",
+    "guard": "The requester must share the document team, must not already read the document, and must not have an existing pending request for that document.",
+    "legacyReaders": [
+      "POST /api/accessRequests.info using server/presenters/accessRequest.ts",
+      "Notification readers consuming accessRequestId and access-request status"
+    ],
+    "backgroundWork": "The committed access_requests.create Event is queued for NotificationsProcessor, which durably schedules DocumentAccessRequestNotificationsTask through Bull and persists the manager notification; downstream email delivery remains outside the selected operation."
+  },
+  "legacySnapshot": {
+    "path": "specter-evaluation/legacy-snapshot.json",
+    "sha256": "7eac6169e24294dc637717f5b052052e9892d073d53f6b99711103aec7c7e74f"
+  },
+  "packages": {
+    "core": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    }
+  },
+  "commands": {
+    "baseline": [
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env YARN_ENABLE_NETWORK=0 yarn install --immutable --immutable-cache",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn format:check",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxfmt --check specter-evaluation specter-assignment.json package.json tsconfig.json .yarnrc.yml",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn lint",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxlint specter-evaluation",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn tsc --pretty false",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --project server server/routes/api/accessRequests/accessRequests.test.ts",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --config specter-evaluation/vitest.config.ts"
+    ],
+    "adapterVerifier": [
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- node --no-warnings specter-evaluation/run-adapter-verifier.ts"
+    ],
+    "domainAcceptance": [
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn format:check",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxfmt --check specter-evaluation specter-assignment.json package.json tsconfig.json .yarnrc.yml",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn lint",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxlint specter-evaluation",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn tsc --pretty false",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --project server server/routes/api/accessRequests/accessRequests.test.ts",
+      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --config specter-evaluation/vitest.config.ts"
+    ]
+  },
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90
+}

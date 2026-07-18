@@ -1,0 +1,999 @@
+diff --git a/.gitignore b/.gitignore
+index 91db22af1e82a1dda3f1b51ae405c2342840ae47..d6ee46a542e2f5fb425e0da943ce3f4d749a2842 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -15,6 +15,7 @@ data/*
+ *.key
+ *.cert
+ .history
++specter-evaluation/guidance/
+ 
+ # Yarn Berry
+ .yarn/*
+diff --git a/.yarnrc.yml b/.yarnrc.yml
+index 07c071cee67dcbc4ed0d7133fa3296395428ce99..f2b3e5e1782b39e2931de160cb05ac87eecb7a6b 100644
+--- a/.yarnrc.yml
++++ b/.yarnrc.yml
+@@ -1,4 +1,5 @@
+ nodeLinker: node-modules
++enableGlobalCache: false
+ 
+ enableScripts: false
+ 
+diff --git a/package.json b/package.json
+index b31f6c281af59940bafd61b8ba3208aff465a30a..2f4215c2be7372b937331a43fde5cddae47ef2f4 100644
+--- a/package.json
++++ b/package.json
+@@ -280,6 +280,8 @@
+   "devDependencies": {
+     "@faker-js/faker": "^8.4.1",
+     "@relative-ci/agent": "^4.3.1",
++    "@specter-ts/brownfield-verifier": "file:./specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
++    "@specter-ts/core": "file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+     "@swc/cli": "^0.8.1",
+     "@swc/core": "^1.15.32",
+     "@types/addressparser": "^1.0.3",
+@@ -369,6 +371,7 @@
+     "vitest": "^4.1.5"
+   },
+   "resolutions": {
++    "@specter-ts/core": "file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+     "@types/react": "17.0.91",
+     "@types/koa": "2.15.1",
+     "prosemirror-transform": "1.10.5",
+diff --git a/specter-assignment.json b/specter-assignment.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..95c5fe1f904e8b34a8d606d1ed16358f1bfc24bf
+--- /dev/null
++++ b/specter-assignment.json
+@@ -0,0 +1,73 @@
++{
++  "schemaVersion": 1,
++  "assignmentId": "outline-access-request-create",
++  "application": {
++    "id": "outline",
++    "kind": "real-world",
++    "source": "https://github.com/outline/outline.git",
++    "revision": "1e63d0bead1d33e9f91378d8ac27c407923b8f89"
++  },
++  "stack": {
++    "framework": "Koa 2 with TypeScript",
++    "database": "PostgreSQL through Sequelize",
++    "scheduler": "Bull 4 backed by Redis",
++    "transport": "Koa HTTP JSON API",
++    "testRunner": "Vitest 4.1.5",
++    "ports": [42135]
++  },
++  "selectedOperation": {
++    "name": "createDocumentAccessRequest",
++    "route": "POST /api/accessRequests.create",
++    "guard": "The requester must share the document team, must not already read the document, and must not have an existing pending request for that document.",
++    "legacyReaders": [
++      "POST /api/accessRequests.info using server/presenters/accessRequest.ts",
++      "Notification readers consuming accessRequestId and access-request status"
++    ],
++    "backgroundWork": "The committed access_requests.create Event is queued for NotificationsProcessor, which durably schedules DocumentAccessRequestNotificationsTask through Bull and persists the manager notification; downstream email delivery remains outside the selected operation."
++  },
++  "legacySnapshot": {
++    "path": "specter-evaluation/legacy-snapshot.json",
++    "sha256": "7eac6169e24294dc637717f5b052052e9892d073d53f6b99711103aec7c7e74f"
++  },
++  "packages": {
++    "core": {
++      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
++      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
++    },
++    "verifier": {
++      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
++      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
++    }
++  },
++  "commands": {
++    "baseline": [
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env YARN_ENABLE_NETWORK=0 yarn install --immutable --immutable-cache",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn format:check",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxfmt --check specter-evaluation specter-assignment.json package.json tsconfig.json .yarnrc.yml",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn lint",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxlint specter-evaluation",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn tsc --pretty false",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --project server server/routes/api/accessRequests/accessRequests.test.ts",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --config specter-evaluation/vitest.config.ts"
++    ],
++    "adapterVerifier": [
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- node --no-warnings specter-evaluation/run-adapter-verifier.ts"
++    ],
++    "domainAcceptance": [
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn format:check",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxfmt --check specter-evaluation specter-assignment.json package.json tsconfig.json .yarnrc.yml",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn lint",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxlint specter-evaluation",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn tsc --pretty false",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --project server server/routes/api/accessRequests/accessRequests.test.ts",
++      "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --config specter-evaluation/vitest.config.ts"
++    ]
++  },
++  "agentConfiguration": {
++    "model": "gpt-5.6-sol",
++    "reasoning": "high"
++  },
++  "activeWorkLimitMinutes": 90
++}
+diff --git a/specter-evaluation/assignment.json b/specter-evaluation/assignment.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..5781a7f3bc3f573251b0e5c7ab0d32e257673d1d
+--- /dev/null
++++ b/specter-evaluation/assignment.json
+@@ -0,0 +1,67 @@
++{
++  "schemaVersion": 1,
++  "assignmentId": "outline-access-request-create",
++  "pinnedRevision": "d2bf2b8c5a208884b9662dad72244ca8d8924c14",
++  "publicApp": {
++    "host": "127.0.0.1",
++    "port": 42135,
++    "url": "http://127.0.0.1:42135",
++    "strictPort": true
++  },
++  "selectedOperation": {
++    "name": "createDocumentAccessRequest",
++    "method": "POST",
++    "route": "/api/accessRequests.create",
++    "implementation": "server/routes/api/accessRequests/accessRequests.ts",
++    "input": {
++      "contentType": "application/json",
++      "body": {
++        "documentId": "UUID or Outline document urlId"
++      },
++      "authentication": "Bearer session token"
++    },
++    "success": {
++      "status": 200,
++      "dataPresenter": "server/presenters/accessRequest.ts",
++      "includesPolicies": true
++    },
++    "guards": [
++      {
++        "name": "requesterDoesNotAlreadyReadDocument",
++        "failureStatus": 400,
++        "failureMessage": "User already has document access"
++      },
++      {
++        "name": "requesterAndDocumentShareTeam",
++        "failureStatus": 404,
++        "failureMessage": "Resource not found"
++      },
++      {
++        "name": "noPendingRequestForRequesterAndDocument",
++        "implementation": "AccessRequest.validateNoDuplicatePendingRequest",
++        "failureStatus": 400,
++        "failureMessage": "A pending access request already exists for this document and user."
++      }
++    ],
++    "transactionBoundary": "Koa transaction middleware covers document lookup, guard evaluation, access_requests insert, and access_requests.create event insert"
++  },
++  "unchangedReader": {
++    "method": "POST",
++    "route": "/api/accessRequests.info",
++    "lookup": "id or documentId/urlId",
++    "parity": "returns the same access-request presenter and policies as create"
++  },
++  "backgroundConsequence": {
++    "sourceEvent": "access_requests.create",
++    "processor": "server/queues/processors/NotificationsProcessor.ts",
++    "task": "server/queues/tasks/DocumentAccessRequestNotificationsTask.ts",
++    "durableResult": "notifications row with event access_requests.create for the first available document, collection, or workspace manager tier",
++    "emailBoundary": "EmailsProcessor reacts later to notifications.create; coordinator acceptance invokes only the notification task and does not execute external email delivery"
++  },
++  "constraints": {
++    "installSpecterPackages": false,
++    "migrateProductionOperationDuringPreparation": false,
++    "productionSemanticChangesDuringPreparation": false,
++    "dockerRequiresCoordinatorWindow": true
++  }
++}
+diff --git a/specter-evaluation/coordinator-acceptance.test.ts b/specter-evaluation/coordinator-acceptance.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..9248adc2fc44280ace5097ff5f08d02db583917f
+--- /dev/null
++++ b/specter-evaluation/coordinator-acceptance.test.ts
+@@ -0,0 +1,259 @@
++import { NotificationEventType } from "@shared/types";
++import { AccessRequest, Event, Notification } from "@server/models";
++import { AccessRequestStatus } from "@server/models/AccessRequest";
++import { globalEventQueue, taskQueue } from "@server/queues";
++import NotificationsProcessor from "@server/queues/processors/NotificationsProcessor";
++import DocumentAccessRequestNotificationsTask from "@server/queues/tasks/DocumentAccessRequestNotificationsTask";
++import { TaskPriority } from "@server/queues/tasks/base/BaseTask";
++import { getTestServer } from "@server/test/support";
++import type { AccessRequestEvent } from "@server/types";
++import {
++  cleanupLegacySnapshot,
++  type LegacySnapshotFixture,
++  setupLegacySnapshot,
++} from "./setup-legacy-snapshot";
++
++interface AccessRequestData {
++  id: string;
++  documentId: string;
++  userId: string;
++  teamId: string;
++  status: AccessRequestStatus;
++  responderId: string | null;
++  respondedAt: string | null;
++  createdAt: string;
++  updatedAt: string;
++}
++
++interface AccessRequestResponse {
++  data: AccessRequestData;
++  policies: Record<string, boolean>;
++}
++
++interface ScheduledAccessRequestTask {
++  name: "DocumentAccessRequestNotificationsTask";
++  props: AccessRequestEvent;
++}
++
++function isRecord(value: unknown): value is Record<string, unknown> {
++  return typeof value === "object" && value !== null;
++}
++
++function isAccessRequestEvent(value: unknown): value is AccessRequestEvent {
++  return (
++    isRecord(value) &&
++    value.name === "access_requests.create" &&
++    typeof value.modelId === "string" &&
++    typeof value.documentId === "string" &&
++    typeof value.teamId === "string" &&
++    typeof value.actorId === "string" &&
++    (typeof value.ip === "string" || value.ip === null)
++  );
++}
++
++function isScheduledAccessRequestTask(
++  value: unknown
++): value is ScheduledAccessRequestTask {
++  return (
++    isRecord(value) &&
++    value.name === "DocumentAccessRequestNotificationsTask" &&
++    isAccessRequestEvent(value.props)
++  );
++}
++
++const server = getTestServer();
++let fixture: LegacySnapshotFixture;
++
++beforeEach(async () => {
++  fixture = await setupLegacySnapshot();
++});
++
++afterEach(async () => {
++  vi.restoreAllMocks();
++  await cleanupLegacySnapshot();
++});
++
++describe("Outline brownfield coordinator acceptance", () => {
++  it("preserves accepted access-request creation", async () => {
++    const response = await server.post(
++      "/api/accessRequests.create",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const body: AccessRequestResponse = await response.json();
++
++    expect(response.status).toEqual(200);
++    expect(body.data).toMatchObject({
++      documentId: fixture.document.id,
++      userId: fixture.freshRequester.id,
++      teamId: fixture.team.id,
++      status: AccessRequestStatus.Pending,
++      responderId: null,
++      respondedAt: null,
++    });
++    expect(
++      await AccessRequest.count({
++        where: {
++          documentId: fixture.document.id,
++          userId: fixture.freshRequester.id,
++        },
++      })
++    ).toEqual(1);
++  });
++
++  it("rejects a repeated request without inserting a second row", async () => {
++    const first = await server.post(
++      "/api/accessRequests.create",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const duplicate = await server.post(
++      "/api/accessRequests.create",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const duplicateBody = await duplicate.json();
++
++    expect(first.status).toEqual(200);
++    expect(duplicate.status).toEqual(400);
++    expect(duplicateBody.message).toEqual(
++      "A pending access request already exists for this document and user."
++    );
++    expect(
++      await AccessRequest.count({
++        where: {
++          documentId: fixture.document.id,
++          userId: fixture.freshRequester.id,
++        },
++      })
++    ).toEqual(1);
++  });
++
++  it("rejects the fixed pre-existing pending request", async () => {
++    const response = await server.post(
++      "/api/accessRequests.create",
++      fixture.legacyRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const body = await response.json();
++
++    expect(response.status).toEqual(400);
++    expect(body.message).toEqual(
++      "A pending access request already exists for this document and user."
++    );
++    const requests = await AccessRequest.findAll({
++      where: {
++        documentId: fixture.document.id,
++        userId: fixture.legacyRequester.id,
++      },
++    });
++    expect(requests).toHaveLength(1);
++    expect(requests[0]?.id).toEqual(fixture.pendingAccessRequest.id);
++    expect(requests[0]?.status).toEqual(AccessRequestStatus.Pending);
++  });
++
++  it("preserves the existing-access guard and exact public message", async () => {
++    const response = await server.post(
++      "/api/accessRequests.create",
++      fixture.manager,
++      { body: { documentId: fixture.document.id } }
++    );
++    const body = await response.json();
++
++    expect(response.status).toEqual(400);
++    expect(body.message).toEqual("User already has document access");
++    expect(
++      await AccessRequest.count({
++        where: {
++          documentId: fixture.document.id,
++          userId: fixture.manager.id,
++        },
++      })
++    ).toEqual(0);
++  });
++
++  it("preserves accessRequests.info reader parity", async () => {
++    const createResponse = await server.post(
++      "/api/accessRequests.create",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const created: AccessRequestResponse = await createResponse.json();
++    const infoResponse = await server.post(
++      "/api/accessRequests.info",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.urlId } }
++    );
++    const info: AccessRequestResponse = await infoResponse.json();
++
++    expect(createResponse.status).toEqual(200);
++    expect(infoResponse.status).toEqual(200);
++    expect(info.data).toMatchObject(created.data);
++    expect(info.policies).toEqual(created.policies);
++  });
++
++  it("persists the route Event and schedules its notification task without sending email", async () => {
++    const globalEventAdd = vi.spyOn(globalEventQueue(), "add");
++    const taskQueueAdd = vi.spyOn(taskQueue(), "add");
++    const createResponse = await server.post(
++      "/api/accessRequests.create",
++      fixture.freshRequester,
++      { body: { documentId: fixture.document.id } }
++    );
++    const created: AccessRequestResponse = await createResponse.json();
++
++    expect(createResponse.status).toEqual(200);
++    const routeEvents = await Event.findAll({
++      where: {
++        name: "access_requests.create",
++        modelId: created.data.id,
++        documentId: fixture.document.id,
++        teamId: fixture.team.id,
++        actorId: fixture.freshRequester.id,
++      },
++    });
++    expect(routeEvents).toHaveLength(1);
++    expect(globalEventAdd).toHaveBeenCalledWith(
++      expect.objectContaining({ id: routeEvents[0]?.id })
++    );
++
++    const routeEvent = routeEvents[0]?.toJSON();
++    if (!isAccessRequestEvent(routeEvent)) {
++      throw new Error(
++        "The selected route did not persist a complete access request Event"
++      );
++    }
++
++    expect(NotificationsProcessor.applicableEvents).toContain(routeEvent.name);
++    await new NotificationsProcessor().perform(routeEvent);
++    expect(taskQueueAdd).toHaveBeenCalledTimes(1);
++    expect(taskQueueAdd).toHaveBeenCalledWith(
++      {
++        name: "DocumentAccessRequestNotificationsTask",
++        props: routeEvent,
++      },
++      expect.objectContaining({ priority: TaskPriority.Background })
++    );
++
++    const scheduledTask = taskQueueAdd.mock.calls[0]?.[0];
++    if (!isScheduledAccessRequestTask(scheduledTask)) {
++      throw new Error(
++        "NotificationsProcessor did not schedule the expected durable task"
++      );
++    }
++    await new DocumentAccessRequestNotificationsTask().perform(
++      scheduledTask.props
++    );
++
++    const notifications = await Notification.findAll({
++      where: {
++        event: NotificationEventType.RequestDocumentAccess,
++        userId: fixture.manager.id,
++        actorId: fixture.freshRequester.id,
++        documentId: fixture.document.id,
++        accessRequestId: created.data.id,
++      },
++    });
++    expect(notifications).toHaveLength(1);
++  });
++});
+diff --git a/specter-evaluation/driver.ts b/specter-evaluation/driver.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..279eed84808be7452336c64759f13b374974d37f
+--- /dev/null
++++ b/specter-evaluation/driver.ts
+@@ -0,0 +1,21 @@
++import type { AdapterHarnessDriver } from "@specter-ts/brownfield-verifier";
++
++function unfinished(boundary: string): never {
++  throw new Error(`Adapter verifier driver is not implemented: ${boundary}`);
++}
++
++export const adapterHarnessDriver: AdapterHarnessDriver = {
++  name: "outline-access-request-create",
++  async reset() {
++    unfinished("reset");
++  },
++  async open() {
++    unfinished("open");
++  },
++  async deliveries() {
++    unfinished("deliveries");
++  },
++  async retryDeadLetter() {
++    unfinished("retryDeadLetter");
++  },
++};
+diff --git a/specter-evaluation/instructions.json b/specter-evaluation/instructions.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..047fd7ecd8f80329adcacede5e13f5c99f12d34f
+--- /dev/null
++++ b/specter-evaluation/instructions.json
+@@ -0,0 +1,37 @@
++{
++  "schemaVersion": 1,
++  "toolchain": {
++    "node": "24.14.0",
++    "yarn": "4.11.0",
++    "launcherPrefix": "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 --"
++  },
++  "setup": [
++    "Confirm git rev-parse HEAD is d2bf2b8c5a208884b9662dad72244ca8d8924c14 or a preparation commit whose parent is that revision.",
++    "Run: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn install --immutable",
++    "Wait for the coordinator's explicit Docker window before starting PostgreSQL or Redis.",
++    "During the Docker window run: docker compose up -d postgres redis",
++    "Create the test database if absent: docker compose exec postgres createdb -U user outline-test",
++    "Run migrations: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn db:migrate",
++    "The coordinator acceptance suite calls setupLegacySnapshot before each case and cleanupLegacySnapshot after each case."
++  ],
++  "validation": [
++    "Static types: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn tsc --pretty false",
++    "Production build: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
++    "Overlay format: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxfmt --check specter-evaluation",
++    "Overlay lint: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn oxlint specter-evaluation",
++    "Docker-window acceptance: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- env NODE_ENV=test yarn vitest run --config specter-evaluation/vitest.config.ts",
++    "Built public app (web service only), strict port 42135: npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- node specter-evaluation/run-public-app.mjs"
++  ],
++  "preparationEvidence": {
++    "productionBuild": {
++      "command": "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 -- yarn build",
++      "result": "passed",
++      "verifiedOn": "2026-07-18"
++    }
++  },
++  "cleanup": [
++    "Database fixture cleanup: run the coordinator acceptance suite, whose afterEach hook calls cleanupLegacySnapshot even after a failed assertion.",
++    "Docker services, only in the coordinator-owned window: docker compose stop postgres redis",
++    "Do not change the fixed public port. If 42135 is occupied, run-public-app.mjs exits with an error instead of selecting another port."
++  ]
++}
+diff --git a/specter-evaluation/legacy-snapshot.json b/specter-evaluation/legacy-snapshot.json
+new file mode 100644
+index 0000000000000000000000000000000000000000..1ed12be457326b2e8dc10e4898ea9b397b691785
+--- /dev/null
++++ b/specter-evaluation/legacy-snapshot.json
+@@ -0,0 +1,70 @@
++{
++  "schemaVersion": 1,
++  "snapshotId": "outline-access-request-fixed-legacy-v1",
++  "capturedAt": "2026-07-18T18:00:00.000Z",
++  "team": {
++    "id": "10000000-0000-4000-8000-000000000001",
++    "name": "Specter Evaluation Workspace",
++    "subdomain": "specter-evaluation",
++    "createdAt": "2026-07-18T18:00:00.000Z",
++    "updatedAt": "2026-07-18T18:00:00.000Z"
++  },
++  "manager": {
++    "id": "10000000-0000-4000-8000-000000000002",
++    "email": "manager@specter-evaluation.invalid",
++    "name": "Evaluation Manager",
++    "role": "admin",
++    "createdAt": "2026-07-18T18:01:00.000Z",
++    "updatedAt": "2026-07-18T18:01:00.000Z",
++    "lastActiveAt": "2026-07-18T18:01:00.000Z"
++  },
++  "legacyRequester": {
++    "id": "10000000-0000-4000-8000-000000000003",
++    "email": "legacy-requester@specter-evaluation.invalid",
++    "name": "Legacy Pending Requester",
++    "role": "member",
++    "createdAt": "2026-07-18T18:02:00.000Z",
++    "updatedAt": "2026-07-18T18:02:00.000Z",
++    "lastActiveAt": "2026-07-18T18:02:00.000Z"
++  },
++  "freshRequester": {
++    "id": "10000000-0000-4000-8000-000000000004",
++    "email": "fresh-requester@specter-evaluation.invalid",
++    "name": "Fresh Requester",
++    "role": "member",
++    "createdAt": "2026-07-18T18:03:00.000Z",
++    "updatedAt": "2026-07-18T18:03:00.000Z",
++    "lastActiveAt": "2026-07-18T18:03:00.000Z"
++  },
++  "privateCollection": {
++    "id": "10000000-0000-4000-8000-000000000005",
++    "name": "Private Evaluation Collection",
++    "description": "Fixed brownfield evaluation fixture",
++    "permission": null,
++    "createdAt": "2026-07-18T18:04:00.000Z",
++    "updatedAt": "2026-07-18T18:04:00.000Z"
++  },
++  "document": {
++    "id": "10000000-0000-4000-8000-000000000006",
++    "urlId": "evaldoc001",
++    "title": "Private Evaluation Document",
++    "text": "Fixed legacy document for Specter brownfield evaluation.",
++    "publishedAt": "2026-07-18T18:05:00.000Z",
++    "createdAt": "2026-07-18T18:05:00.000Z",
++    "updatedAt": "2026-07-18T18:05:00.000Z"
++  },
++  "pendingAccessRequest": {
++    "id": "10000000-0000-4000-8000-000000000007",
++    "status": "pending",
++    "responderId": null,
++    "respondedAt": null,
++    "createdAt": "2026-07-18T18:06:00.000Z",
++    "updatedAt": "2026-07-18T18:06:00.000Z"
++  },
++  "expected": {
++    "pendingRequestCount": 1,
++    "legacyRequesterCanReadDocument": false,
++    "freshRequesterCanReadDocument": false,
++    "managerNotificationCountAfterAcceptedTask": 1
++  }
++}
+diff --git a/specter-evaluation/run-adapter-verifier.ts b/specter-evaluation/run-adapter-verifier.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7fa35267e82c02c01c7d8c18627543a34b46936f
+--- /dev/null
++++ b/specter-evaluation/run-adapter-verifier.ts
+@@ -0,0 +1,10 @@
++import { runAdapterContractSuite } from "@specter-ts/brownfield-verifier";
++// @ts-expect-error Node 24 executes this coordinator runner with type stripping.
++import { adapterHarnessDriver } from "./driver.ts";
++
++const report = await runAdapterContractSuite(adapterHarnessDriver);
++
++process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
++if (!report.passed) {
++  process.exitCode = 1;
++}
+diff --git a/specter-evaluation/run-public-app.mjs b/specter-evaluation/run-public-app.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ab6beb348ef3a066b2822d05910ed3feb64a462
+--- /dev/null
++++ b/specter-evaluation/run-public-app.mjs
+@@ -0,0 +1,60 @@
++import { spawn } from "node:child_process";
++import { readFileSync } from "node:fs";
++import { createServer } from "node:net";
++import dotenv from "@dotenvx/dotenvx";
++
++const host = "127.0.0.1";
++const port = 42135;
++const probe = createServer();
++const testEnvironment = dotenv.parse(
++  readFileSync(new URL("../.env.test", import.meta.url), "utf8")
++);
++
++await new Promise((resolve, reject) => {
++  probe.once("error", reject);
++  probe.listen(port, host, () => {
++    probe.close((error) => {
++      if (error) {
++        reject(error);
++        return;
++      }
++
++      resolve();
++    });
++  });
++});
++
++const child = spawn(
++  process.execPath,
++  ["./build/server/index.js", "--services=web"],
++  {
++    env: {
++      ...process.env,
++      ...testEnvironment,
++      ENABLE_UPDATES: "false",
++      FORCE_HTTPS: "false",
++      NODE_ENV: "production",
++      PGSSLMODE: "disable",
++      PORT: String(port),
++      URL: `http://${host}:${port}`,
++      WEB_CONCURRENCY: "1",
++    },
++    stdio: "inherit",
++  }
++);
++
++let terminating = false;
++
++for (const signal of ["SIGINT", "SIGTERM"]) {
++  process.once(signal, () => {
++    terminating = true;
++    child.kill(signal);
++  });
++}
++
++const exitCode = await new Promise((resolve, reject) => {
++  child.once("error", reject);
++  child.once("exit", (code) => resolve(code));
++});
++
++process.exitCode = terminating ? 0 : (exitCode ?? 1);
+diff --git a/specter-evaluation/setup-legacy-snapshot.ts b/specter-evaluation/setup-legacy-snapshot.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..eee42342ea144ba9268bc1a91993e3bc99ec7ec4
+--- /dev/null
++++ b/specter-evaluation/setup-legacy-snapshot.ts
+@@ -0,0 +1,184 @@
++import { Op } from "sequelize";
++import { UserRole } from "@shared/types";
++import {
++  AccessRequest,
++  Collection,
++  Document,
++  Event,
++  Notification,
++  Team,
++  User,
++  UserMembership,
++} from "@server/models";
++import { AccessRequestStatus } from "@server/models/AccessRequest";
++import { sequelize } from "@server/storage/database";
++import {
++  buildAdmin,
++  buildCollection,
++  buildDocument,
++  buildTeam,
++  buildUser,
++} from "@server/test/factories";
++import snapshot from "./legacy-snapshot.json";
++
++export interface LegacySnapshotFixture {
++  team: Team;
++  manager: User;
++  legacyRequester: User;
++  freshRequester: User;
++  privateCollection: Collection;
++  document: Document;
++  pendingAccessRequest: AccessRequest;
++}
++
++/**
++ * Removes every database row owned by the fixed evaluation snapshot.
++ *
++ * @returns a promise that resolves when cleanup is complete.
++ */
++export async function cleanupLegacySnapshot(): Promise<void> {
++  const userIds = [
++    snapshot.manager.id,
++    snapshot.legacyRequester.id,
++    snapshot.freshRequester.id,
++  ];
++
++  await sequelize.authenticate();
++  await Notification.destroy({
++    where: { teamId: snapshot.team.id },
++    force: true,
++  });
++  await Event.destroy({
++    where: { teamId: snapshot.team.id },
++    force: true,
++  });
++  await AccessRequest.destroy({
++    where: {
++      [Op.or]: [
++        { id: snapshot.pendingAccessRequest.id },
++        { documentId: snapshot.document.id },
++      ],
++    },
++    force: true,
++  });
++  await UserMembership.destroy({
++    where: {
++      [Op.or]: [
++        { collectionId: snapshot.privateCollection.id },
++        { documentId: snapshot.document.id },
++        { userId: { [Op.in]: userIds } },
++      ],
++    },
++    force: true,
++  });
++  await Document.destroy({
++    where: { id: snapshot.document.id },
++    force: true,
++  });
++  await Collection.destroy({
++    where: { id: snapshot.privateCollection.id },
++    force: true,
++  });
++  await User.destroy({
++    where: { id: { [Op.in]: userIds } },
++    force: true,
++  });
++  await Team.destroy({
++    where: { id: snapshot.team.id },
++    force: true,
++  });
++}
++
++/**
++ * Recreates the fixed legacy state with Outline test factories and Sequelize.
++ *
++ * @returns the persisted fixture models.
++ */
++export async function setupLegacySnapshot(): Promise<LegacySnapshotFixture> {
++  await cleanupLegacySnapshot();
++
++  const team = await buildTeam({
++    id: snapshot.team.id,
++    name: snapshot.team.name,
++    subdomain: snapshot.team.subdomain,
++    createdAt: new Date(snapshot.team.createdAt),
++    updatedAt: new Date(snapshot.team.updatedAt),
++    authenticationProviders: [],
++  });
++  const manager = await buildAdmin({
++    id: snapshot.manager.id,
++    teamId: team.id,
++    email: snapshot.manager.email,
++    name: snapshot.manager.name,
++    role: UserRole.Admin,
++    createdAt: new Date(snapshot.manager.createdAt),
++    updatedAt: new Date(snapshot.manager.updatedAt),
++    lastActiveAt: new Date(snapshot.manager.lastActiveAt),
++  });
++  const legacyRequester = await buildUser({
++    id: snapshot.legacyRequester.id,
++    teamId: team.id,
++    email: snapshot.legacyRequester.email,
++    name: snapshot.legacyRequester.name,
++    role: UserRole.Member,
++    createdAt: new Date(snapshot.legacyRequester.createdAt),
++    updatedAt: new Date(snapshot.legacyRequester.updatedAt),
++    lastActiveAt: new Date(snapshot.legacyRequester.lastActiveAt),
++  });
++  const freshRequester = await buildUser({
++    id: snapshot.freshRequester.id,
++    teamId: team.id,
++    email: snapshot.freshRequester.email,
++    name: snapshot.freshRequester.name,
++    role: UserRole.Member,
++    createdAt: new Date(snapshot.freshRequester.createdAt),
++    updatedAt: new Date(snapshot.freshRequester.updatedAt),
++    lastActiveAt: new Date(snapshot.freshRequester.lastActiveAt),
++  });
++  const privateCollection = await buildCollection({
++    id: snapshot.privateCollection.id,
++    teamId: team.id,
++    userId: manager.id,
++    createdById: manager.id,
++    name: snapshot.privateCollection.name,
++    description: snapshot.privateCollection.description,
++    permission: null,
++    createdAt: new Date(snapshot.privateCollection.createdAt),
++    updatedAt: new Date(snapshot.privateCollection.updatedAt),
++  });
++  const document = await buildDocument({
++    id: snapshot.document.id,
++    urlId: snapshot.document.urlId,
++    teamId: team.id,
++    userId: manager.id,
++    createdById: manager.id,
++    lastModifiedById: manager.id,
++    collectionId: privateCollection.id,
++    title: snapshot.document.title,
++    text: snapshot.document.text,
++    publishedAt: new Date(snapshot.document.publishedAt),
++    createdAt: new Date(snapshot.document.createdAt),
++    updatedAt: new Date(snapshot.document.updatedAt),
++  });
++  const pendingAccessRequest = await AccessRequest.create({
++    id: snapshot.pendingAccessRequest.id,
++    teamId: team.id,
++    documentId: document.id,
++    userId: legacyRequester.id,
++    status: AccessRequestStatus.Pending,
++    responderId: null,
++    respondedAt: null,
++    createdAt: new Date(snapshot.pendingAccessRequest.createdAt),
++    updatedAt: new Date(snapshot.pendingAccessRequest.updatedAt),
++  });
++
++  return {
++    team,
++    manager,
++    legacyRequester,
++    freshRequester,
++    privateCollection,
++    document,
++    pendingAccessRequest,
++  };
++}
+diff --git a/specter-evaluation/vitest.config.ts b/specter-evaluation/vitest.config.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..11645e52171b8055cdb92805a079350cfa23155a
+--- /dev/null
++++ b/specter-evaluation/vitest.config.ts
+@@ -0,0 +1,49 @@
++import path from "node:path";
++import swc from "unplugin-swc";
++import { defineConfig } from "vitest/config";
++
++delete process.env.SSL_CERT_FILE;
++
++const aliases = {
++  "@server": path.resolve(__dirname, "../server"),
++  "@shared": path.resolve(__dirname, "../shared"),
++  "~": path.resolve(__dirname, "../app"),
++  plugins: path.resolve(__dirname, "../plugins"),
++};
++
++export default defineConfig({
++  resolve: { alias: aliases },
++  plugins: [
++    swc.vite({
++      tsconfigFile: false,
++      jsc: {
++        parser: { syntax: "typescript", tsx: true, decorators: true },
++        transform: {
++          legacyDecorator: true,
++          decoratorMetadata: false,
++          useDefineForClassFields: false,
++          react: { runtime: "automatic" },
++        },
++        keepClassNames: true,
++        target: "es2020",
++      },
++      module: { type: "es6" },
++    }),
++  ],
++  esbuild: false,
++  oxc: false,
++  test: {
++    globals: true,
++    pool: "threads",
++    environment: "node",
++    include: ["specter-evaluation/coordinator-acceptance.test.ts"],
++    setupFiles: [
++      "./__mocks__/console.js",
++      "./server/test/setupMocks.ts",
++      "./server/test/setup.ts",
++    ],
++    globalSetup: ["./server/test/globalTeardown.ts"],
++    fileParallelism: false,
++    dangerouslyIgnoreUnhandledErrors: true,
++  },
++});
+diff --git a/tsconfig.json b/tsconfig.json
+index a1ef8db7e3871517d01957157c13cb0ea41cccdb..68d3f9da229b8dee80785d555e3a83d8ebdf7b48 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -37,8 +37,15 @@
+       // Vite 8 and its plugins ship types only via their exports map, which
+       // resolvePackageJsonExports disables; point tsc at their declaration entries.
+       "vite": ["./node_modules/vite/dist/node/index.d.ts"],
+-      "@vitejs/plugin-react": ["./node_modules/@vitejs/plugin-react/dist/index.d.ts"]
++      "@vitejs/plugin-react": [
++        "./node_modules/@vitejs/plugin-react/dist/index.d.ts"
++      ]
+     }
+   },
+-  "exclude": ["node_modules", "build", "server/migrations"]
++  "exclude": [
++    "node_modules",
++    "build",
++    "server/migrations",
++    "specter-evaluation/guidance"
++  ]
+ }
+diff --git a/yarn.lock b/yarn.lock
+index bf13e2b1b893290c480945709a94210032a96a7b..cc44ff3dc83aec1c0c3a136c2676b45d1a1811fc 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -5941,6 +5941,30 @@ __metadata:
+   languageName: node
+   linkType: hard
+ 
++"@specter-ts/brownfield-verifier@file:./specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz::locator=outline%40workspace%3A.":
++  version: 0.0.0
++  resolution: "@specter-ts/brownfield-verifier@file:./specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz#./specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz::hash=659261&locator=outline%40workspace%3A."
++  dependencies:
++    "@specter-ts/core": "npm:0.3.0"
++    zod: "npm:^4.4.3"
++  checksum: 10c0/a5d5e455470e50e62c6b1f3bea20886a45efca503b332028e95a7e0a376768322ce5e04e7548376f33c6e48648f6106280a1535f491c9dfe07734e3bdb2d2335
++  languageName: node
++  linkType: hard
++
++"@specter-ts/core@file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz::locator=outline%40workspace%3A.":
++  version: 0.3.0
++  resolution: "@specter-ts/core@file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz#./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz::hash=41c3ec&locator=outline%40workspace%3A."
++  dependencies:
++    "@standard-schema/spec": "npm:^1.1.0"
++  peerDependencies:
++    vitest: ^4.1.5
++  peerDependenciesMeta:
++    vitest:
++      optional: true
++  checksum: 10c0/b476f361627cddd2233b747a544592c0dd4793c34f0c7d8f093ca656dd8bc160eb93d9597aecb4900c485802548b24614f446c8848454a9eb657da5150d29282
++  languageName: node
++  linkType: hard
++
+ "@standard-schema/spec@npm:^1.1.0":
+   version: 1.1.0
+   resolution: "@standard-schema/spec@npm:1.1.0"
+@@ -15461,6 +15485,8 @@ __metadata:
+     "@sentry/react": "npm:^10.65.0"
+     "@simplewebauthn/browser": "npm:^13.3.0"
+     "@simplewebauthn/server": "npm:^13.3.1"
++    "@specter-ts/brownfield-verifier": "file:./specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz"
++    "@specter-ts/core": "file:./specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz"
+     "@swc/cli": "npm:^0.8.1"
+     "@swc/core": "npm:^1.15.32"
+     "@tanstack/react-table": "npm:^8.21.3"

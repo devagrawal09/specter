@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "id": "postgres-work-orders",
+    "kind": "controlled"
+  },
+  "commits": {
+    "builder": "a131c2e1ea9d80fc0c1affdd72f9983712c35e0b",
+    "preparation": "ad096f431f37cf0863095c39aba0eb17755421d1",
+    "assignment": "6badcf6a1d82d7a18936e8e76f6932f3bb2b6ff5"
+  },
+  "validation": {
+    "assignmentSchemaSha256": "de09b9b09e54dcf4b866e896d7ab612f97fc81e219929a2441e43211d306f8b4",
+    "snapshotSha256": "04937ebdd49cf1de65e1bad36d258e9b85b527e3dc717c7cd266590a17dc5727",
+    "coreArchiveSha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c",
+    "verifierArchiveSha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1",
+    "guidanceArchiveSha256": "86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1",
+    "offlineFrozenLockfileInstall": "passed with pnpm 11.9.0",
+    "packageResolution": "@specter-ts/core 0.3.0 and @specter-ts/brownfield-verifier 0.0.0 resolved from committed archives",
+    "baseline": "typecheck and build passed; 16 non-live tests passed",
+    "verifierStubTypecheck": "passed",
+    "prewarm": "database ready; three migrations applied; six legacy work orders seeded; services stopped with named volume retained",
+    "publication": "tracked tree copied from git archive of the assignment commit"
+  }
+}

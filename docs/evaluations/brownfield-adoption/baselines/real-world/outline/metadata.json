@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "application": {
+    "id": "outline",
+    "kind": "real-world",
+    "upstream": "https://github.com/outline/outline.git"
+  },
+  "commits": {
+    "pinnedParent": "d2bf2b8c5a208884b9662dad72244ca8d8924c14",
+    "preparation": "1e63d0bead1d33e9f91378d8ac27c407923b8f89",
+    "assignment": "bd5a63faa876e827ddac8aa3d5f409b9ca707b0f"
+  },
+  "toolchain": {
+    "node": "24.14.0",
+    "yarn": "4.11.0",
+    "launcher": "npm exec --yes --package=node@24.14.0 --package=@yarnpkg/cli-dist@4.11.0 --"
+  },
+  "ports": {
+    "publicApp": {
+      "host": "127.0.0.1",
+      "port": 42135,
+      "strict": true
+    },
+    "postgres": {
+      "host": "127.0.0.1",
+      "port": 5432
+    },
+    "redis": {
+      "host": "127.0.0.1",
+      "port": 6379
+    }
+  },
+  "publishedFiles": {
+    "assignment": {
+      "path": "specter-assignment.json",
+      "sha256": "7577c9596ab10995a401f179c2d304db1dd6ef42a90bb9ba547b7271e45165b0"
+    },
+    "legacySnapshot": {
+      "path": "legacy-snapshot.json",
+      "sha256": "7eac6169e24294dc637717f5b052052e9892d073d53f6b99711103aec7c7e74f"
+    },
+    "prepPatch": {
+      "path": "prep.patch",
+      "sha256": "b380cb6a39b338f21b19192c83cb5644399421e6124744ffaafd94d882c134c2",
+      "excludes": [
+        "specter-evaluation/frozen-kit/**",
+        "specter-evaluation/guidance/**"
+      ]
+    }
+  },
+  "frozenKit": {
+    "source": "../../../frozen-kit",
+    "coreSha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c",
+    "verifierSha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1",
+    "guidanceSha256": "86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1"
+  },
+  "validation": {
+    "offlineImmutableInstall": "passed with YARN_ENABLE_NETWORK=0 and --immutable --immutable-cache",
+    "migrations": "outline-test schema current",
+    "format": "full application and coordinator overlay passed",
+    "lint": "full application passed with existing warnings; coordinator overlay passed cleanly",
+    "typecheck": "passed",
+    "productionBuild": "passed",
+    "upstreamAccessRequestTests": "24 passed",
+    "coordinatorAcceptance": "6 passed, including the real Event-to-notification path",
+    "publicApp": "health returned OK; occupied port returned EADDRINUSE without fallback; shutdown leaked no process",
+    "assignmentSchema": "passed against de09b9b09e54dcf4b866e896d7ab612f97fc81e219929a2441e43211d306f8b4",
+    "reconstruction": "git apply --check passed; patch plus main frozen kit reproduced the assignment commit's full binary diff byte-for-byte"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "archive": {
+    "path": "snapshots/seed-data-2026-05-20-163735.tar.gz",
+    "sha256": "0a2a1e37a459a4ff17212ccd6128159e28b0054a1cf4c4275669e1b8e5943367",
+    "sourceRevision": "021cb12579bdf4cc5e2b50f09170c23f99ed6eab",
+    "requiresMigrationsAtPinnedRevision": true
+  },
+  "records": {
+    "user": {
+      "id": "swx5usbrq7q2akkgcz609eu6",
+      "email": "test1@example.com",
+      "password": "test1234",
+      "role": "admin"
+    },
+    "bookmark": {
+      "id": "km2jba5wyxzsa07ea1rvlkw6",
+      "title": "Seed snapshot bookmark 1",
+      "ownerId": "swx5usbrq7q2akkgcz609eu6"
+    },
+    "acceptedManualList": {
+      "id": "qxhgpg4iyzxcx5i50uzugf6p",
+      "name": "Reference",
+      "type": "manual",
+      "initiallyContainsBookmark": false
+    },
+    "rejectedSmartList": {
+      "id": "ku2yic4o203piiv3s2niwaiw",
+      "name": "Research Smart",
+      "type": "smart",
+      "query": "tag:research"
+    },
+    "baselineMembership": {
+      "listId": "wugrjqiw98lef9z7g38b6v5m",
+      "listName": "Reading Queue",
+      "bookmarkId": "km2jba5wyxzsa07ea1rvlkw6"
+    }
+  },
+  "snapshotCounts": {
+    "users": 3,
+    "bookmarks": 24,
+    "lists": 8,
+    "memberships": 24,
+    "ruleEngineRules": 0
+  },
+  "legacyQueueState": {
+    "source": "snapshots/seed-data-2026-05-20-163735.tar.gz:queue.db",
+    "classification": "Preserved legacy Search Indexing work, not verifier residue. The fixed Rule Engine worker does not consume this queue.",
+    "searchingIndexing": {
+      "pending": 8,
+      "running": 1,
+      "runningIdempotencyKey": "index:zcbcwbus69sc701khrtmyccz"
+    },
+    "ruleEngine": {
+      "queue": "rule_engine_queue",
+      "recordsBeforeProbe": 0,
+      "verifierIdempotencyKey": "specter-evaluation-rule-engine-restart"
+    }
+  }
+}

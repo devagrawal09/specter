@@ -1,0 +1,62 @@
+name: mongo-returns
+
+services:
+  mongo:
+    image: mongo:7.0
+    container_name: mongo-returns-mongo
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all", "--port", "27017"]
+    ports:
+      - "42133:27017"
+    volumes:
+      - mongo-returns-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--host", "127.0.0.1:27017", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  mongo-init:
+    image: mongo:7.0
+    container_name: mongo-returns-init
+    depends_on:
+      mongo:
+        condition: service_healthy
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        mongosh --quiet --host mongo:27017 --eval '
+          try {
+            rs.status();
+          } catch (error) {
+            rs.initiate({_id: "rs0", members: [{_id: 0, host: "mongo:27017"}]});
+          }
+          let ready = false;
+          for (let attempt = 0; attempt < 60; attempt++) {
+            try {
+              if (rs.status().myState === 1) { ready = true; break; }
+            } catch (error) {}
+            sleep(500);
+          }
+          if (!ready) throw new Error("replica set did not become primary");
+        '
+    restart: "no"
+
+  api:
+    profiles: ["app"]
+    build:
+      context: .
+    container_name: mongo-returns-api
+    environment:
+      MONGODB_URI: mongodb://mongo:27017/mongo_returns?replicaSet=rs0
+      AGENDA_PROCESS_EVERY_MS: "100"
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+    ports:
+      - "42132:42132"
+    restart: unless-stopped
+
+volumes:
+  mongo-returns-data:
+    name: mongo-returns-data

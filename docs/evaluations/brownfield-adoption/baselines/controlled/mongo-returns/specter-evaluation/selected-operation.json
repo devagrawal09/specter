@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "operationId": "approve-refund",
+  "selectionStatus": "coordinator-prepared",
+  "kind": "command",
+  "http": {
+    "method": "POST",
+    "pathTemplate": "/returns/:id/approve-refund",
+    "acceptedExample": {
+      "path": "/returns/ret-1001/approve-refund",
+      "body": {},
+      "status": 200
+    }
+  },
+  "decisionInputs": [
+    "persisted return existence",
+    "persisted return status",
+    "persisted accepted inspection result",
+    "absence of an existing refund approval"
+  ],
+  "acceptedTransition": {
+    "fixtureId": "ret-1001",
+    "fromStatus": "inspected",
+    "toStatus": "refunded",
+    "fromVersion": 3,
+    "toVersion": 4
+  },
+  "rejectedExamples": [
+    { "fixtureId": "ret-1002", "status": 409, "code": "REFUND_ALREADY_APPROVED" },
+    { "fixtureId": "ret-1003", "status": 409, "code": "RETURN_NOT_RECEIVED" },
+    { "fixtureId": "ret-1004", "status": 409, "code": "RETURN_NOT_INSPECTED" },
+    { "fixtureId": "ret-1005", "status": 409, "code": "INSPECTION_REJECTED" },
+    { "fixtureId": "ret-missing", "status": 404, "code": "RETURN_NOT_FOUND" }
+  ],
+  "atomicEffects": [
+    "update the return to refunded once",
+    "insert one refund approval",
+    "append one refund.approved history record",
+    "insert one deterministic Agenda refund job"
+  ],
+  "durableFollowUp": [
+    "process the persisted refund job after commit",
+    "set one provider reference and processed timestamp",
+    "append one idempotent refund.processed history record"
+  ],
+  "legacyCompatibility": [
+    "GET /returns",
+    "GET /returns/:id",
+    "POST /returns",
+    "POST /returns/:id/receive",
+    "POST /returns/:id/inspect"
+  ],
+  "existingVerification": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "live": [
+      "RUN_LIVE_TESTS=1 pnpm test:live"
+    ],
+    "focusedFiles": [
+      "tests/unit/refund-decision.test.ts",
+      "tests/http/public-routes.test.ts",
+      "tests/live/replica-set.test.ts"
+    ]
+  }
+}

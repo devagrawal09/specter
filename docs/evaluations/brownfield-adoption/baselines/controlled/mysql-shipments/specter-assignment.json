@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "assignmentId": "mysql-shipments-brownfield-adoption",
+  "application": {
+    "id": "mysql-shipments",
+    "kind": "controlled",
+    "source": "controlled/mysql-shipments",
+    "revision": "42430447be73a3fd8e552398c822813537915402"
+  },
+  "stack": {
+    "framework": "Hono",
+    "database": "MySQL",
+    "scheduler": "BullMQ with Redis",
+    "transport": "HTTP JSON",
+    "testRunner": "Vitest",
+    "ports": [42133, 42134, 42135]
+  },
+  "selectedOperation": {
+    "name": "dispatch-shipment",
+    "route": "POST /shipments/:id/dispatch",
+    "guard": "The persisted shipment must be pending with paymentCaptured=true and inventoryAllocated=true.",
+    "legacyReaders": [
+      "GET /shipments",
+      "GET /shipments/:id",
+      "GET /shipments/:id/history"
+    ],
+    "backgroundWork": "Deliver one durable shipment notification through the existing BullMQ outbox path, preserving dead-letter exhaustion, deterministic retry generations, and exactly-once persistence."
+  },
+  "legacySnapshot": {
+    "path": "specter-evaluation/legacy-snapshot.json",
+    "sha256": "937fd957c61839a82910eabbd4b792566c6df9164b302d9629fa1054fb37d9ee"
+  },
+  "packages": {
+    "core": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    }
+  },
+  "commands": {
+    "baseline": [
+      "pnpm typecheck",
+      "pnpm test",
+      "pnpm build"
+    ],
+    "adapterVerifier": [
+      "pnpm exec tsx specter-evaluation/verifier/runner.ts"
+    ],
+    "domainAcceptance": [
+      "RUN_LIVE_TESTS=1 pnpm test:live"
+    ]
+  },
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90
+}

@@ -1,0 +1,331 @@
+{
+  "schemaVersion": 1,
+  "evaluation": {
+    "id": "specter-brownfield-adoption",
+    "version": 1,
+    "seed": {
+      "algorithm": "SHA-256",
+      "input": "specter-brownfield-adoption:1",
+      "sha256": "0f7089c0e0d55328cf87f94c080ed75d6922f1c7c11171e0bd9e95e8a2326772"
+    }
+  },
+  "controls": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high",
+    "activeWorkLimitMinutes": 90,
+    "assignmentSchema": {
+      "path": "docs/evaluations/brownfield-adoption/assignment-schema.json",
+      "sha256": "de09b9b09e54dcf4b866e896d7ab612f97fc81e219929a2441e43211d306f8b4"
+    },
+    "frozenKitManifest": {
+      "path": "docs/evaluations/brownfield-adoption/frozen-kit/manifest.json",
+      "sha256": "8d7d2fb134fb0c421488510d27ad72244f6cb27719e74fbcffb73608f7111f8a"
+    }
+  },
+  "assignments": [
+    {
+      "assignmentId": "postgres-work-orders-brownfield-adoption",
+      "application": {
+        "id": "postgres-work-orders",
+        "kind": "controlled",
+        "source": "controlled/postgres-work-orders"
+      },
+      "assignment": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json",
+        "sha256": "ebdf880f3f6ad7450bd174b9e155baa04898d4978411a546e030c0cfdbdb3f7f"
+      },
+      "metadata": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/metadata.json",
+        "sha256": "e18e65484c99d00120e74cc195c890d2e8df608fd6ca96442d53fea5228e6873"
+      },
+      "revisions": {
+        "source": {
+          "role": "builder",
+          "revision": "a131c2e1ea9d80fc0c1affdd72f9983712c35e0b"
+        },
+        "preparation": "ad096f431f37cf0863095c39aba0eb17755421d1",
+        "assignment": "6badcf6a1d82d7a18936e8e76f6932f3bb2b6ff5"
+      },
+      "stack": {
+        "framework": "Fastify",
+        "database": "PostgreSQL",
+        "scheduler": "pg-boss",
+        "transport": "HTTP JSON",
+        "testRunner": "Vitest",
+        "ports": [42131, 55431]
+      },
+      "references": {
+        "stack": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/stack",
+        "ports": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/stack/ports",
+        "selectedOperation": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/selectedOperation",
+        "legacySnapshot": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/legacySnapshot",
+        "packages": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/packages",
+        "commands": {
+          "baseline": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/commands/baseline",
+          "adapterVerifier": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/commands/adapterVerifier",
+          "domainAcceptance": "docs/evaluations/brownfield-adoption/baselines/controlled/postgres-work-orders/specter-assignment.json#/commands/domainAcceptance"
+        }
+      },
+      "attemptIds": [
+        "specter-brownfield-adoption-v1-postgres-work-orders-01",
+        "specter-brownfield-adoption-v1-postgres-work-orders-02"
+      ]
+    },
+    {
+      "assignmentId": "mongo-returns-brownfield-adoption",
+      "application": {
+        "id": "mongo-returns",
+        "kind": "controlled",
+        "source": "controlled/mongo-returns"
+      },
+      "assignment": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json",
+        "sha256": "9b47449c64e264e6106fa54bf1a5cc9b1da2653398af2e1e14d6d4263fc0a1fa"
+      },
+      "metadata": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/metadata.json",
+        "sha256": "3a863e74b7dc24e5bc953f048de062ab214f1d21d9e91ad355115e94ba0e8ddf"
+      },
+      "revisions": {
+        "source": {
+          "role": "builder",
+          "revision": "a4b21a424f43c6fc2f25f1074217be8ea44d97db"
+        },
+        "preparation": "db5914d6390796bce69c77e3e9b3e7c93103b3b3",
+        "assignment": "184e1713cd1d7eccaa9df62e88764c410b2e48ae"
+      },
+      "stack": {
+        "framework": "Express",
+        "database": "MongoDB replica set",
+        "scheduler": "Agenda",
+        "transport": "HTTP JSON",
+        "testRunner": "Vitest",
+        "ports": [42132, 42133]
+      },
+      "references": {
+        "stack": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/stack",
+        "ports": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/stack/ports",
+        "selectedOperation": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/selectedOperation",
+        "legacySnapshot": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/legacySnapshot",
+        "packages": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/packages",
+        "commands": {
+          "baseline": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/commands/baseline",
+          "adapterVerifier": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/commands/adapterVerifier",
+          "domainAcceptance": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/specter-assignment.json#/commands/domainAcceptance"
+        }
+      },
+      "attemptIds": [
+        "specter-brownfield-adoption-v1-mongo-returns-01",
+        "specter-brownfield-adoption-v1-mongo-returns-02"
+      ]
+    },
+    {
+      "assignmentId": "mysql-shipments-brownfield-adoption",
+      "application": {
+        "id": "mysql-shipments",
+        "kind": "controlled",
+        "source": "controlled/mysql-shipments"
+      },
+      "assignment": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json",
+        "sha256": "4c97ae5ecb93f10502d5d38f05d98ca0720d86dd17b5fc2474a27b44aa0ab2f3"
+      },
+      "metadata": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/metadata.json",
+        "sha256": "a64a21a902cf75d511441af90c333a1b8bc86a5864b0b96256acbaeab2de8444"
+      },
+      "revisions": {
+        "source": {
+          "role": "builder",
+          "revision": "057fa263d32cd79f3827f071a06639a15e2f6667"
+        },
+        "preparation": "42430447be73a3fd8e552398c822813537915402",
+        "assignment": "9da4362a0fed3e3cc7f6c71166c51dceed9833a0"
+      },
+      "stack": {
+        "framework": "Hono",
+        "database": "MySQL",
+        "scheduler": "BullMQ with Redis",
+        "transport": "HTTP JSON",
+        "testRunner": "Vitest",
+        "ports": [42133, 42134, 42135]
+      },
+      "references": {
+        "stack": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/stack",
+        "ports": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/stack/ports",
+        "selectedOperation": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/selectedOperation",
+        "legacySnapshot": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/legacySnapshot",
+        "packages": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/packages",
+        "commands": {
+          "baseline": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/commands/baseline",
+          "adapterVerifier": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/commands/adapterVerifier",
+          "domainAcceptance": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/specter-assignment.json#/commands/domainAcceptance"
+        }
+      },
+      "attemptIds": [
+        "specter-brownfield-adoption-v1-mysql-shipments-01",
+        "specter-brownfield-adoption-v1-mysql-shipments-02"
+      ]
+    },
+    {
+      "assignmentId": "outline-access-request-create",
+      "application": {
+        "id": "outline",
+        "kind": "real-world",
+        "source": "https://github.com/outline/outline.git"
+      },
+      "assignment": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json",
+        "sha256": "7577c9596ab10995a401f179c2d304db1dd6ef42a90bb9ba547b7271e45165b0"
+      },
+      "metadata": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/metadata.json",
+        "sha256": "a5892751732c6988408b822ac6fa6698c95d10bb25f90f02db770ed44e8a0dc0"
+      },
+      "revisions": {
+        "source": {
+          "role": "pinnedParent",
+          "revision": "d2bf2b8c5a208884b9662dad72244ca8d8924c14"
+        },
+        "preparation": "1e63d0bead1d33e9f91378d8ac27c407923b8f89",
+        "assignment": "bd5a63faa876e827ddac8aa3d5f409b9ca707b0f"
+      },
+      "stack": {
+        "framework": "Koa 2 with TypeScript",
+        "database": "PostgreSQL through Sequelize",
+        "scheduler": "Bull 4 backed by Redis",
+        "transport": "Koa HTTP JSON API",
+        "testRunner": "Vitest 4.1.5",
+        "ports": [42135]
+      },
+      "references": {
+        "stack": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/stack",
+        "ports": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/stack/ports",
+        "selectedOperation": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/selectedOperation",
+        "legacySnapshot": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/legacySnapshot",
+        "packages": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/packages",
+        "commands": {
+          "baseline": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/commands/baseline",
+          "adapterVerifier": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/commands/adapterVerifier",
+          "domainAcceptance": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/specter-assignment.json#/commands/domainAcceptance"
+        }
+      },
+      "attemptIds": [
+        "specter-brownfield-adoption-v1-outline-01",
+        "specter-brownfield-adoption-v1-outline-02"
+      ]
+    },
+    {
+      "assignmentId": "karakeep-lists-add-to-list-2026-07-18",
+      "application": {
+        "id": "karakeep",
+        "kind": "real-world",
+        "source": "https://github.com/karakeep-app/karakeep.git"
+      },
+      "assignment": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json",
+        "sha256": "81d8a711f74798c24fa04347773da193d42679e665a5cef3d5320dff312a27a9"
+      },
+      "metadata": {
+        "path": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/metadata.json",
+        "sha256": "282a8e60cf4fccec260e2a01b6c0361f30c596616781feca4d04253e8adba2fa"
+      },
+      "revisions": {
+        "source": {
+          "role": "pinnedParent",
+          "revision": "bc50630767079b060488d1d790b96de1e06ea6ba"
+        },
+        "preparation": "ca48579b7c1e22016e6ca00bfaf91c3fdc84f949",
+        "assignment": "a8e01ad9b0664e3e4ed28a0d8491395bd2715d88"
+      },
+      "stack": {
+        "framework": "Next.js 16 with a Hono-mounted tRPC API",
+        "database": "SQLite through Drizzle ORM at DATA_DIR/db.db",
+        "scheduler": "Liteque durable SQLite queues at DATA_DIR/queue.db",
+        "transport": "Batched tRPC HTTP over Hono",
+        "testRunner": "Vitest 3.2.4",
+        "ports": [41736, 41737]
+      },
+      "references": {
+        "stack": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/stack",
+        "ports": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/stack/ports",
+        "selectedOperation": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/selectedOperation",
+        "legacySnapshot": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/legacySnapshot",
+        "packages": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/packages",
+        "commands": {
+          "baseline": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/commands/baseline",
+          "adapterVerifier": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/commands/adapterVerifier",
+          "domainAcceptance": "docs/evaluations/brownfield-adoption/baselines/real-world/karakeep/specter-assignment.json#/commands/domainAcceptance"
+        }
+      },
+      "attemptIds": [
+        "specter-brownfield-adoption-v1-karakeep-01",
+        "specter-brownfield-adoption-v1-karakeep-02"
+      ]
+    }
+  ],
+  "attemptOrdering": {
+    "algorithm": "Sort attempt IDs by the lowercase hexadecimal SHA-256 of seed.sha256 + ':' + attemptId, ascending",
+    "attemptIds": [
+      "specter-brownfield-adoption-v1-outline-02",
+      "specter-brownfield-adoption-v1-karakeep-02",
+      "specter-brownfield-adoption-v1-karakeep-01",
+      "specter-brownfield-adoption-v1-mongo-returns-01",
+      "specter-brownfield-adoption-v1-mysql-shipments-01",
+      "specter-brownfield-adoption-v1-mongo-returns-02",
+      "specter-brownfield-adoption-v1-mysql-shipments-02",
+      "specter-brownfield-adoption-v1-postgres-work-orders-01",
+      "specter-brownfield-adoption-v1-postgres-work-orders-02",
+      "specter-brownfield-adoption-v1-outline-01"
+    ]
+  },
+  "serviceSerialization": {
+    "policy": "Attempts whose assignments share a conflict must not have their listed services running at the same time; stop and verify cleanup before releasing the host port to the next attempt.",
+    "conflicts": [
+      {
+        "host": "127.0.0.1",
+        "port": 42133,
+        "services": [
+          {
+            "assignmentId": "mongo-returns-brownfield-adoption",
+            "service": "MongoDB replica-set host port",
+            "definition": {
+              "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mongo-returns/compose.yaml",
+              "key": "services.mongo.ports"
+            }
+          },
+          {
+            "assignmentId": "mysql-shipments-brownfield-adoption",
+            "service": "HTTP application port",
+            "definition": {
+              "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/compose.yaml",
+              "key": "services.app.ports"
+            }
+          }
+        ]
+      },
+      {
+        "host": "127.0.0.1",
+        "port": 42135,
+        "services": [
+          {
+            "assignmentId": "mysql-shipments-brownfield-adoption",
+            "service": "Redis host port",
+            "definition": {
+              "path": "docs/evaluations/brownfield-adoption/baselines/controlled/mysql-shipments/compose.yaml",
+              "key": "services.redis.ports"
+            }
+          },
+          {
+            "assignmentId": "outline-access-request-create",
+            "service": "public application port",
+            "definition": {
+              "path": "docs/evaluations/brownfield-adoption/baselines/real-world/outline/metadata.json",
+              "key": "ports.publicApp"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
