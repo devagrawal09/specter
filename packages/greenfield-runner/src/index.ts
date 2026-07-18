@@ -36,6 +36,12 @@ export {
   type ActiveLimitSupervisorOptions,
   type ActiveLimitSupervisorResult,
 } from './supervisor.js'
+export {
+  parseIsolationContract,
+  rehearseAdopterAccessIsolation,
+  type AdopterIsolationContract,
+  type IsolationRehearsalResult,
+} from './isolation.js'
 export * from './types.js'
 export {
   safeRelativePath,

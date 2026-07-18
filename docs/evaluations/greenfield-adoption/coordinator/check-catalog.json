@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "audience": "coordinator-only",
   "materialization": {
-    "instructions": "For one attempt, retain definitions whose appliesTo is all or matches attempt.persistence, resolve semanticRoles through that domain's roleBindings, and pass only each nested check object to VerificationPlan.checks. Never copy this file, resolved check IDs, inputs, claims, schedules, or expected values into an adopter kit or ProjectSemanticAdapter request.",
+    "instructions": "For one attempt, retain definitions whose appliesTo is all or matches attempt.persistence, resolve semanticRoles through that domain's roleBindings, and pass only each nested check object to VerificationPlan.checks. Never copy this file, resolved check IDs, inputs, claims, schedules, or expected values into an adopter kit. Adopter-mapped semantic IDs are interpreted as frozen JSON data; process, fault, database, Reaction, and outbox roles are exercised only by coordinator-owned services.",
     "checkDefinitionPath": "definitions[].check",
     "semanticCatalog": "../semantic-catalog.json"
   },

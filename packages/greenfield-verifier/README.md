@@ -5,9 +5,9 @@ It scores visible and held-out checks through the four cumulative protocol gates
 without knowing an adopter's Slice names, Event names, or file layout.
 
 This package is an evaluation harness, not a replacement for an application's
-acceptance suite. Each evaluated project supplies a semantic adapter without
-verifier check IDs; a private coordinator driver maps frozen checks to that
-adapter and coordinator-owned inspection hooks.
+acceptance suite. Each evaluated project supplies a data-only semantic map
+without verifier check IDs; a private coordinator driver maps frozen checks to
+coordinator-owned transport, browser, process, fault, and inspection services.
 
 ## What it records
 
@@ -33,73 +33,46 @@ SQLite recovery-harness generation relative to its recorded first use, fewer
 than two browser journeys, and Postgres plans without multi-process
 serialization and outbox-claim checks.
 
-## Freeze boundary and project-owned adapter
+## Freeze boundary and data-only semantic map
 
-The coordinator freezes visible and held-out check definitions and the
-per-domain driver before scoring. That driver must not hardcode an adopter's
-Slice/Event names, and the frozen app must never receive a check ID, gate,
-visibility, expected value, or verifier claim.
+The coordinator freezes visible and held-out check definitions, observation
+services, and the per-domain driver before scoring. The frozen app must never
+receive a check ID, gate, visibility, expected value, or verifier claim.
 
-Instead, every app exports a `ProjectSemanticAdapter` with methods keyed by
-brief-owned semantic IDs. Its source is frozen with the first-attempt repository.
-It maps canonical operations and facts to the app's unconstrained envelopes,
-Event names, public transport, persistence records, and operational controls.
-The adapter returns observed canonical values and raw ordering/delivery metadata;
-it does not decide whether a verifier check passed.
+Instead, every app includes a schema-validated `semantic-map.json` keyed by
+brief-owned semantic IDs. It is data, not an imported executable module. It maps
+Commands, Queries, subscriptions, Event types, normalization JSON Pointers,
+browser routes, and stable selectors to the app's unconstrained public names.
+It cannot execute checks, inspect persistence, restart processes, inject faults,
+or report observations.
 
-For example, an adopter can map `freight.record-reading` and
-`freight.excursion-recorded` without being told to call a Slice or Event by a
-particular name:
+For example, an adopter can map a brief operation without being told to call a
+Slice or Event by a particular name:
 
-```ts
-import type {
-  ProjectSemanticAdapter,
-  SemanticProbeResult,
-} from '@specter-ts/greenfield-verifier'
-
-export const greenfieldAdapter: ProjectSemanticAdapter = {
-  async probe(request): Promise<SemanticProbeResult> {
-    switch (`${request.capability}:${request.semanticId}`) {
-      case 'command:freight.record-reading':
-        return { value: await callReadingEnvelope(request.input, request.signal) }
-      case 'eventLog:freight.excursion-recorded':
-        return {
-          value: await readAndNormalizeExcursionFacts(request.signal),
-        }
-      default:
-        throw new Error(`Unsupported semantic probe: ${request.semanticId}`)
+```json
+{
+  "schemaVersion": 1,
+  "domain": "cold-chain-freight",
+  "mappings": {
+    "cold-chain-freight.command.record-temperature-sample": {
+      "capability": "command",
+      "envelopeType": "acceptSensorReading",
+      "request": { "kind": "identity" },
+      "result": { "kind": "identity" }
     }
-  },
+  }
 }
 ```
 
-The private coordinator driver imports that adapter and owns all oracles and
-held-out orchestration. It implements the verifier's `GreenfieldDriver` factory:
+The private coordinator driver parses that JSON and owns all oracles and
+held-out orchestration. Coordinator-owned services drive HTTP/SSE/browser
+surfaces, control processes and faults, and inspect Event/database/outbox state:
 
-```ts
-import type {
-  GreenfieldDriverFactory,
-  EvidenceObservation,
-} from '@specter-ts/greenfield-verifier'
-import { greenfieldAdapter } from './frozen-attempt/greenfield-adapter.js'
-
-export const createGreenfieldDriver: GreenfieldDriverFactory = (plan) => ({
-  async setup({ phase, signal }) {
-    await resetAndStartCoordinatorServices(phase, signal)
-    await greenfieldAdapter.setup?.({ attempt: plan.attempt, phase })
-  },
-
-  async runCheck({ check, phase, signal }): Promise<EvidenceObservation> {
-    // checkCases and expected values live only in the frozen coordinator kit.
-    return checkCases[check.id]({ adapter: greenfieldAdapter, phase, signal })
-  },
-
-  async teardown({ phase, reason, signal }) {
-    await greenfieldAdapter.teardown?.({ attempt: plan.attempt, phase })
-    await stopAndResetCoordinatorServices({ reason, signal })
-  },
-})
-```
+The service result contains raw channel captures, coordinator normalization,
+artifact paths, and parity comparisons between independently observed surfaces.
+For example, a Command receipt can be compared with durable Event facts, and an
+SSE update can be compared with a direct Query and browser value. A check without
+raw artifacts and at least one parity comparison is a harness error.
 
 ### Per-check isolation
 
@@ -118,11 +91,11 @@ remediation in that process. Library callers can reduce or extend
 `setupTimeoutMs`, `cleanupTimeoutMs`, and `abortGraceMs`; coordinator drivers
 must not rely on those limits as a substitute for cleanup.
 
-This executable adapter is preferred to a project-exported manifest: it can map
-payloads, normalize domain facts, drive subscriptions, and expose restart/fault
-hooks without standardizing implementation names. The adapter contract and
-semantic-ID catalog are visible; held-out check IDs, inputs, schedules, faults,
-and expected values remain coordinator-only until all first attempts are frozen.
+The semantic-map contract and semantic-ID catalog are visible; held-out check
+IDs, inputs, schedules, faults, expected values, observation services, and raw
+evidence interpretation remain coordinator-only until all attempts are frozen.
+Process control, restart, replay, fault injection, Reaction delivery, database,
+and outbox capabilities never have adopter-executable mappings.
 
 Each evidence kind has standard semantic claims exported as `standardClaims`.
 For example, `reactionDeliveryRecovery` requires a persisted failed attempt,

@@ -9,7 +9,6 @@ import type {
   CheckDefinition,
   EvidenceKind,
   GreenfieldDriver,
-  ProjectSemanticAdapter,
   VerificationPlan,
 } from './types.js'
 import { PlanValidationError, validateVerificationPlan } from './validation.js'
@@ -176,24 +175,10 @@ function validPlan(
 function passingDriver(
   overrides: Record<string, boolean> = {},
 ): GreenfieldDriver {
-  const adapter: ProjectSemanticAdapter = {
-    async probe({ semanticId, capability }) {
-      return {
-        value: { semanticId, capability, observed: true },
-        artifacts: ['z.log', 'a.json'],
-      }
-    },
-  }
   return {
     async setup() {},
     async runCheck({ check, phase, signal }) {
-      const observed = await adapter.probe({
-        semanticId: `brief.${check.evidence.kind}`,
-        capability:
-          check.evidence.kind === 'browserJourney' ? 'browser' : 'query',
-        phase,
-        signal,
-      })
+      assert.equal(signal.aborted, false)
       return {
         claims: Object.fromEntries(
           standardClaims[check.evidence.kind].map((claim) => [
@@ -208,7 +193,8 @@ function passingDriver(
             actual: { ok: true },
           },
         ],
-        artifacts: observed.artifacts,
+        details: { phase },
+        artifacts: ['z.log', 'a.json'],
       }
     },
     async teardown() {},

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdirSync,
@@ -27,8 +28,10 @@ import {
   freezeRemediation,
   prepareAttempt,
   recordMarker,
+  provenanceArtifactKinds,
   runVerificationSuite,
   startActiveTime,
+  stableJson,
   validateMatrixEntry,
   validateProvenance,
   type WatchdogScheduler,
@@ -266,9 +269,9 @@ describe('greenfield evaluation runner', () => {
       () =>
         validateProvenance({
           ...provenance(),
-          semanticCatalogSha256: undefined,
+          artifactManifestSha256: undefined,
         }),
-      /semanticCatalogSha256 must be a string/,
+      /artifactManifestSha256 must be a string/,
     )
   })
 
@@ -826,16 +829,64 @@ function assignment(): object {
 
 function provenance(): object {
   const hash = 'a'.repeat(64)
+  const publicKinds = new Set([
+    'adopterPrompt',
+    'domainBrief',
+    'guidance',
+    'initializer',
+    'semanticCatalog',
+    'semanticMapContract',
+    'specterPackage',
+    'visibleSuite',
+  ])
+  const artifacts = provenanceArtifactKinds
+    .map((kind, index) => ({
+      id: `artifact-${index + 1}`,
+      audience: publicKinds.has(kind) ? 'public' : 'private',
+      kind,
+      sha256: hash,
+    }))
+    .sort((left, right) => left.id.localeCompare(right.id))
+  const packageArtifact = artifacts.find(
+    (artifact) => artifact.kind === 'specterPackage',
+  )
+  assert.ok(packageArtifact)
   return {
     specterCommit: 'abcdef0123456789',
-    promptSha256: hash,
-    guidanceSha256: hash,
-    guidanceFiles: [{ id: 'specter-skill', sha256: hash }],
-    briefSha256: hash,
-    verifierSha256: hash,
-    semanticCatalogSha256: hash,
-    packages: [{ name: '@specter-ts/core', version: '0.3.0', sha256: hash }],
-    model: 'test-model',
-    reasoningSetting: 'test',
+    artifactManifestSha256: createHash('sha256')
+      .update(stableJson(artifacts))
+      .digest('hex'),
+    artifacts,
+    packages: [
+      {
+        name: '@specter-ts/core',
+        version: '0.3.0',
+        artifactId: packageArtifact.id,
+        sha256: hash,
+      },
+    ],
+    runtime: {
+      model: {
+        provider: 'openai',
+        id: 'test-model',
+        build: 'test-build',
+        reasoningSetting: 'test',
+        sampler: { seed: 42 },
+      },
+      agentHarness: { name: 'codex', version: 'test' },
+      platform: {
+        operatingSystem: 'darwin',
+        release: 'test',
+        architecture: 'arm64',
+      },
+      toolchain: {
+        node: process.version,
+        packageManager: 'pnpm@test',
+        browser: 'chromium',
+        browserRevision: 'test',
+      },
+      services: [{ id: 'sqlite', version: 'test' }],
+      runOrderSeed: 'test-order',
+    },
   }
 }

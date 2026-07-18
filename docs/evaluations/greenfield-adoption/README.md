@@ -13,16 +13,27 @@ contract, not optional analysis guidance.
 Do not hand this directory to an adopter wholesale. Build each attempt kit from
 an explicit allowlist.
 
+Coordinator state and adopter files must use physically separate roots. The
+coordinator root contains full assignments, held-out commands, check cases,
+oracles, plans, services, and runner state and is never mounted into the adopter
+sandbox. The adopter root contains only allowlisted public artifacts and its
+workspace; it must not be a child or parent of the coordinator root. Run
+`specter-greenfield rehearse-isolation --contract <file>` from inside the actual
+adopter sandbox. The rehearsal must read public canaries and receive only
+`EACCES`, `EPERM`, or `ENOENT` for every private canary.
+
 The **adopter-visible kit** contains only:
 
 - `adopter-prompt.md`;
 - the assigned domain brief and adopter projection of its matrix entry;
 - the assigned domain entries from `semantic-catalog.json`;
-- `templates/semantic-adapter.ts`;
+- `templates/semantic-map.ts`, `templates/semantic-map.schema.json`, and
+  `templates/semantic-map.example.json`;
 - the frozen Specter packages, initializer, skill, guidance, reference apps,
   visible acceptance cases, and prepared runtime described by the plan.
 
-The semantic-adapter template is self-contained. Do not install or expose
+The semantic-map contract is self-contained and the adopter produces JSON data,
+not an executable coordinator callback. Do not install or expose
 `@specter-ts/greenfield-verifier` in the adopter project: that package, its
 evidence kinds, standard claims, check placement, and CLI are coordinator-only.
 
@@ -52,10 +63,16 @@ after all ten first attempts are frozen.
    prompt digests, tool policy, context limit, execution image, browser revision,
    CPU/memory limits, dependency-cache snapshot, and fresh-context evidence
    required by the methodology.
-3. Pack one Specter commit and record every package digest.
+3. Pack one Specter commit and build the canonical provenance manifest. Include
+   every required public/private artifact kind and runtime metadata: exact model
+   build and sampler, agent harness, platform, Node/package manager, pinned
+   browser revision, services, and run-order seed. The package identity must
+   reference its matching public `specterPackage` artifact.
 4. Implement every check in `coordinator/check-catalog.json` as a private case
-   using `templates/coordinator-driver.ts`. Cases may call only brief semantic
-   IDs through the frozen app adapter; they own all inputs and expectations.
+   using `templates/coordinator-driver.ts`. Coordinator services interpret mapped
+   brief IDs, drive public HTTP/SSE/browser surfaces, control processes and
+   faults, inspect Event/database/outbox state, and retain raw evidence plus
+   independent parity comparisons. Cases own all inputs and expectations.
 5. Materialize a verification plan per persistence profile from
    `templates/verification-plan.json`. Replace timestamps, timing, iteration,
    generator transcript hashes, and first-use records from the attempt log.
@@ -77,9 +94,10 @@ after all ten first attempts are frozen.
 9. Preregister environment-failure signatures for the database service, browser,
    dependency cache, credentials, fixed port, and host. Designate the two primary
    reviewers and third adjudicator before they see results.
-10. Run a sacrificial, non-scored harness rehearsal. Prove kit construction,
-   service reset, timer termination, freeze immutability, visible-before-held-
-   out ordering, semantic adapter loading, the 75-minute checkpoint ceiling,
+10. Run a sacrificial, non-scored harness rehearsal. Prove physical access
+   isolation from the actual adopter process, kit construction, service reset,
+   timer and process-tree termination, freeze immutability, visible-before-held-
+   out ordering, semantic-map validation, raw-evidence parity, the 75-minute checkpoint ceiling,
    automatic pause allowlist, 180-minute termination, one-retry environment
    policy, 60-minute remediation clock, and report aggregation. Discard the
    rehearsal data; never alter frozen checks in response to an adopter result.
@@ -125,7 +143,10 @@ For each assignment:
    exists. Provision its database and fixed port without substituting either.
 2. Build frozen provenance from the methodology, codebook, candidate table, run
    order, control metadata, environment signatures, prompt, assigned brief and
-   semantic catalog, guidance, packed packages, and verifier artifact.
+   semantic catalog, guidance, packed packages, verifier, runner, check plans,
+   cases, oracles, services, browser journeys, and initializer. Store the
+   canonical private manifest and full assignment only in the
+   coordinator root; expose only a public projection in the adopter root.
 3. Generate the adopter assignment with `adopter-assignment`; never copy the
    coordinator matrix because it contains held-out commands.
 4. Finish coordinator-only image, cache, browser, empty service, credential,
@@ -191,7 +212,7 @@ The protocol is not ready to score until all of the following are frozen:
 - coordinator enforcement of checkpoint, pause, retry, environment-invalid,
   adjudication, and remediation rules;
 - a successful sacrificial rehearsal with no coordinator mutation of the
-  scored freeze.
+  scored freeze and no adopter read access to any private canary.
 
 These are coordinator fixtures, not adopter implementation work. Their absence
 must stop the evaluation rather than being filled in after an attempt begins.

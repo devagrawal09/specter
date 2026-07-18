@@ -10,8 +10,8 @@ speculate about unpublished checks; build the product described by your brief.
 You receive a frozen, read-only guidance kit:
 
 - one implementation-neutral product brief and its row in `matrix.json`;
-- the visible brief-owned entries from `semantic-catalog.json` and the
-  self-contained typed semantic-adapter template;
+- the visible brief-owned entries from `semantic-catalog.json`, the
+  self-contained semantic-map contract, JSON Schema, and example;
 - locally packed Specter 0.3 packages and a `create-specter` executable on PATH;
 - the canonical Specter skill;
 - the generated project's README and agent guidance;
@@ -34,21 +34,22 @@ HTTP/SSE transport, build a custom runtime adapter, switch persistence profile,
 or substitute a scheduler. App-owned domain code, projection tables, migrations,
 UI, and tests are expected.
 
-## Required semantic adapter
+## Required semantic map
 
-Create `specter-evaluation/semantic-adapter.ts` from the supplied template and
-implement every semantic ID assigned to your domain. This is an evaluation seam,
-not a prescribed domain model: it maps stable brief-owned operations, views,
-normalized facts, and operational controls to your freely chosen Command, Query,
-Event, projection, and process names.
+Create `specter-evaluation/semantic-map.json` from the supplied schema and
+example. Map the command, query, subscription, Event-log, and browser semantic
+IDs assigned to your domain. This is an evaluation seam, not a prescribed domain
+model: it declaratively maps stable brief-owned operations, views, normalized
+facts, and UI locators to your freely chosen envelope, Event, and route names.
 
-The adapter receives only `semanticId`, capability, input, phase, and an abort
-signal. It must return canonical public values or normalized facts plus raw log,
-cursor, delivery, or lifecycle metadata where the catalog requires them. It must
-not contain verifier check IDs, expected values, pass/fail claims, fixture-order
-recognition, or held-out logic. The visible suite checks catalog completeness.
-The coordinator freezes this adapter with the app and privately supplies all
-held-out inputs, schedules, faults, oracles, and check orchestration.
+The map is JSON data, never an executable module. It may rename input/output
+fields using JSON Pointers but cannot contain constants, verifier check IDs,
+expected values, pass/fail claims, fixture-order recognition, or held-out logic.
+Do not implement process control, restart, replay, fault injection, Reaction
+delivery, or outbox probes: coordinator-owned services exercise and inspect those
+capabilities independently. The visible suite validates mapping completeness and
+schema conformance. The coordinator freezes the map with the app and privately
+supplies all held-out inputs, schedules, faults, oracles, and orchestration.
 
 ## Clock and deliverables
 
@@ -83,7 +84,7 @@ order. For each material action record:
 - supplied guidance consulted;
 - every generator dry-run and generation command;
 - generated files kept, edited, discarded, or not reused, with the reason;
-- semantic adapter mappings added or changed;
+- semantic map entries added or changed;
 - validation results and when a checkpoint/final freeze is requested.
 
 Do not rewrite the log into a cleaner narrative. Correct mistakes with a later
@@ -155,10 +156,10 @@ operation. Command decisions use their own caught-up private State rather than
 Query projections. Query and decision projections must be reconstructible from
 history.
 
-Complete and test the domain's semantic adapter as behavior is added. Its
-restart, replay, fault-injection, process-control, outbox, and browser mappings
-may call app-owned test/operations seams, but must exercise the same maintained
-adapters, scheduler, transport, and database used by the scored application.
+Complete and validate the domain's semantic map as behavior is added. The
+coordinator drives the mapped public HTTP/SSE/browser surfaces, reads durable
+Event data independently, and owns all restart, replay, fault-injection,
+process-control, Reaction-delivery, database, and outbox observation.
 
 Every Slice has exact executable Scenarios and uses runtime schemas at untrusted
 input, public Query-output, and Reaction Plugin boundaries. Commands emit only

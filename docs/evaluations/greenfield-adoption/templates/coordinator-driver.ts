@@ -1,36 +1,33 @@
 import type {
   AttemptPhase,
+  CoordinatorObservation,
   EvidenceComparison,
   EvidenceObservation,
   GreenfieldDriverFactory,
   JsonValue,
-  ProjectSemanticAdapter,
+  ProjectSemanticMap,
   SemanticCapability,
-  SemanticProbeResult,
+  SemanticMapping,
   VerificationPlan,
 } from '@specter-ts/greenfield-verifier'
 
 /**
- * Coordinator-only template. Keep this file, the check catalog, all concrete
- * inputs/schedules/faults, and every expected value outside the adopter kit.
+ * Coordinator-only template. The project semantic map is parsed from JSON data;
+ * adopter code is never imported into this process as an executable verifier
+ * adapter. Concrete inputs, schedules, faults, and oracles remain private.
  */
 
-export interface PrivateCaseContext {
+export interface CoordinatorObservationRequest {
   attempt: VerificationPlan['attempt']
   phase: AttemptPhase
+  semanticId: string
+  capability: SemanticCapability
+  mapping?: SemanticMapping
+  input?: JsonValue
   signal: AbortSignal
-  probe(
-    semanticId: string,
-    capability: SemanticCapability,
-    input?: JsonValue,
-  ): Promise<SemanticProbeResult>
 }
 
-export type PrivateCheckCase = (
-  context: PrivateCaseContext,
-) => Promise<EvidenceObservation>
-
-export interface CoordinatorServices {
+export interface CoordinatorObservationServices {
   start(context: {
     attempt: VerificationPlan['attempt']
     phase: AttemptPhase
@@ -41,17 +38,55 @@ export interface CoordinatorServices {
     phase: AttemptPhase
     signal: AbortSignal
   }): Promise<void>
+
+  /**
+   * Drive mapped Commands/Queries through generated HTTP, subscriptions through
+   * public SSE, browser mappings through the pinned browser, and Event mappings
+   * by independently reading durable Event rows. The returned artifact must
+   * contain the unnormalized captures used to compute `normalized` and parity.
+   */
+  observeMapped(
+    request: CoordinatorObservationRequest & { mapping: SemanticMapping },
+  ): Promise<CoordinatorObservation>
+
+  /**
+   * Coordinator-owned process/restart/replay/fault/outbox/Reaction observation.
+   * These capabilities have no adopter mapping and must use frozen service code.
+   */
+  observeOperational(
+    request: CoordinatorObservationRequest & { mapping?: undefined },
+  ): Promise<CoordinatorObservation>
 }
 
+export interface PrivateCaseContext {
+  attempt: VerificationPlan['attempt']
+  phase: AttemptPhase
+  signal: AbortSignal
+  observe(
+    semanticId: string,
+    capability: SemanticCapability,
+    input?: JsonValue,
+  ): Promise<CoordinatorObservation>
+}
+
+export interface PrivateCaseObservation {
+  evidence: EvidenceObservation
+  /** Every scored fact must identify the coordinator-captured raw observation. */
+  observations: readonly CoordinatorObservation[]
+}
+
+export type PrivateCheckCase = (
+  context: PrivateCaseContext,
+) => Promise<PrivateCaseObservation>
+
 export function createCoordinatorDriver(options: {
-  adapter: ProjectSemanticAdapter
+  semanticMap: ProjectSemanticMap
   cases: Readonly<Record<string, PrivateCheckCase>>
-  services: CoordinatorServices
+  services: CoordinatorObservationServices
 }): GreenfieldDriverFactory {
   return (plan) => ({
     async setup({ phase, signal }) {
       await options.services.start({ attempt: plan.attempt, phase, signal })
-      await options.adapter.setup?.({ attempt: plan.attempt, phase, signal })
     },
 
     async runCheck({ check, phase, signal }) {
@@ -59,35 +94,96 @@ export function createCoordinatorDriver(options: {
       if (run === undefined) {
         throw new Error(`No private coordinator case for check ${check.id}`)
       }
-      return run({
+      const captured: CoordinatorObservation[] = []
+      const result = await run({
         attempt: plan.attempt,
         phase,
         signal,
-        probe(semanticId, capability, input) {
-          // Only brief semantics cross the frozen app boundary. In particular,
-          // check.id and coordinator-owned expected values never do.
-          return options.adapter.probe({
-            semanticId,
-            capability,
-            input,
-            phase,
-            signal,
-          })
+        async observe(semanticId, capability, input) {
+          const mapping = options.semanticMap.mappings[semanticId]
+          if (mapping !== undefined && mapping.capability !== capability) {
+            throw new Error(
+              `Semantic capability mismatch for ${semanticId}: mapped ${mapping.capability}, requested ${capability}`,
+            )
+          }
+          const observation =
+            mapping === undefined
+              ? await options.services.observeOperational({
+                  attempt: plan.attempt,
+                  phase,
+                  semanticId,
+                  capability,
+                  input,
+                  signal,
+                })
+              : await options.services.observeMapped({
+                  attempt: plan.attempt,
+                  phase,
+                  semanticId,
+                  capability,
+                  mapping,
+                  input,
+                  signal,
+                })
+          assertRawObservation(observation, semanticId, capability)
+          captured.push(observation)
+          return observation
         },
       })
+
+      if (result.observations.length === 0) {
+        throw new Error(`Check ${check.id} returned no raw coordinator observation`)
+      }
+      if (
+        result.observations.some(
+          (observation) => !captured.includes(observation),
+        )
+      ) {
+        throw new Error(
+          `Check ${check.id} returned an observation not captured by coordinator services`,
+        )
+      }
+      const parity = result.observations.flatMap(
+        (observation) => observation.parity,
+      )
+      if (parity.length === 0) {
+        throw new Error(`Check ${check.id} returned no independent parity comparison`)
+      }
+      return {
+        ...result.evidence,
+        comparisons: [...(result.evidence.comparisons ?? []), ...parity],
+        artifacts: [
+          ...(result.evidence.artifacts ?? []),
+          ...result.observations.flatMap((observation) => observation.artifacts),
+        ],
+      }
     },
 
     async teardown({ phase, signal }) {
-      try {
-        await options.adapter.teardown?.({ attempt: plan.attempt, phase, signal })
-      } finally {
-        await options.services.stop({ attempt: plan.attempt, phase, signal })
-      }
+      await options.services.stop({ attempt: plan.attempt, phase, signal })
     },
   })
 }
 
-/** Coordinator-owned helper demonstrating where an exact oracle belongs. */
+function assertRawObservation(
+  observation: CoordinatorObservation,
+  semanticId: string,
+  capability: SemanticCapability,
+): void {
+  if (
+    observation.semanticId !== semanticId ||
+    observation.capability !== capability
+  ) {
+    throw new Error(`Coordinator observation identity mismatch for ${semanticId}`)
+  }
+  if (Object.keys(observation.channels).length === 0) {
+    throw new Error(`Coordinator observation ${semanticId} has no raw channels`)
+  }
+  if (observation.artifacts.length === 0) {
+    throw new Error(`Coordinator observation ${semanticId} has no raw artifact`)
+  }
+}
+
 export function exactComparison(
   label: string,
   expected: JsonValue,
@@ -97,33 +193,35 @@ export function exactComparison(
 }
 
 /**
- * Deterministic example case. Replace all placeholder values in the private
- * coordinator kit before freezing it; do not move them into the app adapter.
+ * Example only. The service—not adopter code—executes the public Command and
+ * reads the durable Event Log. Its parity compares normalized HTTP receipt data
+ * with independently captured durable facts.
  */
 export const examplePrivateCase: PrivateCheckCase = async ({
+  observe,
   phase,
-  signal,
-  probe,
 }) => {
-  const observed = await probe(
+  const observation = await observe(
     'ed-operations.command.assign-treatment-bed',
     'command',
     { request: '<coordinator-owned-deterministic-input>' },
   )
   return {
-    claims: {
-      commandAccepted: true,
-      eventsCommitted: true,
-      durableEventsExact: true,
+    evidence: {
+      claims: {
+        commandAccepted: true,
+        eventsCommitted: true,
+        durableEventsExact: true,
+      },
+      comparisons: [
+        exactComparison(
+          '<coordinator-owned-exact-public-oracle>',
+          { receipt: '<expected>' },
+          observation.normalized,
+        ),
+      ],
+      details: { phase },
     },
-    comparisons: [
-      exactComparison(
-        '<coordinator-owned-comparison-label>',
-        { receipt: '<coordinator-owned-expected-value>' },
-        observed.value,
-      ),
-    ],
-    details: { phase },
-    artifacts: observed.artifacts,
+    observations: [observation],
   }
 }

@@ -91,17 +91,19 @@ Give each agent:
 - The Specter skill, generated project guidance, runtime-boundary guide, package
   READMEs, and reference apps.
 - The implementation-neutral product brief and runnable visible acceptance
-  suite, plus the brief-owned semantic-ID catalog and self-contained typed
-  app-adapter contract. The coordinator verifier package is not supplied.
+  suite, plus the brief-owned semantic-ID catalog and self-contained data-only
+  semantic-map contract. The coordinator verifier package is not supplied.
 - Prepared dependencies, database services, browser revision, and assigned port.
 
 The coordinator separately freezes held-out robustness tests for concurrency,
 restart, fault injection, transport abuse, subscription cleanup, and durable
 Reaction recovery. These tests exercise published or brief-defined behavior and
 must not depend on an agent's internal names, file layout, or Slice decomposition.
-Each app maps the visible semantic IDs to its unconstrained public envelopes,
-normalized durable facts, and operational hooks. Private coordinator drivers
-own all check IDs, inputs, schedules, faults, claims, and expected values.
+Each app declaratively maps visible semantic IDs to its unconstrained public
+envelopes, normalized durable facts, and browser locators. Private coordinator
+services independently drive HTTP/SSE/browser/process behavior, inject faults,
+inspect databases/outboxes, capture raw evidence, and cross-check mapped values.
+They own all check IDs, inputs, schedules, faults, claims, and expected values.
 
 Freeze both kits before scoring. The coordinator provisions the execution image,
 package cache, browser, empty database service, credentials, fixed port, and local
@@ -138,7 +140,7 @@ target. The agent must replace the sample domain with a minimal end-to-end path
 for that operation: exact accepted and prior-Event rejection Scenarios, runtime
 input validation, Event Definitions, private decision State, app registration,
 one query projection, a public envelope call, visible UI behavior, and the
-checkpoint's semantic-adapter mappings. Domain IDs and timestamps originate at
+checkpoint's semantic-map entries. Domain IDs and timestamps originate at
 the initiating boundary.
 
 For the first Slice of each kind used in the app, run `create-specter generate
@@ -212,9 +214,11 @@ all visible checks and then runs the held-out suite without modifying the app.
 Run the app's check, lint, boundary lint, typecheck, tests, production build,
 browser preflight, and complete Playwright workflow. Verify that every registered
 Event Definition and Slice is covered by whole-app Scenario execution and that
-focused tests use a focused Event catalog. The coordinator driver may call only
-the frozen app semantic adapter; verifier check IDs and oracles never cross that
-boundary.
+focused tests use a focused Event catalog. The coordinator driver interprets the
+frozen data-only semantic map but executes probes through coordinator-owned
+services. Verifier check IDs and oracles never cross that boundary, and mapped
+values must agree with independently captured raw transport, browser, Event-log,
+database, or outbox evidence.
 
 Run checks once in their preregistered order from a clean per-check environment.
 Do not retry product failures, assertion mismatches, crashes, timeouts,

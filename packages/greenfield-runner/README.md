@@ -40,6 +40,13 @@ interface, records evidence, and reports the four cumulative evaluation gates.
   use `enforceActiveLimit` to invoke their agent/process termination callback at
   the limit instead of waiting for a later marker.
 
+The coordinator root and adopter root are separate siblings or separate mounts;
+neither may contain the other. Never place `frozen-provenance.json`, full matrix
+entries, runner state, held-out commands, or private-kit artifacts above an
+adopter-writable workspace. Before scoring, run `rehearse-isolation` from inside
+the actual adopter sandbox using public and private canary paths. A readable
+private canary fails the rehearsal.
+
 ## Inputs
 
 Prepare takes one matrix entry and one provenance record. JSON schemas live in
@@ -52,11 +59,14 @@ Prepare takes one matrix entry and one provenance record. JSON schemas live in
 - package names and freeze paths are unique.
 - the workspace path is itself one of the frozen paths.
 
-All hashes are lowercase SHA-256 strings. `semanticCatalogSha256` identifies the
-visible frozen semantic catalog; the app-owned semantic adapter is included in
-the workspace freeze while held-out oracles remain private. Package arrays and
-environment keys are normalized into deterministic order before provenance is
-frozen.
+All hashes are lowercase SHA-256 strings. `artifacts` is a canonical ID-sorted
+manifest whose audience marks each input `public` or `private`; its aggregate
+digest is `artifactManifestSha256`. Required kinds cover the adopter prompt,
+brief, guidance, initializer, semantic catalog/map contract, Specter packages,
+visible suite, check catalog/cases/plans, coordinator driver, execution catalog,
+runner/verifier, service/browser fixtures, and held-out suite. Runtime provenance
+also fixes the model build/sampler, agent harness, OS/architecture, Node/package
+manager, browser revision, services, and run-order seed.
 
 ## Catalog expansion and audience boundary
 
@@ -79,13 +89,11 @@ and omits `heldOutCommands` entirely.
 
 ## Provenance construction
 
-`buildFrozenProvenance` reads and hashes the prompt, every identified guidance
-file, domain brief, visible semantic catalog, verifier artifact, and each packed
-Specter package. Callers supply paths, package identities, model metadata, and
-optionally expected digests; they do not supply the recorded digests. Any
-expected digest mismatch fails before attempt preparation. Inputs must be
-regular non-symlink files. The combined guidance digest is the SHA-256 of the
-canonical, ID-sorted guidance-file digest list.
+`buildFrozenProvenance` hashes every identified public/private artifact and each
+packed Specter package. Callers supply artifact paths and runtime identities, not
+the recorded digests. Any expected digest mismatch fails before preparation.
+Inputs must be regular non-symlink files. Package entries must reference their
+matching public `specterPackage` artifact.
 
 ## Coordinator runbook
 
@@ -142,6 +150,8 @@ specter-greenfield validate-matrix --matrix /evaluation/matrix.json
 specter-greenfield adopter-assignment \
   --matrix /evaluation/matrix.json --attempt-id emergency-department-1
 specter-greenfield build-provenance --config /evaluation/provenance-input.json
+specter-greenfield rehearse-isolation \
+  --contract /evaluation/public/isolation-contract.json
 ```
 
 `freeze` stops a running active timer. For an intentional pause before final

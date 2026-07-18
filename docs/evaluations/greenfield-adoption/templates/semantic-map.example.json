@@ -1,0 +1,49 @@
+{
+  "$schema": "./semantic-map.schema.json",
+  "schemaVersion": 1,
+  "domain": "ed-operations",
+  "mappings": {
+    "ed-operations.command.assign-treatment-bed": {
+      "capability": "command",
+      "envelopeType": "placePatientInCareSpace",
+      "request": { "kind": "identity" },
+      "result": {
+        "kind": "objectFields",
+        "fields": {
+          "commitId": "/commitId",
+          "encounterId": "/result/encounterId"
+        }
+      }
+    },
+    "ed-operations.query.department-board": {
+      "capability": "query",
+      "envelopeType": "careSpaceBoard",
+      "request": { "kind": "identity" },
+      "result": { "kind": "identity" }
+    },
+    "ed-operations.subscription.department-board": {
+      "capability": "subscription",
+      "queryEnvelopeType": "careSpaceBoard",
+      "request": { "kind": "identity" },
+      "result": { "kind": "identity" }
+    },
+    "ed-operations.event-log.domain-events": {
+      "capability": "eventLog",
+      "events": [
+        {
+          "eventType": "patient-placed-in-care-space",
+          "canonicalType": "treatment-bed-assigned",
+          "payload": { "kind": "identity" }
+        }
+      ]
+    },
+    "ed-operations.browser.journey-a": {
+      "capability": "browser",
+      "route": "/department",
+      "selectors": {
+        "board": "[data-testid=department-board]",
+        "criticalAlert": "[data-testid=critical-alert]"
+      }
+    }
+  }
+}

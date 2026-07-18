@@ -20,6 +20,7 @@ import {
   stopActiveTime,
 } from './runner.js'
 import { writeAggregateReport, writeAttemptReport } from './report.js'
+import { rehearseAdopterAccessIsolation } from './isolation.js'
 import { stableJson } from './storage.js'
 import type { MarkerOutcome, SuiteKind } from './types.js'
 
@@ -109,6 +110,14 @@ try {
     case 'build-provenance':
       result = buildFrozenProvenance(jsonFile(required(args, 'config')))
       break
+    case 'rehearse-isolation': {
+      const isolationResult = rehearseAdopterAccessIsolation(
+        jsonFile(required(args, 'contract')),
+      )
+      result = isolationResult
+      if (!isolationResult.passed) process.exitCode = 1
+      break
+    }
     case 'help':
     case undefined:
       console.log(help())
@@ -178,5 +187,6 @@ function help(): string {
   expand-catalog --catalog FILE
   validate-matrix --matrix FILE
   adopter-assignment --matrix FILE --attempt-id ID
-  build-provenance --config FILE`
+  build-provenance --config FILE
+  rehearse-isolation --contract FILE`
 }

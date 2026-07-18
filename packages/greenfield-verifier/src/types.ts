@@ -196,40 +196,96 @@ export const semanticCapabilities = [
 
 export type SemanticCapability = (typeof semanticCapabilities)[number]
 
+export const adopterMappedCapabilities = [
+  'command',
+  'query',
+  'subscription',
+  'eventLog',
+  'browser',
+] as const
+
+export type AdopterMappedCapability = (typeof adopterMappedCapabilities)[number]
+
+export type JsonPointer = `/${string}`
+
+export interface ObjectFieldMapping {
+  /** Destination JSON Pointer to source JSON Pointer. Constants are forbidden. */
+  fields: Readonly<Record<JsonPointer, JsonPointer>>
+}
+
+export interface ResultNormalization {
+  kind: 'identity' | 'objectFields'
+  fields?: Readonly<Record<string, JsonPointer>>
+}
+
+export interface EnvelopeSemanticMapping {
+  capability: 'command' | 'query'
+  envelopeType: string
+  request:
+    | { kind: 'identity' }
+    | ({ kind: 'objectFields' } & ObjectFieldMapping)
+  result: ResultNormalization
+}
+
+export interface SubscriptionSemanticMapping {
+  capability: 'subscription'
+  queryEnvelopeType: string
+  request:
+    | { kind: 'identity' }
+    | ({ kind: 'objectFields' } & ObjectFieldMapping)
+  result: ResultNormalization
+}
+
+export interface EventFactMapping {
+  eventType: string
+  canonicalType: string
+  payload: ResultNormalization
+}
+
+export interface EventLogSemanticMapping {
+  capability: 'eventLog'
+  events: readonly EventFactMapping[]
+}
+
+export interface BrowserSemanticMapping {
+  capability: 'browser'
+  route: string
+  selectors: Readonly<Record<string, string>>
+}
+
+export type SemanticMapping =
+  | BrowserSemanticMapping
+  | EnvelopeSemanticMapping
+  | EventLogSemanticMapping
+  | SubscriptionSemanticMapping
+
 /**
- * A brief-owned request understood by the frozen app adapter. It deliberately
- * contains no verifier check ID, gate, visibility, expected value, or claim.
+ * Frozen adopter-owned data. It cannot execute checks, restart processes,
+ * inject faults, inspect databases, or report pass/fail claims.
  */
-export interface SemanticProbeRequest {
+export interface ProjectSemanticMap {
+  schemaVersion: 1
+  domain: string
+  mappings: Readonly<Record<string, SemanticMapping>>
+}
+
+export type ObservationChannel =
+  | 'browser'
+  | 'database'
+  | 'eventLog'
+  | 'http'
+  | 'outbox'
+  | 'process'
+  | 'sse'
+
+/** Raw evidence captured by coordinator-owned services, never by adopter code. */
+export interface CoordinatorObservation {
   semanticId: string
   capability: SemanticCapability
-  input?: JsonValue
-  phase: AttemptPhase
-  signal: AbortSignal
-}
-
-export interface SemanticProbeResult {
-  /** Canonical facts/public values plus any raw ordering or delivery metadata. */
-  value: JsonValue
-  artifacts?: string[]
-}
-
-/**
- * Project-owned mapping from stable brief semantics to unconstrained app
- * envelopes, Event names, persistence records, and operational controls.
- */
-export interface ProjectSemanticAdapter {
-  setup?(context: {
-    attempt: Readonly<AttemptDescriptor>
-    phase: AttemptPhase
-    signal: AbortSignal
-  }): Promise<void>
-  probe(request: SemanticProbeRequest): Promise<SemanticProbeResult>
-  teardown?(context: {
-    attempt: Readonly<AttemptDescriptor>
-    phase: AttemptPhase
-    signal: AbortSignal
-  }): Promise<void>
+  channels: Readonly<Partial<Record<ObservationChannel, JsonValue>>>
+  normalized: JsonValue
+  parity: readonly EvidenceComparison[]
+  artifacts: readonly string[]
 }
 
 export interface DriverCheckContext {

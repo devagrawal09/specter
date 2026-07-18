@@ -35,23 +35,76 @@ export interface MatrixEntry {
 export interface PackageProvenance {
   readonly name: string
   readonly version: string
+  readonly artifactId: string
   readonly sha256: string
+}
+
+export type ArtifactAudience = 'private' | 'public'
+
+export const provenanceArtifactKinds = [
+  'adopterPrompt',
+  'browserFixture',
+  'checkCases',
+  'checkCatalog',
+  'coordinatorDriver',
+  'domainBrief',
+  'evaluationRunner',
+  'executionCatalog',
+  'guidance',
+  'heldOutSuite',
+  'initializer',
+  'semanticCatalog',
+  'semanticMapContract',
+  'serviceFixture',
+  'specterPackage',
+  'verificationPlan',
+  'verifier',
+  'visibleSuite',
+] as const
+
+export type ProvenanceArtifactKind = (typeof provenanceArtifactKinds)[number]
+
+export interface FrozenArtifactProvenance {
+  readonly id: string
+  readonly audience: ArtifactAudience
+  readonly kind: ProvenanceArtifactKind
+  readonly sha256: string
+}
+
+export interface RuntimeProvenance {
+  readonly model: {
+    readonly provider: string
+    readonly id: string
+    readonly build: string
+    readonly reasoningSetting: string
+    readonly sampler: Readonly<Record<string, boolean | null | number | string>>
+  }
+  readonly agentHarness: { readonly name: string; readonly version: string }
+  readonly platform: {
+    readonly operatingSystem: string
+    readonly release: string
+    readonly architecture: string
+  }
+  readonly toolchain: {
+    readonly node: string
+    readonly packageManager: string
+    readonly browser: string
+    readonly browserRevision: string
+  }
+  readonly services: readonly {
+    readonly id: string
+    readonly version: string
+    readonly digest?: string
+  }[]
+  readonly runOrderSeed: string
 }
 
 export interface FrozenProvenance {
   readonly specterCommit: string
-  readonly promptSha256: string
-  readonly guidanceSha256: string
-  readonly guidanceFiles: readonly {
-    readonly id: string
-    readonly sha256: string
-  }[]
-  readonly briefSha256: string
-  readonly verifierSha256: string
-  readonly semanticCatalogSha256: string
+  readonly artifactManifestSha256: string
+  readonly artifacts: readonly FrozenArtifactProvenance[]
   readonly packages: readonly PackageProvenance[]
-  readonly model: string
-  readonly reasoningSetting: string
+  readonly runtime: RuntimeProvenance
 }
 
 export interface CoordinatorDomain {
@@ -76,31 +129,25 @@ export type AdopterAssignment = Omit<MatrixEntry, 'heldOutCommands'>
 
 export interface ProvenanceBuildInput {
   readonly specterCommit: string
-  readonly promptPath: string
-  readonly guidanceFiles: readonly {
+  readonly artifacts: readonly {
     readonly id: string
+    readonly audience: ArtifactAudience
+    readonly kind: ProvenanceArtifactKind
     readonly path: string
   }[]
-  readonly briefPath: string
-  readonly semanticCatalogPath: string
-  readonly verifierArtifactPath: string
   readonly packageTarballs: readonly {
     readonly name: string
     readonly version: string
+    readonly artifactId: string
     readonly path: string
   }[]
-  readonly model: string
-  readonly reasoningSetting: string
+  readonly runtime: RuntimeProvenance
   readonly expected?: ExpectedProvenanceDigests
 }
 
 export interface ExpectedProvenanceDigests {
-  readonly promptSha256?: string
-  readonly guidanceSha256?: string
-  readonly guidanceFiles?: Readonly<Record<string, string>>
-  readonly briefSha256?: string
-  readonly semanticCatalogSha256?: string
-  readonly verifierSha256?: string
+  readonly artifactManifestSha256?: string
+  readonly artifacts?: Readonly<Record<string, string>>
   readonly packageTarballs?: Readonly<Record<string, string>>
 }
 

@@ -12,7 +12,9 @@ import type {
   FrozenProvenance,
   MatrixEntry,
   ProvenanceBuildInput,
+  RuntimeProvenance,
 } from './types.js'
+import { provenanceArtifactKinds } from './types.js'
 import {
   safeRelativePath,
   validateMatrixEntry,
@@ -144,27 +146,28 @@ export function toAdopterAssignment(value: unknown): AdopterAssignment {
 
 export function buildFrozenProvenance(value: unknown): FrozenProvenance {
   const input = parseProvenanceBuildInput(value)
-  const guidanceFiles = input.guidanceFiles
-    .map((file) => ({ id: file.id, sha256: digestFile(file.path) }))
+  const artifacts = input.artifacts
+    .map((artifact) => ({
+      id: artifact.id,
+      audience: artifact.audience,
+      kind: artifact.kind,
+      sha256: digestFile(artifact.path),
+    }))
     .sort((left, right) => left.id.localeCompare(right.id))
   const packages = input.packageTarballs
     .map((item) => ({
       name: item.name,
       version: item.version,
+      artifactId: item.artifactId,
       sha256: digestFile(item.path),
     }))
     .sort((left, right) => left.name.localeCompare(right.name))
   const provenance = validateProvenance({
     specterCommit: input.specterCommit,
-    promptSha256: digestFile(input.promptPath),
-    guidanceSha256: sha256(stableJson(guidanceFiles)),
-    guidanceFiles,
-    briefSha256: digestFile(input.briefPath),
-    semanticCatalogSha256: digestFile(input.semanticCatalogPath),
-    verifierSha256: digestFile(input.verifierArtifactPath),
+    artifactManifestSha256: sha256(stableJson(artifacts)),
+    artifacts,
     packages,
-    model: input.model,
-    reasoningSetting: input.reasoningSetting,
+    runtime: input.runtime,
   })
   validateExpectedDigests(provenance, input.expected)
   return provenance
@@ -291,22 +294,29 @@ function expandCommand(
 
 function parseProvenanceBuildInput(value: unknown): ProvenanceBuildInput {
   const input = record(value, 'provenance build input')
-  const guidanceFiles = array(input.guidanceFiles, 'guidanceFiles').map(
-    (item, index) => {
-      const file = record(item, `guidanceFiles[${index}]`)
-      return {
-        id: id(file.id, `guidanceFiles[${index}].id`),
-        path: nonEmptyString(file.path, `guidanceFiles[${index}].path`),
-      }
-    },
-  )
-  if (guidanceFiles.length === 0)
-    throw new Error('guidanceFiles must not be empty')
+  const artifacts = array(input.artifacts, 'artifacts').map((item, index) => {
+    const artifact = record(item, `artifacts[${index}]`)
+    return {
+      id: id(artifact.id, `artifacts[${index}].id`),
+      audience: literal(
+        artifact.audience,
+        ['public', 'private'],
+        `artifacts[${index}].audience`,
+      ),
+      kind: literal(
+        artifact.kind,
+        provenanceArtifactKinds,
+        `artifacts[${index}].kind`,
+      ),
+      path: nonEmptyString(artifact.path, `artifacts[${index}].path`),
+    }
+  })
   if (
-    new Set(guidanceFiles.map((file) => file.id)).size !== guidanceFiles.length
+    new Set(artifacts.map((artifact) => artifact.id)).size !== artifacts.length
   ) {
-    throw new Error('guidance file IDs must be unique')
+    throw new Error('artifact IDs must be unique')
   }
+  requireArtifactKinds(artifacts)
   const packageTarballs = array(input.packageTarballs, 'packageTarballs').map(
     (item, index) => {
       const packageInput = record(item, `packageTarballs[${index}]`)
@@ -319,6 +329,10 @@ function parseProvenanceBuildInput(value: unknown): ProvenanceBuildInput {
           packageInput.version,
           `packageTarballs[${index}].version`,
         ),
+        artifactId: id(
+          packageInput.artifactId,
+          `packageTarballs[${index}].artifactId`,
+        ),
         path: nonEmptyString(
           packageInput.path,
           `packageTarballs[${index}].path`,
@@ -329,25 +343,26 @@ function parseProvenanceBuildInput(value: unknown): ProvenanceBuildInput {
   if (packageTarballs.length === 0) {
     throw new Error('packageTarballs must not be empty')
   }
+  for (const item of packageTarballs) {
+    const artifact = artifacts.find(
+      (candidate) => candidate.id === item.artifactId,
+    )
+    if (artifact?.kind !== 'specterPackage' || artifact.audience !== 'public') {
+      throw new Error(
+        `package ${item.name} must reference a public specterPackage artifact`,
+      )
+    }
+    if (resolve(artifact.path) !== resolve(item.path)) {
+      throw new Error(
+        `package ${item.name} path must match artifact ${item.artifactId}`,
+      )
+    }
+  }
   return {
     specterCommit: nonEmptyString(input.specterCommit, 'specterCommit'),
-    promptPath: nonEmptyString(input.promptPath, 'promptPath'),
-    guidanceFiles,
-    briefPath: nonEmptyString(input.briefPath, 'briefPath'),
-    semanticCatalogPath: nonEmptyString(
-      input.semanticCatalogPath,
-      'semanticCatalogPath',
-    ),
-    verifierArtifactPath: nonEmptyString(
-      input.verifierArtifactPath,
-      'verifierArtifactPath',
-    ),
+    artifacts,
     packageTarballs,
-    model: nonEmptyString(input.model, 'model'),
-    reasoningSetting: nonEmptyString(
-      input.reasoningSetting,
-      'reasoningSetting',
-    ),
+    runtime: parseRuntime(input.runtime),
     ...(input.expected === undefined
       ? {}
       : { expected: parseExpectedDigests(input.expected) }),
@@ -357,24 +372,16 @@ function parseProvenanceBuildInput(value: unknown): ProvenanceBuildInput {
 function parseExpectedDigests(value: unknown): ExpectedProvenanceDigests {
   const input = record(value, 'expected')
   const knownKeys = new Set([
-    'promptSha256',
-    'guidanceSha256',
-    'guidanceFiles',
-    'briefSha256',
-    'semanticCatalogSha256',
-    'verifierSha256',
+    'artifactManifestSha256',
+    'artifacts',
     'packageTarballs',
   ])
   for (const key of Object.keys(input)) {
     if (!knownKeys.has(key)) throw new Error(`Unknown expected digest: ${key}`)
   }
   return {
-    ...optionalDigest(input, 'promptSha256'),
-    ...optionalDigest(input, 'guidanceSha256'),
-    ...optionalDigestRecord(input, 'guidanceFiles'),
-    ...optionalDigest(input, 'briefSha256'),
-    ...optionalDigest(input, 'semanticCatalogSha256'),
-    ...optionalDigest(input, 'verifierSha256'),
+    ...optionalDigest(input, 'artifactManifestSha256'),
+    ...optionalDigestRecord(input, 'artifacts'),
     ...optionalDigestRecord(input, 'packageTarballs'),
   }
 }
@@ -384,26 +391,20 @@ function validateExpectedDigests(
   expected: ExpectedProvenanceDigests | undefined,
 ): void {
   if (!expected) return
-  for (const key of [
-    'promptSha256',
-    'guidanceSha256',
-    'briefSha256',
-    'semanticCatalogSha256',
-    'verifierSha256',
-  ] as const) {
-    const expectedDigest = expected[key]
-    if (expectedDigest !== undefined && expectedDigest !== provenance[key]) {
-      throw new Error(
-        `Digest mismatch for ${key}: expected ${expectedDigest}, received ${provenance[key]}`,
-      )
-    }
+  if (
+    expected.artifactManifestSha256 !== undefined &&
+    expected.artifactManifestSha256 !== provenance.artifactManifestSha256
+  ) {
+    throw new Error(
+      `Digest mismatch for artifactManifestSha256: expected ${expected.artifactManifestSha256}, received ${provenance.artifactManifestSha256}`,
+    )
   }
   validateExpectedRecord(
-    'guidance file',
+    'artifact',
     Object.fromEntries(
-      provenance.guidanceFiles.map((file) => [file.id, file.sha256]),
+      provenance.artifacts.map((artifact) => [artifact.id, artifact.sha256]),
     ),
-    expected.guidanceFiles,
+    expected.artifacts,
   )
   validateExpectedRecord(
     'package tarball',
@@ -465,7 +466,7 @@ function optionalDigest(
 
 function optionalDigestRecord(
   input: Record<string, unknown>,
-  key: 'guidanceFiles' | 'packageTarballs',
+  key: 'artifacts' | 'packageTarballs',
 ): object {
   if (input[key] === undefined) return {}
   return {
@@ -474,6 +475,128 @@ function optionalDigestRecord(
         ([id, value]) => [id, digest(value, `expected.${key}.${id}`)],
       ),
     ),
+  }
+}
+
+const publicArtifactKinds = new Set([
+  'adopterPrompt',
+  'domainBrief',
+  'guidance',
+  'initializer',
+  'semanticCatalog',
+  'semanticMapContract',
+  'specterPackage',
+  'visibleSuite',
+])
+
+function requireArtifactKinds(
+  artifacts: ProvenanceBuildInput['artifacts'],
+): void {
+  if (artifacts.length === 0) throw new Error('artifacts must not be empty')
+  for (const kind of provenanceArtifactKinds) {
+    if (!artifacts.some((artifact) => artifact.kind === kind)) {
+      throw new Error(`artifacts must include at least one ${kind} artifact`)
+    }
+  }
+  for (const artifact of artifacts) {
+    const expectedAudience = publicArtifactKinds.has(artifact.kind)
+      ? 'public'
+      : 'private'
+    if (artifact.audience !== expectedAudience) {
+      throw new Error(
+        `${artifact.kind} artifact ${artifact.id} must be ${expectedAudience}`,
+      )
+    }
+  }
+}
+
+function parseRuntime(value: unknown): RuntimeProvenance {
+  const input = record(value, 'runtime')
+  const model = record(input.model, 'runtime.model')
+  const sampler = Object.fromEntries(
+    Object.entries(record(model.sampler, 'runtime.model.sampler'))
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => {
+        if (
+          entry !== null &&
+          typeof entry !== 'boolean' &&
+          typeof entry !== 'number' &&
+          typeof entry !== 'string'
+        ) {
+          throw new Error(`runtime.model.sampler.${key} must be a JSON scalar`)
+        }
+        if (typeof entry === 'number' && !Number.isFinite(entry)) {
+          throw new Error(`runtime.model.sampler.${key} must be finite`)
+        }
+        return [key, entry]
+      }),
+  )
+  const harness = record(input.agentHarness, 'runtime.agentHarness')
+  const platform = record(input.platform, 'runtime.platform')
+  const toolchain = record(input.toolchain, 'runtime.toolchain')
+  const services = array(input.services, 'runtime.services')
+    .map((item, index) => {
+      const service = record(item, `runtime.services[${index}]`)
+      return {
+        id: id(service.id, `runtime.services[${index}].id`),
+        version: nonEmptyString(
+          service.version,
+          `runtime.services[${index}].version`,
+        ),
+        ...(service.digest === undefined
+          ? {}
+          : {
+              digest: nonEmptyString(
+                service.digest,
+                `runtime.services[${index}].digest`,
+              ),
+            }),
+      }
+    })
+    .sort((left, right) => left.id.localeCompare(right.id))
+  if (new Set(services.map((service) => service.id)).size !== services.length) {
+    throw new Error('runtime service IDs must be unique')
+  }
+  return {
+    model: {
+      provider: nonEmptyString(model.provider, 'runtime.model.provider'),
+      id: nonEmptyString(model.id, 'runtime.model.id'),
+      build: nonEmptyString(model.build, 'runtime.model.build'),
+      reasoningSetting: nonEmptyString(
+        model.reasoningSetting,
+        'runtime.model.reasoningSetting',
+      ),
+      sampler,
+    },
+    agentHarness: {
+      name: nonEmptyString(harness.name, 'runtime.agentHarness.name'),
+      version: nonEmptyString(harness.version, 'runtime.agentHarness.version'),
+    },
+    platform: {
+      operatingSystem: nonEmptyString(
+        platform.operatingSystem,
+        'runtime.platform.operatingSystem',
+      ),
+      release: nonEmptyString(platform.release, 'runtime.platform.release'),
+      architecture: nonEmptyString(
+        platform.architecture,
+        'runtime.platform.architecture',
+      ),
+    },
+    toolchain: {
+      node: nonEmptyString(toolchain.node, 'runtime.toolchain.node'),
+      packageManager: nonEmptyString(
+        toolchain.packageManager,
+        'runtime.toolchain.packageManager',
+      ),
+      browser: nonEmptyString(toolchain.browser, 'runtime.toolchain.browser'),
+      browserRevision: nonEmptyString(
+        toolchain.browserRevision,
+        'runtime.toolchain.browserRevision',
+      ),
+    },
+    services,
+    runOrderSeed: nonEmptyString(input.runOrderSeed, 'runtime.runOrderSeed'),
   }
 }
 

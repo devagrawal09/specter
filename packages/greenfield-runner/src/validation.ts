@@ -1,11 +1,13 @@
 import { isAbsolute, normalize, sep } from 'node:path'
 
+import { sha256 as hashBytes, stableJson } from './storage.js'
 import type {
   EvaluationCommand,
   FrozenProvenance,
   MatrixEntry,
   PackageProvenance,
 } from './types.js'
+import { provenanceArtifactKinds } from './types.js'
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 const sha256Pattern = /^[a-f0-9]{64}$/
@@ -116,6 +118,56 @@ export function validateMatrixEntry(value: unknown): MatrixEntry {
 
 export function validateProvenance(value: unknown): FrozenProvenance {
   const input = record(value, 'provenance')
+  const artifacts = array(input.artifacts, 'artifacts')
+    .map((entry, index) => {
+      const artifact = record(entry, `artifacts[${index}]`)
+      return {
+        id: id(artifact.id, `artifacts[${index}].id`),
+        audience: literal(
+          artifact.audience,
+          ['public', 'private'],
+          `artifacts[${index}].audience`,
+        ),
+        kind: literal(
+          artifact.kind,
+          provenanceArtifactKinds,
+          `artifacts[${index}].kind`,
+        ),
+        sha256: sha256(artifact.sha256, `artifacts[${index}].sha256`),
+      }
+    })
+    .sort((left, right) => left.id.localeCompare(right.id))
+  if (artifacts.length === 0) throw new Error('artifacts must not be empty')
+  if (
+    new Set(artifacts.map((artifact) => artifact.id)).size !== artifacts.length
+  ) {
+    throw new Error('artifact IDs must be unique')
+  }
+  for (const kind of provenanceArtifactKinds) {
+    if (!artifacts.some((artifact) => artifact.kind === kind)) {
+      throw new Error(`artifacts must include at least one ${kind} artifact`)
+    }
+  }
+  const publicKinds = new Set([
+    'adopterPrompt',
+    'domainBrief',
+    'guidance',
+    'initializer',
+    'semanticCatalog',
+    'semanticMapContract',
+    'specterPackage',
+    'visibleSuite',
+  ])
+  for (const artifact of artifacts) {
+    const expectedAudience = publicKinds.has(artifact.kind)
+      ? 'public'
+      : 'private'
+    if (artifact.audience !== expectedAudience) {
+      throw new Error(
+        `${artifact.kind} artifact ${artifact.id} must be ${expectedAudience}`,
+      )
+    }
+  }
   const packages = array(input.packages, 'packages').map((entry, index) =>
     packageProvenance(entry, `packages[${index}]`),
   )
@@ -126,22 +178,31 @@ export function validateProvenance(value: unknown): FrozenProvenance {
   if (new Set(names).size !== names.length) {
     throw new Error('package provenance names must be unique')
   }
-  const guidanceFiles = array(input.guidanceFiles, 'guidanceFiles')
-    .map((entry, index) => {
-      const file = record(entry, `guidanceFiles[${index}]`)
-      return {
-        id: id(file.id, `guidanceFiles[${index}].id`),
-        sha256: sha256(file.sha256, `guidanceFiles[${index}].sha256`),
-      }
-    })
-    .sort((left, right) => left.id.localeCompare(right.id))
-  if (guidanceFiles.length === 0) {
-    throw new Error('guidanceFiles must not be empty')
+  for (const item of packages) {
+    const artifact = artifacts.find(
+      (candidate) => candidate.id === item.artifactId,
+    )
+    if (
+      artifact?.kind !== 'specterPackage' ||
+      artifact.audience !== 'public' ||
+      artifact.sha256 !== item.sha256
+    ) {
+      throw new Error(
+        `package ${item.name} must reference its matching public specterPackage artifact`,
+      )
+    }
   }
-  if (
-    new Set(guidanceFiles.map((file) => file.id)).size !== guidanceFiles.length
-  ) {
-    throw new Error('guidance file IDs must be unique')
+  const runtime = runtimeProvenance(input.runtime)
+
+  const artifactManifestSha256 = sha256(
+    input.artifactManifestSha256,
+    'artifactManifestSha256',
+  )
+  const computedManifestSha256 = hashBytes(stableJson(artifacts))
+  if (artifactManifestSha256 !== computedManifestSha256) {
+    throw new Error(
+      `artifactManifestSha256 does not match artifacts: expected ${computedManifestSha256}`,
+    )
   }
 
   return {
@@ -150,23 +211,12 @@ export function validateProvenance(value: unknown): FrozenProvenance {
       commitPattern,
       'specterCommit',
     ),
-    promptSha256: sha256(input.promptSha256, 'promptSha256'),
-    guidanceSha256: sha256(input.guidanceSha256, 'guidanceSha256'),
-    guidanceFiles,
-    briefSha256: sha256(input.briefSha256, 'briefSha256'),
-    verifierSha256: sha256(input.verifierSha256, 'verifierSha256'),
-    semanticCatalogSha256: sha256(
-      input.semanticCatalogSha256,
-      'semanticCatalogSha256',
-    ),
+    artifactManifestSha256,
+    artifacts,
     packages: packages.sort((left, right) =>
       left.name.localeCompare(right.name),
     ),
-    model: nonEmptyString(input.model, 'model'),
-    reasoningSetting: nonEmptyString(
-      input.reasoningSetting,
-      'reasoningSetting',
-    ),
+    runtime,
   }
 }
 
@@ -230,7 +280,98 @@ function packageProvenance(value: unknown, name: string): PackageProvenance {
   return {
     name: nonEmptyString(input.name, `${name}.name`),
     version: nonEmptyString(input.version, `${name}.version`),
+    artifactId: id(input.artifactId, `${name}.artifactId`),
     sha256: sha256(input.sha256, `${name}.sha256`),
+  }
+}
+
+function runtimeProvenance(value: unknown): FrozenProvenance['runtime'] {
+  const input = record(value, 'runtime')
+  const model = record(input.model, 'runtime.model')
+  const sampler = record(model.sampler, 'runtime.model.sampler')
+  for (const [key, entry] of Object.entries(sampler)) {
+    if (
+      entry !== null &&
+      typeof entry !== 'boolean' &&
+      typeof entry !== 'number' &&
+      typeof entry !== 'string'
+    ) {
+      throw new Error(`runtime.model.sampler.${key} must be a JSON scalar`)
+    }
+    if (typeof entry === 'number' && !Number.isFinite(entry)) {
+      throw new Error(`runtime.model.sampler.${key} must be finite`)
+    }
+  }
+  const harness = record(input.agentHarness, 'runtime.agentHarness')
+  const platform = record(input.platform, 'runtime.platform')
+  const toolchain = record(input.toolchain, 'runtime.toolchain')
+  const services = array(input.services, 'runtime.services')
+    .map((entry, index) => {
+      const service = record(entry, `runtime.services[${index}]`)
+      return {
+        id: id(service.id, `runtime.services[${index}].id`),
+        version: nonEmptyString(
+          service.version,
+          `runtime.services[${index}].version`,
+        ),
+        ...(service.digest === undefined
+          ? {}
+          : {
+              digest: nonEmptyString(
+                service.digest,
+                `runtime.services[${index}].digest`,
+              ),
+            }),
+      }
+    })
+    .sort((left, right) => left.id.localeCompare(right.id))
+  if (new Set(services.map((service) => service.id)).size !== services.length) {
+    throw new Error('runtime service IDs must be unique')
+  }
+  return {
+    model: {
+      provider: nonEmptyString(model.provider, 'runtime.model.provider'),
+      id: nonEmptyString(model.id, 'runtime.model.id'),
+      build: nonEmptyString(model.build, 'runtime.model.build'),
+      reasoningSetting: nonEmptyString(
+        model.reasoningSetting,
+        'runtime.model.reasoningSetting',
+      ),
+      sampler: Object.fromEntries(
+        Object.entries(sampler).sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      ) as FrozenProvenance['runtime']['model']['sampler'],
+    },
+    agentHarness: {
+      name: nonEmptyString(harness.name, 'runtime.agentHarness.name'),
+      version: nonEmptyString(harness.version, 'runtime.agentHarness.version'),
+    },
+    platform: {
+      operatingSystem: nonEmptyString(
+        platform.operatingSystem,
+        'runtime.platform.operatingSystem',
+      ),
+      release: nonEmptyString(platform.release, 'runtime.platform.release'),
+      architecture: nonEmptyString(
+        platform.architecture,
+        'runtime.platform.architecture',
+      ),
+    },
+    toolchain: {
+      node: nonEmptyString(toolchain.node, 'runtime.toolchain.node'),
+      packageManager: nonEmptyString(
+        toolchain.packageManager,
+        'runtime.toolchain.packageManager',
+      ),
+      browser: nonEmptyString(toolchain.browser, 'runtime.toolchain.browser'),
+      browserRevision: nonEmptyString(
+        toolchain.browserRevision,
+        'runtime.toolchain.browserRevision',
+      ),
+    },
+    services,
+    runOrderSeed: nonEmptyString(input.runOrderSeed, 'runtime.runOrderSeed'),
   }
 }
 

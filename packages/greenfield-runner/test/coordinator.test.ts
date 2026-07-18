@@ -7,6 +7,7 @@ import { afterEach, describe, it } from 'node:test'
 import {
   buildFrozenProvenance,
   expandCoordinatorCatalog,
+  provenanceArtifactKinds,
   toAdopterAssignment,
   validateCompleteMatrix,
 } from '../dist/index.js'
@@ -95,51 +96,51 @@ describe('coordinator catalog', () => {
 describe('provenance builder', () => {
   it('hashes every frozen input and validates expected digests', () => {
     const root = temporaryRoot()
-    const paths = {
-      promptPath: fixture(root, 'prompt.md', 'prompt\n'),
-      firstGuidance: fixture(root, 'skill.md', 'skill\n'),
-      secondGuidance: fixture(root, 'runtime.md', 'runtime\n'),
-      briefPath: fixture(root, 'brief.md', 'brief\n'),
-      semanticCatalogPath: fixture(root, 'catalog.json', '{"events":[]}\n'),
-      verifierArtifactPath: fixture(root, 'verifier.tgz', 'verifier\n'),
-      packagePath: fixture(root, 'core.tgz', 'package\n'),
-    }
+    const publicKinds = new Set([
+      'adopterPrompt',
+      'domainBrief',
+      'guidance',
+      'initializer',
+      'semanticCatalog',
+      'semanticMapContract',
+      'specterPackage',
+      'visibleSuite',
+    ])
+    const artifacts = provenanceArtifactKinds.map((kind, index) => ({
+      id: `artifact-${index + 1}`,
+      audience: publicKinds.has(kind) ? 'public' : 'private',
+      kind,
+      path: fixture(root, `${kind}.artifact`, `${kind}\n`),
+    }))
+    const packageArtifact = artifacts.find(
+      (artifact) => artifact.kind === 'specterPackage',
+    )
+    assert.ok(packageArtifact)
     const config = {
       specterCommit: 'abcdef0123456789',
-      promptPath: paths.promptPath,
-      guidanceFiles: [
-        { id: 'specter-skill', path: paths.firstGuidance },
-        { id: 'runtime-guide', path: paths.secondGuidance },
-      ],
-      briefPath: paths.briefPath,
-      semanticCatalogPath: paths.semanticCatalogPath,
-      verifierArtifactPath: paths.verifierArtifactPath,
+      artifacts,
       packageTarballs: [
         {
           name: '@specter-ts/core',
           version: '0.3.0',
-          path: paths.packagePath,
+          artifactId: packageArtifact.id,
+          path: packageArtifact.path,
         },
       ],
-      model: 'test-model',
-      reasoningSetting: 'test',
+      runtime: runtime(),
     }
     const computed = buildFrozenProvenance(config)
-    assert.equal(computed.promptSha256.length, 64)
-    assert.equal(computed.guidanceFiles.length, 2)
+    assert.equal(computed.artifactManifestSha256.length, 64)
+    assert.equal(computed.artifacts.length, provenanceArtifactKinds.length)
     assert.equal(computed.packages[0]?.sha256.length, 64)
 
     const verified = buildFrozenProvenance({
       ...config,
       expected: {
-        promptSha256: computed.promptSha256,
-        guidanceSha256: computed.guidanceSha256,
-        guidanceFiles: Object.fromEntries(
-          computed.guidanceFiles.map((file) => [file.id, file.sha256]),
+        artifactManifestSha256: computed.artifactManifestSha256,
+        artifacts: Object.fromEntries(
+          computed.artifacts.map((artifact) => [artifact.id, artifact.sha256]),
         ),
-        briefSha256: computed.briefSha256,
-        semanticCatalogSha256: computed.semanticCatalogSha256,
-        verifierSha256: computed.verifierSha256,
         packageTarballs: {
           '@specter-ts/core': computed.packages[0]?.sha256,
         },
@@ -150,9 +151,19 @@ describe('provenance builder', () => {
       () =>
         buildFrozenProvenance({
           ...config,
-          expected: { promptSha256: '0'.repeat(64) },
+          expected: { artifactManifestSha256: '0'.repeat(64) },
         }),
-      /Digest mismatch for promptSha256/,
+      /Digest mismatch for artifactManifestSha256/,
+    )
+    assert.throws(
+      () =>
+        buildFrozenProvenance({
+          ...config,
+          artifacts: artifacts.filter(
+            (artifact) => artifact.kind !== 'heldOutSuite',
+          ),
+        }),
+      /must include at least one heldOutSuite artifact/,
     )
   })
 })
@@ -215,4 +226,30 @@ function fixture(root: string, name: string, content: string): string {
   const path = join(root, name)
   writeFileSync(path, content)
   return path
+}
+
+function runtime(): object {
+  return {
+    model: {
+      provider: 'openai',
+      id: 'test-model',
+      build: '2026-07-18',
+      reasoningSetting: 'test',
+      sampler: { seed: 42, temperature: 0 },
+    },
+    agentHarness: { name: 'codex', version: 'test' },
+    platform: {
+      operatingSystem: 'darwin',
+      release: 'test',
+      architecture: 'arm64',
+    },
+    toolchain: {
+      node: process.version,
+      packageManager: 'pnpm@test',
+      browser: 'chromium',
+      browserRevision: 'test-revision',
+    },
+    services: [{ id: 'postgres', version: 'test', digest: 'sha256:test' }],
+    runOrderSeed: 'greenfield-test-order',
+  }
 }
