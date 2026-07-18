@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/evaluations/greenfield-assignment.schema.json",
+  "title": "Frozen Specter greenfield adoption assignment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assignmentId",
+    "attemptNumber",
+    "domain",
+    "profile",
+    "packages",
+    "guidance",
+    "visibleCommands",
+    "agentConfiguration",
+    "activeWorkLimitMinutes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "assignmentId": { "type": "string", "minLength": 1 },
+    "attemptNumber": { "enum": [1, 2] },
+    "domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "cohort", "brief", "checkpointOperation"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "cohort": { "enum": ["replication", "transfer"] },
+        "brief": { "$ref": "#/$defs/fileDigest" },
+        "checkpointOperation": { "type": "string", "minLength": 1 }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["persistence", "topology", "port"],
+      "properties": {
+        "persistence": { "enum": ["sqlite", "postgres"] },
+        "topology": { "enum": ["single-process", "multi-process"] },
+        "port": { "type": "integer", "minimum": 10000, "maximum": 65535 }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "persistence": { "const": "sqlite" } } },
+          "then": { "properties": { "topology": { "const": "single-process" } } }
+        },
+        {
+          "if": { "properties": { "persistence": { "const": "postgres" } } },
+          "then": { "properties": { "topology": { "const": "multi-process" } } }
+        }
+      ]
+    },
+    "packages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileDigest" },
+      "minItems": 5
+    },
+    "guidance": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/fileDigest" },
+      "minItems": 4
+    },
+    "visibleCommands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bootstrap", "verticalPath", "domainCompleteness"],
+      "properties": {
+        "bootstrap": { "$ref": "#/$defs/commands" },
+        "verticalPath": { "$ref": "#/$defs/commands" },
+        "domainCompleteness": { "$ref": "#/$defs/commands" }
+      }
+    },
+    "agentConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "reasoning", "delegation"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "reasoning": { "type": "string", "minLength": 1 },
+        "delegation": { "const": false }
+      }
+    },
+    "activeWorkLimitMinutes": { "const": 180 }
+  },
+  "$defs": {
+    "argv": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    },
+    "commands": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/argv" },
+      "minItems": 1
+    },
+    "fileDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
