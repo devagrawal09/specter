@@ -250,6 +250,35 @@ function runtime(): object {
       browserRevision: 'test-revision',
     },
     services: [{ id: 'postgres', version: 'test', digest: 'sha256:test' }],
+    ...runtimeControls(),
     runOrderSeed: 'greenfield-test-order',
+  }
+}
+
+function runtimeControls() {
+  const runOrder = Array.from(
+    { length: 10 },
+    (_, index) => `attempt-${index + 1}`,
+  )
+  return {
+    executionImage: { name: 'test-image', sha256: 'e'.repeat(64) },
+    resourceLimits: {
+      contextTokens: 200_000,
+      cpuCores: 4,
+      memoryMiB: 8192,
+      activeMinutes: 180,
+      checkpointMinutes: 75,
+      remediationMinutes: 60,
+    },
+    dependencyCache: { id: 'test-cache', sha256: 'f'.repeat(64) },
+    imageInputs: [],
+    runOrder,
+    freshContexts: runOrder.map((attemptId, index) => ({
+      attemptId,
+      taskId: `task-${index + 1}`,
+      initialContextTokens: 0,
+      freshTask: true,
+      parentTaskId: null,
+    })),
   }
 }

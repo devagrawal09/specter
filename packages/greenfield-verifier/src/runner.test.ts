@@ -5,6 +5,8 @@ import {
   stringifyVerificationResult,
   verifyGreenfieldAttempt,
 } from './runner.js'
+import { resolveSemanticMapping } from './semantic-map.js'
+import type { ProjectSemanticMap } from './types.js'
 import type {
   CheckDefinition,
   EvidenceKind,
@@ -224,6 +226,20 @@ describe('verifyGreenfieldAttempt', () => {
     assert.match(
       stringifyVerificationResult(result),
       /"fullFirstAttemptSuccess": true/,
+    )
+  })
+
+  it('runs only checks assigned to the coordinator snapshot gate', async () => {
+    const result = await verifyGreenfieldAttempt(validPlan(), passingDriver(), {
+      now: () => 100,
+      gateScope: ['verticalPath'],
+    })
+
+    assert.ok(result.firstAttempt.checks.length > 0)
+    assert.ok(
+      result.firstAttempt.checks.every(
+        (checkResult) => checkResult.gate === 'verticalPath',
+      ),
     )
   })
 
@@ -524,6 +540,65 @@ describe('validateVerificationPlan', () => {
     assert.throws(
       () => validateVerificationPlan(plan),
       /reactionDeliveryRecovery must be heldOut in gate robustness/,
+    )
+  })
+})
+
+describe('semantic map resolution', () => {
+  const semanticMap: ProjectSemanticMap = {
+    schemaVersion: 1,
+    domain: 'inventory',
+    mappings: {
+      'inventory.command.receive-stock': {
+        capability: 'command',
+        envelopeType: 'receiveStock',
+        request: { kind: 'identity' },
+        result: { kind: 'identity' },
+      },
+    },
+  }
+
+  it('rejects a missing adopter-mapped capability before operational lookup', () => {
+    assert.throws(
+      () =>
+        resolveSemanticMapping(
+          semanticMap,
+          'inventory.query.stock-level',
+          'query',
+        ),
+      /Missing required query semantic mapping/,
+    )
+  })
+
+  it('allows only genuinely coordinator-owned capabilities to be unmapped', () => {
+    assert.equal(
+      resolveSemanticMapping(
+        semanticMap,
+        'inventory.restart.persistence',
+        'restart',
+      ),
+      undefined,
+    )
+  })
+
+  it('rejects capability mismatches and operational aliases', () => {
+    assert.throws(
+      () =>
+        resolveSemanticMapping(
+          semanticMap,
+          'inventory.command.receive-stock',
+          'query',
+        ),
+      /Semantic capability mismatch/,
+    )
+    assert.throws(
+      () =>
+        resolveSemanticMapping(
+          semanticMap,
+          'inventory.command.receive-stock',
+          'restart',
+        ),
+      /Operational capability restart must not use adopter mapping/,
     )
   })
 })

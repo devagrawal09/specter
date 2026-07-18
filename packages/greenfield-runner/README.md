@@ -7,8 +7,9 @@ interface, records evidence, and reports the four cumulative evaluation gates.
 
 ## Safety model
 
-- Attempt IDs are `<domain-id>-<1|2>` and are created below an explicit attempts
-  root. Preparing an existing attempt always fails.
+- Attempt IDs are `<domain-id>-<1|2>`. Private state is created below an
+  explicit coordinator root and adopter-writable files below a physically
+  separate adopter root. Preparing either side of an existing attempt fails.
 - Paths in matrix entries are validated relative paths. Freeze paths may not
   overlap or escape the attempt. Commands use an executable plus an argument
   array with `shell: false`; command-shell executables are rejected.
@@ -37,15 +38,19 @@ interface, records evidence, and reports the four cumulative evaluation gates.
 - Active work uses explicit start/stop sessions and a fixed 10,800,000ms
   (180-minute) limit. Markers after the limit become `time-expired`; the report
   can never classify such an attempt as a first-attempt success. Coordinators
-  use `enforceActiveLimit` to invoke their agent/process termination callback at
-  the limit instead of waiting for a later marker.
+  run the `supervise` command against the adopter process group for both the
+  75-minute checkpoint ceiling and 180-minute total limit.
 
 The coordinator root and adopter root are separate siblings or separate mounts;
 neither may contain the other. Never place `frozen-provenance.json`, full matrix
 entries, runner state, held-out commands, or private-kit artifacts above an
 adopter-writable workspace. Before scoring, run `rehearse-isolation` from inside
-the actual adopter sandbox using public and private canary paths. A readable
-private canary fails the rehearsal.
+the actual adopter sandbox using public and private canary paths. The contract
+must name the prepared attempt ID, config digest, exact private attempt root,
+and exact public adopter root. A readable private canary fails the rehearsal.
+Capture the JSON result outside the sandbox and persist it with
+`record-isolation`; timer start and verification refuse missing, failing,
+replayed, root-mismatched, or config-mismatched attestations.
 
 ## Inputs
 
@@ -66,7 +71,12 @@ brief, guidance, initializer, semantic catalog/map contract, Specter packages,
 visible suite, check catalog/cases/plans, coordinator driver, execution catalog,
 runner/verifier, service/browser fixtures, and held-out suite. Runtime provenance
 also fixes the model build/sampler, agent harness, OS/architecture, Node/package
-manager, browser revision, services, and run-order seed.
+manager, browser revision, services, and run-order seed. It also freezes the
+methodology, friction codebook, candidate table, exact randomized schedule,
+recommendation evidence map, environment-failure signatures, reviewer
+assignment, and system/developer/tool policies. Runtime controls include the
+exact ten-attempt order, unique fresh-task records, execution-image digest,
+context/CPU/memory/time limits, image-input digests, and dependency-cache digest.
 
 ## Catalog expansion and audience boundary
 
@@ -102,64 +112,110 @@ Build the package and invoke `dist/cli.js` (or the installed
 
 ```sh
 specter-greenfield prepare \
-  --attempts-root /evaluation/attempts \
+  --coordinator-root /evaluation/private/attempts \
+  --adopter-root /evaluation/public/attempts \
   --assignment /evaluation/matrix/emergency-department-1.json \
   --provenance /evaluation/frozen-provenance.json
 
+# Run in the actual adopter sandbox, capture stdout coordinator-side, then
+# persist the passing result in the exact private attempt directory.
+specter-greenfield rehearse-isolation \
+  --contract /evaluation/public/attempts/emergency-department-1/isolation-contract.json \
+  > /evaluation/private/isolation-result.json
+specter-greenfield record-isolation \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
+  --result /evaluation/private/isolation-result.json
+
 specter-greenfield timer-start \
-  --attempt /evaluation/attempts/emergency-department-1
+  --attempt /evaluation/private/attempts/emergency-department-1
+
+# Every pause must use a protocol allowlist reason and durable audit evidence.
+specter-greenfield timer-stop \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
+  --reason coordinator-service-recovery \
+  --trigger-evidence 'postgres health signature db-reset-17' \
+  --coordinator-action 'restarted the prepared database service'
+specter-greenfield timer-start \
+  --attempt /evaluation/private/attempts/emergency-department-1
+
+# Run these independently against the adopter process-group leader PID.
+specter-greenfield supervise \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
+  --pid 12345 --limit checkpoint
+specter-greenfield supervise \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
+  --pid 12345 --limit active
 
 specter-greenfield mark \
-  --attempt /evaluation/attempts/emergency-department-1 \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
   --kind bootstrap --outcome passed
 
 specter-greenfield mark \
-  --attempt /evaluation/attempts/emergency-department-1 \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
   --kind checkpoint --outcome passed
 
 specter-greenfield freeze \
-  --attempt /evaluation/attempts/emergency-department-1 \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
   --outcome passed
 
 specter-greenfield verify \
-  --attempt /evaluation/attempts/emergency-department-1 --suite visible
+  --attempt /evaluation/private/attempts/emergency-department-1 --suite visible
 
 specter-greenfield verify \
-  --attempt /evaluation/attempts/emergency-department-1 --suite held-out
+  --attempt /evaluation/private/attempts/emergency-department-1 --suite held-out
 
 specter-greenfield report \
-  --attempt /evaluation/attempts/emergency-department-1
+  --attempt /evaluation/private/attempts/emergency-department-1
 
 specter-greenfield remediation-start \
-  --attempt /evaluation/attempts/emergency-department-1
+  --attempt /evaluation/private/attempts/emergency-department-1
+
+# Run independently against the remediation process-group leader. The
+# supervisor terminates and freezes remediation at 60 active minutes.
+specter-greenfield supervise \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
+  --pid 12346 --limit remediation
 
 # After the unscored repair, freeze it before running the verifier:
 specter-greenfield remediation-freeze \
-  --attempt /evaluation/attempts/emergency-department-1
+  --attempt /evaluation/private/attempts/emergency-department-1
 
 # Run the verifier against remediation/artifacts with the binding environment
 # returned by the coordinator state, then record that exact result:
 specter-greenfield remediation-finish \
-  --attempt /evaluation/attempts/emergency-department-1 \
+  --attempt /evaluation/private/attempts/emergency-department-1 \
   --result /evaluation/remediation/emergency-department-1/verifier-result.json
 
-specter-greenfield aggregate --attempts-root /evaluation/attempts
+specter-greenfield aggregate \
+  --attempts-root /evaluation/private/attempts \
+  --matrix /evaluation/matrix.json
 
 specter-greenfield expand-catalog --catalog /evaluation/catalog.json
 specter-greenfield validate-matrix --matrix /evaluation/matrix.json
 specter-greenfield adopter-assignment \
   --matrix /evaluation/matrix.json --attempt-id emergency-department-1
 specter-greenfield build-provenance --config /evaluation/provenance-input.json
-specter-greenfield rehearse-isolation \
-  --contract /evaluation/public/isolation-contract.json
+specter-greenfield rehearse-isolation --contract FILE
+specter-greenfield record-isolation --attempt DIR --result FILE
 ```
 
-`freeze` stops a running active timer. For an intentional pause before final
-freeze, use `timer-stop`, then `timer-start` when work resumes. Use `failed` or
-`time-expired` outcomes to preserve unsuccessful attempts; never remove them.
-Start an `enforceActiveLimit` watchdog after every `timer-start`; cancel it when
-the timer is intentionally stopped. `setupWallMs` ends at the first timer start,
-and `scoredWallMs` begins there, so pre-attempt coordinator delay is not scored.
+`freeze` stops a running active timer with a `final-freeze` audit record. For an
+intentional pause before final freeze, `timer-stop` requires `--reason`,
+`--trigger-evidence`, and `--coordinator-action`; the reason must be
+`checkpoint-capture`, `coordinator-service-recovery`, `coordinator-approval`, or
+`final-freeze`. `timer-start` closes the persisted pause interval when work
+resumes. Remediation has corresponding `remediation-timer-stop` and
+`remediation-timer-start` commands and a distinct 60-active-minute timer. Use
+`failed` or `time-expired` outcomes to preserve unsuccessful attempts; never
+remove them.
+Start both first-attempt `supervise` processes after `timer-start`. On a recorded
+checkpoint or at 75 active minutes, the checkpoint supervisor terminates active
+editing, captures a time-expired checkpoint at the ceiling when bootstrap exists,
+and persists a `checkpoint-capture` pause. The coordinator sends the unchanged
+`CONTINUE`, calls `timer-start`, and restarts the adopter process as needed. The
+active supervisor terminates at final freeze or 180 active minutes. `setupWallMs`
+ends at the first timer start, and `scoredWallMs` begins there, so pre-attempt
+coordinator delay is not scored.
 
 The remediation finish command requires the remediation snapshot, exact attempt
 and coordinator binding, a complete four-gate remediation phase, and an
@@ -172,10 +228,10 @@ to pass. Robustness requires all earlier gates plus the held-out suite.
 ## Evidence layout
 
 ```text
-<attempt>/
+<coordinator-root>/<attempt>/
   frozen-provenance.json
+  isolation-attestation.json
   state.json
-  workspace/
   logs/chronology.jsonl
   logs/commands/*.stdout.log
   logs/commands/*.stderr.log
@@ -189,11 +245,19 @@ to pass. Robustness requires all earlier gates plus the held-out suite.
   visible-results.json
   held-out-results.json
   attempt-report.json
+
+<adopter-root>/<attempt>/
+  adopter-assignment.json
+  workspace/
 ```
 
 The manifest hashes every frozen regular file and records directory and symlink
-entries. `aggregate-report.json` sorts attempts by ID and reports replication
-versus transfer domains and SQLite versus Postgres profiles separately.
+entries. Aggregation requires the preregistered matrix, exactly its ten attempt
+IDs, complete bound held-out results, and identical shared controls. It rejects
+missing/extra runs or provenance drift before writing `aggregate-report.json`.
+It also requires a bound passing isolation attestation for every attempt,
+recorded active-time starts in the exact frozen two-block order, and one unique
+fresh task/context record for each matrix attempt.
 
 ## Library integration
 

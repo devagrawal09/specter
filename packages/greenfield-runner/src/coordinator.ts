@@ -19,6 +19,7 @@ import {
   safeRelativePath,
   validateMatrixEntry,
   validateProvenance,
+  validateRuntimeProvenance,
 } from './validation.js'
 
 const idPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
@@ -511,93 +512,7 @@ function requireArtifactKinds(
 }
 
 function parseRuntime(value: unknown): RuntimeProvenance {
-  const input = record(value, 'runtime')
-  const model = record(input.model, 'runtime.model')
-  const sampler = Object.fromEntries(
-    Object.entries(record(model.sampler, 'runtime.model.sampler'))
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, entry]) => {
-        if (
-          entry !== null &&
-          typeof entry !== 'boolean' &&
-          typeof entry !== 'number' &&
-          typeof entry !== 'string'
-        ) {
-          throw new Error(`runtime.model.sampler.${key} must be a JSON scalar`)
-        }
-        if (typeof entry === 'number' && !Number.isFinite(entry)) {
-          throw new Error(`runtime.model.sampler.${key} must be finite`)
-        }
-        return [key, entry]
-      }),
-  )
-  const harness = record(input.agentHarness, 'runtime.agentHarness')
-  const platform = record(input.platform, 'runtime.platform')
-  const toolchain = record(input.toolchain, 'runtime.toolchain')
-  const services = array(input.services, 'runtime.services')
-    .map((item, index) => {
-      const service = record(item, `runtime.services[${index}]`)
-      return {
-        id: id(service.id, `runtime.services[${index}].id`),
-        version: nonEmptyString(
-          service.version,
-          `runtime.services[${index}].version`,
-        ),
-        ...(service.digest === undefined
-          ? {}
-          : {
-              digest: nonEmptyString(
-                service.digest,
-                `runtime.services[${index}].digest`,
-              ),
-            }),
-      }
-    })
-    .sort((left, right) => left.id.localeCompare(right.id))
-  if (new Set(services.map((service) => service.id)).size !== services.length) {
-    throw new Error('runtime service IDs must be unique')
-  }
-  return {
-    model: {
-      provider: nonEmptyString(model.provider, 'runtime.model.provider'),
-      id: nonEmptyString(model.id, 'runtime.model.id'),
-      build: nonEmptyString(model.build, 'runtime.model.build'),
-      reasoningSetting: nonEmptyString(
-        model.reasoningSetting,
-        'runtime.model.reasoningSetting',
-      ),
-      sampler,
-    },
-    agentHarness: {
-      name: nonEmptyString(harness.name, 'runtime.agentHarness.name'),
-      version: nonEmptyString(harness.version, 'runtime.agentHarness.version'),
-    },
-    platform: {
-      operatingSystem: nonEmptyString(
-        platform.operatingSystem,
-        'runtime.platform.operatingSystem',
-      ),
-      release: nonEmptyString(platform.release, 'runtime.platform.release'),
-      architecture: nonEmptyString(
-        platform.architecture,
-        'runtime.platform.architecture',
-      ),
-    },
-    toolchain: {
-      node: nonEmptyString(toolchain.node, 'runtime.toolchain.node'),
-      packageManager: nonEmptyString(
-        toolchain.packageManager,
-        'runtime.toolchain.packageManager',
-      ),
-      browser: nonEmptyString(toolchain.browser, 'runtime.toolchain.browser'),
-      browserRevision: nonEmptyString(
-        toolchain.browserRevision,
-        'runtime.toolchain.browserRevision',
-      ),
-    },
-    services,
-    runOrderSeed: nonEmptyString(input.runOrderSeed, 'runtime.runOrderSeed'),
-  }
+  return validateRuntimeProvenance(value)
 }
 
 function record(value: unknown, name: string): Record<string, unknown> {

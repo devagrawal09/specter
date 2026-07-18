@@ -13,6 +13,10 @@ import { join, relative, resolve } from 'node:path'
 
 import { ProcessCommandRunner } from './command-runner.js'
 import {
+  assertPassingIsolationAttestation,
+  assertPhysicallySeparateRoots,
+} from './isolation.js'
+import {
   appendJsonLine,
   readJson,
   resolveBelow,
@@ -22,7 +26,11 @@ import {
 } from './storage.js'
 import {
   ACTIVE_LIMIT_MS,
+  CHECKPOINT_LIMIT_MS,
+  pauseReasons,
+  REMEDIATION_LIMIT_MS,
   type ActiveLimitWatchdog,
+  type ActiveTimer,
   type AttemptMarker,
   type AttemptState,
   type CommandExecutionResult,
@@ -30,6 +38,7 @@ import {
   type EvaluationCommand,
   type MarkerKind,
   type MarkerOutcome,
+  type PauseRequest,
   type PhaseSuiteRun,
   type PreparedAttempt,
   type RecordedCommandResult,
@@ -58,7 +67,8 @@ const systemWatchdogScheduler: WatchdogScheduler = {
 }
 
 export interface PrepareAttemptOptions {
-  readonly attemptsRoot: string
+  readonly coordinatorRoot: string
+  readonly adopterRoot: string
   readonly assignment: unknown
   readonly provenance: unknown
   readonly clock?: Clock
@@ -67,12 +77,20 @@ export interface PrepareAttemptOptions {
 export function prepareAttempt(options: PrepareAttemptOptions): string {
   const assignment = validateMatrixEntry(options.assignment)
   const provenance = validateProvenance(options.provenance)
-  const attemptsRoot = resolve(options.attemptsRoot)
-  mkdirSync(attemptsRoot, { recursive: true })
-  const attemptDirectory = resolveBelow(attemptsRoot, assignment.attemptId)
-  if (existsSync(attemptDirectory)) {
+  mkdirSync(resolve(options.coordinatorRoot), { recursive: true })
+  mkdirSync(resolve(options.adopterRoot), { recursive: true })
+  const roots = assertPhysicallySeparateRoots(
+    options.coordinatorRoot,
+    options.adopterRoot,
+  )
+  const attemptDirectory = resolveBelow(
+    roots.coordinatorRoot,
+    assignment.attemptId,
+  )
+  const adopterDirectory = resolveBelow(roots.adopterRoot, assignment.attemptId)
+  if (existsSync(attemptDirectory) || existsSync(adopterDirectory)) {
     throw new Error(
-      `Refusing to overwrite existing attempt: ${attemptDirectory}`,
+      `Refusing to overwrite existing attempt: ${assignment.attemptId}`,
     )
   }
 
@@ -83,6 +101,7 @@ export function prepareAttempt(options: PrepareAttemptOptions): string {
     schemaVersion: 1,
     assignment,
     provenance,
+    adopterDirectory,
     configSha256,
     preparedAt,
   }
@@ -94,6 +113,7 @@ export function prepareAttempt(options: PrepareAttemptOptions): string {
       limitMs: ACTIVE_LIMIT_MS,
       accumulatedMs: 0,
       sessions: [],
+      pauses: [],
     },
     markers: [],
     snapshots: {},
@@ -101,10 +121,17 @@ export function prepareAttempt(options: PrepareAttemptOptions): string {
   }
 
   mkdirSync(attemptDirectory)
+  mkdirSync(adopterDirectory)
   mkdirSync(join(attemptDirectory, 'logs'))
-  mkdirSync(resolveBelow(attemptDirectory, assignment.workspacePath), {
+  mkdirSync(resolveBelow(adopterDirectory, assignment.workspacePath), {
     recursive: true,
   })
+  const { heldOutCommands: _heldOutCommands, ...adopterAssignment } = assignment
+  writeFileSync(
+    join(adopterDirectory, 'adopter-assignment.json'),
+    `${stableJson(adopterAssignment)}\n`,
+    { flag: 'wx' },
+  )
   writeFileSync(
     join(attemptDirectory, 'frozen-provenance.json'),
     `${stableJson(prepared)}\n`,
@@ -121,6 +148,7 @@ export function startActiveTime(
   attemptDirectory: string,
   clock: Clock = systemClock,
 ): AttemptState {
+  assertPassingIsolationAttestation(attemptDirectory)
   const state = loadState(attemptDirectory)
   assertNotFrozen(state)
   if (state.timer.runningSince) {
@@ -132,7 +160,7 @@ export function startActiveTime(
   const now = clock.now().toISOString()
   const updated: AttemptState = {
     ...state,
-    timer: { ...state.timer, runningSince: now },
+    timer: resumeTimer(state.timer, now),
   }
   saveState(attemptDirectory, updated)
   appendChronology(attemptDirectory, clock, 'active-time-started', {})
@@ -141,36 +169,23 @@ export function startActiveTime(
 
 export function stopActiveTime(
   attemptDirectory: string,
+  pause: PauseRequest,
   clock: Clock = systemClock,
 ): AttemptState {
   const state = loadState(attemptDirectory)
   if (!state.timer.runningSince) throw new Error('Active timer is not running')
+  assertPauseRequest(pause)
   const stoppedAt = clock.now()
-  const elapsedMs = Math.max(
-    0,
-    stoppedAt.getTime() - Date.parse(state.timer.runningSince),
-  )
-  const accumulatedMs = state.timer.accumulatedMs + elapsedMs
+  const timer = pauseTimer(state.timer, pause, stoppedAt)
   const updated: AttemptState = {
     ...state,
-    timer: {
-      ...state.timer,
-      accumulatedMs,
-      runningSince: undefined,
-      sessions: [
-        ...state.timer.sessions,
-        {
-          startedAt: state.timer.runningSince,
-          stoppedAt: stoppedAt.toISOString(),
-          elapsedMs,
-        },
-      ],
-    },
+    timer,
   }
   saveState(attemptDirectory, updated)
   appendChronology(attemptDirectory, clock, 'active-time-stopped', {
-    activeElapsedMs: accumulatedMs,
-    limitExceeded: accumulatedMs > state.timer.limitMs,
+    activeElapsedMs: timer.accumulatedMs,
+    limitExceeded: timer.accumulatedMs > state.timer.limitMs,
+    pause: timer.pauses.at(-1),
   })
   return updated
 }
@@ -184,6 +199,65 @@ export function activeElapsedMs(
     state.timer.accumulatedMs +
     Math.max(0, clock.now().getTime() - Date.parse(state.timer.runningSince))
   )
+}
+
+function assertPauseRequest(pause: PauseRequest): void {
+  if (!(pauseReasons as readonly string[]).includes(pause.reason)) {
+    throw new Error(
+      `Pause reason must be allowlisted: ${pauseReasons.join(', ')}`,
+    )
+  }
+  if (!pause.triggerEvidence.trim()) {
+    throw new Error('Pause trigger evidence must be non-empty')
+  }
+  if (!pause.coordinatorAction.trim()) {
+    throw new Error('Pause coordinator action must be non-empty')
+  }
+}
+
+function pauseTimer(
+  timer: ActiveTimer,
+  pause: PauseRequest,
+  stoppedAt: Date,
+): ActiveTimer {
+  if (!timer.runningSince) throw new Error('Timer is not running')
+  const elapsedMs = Math.max(
+    0,
+    stoppedAt.getTime() - Date.parse(timer.runningSince),
+  )
+  return {
+    ...timer,
+    accumulatedMs: timer.accumulatedMs + elapsedMs,
+    runningSince: undefined,
+    sessions: [
+      ...timer.sessions,
+      {
+        startedAt: timer.runningSince,
+        stoppedAt: stoppedAt.toISOString(),
+        elapsedMs,
+      },
+    ],
+    pauses: [...timer.pauses, { ...pause, startedAt: stoppedAt.toISOString() }],
+  }
+}
+
+function resumeTimer(timer: ActiveTimer, resumedAt: string): ActiveTimer {
+  const openPause = timer.pauses.at(-1)
+  const pauses =
+    openPause && openPause.endedAt === undefined
+      ? [
+          ...timer.pauses.slice(0, -1),
+          {
+            ...openPause,
+            endedAt: resumedAt,
+            wallElapsedMs: Math.max(
+              0,
+              Date.parse(resumedAt) - Date.parse(openPause.startedAt),
+            ),
+          },
+        ]
+      : timer.pauses
+  return { ...timer, runningSince: resumedAt, pauses }
 }
 
 export function enforceActiveLimit(
@@ -279,9 +353,14 @@ export function recordMarker(
     throw new Error('Bootstrap must be recorded before checkpoint')
   }
   const elapsed = activeElapsedMs(state, clock)
+  const phaseLimitExceeded =
+    kind === 'checkpoint' && elapsed >= CHECKPOINT_LIMIT_MS
   const marker: AttemptMarker = {
     kind,
-    outcome: elapsed > state.timer.limitMs ? 'time-expired' : outcome,
+    outcome:
+      elapsed > state.timer.limitMs || phaseLimitExceeded
+        ? 'time-expired'
+        : outcome,
     recordedAt: clock.now().toISOString(),
     activeElapsedMs: elapsed,
     ...(note ? { note } : {}),
@@ -316,7 +395,18 @@ export function freezeFirstAttempt(
     throw new Error('First-attempt artifacts are already frozen')
   }
   if (state.timer.runningSince) {
-    state = stopActiveTime(attemptDirectory, clock)
+    state = stopActiveTime(
+      attemptDirectory,
+      {
+        reason: 'final-freeze',
+        triggerEvidence:
+          outcome === 'time-expired'
+            ? 'TIME_EXPIRED or active-limit watchdog termination'
+            : 'FINAL_READY coordinator freeze request',
+        coordinatorAction: 'stopped active work for immutable final capture',
+      },
+      clock,
+    )
   }
 
   const prepared = loadPrepared(attemptDirectory)
@@ -358,6 +448,7 @@ export async function runVerificationSuite(
   runner: CommandRunner = new ProcessCommandRunner(),
   clock: Clock = systemClock,
 ): Promise<SuiteRun> {
+  assertPassingIsolationAttestation(attemptDirectory)
   const state = loadState(attemptDirectory)
   if (!state.freeze) {
     throw new Error('Freeze the first attempt before verification')
@@ -528,7 +619,10 @@ export async function runVerificationSuite(
         ? phaseRuns.every((phase) => phase.commandPassed)
         : !harnessFailure &&
           verifierGates !== undefined &&
-          Object.values(verifierGates).every(Boolean),
+          Object.values(verifierGates).every(Boolean) &&
+          phaseRuns.every(
+            (phase) => phase.verifierResult?.fullFirstAttemptSuccess === true,
+          ),
     verificationArtifacts: phaseRuns.at(-1)?.verificationArtifacts ?? '',
     commands: results,
     phaseRuns,
@@ -564,23 +658,191 @@ export function beginRemediation(
     throw new Error('Remediation has already started')
   }
   const startedAt = clock.now().toISOString()
-  const updated = { ...state, remediation: { startedAt } }
+  const updated: AttemptState = {
+    ...state,
+    remediation: {
+      startedAt,
+      timer: {
+        limitMs: REMEDIATION_LIMIT_MS,
+        accumulatedMs: 0,
+        runningSince: startedAt,
+        sessions: [],
+        pauses: [],
+      },
+    },
+  }
   saveState(attemptDirectory, updated)
-  appendChronology(attemptDirectory, clock, 'remediation-started', {})
+  appendChronology(attemptDirectory, clock, 'remediation-started', {
+    limitMs: REMEDIATION_LIMIT_MS,
+  })
   return updated
+}
+
+export function remediationElapsedMs(
+  state: AttemptState,
+  clock: Clock = systemClock,
+): number {
+  const timer = state.remediation?.timer
+  if (!timer) return 0
+  if (!timer.runningSince) return timer.accumulatedMs
+  return (
+    timer.accumulatedMs +
+    Math.max(0, clock.now().getTime() - Date.parse(timer.runningSince))
+  )
+}
+
+export function startRemediationTime(
+  attemptDirectory: string,
+  clock: Clock = systemClock,
+): AttemptState {
+  const state = loadState(attemptDirectory)
+  const remediation = state.remediation
+  if (!remediation) throw new Error('Remediation has not started')
+  if (remediation.finishedAt || remediation.snapshot) {
+    throw new Error('Remediation can no longer resume after its freeze')
+  }
+  if (remediation.timer.runningSince) {
+    throw new Error('Remediation timer is already running')
+  }
+  if (remediation.timer.accumulatedMs >= remediation.timer.limitMs) {
+    throw new Error('The 60 active-minute remediation limit is exhausted')
+  }
+  const now = clock.now().toISOString()
+  const updated: AttemptState = {
+    ...state,
+    remediation: {
+      ...remediation,
+      timer: resumeTimer(remediation.timer, now),
+    },
+  }
+  saveState(attemptDirectory, updated)
+  appendChronology(attemptDirectory, clock, 'remediation-time-started', {})
+  return updated
+}
+
+export function stopRemediationTime(
+  attemptDirectory: string,
+  pause: PauseRequest,
+  clock: Clock = systemClock,
+): AttemptState {
+  const state = loadState(attemptDirectory)
+  const remediation = state.remediation
+  if (!remediation) throw new Error('Remediation has not started')
+  if (!remediation.timer.runningSince) {
+    throw new Error('Remediation timer is not running')
+  }
+  assertPauseRequest(pause)
+  const timer = pauseTimer(remediation.timer, pause, clock.now())
+  const updated: AttemptState = {
+    ...state,
+    remediation: { ...remediation, timer },
+  }
+  saveState(attemptDirectory, updated)
+  appendChronology(attemptDirectory, clock, 'remediation-time-stopped', {
+    activeElapsedMs: timer.accumulatedMs,
+    limitExceeded: timer.accumulatedMs > timer.limitMs,
+    pause: timer.pauses.at(-1),
+  })
+  return updated
+}
+
+export function enforceRemediationLimit(
+  attemptDirectory: string,
+  onLimit: () => void | Promise<void>,
+  options: {
+    readonly clock?: Clock
+    readonly scheduler?: WatchdogScheduler
+  } = {},
+): ActiveLimitWatchdog {
+  const clock = options.clock ?? systemClock
+  const scheduler = options.scheduler ?? systemWatchdogScheduler
+  const initialState = loadState(attemptDirectory)
+  if (!initialState.remediation?.timer.runningSince) {
+    throw new Error(
+      'Remediation timer must be running before enforcing its limit',
+    )
+  }
+  const remainingMs = Math.max(
+    0,
+    initialState.remediation.timer.limitMs -
+      remediationElapsedMs(initialState, clock),
+  )
+  let handle: unknown
+  let settled = false
+  let resolveExpired: (expired: boolean) => void = () => undefined
+  let rejectExpired: (cause: unknown) => void = () => undefined
+  const expired = new Promise<boolean>((resolvePromise, rejectPromise) => {
+    resolveExpired = resolvePromise
+    rejectExpired = rejectPromise
+  })
+  const schedule = (delayMs: number): void => {
+    handle = scheduler.set(() => void checkLimit(), delayMs)
+  }
+  const checkLimit = async (): Promise<void> => {
+    if (settled) return
+    const state = loadState(attemptDirectory)
+    const timer = state.remediation?.timer
+    if (!timer?.runningSince || state.remediation?.snapshot) {
+      settled = true
+      resolveExpired(false)
+      return
+    }
+    const elapsed = remediationElapsedMs(state, clock)
+    const remaining = timer.limitMs - elapsed
+    if (remaining > 0) {
+      schedule(remaining)
+      return
+    }
+    settled = true
+    appendChronology(attemptDirectory, clock, 'remediation-limit-reached', {
+      activeElapsedMs: elapsed,
+      limitMs: timer.limitMs,
+    })
+    try {
+      await onLimit()
+      resolveExpired(true)
+    } catch (cause) {
+      rejectExpired(cause)
+    }
+  }
+  schedule(remainingMs)
+  return {
+    remainingMs,
+    expired,
+    cancel: () => {
+      if (settled) return
+      settled = true
+      scheduler.clear(handle)
+      resolveExpired(false)
+    },
+  }
 }
 
 export function freezeRemediation(
   attemptDirectory: string,
   clock: Clock = systemClock,
 ): AttemptState {
-  const state = loadState(attemptDirectory)
+  let state = loadState(attemptDirectory)
   if (!state.remediation) throw new Error('Remediation has not started')
   if (state.remediation.finishedAt) {
     throw new Error('Remediation has already finished')
   }
   if (state.remediation.snapshot) {
     throw new Error('Remediation artifacts are already frozen')
+  }
+  if (state.remediation.timer.runningSince) {
+    state = stopRemediationTime(
+      attemptDirectory,
+      {
+        reason: 'final-freeze',
+        triggerEvidence:
+          remediationElapsedMs(state, clock) >= state.remediation.timer.limitMs
+            ? 'remediation watchdog reached its active-time ceiling'
+            : 'remediation checks completed or coordinator freeze requested',
+        coordinatorAction: 'stopped remediation for immutable capture',
+      },
+      clock,
+    )
   }
   const prepared = loadPrepared(attemptDirectory)
   const snapshot = captureSnapshot(
@@ -589,10 +851,12 @@ export function freezeRemediation(
     'remediation',
     clock,
   )
+  const remediation = state.remediation
+  if (!remediation) throw new Error('Remediation has not started')
   const updated: AttemptState = {
     ...state,
     snapshots: { ...state.snapshots, remediation: snapshot },
-    remediation: { ...state.remediation, snapshot },
+    remediation: { ...remediation, snapshot },
   }
   saveState(attemptDirectory, updated)
   appendChronology(attemptDirectory, clock, 'remediation-frozen', {
@@ -657,7 +921,10 @@ export function finishRemediation(
       'Remediation eventualSuccess disagrees with its cumulative gates',
     )
   }
-  const outcome: 'passed' | 'failed' = expectedSuccess ? 'passed' : 'failed'
+  const remediationExpired =
+    remediationElapsedMs(state, clock) >= state.remediation.timer.limitMs
+  const outcome: 'passed' | 'failed' =
+    expectedSuccess && !remediationExpired ? 'passed' : 'failed'
   writeFileSync(
     join(resolve(attemptDirectory), 'remediation-results.json'),
     resultBytes,
@@ -678,6 +945,8 @@ export function finishRemediation(
   saveState(attemptDirectory, updated)
   appendChronology(attemptDirectory, clock, 'remediation-finished', {
     outcome,
+    activeElapsedMs: remediationElapsedMs(updated, clock),
+    limitExceeded: remediationExpired,
     ...(note ? { note } : {}),
   })
   return updated
@@ -738,10 +1007,18 @@ function phaseSpecificGates(
     return undefined
   }
   return {
-    bootstrap: bootstrap.verifierResult.gates.bootstrap,
-    verticalPath: checkpoint.verifierResult.gates.verticalPath,
-    domainCompleteness: final.verifierResult.gates.domainCompleteness,
-    robustness: final.verifierResult.gates.robustness,
+    bootstrap:
+      !bootstrap.verifierResult.isolationCompromised &&
+      bootstrap.verifierResult.gates.bootstrap,
+    verticalPath:
+      !checkpoint.verifierResult.isolationCompromised &&
+      checkpoint.verifierResult.gates.verticalPath,
+    domainCompleteness:
+      !final.verifierResult.isolationCompromised &&
+      final.verifierResult.gates.domainCompleteness,
+    robustness:
+      !final.verifierResult.isolationCompromised &&
+      final.verifierResult.gates.robustness,
   }
 }
 
@@ -773,9 +1050,17 @@ function readAndPreserveVerifierResult(
   )
   const gates = readStrictGates(firstAttempt.gates, 'firstAttempt')
   const gatesAllPassed = Object.values(gates).every(Boolean)
+  const isolationCompromised = firstAttempt.isolationCompromised
+  const firstAttemptWithinActiveLimit = result.firstAttemptWithinActiveLimit
+  const expectedFullFirstAttemptSuccess =
+    firstAttemptWithinActiveLimit === true &&
+    isolationCompromised === false &&
+    gatesAllPassed
   if (
+    typeof isolationCompromised !== 'boolean' ||
+    typeof firstAttemptWithinActiveLimit !== 'boolean' ||
     typeof result.fullFirstAttemptSuccess !== 'boolean' ||
-    (result.fullFirstAttemptSuccess && !gatesAllPassed)
+    result.fullFirstAttemptSuccess !== expectedFullFirstAttemptSuccess
   ) {
     throw new Error(
       'Held-out verifier fullFirstAttemptSuccess is invalid for its cumulative gates',
@@ -790,6 +1075,7 @@ function readAndPreserveVerifierResult(
     sha256: sha256(bytes),
     binding,
     fullFirstAttemptSuccess: result.fullFirstAttemptSuccess,
+    isolationCompromised,
     gates,
   }
 }
@@ -831,6 +1117,7 @@ function validateBinding(
     configSha256: prepared.configSha256,
     snapshotKind: snapshot.kind,
     snapshotManifestSha256: snapshot.manifestSha256,
+    verificationPlanSha256: frozenVerificationPlanSha256(prepared),
   }
   for (const [key, expectedValue] of Object.entries(expected)) {
     if (binding[key] !== expectedValue) {
@@ -839,15 +1126,19 @@ function validateBinding(
       )
     }
   }
-  if (
-    typeof binding.verificationPlanSha256 !== 'string' ||
-    !/^[a-f0-9]{64}$/.test(binding.verificationPlanSha256)
-  ) {
+  return binding as unknown as VerifierBinding
+}
+
+function frozenVerificationPlanSha256(prepared: PreparedAttempt): string {
+  const artifacts = prepared.provenance.artifacts.filter(
+    (artifact) => artifact.kind === 'verificationPlan',
+  )
+  if (artifacts.length !== 1 || !artifacts[0]) {
     throw new Error(
-      'Verifier result binding has an invalid verificationPlanSha256',
+      'Frozen provenance must contain one verificationPlan artifact',
     )
   }
-  return binding as unknown as VerifierBinding
+  return artifacts[0].sha256
 }
 
 function readStrictGates(
@@ -947,12 +1238,13 @@ function captureSnapshot(
   kind: SnapshotKind,
   clock: Clock,
 ): SnapshotRecord {
+  const adopterDirectory = loadPrepared(attemptDirectory).adopterDirectory
   for (const sourcePath of sourcePaths) {
-    const source = resolveBelow(attemptDirectory, sourcePath)
+    const source = resolveBelow(adopterDirectory, sourcePath)
     if (!existsSync(source)) {
       throw new Error(`Cannot snapshot missing artifact path: ${sourcePath}`)
     }
-    assertNoSymlinkComponents(attemptDirectory, sourcePath)
+    assertNoSymlinkComponents(adopterDirectory, sourcePath)
     assertArtifactTreeHasNoSymlinks(source, sourcePath)
   }
   const snapshotDirectory = snapshotDirectoryFor(attemptDirectory, kind)
@@ -962,7 +1254,7 @@ function captureSnapshot(
   const temporaryDirectory = `${snapshotDirectory}.tmp-${randomUUID()}`
   mkdirSync(join(temporaryDirectory, 'artifacts'), { recursive: true })
   for (const sourcePath of sourcePaths) {
-    const source = resolveBelow(attemptDirectory, sourcePath)
+    const source = resolveBelow(adopterDirectory, sourcePath)
     const destination = resolveBelow(
       join(temporaryDirectory, 'artifacts'),
       sourcePath,

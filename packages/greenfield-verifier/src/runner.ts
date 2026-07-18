@@ -526,10 +526,17 @@ async function executePhase(
   phase: AttemptPhase,
   now: () => number,
   options: IsolationOptions,
+  gateScope: readonly Gate[] = gates,
 ): Promise<PhaseVerificationResult> {
   const orderedChecks = [
-    ...plan.checks.filter((check) => check.visibility === 'visible'),
-    ...plan.checks.filter((check) => check.visibility === 'heldOut'),
+    ...plan.checks.filter(
+      (check) =>
+        gateScope.includes(check.gate) && check.visibility === 'visible',
+    ),
+    ...plan.checks.filter(
+      (check) =>
+        gateScope.includes(check.gate) && check.visibility === 'heldOut',
+    ),
   ]
   const checks: CheckResult[] = []
   for (let index = 0; index < orderedChecks.length; index += 1) {
@@ -594,12 +601,21 @@ export async function verifyGreenfieldAttempt(
     cleanupTimeoutMs: options.cleanupTimeoutMs ?? defaultCleanupTimeoutMs,
     setupTimeoutMs: options.setupTimeoutMs ?? defaultSetupTimeoutMs,
   }
+  const gateScope = options.gateScope ?? gates
+  if (
+    gateScope.length === 0 ||
+    new Set(gateScope).size !== gateScope.length ||
+    gateScope.some((gate) => !gates.includes(gate))
+  ) {
+    throw new TypeError('gateScope must contain unique canonical gates')
+  }
   const firstAttempt = await executePhase(
     plan,
     driver,
     'firstAttempt',
     now,
     isolationOptions,
+    gateScope,
   )
   const firstAttemptWithinActiveLimit =
     plan.attempt.firstAttempt.activeMinutes <= plan.attempt.activeLimitMinutes

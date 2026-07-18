@@ -15,23 +15,30 @@ import { afterEach, describe, it } from 'node:test'
 
 import {
   ACTIVE_LIMIT_MS,
+  CHECKPOINT_LIMIT_MS,
+  REMEDIATION_LIMIT_MS,
+  activeElapsedMs,
   beginRemediation,
-  buildAggregateReport,
   buildAttemptReport,
   type Clock,
   type CommandExecutionRequest,
   type CommandExecutionResult,
   type CommandRunner,
   enforceActiveLimit,
+  enforceRemediationLimit,
   finishRemediation,
   freezeFirstAttempt,
   freezeRemediation,
+  loadPrepared,
   prepareAttempt,
   recordMarker,
+  recordPassingIsolationAttestation,
   provenanceArtifactKinds,
   runVerificationSuite,
-  startActiveTime,
+  startActiveTime as startActiveTimeWithoutAttestation,
+  startRemediationTime,
   stableJson,
+  stopActiveTime,
   validateMatrixEntry,
   validateProvenance,
   type WatchdogScheduler,
@@ -46,11 +53,152 @@ afterEach(() => {
 })
 
 describe('greenfield evaluation runner', () => {
+  it('rejects unaudited pauses and persists an allowlisted pause lifecycle', () => {
+    const root = temporaryRoot()
+    const clock = new TestClock('2026-07-18T00:00:00.000Z')
+    const attempt = prepareAttempt({
+      ...attemptRoots(root),
+      assignment: assignment(),
+      provenance: provenance(),
+      clock,
+    })
+    startActiveTime(attempt, clock)
+    clock.advance(1_000)
+    assert.throws(
+      () =>
+        stopActiveTime(
+          attempt,
+          {
+            reason: 'adopter-wait' as never,
+            triggerEvidence: 'agent requested idle time',
+            coordinatorAction: 'pause timer',
+          },
+          clock,
+        ),
+      /Pause reason must be allowlisted/,
+    )
+    assert.throws(
+      () =>
+        stopActiveTime(
+          attempt,
+          {
+            reason: 'coordinator-approval',
+            triggerEvidence: ' ',
+            coordinatorAction: 'reviewed pre-authorization',
+          },
+          clock,
+        ),
+      /trigger evidence must be non-empty/,
+    )
+
+    const paused = stopActiveTime(
+      attempt,
+      {
+        reason: 'coordinator-approval',
+        triggerEvidence: 'approval request approval-17',
+        coordinatorAction: 'reviewed pre-authorization approval-17',
+      },
+      clock,
+    )
+    assert.deepEqual(paused.timer.pauses[0], {
+      reason: 'coordinator-approval',
+      triggerEvidence: 'approval request approval-17',
+      coordinatorAction: 'reviewed pre-authorization approval-17',
+      startedAt: '2026-07-18T00:00:01.000Z',
+    })
+    clock.advance(5_000)
+    const resumed = startActiveTimeWithoutAttestation(attempt, clock)
+    assert.equal(resumed.timer.pauses[0]?.endedAt, clock.now().toISOString())
+    assert.equal(resumed.timer.pauses[0]?.wallElapsedMs, 5_000)
+    assert.equal(activeElapsedMs(resumed, clock), 1_000)
+  })
+
+  it('enforces a separate 60-active-minute remediation watchdog', async () => {
+    const { attempt, clock } = readyAttempt()
+    await runVerificationSuite(attempt, 'visible', new FakeRunner(), clock)
+    await runVerificationSuite(attempt, 'held-out', new FakeRunner(), clock)
+    const begun = beginRemediation(attempt, clock)
+    assert.equal(begun.remediation?.timer.limitMs, REMEDIATION_LIMIT_MS)
+    const scheduler = new TestScheduler()
+    let terminated = false
+    const watchdog = enforceRemediationLimit(
+      attempt,
+      () => {
+        terminated = true
+      },
+      { clock, scheduler },
+    )
+    assert.equal(watchdog.remainingMs, REMEDIATION_LIMIT_MS)
+    clock.advance(REMEDIATION_LIMIT_MS)
+    scheduler.fire()
+    assert.equal(await watchdog.expired, true)
+    assert.equal(terminated, true)
+    assert.throws(
+      () => startRemediationTime(attempt, clock),
+      /timer is already running/,
+    )
+  })
+
+  it('refuses to start scored time without persisted passing isolation', () => {
+    const root = temporaryRoot()
+    const clock = new TestClock('2026-07-18T00:00:00.000Z')
+    const attempt = prepareAttempt({
+      ...attemptRoots(root),
+      assignment: assignment(),
+      provenance: provenance(),
+      clock,
+    })
+
+    assert.throws(
+      () => startActiveTimeWithoutAttestation(attempt, clock),
+      /persisted passing isolation attestation is required/,
+    )
+  })
+
+  it('forces the checkpoint marker and score to expire at 75 minutes', async () => {
+    const root = temporaryRoot()
+    const clock = new TestClock('2026-07-18T00:00:00.000Z')
+    const attempt = prepareAttempt({
+      ...attemptRoots(root),
+      assignment: assignment(),
+      provenance: provenance(),
+      clock,
+    })
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'checkpoint candidate\n',
+    )
+    startActiveTime(attempt, clock)
+    recordMarker(attempt, 'bootstrap', 'passed', undefined, clock)
+    clock.advance(CHECKPOINT_LIMIT_MS)
+
+    const state = recordMarker(
+      attempt,
+      'checkpoint',
+      'passed',
+      undefined,
+      clock,
+    )
+
+    assert.equal(state.markers.at(-1)?.outcome, 'time-expired')
+    freezeFirstAttempt(attempt, 'passed', undefined, clock)
+    await runVerificationSuite(attempt, 'visible', new FakeRunner(), clock)
+    await runVerificationSuite(
+      attempt,
+      'held-out',
+      new PhaseVerifierRunner(),
+      clock,
+    )
+    const report = buildAttemptReport(attempt, clock)
+    assert.equal(report.gates.verticalPath, 'failed')
+    assert.equal(report.fullFirstAttemptSuccess, false)
+  })
+
   it('preserves a frozen attempt and runs suites in order', async () => {
     const root = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
@@ -58,7 +206,7 @@ describe('greenfield evaluation runner', () => {
     assert.throws(
       () =>
         prepareAttempt({
-          attemptsRoot: root,
+          ...attemptRoots(root),
           assignment: assignment(),
           provenance: provenance(),
           clock,
@@ -66,22 +214,31 @@ describe('greenfield evaluation runner', () => {
       /Refusing to overwrite existing attempt/,
     )
 
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'bootstrap version\n')
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'bootstrap version\n',
+    )
     clock.advance(5_000)
     startActiveTime(attempt, clock)
     clock.advance(10_000)
     recordMarker(attempt, 'bootstrap', 'passed', undefined, clock)
     writeFileSync(
-      join(attempt, 'workspace', 'app.txt'),
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
       'checkpoint version\n',
     )
     clock.advance(20_000)
     recordMarker(attempt, 'checkpoint', 'passed', undefined, clock)
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'scored version\n',
+    )
     clock.advance(30_000)
     freezeFirstAttempt(attempt, 'passed', undefined, clock)
 
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'remediated later\n')
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'remediated later\n',
+    )
     assert.equal(
       readFileSync(
         join(attempt, 'first-attempt', 'artifacts', 'workspace', 'app.txt'),
@@ -184,7 +341,7 @@ describe('greenfield evaluation runner', () => {
     const root = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
@@ -208,7 +365,7 @@ describe('greenfield evaluation runner', () => {
     const root = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
@@ -280,16 +437,17 @@ describe('greenfield evaluation runner', () => {
     const outside = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
     })
+    mkdirSync(outside, { recursive: true })
     writeFileSync(join(outside, 'outside.txt'), 'outside\n')
-    mkdirSync(join(attempt, 'workspace', 'nested'))
+    mkdirSync(join(adopterDirectory(attempt), 'workspace', 'nested'))
     symlinkSync(
       join(outside, 'outside.txt'),
-      join(attempt, 'workspace', 'nested', 'escape.txt'),
+      join(adopterDirectory(attempt), 'workspace', 'nested', 'escape.txt'),
     )
     startActiveTime(attempt, clock)
     assert.throws(
@@ -300,7 +458,7 @@ describe('greenfield evaluation runner', () => {
 
     const secondRoot = temporaryRoot()
     const secondAttempt = prepareAttempt({
-      attemptsRoot: secondRoot,
+      ...attemptRoots(secondRoot),
       assignment: {
         ...assignment(),
         workspacePath: 'linked-workspace',
@@ -309,11 +467,13 @@ describe('greenfield evaluation runner', () => {
       provenance: provenance(),
       clock,
     })
-    mkdirSync(join(secondAttempt, 'real-workspace'))
-    rmSync(join(secondAttempt, 'linked-workspace'), { recursive: true })
+    mkdirSync(join(adopterDirectory(secondAttempt), 'real-workspace'))
+    rmSync(join(adopterDirectory(secondAttempt), 'linked-workspace'), {
+      recursive: true,
+    })
     symlinkSync(
-      join(secondAttempt, 'real-workspace'),
-      join(secondAttempt, 'linked-workspace'),
+      join(adopterDirectory(secondAttempt), 'real-workspace'),
+      join(adopterDirectory(secondAttempt), 'linked-workspace'),
       'dir',
     )
     startActiveTime(secondAttempt, clock)
@@ -327,12 +487,15 @@ describe('greenfield evaluation runner', () => {
     const root = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
     })
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'scored version\n',
+    )
     startActiveTime(attempt, clock)
     freezeFirstAttempt(attempt, 'failed', undefined, clock)
     mkdirSync(join(attempt, 'verification', 'visible', 'final'), {
@@ -344,16 +507,29 @@ describe('greenfield evaluation runner', () => {
     )
   })
 
+  it('revalidates the persisted isolation attestation before verification', async () => {
+    const { attempt, clock } = readyAttempt()
+    rmSync(join(attempt, 'isolation-attestation.json'))
+
+    await assert.rejects(
+      runVerificationSuite(attempt, 'visible', new FakeRunner(), clock),
+      /persisted passing isolation attestation is required/,
+    )
+  })
+
   it('detects any mutation of the original freeze after a suite', async () => {
     const root = temporaryRoot()
     const clock = new TestClock('2026-07-18T00:00:00.000Z')
     const attempt = prepareAttempt({
-      attemptsRoot: root,
+      ...attemptRoots(root),
       assignment: assignment(),
       provenance: provenance(),
       clock,
     })
-    writeFileSync(join(attempt, 'workspace', 'app.txt'), 'scored version\n')
+    writeFileSync(
+      join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+      'scored version\n',
+    )
     startActiveTime(attempt, clock)
     freezeFirstAttempt(attempt, 'failed', undefined, clock)
     const runner = new FrozenMutationRunner(attempt)
@@ -460,6 +636,68 @@ describe('greenfield evaluation runner', () => {
     )
     assert.equal(heldOut.verifierGates, undefined)
     assert.equal(heldOut.passed, false)
+
+    const planMismatch = readyAttempt()
+    await runVerificationSuite(
+      planMismatch.attempt,
+      'visible',
+      new FakeRunner(),
+      planMismatch.clock,
+    )
+    const planMismatchRun = await runVerificationSuite(
+      planMismatch.attempt,
+      'held-out',
+      new PhaseVerifierRunner({
+        bindingVerificationPlanSha256: 'c'.repeat(64),
+      }),
+      planMismatch.clock,
+    )
+    assert.match(
+      planMismatchRun.harnessFailure ?? '',
+      /binding mismatch for verificationPlanSha256/,
+    )
+  })
+
+  it('cannot score an isolation-compromised verifier phase as passing', async () => {
+    const { attempt, clock } = readyAttempt()
+    await runVerificationSuite(attempt, 'visible', new FakeRunner(), clock)
+    const heldOut = await runVerificationSuite(
+      attempt,
+      'held-out',
+      new PhaseVerifierRunner({ exitCode: 1, isolationCompromised: true }),
+      clock,
+    )
+    assert.equal(heldOut.passed, false)
+    assert.deepEqual(heldOut.verifierGates, {
+      bootstrap: false,
+      verticalPath: false,
+      domainCompleteness: false,
+      robustness: false,
+    })
+
+    const verifierFailure = readyAttempt()
+    await runVerificationSuite(
+      verifierFailure.attempt,
+      'visible',
+      new FakeRunner(),
+      verifierFailure.clock,
+    )
+    const verifierFailureRun = await runVerificationSuite(
+      verifierFailure.attempt,
+      'held-out',
+      new PhaseVerifierRunner({
+        exitCode: 1,
+        firstAttemptWithinActiveLimit: false,
+      }),
+      verifierFailure.clock,
+    )
+    assert.deepEqual(verifierFailureRun.verifierGates, {
+      bootstrap: true,
+      verticalPath: true,
+      domainCompleteness: true,
+      robustness: true,
+    })
+    assert.equal(verifierFailureRun.passed, false)
   })
 
   it('fails the harness for missing results and verifier exit 2', async () => {
@@ -494,38 +732,6 @@ describe('greenfield evaluation runner', () => {
     assert.match(exitTwoRun.harnessFailure ?? '', /command failed/)
   })
 
-  it('aggregates replication and persistence cohorts deterministically', () => {
-    const root = temporaryRoot()
-    const clock = new TestClock('2026-07-18T00:00:00.000Z')
-    const first = prepareAttempt({
-      attemptsRoot: root,
-      assignment: assignment(),
-      provenance: provenance(),
-      clock,
-    })
-    const second = prepareAttempt({
-      attemptsRoot: root,
-      assignment: {
-        ...assignment(),
-        attemptId: 'inventory-2',
-        attemptNumber: 2,
-        domainKind: 'transfer',
-        persistence: 'postgres',
-        topology: 'multi-process',
-      },
-      provenance: provenance(),
-      clock,
-    })
-    const report = buildAggregateReport([second, first], clock)
-    assert.deepEqual(
-      report.attempts.map((attempt) => attempt.attemptId),
-      ['inventory-1', 'inventory-2'],
-    )
-    assert.equal(report.byDomainKind.replication.attempts, 1)
-    assert.equal(report.byDomainKind.transfer.attempts, 1)
-    assert.equal(report.byPersistence.sqlite.attempts, 1)
-    assert.equal(report.byPersistence.postgres.attempts, 1)
-  })
 })
 
 class TestClock implements Clock {
@@ -602,13 +808,19 @@ class PhaseVerifierRunner extends FakeRunner {
   private readonly options: {
     exitCode?: number
     bindingAttemptId?: string
+    bindingVerificationPlanSha256?: string
     gatesByPhase?: Partial<Record<string, boolean[]>>
+    firstAttemptWithinActiveLimit?: boolean
+    isolationCompromised?: boolean
   }
 
   constructor(options: {
     exitCode?: number
     bindingAttemptId?: string
+    bindingVerificationPlanSha256?: string
     gatesByPhase?: Partial<Record<string, boolean[]>>
+    firstAttemptWithinActiveLimit?: boolean
+    isolationCompromised?: boolean
   } = {}) {
     super()
     this.options = options
@@ -634,11 +846,21 @@ class PhaseVerifierRunner extends FakeRunner {
     if (this.options.bindingAttemptId) {
       binding.attemptId = this.options.bindingAttemptId
     }
+    if (this.options.bindingVerificationPlanSha256) {
+      binding.verificationPlanSha256 =
+        this.options.bindingVerificationPlanSha256
+    }
     const resultDirectory = join(request.cwd, 'specter-evaluation')
     mkdirSync(resultDirectory, { recursive: true })
     writeFileSync(
       join(resultDirectory, 'verifier-result.json'),
-      JSON.stringify(verifierResult(binding, gates)),
+      JSON.stringify(
+        verifierResult(binding, gates, {
+          isolationCompromised: this.options.isolationCompromised,
+          firstAttemptWithinActiveLimit:
+            this.options.firstAttemptWithinActiveLimit,
+        }),
+      ),
     )
     const base = await super.run(request)
     return {
@@ -681,7 +903,7 @@ function bindingFromRequest(
     configSha256: env.SPECTER_EVALUATION_CONFIG_SHA256 ?? '',
     snapshotKind: env.SPECTER_EVALUATION_SNAPSHOT_KIND ?? '',
     snapshotManifestSha256: env.SPECTER_EVALUATION_SNAPSHOT_SHA256 ?? '',
-    verificationPlanSha256: 'b'.repeat(64),
+    verificationPlanSha256: 'a'.repeat(64),
   }
 }
 
@@ -697,7 +919,11 @@ function allGates(passed: boolean): object[] {
 function verifierResult(
   coordinatorBinding: Record<string, string>,
   gates: object[],
-  options: { remediation?: boolean } = {},
+  options: {
+    remediation?: boolean
+    isolationCompromised?: boolean
+    firstAttemptWithinActiveLimit?: boolean
+  } = {},
 ): object {
   const gateValues = gates.map((gate) => (gate as { passed: boolean }).passed)
   const allPassed = gateValues.every(Boolean)
@@ -712,8 +938,16 @@ function verifierResult(
       activeLimitMinutes: 180,
     },
     coordinatorBinding,
-    firstAttempt: { gates },
-    fullFirstAttemptSuccess: allPassed,
+    firstAttempt: {
+      gates,
+      isolationCompromised: options.isolationCompromised ?? false,
+    },
+    firstAttemptWithinActiveLimit:
+      options.firstAttemptWithinActiveLimit ?? true,
+    fullFirstAttemptSuccess:
+      allPassed &&
+      options.isolationCompromised !== true &&
+      options.firstAttemptWithinActiveLimit !== false,
     remediation: options.remediation
       ? {
         phase: 'remediation',
@@ -740,7 +974,7 @@ function remediationBinding(attempt: string): Record<string, string> {
     configSha256: prepared.configSha256,
     snapshotKind: state.remediation.snapshot.kind,
     snapshotManifestSha256: state.remediation.snapshot.manifestSha256,
-    verificationPlanSha256: 'b'.repeat(64),
+    verificationPlanSha256: 'a'.repeat(64),
   }
 }
 
@@ -772,24 +1006,70 @@ class FrozenMutationRunner extends FakeRunner {
 function temporaryRoot(): string {
   const directory = mkdtempSync(join(tmpdir(), 'specter-greenfield-runner-'))
   temporaryDirectories.push(directory)
-  return directory
+  return join(directory, 'coordinator')
+}
+
+function attemptRoots(coordinatorRoot: string): {
+  coordinatorRoot: string
+  adopterRoot: string
+} {
+  return {
+    coordinatorRoot,
+    adopterRoot: join(coordinatorRoot, '..', 'adopter'),
+  }
+}
+
+function adopterDirectory(attempt: string): string {
+  return loadPrepared(attempt).adopterDirectory
+}
+
+function startActiveTime(attempt: string, clock: Clock) {
+  const prepared = loadPrepared(attempt)
+  const publicCanary = join(prepared.adopterDirectory, 'public-canary.txt')
+  const privateCanary = join(attempt, 'private-canary.txt')
+  writeFileSync(publicCanary, 'public\n')
+  writeFileSync(privateCanary, 'private\n')
+  recordPassingIsolationAttestation(attempt, {
+    schemaVersion: 1,
+    attemptId: prepared.assignment.attemptId,
+    configSha256: prepared.configSha256,
+    coordinatorRoot: attempt,
+    adopterRoot: prepared.adopterDirectory,
+    publicCanaryPaths: [publicCanary],
+    privateCanaryPaths: [privateCanary],
+    rehearsedAt: clock.now().toISOString(),
+    passed: true,
+    publicReadable: [publicCanary],
+    privateBlocked: [privateCanary],
+    failures: [],
+  })
+  return startActiveTimeWithoutAttestation(attempt, clock)
 }
 
 function readyAttempt(): { attempt: string; clock: TestClock } {
   const root = temporaryRoot()
   const clock = new TestClock('2026-07-18T00:00:00.000Z')
   const attempt = prepareAttempt({
-    attemptsRoot: root,
+    ...attemptRoots(root),
     assignment: assignment(),
     provenance: provenance(),
     clock,
   })
-  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'bootstrap version\n')
+  writeFileSync(
+    join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+    'bootstrap version\n',
+  )
   startActiveTime(attempt, clock)
   recordMarker(attempt, 'bootstrap', 'passed', undefined, clock)
-  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'checkpoint version\n')
+  writeFileSync(
+    join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+    'checkpoint version\n',
+  )
   recordMarker(attempt, 'checkpoint', 'passed', undefined, clock)
-  writeFileSync(join(attempt, 'workspace', 'app.txt'), 'final version\n')
+  writeFileSync(
+    join(adopterDirectory(attempt), 'workspace', 'app.txt'),
+    'final version\n',
+  )
   freezeFirstAttempt(attempt, 'passed', undefined, clock)
   return { attempt, clock }
 }
@@ -886,7 +1166,36 @@ function provenance(): object {
         browserRevision: 'test',
       },
       services: [{ id: 'sqlite', version: 'test' }],
+      ...runtimeControls(),
       runOrderSeed: 'test-order',
     },
+  }
+}
+
+function runtimeControls() {
+  const runOrder = Array.from(
+    { length: 10 },
+    (_, index) => `attempt-${index + 1}`,
+  )
+  return {
+    executionImage: { name: 'test-image', sha256: 'e'.repeat(64) },
+    resourceLimits: {
+      contextTokens: 200_000,
+      cpuCores: 4,
+      memoryMiB: 8192,
+      activeMinutes: 180 as const,
+      checkpointMinutes: 75 as const,
+      remediationMinutes: 60 as const,
+    },
+    dependencyCache: { id: 'test-cache', sha256: 'f'.repeat(64) },
+    imageInputs: [],
+    runOrder,
+    freshContexts: runOrder.map((attemptId, index) => ({
+      attemptId,
+      taskId: `task-${index + 1}`,
+      initialContextTokens: 0,
+      freshTask: true as const,
+      parentTaskId: null,
+    })),
   }
 }

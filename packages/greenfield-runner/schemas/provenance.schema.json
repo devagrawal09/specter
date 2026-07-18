@@ -16,7 +16,7 @@
     "artifactManifestSha256": { "$ref": "#/$defs/sha256" },
     "artifacts": {
       "type": "array",
-      "minItems": 18,
+      "minItems": 28,
       "items": { "$ref": "#/$defs/artifact" }
     },
     "packages": {
@@ -43,19 +43,29 @@
       "enum": [
         "adopterPrompt",
         "browserFixture",
+        "candidateTable",
         "checkCases",
         "checkCatalog",
         "coordinatorDriver",
+        "developerPolicy",
         "domainBrief",
+        "environmentFailureSignatures",
         "evaluationRunner",
         "executionCatalog",
+        "frictionCodebook",
         "guidance",
         "heldOutSuite",
         "initializer",
+        "methodology",
+        "randomizedSchedule",
+        "recommendationEvidenceMap",
+        "reviewerAssignment",
         "semanticCatalog",
         "semanticMapContract",
         "serviceFixture",
         "specterPackage",
+        "systemPolicy",
+        "toolPolicy",
         "verificationPlan",
         "verifier",
         "visibleSuite"
@@ -75,7 +85,20 @@
     "runtime": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["model", "agentHarness", "platform", "toolchain", "services", "runOrderSeed"],
+      "required": [
+        "model",
+        "agentHarness",
+        "platform",
+        "toolchain",
+        "services",
+        "executionImage",
+        "resourceLimits",
+        "dependencyCache",
+        "imageInputs",
+        "runOrderSeed",
+        "runOrder",
+        "freshContexts"
+      ],
       "properties": {
         "model": {
           "type": "object",
@@ -127,7 +150,74 @@
             }
           }
         },
-        "runOrderSeed": { "type": "string", "minLength": 1 }
+        "executionImage": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["name", "sha256"],
+          "properties": {
+            "name": { "type": "string", "minLength": 1 },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "resourceLimits": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["contextTokens", "cpuCores", "memoryMiB", "activeMinutes", "checkpointMinutes", "remediationMinutes"],
+          "properties": {
+            "contextTokens": { "type": "integer", "minimum": 1 },
+            "cpuCores": { "type": "number", "exclusiveMinimum": 0 },
+            "memoryMiB": { "type": "integer", "minimum": 1 },
+            "activeMinutes": { "const": 180 },
+            "checkpointMinutes": { "const": 75 },
+            "remediationMinutes": { "const": 60 }
+          }
+        },
+        "dependencyCache": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "sha256"],
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "sha256": { "$ref": "#/$defs/sha256" }
+          }
+        },
+        "imageInputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "sha256"],
+            "properties": {
+              "id": { "$ref": "#/$defs/id" },
+              "sha256": { "$ref": "#/$defs/sha256" }
+            }
+          }
+        },
+        "runOrderSeed": { "type": "string", "minLength": 1 },
+        "runOrder": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/id" }
+        },
+        "freshContexts": {
+          "type": "array",
+          "minItems": 10,
+          "maxItems": 10,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["attemptId", "taskId", "initialContextTokens", "freshTask", "parentTaskId"],
+            "properties": {
+              "attemptId": { "$ref": "#/$defs/id" },
+              "taskId": { "type": "string", "minLength": 1 },
+              "initialContextTokens": { "type": "integer", "minimum": 0 },
+              "freshTask": { "const": true },
+              "parentTaskId": { "type": "null" }
+            }
+          }
+        }
       }
     },
     "nameVersion": {

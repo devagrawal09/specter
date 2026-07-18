@@ -21,6 +21,11 @@ workspace; it must not be a child or parent of the coordinator root. Run
 `specter-greenfield rehearse-isolation --contract <file>` from inside the actual
 adopter sandbox. The rehearsal must read public canaries and receive only
 `EACCES`, `EPERM`, or `ENOENT` for every private canary.
+The contract and result must bind the exact prepared attempt ID and config
+digest, with public canaries below that attempt's prepared adopter root and
+private canaries below its private coordinator root. Capture the result outside
+the sandbox and persist it with `record-isolation`; do not start timing or any
+verification until the runner accepts the passing attestation.
 
 The **adopter-visible kit** contains only:
 
@@ -97,10 +102,11 @@ after all ten first attempts are frozen.
 10. Run a sacrificial, non-scored harness rehearsal. Prove physical access
    isolation from the actual adopter process, kit construction, service reset,
    timer and process-tree termination, freeze immutability, visible-before-held-
-   out ordering, semantic-map validation, raw-evidence parity, the 75-minute checkpoint ceiling,
-   automatic pause allowlist, 180-minute termination, one-retry environment
-   policy, 60-minute remediation clock, and report aggregation. Discard the
-   rehearsal data; never alter frozen checks in response to an adopter result.
+   out ordering, semantic-map validation, raw-evidence parity, the 75-minute
+   checkpoint ceiling, automatic pause allowlist, 180-minute termination,
+   one-retry environment policy, 60-minute remediation clock, and report
+   aggregation. Discard the rehearsal data; never alter frozen checks in
+   response to an adopter result.
 
 The JSON schemas in `packages/greenfield-runner/schemas/` are authoritative for
 coordinator catalogs, expanded assignments, and provenance. The TypeScript
@@ -152,8 +158,9 @@ For each assignment:
 4. Finish coordinator-only image, cache, browser, empty service, credential,
    tarball, and port provisioning. Do not initialize the app or apply app
    migrations. Run `prepare`, then start the 180-minute active timer immediately
-   before the adopter's first command and start the active-limit watchdog with an
-   agent/process termination callback. Initializer, install, app setup, migration,
+   before the adopter's first command. Start both runner supervisors against the
+   adopter process group: `--limit checkpoint` for 75 minutes and `--limit
+   active` for 180 minutes. Initializer, install, app setup, migration,
    validation, diagnosis, browser, and idle time are active for both profiles.
 5. Record the bootstrap marker before domain work. At `CHECKPOINT_READY` or 75
    active minutes, whichever comes first, automatically pause with reason
@@ -166,14 +173,20 @@ For each assignment:
    point onward.
 7. Run the visible suite first and then the held-out suite. Each suite receives
    its own disposable copy of the frozen artifacts. The runner re-hashes the
-   original freeze after verification. Run every check once. Permit one retry
+   original freeze after verification. Run every check once: bootstrap checks
+   only at bootstrap, vertical-path checks only at checkpoint, and
+   domain-completeness plus robustness checks only at final. Bind every result
+   to the exact frozen `verificationPlan` digest, and treat any compromised
+   verifier isolation as a failed gate. Permit one retry
    only when both designated reviewers confirm a preregistered coordinator-
    environment signature before seeing retry output; preserve both runs and
    apply the nondeterminism and environment-invalid rules in `methodology.md`.
 8. Emit the scored attempt report. Only afterward may an unscored remediation
    workspace be created and all findings disclosed to the same adopter. Give it
    a separate 60-active-minute clock and the same automatic pause/environment
-   rules; remediation cannot mutate scored evidence.
+   rules; launch `supervise --limit remediation` against its process group so the
+   runner terminates and freezes it at the ceiling. Remediation cannot mutate
+   scored evidence.
 9. Preserve failed and timed-out attempts. After all ten attempts, run
    `aggregate` and complete `analysis-template.md`.
 
@@ -182,10 +195,12 @@ The full CLI sequence and evidence layout are documented in
 documented in `packages/greenfield-verifier/README.md`.
 
 The runner library does not by itself implement the entire research protocol.
-The coordinator wrapper must enforce the seeded block order, fresh-context and
-model metadata, 75-minute checkpoint interrupt, pause allowlist, environment
-retry/adjudication flow, and 60-minute remediation watchdog. Treat any missing
-enforcement as a release blocker, not a manual convention.
+It supplies allowlisted pause evidence, checkpoint/active/remediation process
+supervisors, and independent 180- and 60-active-minute clocks, but the
+coordinator wrapper must launch them and enforce the seeded block order,
+fresh-context and model metadata, `CONTINUE` delivery, and environment
+retry/adjudication flow. Treat any missing enforcement as a release blocker, not
+a manual convention.
 
 ## Analysis boundary
 

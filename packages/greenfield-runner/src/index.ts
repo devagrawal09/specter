@@ -17,6 +17,7 @@ export {
   beginRemediation,
   type Clock,
   enforceActiveLimit,
+  enforceRemediationLimit,
   finishRemediation,
   freezeFirstAttempt,
   freezeRemediation,
@@ -25,22 +26,30 @@ export {
   prepareAttempt,
   type PrepareAttemptOptions,
   recordMarker,
+  remediationElapsedMs,
   runVerificationSuite,
   startActiveTime,
+  startRemediationTime,
   stopActiveTime,
+  stopRemediationTime,
   type WatchdogScheduler,
 } from './runner.js'
 export { stableJson } from './storage.js'
 export {
   superviseActiveLimit,
+  superviseCheckpointLimit,
+  superviseRemediationLimit,
   type ActiveLimitSupervisorOptions,
   type ActiveLimitSupervisorResult,
 } from './supervisor.js'
 export {
+  assertPassingIsolationAttestation,
   parseIsolationContract,
+  recordPassingIsolationAttestation,
   rehearseAdopterAccessIsolation,
   type AdopterIsolationContract,
   type IsolationRehearsalResult,
+  type PassingIsolationAttestation,
 } from './isolation.js'
 export * from './types.js'
 export {

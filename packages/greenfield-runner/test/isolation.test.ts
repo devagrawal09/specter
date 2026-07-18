@@ -5,7 +5,9 @@ import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 
 import {
+  assertPassingIsolationAttestation,
   parseIsolationContract,
+  recordPassingIsolationAttestation,
   rehearseAdopterAccessIsolation,
 } from '../dist/index.js'
 
@@ -18,15 +20,16 @@ afterEach(() => {
 describe('adopter access isolation', () => {
   it('requires physically separate roots and proves public/private canaries', () => {
     const base = temporaryRoot()
-    const coordinatorRoot = join(base, 'coordinator-private')
+    const coordinatorRoot = join(base, 'not-mounted', 'coordinator-private')
     const adopterRoot = join(base, 'adopter-public')
-    mkdirSync(coordinatorRoot)
     mkdirSync(adopterRoot)
     const publicCanary = join(adopterRoot, 'public-canary.txt')
     writeFileSync(publicCanary, 'public\n')
     const privateCanary = join(coordinatorRoot, 'not-mounted-private-canary.txt')
     const contract = {
       schemaVersion: 1,
+      attemptId: 'inventory-1',
+      configSha256: 'a'.repeat(64),
       coordinatorRoot,
       adopterRoot,
       publicCanaryPaths: [publicCanary],
@@ -34,12 +37,20 @@ describe('adopter access isolation', () => {
     }
 
     const parsed = parseIsolationContract(contract)
-    assert.deepEqual(rehearseAdopterAccessIsolation(contract), {
+    assert.deepEqual(
+      rehearseAdopterAccessIsolation(
+        contract,
+        new Date('2026-07-18T00:00:00.000Z'),
+      ),
+      {
+      ...parsed,
+      rehearsedAt: '2026-07-18T00:00:00.000Z',
       passed: true,
       publicReadable: parsed.publicCanaryPaths,
       privateBlocked: parsed.privateCanaryPaths,
       failures: [],
-    })
+      },
+    )
   })
 
   it('fails if a coordinator-private canary is readable', () => {
@@ -54,6 +65,8 @@ describe('adopter access isolation', () => {
     writeFileSync(privateCanary, 'private\n')
     const result = rehearseAdopterAccessIsolation({
       schemaVersion: 1,
+      attemptId: 'inventory-1',
+      configSha256: 'a'.repeat(64),
       coordinatorRoot,
       adopterRoot,
       publicCanaryPaths: [publicCanary],
@@ -61,6 +74,59 @@ describe('adopter access isolation', () => {
     })
     assert.equal(result.passed, false)
     assert.match(result.failures.join('\n'), /private canary is readable/)
+  })
+
+  it('binds persisted passing evidence to one exact prepared attempt', () => {
+    const base = temporaryRoot()
+    const coordinatorRoot = join(base, 'coordinator-private')
+    const adopterRoot = join(base, 'adopter-public')
+    const attempt = join(coordinatorRoot, 'inventory-1')
+    const adopterAttempt = join(adopterRoot, 'inventory-1')
+    mkdirSync(attempt, { recursive: true })
+    mkdirSync(adopterAttempt, { recursive: true })
+    const publicCanary = join(adopterAttempt, 'public.txt')
+    const privateCanary = join(attempt, 'private.txt')
+    writeFileSync(publicCanary, 'public\n')
+    writeFileSync(privateCanary, 'private\n')
+    writeFileSync(
+      join(attempt, 'frozen-provenance.json'),
+      JSON.stringify({
+        assignment: { attemptId: 'inventory-1' },
+        configSha256: 'a'.repeat(64),
+        adopterDirectory: adopterAttempt,
+      }),
+    )
+    const result = {
+      schemaVersion: 1,
+      attemptId: 'inventory-1',
+      configSha256: 'a'.repeat(64),
+      coordinatorRoot: attempt,
+      adopterRoot: adopterAttempt,
+      publicCanaryPaths: [publicCanary],
+      privateCanaryPaths: [privateCanary],
+      rehearsedAt: '2026-07-18T00:00:00.000Z',
+      passed: true,
+      publicReadable: [publicCanary],
+      privateBlocked: [privateCanary],
+      failures: [],
+    }
+
+    assert.equal(
+      recordPassingIsolationAttestation(attempt, result).attemptId,
+      'inventory-1',
+    )
+    assert.equal(
+      assertPassingIsolationAttestation(attempt).configSha256,
+      'a'.repeat(64),
+    )
+    assert.throws(
+      () =>
+        recordPassingIsolationAttestation(attempt, {
+          ...result,
+          configSha256: 'b'.repeat(64),
+        }),
+      /binding mismatch for configSha256/,
+    )
   })
 })
 

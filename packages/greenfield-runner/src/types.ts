@@ -1,4 +1,6 @@
 export const ACTIVE_LIMIT_MS = 180 * 60 * 1000
+export const CHECKPOINT_LIMIT_MS = 75 * 60 * 1000
+export const REMEDIATION_LIMIT_MS = 60 * 60 * 1000
 
 export type DomainKind = 'replication' | 'transfer'
 export type PersistenceProfile = 'sqlite' | 'postgres'
@@ -7,6 +9,25 @@ export type MarkerKind = 'bootstrap' | 'checkpoint' | 'final-freeze'
 export type SnapshotKind = 'bootstrap' | 'checkpoint' | 'final' | 'remediation'
 export type MarkerOutcome = 'passed' | 'failed' | 'time-expired'
 export type SuiteKind = 'visible' | 'held-out'
+export const pauseReasons = [
+  'checkpoint-capture',
+  'coordinator-service-recovery',
+  'coordinator-approval',
+  'final-freeze',
+] as const
+export type PauseReason = (typeof pauseReasons)[number]
+
+export interface PauseRequest {
+  readonly reason: PauseReason
+  readonly triggerEvidence: string
+  readonly coordinatorAction: string
+}
+
+export interface PauseRecord extends PauseRequest {
+  readonly startedAt: string
+  readonly endedAt?: string
+  readonly wallElapsedMs?: number
+}
 
 export interface EvaluationCommand {
   readonly id: string
@@ -44,19 +65,29 @@ export type ArtifactAudience = 'private' | 'public'
 export const provenanceArtifactKinds = [
   'adopterPrompt',
   'browserFixture',
+  'candidateTable',
   'checkCases',
   'checkCatalog',
   'coordinatorDriver',
+  'developerPolicy',
   'domainBrief',
+  'environmentFailureSignatures',
   'evaluationRunner',
   'executionCatalog',
+  'frictionCodebook',
   'guidance',
   'heldOutSuite',
   'initializer',
+  'methodology',
+  'randomizedSchedule',
+  'recommendationEvidenceMap',
+  'reviewerAssignment',
   'semanticCatalog',
   'semanticMapContract',
   'serviceFixture',
   'specterPackage',
+  'systemPolicy',
+  'toolPolicy',
   'verificationPlan',
   'verifier',
   'visibleSuite',
@@ -96,7 +127,33 @@ export interface RuntimeProvenance {
     readonly version: string
     readonly digest?: string
   }[]
+  readonly executionImage: {
+    readonly name: string
+    readonly sha256: string
+  }
+  readonly resourceLimits: {
+    readonly contextTokens: number
+    readonly cpuCores: number
+    readonly memoryMiB: number
+    readonly activeMinutes: 180
+    readonly checkpointMinutes: 75
+    readonly remediationMinutes: 60
+  }
+  readonly dependencyCache: { readonly id: string; readonly sha256: string }
+  readonly imageInputs: readonly {
+    readonly id: string
+    readonly sha256: string
+  }[]
   readonly runOrderSeed: string
+  /** Exact preregistered order: all five attempt-1 runs, then attempt-2 runs. */
+  readonly runOrder: readonly string[]
+  readonly freshContexts: readonly {
+    readonly attemptId: string
+    readonly taskId: string
+    readonly initialContextTokens: number
+    readonly freshTask: true
+    readonly parentTaskId: null
+  }[]
 }
 
 export interface FrozenProvenance {
@@ -161,6 +218,8 @@ export interface PreparedAttempt {
   readonly schemaVersion: 1
   readonly assignment: MatrixEntry
   readonly provenance: FrozenProvenance
+  /** Absolute public root mounted into the adopter sandbox for this attempt. */
+  readonly adopterDirectory: string
   readonly configSha256: string
   readonly preparedAt: string
 }
@@ -174,6 +233,7 @@ export interface ActiveTimer {
     readonly stoppedAt: string
     readonly elapsedMs: number
   }[]
+  readonly pauses: readonly PauseRecord[]
 }
 
 export interface AttemptMarker {
@@ -239,6 +299,7 @@ export interface VerifierResultRecord {
   readonly sha256: string
   readonly binding: VerifierBinding
   readonly fullFirstAttemptSuccess: boolean
+  readonly isolationCompromised: boolean
   readonly gates: Readonly<{
     bootstrap: boolean
     verticalPath: boolean
@@ -290,6 +351,7 @@ export interface AttemptState {
   readonly freeze?: FreezeRecord
   readonly remediation?: {
     readonly startedAt: string
+    readonly timer: ActiveTimer
     readonly finishedAt?: string
     readonly outcome?: 'passed' | 'failed'
     readonly resultSha256?: string

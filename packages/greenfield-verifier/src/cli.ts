@@ -12,6 +12,7 @@ import { parseVerificationPlan } from './validation.js'
 import type {
   CoordinatorBinding,
   CoordinatorSnapshotKind,
+  Gate,
   GreenfieldDriver,
   GreenfieldDriverFactory,
 } from './types.js'
@@ -105,6 +106,7 @@ async function main(): Promise<void> {
   }
   const result = await verifyGreenfieldAttempt(plan, driver, {
     runRemediation: args.remediation,
+    gateScope: canonicalGateScopeFromEnvironment(),
   })
   const coordinatorBinding = bindingFromEnvironment(plan.attempt.id, planBytes)
   const boundResult = coordinatorBinding
@@ -117,6 +119,16 @@ async function main(): Promise<void> {
     await writeFile(resolve(args.output), json, 'utf8')
   }
   if (!result.fullFirstAttemptSuccess) process.exitCode = 1
+}
+
+function canonicalGateScopeFromEnvironment(): readonly Gate[] | undefined {
+  const phase = process.env.SPECTER_EVALUATION_SNAPSHOT_KIND
+  if (phase === undefined) return undefined
+  if (phase === 'bootstrap') return ['bootstrap']
+  if (phase === 'checkpoint') return ['verticalPath']
+  if (phase === 'final') return ['domainCompleteness', 'robustness']
+  if (phase === 'remediation') return undefined
+  throw new Error('coordinator binding contains an invalid snapshot kind')
 }
 
 function bindingFromEnvironment(

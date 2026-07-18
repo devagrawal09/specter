@@ -10,6 +10,7 @@ import type {
   SemanticMapping,
   VerificationPlan,
 } from '@specter-ts/greenfield-verifier'
+import { resolveSemanticMapping } from '@specter-ts/greenfield-verifier'
 
 /**
  * Coordinator-only template. The project semantic map is parsed from JSON data;
@@ -100,12 +101,11 @@ export function createCoordinatorDriver(options: {
         phase,
         signal,
         async observe(semanticId, capability, input) {
-          const mapping = options.semanticMap.mappings[semanticId]
-          if (mapping !== undefined && mapping.capability !== capability) {
-            throw new Error(
-              `Semantic capability mismatch for ${semanticId}: mapped ${mapping.capability}, requested ${capability}`,
-            )
-          }
+          const mapping = resolveSemanticMapping(
+            options.semanticMap,
+            semanticId,
+            capability,
+          )
           const observation =
             mapping === undefined
               ? await options.services.observeOperational({

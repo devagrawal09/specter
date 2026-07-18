@@ -17,12 +17,27 @@ import {
   recordMarker,
   runVerificationSuite,
   startActiveTime,
+  startRemediationTime,
   stopActiveTime,
+  stopRemediationTime,
 } from './runner.js'
 import { writeAggregateReport, writeAttemptReport } from './report.js'
-import { rehearseAdopterAccessIsolation } from './isolation.js'
+import {
+  recordPassingIsolationAttestation,
+  rehearseAdopterAccessIsolation,
+} from './isolation.js'
 import { stableJson } from './storage.js'
-import type { MarkerOutcome, SuiteKind } from './types.js'
+import {
+  superviseActiveLimit,
+  superviseCheckpointLimit,
+  superviseRemediationLimit,
+} from './supervisor.js'
+import {
+  pauseReasons,
+  type MarkerOutcome,
+  type PauseReason,
+  type SuiteKind,
+} from './types.js'
 
 const [command, ...rawArgs] = process.argv.slice(2)
 
@@ -33,7 +48,8 @@ try {
     case 'prepare':
       result = {
         attemptDirectory: prepareAttempt({
-          attemptsRoot: required(args, 'attempts-root'),
+          coordinatorRoot: required(args, 'coordinator-root'),
+          adopterRoot: required(args, 'adopter-root'),
           assignment: jsonFile(required(args, 'assignment')),
           provenance: jsonFile(required(args, 'provenance')),
         }),
@@ -43,7 +59,7 @@ try {
       result = startActiveTime(required(args, 'attempt'))
       break
     case 'timer-stop':
-      result = stopActiveTime(required(args, 'attempt'))
+      result = stopActiveTime(required(args, 'attempt'), pauseRequest(args))
       break
     case 'mark': {
       const kind = required(args, 'kind')
@@ -74,6 +90,15 @@ try {
     case 'remediation-start':
       result = beginRemediation(required(args, 'attempt'))
       break
+    case 'remediation-timer-start':
+      result = startRemediationTime(required(args, 'attempt'))
+      break
+    case 'remediation-timer-stop':
+      result = stopRemediationTime(
+        required(args, 'attempt'),
+        pauseRequest(args),
+      )
+      break
     case 'remediation-freeze':
       result = freezeRemediation(required(args, 'attempt'))
       break
@@ -89,8 +114,19 @@ try {
       result = writeAttemptReport(required(args, 'attempt'))
       break
     case 'aggregate':
-      result = writeAggregateReport(required(args, 'attempts-root'))
+      result = writeAggregateReport(
+        required(args, 'attempts-root'),
+        jsonFile(required(args, 'matrix')),
+      )
       break
+    case 'supervise': {
+      const supervise = supervisor(required(args, 'limit'))
+      result = await supervise(
+        required(args, 'attempt'),
+        positivePid(required(args, 'pid')),
+      )
+      break
+    }
     case 'expand-catalog':
       result = expandCoordinatorCatalog(jsonFile(required(args, 'catalog')))
       break
@@ -118,6 +154,12 @@ try {
       if (!isolationResult.passed) process.exitCode = 1
       break
     }
+    case 'record-isolation':
+      result = recordPassingIsolationAttestation(
+        required(args, 'attempt'),
+        jsonFile(required(args, 'result')),
+      )
+      break
     case 'help':
     case undefined:
       console.log(help())
@@ -171,22 +213,60 @@ function suiteKind(value: string): SuiteKind {
   throw new Error('--suite must be visible or held-out')
 }
 
+function positivePid(value: string): number {
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error('--pid must be a positive safe integer')
+  }
+  const pid = Number(value)
+  if (!Number.isSafeInteger(pid)) {
+    throw new Error('--pid must be a positive safe integer')
+  }
+  return pid
+}
+
+function supervisor(value: string): typeof superviseActiveLimit {
+  if (value === 'active') return superviseActiveLimit
+  if (value === 'checkpoint') return superviseCheckpointLimit
+  if (value === 'remediation') return superviseRemediationLimit
+  throw new Error('--limit must be active, checkpoint, or remediation')
+}
+
+function pauseRequest(options: Record<string, string>): {
+  reason: PauseReason
+  triggerEvidence: string
+  coordinatorAction: string
+} {
+  const reason = required(options, 'reason')
+  if (!(pauseReasons as readonly string[]).includes(reason)) {
+    throw new Error(`--reason must be one of: ${pauseReasons.join(', ')}`)
+  }
+  return {
+    reason: reason as PauseReason,
+    triggerEvidence: required(options, 'trigger-evidence'),
+    coordinatorAction: required(options, 'coordinator-action'),
+  }
+}
+
 function help(): string {
   return `specter-greenfield commands:
-  prepare --attempts-root DIR --assignment FILE --provenance FILE
+  prepare --coordinator-root DIR --adopter-root DIR --assignment FILE --provenance FILE
   timer-start --attempt DIR
-  timer-stop --attempt DIR
+  timer-stop --attempt DIR --reason REASON --trigger-evidence TEXT --coordinator-action TEXT
   mark --attempt DIR --kind bootstrap|checkpoint --outcome OUTCOME [--note TEXT]
   freeze --attempt DIR --outcome OUTCOME [--note TEXT]
   verify --attempt DIR --suite visible|held-out
   remediation-start --attempt DIR
+  remediation-timer-start --attempt DIR
+  remediation-timer-stop --attempt DIR --reason REASON --trigger-evidence TEXT --coordinator-action TEXT
   remediation-freeze --attempt DIR
   remediation-finish --attempt DIR --result verifier-result.json [--note TEXT]
   report --attempt DIR
-  aggregate --attempts-root DIR
+  aggregate --attempts-root DIR --matrix FILE
+  supervise --attempt DIR --pid PID --limit active|checkpoint|remediation
   expand-catalog --catalog FILE
   validate-matrix --matrix FILE
   adopter-assignment --matrix FILE --attempt-id ID
   build-provenance --config FILE
-  rehearse-isolation --contract FILE`
+  rehearse-isolation --contract FILE
+  record-isolation --attempt DIR --result FILE`
 }

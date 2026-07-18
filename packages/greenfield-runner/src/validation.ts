@@ -6,6 +6,7 @@ import type {
   FrozenProvenance,
   MatrixEntry,
   PackageProvenance,
+  RuntimeProvenance,
 } from './types.js'
 import { provenanceArtifactKinds } from './types.js'
 
@@ -148,6 +149,23 @@ export function validateProvenance(value: unknown): FrozenProvenance {
       throw new Error(`artifacts must include at least one ${kind} artifact`)
     }
   }
+  for (const kind of [
+    'candidateTable',
+    'developerPolicy',
+    'environmentFailureSignatures',
+    'frictionCodebook',
+    'methodology',
+    'randomizedSchedule',
+    'recommendationEvidenceMap',
+    'reviewerAssignment',
+    'systemPolicy',
+    'toolPolicy',
+    'verificationPlan',
+  ] as const) {
+    if (artifacts.filter((artifact) => artifact.kind === kind).length !== 1) {
+      throw new Error(`artifacts must include exactly one ${kind} artifact`)
+    }
+  }
   const publicKinds = new Set([
     'adopterPrompt',
     'domainBrief',
@@ -192,7 +210,7 @@ export function validateProvenance(value: unknown): FrozenProvenance {
       )
     }
   }
-  const runtime = runtimeProvenance(input.runtime)
+  const runtime = validateRuntimeProvenance(input.runtime)
 
   const artifactManifestSha256 = sha256(
     input.artifactManifestSha256,
@@ -285,7 +303,7 @@ function packageProvenance(value: unknown, name: string): PackageProvenance {
   }
 }
 
-function runtimeProvenance(value: unknown): FrozenProvenance['runtime'] {
+export function validateRuntimeProvenance(value: unknown): RuntimeProvenance {
   const input = record(value, 'runtime')
   const model = record(input.model, 'runtime.model')
   const sampler = record(model.sampler, 'runtime.model.sampler')
@@ -305,6 +323,12 @@ function runtimeProvenance(value: unknown): FrozenProvenance['runtime'] {
   const harness = record(input.agentHarness, 'runtime.agentHarness')
   const platform = record(input.platform, 'runtime.platform')
   const toolchain = record(input.toolchain, 'runtime.toolchain')
+  const executionImage = record(input.executionImage, 'runtime.executionImage')
+  const resourceLimits = record(input.resourceLimits, 'runtime.resourceLimits')
+  const dependencyCache = record(
+    input.dependencyCache,
+    'runtime.dependencyCache',
+  )
   const services = array(input.services, 'runtime.services')
     .map((entry, index) => {
       const service = record(entry, `runtime.services[${index}]`)
@@ -327,6 +351,66 @@ function runtimeProvenance(value: unknown): FrozenProvenance['runtime'] {
     .sort((left, right) => left.id.localeCompare(right.id))
   if (new Set(services.map((service) => service.id)).size !== services.length) {
     throw new Error('runtime service IDs must be unique')
+  }
+  const imageInputs = array(input.imageInputs, 'runtime.imageInputs')
+    .map((entry, index) => {
+      const image = record(entry, `runtime.imageInputs[${index}]`)
+      return {
+        id: id(image.id, `runtime.imageInputs[${index}].id`),
+        sha256: sha256(image.sha256, `runtime.imageInputs[${index}].sha256`),
+      }
+    })
+    .sort((left, right) => left.id.localeCompare(right.id))
+  if (
+    new Set(imageInputs.map((image) => image.id)).size !== imageInputs.length
+  ) {
+    throw new Error('runtime image input IDs must be unique')
+  }
+  const runOrder = array(input.runOrder, 'runtime.runOrder').map(
+    (entry, index) => id(entry, `runtime.runOrder[${index}]`),
+  )
+  if (runOrder.length !== 10 || new Set(runOrder).size !== 10) {
+    throw new Error('runtime.runOrder must contain exactly ten unique attempts')
+  }
+  const freshContexts = array(input.freshContexts, 'runtime.freshContexts')
+    .map((entry, index) => {
+      const context = record(entry, `runtime.freshContexts[${index}]`)
+      if (context.freshTask !== true || context.parentTaskId !== null) {
+        throw new Error(
+          `runtime.freshContexts[${index}] must attest a fresh task with no parent task`,
+        )
+      }
+      return {
+        attemptId: id(
+          context.attemptId,
+          `runtime.freshContexts[${index}].attemptId`,
+        ),
+        taskId: nonEmptyString(
+          context.taskId,
+          `runtime.freshContexts[${index}].taskId`,
+        ),
+        initialContextTokens: integer(
+          context.initialContextTokens,
+          `runtime.freshContexts[${index}].initialContextTokens`,
+        ),
+        freshTask: true as const,
+        parentTaskId: null,
+      }
+    })
+    .sort((left, right) => left.attemptId.localeCompare(right.attemptId))
+  if (
+    freshContexts.length !== 10 ||
+    new Set(freshContexts.map((context) => context.attemptId)).size !== 10 ||
+    new Set(freshContexts.map((context) => context.taskId)).size !== 10 ||
+    freshContexts.some(
+      (context) =>
+        context.initialContextTokens < 0 ||
+        !runOrder.includes(context.attemptId),
+    )
+  ) {
+    throw new Error(
+      'runtime.freshContexts must contain one unique nonnegative fresh-task record per scheduled attempt',
+    )
   }
   return {
     model: {
@@ -371,7 +455,47 @@ function runtimeProvenance(value: unknown): FrozenProvenance['runtime'] {
       ),
     },
     services,
+    executionImage: {
+      name: nonEmptyString(executionImage.name, 'runtime.executionImage.name'),
+      sha256: sha256(executionImage.sha256, 'runtime.executionImage.sha256'),
+    },
+    resourceLimits: {
+      contextTokens: positiveInteger(
+        resourceLimits.contextTokens,
+        'runtime.resourceLimits.contextTokens',
+      ),
+      cpuCores: positiveNumber(
+        resourceLimits.cpuCores,
+        'runtime.resourceLimits.cpuCores',
+      ),
+      memoryMiB: positiveInteger(
+        resourceLimits.memoryMiB,
+        'runtime.resourceLimits.memoryMiB',
+      ),
+      activeMinutes: exactInteger(
+        resourceLimits.activeMinutes,
+        180,
+        'runtime.resourceLimits.activeMinutes',
+      ),
+      checkpointMinutes: exactInteger(
+        resourceLimits.checkpointMinutes,
+        75,
+        'runtime.resourceLimits.checkpointMinutes',
+      ),
+      remediationMinutes: exactInteger(
+        resourceLimits.remediationMinutes,
+        60,
+        'runtime.resourceLimits.remediationMinutes',
+      ),
+    },
+    dependencyCache: {
+      id: nonEmptyString(dependencyCache.id, 'runtime.dependencyCache.id'),
+      sha256: sha256(dependencyCache.sha256, 'runtime.dependencyCache.sha256'),
+    },
+    imageInputs,
     runOrderSeed: nonEmptyString(input.runOrderSeed, 'runtime.runOrderSeed'),
+    runOrder,
+    freshContexts,
   }
 }
 
@@ -417,6 +541,30 @@ function integer(value: unknown, name: string): number {
     throw new Error(`${name} must be an integer`)
   }
   return value
+}
+
+function positiveInteger(value: unknown, name: string): number {
+  const result = integer(value, name)
+  if (result < 1) throw new Error(`${name} must be positive`)
+  return result
+}
+
+function positiveNumber(value: unknown, name: string): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive finite number`)
+  }
+  return value
+}
+
+function exactInteger<const Value extends number>(
+  value: unknown,
+  expected: Value,
+  name: string,
+): Value {
+  if (integer(value, name) !== expected) {
+    throw new Error(`${name} must be ${expected}`)
+  }
+  return expected
 }
 
 function literal<const Value extends string | number>(

@@ -68,6 +68,12 @@ The private coordinator driver parses that JSON and owns all oracles and
 held-out orchestration. Coordinator-owned services drive HTTP/SSE/browser
 surfaces, control processes and faults, and inspect Event/database/outbox state:
 
+Every requested command, query, subscription, Event-log, or browser semantic ID
+must have a mapping with the requested capability. A missing entry is a contract
+failure; it never falls through to coordinator operational observation. Only
+restart, replay, fault, process, outbox, and Reaction-delivery capabilities may
+be intentionally unmapped and handled by coordinator-owned services.
+
 The service result contains raw channel captures, coordinator normalization,
 artifact paths, and parity comparisons between independently observed surfaces.
 For example, a Command receipt can be compared with durable Event facts, and an

@@ -367,6 +367,8 @@ export interface VerificationResult {
 
 export interface VerificationOptions {
   runRemediation?: boolean
+  /** Restrict this invocation to checks assigned to its canonical gate phase. */
+  gateScope?: readonly Gate[]
   now?: () => number
   /** Time allowed for runCheck/setup to settle after its signal is aborted. */
   abortGraceMs?: number

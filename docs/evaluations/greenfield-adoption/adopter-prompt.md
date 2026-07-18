@@ -45,6 +45,9 @@ facts, and UI locators to your freely chosen envelope, Event, and route names.
 The map is JSON data, never an executable module. It may rename input/output
 fields using JSON Pointers but cannot contain constants, verifier check IDs,
 expected values, pass/fail claims, fixture-order recognition, or held-out logic.
+All assigned command, query, subscription, Event-log, and browser semantic IDs
+must be present with their catalog capability; missing mappings are rejected and
+cannot be treated as coordinator operational probes.
 Do not implement process control, restart, replay, fault injection, Reaction
 delivery, or outbox probes: coordinator-owned services exercise and inspect those
 capabilities independently. The visible suite validates mapping completeness and

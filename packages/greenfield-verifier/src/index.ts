@@ -12,6 +12,7 @@ export {
   PlanValidationError,
   validateVerificationPlan,
 } from './validation.js'
+export { resolveSemanticMapping } from './semantic-map.js'
 export {
   type AttemptDescriptor,
   type AttemptPhase,

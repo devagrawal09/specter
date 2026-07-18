@@ -125,7 +125,10 @@ for (const domain of checkCatalog.domainBindings) {
   if (
     executionDomain.persistence !== persistence ||
     executionDomain.port !== matrixDomain.port ||
-    executionDomain.domainKind !== matrixDomain.cohort
+    executionDomain.domainKind !==
+      (matrixDomain.cohort === 'near-transfer'
+        ? 'transfer'
+        : matrixDomain.cohort)
   ) {
     fail(`${domain.domainId} execution facts drift from matrix.json`)
   }
