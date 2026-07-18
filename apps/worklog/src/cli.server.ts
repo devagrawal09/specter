@@ -6,13 +6,15 @@ import type {
 } from '@specter-ts/core'
 
 import type { WorklogAppConfig } from './features/worklog/registry'
-import { createWorklogRuntime } from './worklog-runtime.server'
+import { executeWorklogCli } from './worklog-cli.server'
 
 const HELP = `Usage:
-  worklog command [--json '<envelope>'] [--idempotency-key <key>] [--db <path>]
-  worklog query   [--json '<envelope>'] [--db <path>]
+  worklog command [--json '<envelope>'] [--idempotency-key <key>] [--url <api-url> | --db <path>]
+  worklog query   [--json '<envelope>'] [--url <api-url> | --db <path>]
 
-When --json is omitted, Worklog reads one JSON envelope from stdin.`
+When --json is omitted, Worklog reads one JSON envelope from stdin.
+The CLI uses the running server at http://localhost:41736/api when available.
+Pass --db to force direct SQLite access while the server is stopped.`
 
 async function main() {
   const rawArgs = process.argv.slice(2)
@@ -28,31 +30,22 @@ async function main() {
   const raw = option(args, '--json') ?? readFileSync(0, 'utf8').trim()
   if (!raw) throw new Error('A JSON envelope is required')
   const envelope = JSON.parse(raw) as unknown
-  const runtime = await createWorklogRuntime(option(args, '--db'))
+  const shared = { db: option(args, '--db'), url: option(args, '--url') }
 
-  try {
-    if (mode === 'command') {
-      const execution = await runtime.app.command(
-        envelope as SpecterCommandEnvelope<WorklogAppConfig>,
-        { idempotencyKey: option(args, '--idempotency-key') },
-      )
-      await execution.reactions
-      write({
-        ok: true,
-        events: execution.events,
-        version: execution.version,
-        duplicate: execution.duplicate,
-      })
-      return
-    }
-
-    const result = await runtime.app.query(
-      envelope as SpecterQueryEnvelope<WorklogAppConfig>,
-    )
-    write({ ok: true, result })
-  } finally {
-    runtime.close()
-  }
+  const result =
+    mode === 'command'
+      ? await executeWorklogCli({
+          mode,
+          envelope: envelope as SpecterCommandEnvelope<WorklogAppConfig>,
+          idempotencyKey: option(args, '--idempotency-key'),
+          ...shared,
+        })
+      : await executeWorklogCli({
+          mode,
+          envelope: envelope as SpecterQueryEnvelope<WorklogAppConfig>,
+          ...shared,
+        })
+  write({ ok: true, ...result })
 }
 
 function option(args: string[], name: string) {

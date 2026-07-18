@@ -3,6 +3,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, expect, test } from 'vitest'
 
+import type { WorklogAppConfig } from './features/worklog/registry'
+import { createSpecterBrowserTransport } from './transport/specter-browser'
+import { executeWorklogCli } from './worklog-cli.server'
+
 let app: Awaited<typeof import('./server')>['default']
 let tempDir: string
 
@@ -56,6 +60,53 @@ test('handles a command followed by timeline and score queries', async () => {
   expect(await scoreResponse.json()).toEqual(
     expect.objectContaining({ total: 1 }),
   )
+})
+
+test('routes CLI commands through the server and updates active subscriptions', async () => {
+  const fetchImplementation: typeof globalThis.fetch = async (input, init) =>
+    app.fetch(new Request(input, init))
+  const transport = createSpecterBrowserTransport<WorklogAppConfig>(
+    'http://worklog.test/api',
+    { fetch: fetchImplementation },
+  )
+  const iterator = transport
+    .subscribe({
+      type: 'tasksQuery',
+      payload: { status: 'all', topicId: null },
+    })
+    [Symbol.asyncIterator]()
+
+  expect((await iterator.next()).value).toEqual([])
+
+  const result = await executeWorklogCli(
+    {
+      mode: 'command',
+      url: 'http://worklog.test/api',
+      idempotencyKey: 'cli-live-subscription-test',
+      envelope: {
+        type: 'addTask',
+        payload: {
+          taskId: 'cli-task-1',
+          title: 'Appears without refresh',
+          notes: null,
+          dueAt: null,
+          createdAt: '2026-07-18T20:30:00.000Z',
+        },
+      },
+    },
+    { fetch: fetchImplementation },
+  )
+
+  expect(result).toEqual(
+    expect.objectContaining({ transport: 'http', duplicate: false }),
+  )
+  expect((await iterator.next()).value).toEqual([
+    expect.objectContaining({
+      id: 'cli-task-1',
+      title: 'Appears without refresh',
+    }),
+  ])
+  await iterator.return?.()
 })
 
 function postJson(path: string, body: unknown) {

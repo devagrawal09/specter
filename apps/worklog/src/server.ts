@@ -12,6 +12,7 @@ const handleSpecterRequest = createSpecterHttpHandler({
 
 const app = new Hono()
 
+app.get('/api/health', (c) => c.json({ ok: true }))
 app.all('/api/*', (c) => handleSpecterRequest(c.req.raw))
 
 const routes = app

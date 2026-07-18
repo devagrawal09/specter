@@ -7,8 +7,9 @@
 - Start verification servers with `pnpm --filter @specter/worklog dev:verify`.
   This creates a temporary SQLite database outside the app directory and removes
   it when the server exits.
-- For CLI verification, always pass `--db` with an explicit temporary database
-  path. Never omit `--db` during verification.
+- For offline CLI verification, always pass `--db` with an explicit temporary
+  database path. For subscription integration checks, stop the live server,
+  start `dev:verify`, and let the CLI use that temporary HTTP server.
 - Playwright must start its own verification server. Do not configure it to
   reuse a running server, because that server may be the user's live instance.
 - Do not inspect, copy, reset, or mutate the live database unless the user

@@ -12,8 +12,8 @@ earning an auditable lifetime score.
 - Topics and symmetric connections between supported record types.
 - Permanent one-time points for creation, first completion, completed-task
   connections, and completing a topic containing at least three tasks.
-- A direct SQLite CLI that accepts raw Specter Command and Query envelopes and
-  returns JSON.
+- A server-aware CLI that accepts raw Specter Command and Query envelopes,
+  updates live subscriptions, and retains explicit direct-SQLite access.
 - Soft editing and archival; the Event Log remains the durable source of truth.
 
 The app is local-only, uses a SQLite database at `data/worklog.db`, and runs on
@@ -47,7 +47,7 @@ removes it when the server exits. Playwright uses this command automatically and
 refuses to reuse an existing server, so it cannot silently attach to a live
 Worklog instance.
 
-CLI verification must likewise use an explicit temporary database:
+Offline CLI verification must likewise use an explicit temporary database:
 
 ```sh
 verification_dir="$(mktemp -d)"
@@ -56,7 +56,12 @@ pnpm --filter @specter/worklog worklog -- query --db \
   '{"type":"scoreQuery","payload":{}}'
 ```
 
-The agent-facing CLI accepts raw Specter envelopes and always returns JSON:
+The agent-facing CLI accepts raw Specter envelopes and always returns JSON. By
+default it uses the running server at `http://localhost:41736/api`, which keeps
+web subscriptions current. Pass `--db` to explicitly use SQLite while the
+server is stopped, or `--url` to require a different server. The CLI never
+silently falls back after a server failure, so writes cannot unexpectedly bypass
+live subscriptions:
 
 ```sh
 pnpm --filter @specter/worklog worklog -- command --json \
@@ -67,7 +72,9 @@ pnpm --filter @specter/worklog worklog -- query --json \
 ```
 
 Omit `--json` to read one envelope from standard input. Commands also accept
-`--idempotency-key`; both operations accept `--db` to override the database.
+`--idempotency-key`; both operations accept `--url` or `--db` as mutually
+exclusive transport overrides. Command failures after a successful server
+health check never fall back to SQLite, avoiding ambiguous duplicate writes.
 
 ## Backup
 
