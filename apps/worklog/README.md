@@ -20,6 +20,39 @@ The app is local-only, uses a SQLite database at `data/worklog.db`, and runs on
 fixed port `41736`. Documents, recurring tasks, habits, routines, planning,
 authentication, sync, and application-level import/export are deferred.
 
+## Run it
+
+```sh
+pnpm install
+pnpm build:publishable
+pnpm --filter @specter/worklog dev
+```
+
+Open `http://127.0.0.1:41736`. The server and CLI use
+`WORKLOG_SQLITE_PATH` when set and otherwise use `./data/worklog.db` relative
+to the app directory.
+
+The agent-facing CLI accepts raw Specter envelopes and always returns JSON:
+
+```sh
+pnpm --filter @specter/worklog worklog -- command --json \
+  '{"type":"addTask","payload":{"taskId":"task-1","title":"Ship it","notes":null,"dueAt":null,"createdAt":"2026-07-18T15:00:00.000Z"}}'
+
+pnpm --filter @specter/worklog worklog -- query --json \
+  '{"type":"tasksQuery","payload":{"status":"all","topicId":null}}'
+```
+
+Omit `--json` to read one envelope from standard input. Commands also accept
+`--idempotency-key`; both operations accept `--db` to override the database.
+
+## Backup
+
+Stop the Worklog server and wait for any CLI command to finish, then copy
+`data/worklog.db` to backup storage. Restore by replacing that file while
+Worklog remains stopped. SQLite WAL mode is enabled for safe concurrent web
+and CLI access during ordinary operation, but backups deliberately use a
+quiescent database so the single file is complete.
+
 ## Implementation contract
 
 Every feature uses the Specter `spec.ts`/`impl.ts` Slice boundary, exact
