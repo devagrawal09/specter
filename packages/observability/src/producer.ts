@@ -16,6 +16,7 @@ export type RuntimeObservationProducerOptions = {
   readonly maxBatchSize?: number
   readonly retryDelayMs?: number
   readonly maxRetryDelayMs?: number
+  readonly closeTimeoutMs?: number
 }
 
 export type RuntimeObservationProducer = {
@@ -39,13 +40,16 @@ export function createRuntimeObservationProducer(
   const batchSize = boundedPositiveInteger(options.maxBatchSize, 100, 100)
   const initialRetryDelay = options.retryDelayMs ?? 100
   const maxRetryDelay = options.maxRetryDelayMs ?? 5_000
+  const closeTimeout = Math.max(0, options.closeTimeoutMs ?? 5_000)
   const queue: RuntimeObservation[] = []
   let dropped = 0
   let reportedDropped = 0
   let activeFlush: Promise<void> | undefined
   let retryDelay = initialRetryDelay
   let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let requestAbort: AbortController | undefined
   let closed = false
+  let closePromise: Promise<void> | undefined
   let telemetrySequence = 0
   let pending:
     | {
@@ -67,9 +71,9 @@ export function createRuntimeObservationProducer(
   }
 
   function scheduleFlush() {
-    if (activeFlush || retryTimer || !hasWork()) return
+    if (closed || activeFlush || retryTimer || !hasWork()) return
     queueMicrotask(() => {
-      if (!activeFlush && !retryTimer && hasWork()) {
+      if (!closed && !activeFlush && !retryTimer && hasWork()) {
         activeFlush = drain().finally(() => {
           activeFlush = undefined
           if (hasWork() && !retryTimer) scheduleFlush()
@@ -122,6 +126,8 @@ export function createRuntimeObservationProducer(
       }
 
       try {
+        const abort = new AbortController()
+        requestAbort = abort
         const response = await fetchImplementation(
           `${options.endpoint.replace(/\/$/, '')}/specter/v1/observations`,
           {
@@ -131,6 +137,7 @@ export function createRuntimeObservationProducer(
               'content-type': 'application/json',
             },
             body: JSON.stringify(pending.batch),
+            signal: abort.signal,
           },
         )
         if (!response.ok)
@@ -141,12 +148,16 @@ export function createRuntimeObservationProducer(
         pending = undefined
         retryDelay = initialRetryDelay
       } catch {
+        if (closed) return
         retryTimer = setTimeout(() => {
           retryTimer = undefined
           scheduleFlush()
         }, retryDelay)
+        unrefTimer(retryTimer)
         retryDelay = Math.min(maxRetryDelay, retryDelay * 2)
         return
+      } finally {
+        requestAbort = undefined
       }
     }
   }
@@ -162,9 +173,30 @@ export function createRuntimeObservationProducer(
     if (activeFlush === currentFlush) activeFlush = undefined
   }
 
-  async function close() {
+  function close() {
+    closePromise ??= closeProducer()
+    return closePromise
+  }
+
+  async function closeProducer() {
     closed = true
-    await flush()
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = undefined
+    }
+    const finalAttempt = flush()
+    let timeout: ReturnType<typeof setTimeout> | undefined
+    await Promise.race([
+      finalAttempt,
+      new Promise<void>((resolve) => {
+        timeout = setTimeout(() => {
+          requestAbort?.abort()
+          resolve()
+        }, closeTimeout)
+        unrefTimer(timeout)
+      }),
+    ])
+    if (timeout) clearTimeout(timeout)
   }
 
   return {
@@ -177,6 +209,11 @@ export function createRuntimeObservationProducer(
       closed,
     }),
   }
+}
+
+function unrefTimer(timer: ReturnType<typeof setTimeout>) {
+  const timerWithUnref = timer as unknown as { unref?: () => void }
+  timerWithUnref.unref?.()
 }
 
 function boundedPositiveInteger(

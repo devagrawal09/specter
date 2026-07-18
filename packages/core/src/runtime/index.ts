@@ -13,6 +13,7 @@ export type {
   SpecterEventOrderRange,
   SpecterEventReference,
   SpecterOperationOptions,
+  SpecterProtocolCausality,
   SpecterObserver,
   SpecterQueryEnvelope,
   SpecterQueryResult,

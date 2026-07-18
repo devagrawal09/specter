@@ -30,11 +30,7 @@ export class SpecterProtocolError extends Error {
   }
 
   toStructuredError(): StructuredError {
-    return {
-      code: this.code,
-      message: this.message,
-      ...(this.details === undefined ? {} : { details: this.details }),
-    }
+    return structuredProtocolError(this)
   }
 }
 
@@ -55,9 +51,27 @@ const publicRuntimeErrorMessages: Readonly<Record<string, string>> = {
   SPECTER_VERSION_CONFLICT: 'Event Log version conflict.',
 }
 
+const publicProtocolErrorMessages: Readonly<Record<string, string>> = {
+  [protocolErrorCodes.invalidJson]: 'Malformed JSON request.',
+  [protocolErrorCodes.invalidMessage]: 'Protocol message is invalid.',
+  [protocolErrorCodes.versionMismatch]:
+    'The protocol major version is unsupported.',
+  [protocolErrorCodes.unsupportedCapability]:
+    'One or more required capabilities are unsupported.',
+  [protocolErrorCodes.routeNotFound]: 'Route not found.',
+  [protocolErrorCodes.internal]:
+    'The Specter runtime could not complete the request.',
+  [protocolErrorCodes.transport]: 'The protocol transport failed.',
+}
+
 /** Maps an untrusted runtime failure to a public, non-sensitive protocol error. */
 export function structuredProtocolError(cause: unknown): StructuredError {
-  if (cause instanceof SpecterProtocolError) return cause.toStructuredError()
+  if (cause instanceof SpecterProtocolError) {
+    const code = Object.hasOwn(publicProtocolErrorMessages, cause.code)
+      ? cause.code
+      : protocolErrorCodes.internal
+    return { code, message: publicProtocolErrorMessages[code] }
+  }
 
   const code =
     cause instanceof Error &&

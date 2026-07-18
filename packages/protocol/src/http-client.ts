@@ -4,8 +4,10 @@ import type {
   CapabilitiesResponse,
   CommandRequest,
   CommandResponse,
+  ProtocolMessage,
   ProtocolCapability,
   QueryRequest,
+  QueryResponse,
   ReactionTicketResponse,
   RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
@@ -31,35 +33,55 @@ export function createSpecterProtocolHttpClient(
       required: readonly ProtocolCapability[] = [],
       optional: readonly ProtocolCapability[] = [],
     ) {
-      return post<CapabilitiesResponse>('/capabilities', {
+      const message = {
         protocolVersion: 1,
         kind: 'capabilities.request',
         requestId: requestId(),
         required,
         optional,
+      } as const
+      return post<CapabilitiesResponse>('/capabilities', message, {
+        kind: 'capabilities.response',
+        requestId: message.requestId,
       })
     },
     command(
       input: Omit<CommandRequest, 'protocolVersion' | 'kind' | 'requestId'>,
     ) {
-      return post<CommandResponse>('/commands', {
+      const message: CommandRequest = {
         protocolVersion: 1,
         kind: 'command.request',
         requestId: requestId(),
         ...input,
+      }
+      return post<CommandResponse>('/commands', message, {
+        kind: 'command.response',
+        requestId: message.requestId,
+        operationId: message.operationId,
       })
     },
     query(input: Omit<QueryRequest, 'protocolVersion' | 'kind' | 'requestId'>) {
-      return post('/queries', {
+      const message: QueryRequest = {
         protocolVersion: 1,
         kind: 'query.request',
         requestId: requestId(),
         ...input,
+      }
+      return post<QueryResponse>('/queries', message, {
+        kind: 'query.response',
+        requestId: message.requestId,
+        operationId: message.operationId,
       })
     },
     reactionTicket(reactionTicketId: string) {
+      const ticketRequestId = requestId()
       return get<ReactionTicketResponse>(
-        `/reaction-tickets/${encodeURIComponent(reactionTicketId)}?requestId=${encodeURIComponent(requestId())}`,
+        `/reaction-tickets/${encodeURIComponent(reactionTicketId)}?requestId=${encodeURIComponent(ticketRequestId)}`,
+        {
+          kind: 'reaction-ticket.response',
+          requestId: ticketRequestId,
+          reactionTicketId,
+        },
       )
     },
     observations(
@@ -68,11 +90,15 @@ export function createSpecterProtocolHttpClient(
         'protocolVersion' | 'kind' | 'requestId'
       >,
     ) {
-      return post<RuntimeObservationAcknowledgement>('/observations', {
+      const message: RuntimeObservationBatch = {
         protocolVersion: 1,
         kind: 'observations.batch',
         requestId: requestId(),
         ...input,
+      }
+      return post<RuntimeObservationAcknowledgement>('/observations', message, {
+        kind: 'observations.ack',
+        requestId: message.requestId,
       })
     },
     subscribe(
@@ -92,7 +118,11 @@ export function createSpecterProtocolHttpClient(
     },
   })
 
-  async function post<TResult>(path: string, body: unknown): Promise<TResult> {
+  async function post<TResult extends ProtocolMessage>(
+    path: string,
+    body: unknown,
+    expected: ResponseExpectation,
+  ): Promise<TResult> {
     const response = await fetchImplementation(`${base}${path}`, {
       method: 'POST',
       headers: {
@@ -101,16 +131,23 @@ export function createSpecterProtocolHttpClient(
       },
       body: JSON.stringify(body),
     })
-    return decodeJson<TResult>(response)
+    return decodeJson<TResult>(response, expected)
   }
-  async function get<TResult>(path: string): Promise<TResult> {
+  async function get<TResult extends ProtocolMessage>(
+    path: string,
+    expected: ResponseExpectation,
+  ): Promise<TResult> {
     return decodeJson<TResult>(
       await fetchImplementation(`${base}${path}`, {
         headers: { accept: 'application/json' },
       }),
+      expected,
     )
   }
-  async function decodeJson<TResult>(response: Response): Promise<TResult> {
+  async function decodeJson<TResult extends ProtocolMessage>(
+    response: Response,
+    expected: ResponseExpectation,
+  ): Promise<TResult> {
     let payload: unknown
     try {
       payload = JSON.parse(await response.text())
@@ -121,6 +158,12 @@ export function createSpecterProtocolHttpClient(
         status: response.status,
         cause,
       })
+    }
+    if (isProtocolEnvelope(payload)) {
+      const parsed = parseProtocolMessage(payload)
+      assertResponseCorrelation(parsed, expected)
+      if (!response.ok) throw remoteError(response.status, payload)
+      return parsed as TResult
     }
     if (!response.ok) throw remoteError(response.status, payload)
     return parseProtocolMessage(payload) as TResult
@@ -160,7 +203,12 @@ export function createSpecterProtocolHttpClient(
         parsed.kind !== 'subscription.error' &&
         parsed.kind !== 'subscription.complete'
       )
-        continue
+        throw responseMismatch('subscription message kind')
+      assertResponseCorrelation(parsed, {
+        kind: parsed.kind,
+        requestId: message.requestId,
+        operationId: message.operationId,
+      })
       yield parsed
       if (
         parsed.kind === 'subscription.error' ||
@@ -169,6 +217,52 @@ export function createSpecterProtocolHttpClient(
         return
     }
   }
+}
+
+function isProtocolEnvelope(value: unknown) {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'protocolVersion' in value &&
+    'kind' in value &&
+    'requestId' in value
+  )
+}
+
+type ResponseExpectation = {
+  readonly kind: ProtocolMessage['kind']
+  readonly requestId: string
+  readonly operationId?: string
+  readonly reactionTicketId?: string
+}
+
+function assertResponseCorrelation(
+  message: ProtocolMessage,
+  expected: ResponseExpectation,
+) {
+  if (message.kind !== expected.kind) throw responseMismatch('message kind')
+  if (message.requestId !== expected.requestId)
+    throw responseMismatch('request ID')
+  if (
+    expected.operationId !== undefined &&
+    (!('operationId' in message) ||
+      message.operationId !== expected.operationId)
+  )
+    throw responseMismatch('operation ID')
+  if (
+    expected.reactionTicketId !== undefined &&
+    (!('reactionTicketId' in message) ||
+      message.reactionTicketId !== expected.reactionTicketId)
+  )
+    throw responseMismatch('Reaction ticket ID')
+}
+
+function responseMismatch(field: string) {
+  return new SpecterProtocolError({
+    code: protocolErrorCodes.transport,
+    message: `Server response has a mismatched ${field}.`,
+    status: 502,
+  })
 }
 
 async function* decodeSse(stream: ReadableStream<Uint8Array>) {

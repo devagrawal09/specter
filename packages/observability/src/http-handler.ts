@@ -6,7 +6,10 @@ import {
   structuredProtocolError,
 } from '@specter-ts/protocol'
 
-import type { RuntimeActivityFilter } from './collector-model'
+import type {
+  RuntimeActivityFilter,
+  RuntimeTraceFilter,
+} from './collector-model'
 import type { SpecterObservabilityCollector } from './collector'
 import { renderCollectorHtml } from './ui'
 
@@ -22,7 +25,7 @@ export function createSpecterObservabilityHttpHandler(
   const basePath =
     `/${(options.basePath ?? '').replace(/^\/+|\/+$/g, '')}`.replace(/\/$/, '')
 
-  return async function handle(request: Request): Promise<Response> {
+  async function handle(request: Request): Promise<Response> {
     const url = new URL(request.url)
     if (
       basePath &&
@@ -54,7 +57,7 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/capabilities') {
-        const message = parseProtocolMessage(await request.json())
+        const message = parseProtocolMessage(await readJson(request))
         if (message.kind !== 'capabilities.request') {
           return errorResponse(
             400,
@@ -72,7 +75,7 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/observations') {
-        const body: unknown = await request.json()
+        const body = await readJson(request)
         assertRuntimeObservationBatch(body)
         return Response.json(await options.collector.ingest(body), {
           status: 202,
@@ -97,7 +100,9 @@ export function createSpecterObservabilityHttpHandler(
             'operationId is required.',
           )
         }
-        return Response.json(await options.collector.trace(operationId))
+        return Response.json(
+          await options.collector.trace(operationId, traceFilterFromUrl(url)),
+        )
       }
       if (request.method === 'GET' && route === '/v1/stream') {
         const signal = options.signal
@@ -118,6 +123,35 @@ export function createSpecterObservabilityHttpHandler(
         error.message,
       )
     }
+  }
+
+  return async (request: Request) => {
+    const response = await handle(request)
+    response.headers.set('Specter-Protocol-Version', '1')
+    return response
+  }
+}
+
+async function readJson(request: Request): Promise<unknown> {
+  try {
+    return await request.json()
+  } catch (cause) {
+    throw new SpecterProtocolError({
+      code: 'SPECTER_INVALID_JSON',
+      message: 'Malformed JSON request.',
+      status: 400,
+      cause,
+    })
+  }
+}
+
+function traceFilterFromUrl(url: URL): RuntimeTraceFilter {
+  const value = (name: string) => url.searchParams.get(name) || undefined
+  return {
+    application: value('application'),
+    environment: value('environment'),
+    instanceId: value('instanceId'),
+    eventLogId: value('eventLogId'),
   }
 }
 

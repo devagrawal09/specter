@@ -19,6 +19,11 @@ export type RuntimeActivityFilter = {
   readonly limit?: number
 }
 
+export type RuntimeTraceFilter = Pick<
+  RuntimeActivityFilter,
+  'application' | 'environment' | 'instanceId' | 'eventLogId'
+>
+
 export type RuntimeSourceSummary = {
   readonly source: RuntimeSource
   readonly observationCount: number
@@ -85,4 +90,10 @@ export function runtimeSourceIdentity(source: RuntimeSource) {
     source.instanceId,
     source.eventLogId,
   ].join('\u0000')
+}
+
+export function runtimeEventLogIdentity(source: RuntimeSource) {
+  return [source.application, source.environment, source.eventLogId].join(
+    '\u0000',
+  )
 }

@@ -3,11 +3,18 @@
   "cases": [
     { "name": "command-commit", "file": "command-commit.json", "valid": true },
     { "name": "observation-batch", "file": "observation-batch.json", "valid": true },
+    { "name": "causality-fields", "file": "causality-fields.json", "valid": true },
     { "name": "unknown-optional-field", "file": "unknown-optional-field.json", "valid": true },
     { "name": "version-mismatch", "file": "version-mismatch.json", "valid": false, "errorCode": "SPECTER_PROTOCOL_VERSION_MISMATCH" },
     { "name": "malformed-command", "file": "malformed-command.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "contradictory-command-response", "file": "contradictory-command-response.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "contradictory-query-response", "file": "contradictory-query-response.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
-    { "name": "contradictory-reaction-ticket-response", "file": "contradictory-reaction-ticket-response.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" }
+    { "name": "contradictory-reaction-ticket-response", "file": "contradictory-reaction-ticket-response.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "command-success-missing-ticket", "file": "command-success-missing-ticket.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "command-rejected-with-ticket", "file": "command-rejected-with-ticket.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "subscription-value-with-error", "file": "subscription-value-with-error.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "subscription-error-with-result", "file": "subscription-error-with-result.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "subscription-complete-with-sequence", "file": "subscription-complete-with-sequence.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "invalid-causality-range", "file": "invalid-causality-range.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" }
   ]
 }

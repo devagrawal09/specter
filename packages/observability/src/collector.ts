@@ -19,6 +19,7 @@ import type {
   RuntimeActivityFilter,
   RuntimeOverview,
   RuntimeTrace,
+  RuntimeTraceFilter,
 } from './collector-model'
 import { createRuntimeActivity } from './features/runtime-activity/impl'
 import { createRecordRuntimeObservations } from './features/runtime-observations/impl'
@@ -104,10 +105,10 @@ export async function createSpecterObservabilityCollector(
         payload: { limit: 100, ...filter },
       }) as Promise<readonly CollectedRuntimeObservation[]>
     },
-    trace(operationId: string) {
+    trace(operationId: string, filter: RuntimeTraceFilter = {}) {
       return app.query({
         type: 'runtimeTrace',
-        payload: { operationId },
+        payload: { operationId, ...filter },
       }) as Promise<RuntimeTrace>
     },
     subscribeActivity(

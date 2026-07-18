@@ -59,6 +59,16 @@ export type SpecterCausality = {
   readonly correlationId?: string
   readonly parentOperationIds: readonly string[]
   readonly causedByEvents: readonly SpecterEventReference[]
+  /** Language-neutral causality retained when full local Event metadata is unavailable. */
+  readonly protocolCausality?: SpecterProtocolCausality
+}
+
+export type SpecterProtocolCausality = {
+  readonly triggeringEventIds?: readonly string[]
+  readonly triggeringEventOrder?: { readonly from: number; readonly to: number }
+  readonly reactionPassId?: string
+  readonly deliveryId?: string
+  readonly attemptId?: string
 }
 
 type SpecterObservationBase = SpecterCausality & {
@@ -215,6 +225,7 @@ export type SpecterOperationOptions = {
   readonly correlationId?: string
   readonly parentOperationIds?: readonly string[]
   readonly causedByEvents?: readonly SpecterEventReference[]
+  readonly protocolCausality?: SpecterProtocolCausality
 }
 
 type CommandRegistration<TConfig extends SpecterAppConfig> = Extract<
@@ -459,6 +470,17 @@ async function createValidatedSpecterApp<
       causedByEvents: (options.causedByEvents ?? []).map(
         sanitizeEventReference,
       ),
+      protocolCausality: options.protocolCausality
+        ? {
+            ...options.protocolCausality,
+            triggeringEventIds: options.protocolCausality.triggeringEventIds
+              ? [...options.protocolCausality.triggeringEventIds]
+              : undefined,
+            triggeringEventOrder: options.protocolCausality.triggeringEventOrder
+              ? { ...options.protocolCausality.triggeringEventOrder }
+              : undefined,
+          }
+        : undefined,
     } satisfies OperationContext
   }
 
@@ -503,6 +525,7 @@ async function createValidatedSpecterApp<
       correlationId: parentContext?.correlationId,
       parentOperationIds: parentContext ? [parentContext.operationId] : [],
       causedByEvents: parentContext?.causedByEvents,
+      protocolCausality: parentContext?.protocolCausality,
     })
     const commit = await observeCommand(envelope, options, context)
     if (commit.duplicate) return
@@ -729,6 +752,7 @@ async function createValidatedSpecterApp<
         ...context.causedByEvents,
         ...events,
       ]),
+      protocolCausality: context.protocolCausality,
     }
   }
 
@@ -1316,6 +1340,7 @@ async function createValidatedSpecterApp<
         correlationId: parentContext?.correlationId,
         parentOperationIds: parentContext ? [parentContext.operationId] : [],
         causedByEvents: changedEvents,
+        protocolCausality: parentContext?.protocolCausality,
       }),
       changedEvents,
     )
@@ -1351,6 +1376,7 @@ async function createValidatedSpecterApp<
                   correlationId: invalidationContext.correlationId,
                   parentOperationIds: [invalidationContext.operationId],
                   causedByEvents: changedEvents,
+                  protocolCausality: invalidationContext.protocolCausality,
                 })
                 const startedAt = now()
                 observe(queryContext, {

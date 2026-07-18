@@ -97,8 +97,12 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
           fail('$.error is required for a rejected command')
         if ((message.events as readonly unknown[]).length > 0)
           fail('$.events must be empty for a rejected command')
+        if (message.reactionTicketId !== undefined)
+          fail('$.reactionTicketId is not allowed for a rejected command')
       } else if (message.error !== undefined) {
         fail('$.error is only allowed for a rejected command')
+      } else if (message.reactionTicketId === undefined) {
+        fail('$.reactionTicketId is required for a committed command')
       }
       break
     case 'query.request':
@@ -122,13 +126,23 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
       string(message.operationId, '$.operationId')
       integer(message.sequence, '$.sequence')
       assertJsonValue(message.result, '$.result')
+      if (message.error !== undefined)
+        fail('$.error is not allowed for a subscription value')
       break
     case 'subscription.error':
       string(message.operationId, '$.operationId')
       structuredError(message.error, '$.error')
+      if (message.result !== undefined)
+        fail('$.result is not allowed for a subscription error')
+      if (message.sequence !== undefined)
+        fail('$.sequence is not allowed for a subscription error')
       break
     case 'subscription.complete':
       string(message.operationId, '$.operationId')
+      if (message.result !== undefined || message.error !== undefined)
+        fail('$.result and $.error are not allowed for subscription completion')
+      if (message.sequence !== undefined)
+        fail('$.sequence is not allowed for subscription completion')
       break
     case 'reaction-ticket.request':
       string(message.reactionTicketId, '$.reactionTicketId')
@@ -217,9 +231,6 @@ function runtimeObservation(value: unknown, path: string) {
   }
   if (input.events !== undefined) events(input.events, `${path}.events`)
   if (input.error !== undefined) structuredError(input.error, `${path}.error`)
-  optionalString(input.reactionPassId, `${path}.reactionPassId`)
-  optionalString(input.deliveryId, `${path}.deliveryId`)
-  optionalString(input.attemptId, `${path}.attemptId`)
   optionalString(input.commandType, `${path}.commandType`)
   optionalString(input.queryType, `${path}.queryType`)
   optionalString(input.slice, `${path}.slice`)
@@ -241,6 +252,9 @@ function causality(input: Record<string, unknown>, path = '$') {
   optionalString(input.correlationId, `${path}.correlationId`)
   optionalStrings(input.parentOperationIds, `${path}.parentOperationIds`)
   optionalStrings(input.triggeringEventIds, `${path}.triggeringEventIds`)
+  optionalString(input.reactionPassId, `${path}.reactionPassId`)
+  optionalString(input.deliveryId, `${path}.deliveryId`)
+  optionalString(input.attemptId, `${path}.attemptId`)
   if (input.triggeringEventOrder !== undefined) {
     const range = record(
       input.triggeringEventOrder,

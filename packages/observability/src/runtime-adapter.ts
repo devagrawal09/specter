@@ -39,6 +39,7 @@ export function createRuntimeObservationEmitter(
 ): RuntimeObservationEmitter {
   const idFactory = options.idFactory ?? (() => crypto.randomUUID())
   const now = options.now ?? (() => new Date())
+  const lastOutboxOperation = new Map<string, string>()
   let sequence = 0
 
   function emit(
@@ -72,37 +73,61 @@ export function createRuntimeObservationEmitter(
 
   const outbox: ReactionOutboxTransitionListener = (transition) => {
     switch (transition.type) {
-      case 'enqueued':
+      case 'enqueued': {
         if (!transition.created) return
+        const operationId = outboxOperationId(transition.job.id, 'enqueued')
         emit({
           kind: 'outbox.enqueued',
-          operationId: transition.job.id,
+          operationId,
           deliveryId: transition.job.id,
           attributes: {
             requestedAt: transition.job.requestedAt.toISOString(),
           },
         })
+        lastOutboxOperation.set(transition.job.id, operationId)
         return
+      }
       case 'attempt-started':
-      case 'attempt-completed':
+      case 'attempt-completed': {
+        const phase =
+          transition.type === 'attempt-started' ? 'started' : 'completed'
+        const operationId = outboxOperationId(
+          transition.claim.activeAttemptId,
+          phase,
+        )
         emit({
           kind: 'outbox.attempted',
-          operationId: transition.claim.activeAttemptId,
+          operationId,
           deliveryId: transition.claim.id,
+          attemptId: transition.claim.activeAttemptId,
+          parentOperationIds: outboxParents(
+            transition.claim.id,
+            lastOutboxOperation,
+          ),
           outcome:
             transition.type === 'attempt-completed' ? 'succeeded' : undefined,
           attributes: {
             attemptNumber: transition.claim.attemptCount,
-            phase:
-              transition.type === 'attempt-started' ? 'started' : 'completed',
+            phase,
           },
         })
+        lastOutboxOperation.set(transition.claim.id, operationId)
         return
-      case 'attempt-retrying':
+      }
+      case 'attempt-retrying': {
+        const operationId = outboxOperationId(
+          transition.claim.activeAttemptId,
+          'retry-scheduled',
+        )
         emit({
           kind: 'outbox.retry-scheduled',
-          operationId: transition.claim.activeAttemptId,
+          operationId,
           deliveryId: transition.claim.id,
+          attemptId: transition.claim.activeAttemptId,
+          parentOperationIds: outboxParents(
+            transition.claim.id,
+            lastOutboxOperation,
+          ),
           outcome: 'failed',
           error: {
             code: 'SPECTER_OUTBOX_ATTEMPT_FAILED',
@@ -114,12 +139,23 @@ export function createRuntimeObservationEmitter(
             availableAt: transition.availableAt.toISOString(),
           },
         })
+        lastOutboxOperation.set(transition.claim.id, operationId)
         return
-      case 'dead-lettered':
+      }
+      case 'dead-lettered': {
+        const operationId = outboxOperationId(
+          transition.claim.activeAttemptId,
+          'dead-lettered',
+        )
         emit({
           kind: 'outbox.dead-lettered',
-          operationId: transition.claim.activeAttemptId,
+          operationId,
           deliveryId: transition.claim.id,
+          attemptId: transition.claim.activeAttemptId,
+          parentOperationIds: outboxParents(
+            transition.claim.id,
+            lastOutboxOperation,
+          ),
           outcome: 'failed',
           error: {
             code: 'SPECTER_OUTBOX_DEAD_LETTERED',
@@ -127,17 +163,29 @@ export function createRuntimeObservationEmitter(
           },
           attributes: { attemptNumber: transition.claim.attemptCount },
         })
+        lastOutboxOperation.set(transition.claim.id, operationId)
         return
-      case 'dead-letter-retried':
+      }
+      case 'dead-letter-retried': {
+        const operationId = outboxOperationId(
+          transition.jobId,
+          `dead-letter-retried:${transition.availableAt.toISOString()}`,
+        )
         emit({
           kind: 'outbox.retry-scheduled',
-          operationId: transition.jobId,
+          operationId,
           deliveryId: transition.jobId,
+          parentOperationIds: outboxParents(
+            transition.jobId,
+            lastOutboxOperation,
+          ),
           attributes: {
             availableAt: transition.availableAt.toISOString(),
             phase: 'dead-letter-retried',
           },
         })
+        lastOutboxOperation.set(transition.jobId, operationId)
+      }
     }
   }
 
@@ -155,6 +203,7 @@ function fromSpecterObservation(
   source: RuntimeSource,
   sequence: number,
 ): RuntimeObservation {
+  const protocolCausality = observation.protocolCausality ?? {}
   const base = {
     observationId: observation.observationId,
     sequence,
@@ -167,7 +216,16 @@ function fromSpecterObservation(
     ...(observation.parentOperationIds.length
       ? { parentOperationIds: observation.parentOperationIds }
       : {}),
-    ...causes(observation.causedByEvents),
+    ...causalityMetadata(observation, protocolCausality),
+    ...(protocolCausality.reactionPassId
+      ? { reactionPassId: protocolCausality.reactionPassId }
+      : {}),
+    ...(protocolCausality.deliveryId
+      ? { deliveryId: protocolCausality.deliveryId }
+      : {}),
+    ...(protocolCausality.attemptId
+      ? { attemptId: protocolCausality.attemptId }
+      : {}),
   }
 
   switch (observation.type) {
@@ -272,8 +330,8 @@ function fromSpecterObservation(
       return {
         ...base,
         kind: 'reaction.pass.started',
-        reactionPassId: observation.passId,
-        deliveryId: observation.passId,
+        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
+        deliveryId: protocolCausality.deliveryId ?? observation.passId,
         attemptId: observation.attemptId,
         attributes: { attemptNumber: observation.attemptNumber },
       }
@@ -289,8 +347,8 @@ function fromSpecterObservation(
           observation.type === 'reaction-pass-completed'
             ? 'succeeded'
             : 'failed',
-        reactionPassId: observation.passId,
-        deliveryId: observation.passId,
+        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
+        deliveryId: protocolCausality.deliveryId ?? observation.passId,
         attemptId: observation.attemptId,
         ...(observation.type === 'reaction-pass-failed'
           ? { error: publicError(observation.cause) }
@@ -315,8 +373,9 @@ function fromSpecterObservation(
         ...base,
         kind,
         reaction: observation.reactionName,
-        reactionPassId: observation.passId,
-        deliveryId: reactionDeliveryId(observation),
+        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
+        deliveryId:
+          protocolCausality.deliveryId ?? reactionDeliveryId(observation),
         attemptId: reactionAttemptId(observation),
         ...(observation.type === 'reaction-run-completed'
           ? { outcome: 'succeeded' as const }
@@ -327,7 +386,7 @@ function fromSpecterObservation(
               error: publicError(observation.cause),
             }
           : {}),
-        ...(observation.eventRange
+        ...(observation.eventRange && !protocolCausality.triggeringEventOrder
           ? {
               triggeringEventOrder: {
                 from: observation.eventRange.fromOrder,
@@ -364,16 +423,38 @@ function protocolEvents(
   )
 }
 
-function causes(events: readonly SpecterEventReference[]) {
-  if (!events.length) return {}
-  const orders = events.map((event) => event.order)
+function causalityMetadata(
+  observation: SpecterObservation,
+  protocolCausality: NonNullable<SpecterObservation['protocolCausality']>,
+) {
+  const eventIds = [
+    ...(protocolCausality.triggeringEventIds ?? []),
+    ...observation.causedByEvents.map((event) => event.id),
+  ]
+  const orders = observation.causedByEvents.map((event) => event.order)
+  const triggeringEventOrder =
+    protocolCausality.triggeringEventOrder ??
+    (orders.length
+      ? { from: Math.min(...orders), to: Math.max(...orders) }
+      : undefined)
   return {
-    triggeringEventIds: events.map((event) => event.id),
-    triggeringEventOrder: {
-      from: Math.min(...orders),
-      to: Math.max(...orders),
-    },
+    ...(eventIds.length ? { triggeringEventIds: [...new Set(eventIds)] } : {}),
+    ...(triggeringEventOrder ? { triggeringEventOrder } : {}),
   }
+}
+
+function outboxOperationId(deliveryOrAttemptId: string, phase: string) {
+  return `${deliveryOrAttemptId}:${phase}`
+}
+
+function outboxParents(
+  deliveryId: string,
+  lastOutboxOperation: ReadonlyMap<string, string>,
+) {
+  return [
+    lastOutboxOperation.get(deliveryId) ??
+      outboxOperationId(deliveryId, 'enqueued'),
+  ]
 }
 
 function publicError(cause: unknown): StructuredError {

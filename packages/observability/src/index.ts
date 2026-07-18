@@ -11,6 +11,7 @@ export type {
   RuntimeSourceSummary,
   RuntimeTrace,
   RuntimeTraceEdge,
+  RuntimeTraceFilter,
 } from './collector-model'
 export {
   createSpecterObservabilityHttpHandler,

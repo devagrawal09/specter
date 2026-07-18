@@ -16,12 +16,20 @@ const DefaultQueueCapacity = 10_000
 const MaximumBatchSize = 100
 
 type Producer struct {
-	client    *protocol.Client
-	source    protocol.RuntimeSource
-	queue     chan protocol.RuntimeObservation
-	stop      chan struct{}
-	done      chan struct{}
-	dropped   atomic.Int64
+	client   *protocol.Client
+	source   protocol.RuntimeSource
+	capacity int
+	stop     chan struct{}
+	done     chan struct{}
+	wake     chan struct{}
+
+	queueMu   sync.Mutex
+	queue     []protocol.RuntimeObservation
+	queueHead int
+	queueSize int
+	dropped   int64
+	stopped   bool
+
 	sequence  atomic.Int64
 	closeOnce sync.Once
 }
@@ -30,33 +38,50 @@ func NewProducer(client *protocol.Client, source protocol.RuntimeSource, capacit
 	if capacity <= 0 {
 		capacity = DefaultQueueCapacity
 	}
-	producer := &Producer{client: client, source: source, queue: make(chan protocol.RuntimeObservation, capacity), stop: make(chan struct{}), done: make(chan struct{})}
+	producer := &Producer{
+		client:   client,
+		source:   source,
+		capacity: capacity,
+		stop:     make(chan struct{}),
+		done:     make(chan struct{}),
+		wake:     make(chan struct{}, 1),
+		queue:    make([]protocol.RuntimeObservation, capacity),
+	}
 	go producer.run()
 	return producer
 }
 
 // Observe never blocks application work. When full it drops the oldest queued item.
 func (p *Producer) Observe(observation specter.Observation) {
-	runtimeObservation := protocol.RuntimeObservation{Observation: observation, Sequence: p.sequence.Add(1), Source: p.source}
-	select {
-	case p.queue <- runtimeObservation:
+	p.queueMu.Lock()
+	if p.stopped {
+		p.queueMu.Unlock()
 		return
-	default:
 	}
-	select {
-	case <-p.queue:
-		p.dropped.Add(1)
-	default:
+	if observation.Error != nil {
+		observation.Error = protocol.PublicError(observation.Error)
 	}
-	select {
-	case p.queue <- runtimeObservation:
-	default:
-		p.dropped.Add(1)
+	runtimeObservation := protocol.RuntimeObservation{Observation: observation, Sequence: p.sequence.Add(1), Source: p.source}
+	if p.queueSize == p.capacity {
+		p.queue[p.queueHead] = protocol.RuntimeObservation{}
+		p.queueHead = (p.queueHead + 1) % p.capacity
+		p.dropped++
+		p.queueSize--
 	}
+	tail := (p.queueHead + p.queueSize) % p.capacity
+	p.queue[tail] = runtimeObservation
+	p.queueSize++
+	p.queueMu.Unlock()
+	p.signal()
 }
 
 func (p *Producer) Close(ctx context.Context) error {
-	p.closeOnce.Do(func() { close(p.stop) })
+	p.closeOnce.Do(func() {
+		p.queueMu.Lock()
+		p.stopped = true
+		p.queueMu.Unlock()
+		close(p.stop)
+	})
 	select {
 	case <-p.done:
 		return nil
@@ -67,8 +92,9 @@ func (p *Producer) Close(ctx context.Context) error {
 
 func (p *Producer) run() {
 	defer close(p.done)
-	pending := make([]protocol.RuntimeObservation, 0, MaximumBatchSize)
+	var pending []protocol.RuntimeObservation
 	pendingRequestID := ""
+	stopping := false
 	retry := time.NewTimer(time.Hour)
 	if !retry.Stop() {
 		<-retry.C
@@ -76,34 +102,18 @@ func (p *Producer) run() {
 	defer retry.Stop()
 	for {
 		if len(pending) == 0 {
-			if dropped := p.dropped.Swap(0); dropped > 0 {
-				pending = append(pending, p.lossObservation(dropped))
-			} else {
-				select {
-				case observation := <-p.queue:
-					pending = append(pending, observation)
-				case <-p.stop:
-					p.drain(&pending)
-					if len(pending) > 0 {
-						pendingRequestID = p.requestID()
-						p.send(protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending})
-					}
+			pending = p.takeBatch()
+			if len(pending) == 0 {
+				if stopping {
 					return
 				}
-			}
-		}
-		for len(pending) < MaximumBatchSize {
-			select {
-			case observation := <-p.queue:
-				pending = append(pending, observation)
-			default:
-				goto send
-			}
-		}
-	send:
-		if len(pending) < MaximumBatchSize {
-			if dropped := p.dropped.Swap(0); dropped > 0 {
-				pending = append(pending, p.lossObservation(dropped))
+				select {
+				case <-p.wake:
+					continue
+				case <-p.stop:
+					stopping = true
+					continue
+				}
 			}
 		}
 		if pendingRequestID == "" {
@@ -111,15 +121,28 @@ func (p *Producer) run() {
 		}
 		batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending}
 		if p.send(batch) {
-			pending = pending[:0]
+			pending = nil
 			pendingRequestID = ""
 			continue
+		}
+		if stopping {
+			if p.send(batch) {
+				pending = nil
+				pendingRequestID = ""
+				continue
+			}
+			return
 		}
 		retry.Reset(time.Second)
 		select {
 		case <-retry.C:
 		case <-p.stop:
-			p.send(batch)
+			stopping = true
+			if p.send(batch) {
+				pending = nil
+				pendingRequestID = ""
+				continue
+			}
 			return
 		}
 	}
@@ -130,14 +153,32 @@ func (p *Producer) lossObservation(dropped int64) protocol.RuntimeObservation {
 	loss := specter.Observation{ObservationID: fmt.Sprintf("dropped_%d", observedAt.UnixNano()), Kind: "telemetry.dropped", ObservedAt: observedAt, OperationID: "telemetry", DroppedCount: dropped}
 	return protocol.RuntimeObservation{Observation: loss, Sequence: p.sequence.Add(1), Source: p.source}
 }
-func (p *Producer) drain(pending *[]protocol.RuntimeObservation) {
-	for len(*pending) < MaximumBatchSize {
-		select {
-		case observation := <-p.queue:
-			*pending = append(*pending, observation)
-		default:
-			return
+
+func (p *Producer) takeBatch() []protocol.RuntimeObservation {
+	p.queueMu.Lock()
+	defer p.queueMu.Unlock()
+	count := min(p.queueSize, MaximumBatchSize)
+	batch := make([]protocol.RuntimeObservation, 0, MaximumBatchSize)
+	for range count {
+		batch = append(batch, p.queue[p.queueHead])
+		p.queue[p.queueHead] = protocol.RuntimeObservation{}
+		p.queueHead = (p.queueHead + 1) % p.capacity
+		p.queueSize--
+	}
+	if p.queueSize == 0 {
+		p.queueHead = 0
+		if p.dropped > 0 && len(batch) < MaximumBatchSize {
+			batch = append(batch, p.lossObservation(p.dropped))
+			p.dropped = 0
 		}
+	}
+	return batch
+}
+
+func (p *Producer) signal() {
+	select {
+	case p.wake <- struct{}{}:
+	default:
 	}
 }
 func (p *Producer) requestID() string {

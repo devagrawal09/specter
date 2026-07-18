@@ -106,7 +106,7 @@ async function serve(commandArgs: readonly string[]) {
       const observationInput =
         webRequest.method === 'POST' &&
         new URL(webRequest.url).pathname === '/specter/v1/observations'
-          ? await webRequest.clone().json()
+          ? await readDedupeCandidate(webRequest)
           : undefined
       const observationBatch = isDedupeCandidate(observationInput)
         ? observationInput
@@ -138,7 +138,7 @@ async function serve(commandArgs: readonly string[]) {
             ...acknowledgement,
             duplicates: acknowledgement.duplicates + filteredBatch.duplicates,
           },
-          { status: webResponse.status },
+          { status: webResponse.status, headers: webResponse.headers },
         )
         await rememberAcceptedObservations(
           filteredBatch.batch.observations,
@@ -148,7 +148,10 @@ async function serve(commandArgs: readonly string[]) {
       await sendWebResponse(response, webResponse)
     } catch (cause) {
       const error = structuredProtocolError(cause)
-      response.writeHead(500, { 'content-type': 'application/json' })
+      response.writeHead(500, {
+        'content-type': 'application/json',
+        'Specter-Protocol-Version': '1',
+      })
       response.end(
         JSON.stringify({
           error: {
@@ -278,18 +281,29 @@ function requestWithBatch(request: Request, batch: RuntimeObservationBatch) {
   })
 }
 
+async function readDedupeCandidate(request: Request): Promise<unknown> {
+  try {
+    return await request.clone().json()
+  } catch {
+    return undefined
+  }
+}
+
 function observationAcknowledgement(
   batch: RuntimeObservationBatch,
   accepted: number,
   duplicates: number,
 ) {
-  return Response.json({
-    protocolVersion: 1,
-    kind: 'observations.ack',
-    requestId: batch.requestId,
-    accepted,
-    duplicates,
-  } satisfies RuntimeObservationAcknowledgement)
+  return Response.json(
+    {
+      protocolVersion: 1,
+      kind: 'observations.ack',
+      requestId: batch.requestId,
+      accepted,
+      duplicates,
+    } satisfies RuntimeObservationAcknowledgement,
+    { headers: { 'Specter-Protocol-Version': '1' } },
+  )
 }
 
 function isDedupeCandidate(value: unknown): value is RuntimeObservationBatch {
@@ -323,8 +337,18 @@ async function snapshot(commandArgs: readonly string[]) {
 async function trace(commandArgs: readonly string[]) {
   const operationId = positional(commandArgs, 0)
   if (!operationId) throw new Error('trace requires an operation ID')
+  const filters = filterOptions(commandArgs)
+  const query = new URLSearchParams(
+    Object.entries({
+      application: filters.application,
+      environment: filters.environment,
+      instanceId: filters.instanceId,
+      eventLogId: filters.eventLogId,
+    }).filter((entry): entry is [string, string] => Boolean(entry[1])),
+  )
+  const queryString = query.size ? `?${query}` : ''
   const value = await fetchJson(
-    `${endpoint(commandArgs)}/v1/traces/${encodeURIComponent(operationId)}`,
+    `${endpoint(commandArgs)}/v1/traces/${encodeURIComponent(operationId)}${queryString}`,
   )
   if (stringOption(commandArgs, '--format', 'json') === 'text') {
     const traceValue = value as {

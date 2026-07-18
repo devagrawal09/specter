@@ -289,16 +289,8 @@ function wrongKind(expected: string) {
   )
 }
 function errorResponse(cause: unknown) {
-  const error =
-    cause instanceof SpecterProtocolError
-      ? cause
-      : new SpecterProtocolError({
-          code: protocolErrorCodes.internal,
-          message: 'The Specter runtime could not complete the request.',
-          status: 500,
-          cause,
-        })
-  return json({ error: error.toStructuredError() }, error.status)
+  const status = cause instanceof SpecterProtocolError ? cause.status : 500
+  return json({ error: structuredProtocolError(cause) }, status)
 }
 function normalizeBasePath(path: string) {
   const normalized = `/${path.replace(/^\/+|\/+$/g, '')}`

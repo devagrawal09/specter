@@ -6,8 +6,10 @@ import type {
   CollectorState,
   RuntimeTrace,
   RuntimeTraceEdge,
+  RuntimeTraceFilter,
 } from '../../collector-model'
 import {
+  runtimeEventLogIdentity,
   runtimeObservationIdentity,
   runtimeSourceIdentity,
 } from '../../collector-model'
@@ -16,7 +18,15 @@ import { runtimeTraceSpec } from './spec'
 
 export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
   return runtimeTraceSpec
-    .inputSchema(z.object({ operationId: z.string().min(1) }))
+    .inputSchema(
+      z.object({
+        operationId: z.string().min(1),
+        application: z.string().min(1).optional(),
+        environment: z.string().min(1).optional(),
+        instanceId: z.string().min(1).optional(),
+        eventLogId: z.string().min(1).optional(),
+      }),
+    )
     .outputSchema<RuntimeTrace>()
     .store(store)
     .apply(runtimeObservationRecordedEvent, async (event, state) => {
@@ -30,7 +40,7 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
           .order,
       })
     })
-    .handle(async ({ operationId }, state) => {
+    .handle(async ({ operationId, ...sourceFilter }, state) => {
       const operationKey = (
         observation: Pick<RuntimeObservation, 'source' | 'operationId'>,
         id = observation.operationId,
@@ -38,7 +48,7 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
       const eventKey = (
         observation: Pick<RuntimeObservation, 'source'>,
         eventId: string,
-      ) => `${runtimeSourceIdentity(observation.source)}\u0000${eventId}`
+      ) => `${runtimeEventLogIdentity(observation.source)}\u0000${eventId}`
       const producerByEvent = new Map<
         string,
         { readonly key: string; readonly operationId: string }
@@ -54,7 +64,11 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
 
       const operationKeys = new Set(
         state.observations
-          .filter((observation) => observation.operationId === operationId)
+          .filter(
+            (observation) =>
+              observation.operationId === operationId &&
+              matchesSource(observation.source, sourceFilter),
+          )
           .map((observation) => operationKey(observation)),
       )
       let changed = true
@@ -120,4 +134,16 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
 
       return { operationId, observations, edges }
     })
+}
+
+function matchesSource(
+  source: RuntimeObservation['source'],
+  filter: RuntimeTraceFilter,
+) {
+  return (
+    (!filter.application || source.application === filter.application) &&
+    (!filter.environment || source.environment === filter.environment) &&
+    (!filter.instanceId || source.instanceId === filter.instanceId) &&
+    (!filter.eventLogId || source.eventLogId === filter.eventLogId)
+  )
 }

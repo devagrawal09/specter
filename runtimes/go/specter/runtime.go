@@ -310,6 +310,11 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Error: public})
 			return CommandExecution{}, public
 		}
+		if len(drafts) == 0 {
+			failure := newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: Command emitted no Events.", name), map[string]any{"commandType": name}, nil)
+			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Error: failure})
+			return CommandExecution{}, failure
+		}
 		for _, draft := range drafts {
 			if _, ok := a.events[draft.Type]; !ok {
 				failure := newError(ErrUnknownEvent, fmt.Sprintf("Unknown Event type: %q.", draft.Type), map[string]any{"eventType": draft.Type}, nil)

@@ -1,4 +1,12 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it, vi } from 'vitest'
+import {
+  createSpecterApp,
+  createEventDefinition,
+  type EventLogAdapter,
+  type SpecterObservation,
+} from '@specter-ts/core'
+import { createCommandSlice, event } from '@specter-ts/core/spec'
 
 import { negotiateCapabilities } from './capabilities'
 import { SpecterProtocolError, structuredProtocolError } from './errors'
@@ -20,6 +28,8 @@ const source = {
   eventLogId: 'log-1',
 }
 
+const fixtureRoot = new URL('../../../protocol/fixtures/', import.meta.url)
+
 describe('protocol validation', () => {
   it('does not treat inherited object keys as public runtime error codes', () => {
     const cause = new Error('private credential') as Error & { code: string }
@@ -29,6 +39,63 @@ describe('protocol validation', () => {
       code: 'SPECTER_INTERNAL_ERROR',
       message: 'The Specter runtime could not complete the request.',
     })
+  })
+
+  it('redacts credential-bearing protocol errors with known and unknown codes', () => {
+    const credential = 'postgres://admin:secret@database.internal/specter'
+    const known = structuredProtocolError(
+      new SpecterProtocolError({
+        code: 'SPECTER_INVALID_MESSAGE',
+        message: credential,
+      }),
+    )
+    const unknown = structuredProtocolError(
+      new SpecterProtocolError({
+        code: 'DATABASE_CONNECTION_FAILED',
+        message: credential,
+      }),
+    )
+
+    expect(known).toEqual({
+      code: 'SPECTER_INVALID_MESSAGE',
+      message: 'Protocol message is invalid.',
+    })
+    expect(unknown).toEqual({
+      code: 'SPECTER_INTERNAL_ERROR',
+      message: 'The Specter runtime could not complete the request.',
+    })
+    expect(JSON.stringify({ known, unknown })).not.toContain(credential)
+  })
+
+  it('conforms to every shared language-neutral fixture', () => {
+    const manifest = JSON.parse(
+      readFileSync(new URL('manifest.json', fixtureRoot), 'utf8'),
+    ) as {
+      readonly cases: readonly {
+        readonly name: string
+        readonly file: string
+        readonly valid: boolean
+        readonly errorCode?: string
+      }[]
+    }
+
+    for (const fixture of manifest.cases) {
+      const message = JSON.parse(
+        readFileSync(new URL(fixture.file, fixtureRoot), 'utf8'),
+      )
+      if (fixture.valid) {
+        expect(() => parseProtocolMessage(message), fixture.name).not.toThrow()
+      } else {
+        try {
+          parseProtocolMessage(message)
+          throw new Error(`${fixture.name} unexpectedly passed validation`)
+        } catch (cause) {
+          expect(cause, fixture.name).toMatchObject({
+            code: fixture.errorCode,
+          })
+        }
+      }
+    }
   })
 
   it('accepts unknown optional fields', () => {
@@ -110,6 +177,7 @@ describe('protocol validation', () => {
         status: 'committed',
         version: 1,
         events: [],
+        reactionTicketId: 'ticket-1',
         error,
       },
       {
@@ -149,6 +217,255 @@ describe('capabilities', () => {
 })
 
 describe('reference HTTP binding', () => {
+  it('redacts protocol errors from Command and Query runtime adapter paths', async () => {
+    const credential = 'postgres://admin:secret@database.internal/specter'
+    const app = {
+      async command() {
+        throw new SpecterProtocolError({
+          code: 'SPECTER_INVALID_MESSAGE',
+          message: credential,
+        })
+      },
+      async query() {
+        throw new SpecterProtocolError({
+          code: 'DATABASE_CONNECTION_FAILED',
+          message: credential,
+        })
+      },
+    }
+    const adapter = createSpecterRuntimeProtocolAdapter({
+      app: app as never,
+      eventLog: { currentVersion: async () => 0 } as never,
+      runtimeVersion: 'test',
+    })
+    const command = await adapter.command({
+      protocolVersion: 1,
+      kind: 'command.request',
+      requestId: 'command-request',
+      operationId: 'command-operation',
+      command: { type: 'addTodo', payload: {} },
+    })
+    expect(JSON.stringify(command)).not.toContain(credential)
+    expect(command).toMatchObject({
+      status: 'rejected',
+      error: {
+        code: 'SPECTER_INVALID_MESSAGE',
+        message: 'Protocol message is invalid.',
+      },
+    })
+
+    await expect(
+      adapter.query({
+        protocolVersion: 1,
+        kind: 'query.request',
+        requestId: 'direct-query-request',
+        operationId: 'direct-query-operation',
+        query: { type: 'todosQuery', payload: {} },
+      }),
+    ).rejects.toMatchObject({
+      code: 'SPECTER_INTERNAL_ERROR',
+      message: 'The Specter runtime could not complete the request.',
+    })
+
+    const response = await createSpecterProtocolHttpHandler({
+      runtime: adapter,
+    })(
+      new Request('http://runtime/specter/v1/queries', {
+        method: 'POST',
+        body: JSON.stringify({
+          protocolVersion: 1,
+          kind: 'query.request',
+          requestId: 'query-request',
+          operationId: 'query-operation',
+          query: { type: 'todosQuery', payload: {} },
+        }),
+      }),
+    )
+    const body = await response.text()
+    expect(body).not.toContain(credential)
+    expect(JSON.parse(body)).toMatchObject({
+      kind: 'query.response',
+      error: {
+        code: 'SPECTER_INTERNAL_ERROR',
+        message: 'The Specter runtime could not complete the request.',
+      },
+    })
+  })
+
+  it('rejects uncorrelated JSON responses for every request family', async () => {
+    const clientFor = (response: unknown, status = 200) =>
+      createSpecterProtocolHttpClient('http://runtime', {
+        requestId: () => 'request-1',
+        fetch: async () => Response.json(response, { status }),
+      })
+    const envelope = { protocolVersion: 1, requestId: 'request-1' }
+
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'capabilities.response',
+        requestId: 'wrong-request',
+        runtime: { language: 'typescript', version: 'test' },
+        supported: [],
+        negotiated: [],
+      }).capabilities(),
+    ).rejects.toMatchObject({ code: 'SPECTER_TRANSPORT_FAILURE' })
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'query.response',
+        operationId: 'operation-1',
+        result: null,
+      }).command({
+        operationId: 'operation-1',
+        command: { type: 'addTodo', payload: {} },
+      }),
+    ).rejects.toThrow('mismatched message kind')
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'command.response',
+        operationId: 'wrong-operation',
+        status: 'committed',
+        version: 1,
+        events: [],
+        reactionTicketId: 'ticket-1',
+      }).command({
+        operationId: 'operation-1',
+        command: { type: 'addTodo', payload: {} },
+      }),
+    ).rejects.toThrow('mismatched operation ID')
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'query.response',
+        requestId: 'wrong-request',
+        operationId: 'operation-1',
+        result: null,
+      }).query({
+        operationId: 'operation-1',
+        query: { type: 'todosQuery', payload: {} },
+      }),
+    ).rejects.toThrow('mismatched request ID')
+    await expect(
+      clientFor(
+        {
+          ...envelope,
+          kind: 'command.response',
+          requestId: 'wrong-request',
+          operationId: 'operation-1',
+          status: 'rejected',
+          version: 0,
+          events: [],
+          error: {
+            code: 'SPECTER_COMMAND_REJECTED',
+            message: 'Command was rejected.',
+          },
+        },
+        409,
+      ).command({
+        operationId: 'operation-1',
+        command: { type: 'addTodo', payload: {} },
+      }),
+    ).rejects.toThrow('mismatched request ID')
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'reaction-ticket.response',
+        reactionTicketId: 'wrong-ticket',
+        status: 'completed',
+      }).reactionTicket('ticket-1'),
+    ).rejects.toThrow('mismatched Reaction ticket ID')
+    await expect(
+      clientFor({
+        ...envelope,
+        kind: 'observations.ack',
+        requestId: 'wrong-request',
+        accepted: 0,
+        duplicates: 0,
+      }).observations({ observations: [] }),
+    ).rejects.toThrow('mismatched request ID')
+    await expect(
+      clientFor({
+        ...envelope,
+        protocolVersion: 2,
+        kind: 'capabilities.response',
+        runtime: { language: 'typescript', version: 'test' },
+        supported: [],
+        negotiated: [],
+      }).capabilities(),
+    ).rejects.toMatchObject({
+      code: 'SPECTER_PROTOCOL_VERSION_MISMATCH',
+    })
+  })
+
+  it.each([
+    ['request ID', { requestId: 'wrong-request' }],
+    ['operation ID', { operationId: 'wrong-operation' }],
+  ])('rejects subscription frames with a mismatched %s', async (_, mismatch) => {
+    const frame = {
+      protocolVersion: 1,
+      kind: 'subscription.value',
+      requestId: 'request-1',
+      operationId: 'operation-1',
+      sequence: 1,
+      result: [],
+      ...mismatch,
+    }
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.enqueue(
+                new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`),
+              )
+              controller.close()
+            },
+          }),
+        ),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        })) {
+          // Iteration must validate correlation before yielding the frame.
+        }
+      })(),
+    ).rejects.toMatchObject({ code: 'SPECTER_TRANSPORT_FAILURE' })
+  })
+
+  it('rejects non-subscription protocol messages in an SSE stream', async () => {
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        new Response(
+          `data: ${JSON.stringify({
+            protocolVersion: 1,
+            kind: 'query.response',
+            requestId: 'request-1',
+            operationId: 'operation-1',
+            result: null,
+          })}\n\n`,
+        ),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        })) {
+          // Iteration must reject the unexpected frame kind.
+        }
+      })(),
+    ).rejects.toThrow('mismatched subscription message kind')
+  })
+
   it('treats subscription errors as terminal even if a server sends later frames', async () => {
     const encoder = new TextEncoder()
     const frames = [
@@ -396,6 +713,241 @@ describe('reference HTTP binding', () => {
     expect(retried.reactionTicketId).toBe(committed.reactionTicketId)
   })
 
+  it('preserves protocol causality in observed Command, Query, and subscription operations', async () => {
+    const observations: SpecterObservation[] = []
+    const registeredEvent = createEventDefinition('registered-event', {
+      '~standard': {
+        version: 1,
+        vendor: 'protocol-observation-test',
+        validate: (value: unknown) => ({ value }),
+      },
+    } as never)
+    const store = {
+      async get() {
+        return {
+          write: {},
+          read: {},
+          lastAppliedOrder: async () => 0,
+          setLastAppliedOrder: async () => undefined,
+        }
+      },
+      async transaction(sliceName: string, run: (store: unknown) => unknown) {
+        return run(await this.get(sliceName))
+      },
+    }
+    const registeredCommand = createCommandSlice('registeredCommand')
+      .description('Satisfies the runtime registration contract.')
+      .scenarios({
+        description: 'Emits the registered Event.',
+        given: [],
+        when: {},
+        expect: [event('registered-event', {})],
+      })
+      .inputSchema<Record<string, never>>()
+      .store(store as never)
+      .handle(async () => [registeredEvent.create({})])
+    const eventLog = {
+      async query() {
+        return []
+      },
+      async currentVersion() {
+        return 0
+      },
+      async findCommit() {
+        return undefined
+      },
+      async append() {
+        throw new Error('No registered Command can append Events.')
+      },
+      async transaction(run) {
+        return run(eventLog)
+      },
+    } satisfies EventLogAdapter
+    const app = await createSpecterApp({
+      events: [registeredEvent],
+      eventLog,
+      schedule: () => () => () => Promise.resolve(),
+      slices: [registeredCommand],
+      observe: (observation) => observations.push(observation),
+      runtime: {
+        generateId: (() => {
+          let id = 0
+          return () => `observation-${++id}`
+        })(),
+        now: () => 0,
+      },
+    })
+    const adapter = createSpecterRuntimeProtocolAdapter({
+      app,
+      eventLog,
+      runtimeVersion: 'test',
+    })
+    const causality = {
+      correlationId: 'correlation-1',
+      parentOperationIds: ['parent-1'],
+      triggeringEventIds: ['event-1'],
+      triggeringEventOrder: { from: 4, to: 7 },
+      reactionPassId: 'pass-1',
+      deliveryId: 'delivery-1',
+      attemptId: 'attempt-2',
+    }
+
+    await expect(
+      adapter.command({
+        protocolVersion: 1,
+        kind: 'command.request',
+        requestId: 'command-request',
+        operationId: 'command-operation',
+        command: { type: 'missingCommand', payload: {} },
+        ...causality,
+      }),
+    ).resolves.toMatchObject({ status: 'rejected' })
+    await expect(
+      adapter.query({
+        protocolVersion: 1,
+        kind: 'query.request',
+        requestId: 'query-request',
+        operationId: 'query-operation',
+        query: { type: 'missingQuery', payload: {} },
+        ...causality,
+      }),
+    ).rejects.toBeDefined()
+    expect(() =>
+      adapter.subscribe(
+        {
+          protocolVersion: 1,
+          kind: 'subscription.request',
+          requestId: 'subscription-request',
+          operationId: 'subscription-operation',
+          query: { type: 'missingSubscription', payload: {} },
+          ...causality,
+        },
+        { signal: new AbortController().signal },
+      ),
+    ).toThrow()
+
+    for (const operationId of [
+      'command-operation',
+      'query-operation',
+      'subscription-operation',
+    ]) {
+      const operationObservations = observations.filter(
+        (observation) => observation.operationId === operationId,
+      )
+      expect(operationObservations).toHaveLength(2)
+      expect(operationObservations).toEqual([
+        expect.objectContaining({
+          operationId,
+          correlationId: causality.correlationId,
+          parentOperationIds: causality.parentOperationIds,
+          protocolCausality: {
+            triggeringEventIds: causality.triggeringEventIds,
+            triggeringEventOrder: causality.triggeringEventOrder,
+            reactionPassId: causality.reactionPassId,
+            deliveryId: causality.deliveryId,
+            attemptId: causality.attemptId,
+          },
+        }),
+        expect.objectContaining({
+          operationId,
+          protocolCausality: {
+            triggeringEventIds: causality.triggeringEventIds,
+            triggeringEventOrder: causality.triggeringEventOrder,
+            reactionPassId: causality.reactionPassId,
+            deliveryId: causality.deliveryId,
+            attemptId: causality.attemptId,
+          },
+        }),
+      ])
+    }
+  })
+
+  it('forwards language-neutral causality into successful adapter operations', async () => {
+    const received: unknown[] = []
+    const app = {
+      async command(_envelope: unknown, options: unknown) {
+        received.push(options)
+        return {
+          operationId: 'command-operation',
+          events: [],
+          version: 1,
+          duplicate: false,
+          reactions: Promise.resolve(),
+        }
+      },
+      async query(_envelope: unknown, options: unknown) {
+        received.push(options)
+        return null
+      },
+      subscribe(_envelope: unknown, options: unknown) {
+        received.push(options)
+        return {
+          async *[Symbol.asyncIterator]() {
+            yield null
+          },
+        }
+      },
+    }
+    const adapter = createSpecterRuntimeProtocolAdapter({
+      app: app as never,
+      eventLog: { currentVersion: async () => 1 } as never,
+      runtimeVersion: 'test',
+    })
+    const causality = {
+      correlationId: 'correlation-1',
+      parentOperationIds: ['parent-1'],
+      triggeringEventIds: ['event-1'],
+      triggeringEventOrder: { from: 4, to: 7 },
+      reactionPassId: 'pass-1',
+      deliveryId: 'delivery-1',
+      attemptId: 'attempt-2',
+    }
+
+    await adapter.command({
+      protocolVersion: 1,
+      kind: 'command.request',
+      requestId: 'command-request',
+      operationId: 'command-operation',
+      command: { type: 'addTodo', payload: {} },
+      ...causality,
+    })
+    await adapter.query({
+      protocolVersion: 1,
+      kind: 'query.request',
+      requestId: 'query-request',
+      operationId: 'query-operation',
+      query: { type: 'todosQuery', payload: {} },
+      ...causality,
+    })
+    const subscription = adapter.subscribe(
+      {
+        protocolVersion: 1,
+        kind: 'subscription.request',
+        requestId: 'subscription-request',
+        operationId: 'subscription-operation',
+        query: { type: 'todosQuery', payload: {} },
+        ...causality,
+      },
+      { signal: new AbortController().signal },
+    )
+    await subscription[Symbol.asyncIterator]().next()
+
+    expect(received).toHaveLength(3)
+    for (const options of received) {
+      expect(options).toMatchObject({
+        correlationId: causality.correlationId,
+        parentOperationIds: causality.parentOperationIds,
+        protocolCausality: {
+          triggeringEventIds: causality.triggeringEventIds,
+          triggeringEventOrder: causality.triggeringEventOrder,
+          reactionPassId: causality.reactionPassId,
+          deliveryId: causality.deliveryId,
+          attemptId: causality.attemptId,
+        },
+      })
+    }
+  })
+
   it('handles rejected Reaction promises immediately and unreferences the expiry timer', async () => {
     const timerSpy = vi.spyOn(globalThis, 'setTimeout')
     const app = {
@@ -477,6 +1029,66 @@ describe('reference HTTP binding', () => {
 
       await vi.advanceTimersByTimeAsync(25)
 
+      await expect(adapter.reactionTicket(ticketId)).resolves.toMatchObject({
+        status: 'failed',
+        error: { code: 'SPECTER_REACTION_TICKET_NOT_FOUND' },
+      })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('starts Reaction ticket retention only after a pending Reaction settles', async () => {
+    vi.useFakeTimers()
+    try {
+      let settleReaction!: () => void
+      const reactions = new Promise<void>((resolve) => {
+        settleReaction = resolve
+      })
+      const adapter = createSpecterRuntimeProtocolAdapter({
+        app: {
+          async command() {
+            return {
+              operationId: 'operation-pending',
+              events: [],
+              version: 1,
+              duplicate: false,
+              reactions,
+            }
+          },
+        } as never,
+        eventLog: { currentVersion: async () => 1 } as never,
+        runtimeVersion: 'test',
+        ticketRetentionMs: 25,
+      })
+      const command = await adapter.command({
+        protocolVersion: 1,
+        kind: 'command.request',
+        requestId: 'request-pending',
+        operationId: 'operation-pending',
+        command: { type: 'addTodo', payload: {} },
+      })
+      const ticketId = command.reactionTicketId as string
+
+      expect(vi.getTimerCount()).toBe(0)
+      await vi.advanceTimersByTimeAsync(10_000)
+      await expect(adapter.reactionTicket(ticketId)).resolves.toEqual({
+        status: 'pending',
+      })
+
+      settleReaction()
+      await reactions
+      await Promise.resolve()
+
+      await expect(adapter.reactionTicket(ticketId)).resolves.toEqual({
+        status: 'completed',
+      })
+      expect(vi.getTimerCount()).toBe(1)
+      await vi.advanceTimersByTimeAsync(24)
+      await expect(adapter.reactionTicket(ticketId)).resolves.toEqual({
+        status: 'completed',
+      })
+      await vi.advanceTimersByTimeAsync(1)
       await expect(adapter.reactionTicket(ticketId)).resolves.toMatchObject({
         status: 'failed',
         error: { code: 'SPECTER_REACTION_TICKET_NOT_FOUND' },

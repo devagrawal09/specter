@@ -238,6 +238,13 @@ describe('createSpecterApp execution contracts', () => {
       })
       .handle(async (_input, state) => state.value)
     const observations: SpecterObservation[] = []
+    const protocolCausality = {
+      triggeringEventIds: ['remote-event-4', 'remote-event-5'],
+      triggeringEventOrder: { from: 4, to: 5 },
+      reactionPassId: 'remote-pass-1',
+      deliveryId: 'remote-delivery-1',
+      attemptId: 'remote-attempt-2',
+    }
     let nextId = 1
     const app = await createSpecterApp({
       events: [valueRecorded],
@@ -256,14 +263,34 @@ describe('createSpecterApp execution contracts', () => {
       {
         correlationId: 'request-1',
         parentOperationIds: ['http-request-1'],
+        protocolCausality,
       },
     )
     await expect(
       app.query(
         { type: 'currentValue', payload: {} },
-        { operationId: 'protocol-query-1', correlationId: 'request-1' },
+        {
+          operationId: 'protocol-query-1',
+          correlationId: 'request-1',
+          protocolCausality,
+        },
       ),
     ).resolves.toBe(7)
+    const subscription = app
+      .subscribe(
+        { type: 'currentValue', payload: {} },
+        {
+          operationId: 'protocol-subscription-1',
+          correlationId: 'request-1',
+          protocolCausality,
+        },
+      )
+      [Symbol.asyncIterator]()
+    await expect(subscription.next()).resolves.toEqual({
+      done: false,
+      value: 7,
+    })
+    await subscription.return?.()
     await expect(
       app.command({ type: 'missing', payload: null } as never),
     ).rejects.toBeInstanceOf(SpecterUnknownCommandError)
@@ -276,6 +303,7 @@ describe('createSpecterApp execution contracts', () => {
       correlationId: 'request-1',
       parentOperationIds: ['http-request-1'],
       causedByEvents: [],
+      protocolCausality,
       type: 'command-started',
       commandType: 'recordValue',
     })
@@ -332,6 +360,15 @@ describe('createSpecterApp execution contracts', () => {
           causedByEvents: [
             expect.objectContaining({ id: 'event-1', type: 'value-recorded' }),
           ],
+          protocolCausality,
+        }),
+        expect.objectContaining({
+          type: 'query-completed',
+          operationId: 'protocol-subscription-1',
+          queryName: 'currentValue',
+          subscription: true,
+          correlationId: 'request-1',
+          protocolCausality,
         }),
         expect.objectContaining({
           type: 'command-rejected',

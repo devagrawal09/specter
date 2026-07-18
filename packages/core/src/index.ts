@@ -58,6 +58,7 @@ export type {
   SpecterEventReference,
   SpecterObservation,
   SpecterOperationOptions,
+  SpecterProtocolCausality,
   SpecterOperationKind,
   SpecterObserver,
   SpecterQueryEnvelope,

@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.request",
+  "requestId": "causality-request",
+  "operationId": "causality-operation",
+  "correlationId": "correlation-1",
+  "parentOperationIds": ["parent-1"],
+  "triggeringEventIds": ["event-4", "event-5"],
+  "triggeringEventOrder": { "from": 4, "to": 5 },
+  "reactionPassId": "reaction-pass-1",
+  "deliveryId": "delivery-1",
+  "attemptId": "attempt-2",
+  "command": { "type": "continueWorkflow", "payload": {} }
+}

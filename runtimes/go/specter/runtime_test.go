@@ -89,6 +89,26 @@ func TestCommandQueryReactionAndDuplicate(t *testing.T) {
 	}
 }
 
+func TestCommandEmittingNoEventsIsRejectedBeforeAppend(t *testing.T) {
+	command := specter.CommandDefinition{
+		Name:      "add",
+		Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}},
+		Handle:    func(context.Context, json.RawMessage) ([]specter.EventDraft, error) { return nil, nil },
+	}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{IdempotencyKey: "empty"})
+	var public *specter.Error
+	if !errors.As(err, &public) || public.Code != specter.ErrCommandRejected {
+		t.Fatalf("expected zero-Event Command rejection, got %v", err)
+	}
+	if app.EventLog().Version() != 0 || len(app.EventLog().Query(0, nil)) != 0 {
+		t.Fatal("zero-Event Command changed the Event Log")
+	}
+}
+
 func TestQueuedReactionPassesDoNotSkipLaterCommits(t *testing.T) {
 	started := make(chan struct{}, 1)
 	release := make(chan struct{})

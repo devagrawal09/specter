@@ -8,13 +8,14 @@ import type {
 
 import type { ProtocolRuntimeAdapter } from './http-server'
 import type {
+  Causality,
   CommandRequest,
   EventReference,
   QueryRequest,
   ReactionTicketResult,
   SubscriptionRequest,
 } from './types'
-import { structuredProtocolError } from './errors'
+import { SpecterProtocolError, structuredProtocolError } from './errors'
 import { assertJsonValue } from './validation'
 
 export type SpecterRuntimeProtocolAdapterOptions<
@@ -27,18 +28,17 @@ export type SpecterRuntimeProtocolAdapterOptions<
   readonly run?: <T>(operation: () => Promise<T>) => Promise<T>
 }
 
+type ReactionTicketEntry = {
+  readonly completion: Promise<ReactionTicketResult>
+  expiry?: ReturnType<typeof setTimeout>
+}
+
 export function createSpecterRuntimeProtocolAdapter<
   TConfig extends SpecterAppConfig,
 >(
   options: SpecterRuntimeProtocolAdapterOptions<TConfig>,
 ): ProtocolRuntimeAdapter {
-  const tickets = new Map<
-    string,
-    {
-      readonly completion: Promise<ReactionTicketResult>
-      readonly expiry: ReturnType<typeof setTimeout>
-    }
-  >()
+  const tickets = new Map<string, ReactionTicketEntry>()
   const ticketRetentionMs = options.ticketRetentionMs ?? 5 * 60_000
   const run = options.run ?? ((operation) => operation())
 
@@ -61,6 +61,7 @@ export function createSpecterRuntimeProtocolAdapter<
               parentOperationIds: request.parentOperationIds,
               idempotencyKey: request.idempotencyKey,
               expectedVersion: request.expectedVersion,
+              protocolCausality: protocolCausality(request),
             },
           ),
         )
@@ -69,7 +70,7 @@ export function createSpecterRuntimeProtocolAdapter<
           : crypto.randomUUID()
         if (!execution.duplicate) {
           const previous = tickets.get(reactionTicketId)
-          if (previous) clearTimeout(previous.expiry)
+          if (previous?.expiry) clearTimeout(previous.expiry)
           const completion = execution.reactions.then(
             () => ({ status: 'completed' as const }),
             (cause) => ({
@@ -77,15 +78,19 @@ export function createSpecterRuntimeProtocolAdapter<
               error: structuredProtocolError(cause),
             }),
           )
-          const expiry = setTimeout(
-            () => {
-              if (tickets.get(reactionTicketId)?.completion === completion)
-                tickets.delete(reactionTicketId)
-            },
-            Math.max(0, ticketRetentionMs),
-          )
-          unrefTimer(expiry)
-          tickets.set(reactionTicketId, { completion, expiry })
+          const ticket: ReactionTicketEntry = { completion }
+          tickets.set(reactionTicketId, ticket)
+          void completion.then(() => {
+            if (tickets.get(reactionTicketId) !== ticket) return
+            ticket.expiry = setTimeout(
+              () => {
+                if (tickets.get(reactionTicketId) === ticket)
+                  tickets.delete(reactionTicketId)
+              },
+              Math.max(0, ticketRetentionMs),
+            )
+            unrefTimer(ticket.expiry)
+          })
         }
         return {
           operationId: execution.operationId ?? request.operationId,
@@ -114,15 +119,27 @@ export function createSpecterRuntimeProtocolAdapter<
       }
     },
     async query(request: QueryRequest) {
-      const result = await run(() =>
-        options.app.query(request.query as SpecterQueryEnvelope<TConfig>, {
-          operationId: request.operationId,
-          correlationId: request.correlationId,
-          parentOperationIds: request.parentOperationIds,
-        }),
-      )
-      assertJsonValue(result)
-      return result
+      try {
+        const result = await run(() =>
+          options.app.query(request.query as SpecterQueryEnvelope<TConfig>, {
+            operationId: request.operationId,
+            correlationId: request.correlationId,
+            parentOperationIds: request.parentOperationIds,
+            protocolCausality: protocolCausality(request),
+          }),
+        )
+        assertJsonValue(result)
+        return result
+      } catch (cause) {
+        if (!(cause instanceof SpecterProtocolError)) throw cause
+        const error = structuredProtocolError(cause)
+        throw new SpecterProtocolError({
+          code: error.code,
+          message: error.message,
+          status: cause.status,
+          cause,
+        })
+      }
     },
     subscribe(request: SubscriptionRequest, subscriptionOptions) {
       const values = options.app.subscribe(
@@ -132,6 +149,7 @@ export function createSpecterRuntimeProtocolAdapter<
           operationId: request.operationId,
           correlationId: request.correlationId,
           parentOperationIds: request.parentOperationIds,
+          protocolCausality: protocolCausality(request),
         },
       )
       return sequenceValues(values, run)
@@ -193,4 +211,14 @@ async function stableReactionTicketId(idempotencyKey: string) {
 function unrefTimer(timer: ReturnType<typeof setTimeout>) {
   const timerWithUnref = timer as unknown as { unref?: () => void }
   timerWithUnref.unref?.()
+}
+
+function protocolCausality(request: Causality) {
+  return {
+    triggeringEventIds: request.triggeringEventIds,
+    triggeringEventOrder: request.triggeringEventOrder,
+    reactionPassId: request.reactionPassId,
+    deliveryId: request.deliveryId,
+    attemptId: request.attemptId,
+  }
 }

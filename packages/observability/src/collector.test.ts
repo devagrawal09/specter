@@ -9,6 +9,10 @@ import {
   createMemoryEventLog,
   createMemorySliceStore,
 } from '@specter-ts/memory'
+import type {
+  ReactionOutboxClaim,
+  ReactionOutboxJob,
+} from '@specter-ts/reaction-outbox'
 
 import { copyCollectorState, createCollectorState } from './collector-model'
 import { createSpecterObservabilityCollector } from './collector'
@@ -143,7 +147,7 @@ describe('Specter observability collector', () => {
     })
   })
 
-  it('scopes causal event and operation identities to their runtime source', async () => {
+  it('disambiguates colliding observation and operation IDs by source filters', async () => {
     const { collector } = await setup()
     const otherSource: RuntimeSource = {
       ...source,
@@ -152,7 +156,7 @@ describe('Specter observability collector', () => {
       eventLogId: 'booking-log',
     }
     const todoParent = observation({
-      observationId: 'todo-parent',
+      observationId: 'shared-parent-observation',
       sequence: 1,
       kind: 'command.completed',
       operationId: 'shared-parent-operation',
@@ -160,52 +164,120 @@ describe('Specter observability collector', () => {
     })
     const bookingParent = observation({
       source: otherSource,
-      observationId: 'booking-parent',
+      observationId: 'shared-parent-observation',
       sequence: 1,
       kind: 'command.completed',
-      operationId: 'foreign-operation',
+      operationId: 'shared-parent-operation',
       events: [{ ...eventReference, type: 'booking-created' }],
     })
     const todoChild = observation({
-      observationId: 'todo-child',
+      observationId: 'shared-child-observation',
       sequence: 2,
       kind: 'reaction.run.completed',
-      operationId: 'todo-reaction',
+      operationId: 'shared-reaction',
       parentOperationIds: ['shared-parent-operation'],
       triggeringEventIds: [eventReference.eventId],
     })
-    const bookingChildWithCollidingParentId = observation({
+    const bookingChild = observation({
       source: otherSource,
-      observationId: 'booking-child',
+      observationId: 'shared-child-observation',
       sequence: 2,
       kind: 'reaction.run.completed',
-      operationId: 'foreign-reaction',
+      operationId: 'shared-reaction',
       parentOperationIds: ['shared-parent-operation'],
+      triggeringEventIds: [eventReference.eventId],
     })
 
-    await collector.ingest(
-      batch('source-collisions', [
-        todoParent,
-        bookingParent,
-        todoChild,
-        bookingChildWithCollidingParentId,
-      ]),
-    )
+    await expect(
+      collector.ingest(
+        batch('source-collisions', [
+          todoParent,
+          bookingParent,
+          todoChild,
+          bookingChild,
+        ]),
+      ),
+    ).resolves.toMatchObject({ accepted: 4, duplicates: 0 })
 
-    const trace = await collector.trace('todo-reaction')
-    expect(trace.observations.map((item) => item.observationId)).toEqual([
-      'todo-parent',
-      'todo-child',
+    const trace = await collector.trace('shared-reaction', {
+      application: source.application,
+      environment: source.environment,
+      instanceId: source.instanceId,
+      eventLogId: source.eventLogId,
+    })
+    expect(trace.observations).toHaveLength(2)
+    expect(trace.observations.map((item) => item.source.application)).toEqual([
+      'todo-reference',
+      'todo-reference',
     ])
     expect(trace.edges).toEqual([
       {
         from: 'shared-parent-operation',
-        to: 'todo-reaction',
+        to: 'shared-reaction',
         relation: 'parent-operation',
       },
       {
         from: 'shared-parent-operation',
-        to: 'todo-reaction',
+        to: 'shared-reaction',
+        relation: 'caused-by-event',
+      },
+    ])
+
+    const handler = createSpecterObservabilityHttpHandler({ collector })
+    const response = await handler(
+      new Request(
+        'http://collector/v1/traces/shared-reaction?application=booking-reference&environment=development&instanceId=booking-instance&eventLogId=booking-log',
+      ),
+    )
+    const bookingTrace = (await response.json()) as {
+      observations: readonly RuntimeObservation[]
+    }
+    expect(
+      bookingTrace.observations.map((item) => item.source.application),
+    ).toEqual(['booking-reference', 'booking-reference'])
+  })
+
+  it('links Event causality across process instances sharing an Event Log', async () => {
+    const { collector } = await setup()
+    const restartedSource: RuntimeSource = {
+      ...source,
+      runtimeVersion: '0.4.1',
+      instanceId: 'instance-2',
+    }
+    await collector.ingest(
+      batch('restart-causality', [
+        observation({
+          observationId: 'before-restart',
+          sequence: 1,
+          kind: 'command.completed',
+          operationId: 'command-before-restart',
+          events: [eventReference],
+        }),
+        observation({
+          source: restartedSource,
+          observationId: 'after-restart',
+          sequence: 1,
+          kind: 'reaction.run.completed',
+          operationId: 'reaction-after-restart',
+          triggeringEventIds: [eventReference.eventId],
+        }),
+      ]),
+    )
+
+    const trace = await collector.trace('reaction-after-restart', {
+      application: source.application,
+      environment: source.environment,
+      instanceId: restartedSource.instanceId,
+      eventLogId: source.eventLogId,
+    })
+    expect(trace.observations.map((item) => item.observationId)).toEqual([
+      'before-restart',
+      'after-restart',
+    ])
+    expect(trace.edges).toEqual([
+      {
+        from: 'command-before-restart',
+        to: 'reaction-after-restart',
         relation: 'caused-by-event',
       },
     ])
@@ -270,11 +342,30 @@ describe('Specter observability collector', () => {
       }),
     )
     expect(ingestion.status).toBe(202)
+    expect(ingestion.headers.get('Specter-Protocol-Version')).toBe('1')
     const overview = await handler(new Request('http://collector/v1/overview'))
+    expect(overview.headers.get('Specter-Protocol-Version')).toBe('1')
     await expect(overview.json()).resolves.toMatchObject({ failureCount: 1 })
-    const html = await (await handler(new Request('http://collector/'))).text()
+    const dashboard = await handler(new Request('http://collector/'))
+    expect(dashboard.headers.get('Specter-Protocol-Version')).toBe('1')
+    const html = await dashboard.text()
     expect(html).toContain('Specter runtime observability')
     expect(html).not.toContain('<private>')
+
+    const malformed = await handler(
+      new Request('http://collector/specter/v1/observations', {
+        method: 'POST',
+        body: '{',
+      }),
+    )
+    expect(malformed.status).toBe(400)
+    expect(malformed.headers.get('Specter-Protocol-Version')).toBe('1')
+    await expect(malformed.json()).resolves.toEqual({
+      error: {
+        code: 'SPECTER_INVALID_JSON',
+        message: 'Malformed JSON request.',
+      },
+    })
   })
 
   it('redacts unexpected HTTP and activity-stream failures', async () => {
@@ -634,6 +725,130 @@ describe('Specter observability collector', () => {
       },
     })
     expect(JSON.stringify(recorded)).not.toContain('private database')
+  })
+
+  it('preserves inbound protocol causality alongside local Event metadata', () => {
+    const recorded: RuntimeObservation[] = []
+    const emitter = createRuntimeObservationEmitter({
+      source,
+      producer: { record: (item) => recorded.push(item) },
+    })
+
+    emitter.observe({
+      type: 'command-started',
+      observationId: 'causal-observation',
+      observedAt: '2026-07-18T12:00:00.000Z',
+      operationId: 'causal-operation',
+      parentOperationIds: ['parent-operation'],
+      causedByEvents: [
+        {
+          id: 'local-event',
+          type: 'local-event',
+          order: 8,
+          recordedAt: '2026-07-18T12:00:00.000Z',
+          commitVersion: 4,
+        },
+      ],
+      protocolCausality: {
+        triggeringEventIds: ['remote-event'],
+        triggeringEventOrder: { from: 2, to: 6 },
+        reactionPassId: 'reaction-pass',
+        deliveryId: 'delivery',
+        attemptId: 'attempt',
+      },
+      commandType: 'followUp',
+    })
+
+    expect(recorded[0]).toMatchObject({
+      triggeringEventIds: ['remote-event', 'local-event'],
+      triggeringEventOrder: { from: 2, to: 6 },
+      reactionPassId: 'reaction-pass',
+      deliveryId: 'delivery',
+      attemptId: 'attempt',
+    })
+  })
+
+  it('links a two-attempt outbox lifecycle through retry and dead letter', async () => {
+    const recorded: RuntimeObservation[] = []
+    const emitter = createRuntimeObservationEmitter({
+      source,
+      producer: { record: (item) => recorded.push(item) },
+    })
+    const requestedAt = new Date('2026-07-18T12:00:00.000Z')
+    const availableAt = new Date('2026-07-18T12:00:01.000Z')
+    const leaseExpiresAt = new Date('2026-07-18T12:01:00.000Z')
+    const job = {
+      id: 'email-delivery',
+      idempotencyKey: 'email-delivery-key',
+      payload: {},
+      status: 'pending',
+      requestedAt,
+      availableAt,
+      attemptCount: 0,
+    } satisfies ReactionOutboxJob
+    const firstClaim = {
+      ...job,
+      status: 'running',
+      attemptCount: 1,
+      activeAttemptId: 'email-delivery:attempt:1',
+      leaseExpiresAt,
+    } satisfies ReactionOutboxClaim
+    const secondClaim = {
+      ...firstClaim,
+      attemptCount: 2,
+      activeAttemptId: 'email-delivery:attempt:2',
+    } satisfies ReactionOutboxClaim
+
+    await emitter.outbox({ type: 'enqueued', job, created: true })
+    await emitter.outbox({ type: 'attempt-started', claim: firstClaim })
+    await emitter.outbox({
+      type: 'attempt-retrying',
+      claim: firstClaim,
+      availableAt,
+      error: 'temporary failure',
+    })
+    await emitter.outbox({ type: 'attempt-started', claim: secondClaim })
+    await emitter.outbox({
+      type: 'dead-lettered',
+      claim: secondClaim,
+      failedAt: availableAt,
+      error: 'permanent failure',
+    })
+
+    expect(recorded.map((item) => item.deliveryId)).toEqual(
+      Array(5).fill('email-delivery'),
+    )
+    expect(recorded.map((item) => item.attemptId)).toEqual([
+      undefined,
+      'email-delivery:attempt:1',
+      'email-delivery:attempt:1',
+      'email-delivery:attempt:2',
+      'email-delivery:attempt:2',
+    ])
+    for (let index = 1; index < recorded.length; index += 1) {
+      expect(recorded[index]?.parentOperationIds).toEqual([
+        recorded[index - 1]?.operationId,
+      ])
+    }
+
+    const { collector } = await setup()
+    await collector.ingest(batch('outbox-lifecycle', recorded))
+    const lastOperationId = recorded.at(-1)?.operationId
+    expect(lastOperationId).toBeDefined()
+    const trace = await collector.trace(lastOperationId as string, {
+      application: source.application,
+      environment: source.environment,
+      instanceId: source.instanceId,
+      eventLogId: source.eventLogId,
+    })
+    expect(trace.observations.map((item) => item.kind)).toEqual([
+      'outbox.enqueued',
+      'outbox.attempted',
+      'outbox.retry-scheduled',
+      'outbox.attempted',
+      'outbox.dead-lettered',
+    ])
+    expect(trace.edges).toHaveLength(4)
   })
 
   it('redacts coded failures and preserves retry-stable Reaction identities', () => {

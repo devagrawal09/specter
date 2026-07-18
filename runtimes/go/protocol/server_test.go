@@ -217,6 +217,74 @@ func TestClientServerCommandAndQuery(t *testing.T) {
 	}
 }
 
+func TestQueryAndSubscriptionPreserveSuccessfulNullResults(t *testing.T) {
+	query := specter.QueryDefinition{
+		Name:      "nothing",
+		Scenarios: []specter.QueryScenario{{Description: "returns JSON null", Expect: nil}},
+		Handle:    func(context.Context, json.RawMessage) (any, error) { return nil, nil },
+	}
+	app, err := specter.NewApp(specter.Config{Queries: []specter.QueryDefinition{query}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer((&protocol.Server{App: app}).Handler())
+	defer server.Close()
+	client := &protocol.Client{BaseURL: server.URL + "/specter/v1"}
+	queryResponse, err := client.Query(context.Background(), protocol.QueryRequest{OperationID: "query-null", Query: protocol.OperationEnvelope{Type: "nothing", Payload: json.RawMessage(`{}`)}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if queryResponse.Result != nil || queryResponse.Error != nil {
+		t.Fatalf("unexpected null Query response: %#v", queryResponse)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	messages, failures, err := client.Subscribe(ctx, protocol.SubscriptionRequest{OperationID: "subscription-null", Query: protocol.OperationEnvelope{Type: "nothing", Payload: json.RawMessage(`{}`)}})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	select {
+	case message := <-messages:
+		if message.Kind != "subscription.value" || message.Result != nil || message.Error != nil {
+			t.Fatalf("unexpected null subscription value: %#v", message)
+		}
+	case failure := <-failures:
+		cancel()
+		t.Fatalf("subscription failed before its null value: %v", failure)
+	case <-time.After(time.Second):
+		cancel()
+		t.Fatal("subscription did not emit its null value")
+	}
+	cancel()
+	for range failures {
+	}
+}
+
+func TestFailedQueryAndSubscriptionMessagesOmitResult(t *testing.T) {
+	failure := &specter.Error{Code: specter.ErrInfrastructure, Message: "Runtime operation failed."}
+	queryBytes, err := json.Marshal(protocol.QueryResponse{Envelope: protocol.Envelope{ProtocolVersion: 1, Kind: "query.response", RequestID: "query"}, OperationID: "operation", Result: "must-not-appear", Error: failure})
+	if err != nil {
+		t.Fatal(err)
+	}
+	subscriptionBytes, err := json.Marshal(protocol.SubscriptionMessage{Envelope: protocol.Envelope{ProtocolVersion: 1, Kind: "subscription.error", RequestID: "subscription"}, OperationID: "operation", Result: "must-not-appear", Error: failure})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, encoded := range map[string][]byte{"query": queryBytes, "subscription": subscriptionBytes} {
+		var fields map[string]json.RawMessage
+		if err := json.Unmarshal(encoded, &fields); err != nil {
+			t.Fatal(err)
+		}
+		if _, exists := fields["result"]; exists {
+			t.Fatalf("%s error response contained result: %s", name, encoded)
+		}
+		if _, exists := fields["error"]; !exists {
+			t.Fatalf("%s error response omitted error: %s", name, encoded)
+		}
+	}
+}
+
 func TestSharedGoldenFixturesDecode(t *testing.T) {
 	commandBytes, err := os.ReadFile("../../../protocol/fixtures/command-commit.json")
 	if err != nil {
@@ -266,6 +334,88 @@ func TestSharedObservationFixtureIsAccepted(t *testing.T) {
 	}
 	if acknowledgement.Accepted != 1 || acknowledgement.Kind != "observations.ack" {
 		t.Fatalf("unexpected acknowledgement: %#v", acknowledgement)
+	}
+}
+
+func TestMalformedRuntimeObservationsAreRejected(t *testing.T) {
+	validEvent := func() map[string]any {
+		return map[string]any{"eventId": "event-1", "type": "todo-added", "order": float64(1), "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": float64(1)}
+	}
+	tests := []struct {
+		name   string
+		mutate func(map[string]any)
+	}{
+		{name: "non-Z observed timestamp", mutate: func(value map[string]any) { value["observedAt"] = "2026-07-18T12:00:00+00:00" }},
+		{name: "negative cursor", mutate: func(value map[string]any) { value["cursor"] = float64(-1) }},
+		{name: "unsafe dropped count", mutate: func(value map[string]any) { value["droppedCount"] = float64(9007199254740992) }},
+		{name: "descending triggering range", mutate: func(value map[string]any) {
+			value["triggeringEventOrder"] = map[string]any{"from": float64(2), "to": float64(1)}
+		}},
+		{name: "negative triggering range", mutate: func(value map[string]any) {
+			value["triggeringEventOrder"] = map[string]any{"from": float64(-1), "to": float64(1)}
+		}},
+		{name: "empty optional causal id", mutate: func(value map[string]any) { value["correlationId"] = "" }},
+		{name: "empty parent id", mutate: func(value map[string]any) { value["parentOperationIds"] = []any{"parent", ""} }},
+		{name: "duplicate parent id", mutate: func(value map[string]any) { value["parentOperationIds"] = []any{"parent", "parent"} }},
+		{name: "duplicate triggering event id", mutate: func(value map[string]any) { value["triggeringEventIds"] = []any{"event-1", "event-1"} }},
+		{name: "missing Event identity", mutate: func(value map[string]any) {
+			event := validEvent()
+			delete(event, "eventId")
+			value["events"] = []any{event}
+		}},
+		{name: "non-Z Event timestamp", mutate: func(value map[string]any) {
+			event := validEvent()
+			event["recordedAt"] = "2026-07-18T12:00:00+00:00"
+			value["events"] = []any{event}
+		}},
+		{name: "negative Event order", mutate: func(value map[string]any) {
+			event := validEvent()
+			event["order"] = float64(-1)
+			value["events"] = []any{event}
+		}},
+		{name: "unsafe Event commit version", mutate: func(value map[string]any) {
+			event := validEvent()
+			event["commitVersion"] = float64(9007199254740992)
+			value["events"] = []any{event}
+		}},
+	}
+	app := emptyApp(t)
+	handler := (&protocol.Server{App: app, AcceptObservations: func(context.Context, protocol.RuntimeObservationBatch) (protocol.ObservationAcknowledgement, error) {
+		t.Fatal("collector accepted a malformed runtime observation")
+		return protocol.ObservationAcknowledgement{}, nil
+	}}).Handler()
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			observation := map[string]any{
+				"observationId": "observation-1",
+				"sequence":      float64(1),
+				"observedAt":    "2026-07-18T12:00:00.000Z",
+				"kind":          "command.started",
+				"operationId":   "operation-1",
+				"source": map[string]any{
+					"application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "test", "instanceId": "instance", "eventLogId": "log",
+				},
+			}
+			test.mutate(observation)
+			body, err := json.Marshal(map[string]any{"protocolVersion": 1, "kind": "observations.batch", "requestId": "request-1", "observations": []any{observation}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/specter/v1/observations", bytes.NewReader(body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest {
+				t.Fatalf("got HTTP %d: %s", response.Code, response.Body.String())
+			}
+			var result protocol.ObservationAcknowledgement
+			if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+				t.Fatal(err)
+			}
+			if result.Error == nil || result.Error.Code != specter.ErrInvalidMessage {
+				t.Fatalf("unexpected error: %#v", result.Error)
+			}
+		})
 	}
 }
 

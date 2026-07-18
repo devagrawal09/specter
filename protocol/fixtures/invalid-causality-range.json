@@ -1,0 +1,12 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.request",
+  "requestId": "invalid-range-request",
+  "operationId": "invalid-range-operation",
+  "triggeringEventIds": ["event-5", "event-4"],
+  "triggeringEventOrder": { "from": 5, "to": 4 },
+  "reactionPassId": "reaction-pass-1",
+  "deliveryId": "delivery-1",
+  "attemptId": "attempt-2",
+  "command": { "type": "continueWorkflow", "payload": {} }
+}
