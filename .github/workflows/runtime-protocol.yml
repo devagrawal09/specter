@@ -21,7 +21,7 @@ jobs:
         with:
           go-version: '1.24.x'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm --filter @specter-ts/core --filter @specter-ts/protocol --filter @specter-ts/observability build
+      - run: pnpm build:publishable
       - run: pnpm --filter @specter-ts/protocol --filter @specter-ts/observability test
       - run: go test ./...
         working-directory: runtimes/go
