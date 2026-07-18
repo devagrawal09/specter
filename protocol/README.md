@@ -5,6 +5,11 @@ and observability collectors. Implementations conform by producing the same
 observable results for the fixtures in `fixtures/`; application Slices,
 handlers, schemas, and persistence layouts remain language-native.
 
+For a visual summary of the implementation, validation, product impact, and
+recommended follow-up work, open the
+[runtime protocol delivery report](../docs/runtime-protocol-delivery-report.html)
+in a browser.
+
 The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
 ## Wire rules
