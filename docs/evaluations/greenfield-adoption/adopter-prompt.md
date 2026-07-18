@@ -53,9 +53,25 @@ held-out inputs, schedules, faults, oracles, and check orchestration.
 ## Clock and deliverables
 
 You have **180 active minutes** for bootstrap, checkpoint, and complete-app work
-combined. Coordinator provisioning, checkpoint capture, verifier execution, and
-an unavailable prepared service do not consume active time. Ordinary installs,
-builds, tests, diagnosis, browser work, and your own idle time do.
+combined. Phase 1 ends at `CHECKPOINT_READY` or a fixed **75-active-minute**
+ceiling, whichever comes first. Any unused phase-1 time carries into phase 2, but
+phase 1 cannot exceed 75 minutes.
+
+The coordinator provisions the execution image, package cache, browser, empty
+database service, credentials, fixed port, and local tarballs before your clock
+starts. The clock starts immediately before your first command. Initializer
+execution, dependency installation, app configuration, authoring or generating
+migrations, applying app migrations, starter checks, implementation, builds,
+tests, diagnosis, browser work, and your idle time all consume active time for
+both SQLite and PostgreSQL.
+
+Only the coordinator can pause the clock, for checkpoint capture, a verified
+coordinator-owned service/browser/cache/credential failure, a required
+coordinator approval, or final freeze. Every pause is automatic and logged. Your
+commands, installs, migrations, tests, diagnosis, requested waiting, inactivity,
+and failures caused by your app configuration are not paused. Report a suspected
+prepared-environment failure immediately without changing ports or services; the
+coordinator decides whether it matches the frozen environment-failure policy.
 
 Maintain `ADOPTION_LOG.md` from the first command onward in strict chronological
 order. For each material action record:
@@ -123,9 +139,12 @@ entry. The coordinator's transcript is authoritative if the log differs.
    SQLite harness; use the coordinator-supplied service-backed recovery harness.
 7. When the checkpoint's focused Scenario, public-route, persistence, and
    visible browser acceptance tests pass, append `CHECKPOINT_READY` with active
-   elapsed time and stop editing. The coordinator captures the diff, log, test
-   output, and generator transcript. Resume only after the coordinator sends
-   the procedural `CONTINUE` signal; that signal contains no advice.
+   elapsed time and stop editing. If they have not passed at 75 active minutes,
+   stop when the coordinator sends `CHECKPOINT_CEILING`; the checkpoint is
+   captured as failed or incomplete. In either case, the coordinator pauses the
+   clock, captures the diff, log, test output, and generator transcript, and then
+   sends the same procedural `CONTINUE` signal without advice. Resume only after
+   that signal. Later phase-2 work cannot change the checkpoint result.
 
 ## Phase 2: complete the workflow application
 
@@ -187,6 +206,8 @@ reruns visible checks and executes held-out verification. First-attempt scoring
 is permanently based on this frozen repository and log.
 
 After scoring, the coordinator may provide all verifier findings and explicitly
-start an **unscored remediation pass**. Only then may you edit again. Record
-additional time and changes separately; remediation can establish eventual
+start a **60-active-minute unscored remediation pass**. Only then may you edit
+again. The same pause and environment rules apply on a separate clock. Stop when
+all checks pass or the 60-minute ceiling expires, and record additional active
+time, wall time, and changes separately. Remediation can establish eventual
 success but cannot alter the first-attempt result.

@@ -5,7 +5,34 @@
   "adopterPrompt": "docs/evaluations/greenfield-adoption/adopter-prompt.md",
   "attemptsPerDomain": 2,
   "activeMinutesPerAttempt": 180,
+  "checkpointActiveMinuteCeiling": 75,
+  "remediationActiveMinutes": 60,
   "totalAttempts": 10,
+  "inferencePolicy": {
+    "unit": "attempt and domain descriptive results",
+    "nearTransferLabel": "The two added domains are near-transfer guarded-workflow tests, not evidence of broad transfer.",
+    "prohibitedClaims": [
+      "SQLite-versus-PostgreSQL effects",
+      "replication-versus-near-transfer effects",
+      "profile-by-cohort interactions"
+    ],
+    "redesignRequiredForEffects": "Independently randomize or cross persistence profile and design role within enough domains under a new preregistration."
+  },
+  "runOrderPolicy": {
+    "blocks": 2,
+    "attemptsPerBlock": 5,
+    "rule": "Each block contains one fresh-context attempt per domain; publish one seed and randomize domain order independently inside each block before scoring."
+  },
+  "timingPolicy": {
+    "coordinatorBeforeActiveTime": "Provision the image, package cache, browser, empty database service, credentials, fixed port, and local tarballs only.",
+    "adopterActiveTime": "Initializer, dependency install, app configuration, migration authoring or generation, migration application, validation, implementation, tests, builds, diagnosis, browser work, and idle time.",
+    "automaticPauseAllowlist": [
+      "checkpoint-capture",
+      "coordinator-service-recovery",
+      "coordinator-approval",
+      "final-freeze"
+    ]
+  },
   "standardVisibleCommands": [
     "npm run check",
     "npm run lint",
@@ -25,7 +52,7 @@
       "persistence": {
         "adapter": "postgresql",
         "database": "coordinator-provided DATABASE_URL",
-        "serviceSetup": "coordinator provisions and migrates a fresh PostgreSQL database before the attempt",
+        "serviceSetup": "coordinator provisions an empty fresh PostgreSQL database before active time; the adopter authors or generates and applies app migrations during active time",
         "topology": "one public web process plus two independent verifier runtime processes sharing one database",
         "recoveryHarness": "coordinator-provided PostgreSQL service harness"
       },
@@ -57,7 +84,7 @@
       "persistence": {
         "adapter": "postgresql",
         "database": "coordinator-provided DATABASE_URL",
-        "serviceSetup": "coordinator provisions and migrates a fresh PostgreSQL database before the attempt",
+        "serviceSetup": "coordinator provisions an empty fresh PostgreSQL database before active time; the adopter authors or generates and applies app migrations during active time",
         "topology": "one public web process plus two independent verifier runtime processes sharing one database",
         "recoveryHarness": "coordinator-provided PostgreSQL service harness"
       },
@@ -89,7 +116,7 @@
       "persistence": {
         "adapter": "sqlite",
         "database": "real on-disk database unique to the attempt",
-        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "serviceSetup": "coordinator provides the empty attempt location; the adopter authors or generates and applies app migrations during active time",
         "topology": "one application and web process",
         "recoveryHarness": "generated SQLite persistent harness"
       },
@@ -115,13 +142,13 @@
     {
       "id": "aircraft-turnaround",
       "title": "Aircraft Turnaround Control",
-      "cohort": "transfer",
+      "cohort": "near-transfer",
       "brief": "docs/evaluations/greenfield-adoption/briefs/aircraft-turnaround.md",
       "port": 41914,
       "persistence": {
         "adapter": "sqlite",
         "database": "real on-disk database unique to the attempt",
-        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "serviceSetup": "coordinator provides the empty attempt location; the adopter authors or generates and applies app migrations during active time",
         "topology": "one application and web process",
         "recoveryHarness": "generated SQLite persistent harness"
       },
@@ -147,13 +174,13 @@
     {
       "id": "municipal-water-restoration",
       "title": "Municipal Water Restoration",
-      "cohort": "transfer",
+      "cohort": "near-transfer",
       "brief": "docs/evaluations/greenfield-adoption/briefs/municipal-water-restoration.md",
       "port": 41915,
       "persistence": {
         "adapter": "sqlite",
         "database": "real on-disk database unique to the attempt",
-        "serviceSetup": "adopter applies app migrations to the attempt-local SQLite file",
+        "serviceSetup": "coordinator provides the empty attempt location; the adopter authors or generates and applies app migrations during active time",
         "topology": "one application and web process",
         "recoveryHarness": "generated SQLite persistent harness"
       },
