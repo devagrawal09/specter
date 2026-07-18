@@ -1,0 +1,104 @@
+package specter
+
+import (
+	"context"
+	"encoding/json"
+	"sync"
+)
+
+type SubscriptionValue struct {
+	Value any
+	Err   error
+}
+type Subscription struct {
+	ID        uint64
+	C         <-chan SubscriptionValue
+	app       *App
+	query     string
+	payload   json.RawMessage
+	options   DispatchOptions
+	values    chan SubscriptionValue
+	ctx       context.Context
+	cancel    context.CancelFunc
+	closeOnce sync.Once
+	sendMu    sync.Mutex
+}
+
+func (a *App) Subscribe(ctx context.Context, query string, payload any) (*Subscription, error) {
+	raw, err := marshalInput(payload)
+	if err != nil {
+		return nil, err
+	}
+	return a.SubscribeJSON(ctx, query, raw, DispatchOptions{})
+}
+
+func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawMessage, options DispatchOptions) (*Subscription, error) {
+	if a.queries[query] == nil {
+		return nil, unknownQuery(query)
+	}
+	ctx, cancel := context.WithCancel(ctx)
+	values := make(chan SubscriptionValue, 1)
+	sub := &Subscription{ID: a.nextSubscription.Add(1), C: values, app: a, query: query, payload: payload, options: options, values: values, ctx: ctx, cancel: cancel}
+	a.subMu.Lock()
+	a.subscriptions[sub.ID] = sub
+	a.subMu.Unlock()
+	if err := sub.refresh(); err != nil {
+		sub.Close()
+		return nil, err
+	}
+	go func() { <-ctx.Done(); sub.Close() }()
+	return sub, nil
+}
+
+func (s *Subscription) Close() {
+	s.closeOnce.Do(func() {
+		s.cancel()
+		s.app.subMu.Lock()
+		delete(s.app.subscriptions, s.ID)
+		s.app.subMu.Unlock()
+		s.sendMu.Lock()
+		close(s.values)
+		s.sendMu.Unlock()
+	})
+}
+
+func (s *Subscription) refresh() error {
+	value, err := s.app.QueryJSON(s.ctx, s.query, s.payload, s.options)
+	if err != nil && s.ctx.Err() != nil {
+		return s.ctx.Err()
+	}
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if s.ctx.Err() != nil {
+		return s.ctx.Err()
+	}
+	item := SubscriptionValue{Value: value, Err: err}
+	select {
+	case s.values <- item:
+	default:
+		select {
+		case <-s.values:
+		default:
+		}
+		select {
+		case s.values <- item:
+		case <-s.ctx.Done():
+			return s.ctx.Err()
+		}
+	}
+	return nil
+}
+
+func (a *App) invalidateSubscriptions(parent, correlation string) {
+	a.subMu.Lock()
+	subscriptions := make([]*Subscription, 0, len(a.subscriptions))
+	for _, sub := range a.subscriptions {
+		subscriptions = append(subscriptions, sub)
+	}
+	a.subMu.Unlock()
+	for _, sub := range subscriptions {
+		operation := newID("op")
+		a.emit(Observation{Kind: "subscription.invalidated", OperationID: operation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, QueryType: sub.query})
+		go func(s *Subscription) { _ = s.refresh() }(sub)
+	}
+}

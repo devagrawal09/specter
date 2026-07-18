@@ -1,0 +1,8 @@
+{
+  "protocolVersion": 1,
+  "kind": "query.request",
+  "requestId": "request-3",
+  "operationId": "operation-3",
+  "query": { "type": "todosQuery", "payload": {} },
+  "futureOptionalField": { "enabled": true }
+}

@@ -7,7 +7,10 @@
     "types": ["node", "vitest"],
     "paths": {
       "@specter-ts/core": ["../core/src/index.ts"],
-      "@specter-ts/reaction-outbox": ["../reaction-outbox/src/index.ts"]
+      "@specter-ts/memory": ["../memory/src/index.ts"],
+      "@specter-ts/protocol": ["../protocol/src/index.ts"],
+      "@specter-ts/reaction-outbox": ["../reaction-outbox/src/index.ts"],
+      "@specter-ts/sqlite": ["../sqlite/src/index.ts"]
     }
   }
 }

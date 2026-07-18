@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "cases": [
+    { "name": "command-commit", "file": "command-commit.json", "valid": true },
+    { "name": "observation-batch", "file": "observation-batch.json", "valid": true },
+    { "name": "unknown-optional-field", "file": "unknown-optional-field.json", "valid": true },
+    { "name": "version-mismatch", "file": "version-mismatch.json", "valid": false, "errorCode": "SPECTER_PROTOCOL_VERSION_MISMATCH" },
+    { "name": "malformed-command", "file": "malformed-command.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" }
+  ]
+}

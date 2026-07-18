@@ -114,13 +114,25 @@ output once and compare it directly with the Scenario expectation.
 Specter guarantees structural immutability for specification wrappers and
 arrays. It does not clone or deep-freeze caller-owned payload values.
 
-### Transport
+### Transport and language-neutral protocol
 
-Core is transport-agnostic. Generated projects own their HTTP, SSE, WebSocket,
-or other adapters. The canonical generated HTTP/SSE transport accepts only
+Core remains transport-agnostic. Generated projects may own their HTTP, SSE,
+WebSocket, or other adapters. The canonical generated HTTP/SSE transport accepts only
 JSON-compatible public Command payloads and Query outputs, allowlists registered
 operations, and maps structured Specter errors without exposing internal error
 details.
+
+Specter additionally publishes `@specter-ts/protocol`: a versioned,
+language-neutral description of observable runtime behavior plus a reference
+JSON HTTP/SSE binding. It standardizes capability negotiation, Command and
+Query envelopes, subscriptions, Reaction-completion tickets, structured
+errors, and runtime-observation batches. It does not move application Slice
+definitions, handlers, schemas, or persistence layouts across languages.
+
+Protocol implementations require matching major versions, negotiate named
+capabilities, tolerate unknown optional fields, and reject unsupported required
+capabilities. TypeScript and Go conform independently against the same golden
+fixtures; neither implementation shares application storage with the other.
 
 Remote UIs use a project-owned transport. Entirely in-process or in-browser
 runtimes, including ColonyBench, may call the envelope API directly.
@@ -135,6 +147,8 @@ Event Log metadata owned by the persistence adapter.
   reference types, adapters, and structured errors.
 - `@specter-ts/core/spec` exports specification builders and `event()`.
 - `@specter-ts/core/testing` exports Scenario test utilities.
+- `@specter-ts/protocol` exports v1 types, validation, capability negotiation,
+  and the reference HTTP/SSE client/server binding.
 - `@specter-ts/core/client` is removed.
 
 The root Specter Agent Skill is the canonical source. Generated copies are
