@@ -1,0 +1,13 @@
+{
+  "name": "@specter-ts/core",
+  "version": "0.3.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    },
+    "./spec": {
+      "types": "./spec.d.ts"
+    }
+  }
+}

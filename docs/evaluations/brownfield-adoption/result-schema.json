@@ -1,0 +1,116 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/evaluations/brownfield-result.schema.json",
+  "title": "Specter brownfield adoption attempt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "attemptId",
+    "applicationId",
+    "agentConfiguration",
+    "startedAt",
+    "finishedAt",
+    "activeMilliseconds",
+    "wallMilliseconds",
+    "phaseTiming",
+    "firstAttempt",
+    "adapterReport",
+    "domainChecks",
+    "friction",
+    "iterationCount",
+    "implementationSize",
+    "sourcesConsulted",
+    "remediation"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "applicationId": { "type": "string", "minLength": 1 },
+    "agentConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "reasoning"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "reasoning": { "type": "string", "minLength": 1 }
+      }
+    },
+    "startedAt": { "type": "string", "format": "date-time" },
+    "finishedAt": { "type": "string", "format": "date-time" },
+    "activeMilliseconds": { "type": "integer", "minimum": 0 },
+    "wallMilliseconds": { "type": "integer", "minimum": 0 },
+    "phaseTiming": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapterMilliseconds", "domainMilliseconds"],
+      "properties": {
+        "adapterMilliseconds": { "type": "integer", "minimum": 0 },
+        "domainMilliseconds": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "firstAttempt": { "enum": ["passed", "failed", "timed-out"] },
+    "adapterReport": { "type": "object" },
+    "domainChecks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "status"],
+        "properties": {
+          "name": { "type": "string" },
+          "status": { "enum": ["passed", "failed", "not-run"] },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "friction": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["category", "summary", "phase"],
+        "properties": {
+          "category": {
+            "enum": [
+              "adapter-contract",
+              "bootstrap",
+              "event-scenario-modeling",
+              "lifecycle",
+              "transport",
+              "legacy-projection",
+              "recovery",
+              "guidance"
+            ]
+          },
+          "summary": { "type": "string", "minLength": 1 },
+          "phase": { "enum": ["adapter", "domain", "both"] }
+        }
+      }
+    },
+    "iterationCount": { "type": "integer", "minimum": 0 },
+    "implementationSize": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["adapterLines", "domainLines"],
+      "properties": {
+        "adapterLines": { "type": "integer", "minimum": 0 },
+        "domainLines": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sourcesConsulted": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "uniqueItems": true
+    },
+    "remediation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "additionalMilliseconds"],
+      "properties": {
+        "status": { "enum": ["passed", "failed", "not-run"] },
+        "additionalMilliseconds": { "type": "integer", "minimum": 0 }
+      }
+    }
+  }
+}

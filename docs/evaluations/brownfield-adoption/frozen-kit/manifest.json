@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "frozenAt": "2026-07-18T20:53:44.000Z",
+  "specterCoreRevision": "0c78e0ece63e661358a013428af13e53c2fe61c1",
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "activeWorkLimitMinutes": 90,
+  "artifacts": {
+    "core": {
+      "path": "specter-ts-core-0.3.0.tgz",
+      "sha256": "f31c26efb71c0b64d6ddc62e391d5fe0e632d4fb7c4cd811c4f353c61abff51c"
+    },
+    "verifier": {
+      "path": "specter-ts-brownfield-verifier-0.0.0.tgz",
+      "sha256": "eb743e888035655ea008cb37e71a1f6ea062f54bf4931b8ec79e42ab77f23ec1"
+    },
+    "guidance": {
+      "path": "guidance.tar.gz",
+      "sha256": "86a847d5dbc0d63089f90f4d4e6fb0283bb4714d89441358b1141b895c0c18d1"
+    }
+  },
+  "controls": {
+    "adopterPrompt": {
+      "path": "../adopter-prompt.md",
+      "sha256": "632d8706a947b59c16399f014afcb952aeccb2c4c0ddbd62bf9c6cac623cdadb"
+    },
+    "assignmentSchema": {
+      "path": "../assignment-schema.json",
+      "sha256": "de09b9b09e54dcf4b866e896d7ab612f97fc81e219929a2441e43211d306f8b4"
+    },
+    "resultSchema": {
+      "path": "../result-schema.json",
+      "sha256": "5d415db26b7ececa53cf4a2c3c4da385dfa7aaa5c75ec2f3c1bed5301910eb8e"
+    },
+    "guidanceInputs": {
+      "path": "../frozen-kit-inputs.txt",
+      "sha256": "1814d2c2cf08e2522a5aeb4ff892c996e776866db09934ce8dbdbe72d68c6880"
+    }
+  }
+}

@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/evaluations/brownfield-assignment.schema.json",
+  "title": "Frozen Specter brownfield adoption assignment",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "assignmentId",
+    "application",
+    "stack",
+    "selectedOperation",
+    "legacySnapshot",
+    "packages",
+    "commands",
+    "agentConfiguration",
+    "activeWorkLimitMinutes"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "assignmentId": { "type": "string", "minLength": 1 },
+    "application": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "source", "revision"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["controlled", "real-world"] },
+        "source": { "type": "string", "minLength": 1 },
+        "revision": { "type": "string", "minLength": 1 }
+      }
+    },
+    "stack": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["framework", "database", "scheduler", "transport", "testRunner", "ports"],
+      "properties": {
+        "framework": { "type": "string", "minLength": 1 },
+        "database": { "type": "string", "minLength": 1 },
+        "scheduler": { "type": "string", "minLength": 1 },
+        "transport": { "type": "string", "minLength": 1 },
+        "testRunner": { "type": "string", "minLength": 1 },
+        "ports": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 10000, "maximum": 65535 },
+          "minItems": 1,
+          "uniqueItems": true
+        }
+      }
+    },
+    "selectedOperation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "route", "guard", "legacyReaders", "backgroundWork"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "route": { "type": "string", "minLength": 1 },
+        "guard": { "type": "string", "minLength": 1 },
+        "legacyReaders": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "minItems": 1
+        },
+        "backgroundWork": { "type": "string", "minLength": 1 }
+      }
+    },
+    "legacySnapshot": { "$ref": "#/$defs/fileDigest" },
+    "packages": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["core", "verifier"],
+      "properties": {
+        "core": { "$ref": "#/$defs/fileDigest" },
+        "verifier": { "$ref": "#/$defs/fileDigest" }
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["baseline", "adapterVerifier", "domainAcceptance"],
+      "properties": {
+        "baseline": { "$ref": "#/$defs/commands" },
+        "adapterVerifier": { "$ref": "#/$defs/commands" },
+        "domainAcceptance": { "$ref": "#/$defs/commands" }
+      }
+    },
+    "agentConfiguration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "reasoning"],
+      "properties": {
+        "model": { "type": "string", "minLength": 1 },
+        "reasoning": { "type": "string", "minLength": 1 }
+      }
+    },
+    "activeWorkLimitMinutes": { "const": 90 }
+  },
+  "$defs": {
+    "commands": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "fileDigest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    }
+  }
+}

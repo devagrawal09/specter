@@ -1,0 +1,36 @@
+{
+  "name": "@specter-ts/brownfield-verifier",
+  "version": "0.0.0",
+  "description": "Frozen black-box contract verifier for Specter brownfield adoption evaluations.",
+  "private": true,
+  "type": "module",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": ["dist", "README.md"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest run",
+    "test:packed-consumers": "node ./scripts/verify-packed-consumers.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@specter-ts/core": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  }
+}
