@@ -105,7 +105,7 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "expectedVersion must be a non-negative safe integer."}})
 		return
 	}
-	execution, err := s.App.CommandJSON(r.Context(), request.Command.Type, request.Command.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID, IdempotencyKey: request.IdempotencyKey, ExpectedVersion: request.ExpectedVersion})
+	execution, err := s.App.CommandJSON(r.Context(), request.Command.Type, request.Command.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID, AttemptID: request.AttemptID, IdempotencyKey: request.IdempotencyKey, ExpectedVersion: request.ExpectedVersion})
 	if err != nil {
 		public := PublicError(err)
 		status := "rejected"
@@ -139,7 +139,7 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
 		return
 	}
-	result, err := s.App.QueryJSON(r.Context(), request.Query.Type, request.Query.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID})
+	result, err := s.App.QueryJSON(r.Context(), request.Query.Type, request.Query.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID, AttemptID: request.AttemptID})
 	if err != nil {
 		writeJSON(w, http.StatusOK, QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: PublicError(err)})
 		return
@@ -169,7 +169,7 @@ func (s *Server) subscription(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	sub, err := s.App.SubscribeJSON(r.Context(), request.Query.Type, request.Query.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID})
+	sub, err := s.App.SubscribeJSON(r.Context(), request.Query.Type, request.Query.Payload, specter.DispatchOptions{OperationID: request.OperationID, CorrelationID: request.CorrelationID, ParentOperationIDs: request.ParentOperationIDs, TriggeringEventIDs: request.TriggeringEventIDs, TriggeringEventOrder: request.TriggeringEventOrder, ReactionPassID: request.ReactionPassID, DeliveryID: request.DeliveryID, AttemptID: request.AttemptID})
 	if err != nil {
 		writeJSON(w, http.StatusBadRequest, SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: PublicError(err)})
 		return
@@ -223,7 +223,7 @@ func (s *Server) reactionTicket(w http.ResponseWriter, r *http.Request) {
 	request := Envelope{ProtocolVersion: Version, Kind: "reaction-ticket.request", RequestID: requestID}
 	status, ok := s.App.ReactionTicket(id)
 	if !ok {
-		writeJSON(w, http.StatusNotFound, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "Unknown Reaction ticket."}})
+		writeJSON(w, http.StatusNotFound, ReactionTicketResponse{Envelope: responseEnvelope(request, "reaction-ticket.response"), ReactionTicketID: id, Status: "failed", Error: &specter.Error{Code: specter.ErrReactionTicketNotFound, Message: "Reaction ticket was not found or expired."}})
 		return
 	}
 	writeJSON(w, http.StatusOK, ReactionTicketResponse{Envelope: responseEnvelope(request, "reaction-ticket.response"), ReactionTicketID: id, Status: status.Status, Error: status.Error})
@@ -265,7 +265,7 @@ func (s *Server) observations(w http.ResponseWriter, r *http.Request) {
 var observationKinds = map[string]struct{}{"command.started": {}, "command.completed": {}, "command.rejected": {}, "command.failed": {}, "query.started": {}, "query.completed": {}, "query.rejected": {}, "query.failed": {}, "events.persisted": {}, "slice.catch-up.started": {}, "slice.catch-up.completed": {}, "slice.catch-up.failed": {}, "subscription.invalidated": {}, "replay.started": {}, "replay.completed": {}, "replay.failed": {}, "reaction.pass.started": {}, "reaction.pass.completed": {}, "reaction.pass.failed": {}, "reaction.run.started": {}, "reaction.run.completed": {}, "reaction.run.failed": {}, "outbox.enqueued": {}, "outbox.attempted": {}, "outbox.retry-scheduled": {}, "outbox.dead-lettered": {}, "telemetry.dropped": {}}
 
 func validateObservation(observation RuntimeObservation) *specter.Error {
-	if observation.ObservationID == "" || observation.OperationID == "" || !safeInteger(observation.Sequence) || observation.ObservedAt.IsZero() || !observation.timestampsValid || observation.Kind == "" {
+	if observation.ObservationID == "" || observation.OperationID == "" || !safeInteger(observation.Sequence) || observation.ObservedAt.IsZero() || !observation.timestampsValid || !observation.typesValid || observation.Kind == "" {
 		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation identity, safe sequence, timestamp, kind, and operationId are required."}
 	}
 	if _, ok := observationKinds[observation.Kind]; !ok {
@@ -291,6 +291,9 @@ func validateObservation(observation RuntimeObservation) *specter.Error {
 	}
 	if observation.Error != nil && (observation.Error.Code == "" || observation.Error.Message == "") {
 		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation errors require a code and message."}
+	}
+	if observation.Outcome != "" && observation.Outcome != "succeeded" && observation.Outcome != "rejected" && observation.Outcome != "failed" {
+		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation outcome is invalid."}
 	}
 	return nil
 }
@@ -382,6 +385,7 @@ var publicErrorMessages = map[specter.ErrorCode]string{
 	specter.ErrInvalidOutput:           "Operation output is invalid.",
 	specter.ErrProtocolVersionMismatch: "Protocol major version is unsupported.",
 	specter.ErrReactionFailure:         "One or more Reactions failed.",
+	specter.ErrReactionTicketNotFound:  "Reaction ticket was not found or expired.",
 	specter.ErrRouteNotFound:           "Route not found.",
 	specter.ErrTransportFailure:        "Transport operation failed.",
 	specter.ErrUnknownCommand:          "Command type is not registered.",

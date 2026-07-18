@@ -53,6 +53,7 @@ type CommandRequest struct {
 	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
 	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
 	DeliveryID           string                   `json:"deliveryId,omitempty"`
+	AttemptID            string                   `json:"attemptId,omitempty"`
 	Command              OperationEnvelope        `json:"command"`
 	IdempotencyKey       string                   `json:"idempotencyKey,omitempty"`
 	ExpectedVersion      *int64                   `json:"expectedVersion,omitempty"`
@@ -88,6 +89,7 @@ type QueryRequest struct {
 	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
 	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
 	DeliveryID           string                   `json:"deliveryId,omitempty"`
+	AttemptID            string                   `json:"attemptId,omitempty"`
 	Query                OperationEnvelope        `json:"query"`
 }
 type QueryResponse struct {
@@ -125,6 +127,7 @@ type SubscriptionRequest struct {
 	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
 	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
 	DeliveryID           string                   `json:"deliveryId,omitempty"`
+	AttemptID            string                   `json:"attemptId,omitempty"`
 	Query                OperationEnvelope        `json:"query"`
 	AfterSequence        *int64                   `json:"afterSequence,omitempty"`
 }
@@ -178,6 +181,7 @@ type RuntimeObservation struct {
 
 	timestampsValid bool
 	causalityValid  bool
+	typesValid      bool
 }
 
 func (observation *RuntimeObservation) UnmarshalJSON(data []byte) error {
@@ -187,24 +191,56 @@ func (observation *RuntimeObservation) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var raw struct {
-		ObservedAt json.RawMessage `json:"observedAt"`
-		Events     []struct {
-			RecordedAt json.RawMessage `json:"recordedAt"`
-		} `json:"events"`
+		ObservedAt json.RawMessage              `json:"observedAt"`
+		Events     []map[string]json.RawMessage `json:"events"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
 	}
 	timestampsValid := isUTCDateTime(raw.ObservedAt)
+	typesValid := true
 	for _, event := range raw.Events {
-		timestampsValid = timestampsValid && isUTCDateTime(event.RecordedAt)
+		timestampsValid = timestampsValid && isUTCDateTime(event["recordedAt"])
+		typesValid = typesValid && rawInteger(event, "order", true) && rawInteger(event, "commitVersion", true)
+		if attributes, present := event["attributes"]; present {
+			typesValid = typesValid && rawObject(attributes)
+		}
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
+	typesValid = typesValid && rawInteger(fields, "sequence", true) && rawObject(fields["source"])
+	for _, name := range []string{"cursor", "droppedCount", "version"} {
+		typesValid = typesValid && rawInteger(fields, name, false)
+	}
+	for _, name := range []string{"parentOperationIds", "triggeringEventIds", "events"} {
+		if value, present := fields[name]; present {
+			typesValid = typesValid && rawArray(value)
+		}
+	}
+	for _, name := range []string{"attributes", "error"} {
+		if value, present := fields[name]; present {
+			typesValid = typesValid && rawObject(value)
+		}
+	}
+	if value, present := fields["duplicate"]; present {
+		var boolean bool
+		typesValid = typesValid && string(value) != "null" && json.Unmarshal(value, &boolean) == nil
+	}
+	if value, present := fields["triggeringEventOrder"]; present {
+		var order map[string]json.RawMessage
+		if !rawObject(value) || json.Unmarshal(value, &order) != nil {
+			typesValid = false
+		} else {
+			typesValid = typesValid && rawInteger(order, "from", true) && rawInteger(order, "to", true)
+		}
+	}
 	causalityValid := true
-	for _, name := range []string{"correlationId", "reactionPassId", "deliveryId", "attemptId"} {
+	for _, name := range []string{
+		"correlationId", "reactionPassId", "deliveryId", "attemptId",
+		"commandType", "queryType", "reaction", "slice", "reactionTicketId", "outcome",
+	} {
 		if value, present := fields[name]; present {
 			var id string
 			if err := json.Unmarshal(value, &id); err != nil || id == "" {
@@ -215,7 +251,30 @@ func (observation *RuntimeObservation) UnmarshalJSON(data []byte) error {
 	*observation = RuntimeObservation(decoded)
 	observation.timestampsValid = timestampsValid
 	observation.causalityValid = causalityValid
+	observation.typesValid = typesValid
 	return nil
+}
+
+func rawInteger(fields map[string]json.RawMessage, name string, required bool) bool {
+	raw, present := fields[name]
+	if !present {
+		return !required
+	}
+	if strings.TrimSpace(string(raw)) == "null" {
+		return false
+	}
+	var value int64
+	return json.Unmarshal(raw, &value) == nil
+}
+
+func rawArray(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+	return len(value) > 0 && value[0] == '['
+}
+
+func rawObject(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+	return len(value) > 0 && value[0] == '{'
 }
 
 func isUTCDateTime(raw json.RawMessage) bool {

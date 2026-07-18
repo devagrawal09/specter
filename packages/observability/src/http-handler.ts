@@ -2,6 +2,7 @@ import {
   assertRuntimeObservationBatch,
   negotiateCapabilities,
   parseProtocolMessage,
+  protocolErrorCodes,
   SpecterProtocolError,
   structuredProtocolError,
 } from '@specter-ts/protocol'
@@ -57,12 +58,13 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/capabilities') {
+        requireJsonContentType(request)
         const message = parseProtocolMessage(await readJson(request))
         if (message.kind !== 'capabilities.request') {
           return errorResponse(
             400,
-            'SPECTER_PROTOCOL_INVALID_MESSAGE',
-            'Expected capabilities.request.',
+            protocolErrorCodes.invalidMessage,
+            'Protocol message is invalid.',
           )
         }
         return Response.json({
@@ -75,6 +77,7 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/observations') {
+        requireJsonContentType(request)
         const body = await readJson(request)
         assertRuntimeObservationBatch(body)
         return Response.json(await options.collector.ingest(body), {
@@ -132,12 +135,26 @@ export function createSpecterObservabilityHttpHandler(
   }
 }
 
+function requireJsonContentType(request: Request) {
+  const contentType = request.headers.get('content-type')
+  if (
+    contentType?.split(';', 1)[0]?.trim().toLowerCase() === 'application/json'
+  ) {
+    return
+  }
+  throw new SpecterProtocolError({
+    code: protocolErrorCodes.invalidMessage,
+    message: 'Protocol POST requests require application/json.',
+    status: 415,
+  })
+}
+
 async function readJson(request: Request): Promise<unknown> {
   try {
     return await request.json()
   } catch (cause) {
     throw new SpecterProtocolError({
-      code: 'SPECTER_INVALID_JSON',
+      code: protocolErrorCodes.invalidJson,
       message: 'Malformed JSON request.',
       status: 400,
       cause,

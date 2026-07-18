@@ -172,23 +172,48 @@ export function createSpecterProtocolHttpClient(
     message: SubscriptionRequest,
     signal?: AbortSignal,
   ): AsyncGenerator<SubscriptionMessage> {
-    const response = await fetchImplementation(`${base}/subscriptions`, {
-      method: 'POST',
-      headers: {
-        accept: 'text/event-stream',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(message),
-      signal,
-    })
+    if (signal?.aborted) return
+    let response: Response
+    try {
+      response = await fetchImplementation(`${base}/subscriptions`, {
+        method: 'POST',
+        headers: {
+          accept: 'text/event-stream',
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(message),
+        signal,
+      })
+    } catch (cause) {
+      if (signal?.aborted) return
+      throw cause
+    }
     if (!response.ok) {
       let payload: unknown
       try {
         payload = JSON.parse(await response.text())
-      } catch {
-        payload = undefined
+      } catch (cause) {
+        throw invalidSubscriptionResponse(response.status, cause)
       }
-      throw remoteError(response.status, payload)
+      let parsed: ProtocolMessage
+      try {
+        parsed = parseProtocolMessage(payload)
+      } catch (cause) {
+        throw invalidSubscriptionResponse(response.status, cause)
+      }
+      if (parsed.kind !== 'subscription.error')
+        throw responseMismatch('subscription error kind')
+      assertResponseCorrelation(parsed, {
+        kind: 'subscription.error',
+        requestId: message.requestId,
+        operationId: message.operationId,
+      })
+      throw new SpecterProtocolError({
+        code: parsed.error.code,
+        message: parsed.error.message,
+        status: response.status,
+        details: parsed.error.details,
+      })
     }
     if (!response.body)
       throw new SpecterProtocolError({
@@ -196,27 +221,66 @@ export function createSpecterProtocolHttpClient(
         message: 'Subscription response has no body.',
         status: response.status,
       })
-    for await (const data of decodeSse(response.body)) {
-      const parsed = parseProtocolMessage(JSON.parse(data))
-      if (
-        parsed.kind !== 'subscription.value' &&
-        parsed.kind !== 'subscription.error' &&
-        parsed.kind !== 'subscription.complete'
-      )
-        throw responseMismatch('subscription message kind')
-      assertResponseCorrelation(parsed, {
-        kind: parsed.kind,
-        requestId: message.requestId,
-        operationId: message.operationId,
-      })
-      yield parsed
-      if (
-        parsed.kind === 'subscription.error' ||
-        parsed.kind === 'subscription.complete'
-      )
-        return
+    let terminal = false
+    try {
+      for await (const data of decodeSse(response.body)) {
+        const parsed = parseSubscriptionFrame(data)
+        if (
+          parsed.kind !== 'subscription.value' &&
+          parsed.kind !== 'subscription.error' &&
+          parsed.kind !== 'subscription.complete'
+        )
+          throw responseMismatch('subscription message kind')
+        assertResponseCorrelation(parsed, {
+          kind: parsed.kind,
+          requestId: message.requestId,
+          operationId: message.operationId,
+        })
+        if (terminal)
+          throw new SpecterProtocolError({
+            code: protocolErrorCodes.transport,
+            message: 'Subscription stream sent a frame after termination.',
+            status: 502,
+          })
+        terminal =
+          parsed.kind === 'subscription.error' ||
+          parsed.kind === 'subscription.complete'
+        yield parsed
+      }
+    } catch (cause) {
+      if (signal?.aborted) return
+      throw cause
     }
+    if (signal?.aborted) return
+    if (!terminal)
+      throw new SpecterProtocolError({
+        code: protocolErrorCodes.transport,
+        message: 'Subscription stream ended without a terminal frame.',
+        status: 502,
+      })
   }
+}
+
+function parseSubscriptionFrame(data: string) {
+  try {
+    return parseProtocolMessage(JSON.parse(data))
+  } catch (cause) {
+    if (
+      cause instanceof SpecterProtocolError &&
+      cause.code === protocolErrorCodes.versionMismatch
+    )
+      throw cause
+    throw invalidSubscriptionResponse(502, cause)
+  }
+}
+
+function invalidSubscriptionResponse(status: number, cause: unknown) {
+  return new SpecterProtocolError({
+    code: protocolErrorCodes.transport,
+    message: 'Server returned an invalid subscription response.',
+    status,
+    cause,
+  })
 }
 
 function isProtocolEnvelope(value: unknown) {

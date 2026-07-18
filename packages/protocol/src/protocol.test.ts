@@ -466,7 +466,122 @@ describe('reference HTTP binding', () => {
     ).rejects.toThrow('mismatched subscription message kind')
   })
 
-  it('treats subscription errors as terminal even if a server sends later frames', async () => {
+  it('surfaces only correlated typed subscription errors from non-success responses', async () => {
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        Response.json(
+          {
+            protocolVersion: 1,
+            kind: 'subscription.error',
+            requestId: 'request-1',
+            operationId: 'operation-1',
+            error: {
+              code: 'SPECTER_UNKNOWN_QUERY',
+              message: 'Query type is not registered.',
+            },
+          },
+          { status: 404 },
+        ),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'missingQuery', payload: {} },
+        })) {
+          // A non-success response rejects before yielding.
+        }
+      })(),
+    ).rejects.toMatchObject({
+      code: 'SPECTER_UNKNOWN_QUERY',
+      message: 'Query type is not registered.',
+      status: 404,
+    })
+  })
+
+  it.each([
+    [
+      'mismatched request',
+      {
+        protocolVersion: 1,
+        kind: 'subscription.error',
+        requestId: 'wrong-request',
+        operationId: 'operation-1',
+        error: { code: 'SPECTER_INTERNAL_ERROR', message: 'Failed.' },
+      },
+      'mismatched request ID',
+    ],
+    [
+      'mismatched operation',
+      {
+        protocolVersion: 1,
+        kind: 'subscription.error',
+        requestId: 'request-1',
+        operationId: 'wrong-operation',
+        error: { code: 'SPECTER_INTERNAL_ERROR', message: 'Failed.' },
+      },
+      'mismatched operation ID',
+    ],
+    [
+      'wrong protocol kind',
+      {
+        protocolVersion: 1,
+        kind: 'query.response',
+        requestId: 'request-1',
+        operationId: 'operation-1',
+        error: { code: 'SPECTER_INTERNAL_ERROR', message: 'Failed.' },
+      },
+      'mismatched subscription error kind',
+    ],
+  ])('rejects a %s non-success subscription response', async (_, body, error) => {
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => Response.json(body, { status: 400 }),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        })) {
+          // A non-success response rejects before yielding.
+        }
+      })(),
+    ).rejects.toThrow(error)
+  })
+
+  it('sanitizes generic non-success subscription bodies', async () => {
+    const credential = 'postgres://admin:secret@database/subscriptions'
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        Response.json(
+          {
+            error: { code: 'DATABASE_FAILED', message: credential },
+          },
+          { status: 500 },
+        ),
+    })
+
+    let failure: unknown
+    try {
+      for await (const _frame of client.subscribe({
+        operationId: 'operation-1',
+        query: { type: 'todosQuery', payload: {} },
+      })) {
+        // A non-success response rejects before yielding.
+      }
+    } catch (cause) {
+      failure = cause
+    }
+    expect(failure).toMatchObject({ code: 'SPECTER_TRANSPORT_FAILURE' })
+    expect(String(failure)).not.toContain(credential)
+  })
+
+  it('rejects a frame after an observable terminal subscription error', async () => {
     const encoder = new TextEncoder()
     const frames = [
       {
@@ -503,14 +618,136 @@ describe('reference HTTP binding', () => {
         ),
     })
 
+    const received: string[] = []
+    await expect(
+      (async () => {
+        for await (const frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        }))
+          received.push(frame.kind)
+      })(),
+    ).rejects.toThrow('frame after termination')
+
+    expect(received).toEqual(['subscription.error'])
+  })
+
+  it.each([
+    ['empty', []],
+    [
+      'value-only',
+      [
+        {
+          protocolVersion: 1,
+          kind: 'subscription.value',
+          requestId: 'request-1',
+          operationId: 'operation-1',
+          sequence: 1,
+          result: [],
+        },
+      ],
+    ],
+  ])('rejects a truncated %s subscription stream', async (_, frames) => {
+    const body = frames
+      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+      .join('')
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => new Response(body),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        })) {
+          // EOF must follow a terminal frame.
+        }
+      })(),
+    ).rejects.toThrow('without a terminal frame')
+  })
+
+  it('allows caller cancellation without a terminal frame', async () => {
+    const abort = new AbortController()
+    const value = {
+      protocolVersion: 1,
+      kind: 'subscription.value',
+      requestId: 'request-1',
+      operationId: 'operation-1',
+      sequence: 1,
+      result: [],
+    }
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => new Response(`data: ${JSON.stringify(value)}\n\n`),
+    })
+    const iterator = client
+      .subscribe(
+        {
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        },
+        { signal: abort.signal },
+      )
+      [Symbol.asyncIterator]()
+
+    await expect(iterator.next()).resolves.toMatchObject({
+      done: false,
+      value: { kind: 'subscription.value' },
+    })
+    abort.abort()
+    await expect(iterator.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
+  })
+
+  it('does not start a pre-cancelled subscription request', async () => {
+    const abort = new AbortController()
+    abort.abort()
+    const fetch = vi.fn()
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch,
+    })
+    const iterator = client
+      .subscribe(
+        {
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+        },
+        { signal: abort.signal },
+      )
+      [Symbol.asyncIterator]()
+
+    await expect(iterator.next()).resolves.toEqual({
+      done: true,
+      value: undefined,
+    })
+    expect(fetch).not.toHaveBeenCalled()
+  })
+
+  it('accepts exactly one terminal subscription completion', async () => {
+    const complete = {
+      protocolVersion: 1,
+      kind: 'subscription.complete',
+      requestId: 'request-1',
+      operationId: 'operation-1',
+    }
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => new Response(`data: ${JSON.stringify(complete)}\n\n`),
+    })
+
     const received = []
     for await (const frame of client.subscribe({
       operationId: 'operation-1',
       query: { type: 'todosQuery', payload: {} },
     }))
-      received.push(frame)
+      received.push(frame.kind)
 
-    expect(received.map((frame) => frame.kind)).toEqual(['subscription.error'])
+    expect(received).toEqual(['subscription.complete'])
   })
 
   it('dispatches commands and propagates subscription cancellation', async () => {

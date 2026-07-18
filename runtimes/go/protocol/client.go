@@ -39,8 +39,10 @@ func (c *Client) Command(ctx context.Context, request CommandRequest) (CommandRe
 	request.Envelope = prepare(request.Envelope, "command.request")
 	var response CommandResponse
 	fields, err := c.post(ctx, "/commands", request, &response, responseEnvelope(request.Envelope, "command.response"))
-	if err == nil {
-		err = validateCommandResponse(response, fields)
+	if fields != nil {
+		if validationErr := validateCommandResponse(request, response, fields); validationErr != nil {
+			err = validationErr
+		}
 	}
 	if err == nil && response.Error != nil {
 		err = response.Error
@@ -51,8 +53,10 @@ func (c *Client) Query(ctx context.Context, request QueryRequest) (QueryResponse
 	request.Envelope = prepare(request.Envelope, "query.request")
 	var response QueryResponse
 	fields, err := c.post(ctx, "/queries", request, &response, responseEnvelope(request.Envelope, "query.response"))
-	if err == nil {
-		err = validateQueryResponse(response, fields)
+	if fields != nil {
+		if validationErr := validateQueryResponse(request, response, fields); validationErr != nil {
+			err = validationErr
+		}
 	}
 	if err == nil && response.Error != nil {
 		err = response.Error
@@ -73,6 +77,9 @@ func (c *Client) SendObservations(ctx context.Context, batch RuntimeObservationB
 }
 
 func (c *Client) ReactionTicket(ctx context.Context, id, requestID string) (ReactionTicketResponse, error) {
+	if requestID == "" {
+		requestID = newRequestID()
+	}
 	endpoint := strings.TrimRight(c.BaseURL, "/") + "/reaction-tickets/" + url.PathEscape(id) + "?requestId=" + url.QueryEscape(requestID)
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -129,8 +136,15 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 	}
 	if response.StatusCode >= 300 {
 		defer response.Body.Close()
-		contents, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-		return nil, nil, fmt.Errorf("specter protocol: HTTP %s: %s", response.Status, contents)
+		contents, readErr := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if readErr == nil {
+			var message SubscriptionMessage
+			var fields map[string]json.RawMessage
+			if json.Unmarshal(contents, &message) == nil && json.Unmarshal(contents, &fields) == nil && message.Kind == "subscription.error" && validateSubscriptionMessage(request, message, fields) == nil {
+				return nil, nil, message.Error
+			}
+		}
+		return nil, nil, &specter.Error{Code: specter.ErrTransportFailure, Message: "Subscription transport failed."}
 	}
 	messages := make(chan SubscriptionMessage, 1)
 	failures := make(chan error, 1)
@@ -179,6 +193,8 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 		}
 		if err := scanner.Err(); err != nil && ctx.Err() == nil {
 			failures <- err
+		} else if ctx.Err() == nil {
+			failures <- fmt.Errorf("specter protocol: subscription stream ended before a terminal message: %w", io.ErrUnexpectedEOF)
 		}
 	}()
 	return messages, failures, nil
@@ -254,18 +270,25 @@ func responseErrorOf(response any) *specter.Error {
 	}
 }
 
-func validateCommandResponse(response CommandResponse, fields map[string]json.RawMessage) error {
+func validateCommandResponse(request CommandRequest, response CommandResponse, fields map[string]json.RawMessage) error {
+	if !hasFields(fields, "operationId", "status", "version", "events") || response.OperationID == "" || response.OperationID != request.OperationID {
+		return fmt.Errorf("specter protocol: Command response does not match request or omits required fields")
+	}
+	if !rawInteger(fields, "version", true) || !safeInteger(response.Version) || !rawArray(fields["events"]) {
+		return fmt.Errorf("specter protocol: Command response version and events are invalid")
+	}
 	_, hasError := fields["error"]
+	_, hasTicket := fields["reactionTicketId"]
 	switch response.Status {
 	case "committed", "duplicate":
-		if hasError || response.Error != nil {
-			return fmt.Errorf("specter protocol: successful Command response must not contain an error")
+		if hasError || response.Error != nil || !hasTicket || response.ReactionTicketID == "" {
+			return fmt.Errorf("specter protocol: successful Command response must contain a nonempty Reaction ticket and no error")
 		}
 	case "rejected":
-		if !hasError || response.Error == nil {
+		if !hasError || response.Error == nil || response.Error.Code == "" || response.Error.Message == "" {
 			return fmt.Errorf("specter protocol: rejected Command response must contain an error")
 		}
-		if len(response.Events) > 0 || response.ReactionTicketID != "" {
+		if len(response.Events) > 0 || hasTicket || response.ReactionTicketID != "" {
 			return fmt.Errorf("specter protocol: rejected Command response must not contain committed work")
 		}
 	default:
@@ -274,11 +297,14 @@ func validateCommandResponse(response CommandResponse, fields map[string]json.Ra
 	return nil
 }
 
-func validateQueryResponse(response QueryResponse, fields map[string]json.RawMessage) error {
+func validateQueryResponse(request QueryRequest, response QueryResponse, fields map[string]json.RawMessage) error {
+	if !hasFields(fields, "operationId") || response.OperationID == "" || response.OperationID != request.OperationID {
+		return fmt.Errorf("specter protocol: Query response does not match request or omits operationId")
+	}
 	_, hasResult := fields["result"]
 	_, hasError := fields["error"]
 	if response.Error != nil {
-		if !hasError || hasResult {
+		if !hasError || hasResult || response.Error.Code == "" || response.Error.Message == "" {
 			return fmt.Errorf("specter protocol: failed Query response must contain only an error")
 		}
 		return nil
@@ -289,23 +315,33 @@ func validateQueryResponse(response QueryResponse, fields map[string]json.RawMes
 	return nil
 }
 
+func hasFields(fields map[string]json.RawMessage, names ...string) bool {
+	for _, name := range names {
+		if _, present := fields[name]; !present {
+			return false
+		}
+	}
+	return true
+}
+
 func validateSubscriptionMessage(request SubscriptionRequest, message SubscriptionMessage, fields map[string]json.RawMessage) error {
-	if message.ProtocolVersion != Version || message.RequestID != request.RequestID || message.OperationID != request.OperationID {
+	if message.ProtocolVersion != Version || message.RequestID != request.RequestID || message.OperationID == "" || message.OperationID != request.OperationID || !hasFields(fields, "operationId") {
 		return fmt.Errorf("specter protocol: subscription message does not match request")
 	}
 	_, hasResult := fields["result"]
 	_, hasError := fields["error"]
+	_, hasSequence := fields["sequence"]
 	switch message.Kind {
 	case "subscription.value":
-		if hasError || message.Error != nil || !hasResult {
+		if hasError || message.Error != nil || !hasResult || !hasSequence || !rawInteger(fields, "sequence", true) || !safeInteger(message.Sequence) {
 			return fmt.Errorf("specter protocol: subscription value must contain only a result")
 		}
 	case "subscription.error":
-		if !hasError || message.Error == nil || hasResult {
+		if !hasError || message.Error == nil || message.Error.Code == "" || message.Error.Message == "" || hasResult || hasSequence {
 			return fmt.Errorf("specter protocol: subscription error must contain only an error")
 		}
 	case "subscription.complete":
-		if hasError || message.Error != nil || hasResult {
+		if hasError || message.Error != nil || hasResult || hasSequence {
 			return fmt.Errorf("specter protocol: subscription completion must not contain a result or error")
 		}
 	default:
@@ -322,7 +358,7 @@ func validateReactionTicketResponse(response ReactionTicketResponse, fields map[
 			return fmt.Errorf("specter protocol: successful Reaction ticket response must not contain an error")
 		}
 	case "failed":
-		if !hasError || response.Error == nil {
+		if !hasError || response.Error == nil || response.Error.Code == "" || response.Error.Message == "" {
 			return fmt.Errorf("specter protocol: failed Reaction ticket response must contain an error")
 		}
 	default:

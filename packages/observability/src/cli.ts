@@ -16,12 +16,19 @@ import {
   structuredProtocolError,
 } from '@specter-ts/protocol'
 import type {
-  RuntimeObservation,
   RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
 } from '@specter-ts/protocol'
 
+import { publicCliErrorMessage, UsageError } from './cli-errors'
 import { createCollectorState } from './collector-model'
+import {
+  acceptObservationReservation,
+  type ObservationReservation,
+  prepareObservationDeduplication,
+  releaseObservationReservation,
+  reserveObservations,
+} from './collector-deduplication'
 import {
   createSpecterObservabilityCollector,
   type SpecterObservabilityCollector,
@@ -48,9 +55,9 @@ try {
   else if (command === 'trace') await trace(args.slice(1))
   else if (command === 'help' || command === '--help' || command === '-h')
     help()
-  else throw new Error(`Unknown command: ${command}`)
+  else throw new UsageError(`Unknown command: ${command}`)
 } catch (cause) {
-  console.error(cause instanceof Error ? cause.message : String(cause))
+  console.error(publicCliErrorMessage(cause))
   process.exitCode = 1
 }
 
@@ -69,16 +76,7 @@ async function serve(commandArgs: readonly string[]) {
   mkdirSync(dirname(databaseBase), { recursive: true })
 
   const controlClient = createClient({ url: `file:${databaseBase}-control.db` })
-  await controlClient.execute(`CREATE TABLE IF NOT EXISTS accepted_observations (
-    source_key TEXT NOT NULL,
-    observation_id TEXT NOT NULL,
-    accepted_at TEXT NOT NULL,
-    PRIMARY KEY (source_key, observation_id)
-  )`)
-  await controlClient.execute({
-    sql: 'DELETE FROM accepted_observations WHERE accepted_at < ?',
-    args: [new Date(Date.now() - 48 * 60 * 60 * 1_000).toISOString()],
-  })
+  await prepareObservationDeduplication(controlClient)
 
   const initial = await openSegment(databaseBase, latestSegment(databaseBase))
   const segments = new SegmentCoordinator({
@@ -98,6 +96,8 @@ async function serve(commandArgs: readonly string[]) {
 
   const server = createServer(async (request, response) => {
     let releaseSegment: (() => void) | undefined
+    let reservation: ObservationReservation | undefined
+    let reservationCompleted = false
     try {
       const lease = await segments.acquire()
       releaseSegment = lease.release
@@ -111,38 +111,54 @@ async function serve(commandArgs: readonly string[]) {
       const observationBatch = isDedupeCandidate(observationInput)
         ? observationInput
         : undefined
-      const filteredBatch = observationBatch
-        ? await filterAcceptedObservations(observationBatch, controlClient)
+      const reservationResult = observationBatch
+        ? await reserveObservations(
+            observationBatch,
+            controlClient,
+            crypto.randomUUID(),
+          )
         : undefined
-      if (filteredBatch && filteredBatch.batch.observations.length === 0) {
+      if (reservationResult?.status === 'busy') {
+        await sendWebResponse(response, observationReservationBusy())
+        return
+      }
+      reservation = reservationResult?.reservation
+      if (reservation && reservation.batch.observations.length === 0) {
+        reservationCompleted = true
         await sendWebResponse(
           response,
           observationAcknowledgement(
             observationBatch as RuntimeObservationBatch,
             0,
-            filteredBatch.duplicates,
+            reservation.duplicates,
           ),
         )
         return
       }
-      const handlerRequest = filteredBatch?.duplicates
-        ? requestWithBatch(webRequest, filteredBatch.batch)
+      const handlerRequest = reservation
+        ? requestWithBatch(webRequest, reservation.batch)
         : webRequest
       let webResponse = await active.handler(handlerRequest)
-      if (observationBatch && filteredBatch && webResponse.ok) {
+      if (observationBatch && reservation && webResponse.ok) {
         const acknowledgement = (await webResponse
           .clone()
           .json()) as RuntimeObservationAcknowledgement
+        const rejected = new Set(acknowledgement.rejectedObservationIds ?? [])
+        await acceptObservationReservation(
+          reservation,
+          reservation.batch.observations.filter(
+            (observation) => !rejected.has(observation.observationId),
+          ),
+          controlClient,
+        )
+        await releaseObservationReservation(reservation, controlClient)
+        reservationCompleted = true
         webResponse = Response.json(
           {
             ...acknowledgement,
-            duplicates: acknowledgement.duplicates + filteredBatch.duplicates,
+            duplicates: acknowledgement.duplicates + reservation.duplicates,
           },
           { status: webResponse.status, headers: webResponse.headers },
-        )
-        await rememberAcceptedObservations(
-          filteredBatch.batch.observations,
-          controlClient,
         )
       }
       await sendWebResponse(response, webResponse)
@@ -161,6 +177,11 @@ async function serve(commandArgs: readonly string[]) {
         }),
       )
     } finally {
+      if (reservation && !reservationCompleted) {
+        await releaseObservationReservation(reservation, controlClient).catch(
+          () => {},
+        )
+      }
       releaseSegment?.()
     }
   })
@@ -231,54 +252,30 @@ function latestSegment(databaseBase: string) {
   return latest ? resolve(directory, latest) : undefined
 }
 
-async function filterAcceptedObservations(
-  batch: RuntimeObservationBatch,
-  client: ReturnType<typeof createClient>,
-) {
-  const fresh: RuntimeObservation[] = []
-  let duplicates = 0
-  for (const observation of batch.observations) {
-    const result = await client.execute({
-      sql: 'SELECT observation_id FROM accepted_observations WHERE source_key = ? AND observation_id = ?',
-      args: [sourceKey(observation), observation.observationId],
-    })
-    if (result.rows.length) duplicates += 1
-    else fresh.push(observation)
-  }
-  return { batch: { ...batch, observations: fresh }, duplicates }
-}
-
-async function rememberAcceptedObservations(
-  observations: readonly RuntimeObservation[],
-  client: ReturnType<typeof createClient>,
-) {
-  const acceptedAt = new Date().toISOString()
-  await client.batch(
-    observations.map((observation) => ({
-      sql: 'INSERT OR IGNORE INTO accepted_observations (source_key, observation_id, accepted_at) VALUES (?, ?, ?)',
-      args: [sourceKey(observation), observation.observationId, acceptedAt],
-    })),
-  )
-}
-
-function sourceKey(observation: RuntimeObservation) {
-  const source = observation.source
-  return JSON.stringify([
-    source.application,
-    source.environment,
-    source.runtimeLanguage,
-    source.runtimeVersion,
-    source.instanceId,
-    source.eventLogId,
-  ])
-}
-
 function requestWithBatch(request: Request, batch: RuntimeObservationBatch) {
   return new Request(request.url, {
     method: request.method,
     headers: request.headers,
     body: JSON.stringify(batch),
   })
+}
+
+function observationReservationBusy() {
+  return Response.json(
+    {
+      error: {
+        code: 'SPECTER_OBSERVATION_IN_FLIGHT',
+        message: 'An observation in this batch is still being ingested.',
+      },
+    },
+    {
+      status: 503,
+      headers: {
+        'retry-after': '1',
+        'Specter-Protocol-Version': '1',
+      },
+    },
+  )
 }
 
 async function readDedupeCandidate(request: Request): Promise<unknown> {
@@ -336,7 +333,7 @@ async function snapshot(commandArgs: readonly string[]) {
 
 async function trace(commandArgs: readonly string[]) {
   const operationId = positional(commandArgs, 0)
-  if (!operationId) throw new Error('trace requires an operation ID')
+  if (!operationId) throw new UsageError('trace requires an operation ID')
   const filters = filterOptions(commandArgs)
   const query = new URLSearchParams(
     Object.entries({
@@ -455,7 +452,7 @@ function integerOption(
 ) {
   const value = Number(stringOption(commandArgs, name, String(fallback)))
   if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${name} must be a positive integer`)
+    throw new UsageError(`${name} must be a positive integer`)
   }
   return value
 }

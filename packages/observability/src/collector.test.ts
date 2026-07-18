@@ -283,6 +283,83 @@ describe('Specter observability collector', () => {
     ])
   })
 
+  it('resolves a unique parent operation across instances and rejects ambiguous parents', async () => {
+    const { collector } = await setup()
+    const secondInstance: RuntimeSource = {
+      ...source,
+      instanceId: 'instance-2',
+    }
+    const thirdInstance: RuntimeSource = {
+      ...source,
+      instanceId: 'instance-3',
+    }
+    await collector.ingest(
+      batch('cross-instance-parent', [
+        observation({
+          observationId: 'parent-instance-1',
+          sequence: 1,
+          kind: 'command.completed',
+          operationId: 'unique-parent',
+        }),
+        observation({
+          source: secondInstance,
+          observationId: 'unique-child-instance-2',
+          sequence: 1,
+          kind: 'query.completed',
+          operationId: 'unique-child',
+          parentOperationIds: ['unique-parent'],
+        }),
+        observation({
+          observationId: 'ambiguous-parent-instance-1',
+          sequence: 2,
+          kind: 'command.completed',
+          operationId: 'ambiguous-parent',
+        }),
+        observation({
+          source: secondInstance,
+          observationId: 'ambiguous-parent-instance-2',
+          sequence: 2,
+          kind: 'command.completed',
+          operationId: 'ambiguous-parent',
+        }),
+        observation({
+          source: thirdInstance,
+          observationId: 'ambiguous-child-instance-3',
+          sequence: 1,
+          kind: 'query.completed',
+          operationId: 'ambiguous-child',
+          parentOperationIds: ['ambiguous-parent'],
+        }),
+      ]),
+    )
+
+    await expect(
+      collector.trace('unique-child', {
+        instanceId: secondInstance.instanceId,
+      }),
+    ).resolves.toMatchObject({
+      observations: [
+        { operationId: 'unique-parent' },
+        { operationId: 'unique-child' },
+      ],
+      edges: [
+        {
+          from: 'unique-parent',
+          to: 'unique-child',
+          relation: 'parent-operation',
+        },
+      ],
+    })
+    await expect(
+      collector.trace('ambiguous-child', {
+        instanceId: thirdInstance.instanceId,
+      }),
+    ).resolves.toMatchObject({
+      observations: [{ operationId: 'ambiguous-child' }],
+      edges: [],
+    })
+  })
+
   it('deduplicates by observation identity rather than batch request ID', async () => {
     const { collector, eventLog } = await setup()
     const input = batch('retryable-batch', [
@@ -355,6 +432,7 @@ describe('Specter observability collector', () => {
     const malformed = await handler(
       new Request('http://collector/specter/v1/observations', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: '{',
       }),
     )
@@ -365,6 +443,62 @@ describe('Specter observability collector', () => {
         code: 'SPECTER_INVALID_JSON',
         message: 'Malformed JSON request.',
       },
+    })
+
+    const wrongContentType = await handler(
+      new Request('http://collector/specter/v1/observations', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    )
+    expect(wrongContentType.status).toBe(415)
+    await expect(wrongContentType.json()).resolves.toEqual({
+      error: {
+        code: 'SPECTER_INVALID_MESSAGE',
+        message: 'Protocol message is invalid.',
+      },
+    })
+
+    const wrongCapabilityMessage = await handler(
+      new Request('http://collector/specter/v1/capabilities', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          protocolVersion: 1,
+          kind: 'query.request',
+          requestId: 'wrong-capability-kind',
+          operationId: 'query-operation',
+          query: { type: 'overview', payload: {} },
+        }),
+      }),
+    )
+    expect(wrongCapabilityMessage.status).toBe(400)
+    await expect(wrongCapabilityMessage.json()).resolves.toEqual({
+      error: {
+        code: 'SPECTER_INVALID_MESSAGE',
+        message: 'Protocol message is invalid.',
+      },
+    })
+
+    await expect(collector.ingest(batch('empty-direct', []))).resolves.toEqual({
+      protocolVersion: 1,
+      kind: 'observations.ack',
+      requestId: 'empty-direct',
+      accepted: 0,
+      duplicates: 0,
+    })
+    const empty = await handler(
+      new Request('http://collector/specter/v1/observations', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json; charset=utf-8' },
+        body: JSON.stringify(batch('empty-http', [])),
+      }),
+    )
+    expect(empty.status).toBe(202)
+    await expect(empty.json()).resolves.toMatchObject({
+      requestId: 'empty-http',
+      accepted: 0,
+      duplicates: 0,
     })
   })
 
@@ -848,7 +982,105 @@ describe('Specter observability collector', () => {
       'outbox.attempted',
       'outbox.dead-lettered',
     ])
-    expect(trace.edges).toHaveLength(4)
+    expect(
+      trace.edges.filter((edge) => edge.relation === 'parent-operation'),
+    ).toHaveLength(4)
+  })
+
+  it('reconstructs a Reaction to dead-letter trace across process restarts', async () => {
+    const { collector } = await setup()
+    const restartedSource = (instanceId: string): RuntimeSource => ({
+      ...source,
+      instanceId,
+    })
+    const lifecycle = [
+      observation({
+        source: restartedSource('outbox-enqueue'),
+        observationId: 'outbox-enqueued',
+        sequence: 1,
+        kind: 'outbox.enqueued',
+        operationId: 'enqueue-operation',
+        deliveryId: 'reaction-pass-delivery',
+      }),
+      observation({
+        source: restartedSource('outbox-attempt-1'),
+        observationId: 'outbox-attempt-1',
+        sequence: 1,
+        kind: 'outbox.attempted',
+        operationId: 'attempt-1-operation',
+        deliveryId: 'reaction-pass-delivery',
+        attemptId: 'attempt-1',
+      }),
+      observation({
+        source: restartedSource('reaction-worker'),
+        observationId: 'reaction-pass-started',
+        sequence: 1,
+        kind: 'reaction.pass.started',
+        operationId: 'reaction-pass-operation',
+        reactionPassId: 'reaction-pass-delivery',
+        deliveryId: 'reaction-pass-delivery',
+        attemptId: 'attempt-1',
+      }),
+      observation({
+        source: restartedSource('reaction-worker'),
+        observationId: 'reaction-run-failed',
+        sequence: 2,
+        kind: 'reaction.run.failed',
+        operationId: 'reaction-run-operation',
+        reactionPassId: 'reaction-pass-delivery',
+        deliveryId: 'reaction-pass-delivery:send-email:1',
+        attemptId: 'attempt-1:send-email:1',
+      }),
+      observation({
+        source: restartedSource('outbox-retry'),
+        observationId: 'outbox-retry',
+        sequence: 1,
+        kind: 'outbox.retry-scheduled',
+        operationId: 'retry-operation',
+        deliveryId: 'reaction-pass-delivery',
+        attemptId: 'attempt-1',
+      }),
+      observation({
+        source: restartedSource('outbox-attempt-2'),
+        observationId: 'outbox-attempt-2',
+        sequence: 1,
+        kind: 'outbox.attempted',
+        operationId: 'attempt-2-operation',
+        deliveryId: 'reaction-pass-delivery',
+        attemptId: 'attempt-2',
+      }),
+      observation({
+        source: restartedSource('outbox-dead-letter'),
+        observationId: 'outbox-dead-letter',
+        sequence: 1,
+        kind: 'outbox.dead-lettered',
+        operationId: 'dead-letter-operation',
+        deliveryId: 'reaction-pass-delivery',
+        attemptId: 'attempt-2',
+      }),
+    ]
+    await collector.ingest(batch('restart-outbox-lifecycle', lifecycle))
+
+    const trace = await collector.trace('dead-letter-operation', {
+      instanceId: 'outbox-dead-letter',
+    })
+    expect(trace.observations.map((item) => item.operationId)).toEqual(
+      lifecycle.map((item) => item.operationId),
+    )
+    expect(trace.edges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          from: 'reaction-pass-operation',
+          to: 'reaction-run-operation',
+          relation: 'reaction-pass',
+        }),
+        expect.objectContaining({
+          from: 'attempt-2-operation',
+          to: 'dead-letter-operation',
+          relation: 'delivery',
+        }),
+      ]),
+    )
   })
 
   it('redacts coded failures and preserves retry-stable Reaction identities', () => {

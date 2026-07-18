@@ -13,6 +13,7 @@ const (
 	ErrInvalidInput            ErrorCode = "SPECTER_INVALID_INPUT"
 	ErrInvalidOutput           ErrorCode = "SPECTER_INVALID_OUTPUT"
 	ErrReactionFailure         ErrorCode = "SPECTER_REACTION_FAILURE"
+	ErrReactionTicketNotFound  ErrorCode = "SPECTER_REACTION_TICKET_NOT_FOUND"
 	ErrUnknownCommand          ErrorCode = "SPECTER_UNKNOWN_COMMAND"
 	ErrUnknownEvent            ErrorCode = "SPECTER_UNKNOWN_EVENT"
 	ErrUnknownQuery            ErrorCode = "SPECTER_UNKNOWN_QUERY"

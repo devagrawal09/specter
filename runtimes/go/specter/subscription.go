@@ -33,7 +33,11 @@ func (a *App) Subscribe(ctx context.Context, query string, payload any) (*Subscr
 }
 
 func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawMessage, options DispatchOptions) (*Subscription, error) {
+	if err := a.beginOperation(); err != nil {
+		return nil, err
+	}
 	if a.queries[query] == nil {
+		a.endOperation()
 		return nil, unknownQuery(query)
 	}
 	ctx, cancel := context.WithCancel(ctx)
@@ -42,12 +46,25 @@ func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawM
 	a.subMu.Lock()
 	a.subscriptions[sub.ID] = sub
 	a.subMu.Unlock()
+	a.endOperation()
 	if err := sub.refresh(); err != nil {
 		sub.Close()
 		return nil, err
 	}
 	go func() { <-ctx.Done(); sub.Close() }()
 	return sub, nil
+}
+
+func (a *App) closeSubscriptions() {
+	a.subMu.Lock()
+	subscriptions := make([]*Subscription, 0, len(a.subscriptions))
+	for _, sub := range a.subscriptions {
+		subscriptions = append(subscriptions, sub)
+	}
+	a.subMu.Unlock()
+	for _, sub := range subscriptions {
+		sub.Close()
+	}
 }
 
 func (s *Subscription) Close() {

@@ -222,6 +222,72 @@ func TestReactionQueueDoesNotBlockCommandsBeyondFormerCapacity(t *testing.T) {
 	}
 }
 
+func TestAppCloseDrainsQueuedReactionsAndIsIdempotent(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startOnce sync.Once
+	var runs atomic.Int64
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	reaction := specter.ReactionDefinition{Name: "count", Scenarios: []specter.ReactionScenario{{Description: "counts", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []any{struct{}{}}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error { return nil }}, Handle: func(context.Context, specter.ReactionContext, []specter.PersistedEvent) (any, error) {
+		startOnce.Do(func() { close(started) })
+		<-release
+		runs.Add(1)
+		return struct{}{}, nil
+	}}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	executions := make([]specter.CommandExecution, 0, 3)
+	for _, id := range []string{"one", "two", "three"} {
+		execution, commandErr := app.Command(context.Background(), "add", addInput{ID: id}, specter.DispatchOptions{})
+		if commandErr != nil {
+			t.Fatal(commandErr)
+		}
+		executions = append(executions, execution)
+	}
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("Reaction scheduler did not start")
+	}
+	closed := make(chan error, 1)
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		closed <- app.Close(ctx)
+	}()
+	select {
+	case err := <-closed:
+		t.Fatalf("Close returned before queued Reactions drained: %v", err)
+	case <-time.After(25 * time.Millisecond):
+	}
+	close(release)
+	if err := <-closed; err != nil {
+		t.Fatal(err)
+	}
+	for _, execution := range executions {
+		if err := <-execution.Reactions; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if runs.Load() != int64(len(executions)) {
+		t.Fatalf("Close dropped Reaction passes: ran %d of %d", runs.Load(), len(executions))
+	}
+	if err := app.Close(context.Background()); err != nil {
+		t.Fatalf("second Close failed: %v", err)
+	}
+	version := app.EventLog().Version()
+	if _, err := app.Command(context.Background(), "add", addInput{ID: "after-close"}, specter.DispatchOptions{}); err == nil {
+		t.Fatal("closed App accepted a Command")
+	}
+	if app.EventLog().Version() != version {
+		t.Fatal("Command after Close changed the Event Log")
+	}
+}
+
 func TestDurableCommandSurvivesProjectionFailureAndRepairsOnNextCommand(t *testing.T) {
 	var attempts atomic.Int64
 	var observationsMu sync.Mutex

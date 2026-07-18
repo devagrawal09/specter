@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -109,6 +110,8 @@ func TestClientRejectsMalformedAndContradictoryResponses(t *testing.T) {
 	}{
 		{name: "result and error", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","operationId":"operation-1","result":"secret","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`},
 		{name: "neither result nor error", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","operationId":"operation-1"}`},
+		{name: "mismatched operation", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","operationId":"different","result":null}`},
+		{name: "missing operation", body: `{"protocolVersion":1,"kind":"query.response","requestId":"query-request","result":null}`},
 	}
 	for _, test := range queryCases {
 		t.Run(test.name, func(t *testing.T) {
@@ -121,17 +124,147 @@ func TestClientRejectsMalformedAndContradictoryResponses(t *testing.T) {
 		})
 	}
 	commandRequest := protocol.CommandRequest{Envelope: protocol.Envelope{RequestID: "command-request"}, OperationID: "operation-1", Command: protocol.OperationEnvelope{Type: "set", Payload: json.RawMessage(`{}`)}}
-	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
-		return jsonResponse(http.StatusOK, `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":[],"error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`), nil
-	})}}
-	if _, err := client.Command(context.Background(), commandRequest); err == nil {
-		t.Fatal("expected contradictory Command response to be rejected")
+	commandCases := []struct {
+		name string
+		body string
+	}{
+		{name: "result and error", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":[],"reactionTicketId":"ticket-1","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`},
+		{name: "missing ticket", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":[]}`},
+		{name: "empty ticket", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"duplicate","version":1,"events":[],"reactionTicketId":""}`},
+		{name: "mismatched operation", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"different","status":"committed","version":1,"events":[],"reactionTicketId":"ticket-1"}`},
+		{name: "missing version", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","events":[],"reactionTicketId":"ticket-1"}`},
+		{name: "null events", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":null,"reactionTicketId":"ticket-1"}`},
+	}
+	for _, test := range commandCases {
+		t.Run("command "+test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, test.body), nil
+			})}}
+			if _, err := client.Command(context.Background(), commandRequest); err == nil {
+				t.Fatal("expected malformed Command response to be rejected")
+			}
+		})
 	}
 	ticketClient := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 		return jsonResponse(http.StatusOK, `{"protocolVersion":1,"kind":"reaction-ticket.response","requestId":"ticket-request","reactionTicketId":"ticket-1","status":"completed","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"Runtime operation failed."}}`), nil
 	})}}
 	if _, err := ticketClient.ReactionTicket(context.Background(), "ticket-1", "ticket-request"); err == nil {
 		t.Fatal("expected contradictory Reaction ticket response to be rejected")
+	}
+}
+
+func TestClientRejectsSharedMissingCommandTicketFixture(t *testing.T) {
+	fixture, err := os.ReadFile("../../../protocol/fixtures/command-success-missing-ticket.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return jsonResponse(http.StatusOK, string(fixture)), nil
+	})}}
+	request := protocol.CommandRequest{Envelope: protocol.Envelope{RequestID: "missing-ticket-response"}, OperationID: "operation-1", Command: protocol.OperationEnvelope{Type: "set", Payload: json.RawMessage(`{}`)}}
+	if _, err := client.Command(context.Background(), request); err == nil {
+		t.Fatal("shared missing-ticket fixture was accepted")
+	}
+}
+
+func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testing.T) {
+	request := protocol.SubscriptionRequest{Envelope: protocol.Envelope{RequestID: "subscription-request"}, OperationID: "operation-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
+	t.Run("typed non-2xx error", func(t *testing.T) {
+		body := `{"protocolVersion":1,"kind":"subscription.error","requestId":"subscription-request","operationId":"operation-1","error":{"code":"SPECTER_UNKNOWN_QUERY","message":"Query type is not registered."}}`
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return jsonResponse(http.StatusBadRequest, body), nil
+		})}}
+		_, _, err := client.Subscribe(context.Background(), request)
+		var public *specter.Error
+		if !errors.As(err, &public) || public.Code != specter.ErrUnknownQuery {
+			t.Fatalf("expected correlated subscription.error, got %v", err)
+		}
+	})
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "generic private body", body: `postgres://admin:secret@database.internal/app`},
+		{name: "mismatched typed error", body: `{"protocolVersion":1,"kind":"subscription.error","requestId":"different","operationId":"operation-1","error":{"code":"SPECTER_INFRASTRUCTURE_FAILURE","message":"postgres://admin:secret@database.internal/app"}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusInternalServerError, test.body), nil
+			})}}
+			_, _, err := client.Subscribe(context.Background(), request)
+			var public *specter.Error
+			if !errors.As(err, &public) || public.Code != specter.ErrTransportFailure {
+				t.Fatalf("expected sanitized transport error, got %v", err)
+			}
+			if strings.Contains(err.Error(), "secret") {
+				t.Fatal("subscription transport error leaked response body")
+			}
+		})
+	}
+	t.Run("unexpected EOF", func(t *testing.T) {
+		body := "data: {\"protocolVersion\":1,\"kind\":\"subscription.value\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\",\"sequence\":1,\"result\":null}\n\n"
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}}
+		messages, failures, err := client.Subscribe(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message := <-messages; message.Kind != "subscription.value" {
+			t.Fatalf("unexpected value: %#v", message)
+		}
+		failure := <-failures
+		if !errors.Is(failure, io.ErrUnexpectedEOF) {
+			t.Fatalf("expected unexpected EOF, got %v", failure)
+		}
+	})
+	t.Run("caller cancellation", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(httpRequest *http.Request) (*http.Response, error) {
+			reader, writer := io.Pipe()
+			go func() {
+				<-httpRequest.Context().Done()
+				_ = writer.CloseWithError(httpRequest.Context().Err())
+			}()
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: reader}, nil
+		})}}
+		_, failures, err := client.Subscribe(ctx, request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		cancel()
+		for failure := range failures {
+			if failure != nil {
+				t.Fatalf("caller cancellation became a stream failure: %v", failure)
+			}
+		}
+	})
+}
+
+func TestSubscriptionClientRejectsSharedContradictoryFixtures(t *testing.T) {
+	request := protocol.SubscriptionRequest{Envelope: protocol.Envelope{RequestID: "subscription-response"}, OperationID: "subscription-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
+	for _, name := range []string{"subscription-value-with-error.json", "subscription-error-with-result.json", "subscription-complete-with-sequence.json"} {
+		t.Run(name, func(t *testing.T) {
+			fixture, err := os.ReadFile("../../../protocol/fixtures/" + name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var compact bytes.Buffer
+			if err := json.Compact(&compact, fixture); err != nil {
+				t.Fatal(err)
+			}
+			body := "data: " + compact.String() + "\n\n"
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+			})}}
+			_, failures, err := client.Subscribe(context.Background(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failure := <-failures; failure == nil {
+				t.Fatal("shared contradictory subscription fixture was accepted")
+			}
+		})
 	}
 }
 
@@ -214,6 +347,94 @@ func TestClientServerCommandAndQuery(t *testing.T) {
 	}
 	if queryResponse.Result != "yes" {
 		t.Fatalf("unexpected result: %#v", queryResponse.Result)
+	}
+}
+
+func TestProtocolAttemptIDReachesRuntimeObservations(t *testing.T) {
+	var mu sync.Mutex
+	var observations []specter.Observation
+	query := specter.QueryDefinition{Name: "value", Scenarios: []specter.QueryScenario{{Description: "reads", Expect: "ok"}}, Handle: func(context.Context, json.RawMessage) (any, error) { return "ok", nil }}
+	app, err := specter.NewApp(specter.Config{Queries: []specter.QueryDefinition{query}, Observe: func(observation specter.Observation) {
+		mu.Lock()
+		observations = append(observations, observation)
+		mu.Unlock()
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = app.Close(context.Background()) }()
+	server := httptest.NewServer((&protocol.Server{App: app}).Handler())
+	defer server.Close()
+	client := &protocol.Client{BaseURL: server.URL + "/specter/v1"}
+	causes := []struct {
+		operation string
+		run       func() error
+	}{
+		{operation: "command-operation", run: func() error {
+			_, err := client.Command(context.Background(), protocol.CommandRequest{OperationID: "command-operation", AttemptID: "attempt-2", Command: protocol.OperationEnvelope{Type: "missing", Payload: json.RawMessage(`{}`)}})
+			return err
+		}},
+		{operation: "query-operation", run: func() error {
+			_, err := client.Query(context.Background(), protocol.QueryRequest{OperationID: "query-operation", AttemptID: "attempt-2", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}})
+			return err
+		}},
+	}
+	if err := causes[0].run(); err == nil {
+		t.Fatal("missing Command unexpectedly succeeded")
+	}
+	if err := causes[1].run(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	messages, failures, err := client.Subscribe(ctx, protocol.SubscriptionRequest{OperationID: "subscription-operation", AttemptID: "attempt-2", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}})
+	if err != nil {
+		cancel()
+		t.Fatal(err)
+	}
+	if message := <-messages; message.Kind != "subscription.value" {
+		cancel()
+		t.Fatalf("unexpected subscription value: %#v", message)
+	}
+	cancel()
+	for failure := range failures {
+		if failure != nil {
+			t.Fatal(failure)
+		}
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for _, operation := range []string{"command-operation", "query-operation", "subscription-operation"} {
+		var matched []specter.Observation
+		for _, observation := range observations {
+			if observation.OperationID == operation {
+				matched = append(matched, observation)
+			}
+		}
+		if len(matched) != 2 {
+			t.Fatalf("operation %s emitted %d observations: %#v", operation, len(matched), matched)
+		}
+		for _, observation := range matched {
+			if observation.AttemptID != "attempt-2" {
+				t.Fatalf("operation %s lost attemptId in %#v", operation, observation)
+			}
+		}
+		if matched[1].Outcome == "" {
+			t.Fatalf("operation %s terminal observation omitted outcome: %#v", operation, matched[1])
+		}
+	}
+}
+
+func TestUnknownReactionTicketReturnsCorrelatedPublicError(t *testing.T) {
+	server := httptest.NewServer((&protocol.Server{App: emptyApp(t)}).Handler())
+	defer server.Close()
+	client := &protocol.Client{BaseURL: server.URL + "/specter/v1"}
+	response, err := client.ReactionTicket(context.Background(), "missing-ticket", "ticket-request")
+	var public *specter.Error
+	if !errors.As(err, &public) || public.Code != specter.ErrReactionTicketNotFound {
+		t.Fatalf("expected public ticket-not-found error, got response %#v, error %v", response, err)
+	}
+	if response.RequestID != "ticket-request" || response.ReactionTicketID != "missing-ticket" || response.Status != "failed" {
+		t.Fatalf("ticket-not-found response was not correlated: %#v", response)
 	}
 }
 
@@ -337,6 +558,26 @@ func TestSharedObservationFixtureIsAccepted(t *testing.T) {
 	}
 }
 
+func TestObservationOutcomeAndAttemptArePreservedThroughSink(t *testing.T) {
+	received := make(chan protocol.RuntimeObservation, 1)
+	handler := (&protocol.Server{App: emptyApp(t), AcceptObservations: func(_ context.Context, batch protocol.RuntimeObservationBatch) (protocol.ObservationAcknowledgement, error) {
+		received <- batch.Observations[0]
+		return protocol.ObservationAcknowledgement{Accepted: 1}, nil
+	}}).Handler()
+	body := `{"protocolVersion":1,"kind":"observations.batch","requestId":"request-1","observations":[{"observationId":"observation-1","sequence":1,"observedAt":"2026-07-18T12:00:00.000Z","kind":"command.completed","operationId":"operation-1","attemptId":"attempt-2","outcome":"succeeded","source":{"application":"todo","environment":"test","runtimeLanguage":"go","runtimeVersion":"test","instanceId":"instance","eventLogId":"log"}}]}`
+	request := httptest.NewRequest(http.MethodPost, "/specter/v1/observations", strings.NewReader(body))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("got HTTP %d: %s", response.Code, response.Body.String())
+	}
+	observation := <-received
+	if observation.AttemptID != "attempt-2" || observation.Outcome != "succeeded" {
+		t.Fatalf("sink lost observation fields: %#v", observation)
+	}
+}
+
 func TestMalformedRuntimeObservationsAreRejected(t *testing.T) {
 	validEvent := func() map[string]any {
 		return map[string]any{"eventId": "event-1", "type": "todo-added", "order": float64(1), "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": float64(1)}
@@ -346,13 +587,27 @@ func TestMalformedRuntimeObservationsAreRejected(t *testing.T) {
 		mutate func(map[string]any)
 	}{
 		{name: "non-Z observed timestamp", mutate: func(value map[string]any) { value["observedAt"] = "2026-07-18T12:00:00+00:00" }},
+		{name: "null required sequence", mutate: func(value map[string]any) { value["sequence"] = nil }},
+		{name: "null required source", mutate: func(value map[string]any) { value["source"] = nil }},
 		{name: "negative cursor", mutate: func(value map[string]any) { value["cursor"] = float64(-1) }},
+		{name: "null cursor", mutate: func(value map[string]any) { value["cursor"] = nil }},
 		{name: "unsafe dropped count", mutate: func(value map[string]any) { value["droppedCount"] = float64(9007199254740992) }},
+		{name: "null dropped count", mutate: func(value map[string]any) { value["droppedCount"] = nil }},
+		{name: "null Events", mutate: func(value map[string]any) { value["events"] = nil }},
+		{name: "null attributes", mutate: func(value map[string]any) { value["attributes"] = nil }},
+		{name: "null error", mutate: func(value map[string]any) { value["error"] = nil }},
+		{name: "null causal array", mutate: func(value map[string]any) { value["parentOperationIds"] = nil }},
+		{name: "invalid outcome", mutate: func(value map[string]any) { value["outcome"] = "maybe" }},
+		{name: "null outcome", mutate: func(value map[string]any) { value["outcome"] = nil }},
 		{name: "descending triggering range", mutate: func(value map[string]any) {
 			value["triggeringEventOrder"] = map[string]any{"from": float64(2), "to": float64(1)}
 		}},
 		{name: "negative triggering range", mutate: func(value map[string]any) {
 			value["triggeringEventOrder"] = map[string]any{"from": float64(-1), "to": float64(1)}
+		}},
+		{name: "null triggering range", mutate: func(value map[string]any) { value["triggeringEventOrder"] = nil }},
+		{name: "null triggering range endpoint", mutate: func(value map[string]any) {
+			value["triggeringEventOrder"] = map[string]any{"from": nil, "to": float64(1)}
 		}},
 		{name: "empty optional causal id", mutate: func(value map[string]any) { value["correlationId"] = "" }},
 		{name: "empty parent id", mutate: func(value map[string]any) { value["parentOperationIds"] = []any{"parent", ""} }},
@@ -371,6 +626,11 @@ func TestMalformedRuntimeObservationsAreRejected(t *testing.T) {
 		{name: "negative Event order", mutate: func(value map[string]any) {
 			event := validEvent()
 			event["order"] = float64(-1)
+			value["events"] = []any{event}
+		}},
+		{name: "null Event order", mutate: func(value map[string]any) {
+			event := validEvent()
+			event["order"] = nil
 			value["events"] = []any{event}
 		}},
 		{name: "unsafe Event commit version", mutate: func(value map[string]any) {

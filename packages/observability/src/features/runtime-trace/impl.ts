@@ -45,21 +45,56 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
         observation: Pick<RuntimeObservation, 'source' | 'operationId'>,
         id = observation.operationId,
       ) => `${runtimeSourceIdentity(observation.source)}\u0000${id}`
+      const logicalOperationKey = (
+        observation: Pick<RuntimeObservation, 'source'>,
+        id: string,
+      ) => `${runtimeEventLogIdentity(observation.source)}\u0000${id}`
       const eventKey = (
         observation: Pick<RuntimeObservation, 'source'>,
         eventId: string,
       ) => `${runtimeEventLogIdentity(observation.source)}\u0000${eventId}`
       const producerByEvent = new Map<
         string,
-        { readonly key: string; readonly operationId: string }
+        { readonly key: string; readonly operationId: string } | null
       >()
+      const operationsByLogicalId = new Map<string, Set<string>>()
       for (const observation of state.observations) {
+        const currentOperationKey = operationKey(observation)
+        const logicalKey = logicalOperationKey(
+          observation,
+          observation.operationId,
+        )
+        const operationCandidates = operationsByLogicalId.get(logicalKey)
+        if (operationCandidates) operationCandidates.add(currentOperationKey)
+        else
+          operationsByLogicalId.set(logicalKey, new Set([currentOperationKey]))
         for (const event of observation.events ?? []) {
-          producerByEvent.set(eventKey(observation, event.eventId), {
-            key: operationKey(observation),
+          const key = eventKey(observation, event.eventId)
+          const existing = producerByEvent.get(key)
+          const producer = {
+            key: currentOperationKey,
             operationId: observation.operationId,
-          })
+          }
+          producerByEvent.set(
+            key,
+            existing === null || (existing && existing.key !== producer.key)
+              ? null
+              : producer,
+          )
         }
+      }
+
+      const resolveParent = (observation: RuntimeObservation, id: string) => {
+        const candidates = operationsByLogicalId.get(
+          logicalOperationKey(observation, id),
+        )
+        return candidates?.size === 1 ? [...candidates][0] : undefined
+      }
+      const identityLinks = buildIdentityLinks(state.observations, operationKey)
+      const linkedOperations = new Map<string, Set<string>>()
+      for (const link of identityLinks) {
+        addLink(linkedOperations, link.fromKey, link.toKey)
+        addLink(linkedOperations, link.toKey, link.fromKey)
       }
 
       const operationKeys = new Set(
@@ -76,24 +111,27 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
         changed = false
         for (const observation of state.observations) {
           const currentOperationKey = operationKey(observation)
-          const parents = (observation.parentOperationIds ?? []).map((parent) =>
-            operationKey(observation, parent),
-          )
+          const parents = (observation.parentOperationIds ?? [])
+            .map((parent) => resolveParent(observation, parent))
+            .filter((parent) => parent !== undefined)
           const eventParents = (observation.triggeringEventIds ?? [])
             .map((eventId) =>
               producerByEvent.get(eventKey(observation, eventId)),
             )
-            .filter((parent) => parent !== undefined)
+            .filter((parent) => parent !== undefined && parent !== null)
             .map((parent) => parent.key)
           const causes = [...parents, ...eventParents]
+          const links = [...(linkedOperations.get(currentOperationKey) ?? [])]
           if (operationKeys.has(currentOperationKey)) {
-            for (const cause of causes) {
-              if (!operationKeys.has(cause)) {
-                operationKeys.add(cause)
+            for (const related of [...causes, ...links]) {
+              if (!operationKeys.has(related)) {
+                operationKeys.add(related)
                 changed = true
               }
             }
-          } else if (causes.some((cause) => operationKeys.has(cause))) {
+          } else if (
+            [...causes, ...links].some((related) => operationKeys.has(related))
+          ) {
             operationKeys.add(currentOperationKey)
             changed = true
           }
@@ -108,7 +146,8 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
       for (const observation of observations) {
         const currentOperationKey = operationKey(observation)
         for (const parent of observation.parentOperationIds ?? []) {
-          const parentKey = operationKey(observation, parent)
+          const parentKey = resolveParent(observation, parent)
+          if (!parentKey) continue
           const key = `${parentKey}\u0000${currentOperationKey}\u0000parent`
           if (!operationKeys.has(parentKey) || edgeKeys.has(key)) continue
           edgeKeys.add(key)
@@ -131,9 +170,101 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
           })
         }
       }
+      for (const link of identityLinks) {
+        if (
+          !operationKeys.has(link.fromKey) ||
+          !operationKeys.has(link.toKey)
+        ) {
+          continue
+        }
+        const key = `${link.fromKey}\u0000${link.toKey}\u0000${link.relation}`
+        if (edgeKeys.has(key)) continue
+        edgeKeys.add(key)
+        edges.push({
+          from: link.fromOperationId,
+          to: link.toOperationId,
+          relation: link.relation,
+        })
+      }
 
       return { operationId, observations, edges }
     })
+}
+
+type TraceIdentityRelation = 'reaction-pass' | 'delivery' | 'attempt'
+
+type TraceIdentityLink = {
+  readonly fromKey: string
+  readonly toKey: string
+  readonly fromOperationId: string
+  readonly toOperationId: string
+  readonly relation: TraceIdentityRelation
+}
+
+function buildIdentityLinks(
+  observations: readonly (RuntimeObservation & {
+    readonly collectorOrder: number
+  })[],
+  operationKey: (observation: RuntimeObservation) => string,
+) {
+  const groups = new Map<
+    string,
+    {
+      readonly relation: TraceIdentityRelation
+      readonly operations: Map<
+        string,
+        { readonly operationId: string; readonly collectorOrder: number }
+      >
+    }
+  >()
+  for (const observation of observations) {
+    for (const [relation, identity] of [
+      ['reaction-pass', observation.reactionPassId],
+      ['delivery', observation.deliveryId],
+      ['attempt', observation.attemptId],
+    ] as const) {
+      if (!identity) continue
+      const groupKey = `${runtimeEventLogIdentity(observation.source)}\u0000${relation}\u0000${identity}`
+      let group = groups.get(groupKey)
+      if (!group) {
+        group = { relation, operations: new Map() }
+        groups.set(groupKey, group)
+      }
+      const key = operationKey(observation)
+      if (!group.operations.has(key)) {
+        group.operations.set(key, {
+          operationId: observation.operationId,
+          collectorOrder: observation.collectorOrder,
+        })
+      }
+    }
+  }
+
+  const links: TraceIdentityLink[] = []
+  for (const group of groups.values()) {
+    const operations = [...group.operations.entries()].sort(
+      (left, right) => left[1].collectorOrder - right[1].collectorOrder,
+    )
+    for (let index = 1; index < operations.length; index += 1) {
+      const previous = operations[index - 1]
+      const current = operations[index]
+      if (!previous || !current) continue
+      links.push({
+        fromKey: previous[0],
+        toKey: current[0],
+        fromOperationId: previous[1].operationId,
+        toOperationId: current[1].operationId,
+        relation: group.relation,
+      })
+    }
+  }
+  return links
+}
+
+function addLink(links: Map<string, Set<string>>, from: string, to: string) {
+  const existing = links.get(from)
+  if (existing) existing.add(to)
+  else links.set(from, new Set([to]))
 }
 
 function matchesSource(
