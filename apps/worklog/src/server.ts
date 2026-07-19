@@ -8,8 +8,6 @@ const runtime = await createWorklogRuntime()
 const handleSpecterRequest = createSpecterHttpHandler({
   app: runtime.app,
   basePath: '/api',
-  allowedHostnames: commaSeparatedValues(process.env.WORKLOG_TRUSTED_HOSTNAMES),
-  allowedOrigins: commaSeparatedValues(process.env.WORKLOG_TRUSTED_ORIGINS),
 })
 
 const app = new Hono()
@@ -44,13 +42,6 @@ const worklogGlobal = globalThis as typeof globalThis & {
 }
 worklogGlobal[Symbol.for('worklog.shutdown')] = shutdown
 const serverApp = Object.assign(app, { shutdown })
-
-function commaSeparatedValues(value: string | undefined) {
-  return value
-    ?.split(',')
-    .map((item) => item.trim())
-    .filter(Boolean)
-}
 
 function renderShell() {
   const clientScript = import.meta.env.PROD

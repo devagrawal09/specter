@@ -17,16 +17,12 @@ let tempDir: string
 beforeAll(async () => {
   tempDir = mkdtempSync(join(tmpdir(), 'worklog-'))
   process.env.WORKLOG_SQLITE_PATH = join(tempDir, 'worklog.db')
-  process.env.WORKLOG_TRUSTED_HOSTNAMES = 'worklog.tailnet.example'
-  process.env.WORKLOG_TRUSTED_ORIGINS = 'https://worklog.tailnet.example'
   app = (await import('./server')).default
 })
 
 afterAll(async () => {
   await app.shutdown()
   delete process.env.WORKLOG_SQLITE_PATH
-  delete process.env.WORKLOG_TRUSTED_HOSTNAMES
-  delete process.env.WORKLOG_TRUSTED_ORIGINS
   rmSync(tempDir, { recursive: true, force: true })
 })
 
@@ -118,7 +114,7 @@ test('routes CLI commands through the server and updates active subscriptions', 
   await iterator.return?.()
 })
 
-test('rejects untrusted browser requests before command dispatch', async () => {
+test('requires JSON and the Worklog client header before command dispatch', async () => {
   const envelope = {
     type: 'addTask',
     payload: {
@@ -147,35 +143,12 @@ test('rejects untrusted browser requests before command dispatch', async () => {
     }),
   )
 
-  const crossOrigin = await app.request('/api/command', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      origin: 'https://hostile.example',
-      [specterClientHeader]: specterClientHeaderValue,
-    },
-    body: JSON.stringify({ envelope }),
-  })
-  expect(crossOrigin.status).toBe(403)
-
   const missingClientHeader = await app.request('/api/command', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ envelope }),
   })
   expect(missingClientHeader.status).toBe(403)
-
-  const untrustedHost = await app.fetch(
-    new Request('http://worklog.example/api/command', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [specterClientHeader]: specterClientHeaderValue,
-      },
-      body: JSON.stringify({ envelope }),
-    }),
-  )
-  expect(untrustedHost.status).toBe(403)
 
   const tasks = await postJson('/api/query', {
     envelope: {
@@ -188,8 +161,8 @@ test('rejects untrusted browser requests before command dispatch', async () => {
   )
 })
 
-test('accepts an exact trusted proxy hostname with a same-origin browser request', async () => {
-  const trustedHost = await app.fetch(
+test('accepts a private proxy hostname and HTTPS browser origin', async () => {
+  const proxyRequest = await app.fetch(
     new Request('http://worklog.tailnet.example/api/query', {
       method: 'POST',
       headers: {
@@ -202,22 +175,7 @@ test('accepts an exact trusted proxy hostname with a same-origin browser request
       }),
     }),
   )
-  expect(trustedHost.status).toBe(200)
-
-  const siblingHost = await app.fetch(
-    new Request('https://other.worklog.tailnet.example/api/query', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        origin: 'https://other.worklog.tailnet.example',
-        [specterClientHeader]: specterClientHeaderValue,
-      },
-      body: JSON.stringify({
-        envelope: { type: 'scoreQuery', payload: { limit: 50 } },
-      }),
-    }),
-  )
-  expect(siblingHost.status).toBe(403)
+  expect(proxyRequest.status).toBe(200)
 })
 
 function postJson(path: string, body: unknown) {
