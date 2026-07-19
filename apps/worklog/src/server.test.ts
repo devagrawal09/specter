@@ -5,6 +5,10 @@ import { afterAll, beforeAll, expect, test } from 'vitest'
 
 import type { WorklogAppConfig } from './features/worklog/registry'
 import { createSpecterBrowserTransport } from './transport/specter-browser'
+import {
+  specterClientHeader,
+  specterClientHeaderValue,
+} from './transport/specter-protocol'
 import { executeWorklogCli } from './worklog-cli.server'
 
 let app: Awaited<typeof import('./server')>['default']
@@ -16,7 +20,8 @@ beforeAll(async () => {
   app = (await import('./server')).default
 })
 
-afterAll(() => {
+afterAll(async () => {
+  await app.shutdown()
   delete process.env.WORKLOG_SQLITE_PATH
   rmSync(tempDir, { recursive: true, force: true })
 })
@@ -66,7 +71,7 @@ test('routes CLI commands through the server and updates active subscriptions', 
   const fetchImplementation: typeof globalThis.fetch = async (input, init) =>
     app.fetch(new Request(input, init))
   const transport = createSpecterBrowserTransport<WorklogAppConfig>(
-    'http://worklog.test/api',
+    'http://localhost/api',
     { fetch: fetchImplementation },
   )
   const iterator = transport
@@ -81,7 +86,7 @@ test('routes CLI commands through the server and updates active subscriptions', 
   const result = await executeWorklogCli(
     {
       mode: 'command',
-      url: 'http://worklog.test/api',
+      url: 'http://localhost/api',
       idempotencyKey: 'cli-live-subscription-test',
       envelope: {
         type: 'addTask',
@@ -109,10 +114,84 @@ test('routes CLI commands through the server and updates active subscriptions', 
   await iterator.return?.()
 })
 
+test('rejects untrusted browser requests before command dispatch', async () => {
+  const envelope = {
+    type: 'addTask',
+    payload: {
+      taskId: 'hostile-task',
+      title: 'Must never be committed',
+      notes: null,
+      dueAt: null,
+      createdAt: '2026-07-18T21:00:00.000Z',
+    },
+  }
+
+  const textPlain = await app.request('/api/command', {
+    method: 'POST',
+    headers: {
+      'content-type': 'text/plain',
+      [specterClientHeader]: specterClientHeaderValue,
+    },
+    body: JSON.stringify({ envelope }),
+  })
+  expect(textPlain.status).toBe(415)
+  expect(await textPlain.json()).toEqual(
+    expect.objectContaining({
+      error: expect.objectContaining({
+        code: 'SPECTER_TRANSPORT_UNSUPPORTED_MEDIA_TYPE',
+      }),
+    }),
+  )
+
+  const crossOrigin = await app.request('/api/command', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      origin: 'https://hostile.example',
+      [specterClientHeader]: specterClientHeaderValue,
+    },
+    body: JSON.stringify({ envelope }),
+  })
+  expect(crossOrigin.status).toBe(403)
+
+  const missingClientHeader = await app.request('/api/command', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ envelope }),
+  })
+  expect(missingClientHeader.status).toBe(403)
+
+  const untrustedHost = await app.fetch(
+    new Request('http://worklog.example/api/command', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        [specterClientHeader]: specterClientHeaderValue,
+      },
+      body: JSON.stringify({ envelope }),
+    }),
+  )
+  expect(untrustedHost.status).toBe(403)
+
+  const tasks = await postJson('/api/query', {
+    envelope: {
+      type: 'tasksQuery',
+      payload: { status: 'all', topicId: null },
+    },
+  })
+  expect(await tasks.json()).not.toEqual(
+    expect.arrayContaining([expect.objectContaining({ id: 'hostile-task' })]),
+  )
+})
+
 function postJson(path: string, body: unknown) {
   return app.request(path, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      origin: 'http://localhost',
+      [specterClientHeader]: specterClientHeaderValue,
+    },
     body: JSON.stringify(body),
   })
 }

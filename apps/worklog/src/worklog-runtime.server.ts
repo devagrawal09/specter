@@ -21,5 +21,5 @@ export async function createWorklogRuntime(
   const app = await createSpecterApp(
     createWorklogAppConfig(persistence.eventLog),
   )
-  return { app, sqlitePath, close: () => sqlite.close() }
+  return { app, sqlitePath, close: async () => sqlite.close() }
 }

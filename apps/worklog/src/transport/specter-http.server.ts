@@ -12,6 +12,8 @@ import {
 import {
   assertJsonCompatible,
   isRecord,
+  specterClientHeader,
+  specterClientHeaderValue,
   type JsonValue,
   type SpecterWireError,
 } from './specter-protocol'
@@ -24,6 +26,13 @@ export type SpecterHttpHandlerOptions<TConfig extends SpecterAppConfig> = {
   readonly run?: RunInContext
   readonly reactionRetentionMs?: number
   readonly reactionTickets?: SpecterReactionTicketStore
+  readonly allowedOrigins?: readonly string[]
+}
+
+export type SpecterHttpHandler = {
+  (request: Request): Promise<Response>
+  close(reason?: unknown): Promise<void>
+  activeSubscriptionCount(): number
 }
 
 export type SettledReaction =
@@ -101,14 +110,27 @@ export function createMemoryReactionTicketStore(): SpecterReactionTicketStore {
 
 export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
   options: SpecterHttpHandlerOptions<TConfig>,
-) {
+): SpecterHttpHandler {
   const basePath = `/${options.basePath.replace(/^\/+|\/+$/g, '')}`
   const run: RunInContext = options.run ?? ((operation) => operation())
   const reactionRetentionMs = options.reactionRetentionMs ?? 5 * 60_000
   const reactionTickets =
     options.reactionTickets ?? createMemoryReactionTicketStore()
+  const allowedOrigins = new Set(options.allowedOrigins ?? [])
+  const activeSubscriptions = new Set<(reason?: unknown) => Promise<void>>()
+  const pendingSubscriptionSetups = new Set<{
+    readonly settled: Promise<void>
+    abort(reason?: unknown): void
+  }>()
+  let closing = false
+  let closingReason: unknown
+  let resolveClosing!: () => void
+  const closingStarted = new Promise<void>((resolve) => {
+    resolveClosing = resolve
+  })
+  let closePromise: Promise<void> | undefined
 
-  return async function handleSpecterHttpRequest(request: Request) {
+  const handleSpecterHttpRequest = async (request: Request) => {
     const url = new URL(request.url)
     const route = url.pathname.slice(basePath.length) || '/'
 
@@ -117,6 +139,8 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
     }
 
     try {
+      validateLocalRequest(request, allowedOrigins)
+
       if (request.method === 'POST' && route === '/command') {
         return await handleCommand(request)
       }
@@ -135,6 +159,30 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
       return serializedErrorResponse(serializeError(cause))
     }
   }
+
+  handleSpecterHttpRequest.close = (reason?: unknown) => {
+    if (closePromise) return closePromise
+
+    closing = true
+    closingReason = reason
+    resolveClosing()
+    closePromise = (async () => {
+      while (
+        pendingSubscriptionSetups.size > 0 ||
+        activeSubscriptions.size > 0
+      ) {
+        const pendingSetups = [...pendingSubscriptionSetups]
+        for (const setup of pendingSetups) setup.abort(reason)
+        await Promise.allSettled([
+          ...pendingSetups.map(({ settled }) => settled),
+          ...[...activeSubscriptions].map((cleanup) => cleanup(reason)),
+        ])
+      }
+    })()
+    return closePromise
+  }
+  handleSpecterHttpRequest.activeSubscriptionCount = () =>
+    activeSubscriptions.size
 
   async function handleCommand(request: Request) {
     const body = await readJsonBody(request)
@@ -186,53 +234,133 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
   }
 
   async function handleSubscription(request: Request) {
-    const body = await readJsonBody(request)
-    assertJsonCompatible(body.envelope)
-
     const abortController = new AbortController()
+    let finishSetup!: () => void
+    const setupSettled = new Promise<void>((resolve) => {
+      finishSetup = resolve
+    })
+    const setup = {
+      settled: setupSettled,
+      abort: (reason?: unknown) => abortController.abort(reason),
+    }
+    pendingSubscriptionSetups.add(setup)
 
-    const iterator = await run(async () =>
-      options.app
-        .subscribe(body.envelope as SpecterQueryEnvelope<TConfig>, {
-          signal: abortController.signal,
-        })
-        [Symbol.asyncIterator](),
-    )
+    let activeCleanup: ((reason?: unknown) => Promise<void>) | undefined
+    const abortRequest = () => {
+      abortController.abort(request.signal.reason)
+      void activeCleanup?.(request.signal.reason)
+    }
+    if (request.signal.aborted) abortRequest()
+    else request.signal.addEventListener('abort', abortRequest, { once: true })
+
+    const finishPendingSetup = () => {
+      if (!pendingSubscriptionSetups.delete(setup)) return
+      finishSetup()
+    }
+
+    let iterator: AsyncIterator<unknown>
+    try {
+      const body = await readSubscriptionBody(request)
+      if (closing) throw new SpecterTransportClosingError()
+      assertJsonCompatible(body.envelope)
+      if (closing) throw new SpecterTransportClosingError()
+
+      iterator = await run(async () =>
+        options.app
+          .subscribe(body.envelope as SpecterQueryEnvelope<TConfig>, {
+            signal: abortController.signal,
+          })
+          [Symbol.asyncIterator](),
+      )
+    } catch (cause) {
+      request.signal.removeEventListener('abort', abortRequest)
+      finishPendingSetup()
+      throw cause
+    }
     const encoder = new TextEncoder()
-    let cleanedUp = false
+    let cleanupPromise: Promise<void> | undefined
+    let streamController:
+      | ReadableStreamDefaultController<Uint8Array>
+      | undefined
+    let streamClosed = false
+    let terminal = false
 
-    const cleanup = async (reason?: unknown) => {
-      if (cleanedUp) return
-      cleanedUp = true
-      abortController.abort(reason)
-      request.signal.removeEventListener('abort', abort)
-      await run(async () => {
-        await iterator.return?.()
-      }).catch(() => undefined)
+    const closeStream = () => {
+      if (!streamController || streamClosed) return
+      streamClosed = true
+      try {
+        streamController.close()
+      } catch {
+        // Cancellation may close the stream before its source cleanup runs.
+      }
     }
-    const abort = () => {
-      void cleanup(request.signal.reason)
+
+    const cleanup = (reason?: unknown) => {
+      terminal = true
+      closeStream()
+      cleanupPromise ??= (async () => {
+        abortController.abort(reason)
+        request.signal.removeEventListener('abort', abortRequest)
+        try {
+          await run(async () => {
+            await iterator.return?.()
+          })
+        } catch {
+          // Cleanup is best effort, but ownership remains active until it settles.
+        } finally {
+          activeSubscriptions.delete(cleanup)
+        }
+      })()
+      return cleanupPromise
     }
-    if (request.signal.aborted) abort()
-    else request.signal.addEventListener('abort', abort, { once: true })
+    activeCleanup = cleanup
+    activeSubscriptions.add(cleanup)
+    finishPendingSetup()
+
+    if (closing) {
+      await cleanup(closingReason)
+      throw new SpecterTransportClosingError()
+    }
+
+    if (request.signal.aborted) await cleanup(request.signal.reason)
 
     return new Response(
       new ReadableStream<Uint8Array>({
+        start(controller) {
+          streamController = controller
+          if (terminal) closeStream()
+        },
         async pull(controller) {
+          if (terminal) {
+            closeStream()
+            return
+          }
+
           try {
             const next = await run(() => iterator.next())
+            if (terminal) {
+              closeStream()
+              return
+            }
             if (next.done) {
               await cleanup()
-              controller.close()
               return
             }
             assertJsonCompatible(next.value)
+            if (terminal) {
+              closeStream()
+              return
+            }
             controller.enqueue(
               encoder.encode(
                 `event: value\ndata: ${JSON.stringify(next.value)}\n\n`,
               ),
             )
           } catch (cause) {
+            if (terminal) {
+              await cleanup(cause)
+              return
+            }
             const serialized = serializeError(cause)
             controller.enqueue(
               encoder.encode(
@@ -240,7 +368,6 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
               ),
             )
             await cleanup(cause)
-            controller.close()
           }
         },
         async cancel(reason) {
@@ -256,6 +383,17 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
         },
       },
     )
+  }
+
+  async function readSubscriptionBody(request: Request) {
+    if (closing) throw new SpecterTransportClosingError()
+
+    const result = await Promise.race([
+      readJsonBody(request).then((body) => ({ kind: 'body' as const, body })),
+      closingStarted.then(() => ({ kind: 'closing' as const })),
+    ])
+    if (result.kind === 'closing') throw new SpecterTransportClosingError()
+    return result.body
   }
 
   async function handleReaction(encodedReactionId: string) {
@@ -297,6 +435,8 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
         // A durable pending ticket is intentionally recoverable on the next GET.
       })
   }
+
+  return handleSpecterHttpRequest
 }
 
 function settleReaction(reactions: Promise<void>) {
@@ -307,6 +447,19 @@ function settleReaction(reactions: Promise<void>) {
 }
 
 async function readJsonBody(request: Request) {
+  const contentType = request.headers.get('content-type')
+  if (
+    !contentType ||
+    contentType.split(';', 1)[0]?.trim() !== 'application/json'
+  ) {
+    throw new SpecterTransportInputError(
+      'Request Content-Type must be application/json.',
+      undefined,
+      415,
+      'SPECTER_TRANSPORT_UNSUPPORTED_MEDIA_TYPE',
+    )
+  }
+
   let value: unknown
   try {
     value = await request.json()
@@ -324,13 +477,98 @@ async function readJsonBody(request: Request) {
 }
 
 class SpecterTransportInputError extends Error {
-  constructor(message: string, cause?: unknown) {
+  readonly status: number
+  readonly code: string
+
+  constructor(
+    message: string,
+    cause?: unknown,
+    status = 400,
+    code = 'SPECTER_TRANSPORT_INVALID_JSON',
+  ) {
     super(message, { cause })
     this.name = 'SpecterTransportInputError'
+    this.status = status
+    this.code = code
   }
 }
 
+class SpecterTransportAccessError extends Error {
+  readonly code: string
+
+  constructor(code: string, message: string) {
+    super(message)
+    this.name = 'SpecterTransportAccessError'
+    this.code = code
+  }
+}
+
+class SpecterTransportClosingError extends Error {
+  readonly status = 503
+  readonly code = 'SPECTER_TRANSPORT_CLOSING'
+
+  constructor() {
+    super('Specter transport is shutting down.')
+    this.name = 'SpecterTransportClosingError'
+  }
+}
+
+function validateLocalRequest(
+  request: Request,
+  allowedOrigins: ReadonlySet<string>,
+) {
+  const url = new URL(request.url)
+  if (!isLoopbackHostname(url.hostname)) {
+    throw new SpecterTransportAccessError(
+      'SPECTER_TRANSPORT_UNTRUSTED_HOST',
+      'Specter transport only accepts loopback hosts.',
+    )
+  }
+
+  const origin = request.headers.get('origin')
+  if (origin) {
+    let normalizedOrigin: string
+    try {
+      normalizedOrigin = new URL(origin).origin
+    } catch {
+      throw new SpecterTransportAccessError(
+        'SPECTER_TRANSPORT_UNTRUSTED_ORIGIN',
+        'Specter transport rejected an invalid request origin.',
+      )
+    }
+    if (
+      normalizedOrigin !== url.origin &&
+      !allowedOrigins.has(normalizedOrigin)
+    ) {
+      throw new SpecterTransportAccessError(
+        'SPECTER_TRANSPORT_UNTRUSTED_ORIGIN',
+        'Specter transport rejected a cross-origin request.',
+      )
+    }
+  }
+
+  if (request.headers.get(specterClientHeader) !== specterClientHeaderValue) {
+    throw new SpecterTransportAccessError(
+      'SPECTER_TRANSPORT_CLIENT_HEADER_REQUIRED',
+      'Specter transport client header is missing or invalid.',
+    )
+  }
+}
+
+function isLoopbackHostname(hostname: string) {
+  return (
+    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
+  )
+}
+
 function serializeError(cause: unknown): SerializedError {
+  if (cause instanceof SpecterTransportAccessError) {
+    return {
+      status: 403,
+      body: { error: { code: cause.code, message: cause.message } },
+    }
+  }
+
   if (cause instanceof ReactionRunFailure) {
     return {
       status: 502,
@@ -359,15 +597,25 @@ function serializeError(cause: unknown): SerializedError {
     }
   }
 
+  if (cause instanceof SpecterTransportClosingError) {
+    return {
+      status: cause.status,
+      body: { error: { code: cause.code, message: cause.message } },
+    }
+  }
+
   if (
     cause instanceof SpecterTransportInputError ||
     cause instanceof TypeError
   ) {
     return {
-      status: 400,
+      status: cause instanceof SpecterTransportInputError ? cause.status : 400,
       body: {
         error: {
-          code: 'SPECTER_TRANSPORT_INVALID_JSON',
+          code:
+            cause instanceof SpecterTransportInputError
+              ? cause.code
+              : 'SPECTER_TRANSPORT_INVALID_JSON',
           message: cause.message,
         },
       },

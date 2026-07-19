@@ -23,6 +23,26 @@ app.get('/favicon.ico', serveStatic({ path: './public/favicon.ico' }))
 
 app.get('*', (c) => c.html(renderShell()))
 
+let shutdownPromise: Promise<void> | undefined
+function shutdown(serverClosed: Promise<unknown> = Promise.resolve()) {
+  shutdownPromise ??= (async () => {
+    await handleSpecterRequest.close(
+      new Error('Worklog server is shutting down.'),
+    )
+    await serverClosed
+    await runtime.close()
+  })()
+  return shutdownPromise
+}
+
+const worklogGlobal = globalThis as typeof globalThis & {
+  [key: symbol]:
+    | ((serverClosed?: Promise<unknown>) => Promise<void>)
+    | undefined
+}
+worklogGlobal[Symbol.for('worklog.shutdown')] = shutdown
+const serverApp = Object.assign(app, { shutdown })
+
 function renderShell() {
   const clientScript = import.meta.env.PROD
     ? '/static/client.js'
@@ -48,4 +68,4 @@ function renderShell() {
 }
 
 export type AppType = typeof routes
-export default app
+export default serverApp

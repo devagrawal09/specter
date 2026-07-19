@@ -8,7 +8,7 @@
     "dev": "vite dev",
     "dev:verify": "node scripts/run-verification-server.mjs",
     "dev:kill": "fuser -k 41736/tcp || true",
-    "build": "vite build --mode client && vite build",
+    "build": "vite build --mode client && vite build && node scripts/check-production-listener.mjs",
     "start": "node dist/index.js",
     "worklog": "node --import tsx src/cli.server.ts",
     "preview": "vite preview",

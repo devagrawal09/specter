@@ -175,6 +175,63 @@ export const changeTaskCompletionSpec = createCommandSlice(
       ],
     },
     {
+      description:
+        'Ignores active connections whose journal or topic endpoint is archived.',
+      given: [
+        task('task-1'),
+        event('journal-entry-added', {
+          journalEntryId: 'journal-1',
+          body: 'Journal',
+          activityAt: at,
+          createdAt: at,
+        }),
+        event('journal-entry-archive-changed', {
+          journalEntryId: 'journal-1',
+          archived: true,
+          changedAt: at,
+        }),
+        event('topic-added', {
+          topicId: 'topic-1',
+          name: 'Topic',
+          description: null,
+          createdAt: at,
+        }),
+        event('topic-archive-changed', {
+          topicId: 'topic-1',
+          archived: true,
+          changedAt: at,
+        }),
+        event('records-connected', {
+          connectionId: 'connection-journal',
+          left: { kind: 'task', id: 'task-1' },
+          right: { kind: 'journal', id: 'journal-1' },
+          connectedAt: at,
+        }),
+        event('records-connected', {
+          connectionId: 'connection-topic',
+          left: { kind: 'task', id: 'task-1' },
+          right: { kind: 'topic', id: 'topic-1' },
+          connectedAt: at,
+        }),
+      ],
+      when: { taskId: 'task-1', completed: true, changedAt: at },
+      expect: [
+        event('task-completion-changed', {
+          taskId: 'task-1',
+          completed: true,
+          changedAt: at,
+        }),
+        event('point-awarded', {
+          awardKey: 'task:task-1:first-completion',
+          reason: 'task-first-completed',
+          points: 1,
+          subject: { kind: 'task', id: 'task-1' },
+          related: [],
+          awardedAt: at,
+        }),
+      ],
+    },
+    {
       description: 'Rejects completing an archived task.',
       given: [
         task('task-1'),

@@ -66,9 +66,12 @@ async function executeWithHttp(
   })
 
   if (request.mode === 'command') {
-    const execution = await app.command(request.envelope, {
-      idempotencyKey: request.idempotencyKey,
-    })
+    const execution = await app.command(
+      request.envelope,
+      request.idempotencyKey
+        ? { idempotencyKey: request.idempotencyKey }
+        : undefined,
+    )
     await execution.reactions
     return {
       transport: 'http' as const,
@@ -88,9 +91,12 @@ async function executeWithSqlite(request: CliRequest) {
   const runtime = await createWorklogRuntime(request.db)
   try {
     if (request.mode === 'command') {
-      const execution = await runtime.app.command(request.envelope, {
-        idempotencyKey: request.idempotencyKey,
-      })
+      const execution = await runtime.app.command(
+        request.envelope,
+        request.idempotencyKey
+          ? { idempotencyKey: request.idempotencyKey }
+          : undefined,
+      )
       await execution.reactions
       return {
         transport: 'sqlite' as const,

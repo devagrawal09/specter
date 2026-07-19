@@ -53,7 +53,7 @@ Offline CLI verification must likewise use an explicit temporary database:
 verification_dir="$(mktemp -d)"
 pnpm --filter @specter/worklog worklog -- query --db \
   "$verification_dir/worklog.db" --json \
-  '{"type":"scoreQuery","payload":{}}'
+  '{"type":"scoreQuery","payload":{"limit":100}}'
 ```
 
 The agent-facing CLI accepts raw Specter envelopes and always returns JSON. By
@@ -75,6 +75,12 @@ Omit `--json` to read one envelope from standard input. Commands also accept
 `--idempotency-key`; both operations accept `--url` or `--db` as mutually
 exclusive transport overrides. Command failures after a successful server
 health check never fall back to SQLite, avoiding ambiguous duplicate writes.
+
+The production server binds only to `127.0.0.1`. Specter API requests also
+require JSON bodies, a Worklog client header, a loopback Host, and a trusted
+same-origin browser Origin. These controls keep the unauthenticated local API
+out of reach of LAN clients and cross-origin form submissions; Worklog is not
+designed to be exposed through a remote bind or reverse proxy.
 
 ## Backup
 

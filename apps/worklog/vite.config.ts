@@ -60,6 +60,45 @@ export default defineConfig(({ mode }) => ({
             entry: './src/server.ts',
             port: 41736,
             external: ['@libsql/client'],
+            entryContentAfterHooks: [
+              (appName) => `
+import { serve } from '@hono/node-server'
+const server = serve(
+  { fetch: ${appName}.fetch, port: 41736, hostname: '127.0.0.1' },
+  () => console.log('WORKLOG_LISTENING 127.0.0.1:41736'),
+)
+const shutdownWorklogApp = globalThis[Symbol.for('worklog.shutdown')]
+if (typeof shutdownWorklogApp !== 'function') {
+  throw new Error('Worklog runtime did not register a shutdown hook.')
+}
+let shuttingDown = false
+const shutdown = async () => {
+  if (shuttingDown) return
+  shuttingDown = true
+  console.log('WORKLOG_SHUTDOWN_DRAINING')
+
+  const serverClosed = new Promise((resolve) => server.close(resolve))
+  try {
+    await Promise.race([
+      shutdownWorklogApp(serverClosed),
+      new Promise((_, reject) =>
+        setTimeout(
+          () => reject(new Error('Worklog shutdown exceeded 5 seconds.')),
+          5_000,
+        ),
+      ),
+    ])
+    process.exit(0)
+  } catch (cause) {
+    console.error(cause)
+    server.closeAllConnections()
+    process.exit(1)
+  }
+}
+process.on('SIGINT', shutdown)
+process.on('SIGTERM', shutdown)
+`,
+            ],
           }),
         ],
 }))

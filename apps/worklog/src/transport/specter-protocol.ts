@@ -20,6 +20,12 @@ export type SpecterWireCommandExecution = {
   readonly reactionId: string
 }
 
+// This non-safelisted header makes browser writes subject to a CORS preflight.
+// The server also verifies the request Host and Origin; the header is a CSRF
+// boundary, not a substitute for authentication on a remotely exposed server.
+export const specterClientHeader = 'x-worklog-specter-client'
+export const specterClientHeaderValue = 'worklog-v1'
+
 export function assertJsonCompatible(
   value: unknown,
   path = '$',

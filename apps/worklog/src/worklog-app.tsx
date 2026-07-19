@@ -2,6 +2,16 @@ import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
 
 import { runSpecterCommand, specterTransport } from './specter-transport'
 
+type WorklogCommandEnvelope = Parameters<typeof runSpecterCommand>[0]
+type WorklogCommandOptions = NonNullable<
+  Parameters<typeof runSpecterCommand>[1]
+>
+type PendingCommand = {
+  readonly fingerprint: string
+  readonly envelope: WorklogCommandEnvelope
+  readonly options: WorklogCommandOptions
+}
+
 type TimelineItem = {
   id: string
   eventType: string
@@ -50,6 +60,11 @@ export function WorklogApp() {
   const [topicName, setTopicName] = createSignal('')
   const [leftRef, setLeftRef] = createSignal('')
   const [rightRef, setRightRef] = createSignal('')
+  const [pendingJournal, setPendingJournal] = createSignal<PendingCommand>()
+  const [pendingTask, setPendingTask] = createSignal<PendingCommand>()
+  const [pendingTopic, setPendingTopic] = createSignal<PendingCommand>()
+  const [pendingConnection, setPendingConnection] =
+    createSignal<PendingCommand>()
   const [busy, setBusy] = createSignal(false)
 
   const openTasks = createMemo(() =>
@@ -144,13 +159,18 @@ export function WorklogApp() {
     }
   }
 
-  async function run(envelope: Parameters<typeof runSpecterCommand>[0]) {
+  async function run(
+    envelope: WorklogCommandEnvelope,
+    options?: WorklogCommandOptions,
+  ) {
     setBusy(true)
     setError()
     try {
-      await runSpecterCommand(envelope)
+      await runSpecterCommand(envelope, options)
+      return true
     } catch (cause) {
       setError(errorMessage(cause))
+      return false
     } finally {
       setBusy(false)
     }
@@ -160,43 +180,62 @@ export function WorklogApp() {
     event.preventDefault()
     const body = journalBody().trim()
     if (!body) return
-    const now = new Date().toISOString()
-    await run({
-      type: 'addJournalEntry',
-      payload: {
-        journalEntryId: crypto.randomUUID(),
-        body,
-        activityAt: new Date(journalAt()).toISOString(),
-        createdAt: now,
-      },
-    })
-    setJournalBody('')
-    setJournalAt(toLocalInput(new Date()))
+    const activityAt = new Date(journalAt()).toISOString()
+    const attempt = retainedCommand(
+      pendingJournal(),
+      JSON.stringify({ body, activityAt }),
+      () => ({
+        type: 'addJournalEntry',
+        payload: {
+          journalEntryId: crypto.randomUUID(),
+          body,
+          activityAt,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    )
+    setPendingJournal(attempt)
+    const succeeded = await run(attempt.envelope, attempt.options)
+    if (succeeded) {
+      setPendingJournal()
+      setJournalBody('')
+      setJournalAt(toLocalInput(new Date()))
+    }
   }
 
   async function addTask(event: SubmitEvent) {
     event.preventDefault()
     const title = taskTitle().trim()
     if (!title) return
-    await run({
-      type: 'addTask',
-      payload: {
-        taskId: crypto.randomUUID(),
-        title,
-        notes: null,
-        dueAt: taskDueAt() ? new Date(taskDueAt()).toISOString() : null,
-        createdAt: new Date().toISOString(),
-      },
-    })
-    setTaskTitle('')
-    setTaskDueAt('')
+    const dueAt = taskDueAt() ? new Date(taskDueAt()).toISOString() : null
+    const attempt = retainedCommand(
+      pendingTask(),
+      JSON.stringify({ title, dueAt }),
+      () => ({
+        type: 'addTask',
+        payload: {
+          taskId: crypto.randomUUID(),
+          title,
+          notes: null,
+          dueAt,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+    )
+    setPendingTask(attempt)
+    const succeeded = await run(attempt.envelope, attempt.options)
+    if (succeeded) {
+      setPendingTask()
+      setTaskTitle('')
+      setTaskDueAt('')
+    }
   }
 
   async function addTopic(event: SubmitEvent) {
     event.preventDefault()
     const name = topicName().trim()
     if (!name) return
-    await run({
+    const attempt = retainedCommand(pendingTopic(), name, () => ({
       type: 'addTopic',
       payload: {
         topicId: crypto.randomUUID(),
@@ -204,8 +243,13 @@ export function WorklogApp() {
         description: null,
         createdAt: new Date().toISOString(),
       },
-    })
-    setTopicName('')
+    }))
+    setPendingTopic(attempt)
+    const succeeded = await run(attempt.envelope, attempt.options)
+    if (succeeded) {
+      setPendingTopic()
+      setTopicName('')
+    }
   }
 
   async function connect(event: SubmitEvent) {
@@ -213,17 +257,26 @@ export function WorklogApp() {
     const left = parseRef(leftRef())
     const right = parseRef(rightRef())
     if (!left || !right) return
-    await run({
-      type: 'connectRecords',
-      payload: {
-        connectionId: crypto.randomUUID(),
-        left,
-        right,
-        connectedAt: new Date().toISOString(),
-      },
-    })
-    setLeftRef('')
-    setRightRef('')
+    const attempt = retainedCommand(
+      pendingConnection(),
+      JSON.stringify({ left, right }),
+      () => ({
+        type: 'connectRecords',
+        payload: {
+          connectionId: crypto.randomUUID(),
+          left,
+          right,
+          connectedAt: new Date().toISOString(),
+        },
+      }),
+    )
+    setPendingConnection(attempt)
+    const succeeded = await run(attempt.envelope, attempt.options)
+    if (succeeded) {
+      setPendingConnection()
+      setLeftRef('')
+      setRightRef('')
+    }
   }
 
   return (
@@ -265,7 +318,7 @@ export function WorklogApp() {
 
       <Show when={error()}>
         {(message) => (
-          <div class="error-banner">
+          <div class="error-banner" role="alert">
             <span>{message()}</span>
             <button type="button" onClick={() => setError()}>
               ×
@@ -330,6 +383,7 @@ export function WorklogApp() {
               <div>
                 <h2>New task</h2>
                 <input
+                  aria-label="Task title"
                   placeholder="Something to finish"
                   value={taskTitle()}
                   onInput={(event) => setTaskTitle(event.currentTarget.value)}
@@ -350,6 +404,7 @@ export function WorklogApp() {
               <div>
                 <h2>New topic</h2>
                 <input
+                  aria-label="Topic name"
                   placeholder="A thread of work"
                   value={topicName()}
                   onInput={(event) => setTopicName(event.currentTarget.value)}
@@ -472,9 +527,22 @@ export function WorklogApp() {
   )
 }
 
+function retainedCommand(
+  pending: PendingCommand | undefined,
+  fingerprint: string,
+  createEnvelope: () => WorklogCommandEnvelope,
+): PendingCommand {
+  if (pending?.fingerprint === fingerprint) return pending
+  return {
+    fingerprint,
+    envelope: createEnvelope(),
+    options: { idempotencyKey: crypto.randomUUID() },
+  }
+}
+
 function TimelineCard(props: {
   item: TimelineItem
-  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<void>
+  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<boolean>
 }) {
   const icon = () =>
     props.item.eventType === 'journal-entry-added'
@@ -522,7 +590,7 @@ function TimelineCard(props: {
 
 function TaskRow(props: {
   task: Task
-  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<void>
+  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<boolean>
 }) {
   return (
     <article class={`task-row${props.task.completed ? ' completed' : ''}`}>
@@ -598,7 +666,7 @@ function TaskRow(props: {
 
 function TopicCard(props: {
   topic: Topic
-  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<void>
+  run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<boolean>
 }) {
   const progress = () =>
     props.topic.taskCount

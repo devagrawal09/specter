@@ -3,6 +3,8 @@ import type { EventDraft } from '@specter-ts/core'
 
 import {
   connectionArchiveChangedEvent,
+  journalEntryAddedEvent,
+  journalEntryArchiveChangedEvent,
   pointAwardedEvent,
   recordsConnectedEvent,
   taskAddedEvent,
@@ -23,12 +25,14 @@ import {
 import { changeTaskCompletionSpec } from './spec'
 
 type State = {
+  journals: Map<string, { archived: boolean }>
   tasks: Map<string, Task>
   topics: Map<string, Topic>
   connections: Map<string, Connection>
   awards: Set<string>
 }
 const store = createWorklogMemoryStore<State>(() => ({
+  journals: new Map(),
   tasks: new Map(),
   topics: new Map(),
   connections: new Map(),
@@ -46,6 +50,13 @@ export const changeTaskCompletion = changeTaskCompletionSpec
       .strict(),
   )
   .store(store)
+  .apply(journalEntryAddedEvent, async (event, state) => {
+    state.journals.set(event.payload.journalEntryId, { archived: false })
+  })
+  .apply(journalEntryArchiveChangedEvent, async (event, state) => {
+    const journal = state.journals.get(event.payload.journalEntryId)
+    if (journal) journal.archived = event.payload.archived
+  })
   .apply(taskAddedEvent, async (event, state) => {
     state.tasks.set(event.payload.taskId, {
       id: event.payload.taskId,
@@ -124,7 +135,10 @@ export const changeTaskCompletion = changeTaskCompletionSpec
 
     const activeConnections = [...state.connections.values()]
       .filter(
-        (connection) => !connection.archived && references(connection, taskRef),
+        (connection) =>
+          !connection.archived &&
+          references(connection, taskRef) &&
+          isActive(otherEnd(connection, taskRef), state),
       )
       .sort((a, b) => a.id.localeCompare(b.id))
     for (const connection of activeConnections) {
@@ -183,4 +197,11 @@ function topicTasks(topicRef: EntityRef, state: State) {
       tasks.set(other.id, other)
   }
   return [...tasks.values()].sort((a, b) => a.id.localeCompare(b.id))
+}
+
+function isActive(ref: EntityRef, state: State) {
+  if (ref.kind === 'journal')
+    return state.journals.get(ref.id)?.archived === false
+  if (ref.kind === 'task') return state.tasks.get(ref.id)?.archived === false
+  return state.topics.get(ref.id)?.archived === false
 }

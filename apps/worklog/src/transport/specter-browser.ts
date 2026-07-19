@@ -12,6 +12,8 @@ import {
   assertJsonCompatible,
   isRecord,
   isWireError,
+  specterClientHeader,
+  specterClientHeaderValue,
   type JsonValue,
   type SpecterWireCommandExecution,
 } from './specter-protocol'
@@ -119,7 +121,10 @@ export function createSpecterBrowserTransport<TConfig extends SpecterAppConfig>(
   async function postJson<TResult>(path: string, body: unknown) {
     const response = await fetchImplementation(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json',
+        [specterClientHeader]: specterClientHeaderValue,
+      },
       body: JSON.stringify(body),
     })
     const payload = await readJson(response)
@@ -131,7 +136,12 @@ export function createSpecterBrowserTransport<TConfig extends SpecterAppConfig>(
   async function waitForReactions(reactionId: string) {
     const response = await fetchImplementation(
       `${normalizedBasePath}/reactions/${encodeURIComponent(reactionId)}`,
-      { headers: { accept: 'application/json' } },
+      {
+        headers: {
+          accept: 'application/json',
+          [specterClientHeader]: specterClientHeaderValue,
+        },
+      },
     )
 
     if (response.ok) return
@@ -154,6 +164,7 @@ export function createSpecterBrowserTransport<TConfig extends SpecterAppConfig>(
             headers: {
               accept: 'text/event-stream',
               'content-type': 'application/json',
+              [specterClientHeader]: specterClientHeaderValue,
             },
             body: JSON.stringify({ envelope }),
             signal,

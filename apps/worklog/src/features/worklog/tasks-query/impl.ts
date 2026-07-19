@@ -111,7 +111,7 @@ export const tasksQuery = tasksQuerySpec
       .filter((task) => !connectedTaskIds || connectedTaskIds.has(task.id))
       .filter((task) =>
         query.status === 'all'
-          ? true
+          ? !task.archived
           : query.status === 'archived'
             ? task.archived
             : !task.archived &&
