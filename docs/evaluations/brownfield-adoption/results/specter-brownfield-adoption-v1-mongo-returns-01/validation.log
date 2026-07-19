@@ -1,0 +1,21 @@
+attempt: specter-brownfield-adoption-v1-mongo-returns-01
+assignment: 184e1713cd1d7eccaa9df62e88764c410b2e48ae
+first-attempt-freeze: 2766131136faa2d6e98613bb8ca5ad358e39bae1
+remediation-audit-freeze: 974b3e4d67024dec503182c7a6602d2e4209efe3
+
+Independent first-freeze validation
+PASS visible adapter verifier: 16/16
+PASS exact domain acceptance: 8/8 live tests
+PASS persisted due-job worker restart
+PASS full MongoDB outage and recovery
+PASS exact non-live baseline: 16/16 tests
+PASS typecheck
+PASS build
+PASS git diff --check
+PASS first-attempt JSONL: 4 chronological records, all before freeze
+
+Unscored remediation audit
+PASS no functional defect reproduced
+PASS first-attempt commit and log preserved byte-for-byte
+PASS narrow typecheck and whitespace checks
+NOT-RUN code remediation was unnecessary; remediation.patch is intentionally empty

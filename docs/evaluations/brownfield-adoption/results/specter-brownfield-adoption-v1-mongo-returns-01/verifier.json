@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "driver": "mongo-returns-mongodb-agenda",
+  "startedAt": "2026-07-19T02:21:44.881Z",
+  "finishedAt": "2026-07-19T02:21:49.143Z",
+  "passed": true,
+  "cases": [
+    { "id": "event-log.order-filter-json", "boundary": "event-log", "status": "passed", "durationMs": 34 },
+    { "id": "event-log.transaction-rollback", "boundary": "event-log", "status": "passed", "durationMs": 7 },
+    { "id": "event-log.transaction-serializes-decision", "boundary": "event-log", "status": "passed", "durationMs": 4030 },
+    { "id": "event-log.concurrent-version", "boundary": "event-log", "status": "passed", "durationMs": 15 },
+    { "id": "event-log.idempotency", "boundary": "event-log", "status": "passed", "durationMs": 26 },
+    { "id": "event-log.restart-durability", "boundary": "event-log", "status": "passed", "durationMs": 14 },
+    { "id": "slice-store.staging-rollback", "boundary": "slice-store", "status": "passed", "durationMs": 11 },
+    { "id": "slice-store.failure-replay", "boundary": "slice-store", "status": "passed", "durationMs": 10 },
+    { "id": "slice-store.monotonic-isolation", "boundary": "slice-store", "status": "passed", "durationMs": 12 },
+    { "id": "slice-store.restart-durability", "boundary": "slice-store", "status": "passed", "durationMs": 11 },
+    { "id": "scheduler.serializes-coalesces", "boundary": "scheduler", "status": "passed", "durationMs": 13 },
+    { "id": "scheduler.dead-letter-preserves-active-follow-up", "boundary": "scheduler", "status": "passed", "durationMs": 18 },
+    { "id": "scheduler.retry-context", "boundary": "scheduler", "status": "passed", "durationMs": 11 },
+    { "id": "scheduler.dead-letter-retry", "boundary": "scheduler", "status": "passed", "durationMs": 14 },
+    { "id": "scheduler.restart-recovery", "boundary": "scheduler", "status": "passed", "durationMs": 15 },
+    { "id": "probe.command-reaction-restart", "boundary": "probe", "status": "passed", "durationMs": 21 }
+  ]
+}

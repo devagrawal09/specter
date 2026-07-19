@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "specter-brownfield-adoption-v1-mongo-returns-01",
+  "applicationId": "mongo-returns",
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "startedAt": "2026-07-19T01:57:45.726Z",
+  "finishedAt": "2026-07-19T02:20:43.415Z",
+  "activeMilliseconds": 1377689,
+  "wallMilliseconds": 1377689,
+  "phaseTiming": {
+    "adapterMilliseconds": 535274,
+    "domainMilliseconds": 842415
+  },
+  "firstAttempt": "passed",
+  "adapterReport": {
+    "status": "passed",
+    "passedCases": 16,
+    "totalCases": 16,
+    "driver": "mongo-returns-mongodb-agenda",
+    "evidenceStatus": "independent-first-freeze-verification",
+    "detail": "All visible Event Log, Slice Store, Agenda scheduler, durability, retry, and integrated probe cases passed against the immutable first-attempt commit."
+  },
+  "domainChecks": [
+    {
+      "name": "domain-acceptance",
+      "status": "passed",
+      "detail": "The exact live domain command passed 8/8 replica-set, route, durable-job, legacy-reader, and recovery tests."
+    },
+    {
+      "name": "baseline",
+      "status": "passed",
+      "detail": "Typecheck and build passed; the exact non-live test command passed 16/16 tests."
+    },
+    {
+      "name": "restart-and-recovery",
+      "status": "passed",
+      "detail": "The live suite independently passed persisted due-job worker restart and full MongoDB outage/recovery coverage."
+    },
+    {
+      "name": "chronological-log",
+      "status": "passed",
+      "detail": "Four append-only first-attempt JSONL records parse chronologically and precede the coordinator freeze."
+    }
+  ],
+  "friction": [
+    {
+      "category": "adapter-contract",
+      "summary": "Initial verification exposed abandoned crash waiters and non-atomic scheduler attempt accounting before the 16-case report became green.",
+      "phase": "adapter"
+    },
+    {
+      "category": "bootstrap",
+      "summary": "A return created through an unrelated legacy path required serialized just-in-time bootstrap before Specter command dispatch.",
+      "phase": "domain"
+    },
+    {
+      "category": "guidance",
+      "summary": "The elevated managed pnpm wrapper attempted a non-interactive modules purge, so scored elevated checks used equivalent installed Node entry points.",
+      "phase": "both"
+    }
+  ],
+  "iterationCount": 4,
+  "implementationSize": {
+    "adapterLines": 586,
+    "domainLines": 486
+  },
+  "sourcesConsulted": [
+    "specter-assignment.json",
+    "specter-evaluation/guidance/.agents/skills/specter/SKILL.md"
+  ],
+  "remediation": {
+    "status": "not-run",
+    "additionalMilliseconds": 195014
+  }
+}

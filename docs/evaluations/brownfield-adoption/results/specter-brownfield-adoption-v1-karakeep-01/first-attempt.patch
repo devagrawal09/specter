@@ -1,0 +1,1507 @@
+diff --git a/packages/trpc/models/lists.ts b/packages/trpc/models/lists.ts
+index baf13e1c4bd960c3af36d85fcb11f5f9e4785a6c..ba565fb45e8c53651ecda6995b057e04274b8cc9 100644
+--- a/packages/trpc/models/lists.ts
++++ b/packages/trpc/models/lists.ts
+@@ -895,6 +895,7 @@ export abstract class List {
+   }
+ 
+   abstract get type(): "manual" | "smart";
++  abstract get membershipIdForBookmarkWrites(): string | null;
+   abstract getBookmarkIds(visitedListIds?: Set<string>): Promise<string[]>;
+   abstract getSize(): Promise<number>;
+   abstract addBookmark(bookmarkId: string): Promise<void>;
+@@ -919,6 +920,10 @@ export class SmartList extends List {
+     return this.list.type;
+   }
+ 
++  get membershipIdForBookmarkWrites(): null {
++    return null;
++  }
++
+   get query() {
+     invariant(this.list.query);
+     return this.list.query;
+@@ -1001,6 +1006,10 @@ export class ManualList extends List {
+     return this.list.type;
+   }
+ 
++  get membershipIdForBookmarkWrites(): string | null {
++    return this.collaboratorEntry?.membershipId ?? null;
++  }
++
+   async getBookmarkIds(_visitedListIds?: Set<string>): Promise<string[]> {
+     const results = await this.ctx.db
+       .select({ id: bookmarksInLists.bookmarkId })
+diff --git a/packages/trpc/routers/lists.ts b/packages/trpc/routers/lists.ts
+index 8944c91438b1dd27a5aef22766302bdc2059e0d6..5fee379ff7bb885ac07a678c08aa6143a8df5184 100644
+--- a/packages/trpc/routers/lists.ts
++++ b/packages/trpc/routers/lists.ts
+@@ -1,4 +1,4 @@
+-import { experimental_trpcMiddleware } from "@trpc/server";
++import { experimental_trpcMiddleware, TRPCError } from "@trpc/server";
+ import { z } from "zod";
+ 
+ import {
+@@ -20,6 +20,7 @@ import {
+ import { ListInvitation } from "../models/listInvitations";
+ import { List } from "../models/lists";
+ import { ensureBookmarkOwnership } from "./bookmarks";
++import { addBookmarkToListWithSpecter } from "../specter/list-membership-service";
+ 
+ const listsProcedure = createScopedAuthedProcedure("lists");
+ 
+@@ -141,7 +142,19 @@ export const listsAppRouter = router({
+     .use(ensureListAtLeastEditor)
+     .use(ensureBookmarkOwnership)
+     .mutation(async ({ input, ctx }) => {
+-      await ctx.list.addBookmark(input.bookmarkId);
++      const result = await addBookmarkToListWithSpecter(ctx.db, {
++        listId: input.listId,
++        bookmarkId: input.bookmarkId,
++        userId: ctx.user.id,
++        listMembershipId: ctx.list.membershipIdForBookmarkWrites,
++        addedAt: new Date().toISOString(),
++      });
++      if (result === "smart-list") {
++        throw new TRPCError({
++          code: "BAD_REQUEST",
++          message: "Smart lists cannot be added to",
++        });
++      }
+     }),
+   removeFromList: listsProcedure
+     .input(
+diff --git a/packages/trpc/specter/add-bookmark-to-list/events.ts b/packages/trpc/specter/add-bookmark-to-list/events.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..342c1aee9ce864914e3a665e25fae46f9cc85a04
+--- /dev/null
++++ b/packages/trpc/specter/add-bookmark-to-list/events.ts
+@@ -0,0 +1,38 @@
++import { createEventDefinition } from "@specter-ts/core";
++import { z } from "zod";
++
++export const bookmarkListBootstrapped = createEventDefinition(
++  "bookmark-list-bootstrapped",
++  z.object({
++    listId: z.string().min(1),
++    type: z.enum(["manual", "smart"]),
++  }),
++);
++
++export const bookmarkListMembershipBootstrapped = createEventDefinition(
++  "bookmark-list-membership-bootstrapped",
++  z.object({
++    listId: z.string().min(1),
++    bookmarkId: z.string().min(1),
++    userId: z.string().min(1),
++    listMembershipId: z.string().nullable(),
++    addedAt: z.number().int().nullable(),
++  }),
++);
++
++export const bookmarkAddedToList = createEventDefinition(
++  "bookmark-added-to-list",
++  z.object({
++    listId: z.string().min(1),
++    bookmarkId: z.string().min(1),
++    userId: z.string().min(1),
++    listMembershipId: z.string().nullable(),
++    addedAt: z.string().datetime(),
++  }),
++);
++
++export const listMembershipEvents = [
++  bookmarkListBootstrapped,
++  bookmarkListMembershipBootstrapped,
++  bookmarkAddedToList,
++] as const;
+diff --git a/packages/trpc/specter/add-bookmark-to-list/impl.ts b/packages/trpc/specter/add-bookmark-to-list/impl.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d0fab3e5ed8eb2ff8e515015732f53407fac4e40
+--- /dev/null
++++ b/packages/trpc/specter/add-bookmark-to-list/impl.ts
+@@ -0,0 +1,66 @@
++import type Database from "better-sqlite3";
++import type { SliceStoreAdapter } from "@specter-ts/core";
++import { z } from "zod";
++
++import {
++  bookmarkAddedToList,
++  bookmarkListBootstrapped,
++  bookmarkListMembershipBootstrapped,
++} from "./events";
++import { addBookmarkToListSpec } from "./spec";
++
++type Sqlite = InstanceType<typeof Database>;
++
++export function createAddBookmarkToList(
++  store: SliceStoreAdapter<Sqlite, Sqlite>,
++) {
++  return addBookmarkToListSpec
++    .inputSchema(
++      z.object({
++        listId: z.string().min(1),
++        bookmarkId: z.string().min(1),
++        userId: z.string().min(1),
++        listMembershipId: z.string().nullable(),
++        addedAt: z.string().datetime(),
++      }),
++    )
++    .store(store)
++    .apply(bookmarkListBootstrapped, async (event, db) => {
++      db.prepare(
++        `insert into specter_list_decision_lists(list_id, list_type)
++         values (?, ?)
++         on conflict(list_id) do update set list_type = excluded.list_type`,
++      ).run(event.payload.listId, event.payload.type);
++    })
++    .apply(bookmarkListMembershipBootstrapped, async (event, db) => {
++      db.prepare(
++        `insert or ignore into specter_list_decision_memberships(list_id, bookmark_id)
++         values (?, ?)`,
++      ).run(event.payload.listId, event.payload.bookmarkId);
++    })
++    .apply(bookmarkAddedToList, async (event, db) => {
++      db.prepare(
++        `insert or ignore into specter_list_decision_memberships(list_id, bookmark_id)
++         values (?, ?)`,
++      ).run(event.payload.listId, event.payload.bookmarkId);
++    })
++    .handle(async (command, db) => {
++      const list = db
++        .prepare(
++          "select list_type from specter_list_decision_lists where list_id = ?",
++        )
++        .get(command.listId) as { list_type: "manual" | "smart" } | undefined;
++      if (list?.list_type === "smart") {
++        throw new Error("Smart lists cannot be added to");
++      }
++      if (!list) throw new Error("List not found");
++      const existing = db
++        .prepare(
++          `select 1 from specter_list_decision_memberships
++           where list_id = ? and bookmark_id = ?`,
++        )
++        .get(command.listId, command.bookmarkId);
++      if (existing) throw new Error("Bookmark is already in list");
++      return [bookmarkAddedToList.create(command)];
++    });
++}
+diff --git a/packages/trpc/specter/add-bookmark-to-list/spec.ts b/packages/trpc/specter/add-bookmark-to-list/spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..456b37edaf49e1be4138d6076e42b591b0ac527d
+--- /dev/null
++++ b/packages/trpc/specter/add-bookmark-to-list/spec.ts
+@@ -0,0 +1,107 @@
++import { createCommandSlice, event } from "@specter-ts/core/spec";
++
++export const addBookmarkToListSpec = createCommandSlice("addBookmarkToList")
++  .description("Adds an owned bookmark to one editable manual list.")
++  .scenarios(
++    {
++      description: "Adds a bookmark to a bootstrapped manual list.",
++      given: [
++        event("bookmark-list-bootstrapped", {
++          listId: "list-1",
++          type: "manual",
++        }),
++      ],
++      when: {
++        listId: "list-1",
++        bookmarkId: "bookmark-1",
++        userId: "user-1",
++        listMembershipId: null,
++        addedAt: "2026-07-18T12:00:00.000Z",
++      },
++      expect: [
++        event("bookmark-added-to-list", {
++          listId: "list-1",
++          bookmarkId: "bookmark-1",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: "2026-07-18T12:00:00.000Z",
++        }),
++      ],
++    },
++    {
++      description:
++        "Adds another bookmark while preserving bootstrapped membership state.",
++      given: [
++        event("bookmark-list-bootstrapped", {
++          listId: "list-1",
++          type: "manual",
++        }),
++        event("bookmark-list-membership-bootstrapped", {
++          listId: "list-1",
++          bookmarkId: "bookmark-existing",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: 1_768_435_200,
++        }),
++      ],
++      when: {
++        listId: "list-1",
++        bookmarkId: "bookmark-2",
++        userId: "user-1",
++        listMembershipId: null,
++        addedAt: "2026-07-18T12:00:00.000Z",
++      },
++      expect: [
++        event("bookmark-added-to-list", {
++          listId: "list-1",
++          bookmarkId: "bookmark-2",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: "2026-07-18T12:00:00.000Z",
++        }),
++      ],
++    },
++    {
++      description: "Rejects adding to a smart list.",
++      given: [
++        event("bookmark-list-bootstrapped", {
++          listId: "smart-list-1",
++          type: "smart",
++        }),
++      ],
++      when: {
++        listId: "smart-list-1",
++        bookmarkId: "bookmark-1",
++        userId: "user-1",
++        listMembershipId: null,
++        addedAt: "2026-07-18T12:00:00.000Z",
++      },
++      expect: [],
++      reject: { reason: "Smart lists cannot be added to" },
++    },
++    {
++      description: "Rejects a repeated manual-list membership.",
++      given: [
++        event("bookmark-list-bootstrapped", {
++          listId: "list-1",
++          type: "manual",
++        }),
++        event("bookmark-added-to-list", {
++          listId: "list-1",
++          bookmarkId: "bookmark-1",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: "2026-07-18T12:00:00.000Z",
++        }),
++      ],
++      when: {
++        listId: "list-1",
++        bookmarkId: "bookmark-1",
++        userId: "user-1",
++        listMembershipId: null,
++        addedAt: "2026-07-18T12:01:00.000Z",
++      },
++      expect: [],
++      reject: { reason: "Bookmark is already in list" },
++    },
++  );
+diff --git a/packages/trpc/specter/list-membership-restart.test.ts b/packages/trpc/specter/list-membership-restart.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..53bbe129a5ae3178caa63dc727073094fd1511ca
+--- /dev/null
++++ b/packages/trpc/specter/list-membership-restart.test.ts
+@@ -0,0 +1,163 @@
++import { mkdtemp, rm } from "node:fs/promises";
++import { tmpdir } from "node:os";
++import path from "node:path";
++import Database from "better-sqlite3";
++import { drizzle } from "drizzle-orm/better-sqlite3";
++import { afterEach, expect, test, vi } from "vitest";
++
++import { createSpecterApp } from "@specter-ts/core";
++import type { DB } from "@karakeep/db/drizzle";
++
++import {
++  createKarakeepDatabaseSliceStore,
++  createKarakeepEventLog,
++  createKarakeepReactionScheduler,
++  prepareKarakeepSpecterDatabase,
++} from "../../../specter-evaluation/application-adapters";
++import { RuleEngine } from "../lib/ruleEngine";
++import { listMembershipEvents } from "./add-bookmark-to-list/events";
++import { createAddBookmarkToList } from "./add-bookmark-to-list/impl";
++import { createProjectBookmarkAddedToList } from "./project-bookmark-added-to-list/impl";
++
++let testDirectory: string | undefined;
++
++afterEach(async () => {
++  vi.restoreAllMocks();
++  if (testDirectory) await rm(testDirectory, { recursive: true, force: true });
++  testDirectory = undefined;
++});
++
++test("restart replay reconstructs legacy memberships and duplicate decisions append no Event", async () => {
++  testDirectory = await mkdtemp(
++    path.join(tmpdir(), "karakeep-specter-restart-"),
++  );
++  const sqlite = new Database(path.join(testDirectory, "db.db"));
++  prepareKarakeepSpecterDatabase(sqlite);
++  sqlite.exec(`
++    create table bookmarkLists (id text primary key, type text not null);
++    create table bookmarks (id text primary key, userId text not null);
++    create table bookmarksInLists (
++      bookmarkId text not null,
++      listId text not null,
++      addedAt integer,
++      listMembershipId text,
++      primary key(bookmarkId, listId)
++    );
++    create table specter_list_decision_lists (
++      list_id text primary key,
++      list_type text not null
++    );
++    create table specter_list_decision_memberships (
++      list_id text not null,
++      bookmark_id text not null,
++      primary key(list_id, bookmark_id)
++    );
++    create table specter_list_latest_effect (
++      singleton integer primary key,
++      effect_json text not null
++    );
++    insert into bookmarkLists values ('list-1', 'manual');
++    insert into bookmarks values ('bookmark-1', 'user-1');
++    insert into bookmarks values ('bookmark-2', 'user-1');
++  `);
++  const db = drizzle(sqlite) as unknown as DB;
++  vi.spyOn(RuleEngine, "triggerOnEvent").mockResolvedValue();
++
++  async function open() {
++    const eventLog = createKarakeepEventLog(sqlite);
++    const store = createKarakeepDatabaseSliceStore(sqlite);
++    const scheduler = createKarakeepReactionScheduler(testDirectory!);
++    const app = await createSpecterApp({
++      events: listMembershipEvents,
++      eventLog,
++      schedule: scheduler.schedule,
++      slices: [
++        createAddBookmarkToList(store),
++        createProjectBookmarkAddedToList(store, db),
++      ],
++    });
++    return { app, eventLog, scheduler };
++  }
++
++  const first = await open();
++  await first.eventLog.append([
++    {
++      type: "bookmark-list-bootstrapped",
++      payload: { listId: "list-1", type: "manual" },
++    },
++  ]);
++  const firstExecution = await first.app.command({
++    type: "addBookmarkToList",
++    payload: {
++      listId: "list-1",
++      bookmarkId: "bookmark-1",
++      userId: "user-1",
++      listMembershipId: null,
++      addedAt: "2026-07-18T12:00:00.000Z",
++    },
++  });
++  await firstExecution.reactions;
++  await expect(
++    first.app.command({
++      type: "addBookmarkToList",
++      payload: {
++        listId: "list-1",
++        bookmarkId: "bookmark-1",
++        userId: "user-1",
++        listMembershipId: null,
++        addedAt: "2026-07-18T12:01:00.000Z",
++      },
++    }),
++  ).rejects.toThrow("Bookmark is already in list");
++  expect(await first.eventLog.currentVersion()).toBe(2);
++  await first.scheduler.close();
++
++  sqlite.exec(`
++    delete from bookmarksInLists;
++    delete from specter_list_latest_effect;
++    delete from specter_slice_state where slice_name = 'projectBookmarkAddedToList';
++  `);
++
++  const reopened = await open();
++  const secondExecution = await reopened.app.command({
++    type: "addBookmarkToList",
++    payload: {
++      listId: "list-1",
++      bookmarkId: "bookmark-2",
++      userId: "user-1",
++      listMembershipId: null,
++      addedAt: "2026-07-18T12:02:00.000Z",
++    },
++  });
++  await secondExecution.reactions;
++
++  expect(
++    sqlite
++      .prepare(
++        "select bookmarkId from bookmarksInLists order by bookmarkId asc",
++      )
++      .all(),
++  ).toEqual([{ bookmarkId: "bookmark-1" }, { bookmarkId: "bookmark-2" }]);
++  expect(
++    (await reopened.eventLog.query(0, ["bookmark-added-to-list"])).map(
++      (event) => event.payload,
++    ),
++  ).toEqual([
++    {
++      listId: "list-1",
++      bookmarkId: "bookmark-1",
++      userId: "user-1",
++      listMembershipId: null,
++      addedAt: "2026-07-18T12:00:00.000Z",
++    },
++    {
++      listId: "list-1",
++      bookmarkId: "bookmark-2",
++      userId: "user-1",
++      listMembershipId: null,
++      addedAt: "2026-07-18T12:02:00.000Z",
++    },
++  ]);
++  await reopened.scheduler.close();
++  sqlite.close();
++});
+diff --git a/packages/trpc/specter/list-membership-scenarios.test.ts b/packages/trpc/specter/list-membership-scenarios.test.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..7f1348814566b5a765ce9e9a3d75c9802921810d
+--- /dev/null
++++ b/packages/trpc/specter/list-membership-scenarios.test.ts
+@@ -0,0 +1,59 @@
++import Database from "better-sqlite3";
++import { afterAll } from "vitest";
++
++import { testSliceImplementations } from "@specter-ts/core/testing";
++
++import {
++  createKarakeepDatabaseSliceStore,
++  prepareKarakeepSpecterDatabase,
++} from "../../../specter-evaluation/application-adapters";
++import { listMembershipEvents } from "./add-bookmark-to-list/events";
++import { createAddBookmarkToList } from "./add-bookmark-to-list/impl";
++import { createProjectBookmarkAddedToList } from "./project-bookmark-added-to-list/impl";
++
++const sqlite = new Database(":memory:");
++prepareKarakeepSpecterDatabase(sqlite);
++sqlite.exec(`
++  create table specter_list_decision_lists (
++    list_id text primary key,
++    list_type text not null
++  );
++  create table specter_list_decision_memberships (
++    list_id text not null,
++    bookmark_id text not null,
++    primary key(list_id, bookmark_id)
++  );
++  create table bookmarksInLists (
++    bookmarkId text not null,
++    listId text not null,
++    addedAt integer,
++    listMembershipId text,
++    primary key(bookmarkId, listId)
++  );
++  create table specter_list_latest_effect (
++    singleton integer primary key,
++    effect_json text not null
++  );
++`);
++const store = createKarakeepDatabaseSliceStore(sqlite);
++const addBookmarkToList = createAddBookmarkToList(store);
++const projectBookmarkAddedToList = createProjectBookmarkAddedToList(
++  store,
++  {} as never,
++);
++
++testSliceImplementations([addBookmarkToList, projectBookmarkAddedToList], {
++  events: listMembershipEvents,
++  runScenario: async <T>(run: () => Promise<T>) => {
++    sqlite.exec(`
++        delete from specter_slice_state;
++        delete from specter_list_decision_lists;
++        delete from specter_list_decision_memberships;
++        delete from bookmarksInLists;
++        delete from specter_list_latest_effect;
++      `);
++    return run();
++  },
++});
++
++afterAll(() => sqlite.close());
+diff --git a/packages/trpc/specter/list-membership-service.ts b/packages/trpc/specter/list-membership-service.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..0e027d4ee6676792a5d8195ef50b6f39b24a44be
+--- /dev/null
++++ b/packages/trpc/specter/list-membership-service.ts
+@@ -0,0 +1,160 @@
++import type Database from "better-sqlite3";
++import {
++  createSpecterApp,
++  SpecterCommandRejectedError,
++} from "@specter-ts/core";
++
++import type { DB } from "@karakeep/db/drizzle";
++import serverConfig from "@karakeep/shared/config";
++
++import {
++  createKarakeepDatabaseSliceStore,
++  createKarakeepEventLog,
++  createKarakeepReactionScheduler,
++  prepareKarakeepSpecterDatabase,
++} from "../../../specter-evaluation/application-adapters";
++import { createAddBookmarkToList } from "./add-bookmark-to-list/impl";
++import { listMembershipEvents } from "./add-bookmark-to-list/events";
++import { createProjectBookmarkAddedToList } from "./project-bookmark-added-to-list/impl";
++
++type Sqlite = InstanceType<typeof Database>;
++
++const runtimes = new WeakMap<Sqlite, ReturnType<typeof buildRuntime>>();
++
++function prepareDomainProjectionTables(sqlite: Sqlite) {
++  prepareKarakeepSpecterDatabase(sqlite);
++  sqlite.exec(`
++    create table if not exists specter_list_decision_lists (
++      list_id text primary key,
++      list_type text not null
++    );
++    create table if not exists specter_list_decision_memberships (
++      list_id text not null,
++      bookmark_id text not null,
++      primary key(list_id, bookmark_id)
++    );
++    create table if not exists specter_list_latest_effect (
++      singleton integer primary key check(singleton = 1),
++      effect_json text not null
++    );
++  `);
++}
++
++async function buildRuntime(db: DB) {
++  const sqlite = db.$client;
++  prepareDomainProjectionTables(sqlite);
++  const eventLog = createKarakeepEventLog(sqlite);
++  const sliceStore = createKarakeepDatabaseSliceStore(sqlite);
++  const scheduler = createKarakeepReactionScheduler(serverConfig.dataDir);
++  const app = await createSpecterApp({
++    events: listMembershipEvents,
++    eventLog,
++    schedule: scheduler.schedule,
++    slices: [
++      createAddBookmarkToList(sliceStore),
++      createProjectBookmarkAddedToList(sliceStore, db),
++    ],
++  });
++  return { app, eventLog };
++}
++
++async function runtimeFor(db: DB) {
++  const sqlite = db.$client;
++  let runtime = runtimes.get(sqlite);
++  if (!runtime) {
++    runtime = buildRuntime(db);
++    runtimes.set(sqlite, runtime);
++  }
++  return runtime;
++}
++
++async function bootstrapCurrentMemberships(db: DB) {
++  const { eventLog } = await runtimeFor(db);
++  const sqlite = db.$client;
++  const lists = sqlite
++    .prepare("select id, type from bookmarkLists order by id")
++    .all() as { id: string; type: "manual" | "smart" }[];
++  for (const list of lists) {
++    const key = `karakeep-list-bootstrap-v1:${list.id}`;
++    if (await eventLog.findCommit(key)) continue;
++    await eventLog.append(
++      [
++        {
++          type: "bookmark-list-bootstrapped",
++          payload: { listId: list.id, type: list.type },
++        },
++      ],
++      { idempotencyKey: key, fingerprint: "bookmark-list-bootstrap-v1" },
++    );
++  }
++  const memberships = sqlite
++    .prepare(
++      `select m.listId as listId, m.bookmarkId as bookmarkId,
++              b.userId as userId, m.listMembershipId as listMembershipId,
++              m.addedAt as addedAt
++       from bookmarksInLists m
++       join bookmarks b on b.id = m.bookmarkId
++       order by m.listId, m.bookmarkId`,
++    )
++    .all() as {
++    listId: string;
++    bookmarkId: string;
++    userId: string;
++    listMembershipId: string | null;
++    addedAt: number | null;
++  }[];
++  const domainMemberships = new Set(
++    (await eventLog.query(0, ["bookmark-added-to-list"])).map((event) => {
++      const payload = event.payload as { listId: string; bookmarkId: string };
++      return `${payload.listId}:${payload.bookmarkId}`;
++    }),
++  );
++  for (const membership of memberships) {
++    if (
++      domainMemberships.has(`${membership.listId}:${membership.bookmarkId}`)
++    ) {
++      continue;
++    }
++    const key = `karakeep-membership-bootstrap-v1:${membership.listId}:${membership.bookmarkId}`;
++    if (await eventLog.findCommit(key)) continue;
++    await eventLog.append(
++      [{ type: "bookmark-list-membership-bootstrapped", payload: membership }],
++      {
++        idempotencyKey: key,
++        fingerprint: "bookmark-list-membership-bootstrap-v1",
++      },
++    );
++  }
++}
++
++export async function addBookmarkToListWithSpecter(
++  db: DB,
++  input: {
++    listId: string;
++    bookmarkId: string;
++    userId: string;
++    listMembershipId: string | null;
++    addedAt: string;
++  },
++) {
++  await bootstrapCurrentMemberships(db);
++  const { app } = await runtimeFor(db);
++  try {
++    const execution = await app.command({
++      type: "addBookmarkToList",
++      payload: input,
++    });
++    await execution.reactions;
++    return "added" as const;
++  } catch (error) {
++    if (error instanceof SpecterCommandRejectedError) {
++      const reason =
++        error.cause instanceof Error ? error.cause.message : error.message;
++      if (reason === "Bookmark is already in list")
++        return "already-present" as const;
++      if (reason === "Smart lists cannot be added to")
++        return "smart-list" as const;
++    }
++    throw error;
++  }
++}
+diff --git a/packages/trpc/specter/project-bookmark-added-to-list/impl.ts b/packages/trpc/specter/project-bookmark-added-to-list/impl.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..63ab91b842aab6e55a82f74f10a1e982b43a066a
+--- /dev/null
++++ b/packages/trpc/specter/project-bookmark-added-to-list/impl.ts
+@@ -0,0 +1,97 @@
++import type Database from "better-sqlite3";
++import type {
++  ReactionDeliveryContext,
++  SliceStoreAdapter,
++} from "@specter-ts/core";
++import { z } from "zod";
++
++import type { DB } from "@karakeep/db/drizzle";
++
++import { RuleEngine } from "../../lib/ruleEngine";
++import {
++  bookmarkAddedToList,
++  bookmarkListMembershipBootstrapped,
++} from "../add-bookmark-to-list/events";
++import { projectBookmarkAddedToListSpec } from "./spec";
++
++type Sqlite = InstanceType<typeof Database>;
++
++export function createProjectBookmarkAddedToList(
++  store: SliceStoreAdapter<Sqlite, Sqlite>,
++  db: DB,
++) {
++  return projectBookmarkAddedToListSpec
++    .outputSchema(
++      z.object({
++        listId: z.string().min(1),
++        bookmarkId: z.string().min(1),
++        userId: z.string().min(1),
++      }),
++    )
++    .plugin(async () => async (effect, context: ReactionDeliveryContext) => {
++      await RuleEngine.triggerOnEvent(
++        effect.userId,
++        effect.bookmarkId,
++        [{ type: "addedToList", listId: effect.listId }],
++        { idempotencyKey: `${context.deliveryId}:rule-engine` },
++        db,
++      );
++    })
++    .store(store)
++    .apply(bookmarkListMembershipBootstrapped, async (event, sqlite) => {
++      sqlite
++        .prepare(
++          `insert or ignore into bookmarksInLists(
++          bookmarkId, listId, addedAt, listMembershipId
++        ) values (?, ?, ?, ?)`,
++        )
++        .run(
++          event.payload.bookmarkId,
++          event.payload.listId,
++          event.payload.addedAt,
++          event.payload.listMembershipId,
++        );
++      sqlite.prepare("delete from specter_list_latest_effect").run();
++    })
++    .apply(bookmarkAddedToList, async (event, sqlite) => {
++      sqlite
++        .prepare(
++          `insert or ignore into bookmarksInLists(
++          bookmarkId, listId, addedAt, listMembershipId
++        ) values (?, ?, ?, ?)`,
++        )
++        .run(
++          event.payload.bookmarkId,
++          event.payload.listId,
++          Math.floor(Date.parse(event.payload.addedAt) / 1000),
++          event.payload.listMembershipId,
++        );
++      sqlite
++        .prepare(
++          `insert into specter_list_latest_effect(singleton, effect_json)
++           values (1, ?)
++           on conflict(singleton) do update set effect_json = excluded.effect_json`,
++        )
++        .run(
++          JSON.stringify({
++            listId: event.payload.listId,
++            bookmarkId: event.payload.bookmarkId,
++            userId: event.payload.userId,
++          }),
++        );
++    })
++    .handle(async (sqlite) => {
++      const row = sqlite
++        .prepare(
++          "select effect_json from specter_list_latest_effect where singleton = 1",
++        )
++        .get() as { effect_json: string } | undefined;
++      return row
++        ? (JSON.parse(row.effect_json) as {
++            listId: string;
++            bookmarkId: string;
++            userId: string;
++          })
++        : undefined;
++    });
++}
+diff --git a/packages/trpc/specter/project-bookmark-added-to-list/spec.ts b/packages/trpc/specter/project-bookmark-added-to-list/spec.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..fe34b198b6053dbdc30feddf07664b70ac4ceadf
+--- /dev/null
++++ b/packages/trpc/specter/project-bookmark-added-to-list/spec.ts
+@@ -0,0 +1,42 @@
++import { createReactionSlice, event } from "@specter-ts/core/spec";
++
++export const projectBookmarkAddedToListSpec = createReactionSlice(
++  "projectBookmarkAddedToList",
++)
++  .description("Projects list membership Events and notifies the Rule Engine.")
++  .scenarios(
++    {
++      description:
++        "Projects a bootstrap membership without a new Rule Engine effect.",
++      given: [
++        event("bookmark-list-membership-bootstrapped", {
++          listId: "list-1",
++          bookmarkId: "bookmark-1",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: 1_768_435_200,
++        }),
++      ],
++      expect: [],
++    },
++    {
++      description:
++        "Projects a newly added membership and requests Rule Engine work.",
++      given: [
++        event("bookmark-added-to-list", {
++          listId: "list-1",
++          bookmarkId: "bookmark-1",
++          userId: "user-1",
++          listMembershipId: null,
++          addedAt: "2026-07-18T12:00:00.000Z",
++        }),
++      ],
++      expect: [
++        {
++          listId: "list-1",
++          bookmarkId: "bookmark-1",
++          userId: "user-1",
++        },
++      ],
++    },
++  );
+diff --git a/specter-evaluation-log.jsonl b/specter-evaluation-log.jsonl
+new file mode 100644
+index 0000000000000000000000000000000000000000..42c2ecb7a5e7970bd40d6d3f595919e71115d9f4
+--- /dev/null
++++ b/specter-evaluation-log.jsonl
+@@ -0,0 +1,6 @@
++{"timestamp":"2026-07-19T01:57:54Z","phase":"setup","action":"inspect assignment and supplied skills","result":"Loaded specter-assignment.json and the supplied Specter skill from specter-evaluation/guidance/.agents/skills/specter/SKILL.md.","failure":"Initial workspace-standard skill path .agents/skills/specter/SKILL.md was absent; located the frozen supplied copy. No Codemod skill exists in the assigned worktree, so the single-operation adoption will use the supplied Specter workflow directly."}
++{"timestamp":"2026-07-19T01:59:02Z","phase":"setup","action":"verify frozen inputs and legacy snapshot","result":"All four supplied SHA-256 checks passed; read-only snapshot verification confirmed the fixed user, bookmark, manual and smart lists, baseline membership, 24 memberships, nine unrelated search queue records, and no verifier-owned Rule Engine record.","failure":null}
++{"timestamp":"2026-07-19T02:05:01Z","phase":"phase-1","action":"implement and verify application-owned adapters","result":"The visible adapter report passed all 16 Event Log, Slice Store, durable scheduler, restart, retry, and integrated Command/Reaction probe cases against data/db.db and data/queue.db.","failure":"The first report passed 10/16 cases. Workarounds corrected SQLite sequence reset, scheduler coalescing, inspection-triggered recovery, dead-letter retry budgeting, and preservation of disposable catch-up cursor publication across authoritative Event transaction rollback."}
++{"timestamp":"2026-07-19T02:16:17Z","phase":"phase-2","action":"migrate lists.addToList behind Specter","result":"Added explicit bootstrap Events, addBookmarkToList Command Scenarios and implementation, projection/Rule Engine Reaction, route mapping, boundary timestamp creation, and collaborator membership preservation. TRPC typecheck and all three domain acceptance commands pass.","failure":"An attempted offline workspace metadata refresh removed node_modules and then hit missing unrelated Restate metadata. Restored the original manifest and rebuilt dependencies strictly from the prepared local pnpm store with no network; no lockfile or dependency manifest change remains."}
++{"timestamp":"2026-07-19T02:22:47Z","phase":"summary","action":"complete scored brownfield adoption","result":"Adapter status: green, 16/16 visible cases. Domain status: green, exact accepted/manual, rejected/smart, rejected/duplicate, and bootstrap-preservation Scenarios execute; the public route preserves authorization, validation, 200 idempotent success, 400 smart-list error, collaborator membership, Rule Engine invocation, and all unchanged legacy readers asserted by acceptance. Commands run successfully: frozen digest verification; read-only snapshot verification before and after; adapter verifier twice after fixes; @karakeep/trpc typecheck; @karakeep/api typecheck; @karakeep/shared-server typecheck; @karakeep/workers typecheck; focused lists and sharedLists tests; six Slice Scenario tests; coordinator Vitest acceptance; TRPC format and lint; Next webpack production build; git diff --check. Principal implementation paths: specter-evaluation/application-adapters.ts, specter-evaluation/driver.ts, packages/trpc/specter/add-bookmark-to-list/events.ts, packages/trpc/specter/add-bookmark-to-list/spec.ts, packages/trpc/specter/add-bookmark-to-list/impl.ts, packages/trpc/specter/project-bookmark-added-to-list/spec.ts, packages/trpc/specter/project-bookmark-added-to-list/impl.ts, packages/trpc/specter/list-membership-service.ts, packages/trpc/routers/lists.ts. Principal test path: packages/trpc/specter/list-membership-scenarios.test.ts; coordinator acceptance remains specter-evaluation/list-operation.acceptance.test.ts.","failure":"Known failures: none in final validation. The Next build retains one pre-existing protobuf dynamic-require warning. The earlier offline pnpm metadata refresh and initial adapter report failures were resolved and are documented chronologically above."}
++{"timestamp":"2026-07-19T02:25:08Z","phase":"summary","action":"add explicit domain restart and replay evidence","result":"Added packages/trpc/specter/list-membership-restart.test.ts. A fresh Specter App and adapter construction over the same on-disk SQLite Event Log replays Events to reconstruct deleted legacy memberships, preserves exact boundary timestamps, proves unchanged SQL-reader compatibility, and proves a duplicate decision appends no Event. Both domain test files pass (7/7), followed by green TRPC typecheck, lint, format, root adapter lint/format, git diff --check, and JSONL validation.","failure":null}
+diff --git a/specter-evaluation/application-adapters.ts b/specter-evaluation/application-adapters.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..77f8fcdea0fd106f2e7736981a8afe31f7f8d115
+--- /dev/null
++++ b/specter-evaluation/application-adapters.ts
+@@ -0,0 +1,594 @@
++import { AsyncLocalStorage } from "node:async_hooks";
++import { randomUUID } from "node:crypto";
++import path from "node:path";
++import Database from "better-sqlite3";
++
++import {
++  SpecterIdempotencyConflictError,
++  SpecterVersionConflictError,
++} from "@specter-ts/core";
++import type {
++  EventDraft,
++  EventLogAdapter,
++  EventLogAppendOptions,
++  EventLogAppendResult,
++  EventLogTransaction,
++  PersistedEvent,
++  ReactionDeliveryContext,
++  ReactionScheduler,
++  SliceStore,
++  SliceStoreAdapter,
++} from "@specter-ts/core";
++import type {
++  AdapterHarnessRuntime,
++  ProbeReadState,
++  ProbeSliceStore,
++  ProbeWriteState,
++  ReactionDeliverySnapshot,
++} from "@specter-ts/brownfield-verifier";
++
++type Sqlite = InstanceType<typeof Database>;
++
++type EventTransactionContext = {
++  readonly slicePublications: Map<string, StagedSlice>;
++};
++const eventTransactionContext =
++  new AsyncLocalStorage<EventTransactionContext>();
++let eventTransactionTail = Promise.resolve();
++let sliceTransactionTail = Promise.resolve();
++
++function serialize<T>(kind: "event" | "slice", run: () => Promise<T>) {
++  const previous =
++    kind === "event" ? eventTransactionTail : sliceTransactionTail;
++  let release!: () => void;
++  const current = new Promise<void>((resolve) => {
++    release = resolve;
++  });
++  if (kind === "event") eventTransactionTail = previous.then(() => current);
++  else sliceTransactionTail = previous.then(() => current);
++  return previous.then(run).finally(release);
++}
++
++export function prepareKarakeepSpecterDatabase(db: Sqlite) {
++  db.pragma("journal_mode = WAL");
++  db.exec(`
++    create table if not exists specter_events (
++      event_order integer primary key autoincrement,
++      event_id text not null unique,
++      event_type text not null,
++      payload_json text not null,
++      recorded_at text not null
++    );
++    create table if not exists specter_commits (
++      idempotency_key text primary key,
++      fingerprint text,
++      committed_version integer not null,
++      first_event_order integer not null,
++      last_event_order integer not null
++    );
++    create table if not exists specter_slice_state (
++      slice_name text primary key,
++      last_applied_order integer not null default 0,
++      values_json text not null default '[]'
++    );
++  `);
++}
++
++function eventRows(
++  db: Sqlite,
++  where: string,
++  parameters: readonly unknown[],
++): PersistedEvent[] {
++  const rows = db
++    .prepare(
++      `select event_order, event_id, event_type, payload_json, recorded_at
++       from specter_events where ${where} order by event_order asc`,
++    )
++    .all(...parameters) as Array<{
++    event_order: number;
++    event_id: string;
++    event_type: string;
++    payload_json: string;
++    recorded_at: string;
++  }>;
++  return rows.map((row) => ({
++    id: row.event_id,
++    order: row.event_order,
++    type: row.event_type,
++    payload: JSON.parse(row.payload_json) as unknown,
++    recordedAt: row.recorded_at,
++  }));
++}
++
++export function createKarakeepEventLog(db: Sqlite): EventLogAdapter {
++  const query: EventLogTransaction["query"] = async (
++    afterOrder,
++    eventTypes,
++  ) => {
++    if (eventTypes.length === 0) return [];
++    return eventRows(
++      db,
++      `event_order > ? and event_type in (${eventTypes.map(() => "?").join(", ")})`,
++      [afterOrder, ...eventTypes],
++    );
++  };
++  const currentVersion = async () => {
++    const row = db
++      .prepare(
++        "select coalesce(max(event_order), 0) as version from specter_events",
++      )
++      .get() as { version: number };
++    return row.version;
++  };
++  const findCommit: EventLogTransaction["findCommit"] = async (
++    idempotencyKey,
++  ) => {
++    const row = db
++      .prepare(
++        `select idempotency_key, fingerprint, committed_version,
++                first_event_order, last_event_order
++         from specter_commits where idempotency_key = ?`,
++      )
++      .get(idempotencyKey) as
++      | {
++          idempotency_key: string;
++          fingerprint: string | null;
++          committed_version: number;
++          first_event_order: number;
++          last_event_order: number;
++        }
++      | undefined;
++    if (!row) return undefined;
++    return {
++      events: eventRows(db, "event_order between ? and ?", [
++        row.first_event_order,
++        row.last_event_order,
++      ]),
++      version: row.committed_version,
++      idempotencyKey: row.idempotency_key,
++      ...(row.fingerprint === null ? {} : { fingerprint: row.fingerprint }),
++    };
++  };
++
++  const appendInTransaction = async (
++    events: readonly EventDraft[],
++    options: EventLogAppendOptions = {},
++  ): Promise<EventLogAppendResult> => {
++    if (options.idempotencyKey) {
++      const existing = await findCommit(options.idempotencyKey);
++      if (existing) {
++        if (existing.fingerprint !== options.fingerprint) {
++          throw new SpecterIdempotencyConflictError(options.idempotencyKey);
++        }
++        return { ...existing, duplicate: true };
++      }
++    }
++    const version = await currentVersion();
++    if (
++      options.expectedVersion !== undefined &&
++      options.expectedVersion !== version
++    ) {
++      throw new SpecterVersionConflictError(options.expectedVersion, version);
++    }
++    const insert = db.prepare(
++      `insert into specter_events(event_id, event_type, payload_json, recorded_at)
++       values (?, ?, ?, ?)`,
++    );
++    const persisted: PersistedEvent[] = [];
++    for (const draft of events) {
++      const id = randomUUID();
++      const recordedAt = new Date().toISOString();
++      const result = insert.run(
++        id,
++        draft.type,
++        JSON.stringify(draft.payload),
++        recordedAt,
++      );
++      persisted.push({
++        id,
++        order: Number(result.lastInsertRowid),
++        type: draft.type,
++        payload: JSON.parse(JSON.stringify(draft.payload)) as unknown,
++        recordedAt,
++      });
++    }
++    const committedVersion = version + persisted.length;
++    if (options.idempotencyKey) {
++      const firstOrder = persisted.at(0)?.order ?? committedVersion;
++      const lastOrder = persisted.at(-1)?.order ?? committedVersion;
++      db.prepare(
++        `insert into specter_commits(
++          idempotency_key, fingerprint, committed_version,
++          first_event_order, last_event_order
++        ) values (?, ?, ?, ?, ?)`,
++      ).run(
++        options.idempotencyKey,
++        options.fingerprint ?? null,
++        committedVersion,
++        firstOrder,
++        lastOrder,
++      );
++    }
++    return {
++      events: persisted,
++      version: committedVersion,
++      ...(options.idempotencyKey
++        ? { idempotencyKey: options.idempotencyKey }
++        : {}),
++      ...(options.fingerprint ? { fingerprint: options.fingerprint } : {}),
++      duplicate: false,
++    };
++  };
++
++  const transaction: EventLogAdapter["transaction"] = async (run) => {
++    if (eventTransactionContext.getStore()) return run(api);
++    return serialize("event", async () => {
++      const context: EventTransactionContext = { slicePublications: new Map() };
++      db.exec("begin immediate");
++      try {
++        const result = await eventTransactionContext.run(context, () =>
++          run(api),
++        );
++        db.exec("commit");
++        return result;
++      } catch (error) {
++        if (db.inTransaction) db.exec("rollback");
++        for (const [sliceName, staged] of context.slicePublications) {
++          persistSlice(db, sliceName, staged);
++        }
++        throw error;
++      }
++    });
++  };
++  const append: EventLogAdapter["append"] = (events, options) =>
++    eventTransactionContext.getStore()
++      ? appendInTransaction(events, options)
++      : transaction((eventLog) => eventLog.append(events, options));
++  const api: EventLogAdapter = {
++    query,
++    currentVersion,
++    findCommit,
++    append,
++    transaction,
++  };
++  return api;
++}
++
++type StagedSlice = {
++  values: string[];
++  cursor: number;
++  publishRequested: boolean;
++};
++
++function loadSlice(db: Sqlite, sliceName: string): StagedSlice {
++  const row = db
++    .prepare(
++      `select last_applied_order, values_json from specter_slice_state where slice_name = ?`,
++    )
++    .get(sliceName) as
++    | { last_applied_order: number; values_json: string }
++    | undefined;
++  return {
++    values: row ? (JSON.parse(row.values_json) as string[]) : [],
++    cursor: row?.last_applied_order ?? 0,
++    publishRequested: false,
++  };
++}
++
++function persistSlice(db: Sqlite, sliceName: string, staged: StagedSlice) {
++  const current = loadSlice(db, sliceName).cursor;
++  if (staged.cursor < current) return;
++  db.prepare(
++    `insert into specter_slice_state(slice_name, last_applied_order, values_json)
++     values (?, ?, ?)
++     on conflict(slice_name) do update set
++       last_applied_order = excluded.last_applied_order,
++       values_json = excluded.values_json
++     where excluded.last_applied_order >= specter_slice_state.last_applied_order`,
++  ).run(sliceName, staged.cursor, JSON.stringify(staged.values));
++}
++
++function wrapSlice(
++  db: Sqlite,
++  sliceName: string,
++  staged: StagedSlice,
++  direct: boolean,
++): SliceStore<ProbeWriteState, ProbeReadState> {
++  return {
++    write: {
++      append: async (value) => {
++        staged.values.push(value);
++      },
++    },
++    read: {
++      values: async () => [...staged.values],
++    },
++    lastAppliedOrder: async () => staged.cursor,
++    setLastAppliedOrder: async (order) => {
++      if (order < staged.cursor) return;
++      staged.cursor = order;
++      staged.publishRequested = true;
++      if (direct) {
++        eventTransactionContext.getStore()?.slicePublications.set(sliceName, {
++          values: [...staged.values],
++          cursor: staged.cursor,
++          publishRequested: true,
++        });
++        persistSlice(db, sliceName, staged);
++      }
++    },
++  };
++}
++
++export function createKarakeepProbeSliceStore(db: Sqlite): ProbeSliceStore {
++  return {
++    async get(sliceName) {
++      return wrapSlice(db, sliceName, loadSlice(db, sliceName), true);
++    },
++    async transaction(sliceName, run) {
++      return serialize("slice", async () => {
++        db.exec("begin immediate");
++        const staged = loadSlice(db, sliceName);
++        try {
++          const result = await run(wrapSlice(db, sliceName, staged, false));
++          if (staged.publishRequested) persistSlice(db, sliceName, staged);
++          db.exec("commit");
++          return result;
++        } catch (error) {
++          if (db.inTransaction) db.exec("rollback");
++          throw error;
++        }
++      });
++    },
++  };
++}
++
++export function createKarakeepDatabaseSliceStore(
++  db: Sqlite,
++): SliceStoreAdapter<Sqlite, Sqlite> {
++  return {
++    async get(sliceName) {
++      const staged = loadSlice(db, sliceName);
++      return {
++        write: db,
++        read: db,
++        lastAppliedOrder: async () => staged.cursor,
++        setLastAppliedOrder: async (order) => {
++          if (order < staged.cursor) return;
++          staged.cursor = order;
++          staged.publishRequested = true;
++          eventTransactionContext.getStore()?.slicePublications.set(sliceName, {
++            values: [...staged.values],
++            cursor: staged.cursor,
++            publishRequested: true,
++          });
++          persistSlice(db, sliceName, staged);
++        },
++      };
++    },
++    async transaction(sliceName, run) {
++      return run(await this.get(sliceName));
++    },
++  };
++}
++
++function prepareQueueDatabase(db: Sqlite, recoverRunning = false) {
++  db.pragma("journal_mode = WAL");
++  db.exec(`
++    create table if not exists specter_reaction_deliveries (
++      delivery_id text primary key,
++      status text not null,
++      scheduled_at text not null,
++      attempt_ids_json text not null default '[]',
++      attempt_count integer not null default 0,
++      last_error text
++    );
++  `);
++  if (recoverRunning) {
++    db.prepare(
++      `update specter_reaction_deliveries set status = 'pending'
++       where status = 'running'`,
++    ).run();
++  }
++}
++
++type DeliveryRow = {
++  delivery_id: string;
++  status: "pending" | "running" | "completed" | "dead-letter";
++  scheduled_at: string;
++  attempt_ids_json: string;
++  attempt_count: number;
++  last_error: string | null;
++};
++
++function deliveryRows(db: Sqlite): DeliveryRow[] {
++  return db
++    .prepare(
++      `select delivery_id, status, scheduled_at, attempt_ids_json,
++              attempt_count, last_error
++       from specter_reaction_deliveries order by rowid asc`,
++    )
++    .all() as DeliveryRow[];
++}
++
++function createScheduler(db: Sqlite) {
++  let active: Promise<void> | undefined;
++  let closed = false;
++  let runCurrent:
++    | ((context: ReactionDeliveryContext) => Promise<void>)
++    | undefined;
++
++  const schedule: ReactionScheduler = (run) => {
++    runCurrent = run;
++    const request = () => {
++      if (closed) throw new Error("Reaction scheduler is closed");
++      const hasPending = db
++        .prepare(
++          "select 1 from specter_reaction_deliveries where status = 'pending' limit 1",
++        )
++        .get();
++      if (!hasPending) {
++        db.prepare(
++          `insert into specter_reaction_deliveries(
++            delivery_id, status, scheduled_at, attempt_ids_json, attempt_count
++          ) values (?, 'pending', ?, '[]', 0)`,
++        ).run(randomUUID(), new Date().toISOString());
++      }
++      if (!active) {
++        active = drain().finally(() => {
++          active = undefined;
++        });
++      }
++      const completion = active;
++      return () => completion;
++    };
++    return request;
++  };
++
++  async function drain() {
++    const failures: unknown[] = [];
++    while (!closed) {
++      const delivery = db
++        .prepare(
++          `select delivery_id, status, scheduled_at, attempt_ids_json,
++                  attempt_count, last_error
++           from specter_reaction_deliveries
++           where status = 'pending' order by rowid asc limit 1`,
++        )
++        .get() as DeliveryRow | undefined;
++      if (!delivery) break;
++      let completed = false;
++      let lastError: unknown;
++      const manualRetry = delivery.last_error === "__specter_manual_retry__";
++      const maximumAttempts = manualRetry ? delivery.attempt_count + 3 : 3;
++      while (delivery.attempt_count < maximumAttempts) {
++        delivery.attempt_count += 1;
++        const attemptId = randomUUID();
++        const attemptIds = JSON.parse(delivery.attempt_ids_json) as string[];
++        attemptIds.push(attemptId);
++        delivery.attempt_ids_json = JSON.stringify(attemptIds);
++        db.prepare(
++          `update specter_reaction_deliveries set
++             status = 'running', attempt_count = ?, attempt_ids_json = ?, last_error = null
++           where delivery_id = ?`,
++        ).run(
++          delivery.attempt_count,
++          delivery.attempt_ids_json,
++          delivery.delivery_id,
++        );
++        try {
++          await runCurrent?.({
++            deliveryId: delivery.delivery_id,
++            scheduledAt: delivery.scheduled_at,
++            attemptId,
++            attemptNumber: delivery.attempt_count,
++          });
++          db.prepare(
++            `update specter_reaction_deliveries set status = 'completed', last_error = null
++             where delivery_id = ?`,
++          ).run(delivery.delivery_id);
++          completed = true;
++          break;
++        } catch (error) {
++          lastError = error;
++          db.prepare(
++            `update specter_reaction_deliveries set last_error = ? where delivery_id = ?`,
++          ).run(
++            error instanceof Error ? error.message : String(error),
++            delivery.delivery_id,
++          );
++        }
++      }
++      if (!completed) {
++        db.prepare(
++          `update specter_reaction_deliveries set status = 'dead-letter' where delivery_id = ?`,
++        ).run(delivery.delivery_id);
++        failures.push(lastError);
++      }
++    }
++    if (failures.length > 0) throw failures[0];
++  }
++
++  return {
++    schedule,
++    async close(options?: { readonly crash?: boolean }) {
++      closed = true;
++      if (!options?.crash && active) await active;
++    },
++  };
++}
++
++export function resetVerifierRecords(dataDir: string) {
++  const domainDb = new Database(path.join(dataDir, "db.db"));
++  prepareKarakeepSpecterDatabase(domainDb);
++  domainDb.exec(
++    "delete from specter_commits; delete from specter_events; delete from specter_slice_state;",
++  );
++  domainDb
++    .prepare("delete from sqlite_sequence where name = 'specter_events'")
++    .run();
++  domainDb.close();
++  const queueDb = new Database(path.join(dataDir, "queue.db"));
++  prepareQueueDatabase(queueDb);
++  queueDb.prepare("delete from specter_reaction_deliveries").run();
++  queueDb.close();
++}
++
++export function openVerifierRuntime(dataDir: string): AdapterHarnessRuntime {
++  const domainDb = new Database(path.join(dataDir, "db.db"));
++  const queueDb = new Database(path.join(dataDir, "queue.db"));
++  prepareKarakeepSpecterDatabase(domainDb);
++  prepareQueueDatabase(queueDb, true);
++  const scheduler = createScheduler(queueDb);
++  return {
++    eventLog: createKarakeepEventLog(domainDb),
++    sliceStore: createKarakeepProbeSliceStore(domainDb),
++    schedule: scheduler.schedule,
++    async close(options) {
++      await scheduler.close(options);
++      domainDb.close();
++      queueDb.close();
++    },
++  };
++}
++
++export function createKarakeepReactionScheduler(dataDir: string) {
++  const db = new Database(path.join(dataDir, "queue.db"));
++  prepareQueueDatabase(db, true);
++  const scheduler = createScheduler(db);
++  return {
++    schedule: scheduler.schedule,
++    async close() {
++      await scheduler.close();
++      db.close();
++    },
++  };
++}
++
++export function verifierDeliveries(
++  dataDir: string,
++): ReactionDeliverySnapshot[] {
++  const db = new Database(path.join(dataDir, "queue.db"));
++  prepareQueueDatabase(db);
++  const rows = deliveryRows(db);
++  db.close();
++  return rows.map((row) => ({
++    deliveryId: row.delivery_id,
++    status: row.status,
++    scheduledAt: row.scheduled_at,
++    attemptIds: JSON.parse(row.attempt_ids_json) as string[],
++    attemptCount: row.attempt_count,
++    ...(row.last_error === null ? {} : { lastError: row.last_error }),
++  }));
++}
++
++export function retryVerifierDeadLetter(dataDir: string, deliveryId: string) {
++  const db = new Database(path.join(dataDir, "queue.db"));
++  prepareQueueDatabase(db);
++  db.prepare(
++    `update specter_reaction_deliveries
++     set status = 'pending', last_error = '__specter_manual_retry__'
++     where delivery_id = ? and status = 'dead-letter'`,
++  ).run(deliveryId);
++  db.close();
++}
+diff --git a/specter-evaluation/driver.ts b/specter-evaluation/driver.ts
+index 642524e926f5ac00dcbc2d17113f87ce7f816fd6..aed94fee9a7afd882c4cac42fb79295c62bc1f42 100644
+--- a/specter-evaluation/driver.ts
++++ b/specter-evaluation/driver.ts
+@@ -1,23 +1,27 @@
+ import type { AdapterHarnessDriver } from "@specter-ts/brownfield-verifier";
+ 
+-function unfinished(boundary: string): never {
+-  throw new Error(`Adapter verifier driver is not implemented: ${boundary}`);
+-}
++import {
++  openVerifierRuntime,
++  resetVerifierRecords,
++  retryVerifierDeadLetter,
++  verifierDeliveries,
++} from "./application-adapters.js";
++
++const dataDir = process.env.DATA_DIR;
++if (!dataDir) throw new Error("DATA_DIR is required for the adapter verifier");
+ 
+-// TODO(scored-adopter): Back this driver with Karakeep's existing SQLite and
+-// Liteque infrastructure.
+ export const adapterHarnessDriver: AdapterHarnessDriver = {
+   name: "karakeep-lists-add-to-list",
+   async reset() {
+-    unfinished("reset");
++    resetVerifierRecords(dataDir);
+   },
+   async open() {
+-    unfinished("open");
++    return openVerifierRuntime(dataDir);
+   },
+   async deliveries() {
+-    unfinished("deliveries");
++    return verifierDeliveries(dataDir);
+   },
+-  async retryDeadLetter() {
+-    unfinished("retryDeadLetter");
++  async retryDeadLetter(deliveryId) {
++    retryVerifierDeadLetter(dataDir, deliveryId);
+   },
+ };

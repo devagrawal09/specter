@@ -1,0 +1,88 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "specter-brownfield-adoption-v1-karakeep-01",
+  "applicationId": "karakeep",
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "startedAt": "2026-07-19T01:56:59.908Z",
+  "finishedAt": "2026-07-19T02:26:17.172Z",
+  "activeMilliseconds": 1757264,
+  "wallMilliseconds": 1757264,
+  "phaseTiming": {
+    "adapterMilliseconds": 481092,
+    "domainMilliseconds": 1276172
+  },
+  "firstAttempt": "failed",
+  "adapterReport": {
+    "status": "passed",
+    "passedCases": 16,
+    "totalCases": 16,
+    "driver": "karakeep-lists-add-to-list",
+    "evidenceStatus": "independent-first-freeze-verification",
+    "detail": "All visible adapter and integrated probe cases passed against the immutable first-attempt commit. The first attempt still failed because the immediately following exact readonly snapshot baseline could not open the WAL databases."
+  },
+  "domainChecks": [
+    {
+      "name": "domain-acceptance",
+      "status": "passed",
+      "detail": "All three exact frozen commands passed: focused lists 1/1, shared-list cases 2/2, and coordinator acceptance 2/2."
+    },
+    {
+      "name": "scenario-and-restart-coverage",
+      "status": "passed",
+      "detail": "Independent first-freeze verification passed six Command/Reaction Scenario cases and the persistent restart/replay case."
+    },
+    {
+      "name": "baseline-hashes-typechecks-build",
+      "status": "passed",
+      "detail": "Frozen input hashes, all four assigned typechecks, and the assigned Next.js webpack production build passed."
+    },
+    {
+      "name": "readonly-snapshot-first-handoff",
+      "status": "failed",
+      "detail": "The exact sqlite3 -readonly snapshot command failed with SQLite code 14 immediately after first-freeze verifier and domain execution because the SQLite lifecycle had not completed a readonly handoff."
+    },
+    {
+      "name": "chronological-log",
+      "status": "passed",
+      "detail": "Six append-only first-attempt JSONL records parse chronologically, all precede the coordinator freeze, and the file remained byte-for-byte preserved during remediation."
+    }
+  ],
+  "friction": [
+    {
+      "category": "adapter-contract",
+      "summary": "The first visible report passed 10/16; sequence reset, scheduler coalescing and recovery, retry budgeting, and disposable cursor publication needed correction before reaching 16/16.",
+      "phase": "adapter"
+    },
+    {
+      "category": "guidance",
+      "summary": "An offline workspace metadata refresh removed node_modules and encountered unrelated missing Restate metadata; the prepared local pnpm store restored the original dependency graph without network or manifest changes.",
+      "phase": "domain"
+    },
+    {
+      "category": "event-scenario-modeling",
+      "summary": "The selected operation required explicit bootstrap events, duplicate no-op semantics, durable Rule Engine reaction behavior, and replay coverage while preserving legacy readers.",
+      "phase": "domain"
+    },
+    {
+      "category": "lifecycle",
+      "summary": "SQLite WAL lifecycle left the persistent databases unavailable to the exact readonly snapshot handoff, causing the frozen first-attempt failure and requiring unscored remediation.",
+      "phase": "both"
+    }
+  ],
+  "iterationCount": 5,
+  "implementationSize": {
+    "adapterLines": 621,
+    "domainLines": 732
+  },
+  "sourcesConsulted": [
+    "specter-assignment.json",
+    "specter-evaluation/guidance/.agents/skills/specter/SKILL.md"
+  ],
+  "remediation": {
+    "status": "passed",
+    "additionalMilliseconds": 541503
+  }
+}

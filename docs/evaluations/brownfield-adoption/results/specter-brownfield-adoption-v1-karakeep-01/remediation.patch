@@ -1,0 +1,58 @@
+diff --git a/specter-evaluation/application-adapters.ts b/specter-evaluation/application-adapters.ts
+index 77f8fcdea0fd106f2e7736981a8afe31f7f8d115..fefc5b52197b2492a5c825b8a829fe538284208c 100644
+--- a/specter-evaluation/application-adapters.ts
++++ b/specter-evaluation/application-adapters.ts
+@@ -392,6 +392,23 @@ function prepareQueueDatabase(db: Sqlite, recoverRunning = false) {
+   }
+ }
+ 
++function finalizeOwnedSqlite(db: Sqlite) {
++  if (db.inTransaction) {
++    throw new Error(
++      "Cannot finalize an owned SQLite connection in a transaction",
++    );
++  }
++  db.pragma("wal_checkpoint(TRUNCATE)");
++  const journalMode = db.pragma("journal_mode = DELETE", {
++    simple: true,
++  }) as string;
++  if (journalMode.toLowerCase() !== "delete") {
++    throw new Error(
++      `Expected owned SQLite connection to hand off in DELETE mode, received ${journalMode}`,
++    );
++  }
++}
++
+ type DeliveryRow = {
+   delivery_id: string;
+   status: "pending" | "running" | "completed" | "dead-letter";
+@@ -527,10 +544,12 @@ export function resetVerifierRecords(dataDir: string) {
+   domainDb
+     .prepare("delete from sqlite_sequence where name = 'specter_events'")
+     .run();
++  finalizeOwnedSqlite(domainDb);
+   domainDb.close();
+   const queueDb = new Database(path.join(dataDir, "queue.db"));
+   prepareQueueDatabase(queueDb);
+   queueDb.prepare("delete from specter_reaction_deliveries").run();
++  finalizeOwnedSqlite(queueDb);
+   queueDb.close();
+ }
+ 
+@@ -546,6 +565,8 @@ export function openVerifierRuntime(dataDir: string): AdapterHarnessRuntime {
+     schedule: scheduler.schedule,
+     async close(options) {
+       await scheduler.close(options);
++      finalizeOwnedSqlite(domainDb);
++      finalizeOwnedSqlite(queueDb);
+       domainDb.close();
+       queueDb.close();
+     },
+@@ -560,6 +581,7 @@ export function createKarakeepReactionScheduler(dataDir: string) {
+     schedule: scheduler.schedule,
+     async close() {
+       await scheduler.close();
++      finalizeOwnedSqlite(db);
+       db.close();
+     },
+   };

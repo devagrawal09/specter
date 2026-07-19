@@ -1,0 +1,40 @@
+attempt: specter-brownfield-adoption-v1-karakeep-01
+assignment: a8e01ad9b0664e3e4ed28a0d8491395bd2715d88
+first-attempt-freeze: 12bba57cdd7675ea84475dfbef2fe0cb210bfaa5
+remediation-freeze: 07b66d85df957e5b941af259f3ca347634190fc1
+
+Independent first-freeze validation
+PASS visible adapter verifier: 16/16
+PASS exact domain acceptance: focused lists 1/1, shared-list cases 2/2, coordinator cases 2/2
+PASS explicit Command/Reaction Scenarios: 6/6
+PASS persistent restart/replay: 1/1
+PASS frozen input hashes
+PASS all four assigned typechecks
+PASS assigned Next.js webpack build
+PASS git diff --check
+PASS first-attempt JSONL: 6 chronological records, all before freeze
+FAIL exact readonly snapshot handoff: sqlite3 exited 14 / unable to open database file immediately after verifier and domain execution
+RESULT first attempt failed
+
+Unscored same-child remediation
+PASS original first-attempt commit and JSONL preserved byte-for-byte
+PASS fresh seed and migration reproduced the readonly handoff failure
+PASS owned SQLite connections refuse active transactions before close
+PASS wal_checkpoint(TRUNCATE) and journal_mode=DELETE complete the application-owned handoff
+PASS visible adapter verifier: 16/16
+PASS exact readonly snapshot immediately after verifier with no coordinator checkpoint
+PASS exact domain acceptance: 1/1, 2/2, 2/2
+PASS Scenarios 6/6 and persistent restart/replay 1/1
+PASS all four assigned typechecks, lint, format, build, and git diff --check
+RESULT remediation passed
+
+Coordinator confirmation
+PASS pinned Node 24 rerun: adapter verifier 16/16 followed immediately by exact sqlite3 -readonly snapshot
+
+Published evidence validation
+PASS result.json against frozen Draft 2020-12 result schema with date-time formats
+PASS exactly seven files
+PASS both JSONL files parse chronologically and match their frozen commits byte-for-byte
+PASS first-attempt.patch and remediation.patch match the frozen commit diffs and pass forward/reverse apply checks with whitespace errors enabled
+PASS verifier.json reports 16/16 passed
+PASS targeted credential and coordinator-path scan
