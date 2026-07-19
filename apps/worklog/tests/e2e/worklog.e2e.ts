@@ -134,6 +134,52 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   })
   expect(score).toMatchObject({ ok: true, transport: 'http' })
   expect(score.result.total).toBeGreaterThan(0)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
+  const mobileTimelineLayout = await page.evaluate(() => {
+    const nav = document.querySelector('nav')
+    const quickTask = document
+      .querySelector('input[aria-label="Task title"]')
+      ?.closest('form')
+    const navRect = nav?.getBoundingClientRect()
+    return {
+      horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
+      navPosition: nav ? getComputedStyle(nav).position : null,
+      navBottom: navRect ? Math.round(navRect.bottom) : null,
+      viewportHeight: innerHeight,
+      quickTaskWidth: quickTask?.getBoundingClientRect().width ?? 0,
+    }
+  })
+  expect(mobileTimelineLayout).toMatchObject({
+    horizontalOverflow: 0,
+    navPosition: 'fixed',
+    navBottom: mobileTimelineLayout.viewportHeight - 12,
+  })
+  expect(mobileTimelineLayout.quickTaskWidth).toBeGreaterThan(340)
+
+  await page.getByRole('button', { name: 'tasks', exact: true }).click()
+  const activeTaskRow = page
+    .locator('article.task-row')
+    .filter({ hasText: cliTask })
+  await expect(activeTaskRow).toBeVisible()
+  await expect(
+    activeTaskRow.getByRole('button', { name: 'Archive', exact: true }),
+  ).toBeVisible()
+
+  await page.setViewportSize({ width: 1280, height: 900 })
+  const desktopLayout = await page.evaluate(() => ({
+    horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
+    navPosition: getComputedStyle(document.querySelector('nav')!).position,
+    contentColumns: getComputedStyle(
+      document.querySelector('.content-grid')!,
+    ).gridTemplateColumns.split(' ').length,
+  }))
+  expect(desktopLayout).toEqual({
+    horizontalOverflow: 0,
+    navPosition: 'static',
+    contentColumns: 2,
+  })
 })
 
 async function runCli(mode: 'command' | 'query', envelope: unknown) {

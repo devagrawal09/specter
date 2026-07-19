@@ -624,42 +624,44 @@ function TaskRow(props: {
           {props.task.notes ? ` · ${props.task.notes}` : ''}
         </small>
       </div>
-      <button
-        type="button"
-        class="ghost"
-        onClick={async () => {
-          const title = window.prompt('Edit task', props.task.title)?.trim()
-          if (title)
-            await props.run({
-              type: 'editTask',
+      <div class="task-actions">
+        <button
+          type="button"
+          class="ghost"
+          onClick={async () => {
+            const title = window.prompt('Edit task', props.task.title)?.trim()
+            if (title)
+              await props.run({
+                type: 'editTask',
+                payload: {
+                  taskId: props.task.id,
+                  title,
+                  notes: props.task.notes,
+                  dueAt: props.task.dueAt,
+                  editedAt: new Date().toISOString(),
+                },
+              })
+          }}
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          class="ghost danger"
+          onClick={() =>
+            props.run({
+              type: 'changeTaskArchived',
               payload: {
                 taskId: props.task.id,
-                title,
-                notes: props.task.notes,
-                dueAt: props.task.dueAt,
-                editedAt: new Date().toISOString(),
+                archived: true,
+                changedAt: new Date().toISOString(),
               },
             })
-        }}
-      >
-        Edit
-      </button>
-      <button
-        type="button"
-        class="ghost danger"
-        onClick={() =>
-          props.run({
-            type: 'changeTaskArchived',
-            payload: {
-              taskId: props.task.id,
-              archived: true,
-              changedAt: new Date().toISOString(),
-            },
-          })
-        }
-      >
-        Archive
-      </button>
+          }
+        >
+          Archive
+        </button>
+      </div>
     </article>
   )
 }
