@@ -79,8 +79,15 @@ health check never fall back to SQLite, avoiding ambiguous duplicate writes.
 The production server binds only to `127.0.0.1`. Specter API requests also
 require JSON bodies, a Worklog client header, a loopback Host, and a trusted
 same-origin browser Origin. These controls keep the unauthenticated local API
-out of reach of LAN clients and cross-origin form submissions; Worklog is not
-designed to be exposed through a remote bind or reverse proxy.
+out of reach of LAN clients and cross-origin form submissions by default.
+
+An authenticated private reverse proxy such as Tailscale Serve can be opted in
+without changing the loopback bind. Set `WORKLOG_TRUSTED_HOSTNAMES` to a
+comma-separated list of exact proxy hostnames; wildcards and suffix matches are
+not supported. When the proxy terminates HTTPS, also list its exact HTTPS origin
+in `WORKLOG_TRUSTED_ORIGINS`. These options only change Host and Origin
+validation, so the proxy remains responsible for authentication and HTTPS. Do
+not use them to expose Worklog through an unauthenticated public proxy.
 
 ## Backup
 

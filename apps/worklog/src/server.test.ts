@@ -17,12 +17,16 @@ let tempDir: string
 beforeAll(async () => {
   tempDir = mkdtempSync(join(tmpdir(), 'worklog-'))
   process.env.WORKLOG_SQLITE_PATH = join(tempDir, 'worklog.db')
+  process.env.WORKLOG_TRUSTED_HOSTNAMES = 'worklog.tailnet.example'
+  process.env.WORKLOG_TRUSTED_ORIGINS = 'https://worklog.tailnet.example'
   app = (await import('./server')).default
 })
 
 afterAll(async () => {
   await app.shutdown()
   delete process.env.WORKLOG_SQLITE_PATH
+  delete process.env.WORKLOG_TRUSTED_HOSTNAMES
+  delete process.env.WORKLOG_TRUSTED_ORIGINS
   rmSync(tempDir, { recursive: true, force: true })
 })
 
@@ -182,6 +186,38 @@ test('rejects untrusted browser requests before command dispatch', async () => {
   expect(await tasks.json()).not.toEqual(
     expect.arrayContaining([expect.objectContaining({ id: 'hostile-task' })]),
   )
+})
+
+test('accepts an exact trusted proxy hostname with a same-origin browser request', async () => {
+  const trustedHost = await app.fetch(
+    new Request('http://worklog.tailnet.example/api/query', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://worklog.tailnet.example',
+        [specterClientHeader]: specterClientHeaderValue,
+      },
+      body: JSON.stringify({
+        envelope: { type: 'scoreQuery', payload: { limit: 50 } },
+      }),
+    }),
+  )
+  expect(trustedHost.status).toBe(200)
+
+  const siblingHost = await app.fetch(
+    new Request('https://other.worklog.tailnet.example/api/query', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://other.worklog.tailnet.example',
+        [specterClientHeader]: specterClientHeaderValue,
+      },
+      body: JSON.stringify({
+        envelope: { type: 'scoreQuery', payload: { limit: 50 } },
+      }),
+    }),
+  )
+  expect(siblingHost.status).toBe(403)
 })
 
 function postJson(path: string, body: unknown) {

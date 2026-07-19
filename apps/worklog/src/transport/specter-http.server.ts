@@ -26,6 +26,7 @@ export type SpecterHttpHandlerOptions<TConfig extends SpecterAppConfig> = {
   readonly run?: RunInContext
   readonly reactionRetentionMs?: number
   readonly reactionTickets?: SpecterReactionTicketStore
+  readonly allowedHostnames?: readonly string[]
   readonly allowedOrigins?: readonly string[]
 }
 
@@ -116,6 +117,9 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
   const reactionRetentionMs = options.reactionRetentionMs ?? 5 * 60_000
   const reactionTickets =
     options.reactionTickets ?? createMemoryReactionTicketStore()
+  const allowedHostnames = new Set(
+    (options.allowedHostnames ?? []).map(normalizeHostname).filter(Boolean),
+  )
   const allowedOrigins = new Set(options.allowedOrigins ?? [])
   const activeSubscriptions = new Set<(reason?: unknown) => Promise<void>>()
   const pendingSubscriptionSetups = new Set<{
@@ -139,7 +143,7 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
     }
 
     try {
-      validateLocalRequest(request, allowedOrigins)
+      validateLocalRequest(request, allowedHostnames, allowedOrigins)
 
       if (request.method === 'POST' && route === '/command') {
         return await handleCommand(request)
@@ -515,13 +519,15 @@ class SpecterTransportClosingError extends Error {
 
 function validateLocalRequest(
   request: Request,
+  allowedHostnames: ReadonlySet<string>,
   allowedOrigins: ReadonlySet<string>,
 ) {
   const url = new URL(request.url)
-  if (!isLoopbackHostname(url.hostname)) {
+  const hostname = normalizeHostname(url.hostname)
+  if (!isLoopbackHostname(hostname) && !allowedHostnames.has(hostname)) {
     throw new SpecterTransportAccessError(
       'SPECTER_TRANSPORT_UNTRUSTED_HOST',
-      'Specter transport only accepts loopback hosts.',
+      'Specter transport only accepts loopback or explicitly trusted hosts.',
     )
   }
 
@@ -559,6 +565,10 @@ function isLoopbackHostname(hostname: string) {
   return (
     hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
   )
+}
+
+function normalizeHostname(hostname: string) {
+  return hostname.trim().toLowerCase().replace(/\.$/, '')
 }
 
 function serializeError(cause: unknown): SerializedError {
