@@ -1,0 +1,7 @@
+{
+  "language": "tsx",
+  "params": {
+    "minimum_lines": "3",
+    "minimum_call_sites": "3"
+  }
+}
