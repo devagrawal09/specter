@@ -8,8 +8,14 @@ const verificationDirectory = await mkdtemp(
   path.join(tmpdir(), 'specter-worklog-production-listener-'),
 )
 const databasePath = path.join(verificationDirectory, 'worklog.db')
+const verificationPort = 41737
+const verificationBaseUrl = `http://127.0.0.1:${verificationPort}`
 const child = spawn(process.execPath, ['dist/index.js'], {
-  env: { ...process.env, WORKLOG_SQLITE_PATH: databasePath },
+  env: {
+    ...process.env,
+    WORKLOG_PORT: String(verificationPort),
+    WORKLOG_SQLITE_PATH: databasePath,
+  },
   stdio: ['ignore', 'pipe', 'pipe'],
 })
 
@@ -25,10 +31,10 @@ child.stderr.on('data', (chunk) => {
 try {
   await waitForListener()
 
-  const health = await fetch('http://127.0.0.1:41736/api/health')
+  const health = await fetch(`${verificationBaseUrl}/api/health`)
   if (!health.ok) throw new Error(`Loopback health check returned ${health.status}`)
 
-  const subscription = await fetch('http://127.0.0.1:41736/api/subscribe', {
+  const subscription = await fetch(`${verificationBaseUrl}/api/subscribe`, {
     method: 'POST',
     headers: {
       accept: 'text/event-stream',
@@ -56,7 +62,7 @@ try {
     .find((entry) => entry.family === 'IPv4' && !entry.internal)?.address
   if (externalAddress) {
     try {
-      await fetch(`http://${externalAddress}:41736/api/health`, {
+      await fetch(`http://${externalAddress}:${verificationPort}/api/health`, {
         signal: AbortSignal.timeout(750),
       })
       throw new Error(`Production server accepted a non-loopback connection at ${externalAddress}`)
@@ -140,7 +146,7 @@ function beginDelayedCommand() {
   const request = http.request(
     {
       hostname: '127.0.0.1',
-      port: 41736,
+      port: verificationPort,
       path: '/api/command',
       method: 'POST',
       headers: {
@@ -198,7 +204,10 @@ function waitForExit(timeoutMs) {
 }
 
 async function waitForListener() {
-  await waitForOutput('WORKLOG_LISTENING 127.0.0.1:41736', 15_000)
+  await waitForOutput(
+    `WORKLOG_LISTENING 127.0.0.1:${verificationPort}`,
+    15_000,
+  )
 }
 
 async function waitForOutput(message, timeoutMs) {
