@@ -1,0 +1,96 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "specter-brownfield-adoption-v1-karakeep-02",
+  "applicationId": "karakeep",
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "startedAt": "2026-07-18T21:52:39.508Z",
+  "finishedAt": "2026-07-18T22:17:11.587Z",
+  "activeMilliseconds": 1472079,
+  "wallMilliseconds": 1472079,
+  "phaseTiming": {
+    "adapterMilliseconds": 632492,
+    "domainMilliseconds": 839587
+  },
+  "firstAttempt": "failed",
+  "adapterReport": {
+    "status": "passed",
+    "passedCases": 16,
+    "totalCases": 16,
+    "driver": "karakeep-lists-add-to-list",
+    "evidenceStatus": "independent-first-freeze-verification",
+    "detail": "All visible adapter and probe cases passed against the frozen first-attempt commit. The first attempt still failed because the immediately following exact readonly snapshot baseline could not open the WAL databases without coordinator-only writable checkpoints."
+  },
+  "domainChecks": [
+    {
+      "name": "domain-acceptance",
+      "status": "passed",
+      "detail": "All three frozen domain commands passed: lists 1/1, shared lists 2/2, and coordinator acceptance 2/2."
+    },
+    {
+      "name": "scenario-and-runtime-coverage",
+      "status": "passed",
+      "detail": "Independent post-freeze verification against immutable first-freeze commit 2b70192e5257fabc7597ec795d1affcff0cc3cbd passed exact Command/Reaction Scenarios 4/4 and bootstrap/replay/malformed-input runtime tests 2/2."
+    },
+    {
+      "name": "baseline-hashes-typechecks-build",
+      "status": "passed",
+      "detail": "Frozen hashes, all four assigned typechecks, and the assigned Next.js production build passed."
+    },
+    {
+      "name": "readonly-snapshot-first-handoff",
+      "status": "failed",
+      "detail": "The exact sqlite3 -readonly snapshot command failed with SQLITE_CANTOPEN immediately after verifier and domain execution. A later pass required coordinator-only writable WAL checkpoints."
+    },
+    {
+      "name": "persistent-restart-smoke",
+      "status": "passed",
+      "detail": "Post-freeze causal smoke proved web and real worker health on fixed ports, fresh-process durable pending state, worker drain, verifier-row cleanup, and clean port teardown."
+    },
+    {
+      "name": "chronological-log",
+      "status": "failed",
+      "detail": "All 15 first-attempt entries are preserved, but several timestamps postdate the coordinator freeze and were excluded from elapsed-time accounting."
+    }
+  ],
+  "friction": [
+    {
+      "category": "adapter-contract",
+      "summary": "Verifier resets also had to reset SQLite AUTOINCREMENT state, and command rollback initially coupled the disposable projection cursor to the Event Log transaction.",
+      "phase": "adapter"
+    },
+    {
+      "category": "bootstrap",
+      "summary": "A projected membership changed the legacy fingerprint after initial bootstrap, so an existing bootstrap receipt had to become the stable initial-state fact.",
+      "phase": "domain"
+    },
+    {
+      "category": "event-scenario-modeling",
+      "summary": "Concrete schema inference, scheduler attempt annotations, and the Reaction Scenario expect shape required type-driven repair.",
+      "phase": "domain"
+    },
+    {
+      "category": "lifecycle",
+      "summary": "SQLite WAL lifecycle left both persistent databases unreadable to the exact readonly snapshot verifier until an external writable checkpoint; this caused the first-attempt failure.",
+      "phase": "both"
+    }
+  ],
+  "iterationCount": 8,
+  "implementationSize": {
+    "adapterLines": 695,
+    "domainLines": 629
+  },
+  "sourcesConsulted": [
+    ".specter-coordinator/adopter-prompt.md",
+    "specter-assignment.json",
+    "specter-evaluation/guidance/.agents/skills/specter/SKILL.md",
+    "specter-evaluation/guidance/docs/guides/brownfield-adoption.md",
+    "specter-evaluation/guidance/docs/guides/runtime-boundaries.md"
+  ],
+  "remediation": {
+    "status": "passed",
+    "additionalMilliseconds": 458335
+  }
+}

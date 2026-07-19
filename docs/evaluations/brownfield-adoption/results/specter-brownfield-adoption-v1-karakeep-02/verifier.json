@@ -1,0 +1,105 @@
+{
+  "schemaVersion": 1,
+  "driver": "karakeep-lists-add-to-list",
+  "startedAt": "2026-07-18T22:21:17.503Z",
+  "finishedAt": "2026-07-18T22:21:19.591Z",
+  "passed": true,
+  "cases": [
+    {
+      "id": "event-log.order-filter-json",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 9
+    },
+    {
+      "id": "event-log.transaction-rollback",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "event-log.transaction-serializes-decision",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 2008
+    },
+    {
+      "id": "event-log.concurrent-version",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "event-log.idempotency",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "event-log.restart-durability",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "slice-store.staging-rollback",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "slice-store.failure-replay",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "slice-store.monotonic-isolation",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "slice-store.restart-durability",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "scheduler.serializes-coalesces",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.dead-letter-preserves-active-follow-up",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.retry-context",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.dead-letter-retry",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.restart-recovery",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 10
+    },
+    {
+      "id": "probe.command-reaction-restart",
+      "boundary": "probe",
+      "status": "passed",
+      "durationMs": 6
+    }
+  ]
+}

@@ -1,0 +1,1619 @@
+diff --git a/server/migrations/20260718220000-create-specter-storage.js b/server/migrations/20260718220000-create-specter-storage.js
+new file mode 100644
+index 0000000..1bff082
+--- /dev/null
++++ b/server/migrations/20260718220000-create-specter-storage.js
+@@ -0,0 +1,35 @@
++module.exports = {
++  async up(queryInterface) {
++    await queryInterface.sequelize
++      .query(`CREATE TABLE IF NOT EXISTS specter_events (
++      event_order BIGSERIAL PRIMARY KEY,
++      id UUID NOT NULL UNIQUE,
++      type TEXT NOT NULL,
++      payload JSONB NOT NULL,
++      recorded_at TIMESTAMPTZ NOT NULL
++    )`);
++    await queryInterface.sequelize
++      .query(`CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
++      ON specter_events(type, event_order)`);
++    await queryInterface.sequelize
++      .query(`CREATE TABLE IF NOT EXISTS specter_event_commits (
++      idempotency_key TEXT PRIMARY KEY,
++      fingerprint TEXT,
++      first_event_order BIGINT NOT NULL,
++      last_event_order BIGINT NOT NULL,
++      committed_at TIMESTAMPTZ NOT NULL
++    )`);
++    await queryInterface.sequelize
++      .query(`CREATE TABLE IF NOT EXISTS specter_slice_states (
++      slice_name TEXT PRIMARY KEY,
++      state_json JSONB NOT NULL,
++      last_applied_order BIGINT NOT NULL
++    )`);
++  },
++
++  async down(queryInterface) {
++    await queryInterface.dropTable("specter_slice_states");
++    await queryInterface.dropTable("specter_event_commits");
++    await queryInterface.dropTable("specter_events");
++  },
++};
+diff --git a/server/routes/api/accessRequests/accessRequests.test.ts b/server/routes/api/accessRequests/accessRequests.test.ts
+index 2fed31a..0fbe299 100644
+--- a/server/routes/api/accessRequests/accessRequests.test.ts
++++ b/server/routes/api/accessRequests/accessRequests.test.ts
+@@ -1,4 +1,5 @@
+ import { CollectionPermission, DocumentPermission } from "@shared/types";
++import { QueryTypes } from "sequelize";
+ import { AccessRequest, UserMembership } from "@server/models";
+ import { AccessRequestStatus } from "@server/models/AccessRequest";
+ import {
+@@ -9,16 +10,28 @@ import {
+   buildUser,
+ } from "@server/test/factories";
+ import { getTestServer } from "@server/test/support";
++import { sequelize } from "@server/storage/database";
+ 
+ const server = getTestServer();
+ 
+ describe("#accessRequests.create", () => {
+   it("should require id", async () => {
+     const user = await buildUser();
++    const before = await sequelize.query<{ count: string }>(
++      `SELECT COUNT(*) AS count FROM specter_events
++        WHERE type = 'document-access-requested'`,
++      { type: QueryTypes.SELECT }
++    );
+     const res = await server.post("/api/accessRequests.create", user);
+     const body = await res.json();
+     expect(res.status).toEqual(400);
+     expect(body.message).toEqual("documentId: Must be a valid UUID or slug");
++    const after = await sequelize.query<{ count: string }>(
++      `SELECT COUNT(*) AS count FROM specter_events
++        WHERE type = 'document-access-requested'`,
++      { type: QueryTypes.SELECT }
++    );
++    expect(after[0]?.count).toEqual(before[0]?.count);
+   });
+ 
+   it("should require authentication", async () => {
+diff --git a/server/routes/api/accessRequests/accessRequests.ts b/server/routes/api/accessRequests/accessRequests.ts
+index e6dd152..0b13689 100644
+--- a/server/routes/api/accessRequests/accessRequests.ts
++++ b/server/routes/api/accessRequests/accessRequests.ts
+@@ -1,4 +1,6 @@
++import { randomUUID } from "node:crypto";
+ import Router from "koa-router";
++import { SpecterCommandRejectedError } from "@specter-ts/core";
+ import auth from "@server/middlewares/authentication";
+ import { rateLimiter } from "@server/middlewares/rateLimiter";
+ import { transaction } from "@server/middlewares/transaction";
+@@ -11,6 +13,7 @@ import type { APIContext } from "@server/types";
+ import { RateLimiterStrategy } from "@server/utils/RateLimiter";
+ import * as T from "./schema";
+ import { InvalidRequestError, NotFoundError } from "@server/errors";
++import { accessRequestSpecterApp } from "@server/specter/accessRequests/runtime";
+ 
+ const router = new Router();
+ 
+@@ -38,11 +41,41 @@ router.post(
+       throw NotFoundError();
+     }
+ 
+-    const accessRequest = await AccessRequest.createWithCtx(ctx, {
+-      documentId: document.id,
+-      teamId: user.teamId,
+-      userId: user.id,
+-      status: AccessRequestStatus.Pending,
++    const accessRequestId = randomUUID();
++    const requestedAt = new Date().toISOString();
++    const app = await accessRequestSpecterApp();
++    try {
++      const execution = await app.command(
++        {
++          type: "requestDocumentAccess",
++          payload: {
++            accessRequestId,
++            documentId: document.id,
++            teamId: user.teamId,
++            userId: user.id,
++            status: AccessRequestStatus.Pending,
++            createdAt: requestedAt,
++            updatedAt: requestedAt,
++            actorId: user.id,
++            ip: ctx.request.ip ?? null,
++            authType: ctx.state.auth.type ?? null,
++          },
++        },
++        { idempotencyKey: accessRequestId }
++      );
++      await execution.reactions;
++    } catch (error) {
++      if (error instanceof SpecterCommandRejectedError) {
++        const cause = (error as Error & { cause?: unknown }).cause;
++        const reason = cause instanceof Error ? cause.message : error.message;
++        throw InvalidRequestError(reason);
++      }
++      throw error;
++    }
++
++    const accessRequest = await AccessRequest.findByPk(accessRequestId, {
++      transaction,
++      rejectOnEmpty: true,
+     });
+ 
+     ctx.body = {
+diff --git a/server/specter/accessRequests/events.ts b/server/specter/accessRequests/events.ts
+new file mode 100644
+index 0000000..dee16e4
+--- /dev/null
++++ b/server/specter/accessRequests/events.ts
+@@ -0,0 +1,40 @@
++import { createEventDefinition } from "@specter-ts/core";
++import { z } from "zod";
++
++export const pendingAccessRequestSchema = z.object({
++  accessRequestId: z.string().uuid(),
++  documentId: z.string().uuid(),
++  userId: z.string().uuid(),
++  teamId: z.string().uuid(),
++  status: z.literal("pending"),
++  createdAt: z.string().datetime(),
++  updatedAt: z.string().datetime(),
++});
++
++export const pendingAccessRequestBootstrappedEvent = createEventDefinition(
++  "pending-access-request-bootstrapped",
++  pendingAccessRequestSchema
++);
++
++export const documentAccessRequestedSchema = pendingAccessRequestSchema.extend({
++  actorId: z.string().uuid(),
++  ip: z.string().nullable(),
++  authType: z.string().nullable(),
++});
++
++export const documentAccessRequestedEvent = createEventDefinition(
++  "document-access-requested",
++  documentAccessRequestedSchema
++);
++
++export const accessRequestEventDefinitions = [
++  pendingAccessRequestBootstrappedEvent,
++  documentAccessRequestedEvent,
++] as const;
++
++export type PendingAccessRequestPayload = z.infer<
++  typeof pendingAccessRequestSchema
++>;
++export type DocumentAccessRequestedPayload = z.infer<
++  typeof documentAccessRequestedSchema
++>;
+diff --git a/server/specter/accessRequests/impl.ts b/server/specter/accessRequests/impl.ts
+new file mode 100644
+index 0000000..215ba2f
+--- /dev/null
++++ b/server/specter/accessRequests/impl.ts
+@@ -0,0 +1,34 @@
++import { z } from "zod";
++import {
++  documentAccessRequestedEvent,
++  pendingAccessRequestBootstrappedEvent,
++} from "./events";
++import { requestDocumentAccessSpec } from "./spec";
++import { accessRequestSliceStore } from "./store";
++
++export const requestDocumentAccess = requestDocumentAccessSpec
++  .inputSchema(
++    z.object({
++      accessRequestId: z.string().uuid(),
++      documentId: z.string().uuid(),
++      userId: z.string().uuid(),
++      teamId: z.string().uuid(),
++      status: z.literal("pending"),
++      createdAt: z.string().datetime(),
++      updatedAt: z.string().datetime(),
++      actorId: z.string().uuid(),
++      ip: z.string().nullable(),
++      authType: z.string().nullable(),
++    })
++  )
++  .store(accessRequestSliceStore)
++  .apply(pendingAccessRequestBootstrappedEvent, async () => undefined)
++  .apply(documentAccessRequestedEvent, async () => undefined)
++  .handle(async (command, state) => {
++    if (await state.hasPending(command.documentId, command.userId)) {
++      throw new Error(
++        "A pending access request already exists for this document and user."
++      );
++    }
++    return [documentAccessRequestedEvent.create(command)];
++  });
+diff --git a/server/specter/accessRequests/projectionImpl.ts b/server/specter/accessRequests/projectionImpl.ts
+new file mode 100644
+index 0000000..38872a7
+--- /dev/null
++++ b/server/specter/accessRequests/projectionImpl.ts
+@@ -0,0 +1,19 @@
++import { z } from "zod";
++import {
++  documentAccessRequestedEvent,
++  pendingAccessRequestBootstrappedEvent,
++} from "./events";
++import { projectDocumentAccessRequestsSpec } from "./projectionSpec";
++import { accessRequestSliceStore } from "./store";
++
++export const projectDocumentAccessRequests = projectDocumentAccessRequestsSpec
++  .outputSchema(z.never())
++  .plugin(async () => async () => undefined)
++  .store(accessRequestSliceStore)
++  .apply(pendingAccessRequestBootstrappedEvent, async (event, state) => {
++    await state.projectBootstrap(event.payload);
++  })
++  .apply(documentAccessRequestedEvent, async (event, state) => {
++    await state.projectCreated(event.payload);
++  })
++  .handle(async () => undefined);
+diff --git a/server/specter/accessRequests/projectionSpec.ts b/server/specter/accessRequests/projectionSpec.ts
+new file mode 100644
+index 0000000..fad7d36
+--- /dev/null
++++ b/server/specter/accessRequests/projectionSpec.ts
+@@ -0,0 +1,43 @@
++import { createReactionSlice, event } from "@specter-ts/core/spec";
++
++export const projectDocumentAccessRequestsSpec = createReactionSlice(
++  "projectDocumentAccessRequests"
++)
++  .description(
++    "Projects committed document access request Events into Outline read models."
++  )
++  .scenarios(
++    {
++      description: "Projects a bootstrapped pending access request.",
++      given: [
++        event("pending-access-request-bootstrapped", {
++          accessRequestId: "10000000-0000-4000-8000-000000000007",
++          documentId: "10000000-0000-4000-8000-000000000006",
++          userId: "10000000-0000-4000-8000-000000000003",
++          teamId: "10000000-0000-4000-8000-000000000001",
++          status: "pending",
++          createdAt: "2026-07-18T18:06:00.000Z",
++          updatedAt: "2026-07-18T18:06:00.000Z",
++        }),
++      ],
++      expect: [],
++    },
++    {
++      description: "Projects a newly committed pending access request.",
++      given: [
++        event("document-access-requested", {
++          accessRequestId: "20000000-0000-4000-8000-000000000001",
++          documentId: "10000000-0000-4000-8000-000000000006",
++          userId: "10000000-0000-4000-8000-000000000004",
++          teamId: "10000000-0000-4000-8000-000000000001",
++          status: "pending",
++          createdAt: "2026-07-18T19:00:00.000Z",
++          updatedAt: "2026-07-18T19:00:00.000Z",
++          actorId: "10000000-0000-4000-8000-000000000004",
++          ip: "127.0.0.1",
++          authType: "app",
++        }),
++      ],
++      expect: [],
++    }
++  );
+diff --git a/server/specter/accessRequests/restart.test.ts b/server/specter/accessRequests/restart.test.ts
+new file mode 100644
+index 0000000..097ab0e
+--- /dev/null
++++ b/server/specter/accessRequests/restart.test.ts
+@@ -0,0 +1,106 @@
++import { randomUUID } from "node:crypto";
++import { AccessRequest, Event } from "@server/models";
++import { sequelize } from "@server/storage/database";
++import { buildDocument } from "@server/test/factories";
++import {
++  cleanupLegacySnapshot,
++  setupLegacySnapshot,
++  type LegacySnapshotFixture,
++} from "../../../specter-evaluation/setup-legacy-snapshot";
++import {
++  accessRequestSpecterApp,
++  createAccessRequestSpecterAppInstance,
++} from "./runtime";
++
++describe.sequential("document access request replay", () => {
++  let fixture: LegacySnapshotFixture;
++
++  beforeEach(async () => {
++    await sequelize.query(
++      "TRUNCATE TABLE specter_event_commits, specter_events, specter_slice_states RESTART IDENTITY"
++    );
++    fixture = await setupLegacySnapshot();
++  });
++
++  afterEach(async () => {
++    await cleanupLegacySnapshot();
++    await sequelize.query(
++      "TRUNCATE TABLE specter_event_commits, specter_events, specter_slice_states RESTART IDENTITY"
++    );
++  });
++
++  it("reconstructs the legacy projection after a process-style restart", async () => {
++    const firstApp = await accessRequestSpecterApp();
++    const firstAccessRequestId = randomUUID();
++    const requestedAt = new Date().toISOString();
++    const first = await firstApp.command({
++      type: "requestDocumentAccess",
++      payload: {
++        accessRequestId: firstAccessRequestId,
++        documentId: fixture.document.id,
++        userId: fixture.freshRequester.id,
++        teamId: fixture.team.id,
++        status: "pending",
++        createdAt: requestedAt,
++        updatedAt: requestedAt,
++        actorId: fixture.freshRequester.id,
++        ip: null,
++        authType: "app",
++      },
++    });
++    await first.reactions;
++    expect(await AccessRequest.findByPk(firstAccessRequestId)).not.toBeNull();
++
++    await Event.destroy({
++      where: { modelId: firstAccessRequestId },
++      force: true,
++    });
++    await AccessRequest.destroy({
++      where: { id: firstAccessRequestId },
++      force: true,
++    });
++    await sequelize.query(
++      `UPDATE specter_slice_states
++          SET last_applied_order = 0
++        WHERE slice_name = 'projectDocumentAccessRequests'`
++    );
++
++    const secondDocument = await buildDocument({
++      teamId: fixture.team.id,
++      createdById: fixture.manager.id,
++      collectionId: fixture.privateCollection.id,
++    });
++    const restartedApp = await createAccessRequestSpecterAppInstance();
++    const secondRequestedAt = new Date().toISOString();
++    const second = await restartedApp.command({
++      type: "requestDocumentAccess",
++      payload: {
++        accessRequestId: randomUUID(),
++        documentId: secondDocument.id,
++        userId: fixture.freshRequester.id,
++        teamId: fixture.team.id,
++        status: "pending",
++        createdAt: secondRequestedAt,
++        updatedAt: secondRequestedAt,
++        actorId: fixture.freshRequester.id,
++        ip: null,
++        authType: "app",
++      },
++    });
++    await second.reactions;
++
++    expect(await AccessRequest.findByPk(firstAccessRequestId)).toMatchObject({
++      id: firstAccessRequestId,
++      documentId: fixture.document.id,
++      userId: fixture.freshRequester.id,
++    });
++    expect(
++      await Event.count({
++        where: {
++          name: "access_requests.create",
++          modelId: firstAccessRequestId,
++        },
++      })
++    ).toBe(1);
++  });
++});
+diff --git a/server/specter/accessRequests/runtime.ts b/server/specter/accessRequests/runtime.ts
+new file mode 100644
+index 0000000..cad0d89
+--- /dev/null
++++ b/server/specter/accessRequests/runtime.ts
+@@ -0,0 +1,107 @@
++import { randomUUID } from "node:crypto";
++import { createSpecterApp, type ReactionScheduler } from "@specter-ts/core";
++import { AccessRequest } from "@server/models";
++import { AccessRequestStatus } from "@server/models/AccessRequest";
++import env from "@server/env";
++import { sequelize } from "@server/storage/database";
++import { createOutlineEventLog, prepareSpecterEventLog } from "../eventLog";
++import { prepareSpecterSliceStore } from "../jsonSliceStore";
++import { createOutlineReactionScheduler } from "../reactionScheduler";
++import {
++  accessRequestEventDefinitions,
++  pendingAccessRequestBootstrappedEvent,
++} from "./events";
++import { requestDocumentAccess } from "./impl";
++import { projectDocumentAccessRequests } from "./projectionImpl";
++
++const immediateSchedule: ReactionScheduler = (run) => {
++  let active: Promise<void> | undefined;
++  return () => () => {
++    active ??= run({
++      deliveryId: randomUUID(),
++      scheduledAt: new Date().toISOString(),
++      attemptId: randomUUID(),
++      attemptNumber: 1,
++    }).finally(() => {
++      active = undefined;
++    });
++    return active;
++  };
++};
++
++const eventLog = createOutlineEventLog(sequelize);
++let appPromise: ReturnType<typeof createSpecterApp> | undefined;
++
++async function createApp() {
++  await prepareSpecterEventLog(sequelize);
++  await prepareSpecterSliceStore(sequelize);
++  const schedule =
++    env.ENVIRONMENT === "test"
++      ? immediateSchedule
++      : createOutlineReactionScheduler(
++          env.REDIS_URL ??
++            (() => {
++              throw new Error("REDIS_URL is required");
++            })()
++        ).schedule;
++  return createSpecterApp({
++    events: accessRequestEventDefinitions,
++    eventLog,
++    schedule,
++    slices: [requestDocumentAccess, projectDocumentAccessRequests],
++  });
++}
++
++export async function createAccessRequestSpecterAppInstance() {
++  return createApp();
++}
++
++async function bootstrapPendingAccessRequests() {
++  const alreadyRepresented = new Set(
++    (
++      await eventLog.query(0, [
++        pendingAccessRequestBootstrappedEvent.type,
++        "document-access-requested",
++      ])
++    ).map((event) =>
++      typeof event.payload === "object" &&
++      event.payload !== null &&
++      "accessRequestId" in event.payload
++        ? String(event.payload.accessRequestId)
++        : ""
++    )
++  );
++  const pending = await AccessRequest.findAll({
++    where: { status: AccessRequestStatus.Pending },
++    order: [["createdAt", "ASC"]],
++  });
++  for (const accessRequest of pending) {
++    if (alreadyRepresented.has(accessRequest.id)) {
++      continue;
++    }
++    await eventLog.append(
++      [
++        pendingAccessRequestBootstrappedEvent.create({
++          accessRequestId: accessRequest.id,
++          documentId: accessRequest.documentId,
++          userId: accessRequest.userId,
++          teamId: accessRequest.teamId,
++          status: "pending",
++          createdAt: accessRequest.createdAt.toISOString(),
++          updatedAt: accessRequest.updatedAt.toISOString(),
++        }),
++      ],
++      {
++        idempotencyKey: `access-request-bootstrap:${accessRequest.id}`,
++        fingerprint: accessRequest.updatedAt.toISOString(),
++      }
++    );
++  }
++}
++
++export async function accessRequestSpecterApp() {
++  appPromise ??= createApp();
++  const app = await appPromise;
++  await bootstrapPendingAccessRequests();
++  return app;
++}
+diff --git a/server/specter/accessRequests/scenarios.test.ts b/server/specter/accessRequests/scenarios.test.ts
+new file mode 100644
+index 0000000..5947465
+--- /dev/null
++++ b/server/specter/accessRequests/scenarios.test.ts
+@@ -0,0 +1,38 @@
++import { testSliceImplementations } from "@specter-ts/core/testing";
++import { sequelize } from "@server/storage/database";
++import {
++  cleanupLegacySnapshot,
++  setupLegacySnapshot,
++} from "../../../specter-evaluation/setup-legacy-snapshot";
++import { accessRequestEventDefinitions } from "./events";
++import { requestDocumentAccess } from "./impl";
++import { projectDocumentAccessRequests } from "./projectionImpl";
++
++testSliceImplementations(
++  [requestDocumentAccess, projectDocumentAccessRequests],
++  {
++    events: accessRequestEventDefinitions,
++    runScenario: async <T>(run: () => Promise<T>): Promise<T> => {
++      await setupLegacySnapshot();
++      await sequelize.query(
++        `DELETE FROM specter_slice_states
++          WHERE slice_name IN (
++            'requestDocumentAccess',
++            'projectDocumentAccessRequests'
++          )`
++      );
++      try {
++        return await run();
++      } finally {
++        await cleanupLegacySnapshot();
++        await sequelize.query(
++          `DELETE FROM specter_slice_states
++            WHERE slice_name IN (
++              'requestDocumentAccess',
++              'projectDocumentAccessRequests'
++            )`
++        );
++      }
++    },
++  }
++);
+diff --git a/server/specter/accessRequests/spec.ts b/server/specter/accessRequests/spec.ts
+new file mode 100644
+index 0000000..3759722
+--- /dev/null
++++ b/server/specter/accessRequests/spec.ts
+@@ -0,0 +1,75 @@
++import { createCommandSlice, event } from "@specter-ts/core/spec";
++
++const legacyPending = {
++  accessRequestId: "10000000-0000-4000-8000-000000000007",
++  documentId: "10000000-0000-4000-8000-000000000006",
++  userId: "10000000-0000-4000-8000-000000000003",
++  teamId: "10000000-0000-4000-8000-000000000001",
++  status: "pending" as const,
++  createdAt: "2026-07-18T18:06:00.000Z",
++  updatedAt: "2026-07-18T18:06:00.000Z",
++};
++
++const acceptedCommand = {
++  accessRequestId: "20000000-0000-4000-8000-000000000001",
++  documentId: legacyPending.documentId,
++  userId: "10000000-0000-4000-8000-000000000004",
++  teamId: legacyPending.teamId,
++  status: "pending" as const,
++  createdAt: "2026-07-18T19:00:00.000Z",
++  updatedAt: "2026-07-18T19:00:00.000Z",
++  actorId: "10000000-0000-4000-8000-000000000004",
++  ip: "127.0.0.1",
++  authType: "app",
++};
++
++export const requestDocumentAccessSpec = createCommandSlice(
++  "requestDocumentAccess"
++)
++  .description(
++    "Requests access to a document when the requester has no pending request."
++  )
++  .scenarios(
++    {
++      description:
++        "Creates a pending request alongside an unrelated bootstrapped request.",
++      given: [event("pending-access-request-bootstrapped", legacyPending)],
++      when: acceptedCommand,
++      expect: [event("document-access-requested", acceptedCommand)],
++    },
++    {
++      description: "Rejects a request already present in bootstrapped state.",
++      given: [event("pending-access-request-bootstrapped", legacyPending)],
++      when: {
++        ...acceptedCommand,
++        accessRequestId: "20000000-0000-4000-8000-000000000002",
++        userId: legacyPending.userId,
++      },
++      expect: [],
++      reject: {
++        reason:
++          "A pending access request already exists for this document and user.",
++      },
++    },
++    {
++      description:
++        "Creates a request for a different document after prior work.",
++      given: [event("document-access-requested", acceptedCommand)],
++      when: {
++        ...acceptedCommand,
++        accessRequestId: "20000000-0000-4000-8000-000000000003",
++        documentId: "30000000-0000-4000-8000-000000000001",
++        createdAt: "2026-07-18T19:01:00.000Z",
++        updatedAt: "2026-07-18T19:01:00.000Z",
++      },
++      expect: [
++        event("document-access-requested", {
++          ...acceptedCommand,
++          accessRequestId: "20000000-0000-4000-8000-000000000003",
++          documentId: "30000000-0000-4000-8000-000000000001",
++          createdAt: "2026-07-18T19:01:00.000Z",
++          updatedAt: "2026-07-18T19:01:00.000Z",
++        }),
++      ],
++    }
++  );
+diff --git a/server/specter/accessRequests/store.ts b/server/specter/accessRequests/store.ts
+new file mode 100644
+index 0000000..4e0fac3
+--- /dev/null
++++ b/server/specter/accessRequests/store.ts
+@@ -0,0 +1,183 @@
++import type { SliceStore, SliceStoreAdapter } from "@specter-ts/core";
++import { QueryTypes } from "sequelize";
++import type { Transaction } from "sequelize";
++import { AccessRequest, Event } from "@server/models";
++import { AccessRequestStatus } from "@server/models/AccessRequest";
++import { sequelize } from "@server/storage/database";
++import type { AuthenticationType } from "@server/types";
++import type {
++  DocumentAccessRequestedPayload,
++  PendingAccessRequestPayload,
++} from "./events";
++
++export type AccessRequestWriteState = {
++  readonly projectBootstrap: (
++    payload: PendingAccessRequestPayload
++  ) => Promise<void>;
++  readonly projectCreated: (
++    payload: DocumentAccessRequestedPayload
++  ) => Promise<void>;
++};
++
++export type AccessRequestReadState = {
++  readonly hasPending: (documentId: string, userId: string) => Promise<boolean>;
++};
++
++type Cursor = { order: number };
++
++async function loadCursor(
++  sliceName: string,
++  transaction?: Transaction,
++  lock = false
++): Promise<Cursor> {
++  const rows = await sequelize.query<{ last_applied_order: string | number }>(
++    `SELECT last_applied_order
++       FROM specter_slice_states
++      WHERE slice_name = :sliceName${lock ? " FOR UPDATE" : ""}`,
++    { replacements: { sliceName }, transaction, type: QueryTypes.SELECT }
++  );
++  return { order: Number(rows[0]?.last_applied_order ?? 0) };
++}
++
++async function saveCursor(
++  sliceName: string,
++  cursor: Cursor,
++  transaction?: Transaction
++) {
++  await sequelize.query(
++    `INSERT INTO specter_slice_states (slice_name, state_json, last_applied_order)
++     VALUES (:sliceName, '{}'::jsonb, :order)
++     ON CONFLICT (slice_name) DO UPDATE SET
++       last_applied_order = EXCLUDED.last_applied_order`,
++    { replacements: { sliceName, order: cursor.order }, transaction }
++  );
++}
++
++function toStore(
++  sliceName: string,
++  cursor: Cursor,
++  transaction?: Transaction,
++  publishOnCursor = false
++): SliceStore<AccessRequestWriteState, AccessRequestReadState> {
++  const hasPending = async (documentId: string, userId: string) =>
++    Boolean(
++      await AccessRequest.findOne({
++        where: {
++          documentId,
++          userId,
++          status: AccessRequestStatus.Pending,
++        },
++        transaction,
++      })
++    );
++
++  return {
++    write: {
++      async projectBootstrap(payload) {
++        const existing = await AccessRequest.findByPk(payload.accessRequestId, {
++          transaction,
++        });
++        if (existing) {
++          return;
++        }
++        await AccessRequest.create(
++          {
++            id: payload.accessRequestId,
++            documentId: payload.documentId,
++            userId: payload.userId,
++            teamId: payload.teamId,
++            status: AccessRequestStatus.Pending,
++            responderId: null,
++            respondedAt: null,
++            createdAt: new Date(payload.createdAt),
++            updatedAt: new Date(payload.updatedAt),
++          },
++          { transaction }
++        );
++      },
++      async projectCreated(payload) {
++        const existing = await AccessRequest.findByPk(payload.accessRequestId, {
++          transaction,
++        });
++        if (!existing) {
++          await AccessRequest.create(
++            {
++              id: payload.accessRequestId,
++              documentId: payload.documentId,
++              userId: payload.userId,
++              teamId: payload.teamId,
++              status: AccessRequestStatus.Pending,
++              responderId: null,
++              respondedAt: null,
++              createdAt: new Date(payload.createdAt),
++              updatedAt: new Date(payload.updatedAt),
++            },
++            { transaction }
++          );
++        }
++        const auditEvent = await Event.findOne({
++          where: {
++            name: "access_requests.create",
++            modelId: payload.accessRequestId,
++          },
++          transaction,
++        });
++        if (!auditEvent) {
++          await Event.create(
++            {
++              name: "access_requests.create",
++              modelId: payload.accessRequestId,
++              documentId: payload.documentId,
++              userId: payload.userId,
++              teamId: payload.teamId,
++              actorId: payload.actorId,
++              ip: payload.ip,
++              authType: payload.authType as AuthenticationType | null,
++              data: null,
++              changes: null,
++              createdAt: new Date(payload.createdAt),
++            },
++            { transaction }
++          );
++        }
++      },
++    },
++    read: { hasPending },
++    lastAppliedOrder: async () => cursor.order,
++    setLastAppliedOrder: async (order) => {
++      if (!Number.isInteger(order) || order < cursor.order) {
++        throw new Error(
++          `Slice cursor cannot move from ${cursor.order} to ${order}`
++        );
++      }
++      cursor.order = order;
++      if (publishOnCursor) {
++        await saveCursor(sliceName, cursor, transaction);
++      }
++    },
++  };
++}
++
++export const accessRequestSliceStore: SliceStoreAdapter<
++  AccessRequestWriteState,
++  AccessRequestReadState
++> = {
++  async get(sliceName) {
++    const cursor = await loadCursor(sliceName);
++    return toStore(sliceName, cursor, undefined, true);
++  },
++  transaction(sliceName, run) {
++    return sequelize.transaction(async (transaction) => {
++      await sequelize.query(
++        `INSERT INTO specter_slice_states (slice_name, state_json, last_applied_order)
++         VALUES (:sliceName, '{}'::jsonb, 0)
++         ON CONFLICT (slice_name) DO NOTHING`,
++        { replacements: { sliceName }, transaction }
++      );
++      const cursor = await loadCursor(sliceName, transaction, true);
++      const result = await run(toStore(sliceName, cursor, transaction));
++      await saveCursor(sliceName, cursor, transaction);
++      return result;
++    });
++  },
++};
+diff --git a/server/specter/eventLog.ts b/server/specter/eventLog.ts
+new file mode 100644
+index 0000000..38b4944
+--- /dev/null
++++ b/server/specter/eventLog.ts
+@@ -0,0 +1,252 @@
++import { randomUUID } from "node:crypto";
++import type {
++  EventDraft,
++  EventLogAdapter,
++  EventLogAppendOptions,
++  EventLogAppendResult,
++  EventLogCommit,
++  EventLogTransaction,
++  PersistedEvent,
++} from "@specter-ts/core";
++import {
++  SpecterIdempotencyConflictError,
++  SpecterVersionConflictError,
++} from "@specter-ts/core";
++import { QueryTypes } from "sequelize";
++import type { Sequelize, Transaction } from "sequelize";
++
++const advisoryLock = 4213501;
++let activeSequelize: Sequelize;
++
++type EventRow = {
++  id: string;
++  event_order: string | number;
++  type: string;
++  payload: unknown;
++  recorded_at: Date | string;
++};
++
++type CommitRow = {
++  fingerprint: string | null;
++  first_event_order: string | number;
++  last_event_order: string | number;
++};
++
++function eventFromRow(row: EventRow): PersistedEvent {
++  return {
++    id: row.id,
++    order: Number(row.event_order),
++    type: row.type,
++    payload: row.payload,
++    recordedAt: new Date(row.recorded_at).toISOString(),
++  };
++}
++
++export async function prepareSpecterEventLog(
++  sequelize: Sequelize
++): Promise<void> {
++  activeSequelize = sequelize;
++  await sequelize.query(`CREATE TABLE IF NOT EXISTS specter_events (
++    event_order BIGSERIAL PRIMARY KEY,
++    id UUID NOT NULL UNIQUE,
++    type TEXT NOT NULL,
++    payload JSONB NOT NULL,
++    recorded_at TIMESTAMPTZ NOT NULL
++  )`);
++  await sequelize.query(`CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
++    ON specter_events(type, event_order)`);
++  await sequelize.query(`CREATE TABLE IF NOT EXISTS specter_event_commits (
++    idempotency_key TEXT PRIMARY KEY,
++    fingerprint TEXT,
++    first_event_order BIGINT NOT NULL,
++    last_event_order BIGINT NOT NULL,
++    committed_at TIMESTAMPTZ NOT NULL
++  )`);
++}
++
++async function queryEvents(
++  afterOrder: number,
++  eventTypes: readonly string[],
++  transaction?: Transaction
++): Promise<PersistedEvent[]> {
++  if (!eventTypes.length) {
++    return [];
++  }
++  const rows = await activeSequelize.query<EventRow>(
++    `SELECT id, event_order, type, payload, recorded_at
++       FROM specter_events
++      WHERE event_order > :afterOrder AND type IN (:eventTypes)
++      ORDER BY event_order ASC`,
++    {
++      replacements: { afterOrder, eventTypes: [...eventTypes] },
++      transaction,
++      type: QueryTypes.SELECT,
++    }
++  );
++  return rows.map(eventFromRow);
++}
++
++async function currentVersion(transaction?: Transaction): Promise<number> {
++  const rows = await activeSequelize.query<{ version: string | number }>(
++    "SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events",
++    { transaction, type: QueryTypes.SELECT }
++  );
++  return Number(rows[0]?.version ?? 0);
++}
++
++async function findCommit(
++  idempotencyKey: string,
++  transaction?: Transaction
++): Promise<EventLogCommit | undefined> {
++  const receipts = await activeSequelize.query<CommitRow>(
++    `SELECT fingerprint, first_event_order, last_event_order
++       FROM specter_event_commits
++      WHERE idempotency_key = :idempotencyKey`,
++    {
++      replacements: { idempotencyKey },
++      transaction,
++      type: QueryTypes.SELECT,
++    }
++  );
++  const receipt = receipts[0];
++  if (!receipt) {
++    return undefined;
++  }
++  const firstOrder = Number(receipt.first_event_order);
++  const version = Number(receipt.last_event_order);
++  const rows = await activeSequelize.query<EventRow>(
++    `SELECT id, event_order, type, payload, recorded_at
++       FROM specter_events
++      WHERE event_order BETWEEN :firstOrder AND :version
++      ORDER BY event_order ASC`,
++    {
++      replacements: { firstOrder, version },
++      transaction,
++      type: QueryTypes.SELECT,
++    }
++  );
++  return {
++    events: rows.map(eventFromRow),
++    version,
++    idempotencyKey,
++    fingerprint: receipt.fingerprint ?? undefined,
++  };
++}
++
++async function appendInTransaction(
++  transaction: Transaction,
++  drafts: readonly EventDraft[],
++  options: EventLogAppendOptions = {}
++): Promise<EventLogAppendResult> {
++  if (options.idempotencyKey) {
++    const existing = await findCommit(options.idempotencyKey, transaction);
++    if (existing) {
++      if (existing.fingerprint !== options.fingerprint) {
++        throw new SpecterIdempotencyConflictError(options.idempotencyKey);
++      }
++      return { ...existing, duplicate: true };
++    }
++  }
++  if (!drafts.length) {
++    throw new Error("Event Log append requires Events");
++  }
++  const version = await currentVersion(transaction);
++  if (
++    options.expectedVersion !== undefined &&
++    options.expectedVersion !== version
++  ) {
++    throw new SpecterVersionConflictError(options.expectedVersion, version);
++  }
++
++  const events: PersistedEvent[] = [];
++  for (const draft of drafts) {
++    const id = randomUUID();
++    const recordedAt = new Date().toISOString();
++    const encoded = JSON.stringify(draft.payload);
++    if (encoded === undefined) {
++      throw new Error("Specter Event payload must be JSON-serializable");
++    }
++    const rows = await activeSequelize.query<{ event_order: string | number }>(
++      `INSERT INTO specter_events (id, type, payload, recorded_at)
++       VALUES (:id, :type, CAST(:payload AS JSONB), :recordedAt)
++       RETURNING event_order`,
++      {
++        replacements: { id, type: draft.type, payload: encoded, recordedAt },
++        transaction,
++        type: QueryTypes.SELECT,
++      }
++    );
++    events.push({
++      ...draft,
++      id,
++      order: Number(rows[0]?.event_order),
++      recordedAt,
++    });
++  }
++
++  const committedVersion = events.at(-1)?.order ?? version;
++  if (options.idempotencyKey) {
++    await activeSequelize.query(
++      `INSERT INTO specter_event_commits (
++        idempotency_key, fingerprint, first_event_order, last_event_order, committed_at
++      ) VALUES (:idempotencyKey, :fingerprint, :firstOrder, :lastOrder, NOW())`,
++      {
++        replacements: {
++          idempotencyKey: options.idempotencyKey,
++          fingerprint: options.fingerprint ?? null,
++          firstOrder: events[0]?.order ?? version,
++          lastOrder: committedVersion,
++        },
++        transaction,
++      }
++    );
++  }
++  return {
++    events,
++    version: committedVersion,
++    idempotencyKey: options.idempotencyKey,
++    fingerprint: options.fingerprint,
++    duplicate: false,
++  };
++}
++
++function scopedEventLog(
++  transaction: Transaction,
++  baseVersion: number
++): EventLogTransaction {
++  return {
++    query: (afterOrder, eventTypes) =>
++      queryEvents(afterOrder, eventTypes, transaction),
++    currentVersion: async () => baseVersion,
++    findCommit: (key) => findCommit(key, transaction),
++    append: (events, options) =>
++      appendInTransaction(transaction, events, {
++        ...options,
++        expectedVersion: options?.expectedVersion ?? baseVersion,
++      }),
++  };
++}
++
++export function createOutlineEventLog(sequelize: Sequelize): EventLogAdapter {
++  activeSequelize = sequelize;
++  const runTransaction = <T>(
++    run: (eventLog: EventLogTransaction) => Promise<T>
++  ) =>
++    sequelize.transaction(async (transaction) => {
++      await sequelize.query("SELECT pg_advisory_xact_lock(:lock)", {
++        replacements: { lock: advisoryLock },
++        transaction,
++      });
++      const baseVersion = await currentVersion(transaction);
++      return run(scopedEventLog(transaction, baseVersion));
++    });
++
++  return {
++    query: queryEvents,
++    currentVersion,
++    findCommit,
++    append: (events, options) =>
++      runTransaction((eventLog) => eventLog.append(events, options)),
++    transaction: runTransaction,
++  };
++}
+diff --git a/server/specter/jsonSliceStore.ts b/server/specter/jsonSliceStore.ts
+new file mode 100644
+index 0000000..324a28c
+--- /dev/null
++++ b/server/specter/jsonSliceStore.ts
+@@ -0,0 +1,128 @@
++import type { SliceStore, SliceStoreAdapter } from "@specter-ts/core";
++import { QueryTypes } from "sequelize";
++import type { Sequelize, Transaction } from "sequelize";
++
++export type JsonProbeWriteState = {
++  readonly append: (value: string) => Promise<void>;
++};
++
++export type JsonProbeReadState = {
++  readonly values: () => Promise<readonly string[]>;
++};
++
++type StoredState = { values: string[]; order: number };
++
++export async function prepareSpecterSliceStore(
++  sequelize: Sequelize
++): Promise<void> {
++  await sequelize.query(`CREATE TABLE IF NOT EXISTS specter_slice_states (
++    slice_name TEXT PRIMARY KEY,
++    state_json JSONB NOT NULL,
++    last_applied_order BIGINT NOT NULL
++  )`);
++}
++
++async function load(
++  sequelize: Sequelize,
++  sliceName: string,
++  transaction?: Transaction,
++  lock = false
++): Promise<StoredState> {
++  const rows = await sequelize.query<{
++    state_json: { values?: unknown };
++    last_applied_order: string | number;
++  }>(
++    `SELECT state_json, last_applied_order
++       FROM specter_slice_states
++      WHERE slice_name = :sliceName${lock ? " FOR UPDATE" : ""}`,
++    {
++      replacements: { sliceName },
++      transaction,
++      type: QueryTypes.SELECT,
++    }
++  );
++  const row = rows[0];
++  return {
++    values: Array.isArray(row?.state_json?.values)
++      ? row.state_json.values.filter(
++          (value): value is string => typeof value === "string"
++        )
++      : [],
++    order: Number(row?.last_applied_order ?? 0),
++  };
++}
++
++async function save(
++  sequelize: Sequelize,
++  sliceName: string,
++  state: StoredState,
++  transaction?: Transaction
++): Promise<void> {
++  await sequelize.query(
++    `INSERT INTO specter_slice_states (slice_name, state_json, last_applied_order)
++     VALUES (:sliceName, CAST(:state AS JSONB), :order)
++     ON CONFLICT (slice_name) DO UPDATE SET
++       state_json = EXCLUDED.state_json,
++       last_applied_order = EXCLUDED.last_applied_order`,
++    {
++      replacements: {
++        sliceName,
++        state: JSON.stringify({ values: state.values }),
++        order: state.order,
++      },
++      transaction,
++    }
++  );
++}
++
++function store(
++  sequelize: Sequelize,
++  sliceName: string,
++  state: StoredState,
++  transaction?: Transaction,
++  publishOnCursor = false
++): SliceStore<JsonProbeWriteState, JsonProbeReadState> {
++  return {
++    write: {
++      append: async (value) => {
++        state.values.push(value);
++      },
++    },
++    read: {
++      values: async () => [...state.values],
++    },
++    lastAppliedOrder: async () => state.order,
++    setLastAppliedOrder: async (order) => {
++      if (!Number.isInteger(order) || order < state.order) {
++        throw new Error(
++          `Slice cursor cannot move from ${state.order} to ${order}`
++        );
++      }
++      state.order = order;
++      if (publishOnCursor) {
++        await save(sequelize, sliceName, state, transaction);
++      }
++    },
++  };
++}
++
++export function createJsonSliceStore(
++  sequelize: Sequelize
++): SliceStoreAdapter<JsonProbeWriteState, JsonProbeReadState> {
++  return {
++    async get(sliceName) {
++      const state = await load(sequelize, sliceName);
++      return store(sequelize, sliceName, state, undefined, true);
++    },
++    transaction(sliceName, run) {
++      return sequelize.transaction(async (transaction) => {
++        const state = await load(sequelize, sliceName, transaction, true);
++        const result = await run(
++          store(sequelize, sliceName, state, transaction)
++        );
++        await save(sequelize, sliceName, state, transaction);
++        return result;
++      });
++    },
++  };
++}
+diff --git a/server/specter/reactionScheduler.ts b/server/specter/reactionScheduler.ts
+new file mode 100644
+index 0000000..4dcf380
+--- /dev/null
++++ b/server/specter/reactionScheduler.ts
+@@ -0,0 +1,271 @@
++import { randomUUID } from "node:crypto";
++import Queue from "bull";
++import type { Job } from "bull";
++import type {
++  ReactionDeliveryContext,
++  ReactionScheduler,
++} from "@specter-ts/core";
++
++export const specterReactionQueueName = "specterReactionPasses";
++
++type ReactionJobData = {
++  scheduledAt: string;
++  attemptIds: string[];
++  lastError?: string;
++};
++
++export type OutlineReactionDelivery = {
++  readonly deliveryId: string;
++  readonly status: "pending" | "running" | "completed" | "dead-letter";
++  readonly scheduledAt: string;
++  readonly attemptIds: readonly string[];
++  readonly attemptCount: number;
++  readonly lastError?: string;
++};
++
++function createBullQueue(redisUrl: string) {
++  return new Queue<ReactionJobData>(specterReactionQueueName, redisUrl, {
++    defaultJobOptions: {
++      attempts: 3,
++      removeOnComplete: false,
++      removeOnFail: false,
++    },
++    settings: {
++      lockDuration: 20,
++      lockRenewTime: 5,
++      stalledInterval: 10,
++      maxStalledCount: 10,
++    },
++  });
++}
++
++type ReactionQueue = ReturnType<typeof createBullQueue>;
++
++function errorMessage(cause: unknown) {
++  return cause instanceof Error ? cause.message : String(cause);
++}
++
++async function pendingJob(queue: ReactionQueue) {
++  const [active, waiting, delayed] = await Promise.all([
++    queue.getActive(),
++    queue.getWaiting(),
++    queue.getDelayed(),
++  ]);
++  return active[0] ?? waiting[0] ?? delayed[0];
++}
++
++async function waitForDelivery(
++  queue: ReactionQueue,
++  deliveryId: string,
++  isClosed: () => boolean
++): Promise<void> {
++  for (;;) {
++    if (isClosed()) {
++      return new Promise<void>(() => undefined);
++    }
++    let job: Job<ReactionJobData> | null;
++    try {
++      job = await queue.getJob(deliveryId);
++    } catch (cause) {
++      if (isClosed()) {
++        return new Promise<void>(() => undefined);
++      }
++      throw cause;
++    }
++    if (!job) {
++      throw new Error(`Reaction delivery disappeared: ${deliveryId}`);
++    }
++    const state = await job.getState();
++    if (state === "completed") {
++      return;
++    }
++    if (state === "failed") {
++      throw new Error(
++        job.failedReason || job.data.lastError || "Reaction failed"
++      );
++    }
++    await new Promise<void>((resolve) => setTimeout(resolve, 2));
++  }
++}
++
++export function createOutlineReactionScheduler(redisUrl: string): {
++  schedule: ReactionScheduler;
++  close: (options?: { readonly crash?: boolean }) => Promise<void>;
++} {
++  const queue = createBullQueue(redisUrl);
++  const crashController = new AbortController();
++  let activeDeliveryId: string | undefined;
++  let queuedDeliveryId: string | undefined;
++  let queuedDeliveryPromise: Promise<string> | undefined;
++  let closed = false;
++  let processorInstalled = false;
++
++  const schedule: ReactionScheduler = (run) => {
++    if (!processorInstalled) {
++      processorInstalled = true;
++      void queue.process(1, async (job: Job<ReactionJobData>) => {
++        const deliveryId = String(job.id);
++        activeDeliveryId = deliveryId;
++        if (queuedDeliveryId === deliveryId) {
++          queuedDeliveryId = undefined;
++          queuedDeliveryPromise = undefined;
++        }
++        const attemptId = randomUUID();
++        const attemptIds = [...job.data.attemptIds, attemptId];
++        await job.update({ ...job.data, attemptIds, lastError: undefined });
++        const context: ReactionDeliveryContext = {
++          deliveryId,
++          scheduledAt: job.data.scheduledAt,
++          attemptId,
++          attemptNumber: attemptIds.length,
++        };
++        const crashed = new Promise<never>((_resolve, reject) => {
++          crashController.signal.addEventListener(
++            "abort",
++            () => reject(new Error("Specter Reaction worker interrupted")),
++            { once: true }
++          );
++        });
++        try {
++          await Promise.race([run(context), crashed]);
++        } catch (cause) {
++          const lastError = errorMessage(cause);
++          await job.update({ ...job.data, attemptIds, lastError });
++          throw cause;
++        } finally {
++          if (activeDeliveryId === deliveryId) {
++            activeDeliveryId = undefined;
++          }
++        }
++      });
++    }
++    return () => {
++      let selected: Promise<string> | undefined;
++      return () => {
++        if (closed) {
++          return Promise.reject(new Error("Reaction scheduler closed"));
++        }
++        selected ??= (async () => {
++          if (activeDeliveryId) {
++            queuedDeliveryPromise ??= queue
++              .add(
++                {
++                  scheduledAt: new Date().toISOString(),
++                  attemptIds: [],
++                },
++                { jobId: randomUUID() }
++              )
++              .then((job) => {
++                queuedDeliveryId = String(job.id);
++                return queuedDeliveryId;
++              });
++            return queuedDeliveryPromise;
++          }
++          const pending = await pendingJob(queue);
++          if (pending) {
++            return String(pending.id);
++          }
++          const job = await queue.add(
++            {
++              scheduledAt: new Date().toISOString(),
++              attemptIds: [],
++            },
++            { jobId: randomUUID() }
++          );
++          return String(job.id);
++        })();
++        return selected.then((deliveryId) =>
++          waitForDelivery(queue, deliveryId, () => closed)
++        );
++      };
++    };
++  };
++
++  return {
++    schedule,
++    async close(options) {
++      closed = true;
++      if (options?.crash) {
++        crashController.abort();
++        await new Promise<void>((resolve) => setTimeout(resolve, 1));
++        await queue.close(true);
++        return;
++      }
++      await queue.close();
++    },
++  };
++}
++
++function deliveryStatus(state: string): OutlineReactionDelivery["status"] {
++  if (state === "active") {
++    return "running";
++  }
++  if (state === "completed") {
++    return "completed";
++  }
++  if (state === "failed") {
++    return "dead-letter";
++  }
++  return "pending";
++}
++
++export async function outlineReactionDeliveries(
++  redisUrl: string
++): Promise<readonly OutlineReactionDelivery[]> {
++  const queue = createBullQueue(redisUrl);
++  try {
++    const jobs = await queue.getJobs([
++      "waiting",
++      "active",
++      "delayed",
++      "completed",
++      "failed",
++      "paused",
++    ]);
++    return await Promise.all(
++      jobs.map(async (job) => {
++        const state = await job.getState();
++        return {
++          deliveryId: String(job.id),
++          status: deliveryStatus(state),
++          scheduledAt: job.data.scheduledAt,
++          attemptIds: [...job.data.attemptIds],
++          attemptCount: job.data.attemptIds.length,
++          lastError: job.data.lastError ?? job.failedReason ?? undefined,
++        };
++      })
++    );
++  } finally {
++    await queue.close();
++  }
++}
++
++export async function retryOutlineDeadLetter(
++  redisUrl: string,
++  deliveryId: string
++): Promise<void> {
++  const queue = createBullQueue(redisUrl);
++  try {
++    const job = await queue.getJob(deliveryId);
++    if (!job) {
++      throw new Error(`Unknown Reaction delivery: ${deliveryId}`);
++    }
++    if ((await job.getState()) !== "failed") {
++      throw new Error(`Reaction delivery is not dead-lettered: ${deliveryId}`);
++    }
++    await job.retry();
++  } finally {
++    await queue.close();
++  }
++}
++
++export async function resetOutlineReactionQueue(
++  redisUrl: string
++): Promise<void> {
++  const queue = createBullQueue(redisUrl);
++  try {
++    await queue.obliterate({ force: true });
++  } finally {
++    await queue.close();
++  }
++}
+diff --git a/specter-evaluation-log.jsonl b/specter-evaluation-log.jsonl
+new file mode 100644
+index 0000000..0fcd678
+--- /dev/null
++++ b/specter-evaluation-log.jsonl
+@@ -0,0 +1,2 @@
++{"timestamp":"2026-07-18T21:51:50Z","phase":"setup","action":"begin scored adoption and read frozen adopter prompt","result":"started in assigned isolated worktree","failures_workarounds":[]}
++{"timestamp":"2026-07-18T21:58:00Z","phase":"discovery","action":"read assignment, visible verifier, adapter contracts, maintained PostgreSQL/outbox implementations, reference slices, legacy snapshot, selected route, models, and queue infrastructure","result":"implementation boundaries identified","failures_workarounds":["initial verifier is the supplied unfinished driver"]}
+diff --git a/specter-evaluation/driver.ts b/specter-evaluation/driver.ts
+index 279eed8..5732c13 100644
+--- a/specter-evaluation/driver.ts
++++ b/specter-evaluation/driver.ts
+@@ -1,21 +1,68 @@
++import { readFileSync } from "node:fs";
+ import type { AdapterHarnessDriver } from "@specter-ts/brownfield-verifier";
++import dotenv from "@dotenvx/dotenvx";
++import { Sequelize } from "sequelize";
++const { createOutlineEventLog, prepareSpecterEventLog } = await import(
++  // @ts-expect-error Node 24 executes the verifier with type stripping.
++  "../server/specter/eventLog.ts"
++);
++const { createJsonSliceStore, prepareSpecterSliceStore } = await import(
++  // @ts-expect-error Node 24 executes the verifier with type stripping.
++  "../server/specter/jsonSliceStore.ts"
++);
++const {
++  createOutlineReactionScheduler,
++  outlineReactionDeliveries,
++  resetOutlineReactionQueue,
++  retryOutlineDeadLetter,
++} = await import(
++  // @ts-expect-error Node 24 executes the verifier with type stripping.
++  "../server/specter/reactionScheduler.ts"
++);
+ 
+-function unfinished(boundary: string): never {
+-  throw new Error(`Adapter verifier driver is not implemented: ${boundary}`);
++const testEnvironment = dotenv.parse(
++  readFileSync(new URL("../.env.test", import.meta.url), "utf8")
++);
++const databaseUrl = testEnvironment.DATABASE_URL;
++const redisUrl = testEnvironment.REDIS_URL;
++if (!databaseUrl || !redisUrl) {
++  throw new Error("The prepared test database and Redis URLs are required");
++}
++const database = new Sequelize(databaseUrl, {
++  dialect: "postgres",
++  dialectOptions: { ssl: false },
++  logging: false,
++});
++
++async function prepare() {
++  await database.authenticate();
++  await prepareSpecterEventLog(database);
++  await prepareSpecterSliceStore(database);
+ }
+ 
+ export const adapterHarnessDriver: AdapterHarnessDriver = {
+   name: "outline-access-request-create",
+   async reset() {
+-    unfinished("reset");
++    await resetOutlineReactionQueue(redisUrl);
++    await prepare();
++    await database.query(
++      "TRUNCATE TABLE specter_event_commits, specter_events, specter_slice_states RESTART IDENTITY"
++    );
+   },
+   async open() {
+-    unfinished("open");
++    await prepare();
++    const scheduler = createOutlineReactionScheduler(redisUrl);
++    return {
++      eventLog: createOutlineEventLog(database),
++      sliceStore: createJsonSliceStore(database),
++      schedule: scheduler.schedule,
++      close: scheduler.close,
++    };
+   },
+   async deliveries() {
+-    unfinished("deliveries");
++    return outlineReactionDeliveries(redisUrl);
+   },
+-  async retryDeadLetter() {
+-    unfinished("retryDeadLetter");
++  async retryDeadLetter(deliveryId) {
++    await retryOutlineDeadLetter(redisUrl, deliveryId);
+   },
+ };
+diff --git a/tsconfig.json b/tsconfig.json
+index 68d3f9d..d24e7fc 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -32,6 +32,12 @@
+     "paths": {
+       "@server/*": ["./server/*"],
+       "@shared/*": ["./shared/*"],
++      "@specter-ts/core/spec": [
++        "./node_modules/@specter-ts/core/dist/spec-entry.d.ts"
++      ],
++      "@specter-ts/core/testing": [
++        "./node_modules/@specter-ts/core/dist/testing-entry.d.ts"
++      ],
+       "~/*": ["./app/*"],
+       "plugins/*": ["./plugins/*"],
+       // Vite 8 and its plugins ship types only via their exports map, which

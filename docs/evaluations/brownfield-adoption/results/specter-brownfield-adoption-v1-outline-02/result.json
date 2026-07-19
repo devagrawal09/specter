@@ -1,0 +1,82 @@
+{
+  "schemaVersion": 1,
+  "attemptId": "specter-brownfield-adoption-v1-outline-02",
+  "applicationId": "outline",
+  "agentConfiguration": {
+    "model": "gpt-5.6-sol",
+    "reasoning": "high"
+  },
+  "startedAt": "2026-07-18T21:51:08.743Z",
+  "finishedAt": "2026-07-18T23:55:47.849Z",
+  "activeMilliseconds": 5400000,
+  "wallMilliseconds": 7479106,
+  "phaseTiming": {
+    "adapterMilliseconds": 1813257,
+    "domainMilliseconds": 3586743
+  },
+  "firstAttempt": "timed-out",
+  "adapterReport": {
+    "status": "passed",
+    "passedCases": 16,
+    "totalCases": 16,
+    "driver": "outline-access-request-create",
+    "evidenceStatus": "late-snapshot-diagnostic",
+    "detail": "The independent verifier passed against the immutable late freeze, but no state-at-cutoff snapshot exists and this evidence cannot reclassify the timed-out first attempt."
+  },
+  "domainChecks": [
+    {
+      "name": "state-at-cutoff",
+      "status": "failed",
+      "detail": "The coordinator interrupted and froze 2,079,106 milliseconds after the fixed cutoff; no state-at-cutoff snapshot exists."
+    },
+    {
+      "name": "adapter-verifier-late-snapshot",
+      "status": "passed",
+      "detail": "Diagnostic only: all 16 cases passed against the immutable late snapshot."
+    },
+    {
+      "name": "domain-acceptance-late-snapshot",
+      "status": "passed",
+      "detail": "Diagnostic only: all 8 frozen assignment domain commands passed, including 24 upstream route tests and 6 coordinator tests."
+    },
+    {
+      "name": "scenario-late-snapshot",
+      "status": "passed",
+      "detail": "Diagnostic only: 5 exact Scenario tests passed."
+    },
+    {
+      "name": "restart-late-snapshot",
+      "status": "passed",
+      "detail": "Diagnostic only: 1 causal bootstrap/restart test passed."
+    },
+    {
+      "name": "chronological-log",
+      "status": "failed",
+      "detail": "The immutable first-attempt JSONL contains only setup and discovery entries, so scored phase boundaries, iterations, command history, and completion status are unavailable."
+    }
+  ],
+  "friction": [],
+  "iterationCount": 0,
+  "implementationSize": {
+    "adapterLines": 740,
+    "domainLines": 702
+  },
+  "sourcesConsulted": [
+    ".specter-coordinator/adopter-prompt.md",
+    "specter-assignment.json",
+    "specter-evaluation/guidance/.agents/skills/specter/SKILL.md",
+    "specter-evaluation/guidance/docs/guides/brownfield-adoption.md",
+    "specter-evaluation/guidance/docs/guides/runtime-boundaries.md",
+    "specter-evaluation/guidance/packages/core/src/adapters/event-log.ts",
+    "specter-evaluation/guidance/packages/core/src/adapters/slice-store.ts",
+    "specter-evaluation/guidance/packages/core/src/adapters/reaction-scheduler.ts",
+    "specter-evaluation/guidance/packages/postgres/src/persistence.ts",
+    "specter-evaluation/guidance/packages/reaction-outbox/src/scheduler.ts",
+    "specter-evaluation/guidance/packages/brownfield-verifier/README.md",
+    "server/routes/api/accessRequests/accessRequests.ts"
+  ],
+  "remediation": {
+    "status": "passed",
+    "additionalMilliseconds": 174875
+  }
+}

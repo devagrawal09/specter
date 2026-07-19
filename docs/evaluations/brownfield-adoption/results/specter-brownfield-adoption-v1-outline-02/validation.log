@@ -1,0 +1,779 @@
+Specter brownfield adoption late-snapshot diagnostic validation
+Attempt: specter-brownfield-adoption-v1-outline-02
+Frozen commit: e6cb5a04ff061a5bf2b37b283c4c7454c30f7930
+Control result: timed-out
+Scored start: 2026-07-18T21:51:08.743Z
+Required cutoff: 2026-07-18T23:21:08.743Z
+Late coordinator freeze: 2026-07-18T23:55:47.849Z
+Active milliseconds recorded at fixed limit: 5400000
+Actual wall milliseconds: 7479106
+Control violation: coordinator interruption and freeze occurred 2079106 milliseconds after cutoff; no state-at-cutoff snapshot exists. Every check below is diagnostic against the late freeze and cannot change firstAttempt=timed-out.
+
+startedAt=2026-07-19T00:02:42Z
+diagnosticSetup=NODE_ENV=test yarn db:migrate with pinned offline launcher
+⟐ injected env (40) from .env.test · dotenvx@1.66.0
+
+Sequelize CLI [Node: 24.14.0, CLI: 6.6.5, ORM: 6.37.8]
+
+Loaded configuration file "server/config/database.js".
+Using environment "test".
+== 20260718220000-create-specter-storage: migrating =======
+== 20260718220000-create-specter-storage: migrated (0.006s)
+
+exitCode=0
+startedAt=2026-07-19T00:03:14Z
+diagnosticSetup=ignored coordinator reset to frozen legacy snapshot
+
+ RUN  v4.1.5 <attempt-repo>
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  19:03:15
+   Duration  3.45s (transform 1.61s, setup 3.19s, import 104ms, tests 78ms, environment 0ms)
+
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/index.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/plugin.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/utils.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/inputRules.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/actions.js" points to missing source files
+exitCode=0
+startedAt=2026-07-19T00:04:02Z
+diagnosticCommand=assignment.commands.adapterVerifier[0]
+{
+  "schemaVersion": 1,
+  "driver": "outline-access-request-create",
+  "startedAt": "2026-07-19T00:04:03.083Z",
+  "finishedAt": "2026-07-19T00:04:08.580Z",
+  "passed": true,
+  "cases": [
+    {
+      "id": "event-log.order-filter-json",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 49
+    },
+    {
+      "id": "event-log.transaction-rollback",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 23
+    },
+    {
+      "id": "event-log.transaction-serializes-decision",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 2032
+    },
+    {
+      "id": "event-log.concurrent-version",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 18
+    },
+    {
+      "id": "event-log.idempotency",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 20
+    },
+    {
+      "id": "event-log.restart-durability",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 20
+    },
+    {
+      "id": "slice-store.staging-rollback",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 16
+    },
+    {
+      "id": "slice-store.failure-replay",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 16
+    },
+    {
+      "id": "slice-store.monotonic-isolation",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 15
+    },
+    {
+      "id": "slice-store.restart-durability",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 15
+    },
+    {
+      "id": "scheduler.serializes-coalesces",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 530
+    },
+    {
+      "id": "scheduler.dead-letter-preserves-active-follow-up",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 536
+    },
+    {
+      "id": "scheduler.retry-context",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 540
+    },
+    {
+      "id": "scheduler.dead-letter-retry",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 559
+    },
+    {
+      "id": "scheduler.restart-recovery",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 561
+    },
+    {
+      "id": "probe.command-reaction-restart",
+      "boundary": "probe",
+      "status": "passed",
+      "durationMs": 548
+    }
+  ]
+}
+exitCode=0
+startedAt=2026-07-19T00:04:57Z
+diagnosticCommand=assignment.commands.domainAcceptance[0]
+Checking formatting...
+
+All matched files use the correct format.
+Finished in 224ms on 2408 files using 14 threads.
+exitCode=0
+startedAt=2026-07-19T00:04:57Z
+diagnosticCommand=assignment.commands.domainAcceptance[1]
+Checking formatting...
+
+All matched files use the correct format.
+Finished in 53ms on 13 files using 14 threads.
+exitCode=0
+startedAt=2026-07-19T00:04:58Z
+diagnosticCommand=assignment.commands.domainAcceptance[2]
+server/routes/api/users/users.test.ts:524:18: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+app/hooks/usePinnedDocuments.ts:26:18: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'urlId', 'getPins', and 'setPinsCacheCount' help: Either include it or remove the dependency array.
+app/components/DocumentBreadcrumb.tsx:216:14: warning react(jsx-key): Missing "key" prop for element in array.
+shared/editor/components/Image.tsx:122:7: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'setSize', 'width', and 'node.attrs.height' help: Either include it or remove the dependency array.
+app/hooks/usePaginatedRequest.ts:78:16: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'params' help: Either include it or remove the dependency array.
+app/hooks/usePaginatedRequest.ts:98:14: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'params', and 'fetchLimit' help: Either include it or remove the dependency array.
+shared/editor/components/Embed.tsx:38:7: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'setSize', 'node.attrs.width', and 'height' help: Either include it or remove the dependency array.
+shared/editor/components/hooks/useDragResize.ts:149:25: warning react-hooks(exhaustive-deps): React Hook useCallback has a missing dependency: 'isCentered' help: Either include it or remove the dependency array.
+app/hooks/useRequest.ts:59:9: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'makeRequestOnMount', and 'request' help: Either include it or remove the dependency array.
+shared/editor/components/Video.tsx:38:50: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'width', 'node.attrs.height', and 'setSize' help: Either include it or remove the dependency array.
+app/scenes/Document/components/MultiplayerEditor.tsx:101:7: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect has a missing dependency: 'token' help: Either include it or remove the dependency array.
+app/scenes/Search/Search.tsx:106:7: warning react-hooks(exhaustive-deps): React Hook useMemo has a complex expression in the dependency array. help: Extract the expression to a separate variable so it can be statically checked.
+app/scenes/Search/Search.tsx:95:7: warning react-hooks(exhaustive-deps): React Hook useMemo has a missing dependency: 'statusFilter' help: Either include it or remove the dependency array.
+server/routes/api/groups/groups.ts:125:11: warning unicorn(no-useless-fallback-in-spread): Empty fallbacks in spreads are unnecessary help: Spreading falsy values in object literals won't add any unexpected properties, so it's unnecessary to add an empty object as fallback.
+app/hooks/useComputed.ts:14:51: warning react-hooks(exhaustive-deps): React Hook useMemo was passed a dependency list that is not an array literal. This means we can't statically verify whether you've passed the correct dependencies. help: Use an array literal as the second argument.
+app/components/Collection/CollectionForm.tsx:55:11: warning react-hooks(exhaustive-deps): React Hook useMemo has missing dependencies: 'collectionColors', 'collectionColors.length', and 'hasMultipleCollections' help: Either include it or remove the dependency array.
+shared/editor/plugins/CodeHighlightingPlugin.ts:117:31: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+app/components/Lightbox.tsx:280:9: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'onClose' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:289:14: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'status.image' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:306:7: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'setupZoomIn' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:329:7: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'setupZoomOut', and 'status.image' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:339:7: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'onUpdate' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:684:12: warning react-hooks(exhaustive-deps): React Hook useCallback has a missing dependency: 'downloadImage' help: Either include it or remove the dependency array.
+app/components/Lightbox.tsx:1075:5: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'onLoading' help: Either include it or remove the dependency array.
+app/components/Sharing/Document/AccessControlList.tsx:256:12: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'request' help: Either include it or remove the dependency array.
+app/components/Sidebar/components/SharedWithMe.tsx:69:17: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'history.location.state', 'history.location', and 'history' help: Either include it or remove the dependency array.
+app/scenes/Document/components/KeyboardShortcutsButton.tsx:30:7: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'handleOpenKeyboardShortcuts' help: Either include it or remove the dependency array.
+app/components/Sharing/components/GroupMembersPopover.tsx:32:11: warning react-hooks(exhaustive-deps): React Hook useMemo has a missing dependency: 'groupUsers' help: Either include it or remove the dependency array.
+app/components/Sharing/components/GroupMembersPopover.tsx:33:5: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: groupUsers.orderedData help: Either include it or remove the dependency array.
+app/components/Sidebar/components/ArchiveLink.tsx:43:35: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'expanded' help: Either include it or remove the dependency array.
+app/components/Sidebar/Shared.tsx:59:21: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'share.showTOC', and 'ui.tocVisible' help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:98:9: warning react-hooks(exhaustive-deps): React Hook useMemo has missing dependencies: 'document', and 'collection' help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:119:8: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: users.activeOrInvited help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:119:8: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: groups.orderedData help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:119:8: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: t help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:119:8: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: document.members help: Either include it or remove the dependency array.
+app/components/Sharing/components/Suggestions.tsx:119:8: warning react-hooks(exhaustive-deps): React Hook useMemo has unnecessary dependency: groups.orderedData help: Either include it or remove the dependency array.
+app/scenes/Document/components/PresentationMode.tsx:147:7: warning unicorn(no-useless-length-check): Found a useless array length check help: The non-empty check is useless as `Array#some()` returns `false` for an empty array.
+app/components/Table.tsx:314:10: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+app/components/Table.tsx:316:14: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+shared/utils/rfc6902/util.ts:40:25: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+app/components/DocumentViews.tsx:31:6: warning react-hooks(exhaustive-deps): React hook useMemo depends on `documentPresenceArray`, which changes every render help: Try memoizing this variable with `useRef` or `useCallback`.
+app/components/DocumentViews.tsx:38:6: warning react-hooks(exhaustive-deps): React hook useMemo depends on `documentPresenceArray`, which changes every render help: Try memoizing this variable with `useRef` or `useCallback`.
+app/components/PaginatedList.tsx:218:12: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'fetchResults' help: Either include it or remove the dependency array.
+shared/utils/rfc6902/diff.ts:279:50: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+shared/utils/rfc6902/diff.ts:281:15: warning unicorn(no-new-array): Do not use `new Array(singleArgument)`. help: It's not clear whether the argument is meant to be the length of the array or the only element. If the argument is the array's length, consider using `Array.from({ length: n })`. If the argument is the only element, use `[element]`.
+app/scenes/Collection/index.tsx:111:33: warning react-hooks(exhaustive-deps): React Hook useEffect has missing dependencies: 'id', and 'collections' help: Either include it or remove the dependency array.
+app/scenes/Settings/Application.tsx:49:12: warning react-hooks(exhaustive-deps): React Hook useEffect has a missing dependency: 'request' help: Either include it or remove the dependency array.
+app/scenes/Developer/Changesets.tsx:42:3: warning react-hooks(exhaustive-deps): React Hook useEffect received a function whose dependencies are unknown. help: Pass an inline function instead.
+app/editor/components/ToolbarMenu.tsx:56:60: warning react-hooks(exhaustive-deps): React Hook useMemo has missing dependencies: 'state', 'item.children', 'item', and 'view' help: Either include it or remove the dependency array.
+app/editor/menus/tableRow.tsx:153:9: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: Consider removing the spread operator.
+app/editor/menus/tableCol.tsx:166:9: warning unicorn(no-useless-spread): Using a spread operator here creates a new array unnecessarily. help: Consider removing the spread operator.
+app/editor/components/FloatingToolbar.tsx:53:3: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect contains a call to setState. Without a list of dependencies, this can lead to an infinite chain of updates. help: Consider adding an empty list of dependencies to make it clear which values are intended to be stable.
+app/editor/components/StickyBlockToolbar.tsx:98:3: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect contains a call to setState. Without a list of dependencies, this can lead to an infinite chain of updates. help: Consider adding an empty list of dependencies to make it clear which values are intended to be stable.
+app/editor/components/SelectionToolbar.tsx:103:8: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect has a missing dependency: 'activeToolbar' help: Either include it or remove the dependency array.
+app/editor/components/SelectionToolbar.tsx:127:9: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect has a missing dependency: 'autoFocusLinkInput' help: Either include it or remove the dependency array.
+app/editor/components/SelectionToolbar.tsx:162:36: warning react-hooks(exhaustive-deps): React Hook useLayoutEffect has a missing dependency: 'extensions.extensions' help: Either include it or remove the dependency array.
+shared/editor/plugins/AnchorPlugin.ts:87:24: warning typescript(unbound-method): Avoid referencing unbound methods which may cause unintentional scoping of `this`. help: If your function does not access `this`, you can annotate it with `this: void`, or consider using an arrow function instead.
+server/__mocks__/bull.ts:27:28: warning typescript(unbound-method): Avoid referencing unbound methods which may cause unintentional scoping of `this`. help: If your function does not access `this`, you can annotate it with `this: void`, or consider using an arrow function instead.
+exitCode=0
+startedAt=2026-07-19T00:05:01Z
+diagnosticCommand=assignment.commands.domainAcceptance[3]
+exitCode=0
+startedAt=2026-07-19T00:05:01Z
+diagnosticCommand=assignment.commands.domainAcceptance[4]
+exitCode=0
+startedAt=2026-07-19T00:05:04Z
+diagnosticCommand=assignment.commands.domainAcceptance[5]
+vite v8.0.16 building client environment for production...
+transforming...✓ 6133 modules transformed.
+rendering chunks...
+[plugin webpackStats] Stats saved to <attempt-repo>/build/app/webpack-stats.json (654.625KiB)
+build/app/manifest.webmanifest                                 0.80 kB
+build/app/assets/KaTeX_Size3-Regular.gV2CO0n9.woff2            3.62 kB
+build/app/assets/KaTeX_Size3-Regular.CTq5MqoE.woff             4.42 kB
+build/app/assets/KaTeX_Size4-Regular.Dl5lxZxV.woff2            4.92 kB
+build/app/assets/KaTeX_Size2-Regular.Dy4dx90m.woff2            5.20 kB
+build/app/assets/KaTeX_Size1-Regular.mCD8mA8B.woff2            5.46 kB
+build/app/assets/KaTeX_Size4-Regular.BF-4gkZK.woff             5.98 kB
+build/app/assets/KaTeX_Size2-Regular.oD1tc_U0.woff             6.18 kB
+build/app/assets/KaTeX_Size1-Regular.C195tn64.woff             6.49 kB
+build/app/assets/KaTeX_Caligraphic-Regular.Di6jR-x-.woff2      6.90 kB
+build/app/assets/KaTeX_Caligraphic-Bold.Dq_IR9rO.woff2         6.91 kB
+build/app/assets/KaTeX_Size3-Regular.DgpXs0kz.ttf              7.58 kB
+build/app/assets/KaTeX_Caligraphic-Regular.CTRA-rTL.woff       7.65 kB
+build/app/assets/KaTeX_Caligraphic-Bold.BEiXGLvX.woff          7.71 kB
+build/app/assets/KaTeX_Script-Regular.D3wIWfF6.woff2           9.64 kB
+build/app/assets/KaTeX_SansSerif-Regular.DDBCnlJ7.woff2       10.34 kB
+build/app/assets/KaTeX_Size4-Regular.DWFBv043.ttf             10.36 kB
+build/app/assets/KaTeX_Script-Regular.D5yQViql.woff           10.58 kB
+build/app/assets/KaTeX_Fraktur-Regular.CTYiF6lA.woff2         11.31 kB
+build/app/assets/KaTeX_Fraktur-Bold.CL6g_b3V.woff2            11.34 kB
+build/app/assets/KaTeX_Size2-Regular.B7gKUWhC.ttf             11.50 kB
+build/app/assets/KaTeX_SansSerif-Italic.C3H0VqGB.woff2        12.02 kB
+build/app/assets/KaTeX_SansSerif-Bold.D1sUS0GD.woff2          12.21 kB
+build/app/assets/KaTeX_Size1-Regular.Dbsnue_I.ttf             12.22 kB
+build/app/assets/KaTeX_SansSerif-Regular.CS6fqUqJ.woff        12.31 kB
+build/app/assets/KaTeX_Caligraphic-Regular.wX97UBjC.ttf       12.34 kB
+build/app/assets/KaTeX_Caligraphic-Bold.ATXxdsX0.ttf          12.36 kB
+build/app/assets/KaTeX_Fraktur-Regular.Dxdc4cR9.woff          13.20 kB
+build/app/assets/KaTeX_Fraktur-Bold.BsDP51OF.woff             13.29 kB
+build/app/assets/KaTeX_Typewriter-Regular.CO6r4hn1.woff2      13.56 kB
+build/app/assets/KaTeX_SansSerif-Italic.DN2j7dab.woff         14.11 kB
+build/app/assets/KaTeX_SansSerif-Bold.DbIhKOiC.woff           14.40 kB
+build/app/assets/KaTeX_Typewriter-Regular.C0xS9mPB.woff       16.02 kB
+build/app/assets/KaTeX_Math-BoldItalic.CZnvNsCZ.woff2         16.40 kB
+build/app/assets/KaTeX_Math-Italic.t53AETM-.woff2             16.44 kB
+build/app/assets/KaTeX_Script-Regular.C5JkGWo-.ttf            16.64 kB
+build/app/assets/KaTeX_Main-BoldItalic.DxDJ3AOS.woff2         16.78 kB
+build/app/assets/KaTeX_Main-Italic.NWA7e6Wa.woff2             16.98 kB
+build/app/assets/KaTeX_Math-BoldItalic.iY-2wyZ7.woff          18.66 kB
+build/app/assets/KaTeX_Math-Italic.DA0__PXp.woff              18.74 kB
+build/app/assets/KaTeX_Main-BoldItalic.SpSLRI95.woff          19.41 kB
+build/app/assets/KaTeX_SansSerif-Regular.BNo7hRIc.ttf         19.43 kB
+build/app/assets/KaTeX_Fraktur-Regular.CB_wures.ttf           19.57 kB
+build/app/assets/KaTeX_Fraktur-Bold.BdnERNNW.ttf              19.58 kB
+build/app/assets/KaTeX_Main-Italic.BMLOBm91.woff              19.67 kB
+build/app/assets/KaTeX_SansSerif-Italic.YYjJ1zSn.ttf          22.36 kB
+build/app/assets/KaTeX_SansSerif-Bold.CFMepnvq.ttf            24.50 kB
+build/app/assets/KaTeX_Main-Bold.Cx986IdX.woff2               25.32 kB
+build/app/assets/KaTeX_Main-Regular.B22Nviop.woff2            26.27 kB
+build/app/assets/KaTeX_Typewriter-Regular.D3Ib7_Hf.ttf        27.55 kB
+build/app/assets/KaTeX_AMS-Regular.BQhdFMY1.woff2             28.07 kB
+build/app/assets/KaTeX_Main-Bold.Jm3AIy58.woff                29.91 kB
+build/app/assets/KaTeX_Main-Regular.Dr94JaBh.woff             30.77 kB
+build/app/assets/KaTeX_Math-BoldItalic.B3XSjfu4.ttf           31.19 kB
+build/app/assets/KaTeX_Math-Italic.flOr_0UB.ttf               31.30 kB
+build/app/assets/KaTeX_Main-BoldItalic.DzxPMmG6.ttf           32.96 kB
+build/app/assets/KaTeX_AMS-Regular.DMm9YOAa.woff              33.51 kB
+build/app/assets/KaTeX_Main-Italic.3WenGoN9.ttf               33.58 kB
+build/app/assets/KaTeX_Main-Bold.waoOVXN0.ttf                 51.33 kB
+build/app/assets/KaTeX_Main-Regular.ypZvNtVU.ttf              53.58 kB
+build/app/assets/KaTeX_AMS-Regular.DRggAlZN.ttf               63.63 kB
+build/app/.vite/manifest.json                                194.28 kB
+build/app/assets/vendor-katex.Dfdmu3wa.css                    24.44 kB
+build/app/assets/Flex.DJ6mR3Bq.js                              0.05 kB │ map:      0.21 kB
+build/app/assets/Text.ChaouWsf.js                              0.05 kB │ map:      0.21 kB
+build/app/assets/dist.C2J943E6.js                              0.06 kB │ map:      0.43 kB
+build/app/assets/Login.BzAm-K7n.js                             0.06 kB │ map:      0.20 kB
+build/app/assets/Document.EE2dN3mJ.js                          0.07 kB │ map:      0.24 kB
+build/app/assets/vendor-katex.D5Yvxvnp.js                      0.07 kB │ map:     24.12 kB
+build/app/assets/useUserLocale.rzwPfV9U.js                     0.11 kB │ map:      0.55 kB
+build/app/assets/routeHelpers.Ddfk0gnP.js                      0.11 kB │ map:      0.57 kB
+build/app/assets/error.vBZ69-kD.js                             0.13 kB │ map:      1.08 kB
+build/app/assets/IsEmail.C-SoK2gU.js                           0.17 kB │ map:      1.29 kB
+build/app/assets/EditorContext.Dhq-5v0H.js                     0.18 kB │ map:      0.47 kB
+build/app/assets/LazyLoad.B6oNd505.js                          0.18 kB │ map:      2.09 kB
+build/app/assets/TeamLogo.Cz3CwKKt.js                          0.19 kB │ map:      0.49 kB
+build/app/assets/useFormatNumber.CI_YfXHD.js                   0.20 kB │ map:      0.76 kB
+build/app/assets/csv.D_D858_J.js                               0.22 kB │ map:      0.55 kB
+build/app/assets/oauth.DqndXkzI.js                             0.22 kB │ map:      1.06 kB
+build/app/assets/usePrevious.DSWAD__5.js                       0.22 kB │ map:      0.79 kB
+build/app/assets/useStores.C2HL3oms.js                         0.23 kB │ map:      0.66 kB
+build/app/assets/ButtonLink.Fzf_wCFW.js                        0.24 kB │ map:      0.49 kB
+build/app/assets/ButtonSmall.1cgq8Evj.js                       0.24 kB │ map:      0.48 kB
+build/app/assets/useBoolean.CKHZbah2.js                        0.24 kB │ map:      0.89 kB
+build/app/assets/CloseEvents.FLcb9L96.js                       0.25 kB │ map:      1.63 kB
+build/app/assets/rtl.CZannbeg.js                               0.27 kB │ map:      1.50 kB
+build/app/assets/HStack.CJJZAD6g.js                            0.28 kB │ map:      1.40 kB
+build/app/assets/useCurrentTeam.Bg4emvG8.js                    0.28 kB │ map:      1.06 kB
+build/app/assets/useCurrentUser.yDT7QBRq.js                    0.28 kB │ map:      1.06 kB
+build/app/assets/ArrowIcon.pziaqp-X.js                         0.29 kB │ map:      0.69 kB
+build/app/assets/dist.c1X2Br8w.js                              0.30 kB │ map:      0.82 kB
+build/app/assets/MeasuredContainer.CP_ihpGf.js                 0.30 kB │ map:      0.98 kB
+build/app/assets/StickyFilters.CCj6NEmy.js                     0.31 kB │ map:      0.69 kB
+build/app/assets/Desktop.YvZPTfe5.js                           0.32 kB │ map:      1.29 kB
+build/app/assets/useOnClickOutside.UN61pLNe.js                 0.33 kB │ map:      1.32 kB
+build/app/assets/env.DFiVzB6Q.js                               0.34 kB │ map:      0.98 kB
+build/app/assets/useTextStats.Du_8NdjK.js                      0.34 kB │ map:      1.55 kB
+build/app/assets/Logout.BsCdBvdj.js                            0.36 kB │ map:      0.84 kB
+build/app/assets/ConnectedIcon.d0wO63pX.js                     0.37 kB │ map:      0.67 kB
+build/app/assets/emoji.BY4GIY6u.js                             0.38 kB │ map:      1.88 kB
+build/app/assets/NavLink.BLIr0ZVF.js                           0.41 kB │ map:      1.82 kB
+build/app/assets/ListItem.DytBt8q8.js                          0.42 kB │ map:      0.84 kB
+build/app/assets/Debug.DkZdB7OT.js                             0.43 kB │ map:      0.90 kB
+build/app/assets/useEventListener.C_K9fUNE.js                  0.43 kB │ map:      1.83 kB
+build/app/assets/Fade.DoZVoUzz.js                              0.44 kB │ map:      1.16 kB
+build/app/assets/usePolicy.CPwNtdBL.js                         0.44 kB │ map:      1.65 kB
+build/app/assets/decorate.Doz1ketW.js                          0.45 kB
+build/app/assets/PopoverButton.sP4czj2-.js                     0.48 kB │ map:      0.89 kB
+build/app/assets/useRequest.CQIvrnv6.js                        0.51 kB │ map:      2.66 kB
+build/app/assets/NudeButton.CI0F8lrL.js                        0.52 kB │ map:      1.47 kB
+build/app/assets/Form.D3ugSq4e.js                              0.52 kB │ map:      1.48 kB
+build/app/assets/ActionRow.DUplR5Kd.js                         0.54 kB │ map:      1.10 kB
+build/app/assets/Status.CxvNLyeY.js                            0.54 kB │ map:      1.04 kB
+build/app/assets/Placeholder.f-zvYTyI.js                       0.55 kB │ map:      1.36 kB
+build/app/assets/Badge.B1IqyXqe.js                             0.56 kB │ map:      1.16 kB
+build/app/assets/Logger.ou9UiVWn.js                            0.57 kB │ map:      3.06 kB
+build/app/assets/tsx.--sXNyvM.js                               0.57 kB │ map:      1.60 kB
+build/app/assets/PluginIcon.CZxi-GlD.js                        0.59 kB │ map:      1.46 kB
+build/app/assets/json.BykebibK.js                              0.60 kB │ map:      1.36 kB
+build/app/assets/normalize.LjydgL1p.js                         0.62 kB │ map:      2.78 kB
+build/app/assets/NewDocumentMenu.D1DpZI7U.js                   0.62 kB │ map:      1.35 kB
+build/app/assets/IntegrationScene.DnOxSO01.js                  0.63 kB │ map:      1.45 kB
+build/app/assets/Flex.hyJN9561.js                              0.63 kB │ map:      2.39 kB
+build/app/assets/ReadingTime.Cn6WCCnE.js                       0.63 kB │ map:      1.79 kB
+build/app/assets/CopyToClipboard.CbXfUKp2.js                   0.64 kB │ map:      2.04 kB
+build/app/assets/r.WcS99aBp.js                                 0.67 kB │ map:      1.33 kB
+build/app/assets/InputMemberPermissionSelect.urHCXjHf.js       0.68 kB │ map:      1.97 kB
+build/app/assets/Actions.B8zShC8m.js                           0.68 kB │ map:      1.17 kB
+build/app/assets/PaginatedDocumentList.DHrw7N99.js             0.70 kB │ map:      2.23 kB
+build/app/assets/client.CCY58yxN.js                            0.70 kB │ map:      1.62 kB
+build/app/assets/language.BSKlrLAg.js                          0.71 kB │ map:      3.91 kB
+build/app/assets/random.DIqG7W0r.js                            0.71 kB │ map:      2.89 kB
+build/app/assets/Storage.C4A_JESP.js                           0.72 kB │ map:      3.64 kB
+build/app/assets/lua.BmpJyHmj.js                               0.74 kB │ map:      1.44 kB
+build/app/assets/diff.DS6SpBWX.js                              0.74 kB │ map:      2.62 kB
+build/app/assets/ini.Bc7MAWQP.js                               0.75 kB │ map:      1.86 kB
+build/app/assets/erb.BdAFtLPw.js                               0.77 kB │ map:      1.76 kB
+build/app/assets/Subheading.CWg7x0YN.js                        0.78 kB │ map:      1.68 kB
+build/app/assets/constants.CMPXEbl7.js                         0.78 kB │ map:      2.28 kB
+build/app/assets/Notice.DlGTLrQC.js                            0.80 kB │ map:      1.57 kB
+build/app/assets/Archive.BWEKOxsU.js                           0.81 kB │ map:      1.67 kB
+build/app/assets/useWindowSize.A5qDrVVN.js                     0.81 kB │ map:      3.15 kB
+build/app/assets/PlaceholderText.DWw2J9p7.js                   0.84 kB │ map:      2.13 kB
+build/app/assets/Text.DjIJ7ekC.js                              0.84 kB │ map:      3.00 kB
+build/app/assets/LoadingIndicator.ByiNnFx6.js                  0.84 kB │ map:      1.88 kB
+build/app/assets/clike.Bfjqy1Gm.js                             0.86 kB │ map:      1.69 kB
+build/app/assets/nginx.CrcyWcXK.js                             0.87 kB │ map:      2.32 kB
+build/app/assets/usePaginatedRequest.CELfZ_rW.js               0.87 kB │ map:      4.06 kB
+build/app/assets/objectivec.J6jZoY_o.js                        0.88 kB │ map:      1.46 kB
+build/app/assets/Authenticated.sIR4oumA.js                     0.89 kB │ map:      2.69 kB
+build/app/assets/erlang.CPgBeBFG.js                            0.90 kB │ map:      2.02 kB
+build/app/assets/client.Be-V2Ldg.js                            0.92 kB │ map:      1.89 kB
+build/app/assets/OAuthScopeHelper.BwmC87HZ.js                  0.93 kB │ map:      3.12 kB
+build/app/assets/useShareDataLoader.88afyFZE.js                0.95 kB │ map:      3.63 kB
+build/app/assets/usePersistedState.BabqVwJj.js                 0.95 kB │ map:      4.41 kB
+build/app/assets/Squircle.Bx0gAWl1.js                          0.96 kB │ map:      2.13 kB
+build/app/assets/Icon.CshUfqJ1.js                              0.96 kB │ map:      1.64 kB
+build/app/assets/Trash.D91o_3Nc.js                             0.97 kB │ map:      2.17 kB
+build/app/assets/CommentEditor.Di0PWaA5.js                     0.98 kB │ map:      3.81 kB
+build/app/assets/List.DbN_OLER.js                              0.98 kB │ map:      2.70 kB
+build/app/assets/ConfirmationDialog.Cb82ZFJu.js                0.99 kB │ map:      2.98 kB
+build/app/assets/urls.DVkrxUHR.js                              1.01 kB │ map:      3.90 kB
+build/app/assets/Spinner.D8L2clrC.js                           1.02 kB │ map:      1.80 kB
+build/app/assets/Icon.BWYeabku.js                              1.06 kB │ map:      1.95 kB
+build/app/assets/LocaleTime.DsWeouai.js                        1.08 kB │ map:      4.11 kB
+build/app/assets/sections.CtYETy3k.js                          1.08 kB │ map:      3.72 kB
+build/app/assets/Error.DA6-E6cP.js                             1.08 kB │ map:      2.14 kB
+build/app/assets/makefile.Cmk8rqDV.js                          1.09 kB │ map:      1.91 kB
+build/app/assets/go.DTeHL6q_.js                                1.10 kB │ map:      1.93 kB
+build/app/assets/toml.5Y3ugM7r.js                              1.11 kB │ map:      2.64 kB
+build/app/assets/DateFilter.rcI-IulT.js                        1.12 kB │ map:      3.77 kB
+build/app/assets/Star.CrFsyV-5.js                              1.12 kB │ map:      3.25 kB
+build/app/assets/protobuf.DuACzIIT.js                          1.13 kB │ map:      2.32 kB
+build/app/assets/domains.DYgLGGi6.js                           1.15 kB │ map:      5.26 kB
+build/app/assets/client.DTOPVMf2.js                            1.18 kB │ map:      2.51 kB
+build/app/assets/solidity.ROCllZ9M.js                          1.21 kB │ map:      1.93 kB
+build/app/assets/rolldown-runtime.CMxvf4Kt.js                  1.21 kB
+build/app/assets/markup-templating.Bpx543C1.js                 1.21 kB │ map:      6.41 kB
+build/app/assets/sass.BJ-P6QhO.js                              1.23 kB │ map:      3.31 kB
+build/app/assets/validations.cMvxVRaR.js                       1.27 kB │ map:      5.78 kB
+build/app/assets/OutlineIcon.CO_vVptf.js                       1.27 kB │ map:      1.99 kB
+build/app/assets/urls.CDcIGGB5.js                              1.28 kB │ map:      5.86 kB
+build/app/assets/CodeWordBreak.aban1fXe.js                     1.30 kB │ map:      6.47 kB
+build/app/assets/SettingRow.CVn4NEv-.js                        1.30 kB │ map:      2.89 kB
+build/app/assets/ocaml.DaNTHjpg.js                             1.31 kB │ map:      2.69 kB
+build/app/assets/DateMentionPicker.BtJjqS0V.js                 1.34 kB │ map:      3.91 kB
+build/app/assets/css.CSNyt7iv.js                               1.36 kB │ map:      3.30 kB
+build/app/assets/promql.CgMfKwBe.js                            1.37 kB │ map:      4.24 kB
+build/app/assets/fortran.BXTQmmai.js                           1.41 kB │ map:      2.41 kB
+build/app/assets/nix.N9mviRYW.js                               1.41 kB │ map:      2.45 kB
+build/app/assets/Settings.C8hcJ74c.js                          1.44 kB │ map:      2.78 kB
+build/app/assets/files.0y2gCJoz.js                             1.44 kB │ map:      7.51 kB
+build/app/assets/scala.DLeDs1bb.js                             1.44 kB │ map:      2.85 kB
+build/app/assets/regex.B86RjXH7.js                             1.44 kB │ map:      4.26 kB
+build/app/assets/scss.BTjnbdlZ.js                              1.45 kB │ map:      3.82 kB
+build/app/assets/typescript.DIIwy4fk.js                        1.46 kB │ map:      3.28 kB
+build/app/assets/vhdl.DmS1mmf6.js                              1.47 kB │ map:      2.28 kB
+build/app/assets/Guide.C7m4TimS.js                             1.48 kB │ map:      2.96 kB
+build/app/assets/Icon.CTrLBSc4.js                              1.49 kB │ map:      2.08 kB
+build/app/assets/WorkspaceSetup.CPEaG08o.js                    1.53 kB │ map:      3.50 kB
+build/app/assets/hcl.1L39oshZ.js                               1.53 kB │ map:      3.21 kB
+build/app/assets/tiny-cookie.Ot6E6ho9.js                       1.54 kB │ map:      8.74 kB
+build/app/assets/client.DP8XfkJy.js                            1.54 kB │ map:      3.56 kB
+build/app/assets/TemplateForm.CGsufISG.js                      1.62 kB │ map:      4.47 kB
+build/app/assets/Export.DUuCukNW.js                            1.64 kB │ map:      3.52 kB
+build/app/assets/InputClientType.fdzSlnpW.js                   1.66 kB │ map:      5.30 kB
+build/app/assets/TemplateNew.CuEAq7oL.js                       1.66 kB │ map:      4.36 kB
+build/app/assets/kusto.DDwFxfRM.js                             1.68 kB │ map:      2.71 kB
+build/app/assets/docker.PGvOd6lU.js                            1.71 kB │ map:      5.19 kB
+build/app/assets/Facepile.W26LQObd.js                          1.72 kB │ map:      5.05 kB
+build/app/assets/dart.CoM0gVQZ.js                              1.73 kB │ map:      4.00 kB
+build/app/assets/Icon.v9BtoeHU.js                              1.74 kB │ map:      2.27 kB
+build/app/assets/client.B6Ax318e.js                            1.75 kB │ map:      2.78 kB
+build/app/assets/useImportDocument.VQstdzL4.js                 1.77 kB │ map:      6.31 kB
+build/app/assets/Icon.KUw7JKEV.js                              1.77 kB │ map:      2.36 kB
+build/app/assets/groovy.BFGVrt3l.js                            1.80 kB │ map:      3.91 kB
+build/app/assets/integrations.DBReKhjI.js                      1.81 kB │ map:      4.19 kB
+build/app/assets/EditorStyleHelper.Du4eR0FF.js                 1.82 kB │ map:      5.18 kB
+build/app/assets/splunk-spl.CcTNhlQX.js                        1.85 kB │ map:      2.66 kB
+build/app/assets/InputSearchPage.wzF_yEEp.js                   1.88 kB │ map:      5.22 kB
+build/app/assets/Drafts.BhEVP4zX.js                            1.97 kB │ map:      4.82 kB
+build/app/assets/elixir.Dx1PL2MI.js                            1.98 kB │ map:      4.74 kB
+build/app/assets/c.l8vc0dfV.js                                 1.99 kB │ map:      4.28 kB
+build/app/assets/Popover.DkfZRQyJ.js                           1.99 kB │ map:      6.45 kB
+build/app/assets/urls.RrLjymkE.js                              2.04 kB │ map:     10.37 kB
+build/app/assets/users.xkXckBXW.js                             2.04 kB │ map:      6.74 kB
+build/app/assets/kotlin.blcgq50M.js                            2.08 kB │ map:      4.50 kB
+build/app/assets/Overview.CfW7_lCw.js                          2.08 kB │ map:      5.27 kB
+build/app/assets/Icon.DfLyaRNk.js                              2.10 kB │ map:      3.19 kB
+build/app/assets/Template.BdTRmU-c.js                          2.10 kB │ map:      5.82 kB
+build/app/assets/yaml.DSrbOwc6.js                              2.13 kB │ map:      5.54 kB
+build/app/assets/routeHelpers.Dp2pk1Po.js                      2.16 kB │ map:     11.49 kB
+build/app/assets/Icon.BwRYRaV-.js                              2.17 kB │ map:      2.86 kB
+build/app/assets/SwatchButton.DgGxbTCn.js                      2.20 kB │ map:      5.94 kB
+build/app/assets/vendor-shared.BQZUQcdb.js                     2.20 kB │ map:      4.28 kB
+build/app/assets/mermaid.sAoGAhrm.js                           2.23 kB │ map:      4.99 kB
+build/app/assets/animations.B6M7uYBl.js                        2.24 kB │ map:      3.35 kB
+build/app/assets/verilog.D6PlGN1m.js                           2.24 kB │ map:      3.20 kB
+build/app/assets/python.D-S4qYiJ.js                            2.25 kB │ map:      4.01 kB
+build/app/assets/java.DTOlTeR3.js                              2.27 kB │ map:      4.92 kB
+build/app/assets/powershell.Zo0zDbwp.js                        2.29 kB │ map:      4.36 kB
+build/app/assets/Icon.DBU8--4j.js                              2.30 kB │ map:      3.59 kB
+build/app/assets/Settings.C-tDXuBS.js                          2.32 kB │ map:      5.69 kB
+build/app/assets/styles.3HqXuy1I.js                            2.36 kB │ map:      8.47 kB
+build/app/assets/Profile.D6YfVXKj.js                           2.37 kB │ map:      5.72 kB
+build/app/assets/perl.BqTRPKxj.js                              2.38 kB │ map:      6.31 kB
+build/app/assets/Emoji.2f5V-fn3.js                             2.43 kB │ map:     10.58 kB
+build/app/assets/dist.BbvkwG8v.js                              2.45 kB │ map:      9.70 kB
+build/app/assets/zig.Dq7YS8-h.js                               2.46 kB │ map:      5.99 kB
+build/app/assets/Settings.q9hP1YIe.js                          2.52 kB │ map:      6.29 kB
+build/app/assets/Breadcrumb.BzIOBaiQ.js                        2.52 kB │ map:      6.87 kB
+build/app/assets/Embeds.es-gJOJu.js                            2.56 kB │ map:      7.17 kB
+build/app/assets/jsx.jk9Vk1iH.js                               2.56 kB │ map:      8.63 kB
+build/app/assets/ColorPicker.cSkTEmg-.js                       2.58 kB │ map:      6.16 kB
+build/app/assets/rust.D8kiClFs.js                              2.62 kB │ map:      6.16 kB
+build/app/assets/Settings.CeJ1u6ic.js                          2.64 kB │ map:      6.57 kB
+build/app/assets/graphql.B46zN1I1.js                           2.67 kB │ map:      9.10 kB
+build/app/assets/Time._37617z0.js                              2.68 kB │ map:      1.26 kB
+build/app/assets/lisp.CqgOp2Bu.js                              2.69 kB │ map:      8.70 kB
+build/app/assets/Item.BO-tv8Y1.js                              2.70 kB │ map:      8.72 kB
+build/app/assets/cpp.l1PNwc29.js                               2.80 kB │ map:      6.30 kB
+build/app/assets/Integrations.CtA5gSQa.js                      2.86 kB │ map:      6.05 kB
+build/app/assets/DropToImport.CR18IDtv.js                      2.91 kB │ map:      7.78 kB
+build/app/assets/HistoryNavigation.C-GK7Nqf.js                 2.91 kB │ map:      7.30 kB
+build/app/assets/markup.Bid7WS_a.js                            2.91 kB │ map:      8.33 kB
+build/app/assets/Settings2.CHrsOV7h.js                         3.00 kB │ map:      7.58 kB
+build/app/assets/client.CQyl0ArE.js                            3.01 kB │ map:      0.83 kB
+build/app/assets/Calendar.DEiEt9yT.js                          3.02 kB │ map:      4.52 kB
+build/app/assets/Tabs.BX6r6LIK.js                              3.06 kB │ map:      8.42 kB
+build/app/assets/swift.C7RqaavI.js                             3.08 kB │ map:      6.93 kB
+build/app/assets/Settings.DXh3Dkhf.js                          3.11 kB │ map:      6.94 kB
+build/app/assets/haskell.CEHEnPp0.js                           3.12 kB │ map:      5.29 kB
+build/app/assets/client.v0mb8r3E.js                            3.23 kB │ map:      0.99 kB
+build/app/assets/FileOperationListItem.BoC_f_E-.js             3.24 kB │ map:      9.42 kB
+build/app/assets/dist.D2aIxCzm.js                              3.24 kB │ map:     12.31 kB
+build/app/assets/Features.C6Q8eesm.js                          3.26 kB │ map:      7.92 kB
+build/app/assets/client.BU2GweHd.js                            3.30 kB │ map:      1.04 kB
+build/app/assets/client2.BG3qHlWq.js                           3.31 kB │ map:      1.05 kB
+build/app/assets/sql.B9FXMiko.js                               3.40 kB │ map:      4.31 kB
+build/app/assets/SortableTable.CEMfq0C9.js                     3.41 kB │ map:      4.73 kB
+build/app/assets/client.BrkZAGGl.js                            3.45 kB │ map:      1.03 kB
+build/app/assets/client.DPord1nc.js                            3.48 kB │ map:      0.85 kB
+build/app/assets/Icon.0vRooYNx.js                              3.50 kB │ map:      4.63 kB
+build/app/assets/client.p40bN0iW.js                            3.50 kB │ map:      0.90 kB
+build/app/assets/client.DqJEg88M.js                            3.55 kB │ map:      0.81 kB
+build/app/assets/client.DAA4betJ.js                            3.57 kB │ map:      0.84 kB
+build/app/assets/PaginatedList.DBQ7LhU1.js                     3.58 kB │ map:     19.09 kB
+build/app/assets/dist.dut-wRGd.js                              3.59 kB │ map:      8.78 kB
+build/app/assets/client.DPchFdUf.js                            3.60 kB │ map:      0.82 kB
+build/app/assets/Insights.Ctb11lyE.js                          3.70 kB │ map:     11.01 kB
+build/app/assets/Avatar.CFyH-s4U.js                            3.70 kB │ map:     11.86 kB
+build/app/assets/ruby.Cmm3Yyvk.js                              3.72 kB │ map:      8.55 kB
+build/app/assets/client.DHVUMauw.js                            3.73 kB │ map:     11.52 kB
+build/app/assets/Scene.B5XfYssd.js                             3.74 kB │ map:     10.01 kB
+build/app/assets/Settings.Bi25x23j.js                          3.78 kB │ map:      9.08 kB
+build/app/assets/vbnet.NKj_r8-_.js                             3.79 kB │ map:      5.06 kB
+build/app/assets/dist.DWr9QeZW.js                              3.88 kB │ map:     15.68 kB
+build/app/assets/client.DqonDppv.js                            3.89 kB │ map:      1.01 kB
+build/app/assets/UserDialogs.DyugGCOi.js                       3.97 kB │ map:     10.30 kB
+build/app/assets/SidebarLayout.CLSKuFtL.js                     3.97 kB │ map:     11.64 kB
+build/app/assets/ImageInput.D2SQcxZg.js                        3.98 kB │ map:      9.70 kB
+build/app/assets/EmojiCreateDialog.aXT_zQev.js                 4.07 kB │ map:     12.28 kB
+build/app/assets/client.Oz1hfuQM.js                            4.14 kB │ map:      2.73 kB
+build/app/assets/Settings.CJINjP55.js                          4.14 kB │ map:     10.40 kB
+build/app/assets/Modal.BHlPj02f.js                             4.28 kB │ map:      9.58 kB
+build/app/assets/FilterOptions.BEHLnSLi.js                     4.35 kB │ map:     14.05 kB
+build/app/assets/Settings.B2qXZBKG.js                          4.38 kB │ map:     11.28 kB
+build/app/assets/javascript.BdIJ8jsG.js                        4.52 kB │ map:      8.56 kB
+build/app/assets/Invite.CBatkKYx.js                            4.56 kB │ map:     12.83 kB
+build/app/assets/Comments.DgeMuRhG.js                          4.62 kB │ map:     14.62 kB
+build/app/assets/Input.B_pst7bc.js                             4.72 kB │ map:     14.52 kB
+build/app/assets/dist.BAdYDEcB.js                              4.78 kB │ map:     17.57 kB
+build/app/assets/Notifications.CN2EG7NS.js                     4.80 kB │ map:     11.21 kB
+build/app/assets/DocumentMeta.DMQTXrwI.js                      4.82 kB │ map:     15.09 kB
+build/app/assets/DocumentListItem.CmRM5ZxN.js                  4.95 kB │ map:     12.75 kB
+build/app/assets/ApiKeys.BpOKSKkd.js                           5.08 kB │ map:     14.98 kB
+build/app/assets/Applications.DR_gKn1Z.js                      5.26 kB │ map:     13.58 kB
+build/app/assets/ShareButton.DxVQGk7c.js                       5.32 kB │ map:      3.64 kB
+build/app/assets/APIAndAccess.Cb342x8q.js                      5.32 kB │ map:     16.02 kB
+build/app/assets/markdown.WYsqfuEI.js                          5.38 kB │ map:     18.28 kB
+build/app/assets/es2015.D5DSYa1a.js                            5.41 kB │ map:     24.11 kB
+build/app/assets/types.DBUTXMnF.js                             5.58 kB │ map:     27.41 kB
+build/app/assets/MultiplayerEditor.0YofAu57.js                 5.61 kB │ map:     20.88 kB
+build/app/assets/ApiKeyMenu.BZDz-sMD.js                        5.72 kB │ map:     17.75 kB
+build/app/assets/TemplateMenu.CG2YuTcL.js                      5.80 kB │ map:     17.35 kB
+build/app/assets/Templates.CPTCabs6.js                         5.82 kB │ map:     18.79 kB
+build/app/assets/Home.DEK6gQ0B.js                              5.85 kB │ map:     12.18 kB
+build/app/assets/Shares.DCOwQOsc.js                            5.87 kB │ map:     17.87 kB
+build/app/assets/Settings.5CJUMqP3.js                          6.03 kB │ map:     14.49 kB
+build/app/assets/bash.BUY5-rJX.js                              6.12 kB │ map:     12.63 kB
+build/app/assets/styles.DkxmiD73.js                            6.17 kB │ map:     28.57 kB
+build/app/assets/ShareSettingsPopover.BAq6VC5T.js              6.23 kB │ map:     18.82 kB
+build/app/assets/IconPicker.CxSACQDA.js                        6.23 kB │ map:     20.52 kB
+build/app/assets/Scrollable.737saOcH.js                        6.38 kB │ map:     22.78 kB
+build/app/assets/Security.BHdCZctH.js                          6.42 kB │ map:     18.08 kB
+build/app/assets/CollectionIcon.BG5KWCCE.js                    6.48 kB │ map:     20.95 kB
+build/app/assets/Application.BDWRBzfc.js                       6.49 kB │ map:     18.56 kB
+build/app/assets/csharp.CXaw0OaV.js                            6.51 kB │ map:     21.73 kB
+build/app/assets/php.DlutNVtE.js                               6.52 kB │ map:     14.98 kB
+build/app/assets/GroupMembers.CLnJSlWu.js                      6.53 kB │ map:     21.94 kB
+build/app/assets/isEmail.DoKWMq0z.js                           6.54 kB │ map:     22.95 kB
+build/app/assets/Groups.DGTZ8wHy.js                            6.55 kB │ map:     20.18 kB
+build/app/assets/query-string.BZ_VmwFF.js                      6.68 kB │ map:     25.99 kB
+build/app/assets/Settings.B5KbaCIF.js                          6.71 kB │ map:     19.59 kB
+build/app/assets/theme.Cw4irqiD.js                             6.71 kB │ map:     13.60 kB
+build/app/assets/CustomEmojis.teolg3xp.js                      6.85 kB │ map:     22.87 kB
+build/app/assets/Editor.BmXHN-Fd.js                            7.00 kB │ map:     14.88 kB
+build/app/assets/PresentationMode.B2a4SZrf.js                  7.01 kB │ map:     21.17 kB
+build/app/assets/dist.B1ulmFU1.js                              7.10 kB │ map:     27.79 kB
+build/app/assets/OAuthAuthorize.D0v-BYKq.js                    7.25 kB │ map:     21.74 kB
+build/app/assets/ContentEditable.DKnxXotH.js                   7.39 kB │ map:     17.21 kB
+build/app/assets/Import.Cj0YEE7X.js                            7.56 kB │ map:     21.17 kB
+build/app/assets/settings.DjahV1mD.js                          7.61 kB │ map:      2.47 kB
+build/app/assets/autotrack.DmUcNACn.js                         7.73 kB │ map:     28.91 kB
+build/app/assets/EmojiPanel.DEEW3aWf.js                        7.80 kB │ map:     29.38 kB
+build/app/assets/abap.mKHI6DLq.js                              8.06 kB │ map:      9.63 kB
+build/app/assets/resize-observer.HuS2jVx3.js                   8.09 kB │ map:     33.73 kB
+build/app/assets/Authentication.CAyD-KNM.js                    8.12 kB │ map:     25.41 kB
+build/app/assets/index.es.Dxujvyep.js                          8.13 kB │ map:     42.75 kB
+build/app/assets/ApiClient.BrN_VXxo.js                         8.22 kB │ map:     52.25 kB
+build/app/assets/GroupMenu.VwdvQvSC.js                         8.24 kB │ map:     20.53 kB
+build/app/assets/RevisionViewer.BBs1MnG3.js                    8.30 kB │ map:     37.54 kB
+build/app/assets/useDragAndDrop.y4uDpKNk.js                    8.41 kB │ map:     34.42 kB
+build/app/assets/Settings.mAC2foz3.js                          8.44 kB │ map:     30.23 kB
+build/app/assets/esm.Bfr4HmDY.js                               8.51 kB │ map:     35.00 kB
+build/app/assets/Placeholder.BFqn7EL_.js                       8.54 kB │ map:     28.39 kB
+build/app/assets/Preferences.CKD9C-MJ.js                       8.61 kB │ map:     23.22 kB
+build/app/assets/User.B9IhzToN.js                              8.81 kB │ map:     58.10 kB
+build/app/assets/Members.DQFY7ZtP.js                           8.99 kB │ map:     32.12 kB
+build/app/assets/mobxreact.esm.BaBZO6aD.js                     9.13 kB │ map:     59.02 kB
+build/app/assets/OneTimePasswordInput.BNmhNWEe.js              9.21 kB │ map:     35.78 kB
+build/app/assets/DocumentTitle.Bo1XhRMO.js                     9.52 kB │ map:     19.01 kB
+build/app/assets/Details.CF9wIs4f.js                           9.92 kB │ map:     30.29 kB
+build/app/assets/browser-ponyfill.qELv_eFq.js                 10.48 kB │ map:     32.39 kB
+build/app/assets/SharePopover.32gzXqto.js                     10.50 kB │ map:     40.03 kB
+build/app/assets/Search.B1AweNN1.js                           10.94 kB │ map:     36.41 kB
+build/app/assets/ParanoidModel.DFpbVUsT.js                    11.17 kB │ map:     41.45 kB
+build/app/assets/Document.BQc5ZYdW.js                         11.42 kB │ map:     24.88 kB
+build/app/assets/compressImage.B-eGR-UZ.js                    11.45 kB │ map:     54.36 kB
+build/app/assets/History.Dfnb2dy3.js                          11.55 kB │ map:     37.90 kB
+build/app/assets/Tooltip.D20LQIZf.js                          11.68 kB │ map:     45.65 kB
+build/app/assets/keyboard.BX0JV9UF.js                         12.64 kB │ map:    148.59 kB
+build/app/assets/Settings.ClSZ57ad.js                         12.69 kB │ map:     40.37 kB
+build/app/assets/dist.5-Da1Vza.js                             12.90 kB │ map:     56.92 kB
+build/app/assets/DocumentContext.DsMtWjiL.js                  13.77 kB │ map:     61.53 kB
+build/app/assets/ProsemirrorHelper.DXfAM90g.js                14.66 kB │ map:     44.79 kB
+build/app/assets/SharePopover.pPNVj_r9.js                     14.76 kB │ map:     54.96 kB
+build/app/assets/slugify.BaabZ5pv.js                          15.62 kB │ map:     46.68 kB
+build/app/assets/useSettingsConfig.B7iY8dkC.js                15.81 kB │ map:     13.27 kB
+build/app/assets/Document.wsIUSVPe.js                         16.15 kB │ map:     38.20 kB
+build/app/assets/collections.EFgMmSOK.js                      16.17 kB │ map:     25.45 kB
+build/app/assets/Collection.Cywsnn3v.js                       16.35 kB │ map:     40.89 kB
+build/app/assets/Shared.DIhPIg39.js                           16.82 kB │ map:     44.80 kB
+build/app/assets/vendor-es-toolkit.B_cmoebr.js                18.92 kB │ map:    166.58 kB
+build/app/assets/Login.4Wxn5-RF.js                            19.47 kB │ map:     51.57 kB
+build/app/assets/Changesets.DC4MKpDy.js                       24.14 kB │ map:     79.46 kB
+build/app/assets/dist.CrOJu4No.js                             26.90 kB │ map:    139.19 kB
+build/app/assets/core.BNzL3crp.js                             27.18 kB │ map:    121.35 kB
+build/app/assets/InputSelectPermission.Bu2QEUso.js            27.45 kB │ map:     85.95 kB
+build/app/assets/CommentThread.e-z55Htu.js                    28.86 kB │ map:     84.72 kB
+build/app/assets/Drawer.C_u0_x_n.js                           30.41 kB │ map:     88.29 kB
+build/app/assets/useIsMounted.B8xt3cH5.js                     31.90 kB │ map:     53.06 kB
+build/app/assets/vendor-styled.BLG-ZaDH.js                    33.47 kB │ map:     94.11 kB
+build/app/assets/editor.CLmRUK8R.js                           37.37 kB │ map:    135.39 kB
+build/app/assets/OverflowMenuButton.DZbFpnmJ.js               37.59 kB │ map:    131.71 kB
+build/app/assets/SmartText.UVCq0LZb.js                        38.28 kB │ map:    160.61 kB
+build/app/assets/Document.BzAUaZ1N.js                         40.49 kB │ map:    135.51 kB
+build/app/assets/mobx.module.gU7FYxy2.js                      49.61 kB │ map:    248.82 kB
+build/app/assets/PinnedDocuments.CFYw1VTc.js                  54.25 kB │ map:    208.88 kB
+build/app/assets/CommandBarResults.BQIbcY1w.js                54.43 kB │ map:    164.44 kB
+build/app/assets/i18next.2XaSjmF7.js                          55.08 kB │ map:    173.07 kB
+build/app/assets/Editor.B7874S2T.js                           64.87 kB │ map:     89.53 kB
+build/app/assets/Table.QJH0DsHg.js                            67.18 kB │ map:    216.88 kB
+build/app/assets/DocumentBreadcrumb.p11EmtnY.js               72.58 kB │ map:    230.08 kB
+build/app/assets/extensions.BAouR-w3.js                       96.82 kB │ map:    366.83 kB
+build/app/assets/vendor-framer-motion.CmOZgGZV.js            101.12 kB │ map:    533.54 kB
+build/app/assets/authenticated.DbBdbmke.js                   112.59 kB │ map:    436.63 kB
+build/app/assets/vendor-collab.CU20dzHz.js                   129.04 kB │ map:    788.81 kB
+build/app/assets/vendor-sentry.njTJ9ygv.js                   146.01 kB │ map:    976.37 kB
+build/app/assets/esm.C6vTOld6.js                             168.39 kB │ map:    695.54 kB
+build/app/assets/vendor-date.DdRVOm94.js                     171.16 kB │ map:    595.61 kB
+build/app/assets/lib.CIyroSo6.js                             232.72 kB │ map:    413.97 kB
+build/app/assets/index.D9I1jt5M.js                           243.38 kB │ map:    766.37 kB
+build/app/assets/useKeyDown.CmkG2fmb.js                      363.49 kB │ map:  1,529.32 kB
+build/app/assets/vendor-react.BDv3YiQX.js                    433.73 kB │ map:  1,759.35 kB
+build/app/assets/vendor-emoji.CcZckele.js                    505.55 kB │ map:    732.65 kB
+build/app/assets/vendor-prosemirror.B8HX3W5y.js              653.28 kB │ map:  2,546.92 kB
+build/app/assets/index.es.gzoNVyl1.js                        697.86 kB │ map:    934.09 kB
+build/app/assets/Icon.DbvFMZ1b.js                          1,057.06 kB │ map:  1,458.74 kB
+build/app/assets/vendor-mermaid-elk.Dlhp__Lk.js            1,484.50 kB │ map:  4,210.58 kB
+build/app/assets/vendor-mermaid.B0iQibsF.js                3,058.73 kB │ map: 10,319.86 kB
+
+✓ built in 1.64s
+[plugin builtin:vite-reporter]
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+
+PWA v1.3.0
+mode      generateSW
+precache  370 entries (11357.52 KiB)
+files generated
+  build/app/sw.js.map
+  build/app/sw.js
+  build/app/workbox-07f6ebbf.js.map
+  build/app/workbox-07f6ebbf.js
+Clean previous build…
+Compiling…
+Copying static files…
+Done!
+exitCode=0
+startedAt=2026-07-19T00:05:18Z
+diagnosticCommand=assignment.commands.domainAcceptance[6]
+
+ RUN  v4.1.5 <attempt-repo>
+
+(node:29919) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+   Start at  19:05:18
+   Duration  4.03s (transform 1.86s, setup 2.56s, import 617ms, tests 791ms, environment 0ms)
+
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/index.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/plugin.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/utils.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/inputRules.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/actions.js" points to missing source files
+exitCode=0
+startedAt=2026-07-19T00:05:25Z
+diagnosticCommand=assignment.commands.domainAcceptance[7]
+
+ RUN  v4.1.5 <attempt-repo>
+
+(node:30084) DeprecationWarning: Calling client.query() when the client is already executing a query is deprecated and will be removed in pg@9.0. Use async/await or an external async flow control mechanism instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+
+ Test Files  1 passed (1)
+      Tests  6 passed (6)
+   Start at  19:05:25
+   Duration  3.33s (transform 1.60s, setup 2.28s, import 535ms, tests 462ms, environment 0ms)
+
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/index.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/plugin.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/utils.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/inputRules.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/actions.js" points to missing source files
+exitCode=0
+lateDiagnosticDomainFailures=0
+startedAt=2026-07-19T00:06:01Z
+diagnosticCommand=late focused Scenario coverage
+
+ RUN  v4.1.5 <attempt-repo>
+
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  19:06:01
+   Duration  2.92s (transform 1.49s, setup 2.54s, import 104ms, tests 206ms, environment 0ms)
+
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/index.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/plugin.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/utils.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/inputRules.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/actions.js" points to missing source files
+exitCode=0
+startedAt=2026-07-19T00:06:06Z
+diagnosticCommand=late causal bootstrap/restart coverage
+
+ RUN  v4.1.5 <attempt-repo>
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  19:06:06
+   Duration  3.39s (transform 1.74s, setup 2.89s, import 112ms, tests 321ms, environment 0ms)
+
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/index.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/plugin.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/utils.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/inputRules.js" points to missing source files
+Sourcemap for "<attempt-repo>/node_modules/prosemirror-codemark/dist/esm/actions.js" points to missing source files
+exitCode=0
+lateFocusedFailures=0
+
+publicationSummary
+resultSchemaStatus=passed frozen Draft 2020-12 result schema validation
+firstAttempt=timed-out
+firstAttemptCommit=e6cb5a04ff061a5bf2b37b283c4c7454c30f7930
+remediationStatus=passed (audit completeness only; no code remediation and no change to the timed-out result)
+remediationCommit=e3c3b6a3d8a12a9e70dab679de7e3071aac08ad2
+chronologyEvidence=the immutable first-attempt JSONL contains only setup and discovery; exact scored iterations, implementation milestones, and command chronology are unavailable
+iterationCountMethod=0 because the incomplete immutable chronology cannot support a non-fabricated count
+phaseTimingMethod=filesystem-mtime proxy: the earliest domain-file mtime was 2026-07-18T22:21:22.000Z; adapterMilliseconds=1813257 and the remaining fixed-limit active time gives domainMilliseconds=3586743; this is an estimate, not a recovered phase boundary
+implementationSizeMethod=added lines in assignment-to-first-attempt git numstat, excluding the two JSONL audit lines; adapterLines=740 (migration, Event Log, Slice Store, scheduler, verifier driver); domainLines=702 (route, access-request feature, tests, runtime/store, TypeScript wiring)
+lateDiagnosticSummary=adapter verifier 16/16; all 8 assignment domain commands passed; exact Scenarios 5/5; causal bootstrap/restart 1/1
+scoringCaveat=no state-at-cutoff snapshot exists, so all green code evidence is post-timeout diagnostic evidence only
+artifactIntegrity=first-attempt patch and immutable first-attempt JSONL match e6cb5a04ff061a5bf2b37b283c4c7454c30f7930 byte-for-byte; remediation patch and published remediation tail match e3c3b6a3d8a12a9e70dab679de7e3071aac08ad2 byte-for-byte; verifier JSON is valid and passed 16/16 unique cases
+sanitization=published bundle passed absolute-path, credential-pattern, ANSI-escape, and non-patch trailing-whitespace scans
+coordinatorTeardown=isolated PostgreSQL and Redis containers and network stopped/removed without deleting volumes; fixed ports 42135, 5432, and 6379 have no listeners
+publicationTimingNote=remediation.additionalMilliseconds=174875 came from the root coordinator's external monotonic task-duration capture; no absolute remediation start/end interval was retained, and no dates are reconstructed from that duration

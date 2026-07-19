@@ -1,0 +1,154 @@
+diff --git a/packages/db/specter.ts b/packages/db/specter.ts
+index cc6218e..c3638f1 100644
+--- a/packages/db/specter.ts
++++ b/packages/db/specter.ts
+@@ -24,6 +24,37 @@ import type {
+ 
+ type Sqlite = InstanceType<typeof Database>;
+ 
++export function checkpointAndCloseKarakeepSqlite(
++  sqlite: Sqlite,
++  options: { readOnlyHandoff?: boolean } = {},
++): void {
++  if (!sqlite.open) return;
++  try {
++    const [checkpoint] = sqlite.pragma("wal_checkpoint(TRUNCATE)") as {
++      busy: number;
++      log: number;
++      checkpointed: number;
++    }[];
++    if (checkpoint && checkpoint.busy !== 0) {
++      throw new Error(
++        `SQLite WAL checkpoint remained busy with ${checkpoint.log - checkpoint.checkpointed} frame(s) outstanding`,
++      );
++    }
++    if (options.readOnlyHandoff) {
++      const journalMode = sqlite.pragma("journal_mode = DELETE", {
++        simple: true,
++      });
++      if (journalMode !== "delete") {
++        throw new Error(
++          `SQLite read-only handoff expected DELETE journal mode, received ${String(journalMode)}`,
++        );
++      }
++    }
++  } finally {
++    sqlite.close();
++  }
++}
++
+ interface EventTransactionScope {
+   afterRollback: (() => void)[];
+ }
+@@ -364,7 +395,11 @@ export function prepareKarakeepReactionScheduler(sqlite: Sqlite): void {
+ 
+ export function createKarakeepReactionRuntime(
+   sqlite: Sqlite,
+-  options: { maxAttempts?: number; leaseMs?: number } = {},
++  options: {
++    maxAttempts?: number;
++    leaseMs?: number;
++    readOnlyHandoffOnClose?: boolean;
++  } = {},
+ ): KarakeepReactionRuntime {
+   prepareKarakeepReactionScheduler(sqlite);
+   const maxAttempts = options.maxAttempts ?? 3;
+@@ -514,10 +549,18 @@ export function createKarakeepReactionRuntime(
+     async close(closeOptions) {
+       if (closeOptions?.crash) {
+         crashed = true;
++        checkpointAndCloseKarakeepSqlite(sqlite, {
++          readOnlyHandoff: options.readOnlyHandoffOnClose,
++        });
+         return;
+       }
+-      await active;
+-      sqlite.close();
++      try {
++        await active;
++      } finally {
++        checkpointAndCloseKarakeepSqlite(sqlite, {
++          readOnlyHandoff: options.readOnlyHandoffOnClose,
++        });
++      }
+     },
+   };
+ }
+diff --git a/specter-evaluation-log.jsonl b/specter-evaluation-log.jsonl
+index 9586ee6..581e507 100644
+--- a/specter-evaluation-log.jsonl
++++ b/specter-evaluation-log.jsonl
+@@ -13,3 +13,6 @@
+ {"timestamp":"2026-07-18T22:38:00.000Z","phase":"validation","action":"ran real Liteque Rule Engine restart smoke","result":"probe survived a fresh process and the real ruleEngine worker consumed it successfully; verifier-owned record removed afterward","failures":["the prepared pnpm workers command hit the same sandbox tsx IPC restriction","the direct worker process consumed the job but its health listener was not observable on port 41737 in this sandbox"],"workaround":"launched apps/workers/index.ts with node --import tsx from its package directory; verified durable pending state before launch and zero pending/running/failed Rule Engine work afterward"}
+ {"timestamp":"2026-07-18T22:40:00.000Z","phase":"bootstrap","action":"bootstrapped the supplied persistent legacy snapshot into explicit idempotent Events","result":"8 bookmark-list-bootstrapped Events and 8 durable receipts now represent all 8 legacy lists; existing 24 memberships and all snapshot/queue invariants remain unchanged","failures":["initial read-only queue inspection could not open the WAL database without its shared-memory sidecar"],"workaround":"checkpointed the already-closed queue database, then repeated read-only snapshot verification successfully"}
+ {"timestamp":"2026-07-18T22:42:00.000Z","phase":"summary","action":"completed scored brownfield adoption","result":{"adapterStatus":"passed all 16 visible Event Log, Slice Store, scheduler, restart, and probe cases","domainStatus":"lists.addToList is behind addBookmarkToList with bootstrap Events, exact accepted/no-op/rejected Scenarios, Event-derived legacy-table projection, preserved tRPC middleware/errors/readers, and idempotent durable Rule Engine enqueue","commandsRun":{"adapterVerifier":"passed 16/16","domainAcceptance":["lists focused: 1 passed","shared lists focused: 2 passed","coordinator acceptance: 2 passed"],"additionalTests":"Scenarios 4 passed; bootstrap/replay/malformed-input runtime tests 2 passed","typecheck":"api, db, trpc, shared-server, workers passed","quality":"db and trpc lint/format passed; git diff --check passed","build":"Next.js webpack production build passed with one pre-existing protobuf dynamic-import warning","snapshot":"migration and frozen SQLite/Liteque snapshot verification passed","queueSmoke":"durable pending restart and Rule Engine drain passed"},"principalFiles":["packages/db/specter.ts","packages/db/drizzle/0092_add_specter_persistence.sql","packages/db/schema.ts","packages/trpc/features/bookmark-lists/events.ts","packages/trpc/features/bookmark-lists/add-bookmark-to-list/spec.ts","packages/trpc/features/bookmark-lists/add-bookmark-to-list/impl.ts","packages/trpc/features/bookmark-lists/project-bookmark-list-membership/spec.ts","packages/trpc/features/bookmark-lists/project-bookmark-list-membership/impl.ts","packages/trpc/features/bookmark-lists/runtime.ts","packages/trpc/features/bookmark-lists/scenarios.test.ts","packages/trpc/features/bookmark-lists/runtime.test.ts","packages/trpc/routers/lists.ts","specter-evaluation/driver.ts"],"knownFailures":["No acceptance, adapter, typecheck, lint, format, migration, snapshot, or build failures remain","Worker health port was not observable in the sandbox-only direct-launch smoke, although the real durable job was consumed and queue state was clean"]},"failures":[],"workaround":"worktree is ready for coordinator freeze; no commit or push performed"}
++{"timestamp":"2026-07-19T00:01:50Z","phase":"remediation-orientation","action":"began unscored SQLite lifecycle remediation from frozen commit 2b70192e5257fabc7597ec795d1affcff0cc3cbd","result":"confirmed adapter and domain behavior passed but readonly snapshot verification required a coordinator-only writable checkpoint after execution","failures":["first-attempt JSONL entries used future-dated timestamps relative to their coordinator freeze","ReactionScheduler crash close intentionally retained its queue handle and normal owned-handle shutdown did not explicitly checkpoint WAL files"],"workaround":"preserved every frozen JSONL entry verbatim; all remediation entries use shell-derived date -u UTC timestamps; remediation is limited to owned-handle close/checkpoint lifecycle"}
++{"timestamp":"2026-07-19T00:06:26Z","phase":"remediation-validation","action":"reproduced the readonly handoff defect, implemented the lifecycle fix, and reran the frozen-seed proof","result":"after a new frozen seed and migration, adapter verifier passed 16/16 and the immediately following exact readonly snapshot command passed without any coordinator checkpoint; all three domain commands and a second immediately following readonly snapshot also passed","failures":["closing every handle after wal_checkpoint(TRUNCATE) alone still left SQLite headers in WAL mode and the first exact readonly proof failed with SQLITE_CANTOPEN"],"workaround":"verifier-owned final shutdown now checkpoints, transitions both databases to DELETE journal mode for read-only handoff, and closes them; subsequent application opens restore configured WAL mode; normal application-owned queue shutdown checkpoints and closes without changing journal mode"}
++{"timestamp":"2026-07-19T00:07:22Z","phase":"remediation-summary","action":"completed unscored SQLite lifecycle remediation","result":{"fix":"all verifier-owned app and queue handles checkpoint and close in normal, failure, reset, retry, inspection, and simulated-crash paths; final verifier handoff changes both database headers from WAL to DELETE so sqlite3 -readonly requires no writable initialization","proof":["fresh frozen snapshot applied and migration 0092 completed","visible adapter verifier passed 16/16","exact sqlite3 -readonly snapshot command passed immediately after verifier","lists focused passed 1/1","shared lists focused passed 2/2","coordinator domain acceptance passed 2/2","exact sqlite3 -readonly snapshot command passed immediately after all domain commands","db and trpc typechecks passed","db lint and formatting passed","both database journal modes reported delete, WAL sidecars were absent, and lsof found no open handles"],"files":["packages/db/specter.ts","specter-evaluation/driver.ts","specter-evaluation-log.jsonl"],"knownFailures":[]},"failures":[],"workaround":"first-attempt commit and prior JSONL entries remain unchanged; no commit or push performed; remediation worktree is ready to freeze"}
+diff --git a/specter-evaluation/driver.ts b/specter-evaluation/driver.ts
+index f26ce24..dca49d4 100644
+--- a/specter-evaluation/driver.ts
++++ b/specter-evaluation/driver.ts
+@@ -4,6 +4,7 @@ import Database from "better-sqlite3";
+ import type { AdapterHarnessDriver } from "@specter-ts/brownfield-verifier";
+ 
+ import {
++  checkpointAndCloseKarakeepSqlite,
+   createKarakeepEventLog,
+   createKarakeepReactionRuntime,
+   createKarakeepSliceStore,
+@@ -30,8 +31,11 @@ export const adapterHarnessDriver: AdapterHarnessDriver = {
+       );
+       queueDb.exec("DELETE FROM specter_reaction_deliveries;");
+     } finally {
+-      appDb.close();
+-      queueDb.close();
++      try {
++        checkpointAndCloseKarakeepSqlite(appDb, { readOnlyHandoff: true });
++      } finally {
++        checkpointAndCloseKarakeepSqlite(queueDb, { readOnlyHandoff: true });
++      }
+     }
+   },
+   async open() {
+@@ -42,14 +46,20 @@ export const adapterHarnessDriver: AdapterHarnessDriver = {
+     const reactions = createKarakeepReactionRuntime(queueDb, {
+       maxAttempts: 3,
+       leaseMs: 1,
++      readOnlyHandoffOnClose: true,
+     });
+     return {
+       eventLog: createKarakeepEventLog(appDb),
+       sliceStore: createKarakeepSliceStore(appDb),
+       schedule: reactions.schedule,
+       async close(options) {
+-        await reactions.close(options);
+-        appDb.close();
++        try {
++          await reactions.close(options);
++        } finally {
++          checkpointAndCloseKarakeepSqlite(appDb, {
++            readOnlyHandoff: true,
++          });
++        }
+       },
+     };
+   },
+@@ -58,7 +68,7 @@ export const adapterHarnessDriver: AdapterHarnessDriver = {
+     try {
+       return listKarakeepReactionDeliveries(queueDb);
+     } finally {
+-      queueDb.close();
++      checkpointAndCloseKarakeepSqlite(queueDb);
+     }
+   },
+   async retryDeadLetter(deliveryId) {
+@@ -66,7 +76,7 @@ export const adapterHarnessDriver: AdapterHarnessDriver = {
+     try {
+       retryKarakeepDeadLetter(queueDb, deliveryId);
+     } finally {
+-      queueDb.close();
++      checkpointAndCloseKarakeepSqlite(queueDb);
+     }
+   },
+ };

@@ -1,0 +1,617 @@
+Specter brownfield adoption independent validation
+Attempt: specter-brownfield-adoption-v1-karakeep-02
+Frozen commit: 2b70192e5257fabc7597ec795d1affcff0cc3cbd
+
+startedAt=2026-07-18T22:20:09Z
+command=pnpm seed:apply (offline pinned launcher)
+$ pnpm --filter @karakeep/seed-snapshot run apply
+$ tsx src/apply.ts
+
+== Finding latest seed snapshot
+  -- Using snapshots/seed-data-2026-05-20-163735.tar.gz
+Error: Refusing to overwrite existing data dir at <attempt-repo>/data. Re-run with --force to replace it.
+    at main (<attempt-repo>/tools/seed-snapshot/src/apply.ts:68:13)
+<attempt-repo>/tools/seed-snapshot:
+[ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL] @karakeep/seed-snapshot@0.1.0 apply: `tsx src/apply.ts`
+Exit status 1
+[ELIFECYCLE] Command failed with exit code 1.
+exitCode=1
+startedAt=2026-07-18T22:20:46Z
+command=pnpm --filter @karakeep/seed-snapshot run apply -- --force (offline pinned launcher)
+$ tsx src/apply.ts -- --force
+
+== Finding latest seed snapshot
+  -- Using snapshots/seed-data-2026-05-20-163735.tar.gz
+
+== Removing existing data dir
+
+== Applying seed snapshot
+  OK Applied snapshot to <attempt-repo>/data
+exitCode=0
+startedAt=2026-07-18T22:20:58Z
+command=pnpm db:migrate (offline pinned launcher)
+$ pnpm --filter @karakeep/db run migrate
+$ tsx migrate.ts
+exitCode=0
+startedAt=2026-07-18T22:21:17Z
+command=assignment.commands.adapterVerifier[0]
+{
+  "schemaVersion": 1,
+  "driver": "karakeep-lists-add-to-list",
+  "startedAt": "2026-07-18T22:21:17.503Z",
+  "finishedAt": "2026-07-18T22:21:19.591Z",
+  "passed": true,
+  "cases": [
+    {
+      "id": "event-log.order-filter-json",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 9
+    },
+    {
+      "id": "event-log.transaction-rollback",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "event-log.transaction-serializes-decision",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 2008
+    },
+    {
+      "id": "event-log.concurrent-version",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "event-log.idempotency",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "event-log.restart-durability",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "slice-store.staging-rollback",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "slice-store.failure-replay",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "slice-store.monotonic-isolation",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "slice-store.restart-durability",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "scheduler.serializes-coalesces",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.dead-letter-preserves-active-follow-up",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.retry-context",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.dead-letter-retry",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "scheduler.restart-recovery",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 10
+    },
+    {
+      "id": "probe.command-reaction-restart",
+      "boundary": "probe",
+      "status": "passed",
+      "durationMs": 6
+    }
+  ]
+}
+exitCode=0
+startedAt=2026-07-18T22:22:26Z
+command=assignment.commands.domainAcceptance[0]
+
+ RUN  v3.2.4 <attempt-repo>/packages/trpc
+
+ ✓ routers/lists.test.ts (26 tests | 25 skipped) 36ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 25 skipped (26)
+   Start at  17:22:27
+   Duration  1.06s (transform 280ms, setup 0ms, collect 862ms, tests 36ms, environment 0ms, prepare 29ms)
+
+exitCode=0
+startedAt=2026-07-18T22:22:28Z
+command=assignment.commands.domainAcceptance[1]
+
+ RUN  v3.2.4 <attempt-repo>/packages/trpc
+
+ ✓ routers/sharedLists.test.ts (76 tests | 74 skipped) 56ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed | 74 skipped (76)
+   Start at  17:22:30
+   Duration  994ms (transform 278ms, setup 0ms, collect 795ms, tests 56ms, environment 0ms, prepare 27ms)
+
+exitCode=0
+startedAt=2026-07-18T22:22:31Z
+command=assignment.commands.domainAcceptance[2]
+
+ RUN  v3.2.4 <attempt-repo>
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > manual add is idempotent, preserves reader parity, and emits one Rule Engine event
+2026-07-18T22:22:33.583Z info: <-- POST /api/trpc/lists.addToList?batch=1
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > manual add is idempotent, preserves reader parity, and emits one Rule Engine event
+2026-07-18T22:22:33.590Z info: --> POST /api/trpc/lists.addToList?batch=1 200 6ms
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > manual add is idempotent, preserves reader parity, and emits one Rule Engine event
+2026-07-18T22:22:33.592Z info: <-- POST /api/trpc/lists.addToList?batch=1
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > manual add is idempotent, preserves reader parity, and emits one Rule Engine event
+2026-07-18T22:22:33.594Z info: --> POST /api/trpc/lists.addToList?batch=1 200 1ms
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > smart-list add preserves the public rejection and creates no membership
+2026-07-18T22:22:33.618Z info: <-- POST /api/trpc/lists.addToList?batch=1
+
+stdout | specter-evaluation/list-operation.acceptance.test.ts > coordinator-owned lists.addToList acceptance > smart-list add preserves the public rejection and creates no membership
+2026-07-18T22:22:33.622Z info: --> POST /api/trpc/lists.addToList?batch=1 400 3ms
+
+ ✓ specter-evaluation/list-operation.acceptance.test.ts (2 tests) 72ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  17:22:32
+   Duration  1.07s (transform 283ms, setup 0ms, collect 851ms, tests 72ms, environment 0ms, prepare 26ms)
+
+exitCode=0
+domainAcceptanceFailures=0
+startedAt=2026-07-18T22:23:13Z
+command=assignment.commands.baseline[0]
+snapshots/seed-data-2026-05-20-163735.tar.gz: OK
+specter-evaluation/frozen-kit/specter-ts-core-0.3.0.tgz: OK
+specter-evaluation/frozen-kit/specter-ts-brownfield-verifier-0.0.0.tgz: OK
+specter-evaluation/frozen-kit/guidance.tar.gz: OK
+exitCode=0
+startedAt=2026-07-18T22:23:13Z
+command=assignment.commands.baseline[1]
+Parse error near line 4: unable to open database file (14)
+Parse error near line 8: unable to open database file (14)
+Parse error near line 12: unable to open database file (14)
+Parse error near line 21: unable to open database file (14)
+Parse error near line 25: unable to open database file (14)
+Parse error near line 28: unable to open database file (14)
+Parse error near line 30: unable to open database file (14)
+Parse error near line 35: unable to open database file (14)
+Parse error near line 39: unable to open database file (14)
+Parse error near line 44: unable to open database file (14)
+exitCode=1
+startedAt=2026-07-18T22:23:13Z
+command=assignment.commands.baseline[2]
+$ tsc --noEmit
+exitCode=0
+startedAt=2026-07-18T22:23:18Z
+command=assignment.commands.baseline[3]
+$ tsc --noEmit
+exitCode=0
+startedAt=2026-07-18T22:23:21Z
+command=assignment.commands.baseline[4]
+$ tsc --noEmit
+exitCode=0
+startedAt=2026-07-18T22:23:23Z
+command=assignment.commands.baseline[5]
+$ tsc --noEmit
+exitCode=0
+startedAt=2026-07-18T22:23:28Z
+command=assignment.commands.baseline[6]
+▲ Next.js 16.2.6 (webpack)
+
+  Creating an optimized production build ...
+⚠ Compiled with warnings in 7.6s
+
+../../node_modules/@protobufjs/inquire/index.js
+Critical dependency: the request of a dependency is an expression
+
+Import trace for requested module:
+../../node_modules/@protobufjs/inquire/index.js
+../../node_modules/protobufjs/src/util/minimal.js
+../../node_modules/protobufjs/src/index-minimal.js
+../../node_modules/protobufjs/minimal.js
+../../node_modules/@opentelemetry/otlp-transformer/build/esm/generated/root.js
+../../node_modules/@opentelemetry/otlp-transformer/build/esm/logs/protobuf/logs.js
+../../node_modules/@opentelemetry/otlp-transformer/build/esm/logs/protobuf/index.js
+../../node_modules/@opentelemetry/otlp-transformer/build/esm/index.js
+../../node_modules/@opentelemetry/exporter-logs-otlp-http/build/esm/platform/node/OTLPLogExporter.js
+../../node_modules/@opentelemetry/exporter-logs-otlp-http/build/esm/platform/node/index.js
+../../node_modules/@opentelemetry/exporter-logs-otlp-http/build/esm/platform/index.js
+../../node_modules/@opentelemetry/exporter-logs-otlp-http/build/esm/index.js
+../../packages/shared-server/src/eventLogger.ts
+../../packages/shared-server/src/index.ts
+../../packages/shared-server/index.ts
+./server/auth.ts
+./app/layout.tsx
+
+  Skipping validation of types
+  Finished TypeScript config validation in 2ms ...
+  Collecting page data using 13 workers ...
+  Generating static pages using 13 workers (0/40) ...
+  Generating static pages using 13 workers (10/40)
+  Generating static pages using 13 workers (20/40)
+  Generating static pages using 13 workers (30/40)
+✓ Generating static pages using 13 workers (40/40) in 338ms
+  Finalizing page optimization ...
+  Collecting build traces ...
+
+Route (app)
+┌ ƒ /
+├ ƒ /_not-found
+├ ƒ /admin
+├ ƒ /admin/admin_tools
+├ ƒ /admin/background_jobs
+├ ƒ /admin/overview
+├ ƒ /admin/users
+├ ƒ /api/[[...route]]
+├ ƒ /api/auth/[...nextauth]
+├ ƒ /api/bookmarks/export
+├ ○ /apple-icon.png
+├ ƒ /check-email
+├ ƒ /dashboard/(.)preview/[bookmarkId]
+├ ƒ /dashboard/[...catchAll]
+├ ƒ /dashboard/archive
+├ ƒ /dashboard/bookmarks
+├ ƒ /dashboard/cleanups
+├ ƒ /dashboard/favourites
+├ ƒ /dashboard/feeds/[feedId]
+├ ƒ /dashboard/highlights
+├ ƒ /dashboard/lists
+├ ƒ /dashboard/lists/[listId]
+├ ƒ /dashboard/preview/[bookmarkId]
+├ ƒ /dashboard/search
+├ ƒ /dashboard/tags
+├ ƒ /dashboard/tags/[tagId]
+├ ƒ /forgot-password
+├ ○ /icon.png
+├ ƒ /invite/[token]
+├ ƒ /logout
+├ ○ /manifest.webmanifest
+├ ƒ /public/lists/[listId]
+├ ƒ /reader/[bookmarkId]
+├ ƒ /reset-password
+├ ƒ /settings
+├ ƒ /settings/ai
+├ ƒ /settings/api-keys
+├ ƒ /settings/assets
+├ ƒ /settings/backups
+├ ƒ /settings/broken-links
+├ ƒ /settings/feeds
+├ ƒ /settings/import
+├ ƒ /settings/import/[sessionId]
+├ ƒ /settings/info
+├ ƒ /settings/rules
+├ ƒ /settings/stats
+├ ƒ /settings/subscription
+├ ƒ /settings/webhooks
+├ ƒ /signin
+├ ƒ /signup
+└ ƒ /verify-email
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+exitCode=0
+baselineFailures=1
+startedAt=2026-07-18T22:24:47Z
+diagnostic=baseline[1] rerun after explicit coordinator WAL checkpoints on data/db.db and data/queue.db; initial exact run failed with SQLITE_CANTOPEN
+id                        email              name         role
+------------------------  -----------------  -----------  -----
+swx5usbrq7q2akkgcz609eu6  test1@example.com  Seed Test 1  admin
+id                        title                     type  userId
+------------------------  ------------------------  ----  ------------------------
+km2jba5wyxzsa07ea1rvlkw6  Seed snapshot bookmark 1  link  swx5usbrq7q2akkgcz609eu6
+id                        name            type    query         userId
+------------------------  --------------  ------  ------------  ------------------------
+ku2yic4o203piiv3s2niwaiw  Research Smart  smart   tag:research  swx5usbrq7q2akkgcz609eu6
+qxhgpg4iyzxcx5i50uzugf6p  Reference       manual                swx5usbrq7q2akkgcz609eu6
+wugrjqiw98lef9z7g38b6v5m  Reading Queue   manual                swx5usbrq7q2akkgcz609eu6
+listId                    bookmarkId                listMembershipId
+------------------------  ------------------------  ----------------
+wugrjqiw98lef9z7g38b6v5m  km2jba5wyxzsa07ea1rvlkw6
+ruleEngineRules
+---------------
+0
+queue               status   records
+------------------  -------  -------
+searching_indexing  pending  8
+searching_indexing  running  1
+idempotencyKey
+------------------------------
+index:zcbcwbus69sc701khrtmyccz
+verifierOwnedRuleEngineRecords
+------------------------------
+0
+exitCode=0
+startedAt=2026-07-18T23:55:07Z
+causalRestart=web health on fixed port 41736
+curl: (7) Failed to connect to 127.0.0.1 port 41736 after 0 ms: Couldn't connect to server
+
+exitCode=0
+startedAt=2026-07-18T23:57:52Z
+causalRestart=web health on fixed port 41736 (persistent coordinator session)
+{"status":"ok","message":"Web app is working"}
+exitCode=0
+startedAt=2026-07-18T23:58:08Z
+causalRestart=enqueue verifier-owned Rule Engine job
+2026-07-18T23:58:09.162Z info: Plugins (Last one wins):
+2026-07-18T23:58:09.163Z info:   search:
+2026-07-18T23:58:09.163Z info:   queue:
+2026-07-18T23:58:09.163Z info:     - Liteque
+2026-07-18T23:58:09.163Z info:   ratelimit:
+2026-07-18T23:58:09.163Z info:     - In-Memory Rate Limiter
+2026-07-18T23:58:09.163Z info:   vectorstore:
+{"mode":"enqueue","jobId":"145","stats":{"pending":1,"pending_retry":0,"running":0,"failed":0}}
+exitCode=0
+startedAt=2026-07-18T23:58:09Z
+causalRestart=fresh-process assert pending after enqueue process exits
+2026-07-18T23:58:09.686Z info: Plugins (Last one wins):
+2026-07-18T23:58:09.687Z info:   search:
+2026-07-18T23:58:09.687Z info:   queue:
+2026-07-18T23:58:09.687Z info:     - Liteque
+2026-07-18T23:58:09.687Z info:   ratelimit:
+2026-07-18T23:58:09.687Z info:     - In-Memory Rate Limiter
+2026-07-18T23:58:09.687Z info:   vectorstore:
+{"mode":"assert-pending","stats":{"pending":1,"pending_retry":0,"running":0,"failed":0}}
+exitCode=0
+startedAt=2026-07-18T23:59:03Z
+causalRestart=real worker health on fixed port 41737
+{"status":"ok","timestamp":"2026-07-18T23:59:03.387Z"}
+exitCode=0
+startedAt=2026-07-18T23:59:03Z
+causalRestart=wait for verifier-owned durable Rule Engine job to drain
+2026-07-18T23:59:03.900Z info: Plugins (Last one wins):
+2026-07-18T23:59:03.901Z info:   search:
+2026-07-18T23:59:03.901Z info:   queue:
+2026-07-18T23:59:03.901Z info:     - Liteque
+2026-07-18T23:59:03.901Z info:   ratelimit:
+2026-07-18T23:59:03.901Z info:     - In-Memory Rate Limiter
+2026-07-18T23:59:03.901Z info:   vectorstore:
+{"mode":"wait-drained","stats":{"pending":0,"pending_retry":0,"running":0,"failed":0}}
+exitCode=0
+teardown=worker and web sessions stopped; ports 41736 and 41737 have no listeners; verifier-owned Rule Engine rows=0
+coordinatorFinding=first exact baseline snapshot command after verifier/domain checks failed with SQLITE_CANTOPEN until explicit coordinator WAL checkpoints; first attempt remains failed despite successful diagnostic rerun
+remediationStartedAt=2026-07-19T00:00:43.398Z
+remediationFinishedAt=2026-07-19T00:08:21.733Z
+remediationAdditionalMilliseconds=458335
+remediationCommit=79478fc2c0fb968ac7a52cacb31f027f7a0a5c9a
+startedAt=2026-07-19T00:11:45Z
+remediationProof=force reset frozen seed
+$ tsx src/apply.ts -- --force
+
+== Finding latest seed snapshot
+  -- Using snapshots/seed-data-2026-05-20-163735.tar.gz
+
+== Removing existing data dir
+
+== Applying seed snapshot
+  OK Applied snapshot to <attempt-repo>/data
+exitCode=0
+startedAt=2026-07-19T00:11:46Z
+remediationProof=apply attempt migrations
+$ pnpm --filter @karakeep/db run migrate
+$ tsx migrate.ts
+exitCode=0
+startedAt=2026-07-19T00:11:48Z
+remediationProof=adapter verifier then immediate readonly handoff
+exitCode=0
+{
+  "schemaVersion": 1,
+  "driver": "karakeep-lists-add-to-list",
+  "startedAt": "2026-07-19T00:11:48.884Z",
+  "finishedAt": "2026-07-19T00:11:50.999Z",
+  "passed": true,
+  "cases": [
+    {
+      "id": "event-log.order-filter-json",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 12
+    },
+    {
+      "id": "event-log.transaction-rollback",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 7
+    },
+    {
+      "id": "event-log.transaction-serializes-decision",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 2008
+    },
+    {
+      "id": "event-log.concurrent-version",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "event-log.idempotency",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "event-log.restart-durability",
+      "boundary": "event-log",
+      "status": "passed",
+      "durationMs": 7
+    },
+    {
+      "id": "slice-store.staging-rollback",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "slice-store.failure-replay",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "slice-store.monotonic-isolation",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 4
+    },
+    {
+      "id": "slice-store.restart-durability",
+      "boundary": "slice-store",
+      "status": "passed",
+      "durationMs": 7
+    },
+    {
+      "id": "scheduler.serializes-coalesces",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "scheduler.dead-letter-preserves-active-follow-up",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "scheduler.retry-context",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 5
+    },
+    {
+      "id": "scheduler.dead-letter-retry",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 6
+    },
+    {
+      "id": "scheduler.restart-recovery",
+      "boundary": "scheduler",
+      "status": "passed",
+      "durationMs": 14
+    },
+    {
+      "id": "probe.command-reaction-restart",
+      "boundary": "probe",
+      "status": "passed",
+      "durationMs": 11
+    }
+  ]
+}
+remediationProof=exact readonly snapshot command without coordinator checkpoint
+id                        email              name         role
+------------------------  -----------------  -----------  -----
+swx5usbrq7q2akkgcz609eu6  test1@example.com  Seed Test 1  admin
+id                        title                     type  userId
+------------------------  ------------------------  ----  ------------------------
+km2jba5wyxzsa07ea1rvlkw6  Seed snapshot bookmark 1  link  swx5usbrq7q2akkgcz609eu6
+id                        name            type    query         userId
+------------------------  --------------  ------  ------------  ------------------------
+ku2yic4o203piiv3s2niwaiw  Research Smart  smart   tag:research  swx5usbrq7q2akkgcz609eu6
+qxhgpg4iyzxcx5i50uzugf6p  Reference       manual                swx5usbrq7q2akkgcz609eu6
+wugrjqiw98lef9z7g38b6v5m  Reading Queue   manual                swx5usbrq7q2akkgcz609eu6
+listId                    bookmarkId                listMembershipId
+------------------------  ------------------------  ----------------
+wugrjqiw98lef9z7g38b6v5m  km2jba5wyxzsa07ea1rvlkw6
+ruleEngineRules
+---------------
+0
+queue               status   records
+------------------  -------  -------
+searching_indexing  pending  8
+searching_indexing  running  1
+idempotencyKey
+------------------------------
+index:zcbcwbus69sc701khrtmyccz
+verifierOwnedRuleEngineRecords
+------------------------------
+0
+exitCode=0
+remediationProof=journal modes and WAL sidecars
+delete
+exitCode=0
+delete
+exitCode=0
+remediationProofFailures=0
+
+publicationSummary
+resultSchemaStatus=passed frozen Draft 2020-12 result schema validation
+firstAttempt=failed
+firstAttemptCommit=2b70192e5257fabc7597ec795d1affcff0cc3cbd
+authoritativeFirstFailure=the exact readonly baseline snapshot command failed immediately after independent verifier and domain execution with SQLITE_CANTOPEN; the later pass required coordinator-only writable checkpoints and cannot reclassify the first attempt
+causalRestartEvidence=the first web-health line was a coordinator harness attempt whose exit code was captured incorrectly; the later persistent-session health check, fresh-process pending assertion, real worker health check, durable drain, row cleanup, and fixed-port teardown are authoritative
+remediationStatus=passed
+remediationCommit=79478fc2c0fb968ac7a52cacb31f027f7a0a5c9a
+remediationProofSummary=from a forced fresh frozen seed and migration, the adapter verifier passed 16/16 and the exact readonly snapshot passed immediately without a coordinator checkpoint; both database journal modes were delete and no WAL sidecars remained
+chronologyEvidence=all 15 immutable first-attempt JSONL lines are preserved, including timestamps later than the coordinator freeze; those future-dated entries are an audit defect and were not used for elapsed-time accounting
+iterationCountMethod=8 recorded failure/retry cycles: three adapter verifier cycles, typecheck repair, acceptance/bootstrap repair, green domain rerun, migration/snapshot invocation repair, and lint/format repair
+phaseTimingMethod=filesystem-mtime proxy because JSONL timestamps are not reliable: the earliest domain-file mtime was 2026-07-18T22:03:12.000Z; adapterMilliseconds=632492 and the remaining active time gives domainMilliseconds=839587
+implementationSizeMethod=added lines in assignment-to-first-attempt git numstat, excluding 15 JSONL audit lines; adapterLines=695 (migration/schema, database adapters, verifier driver); domainLines=629 (bookmark-list feature, route, Scenarios, and runtime tests)
+artifactIntegrity=first-attempt patch and immutable first-attempt JSONL match 2b70192e5257fabc7597ec795d1affcff0cc3cbd byte-for-byte; remediation patch and published remediation tail match 79478fc2c0fb968ac7a52cacb31f027f7a0a5c9a byte-for-byte; verifier JSON is valid and passed 16/16 unique cases
+sanitization=published bundle passed absolute-path, credential-pattern, ANSI-escape, and non-patch trailing-whitespace scans
+coordinatorTeardown=attempt-owned web and worker sessions were stopped and ports 41736 and 41737 were clean at attempt teardown; a later final boundary check found 41736 reoccupied by unrelated PID 71133 with cwd <external-worklog-repo>, so it was disclosed and not touched; 41737 remained free
+
+independentPostFreezeFocusedVerification
+recordedAt=2026-07-19T00:42:03Z
+repository=disposable local git clone created with --no-hardlinks and detached at immutable first-freeze commit 2b70192e5257fabc7597ec795d1affcff0cc3cbd
+dependencies=preexisting local dependency tree reused without network access; dependency manifests are identical between the first-freeze and remediation commits
+initialInvocation=NO_COLOR=1 focused run; Scenario file passed 4/4, but the runtime suite was not collected because the frozen environment schema rejected that NO_COLOR value
+invocationRepair=reran with the assignment's accepted NO_COLOR=false value; no source or tracked file changed in the disposable clone
+command=cd packages/trpc && PATH=<frozen-node24-bin> NO_COLOR=false CI=1 ../../node_modules/.bin/vitest run features/bookmark-lists/scenarios.test.ts features/bookmark-lists/runtime.test.ts --reporter=verbose
+output:
+ RUN  v3.2.4 <disposable-first-freeze-clone>/packages/trpc
+ ✓ features/bookmark-lists/scenarios.test.ts > Specter Slice implementations > Adds an owned bookmark to an editable manual list. > Adds a bookmark to a bootstrapped manual list. 1ms
+ ✓ features/bookmark-lists/scenarios.test.ts > Specter Slice implementations > Adds an owned bookmark to an editable manual list. > Accepts an already-present manual membership as a no-op. 0ms
+ ✓ features/bookmark-lists/scenarios.test.ts > Specter Slice implementations > Adds an owned bookmark to an editable manual list. > Rejects adding a bookmark to a bootstrapped smart list. 0ms
+ ✓ features/bookmark-lists/scenarios.test.ts > Specter Slice implementations > Projects accepted bookmark-list additions and requests Rule Engine work. > Projects an accepted bookmark-list addition. 0ms
+ ✓ features/bookmark-lists/runtime.test.ts > bookmark-list Specter runtime > bootstraps legacy state, replays its projection after restart, and preserves the reader 31ms
+ ✓ features/bookmark-lists/runtime.test.ts > bookmark-list Specter runtime > rejects malformed transport input without committing an Event 20ms
+ Test Files  2 passed (2)
+      Tests  6 passed (6)
+   Duration  1.24s (transform 277ms, setup 0ms, collect 1.11s, tests 55ms, environment 0ms, prepare 48ms)
+exitCode=0
+independentFocusedScenarioRuntime=passed; exact Scenarios 4/4 and runtime bootstrap/replay/malformed-input coverage 2/2
+timestampArithmeticCorrection=finishedAt normalized from 2026-07-18T22:17:11.586Z to 2026-07-18T22:17:11.587Z so the endpoint difference equals the independently recorded wallMilliseconds=1472079; activeMilliseconds and phase timing were not changed
