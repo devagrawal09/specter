@@ -3,7 +3,7 @@ import { promisify } from 'node:util'
 import { expect, test } from '@playwright/test'
 
 const executeFile = promisify(execFile)
-const apiUrl = 'http://127.0.0.1:41736/api'
+const apiUrl = 'http://127.0.0.1:41737/api'
 const appDirectory = new URL('../..', import.meta.url).pathname
 const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 
@@ -13,6 +13,18 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'What are you working on?' })).toBeVisible()
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
+
+  const journalEntry = page.getByLabel('Journal entry')
+  await journalEntry.fill('First line')
+  await journalEntry.press('Enter')
+  await journalEntry.pressSequentially('Second line')
+  await expect(journalEntry).toHaveValue('First line\nSecond line')
+
+  const shortcutJournal = 'Submitted with Command+Enter'
+  await journalEntry.fill(shortcutJournal)
+  await journalEntry.press('Meta+Enter')
+  await expect(journalEntry).toHaveValue('')
+  await expect(page.getByText(shortcutJournal, { exact: true })).toBeVisible()
 
   const cliTask = 'CLI subscription task'
   await runCli('command', {

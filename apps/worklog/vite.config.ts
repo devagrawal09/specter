@@ -8,11 +8,13 @@ import solidPlugin from 'vite-plugin-solid'
 export default defineConfig(({ mode }) => ({
   resolve: { tsconfigPaths: true },
   server: {
-    port: 41736,
+    host: '127.0.0.1',
+    port: 41737,
     strictPort: true,
   },
   preview: {
-    port: 41736,
+    host: '127.0.0.1',
+    port: 41737,
     strictPort: true,
   },
   test: {
@@ -63,9 +65,13 @@ export default defineConfig(({ mode }) => ({
             entryContentAfterHooks: [
               (appName) => `
 import { serve } from '@hono/node-server'
+const worklogPort = Number(process.env.WORKLOG_PORT ?? 41736)
+if (!Number.isSafeInteger(worklogPort) || worklogPort < 1 || worklogPort > 65535) {
+  throw new Error('WORKLOG_PORT must be an integer between 1 and 65535.')
+}
 const server = serve(
-  { fetch: ${appName}.fetch, port: 41736, hostname: '127.0.0.1' },
-  () => console.log('WORKLOG_LISTENING 127.0.0.1:41736'),
+  { fetch: ${appName}.fetch, port: worklogPort, hostname: '127.0.0.1' },
+  () => console.log('WORKLOG_LISTENING 127.0.0.1:' + worklogPort),
 )
 const shutdownWorklogApp = globalThis[Symbol.for('worklog.shutdown')]
 if (typeof shutdownWorklogApp !== 'function') {
