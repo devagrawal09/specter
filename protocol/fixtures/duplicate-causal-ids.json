@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 1,
+  "kind": "query.request",
+  "requestId": "duplicate-causes-request",
+  "operationId": "duplicate-causes-operation",
+  "parentOperationIds": ["parent-1", "parent-1"],
+  "triggeringEventIds": ["event-1", "event-1"],
+  "query": { "type": "todosQuery", "payload": {} }
+}

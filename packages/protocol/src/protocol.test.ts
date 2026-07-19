@@ -272,6 +272,7 @@ describe('reference HTTP binding', () => {
     })(
       new Request('http://runtime/specter/v1/queries', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'query.request',
@@ -750,6 +751,166 @@ describe('reference HTTP binding', () => {
     expect(received).toEqual(['subscription.complete'])
   })
 
+  it('returns correlated typed errors when subscription setup fails', async () => {
+    const credential = 'postgres://admin:secret@database/subscription-setup'
+    const setupFailure = new Error(credential) as Error & { code: string }
+    setupFailure.code = 'SPECTER_UNKNOWN_QUERY'
+    const runtime = {
+      runtime: { language: 'test', version: '1' },
+      capabilities: ['query-subscriptions'],
+      command: vi.fn(),
+      query: vi.fn(),
+      subscribe() {
+        throw setupFailure
+      },
+      reactionTicket: vi.fn(),
+      ingestObservations: vi.fn(),
+    } as unknown as ProtocolRuntimeAdapter
+    const handler = createSpecterProtocolHttpHandler({ runtime })
+    const client = createSpecterProtocolHttpClient(
+      'http://runtime/specter/v1',
+      {
+        requestId: () => 'subscription-request',
+        fetch: (input, init) => handler(new Request(input, init)),
+      },
+    )
+
+    let failure: unknown
+    try {
+      for await (const _frame of client.subscribe({
+        operationId: 'subscription-operation',
+        query: { type: 'missingQuery', payload: {} },
+      })) {
+        // Setup failures reject before a stream is established.
+      }
+    } catch (cause) {
+      failure = cause
+    }
+
+    expect(failure).toMatchObject({
+      code: 'SPECTER_UNKNOWN_QUERY',
+      message: 'Query type is not registered.',
+      status: 400,
+    })
+    expect(String(failure)).not.toContain(credential)
+  })
+
+  it('requires exactly application/json as the parsed media type on every POST route', async () => {
+    const runtime = {
+      runtime: { language: 'test', version: '1' },
+      capabilities: [],
+      command: vi.fn(),
+      query: vi.fn(),
+      subscribe: vi.fn(),
+      reactionTicket: vi.fn(),
+      ingestObservations: vi.fn(),
+    } as unknown as ProtocolRuntimeAdapter
+    const handler = createSpecterProtocolHttpHandler({ runtime })
+    const requests = [
+      [
+        '/capabilities',
+        {
+          protocolVersion: 1,
+          kind: 'capabilities.request',
+          requestId: 'capabilities-request',
+        },
+      ],
+      [
+        '/commands',
+        {
+          protocolVersion: 1,
+          kind: 'command.request',
+          requestId: 'command-request',
+          operationId: 'command-operation',
+          command: { type: 'addTodo', payload: {} },
+        },
+      ],
+      [
+        '/queries',
+        {
+          protocolVersion: 1,
+          kind: 'query.request',
+          requestId: 'query-request',
+          operationId: 'query-operation',
+          query: { type: 'todosQuery', payload: {} },
+        },
+      ],
+      [
+        '/subscriptions',
+        {
+          protocolVersion: 1,
+          kind: 'subscription.request',
+          requestId: 'subscription-request',
+          operationId: 'subscription-operation',
+          query: { type: 'todosQuery', payload: {} },
+        },
+      ],
+      [
+        '/observations',
+        {
+          protocolVersion: 1,
+          kind: 'observations.batch',
+          requestId: 'observations-request',
+          observations: [],
+        },
+      ],
+    ] as const
+
+    for (const [path, body] of requests) {
+      for (const contentType of [
+        undefined,
+        'text/plain',
+        'application/jsonx',
+      ]) {
+        const response = await handler(
+          new Request(`http://localhost/specter/v1${path}`, {
+            method: 'POST',
+            headers: contentType ? { 'content-type': contentType } : {},
+            body: JSON.stringify(body),
+          }),
+        )
+        expect(response.status, `${path} with ${String(contentType)}`).toBe(415)
+        expect(await response.json()).toMatchObject({
+          error: { code: 'SPECTER_INVALID_MESSAGE' },
+        })
+      }
+    }
+
+    const accepted = await handler(
+      new Request('http://localhost/specter/v1/capabilities', {
+        method: 'POST',
+        headers: {
+          'content-type': 'Application/JSON; charset=utf-8; profile="v1"',
+        },
+        body: JSON.stringify({
+          protocolVersion: 1,
+          kind: 'capabilities.request',
+          requestId: 'accepted-request',
+        }),
+      }),
+    )
+    expect(accepted.status).toBe(200)
+  })
+
+  it('distinguishes malformed JSON from an unsupported media type', async () => {
+    const runtime = {
+      runtime: { language: 'test', version: '1' },
+      capabilities: [],
+    } as unknown as ProtocolRuntimeAdapter
+    const response = await createSpecterProtocolHttpHandler({ runtime })(
+      new Request('http://localhost/specter/v1/capabilities', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: '{not-json',
+      }),
+    )
+
+    expect(response.status).toBe(400)
+    expect(await response.json()).toMatchObject({
+      error: { code: 'SPECTER_INVALID_JSON' },
+    })
+  })
+
   it('dispatches commands and propagates subscription cancellation', async () => {
     let subscriptionCancelled = false
     const runtime: ProtocolRuntimeAdapter = {
@@ -790,6 +951,7 @@ describe('reference HTTP binding', () => {
     const command = await handler(
       new Request('http://localhost/specter/v1/commands', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'command.request',
@@ -808,6 +970,7 @@ describe('reference HTTP binding', () => {
     const subscription = await handler(
       new Request('http://localhost/specter/v1/subscriptions', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'subscription.request',
@@ -836,6 +999,7 @@ describe('reference HTTP binding', () => {
     const response = await createSpecterProtocolHttpHandler({ runtime })(
       new Request('http://localhost/specter/v1/capabilities', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'capabilities.request',
@@ -870,6 +1034,7 @@ describe('reference HTTP binding', () => {
     const query = await handler(
       new Request('http://localhost/specter/v1/queries', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'query.request',
@@ -891,6 +1056,7 @@ describe('reference HTTP binding', () => {
     const subscription = await handler(
       new Request('http://localhost/specter/v1/subscriptions', {
         method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           protocolVersion: 1,
           kind: 'subscription.request',

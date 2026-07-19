@@ -102,6 +102,117 @@ func TestAllPostFamiliesRejectVersionMismatchAndTrailingJSON(t *testing.T) {
 	}
 }
 
+func TestPostEndpointsRequireExactJSONMediaType(t *testing.T) {
+	handler := (&protocol.Server{App: emptyApp(t)}).Handler()
+	body := `{"protocolVersion":1,"kind":"capabilities.request","requestId":"request-1"}`
+	for _, test := range []struct {
+		contentType string
+		want        int
+	}{
+		{contentType: "application/json", want: http.StatusOK},
+		{contentType: "application/json; charset=utf-8", want: http.StatusOK},
+		{contentType: "application/jsonx", want: http.StatusUnsupportedMediaType},
+		{contentType: "application/json garbage", want: http.StatusUnsupportedMediaType},
+	} {
+		t.Run(test.contentType, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/specter/v1/capabilities", strings.NewReader(body))
+			request.Header.Set("Content-Type", test.contentType)
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.want {
+				t.Fatalf("got HTTP %d: %s", response.Code, response.Body.String())
+			}
+			if test.want == http.StatusUnsupportedMediaType {
+				var result struct {
+					Error *specter.Error `json:"error"`
+				}
+				if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+					t.Fatal(err)
+				}
+				if result.Error == nil || result.Error.Code != specter.ErrInvalidMessage {
+					t.Fatalf("unexpected error: %#v", result.Error)
+				}
+			}
+		})
+	}
+}
+
+func TestRequestOptionalFieldsRejectNullAndWrongTypes(t *testing.T) {
+	handler := (&protocol.Server{App: emptyApp(t)}).Handler()
+	type family struct {
+		name      string
+		path      string
+		base      map[string]any
+		optionals map[string]any
+	}
+	common := map[string]any{
+		"correlationId":        float64(1),
+		"parentOperationIds":   "parent",
+		"triggeringEventIds":   "event",
+		"triggeringEventOrder": []any{float64(1), float64(2)},
+		"reactionPassId":       float64(1),
+		"deliveryId":           float64(1),
+		"attemptId":            float64(1),
+	}
+	clone := func(values map[string]any) map[string]any {
+		result := make(map[string]any, len(values))
+		for name, value := range values {
+			result[name] = value
+		}
+		return result
+	}
+	commandFields := clone(common)
+	commandFields["idempotencyKey"] = float64(1)
+	commandFields["expectedVersion"] = "one"
+	subscriptionFields := clone(common)
+	subscriptionFields["afterSequence"] = "one"
+	families := []family{
+		{name: "command", path: "/specter/v1/commands", base: map[string]any{"protocolVersion": float64(1), "kind": "command.request", "requestId": "request-1", "operationId": "operation-1", "command": map[string]any{"type": "set", "payload": map[string]any{}}}, optionals: commandFields},
+		{name: "query", path: "/specter/v1/queries", base: map[string]any{"protocolVersion": float64(1), "kind": "query.request", "requestId": "request-1", "operationId": "operation-1", "query": map[string]any{"type": "value", "payload": map[string]any{}}}, optionals: common},
+		{name: "subscription", path: "/specter/v1/subscriptions", base: map[string]any{"protocolVersion": float64(1), "kind": "subscription.request", "requestId": "request-1", "operationId": "operation-1", "query": map[string]any{"type": "value", "payload": map[string]any{}}}, optionals: subscriptionFields},
+	}
+	for _, family := range families {
+		for field, wrongType := range family.optionals {
+			malformedValues := []struct {
+				name  string
+				value any
+			}{{name: "null", value: nil}, {name: "wrong type", value: wrongType}}
+			if field == "parentOperationIds" || field == "triggeringEventIds" {
+				malformedValues = append(malformedValues, struct {
+					name  string
+					value any
+				}{name: "duplicate values", value: []string{"same", "same"}})
+			}
+			for _, malformed := range malformedValues {
+				t.Run(family.name+" "+field+" "+malformed.name, func(t *testing.T) {
+					body := clone(family.base)
+					body[field] = malformed.value
+					encoded, err := json.Marshal(body)
+					if err != nil {
+						t.Fatal(err)
+					}
+					request := httptest.NewRequest(http.MethodPost, family.path, bytes.NewReader(encoded))
+					request.Header.Set("Content-Type", "application/json")
+					response := httptest.NewRecorder()
+					handler.ServeHTTP(response, request)
+					if response.Code != http.StatusBadRequest {
+						t.Fatalf("got HTTP %d: %s", response.Code, response.Body.String())
+					}
+					var result struct {
+						Error *specter.Error `json:"error"`
+					}
+					if err := json.NewDecoder(response.Body).Decode(&result); err != nil {
+						t.Fatal(err)
+					}
+					if result.Error == nil || result.Error.Code != specter.ErrInvalidMessage {
+						t.Fatalf("unexpected error: %#v", result.Error)
+					}
+				})
+			}
+		}
+	}
+}
+
 func TestClientRejectsMalformedAndContradictoryResponses(t *testing.T) {
 	queryRequest := protocol.QueryRequest{Envelope: protocol.Envelope{RequestID: "query-request"}, OperationID: "operation-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
 	queryCases := []struct {
@@ -134,6 +245,12 @@ func TestClientRejectsMalformedAndContradictoryResponses(t *testing.T) {
 		{name: "mismatched operation", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"different","status":"committed","version":1,"events":[],"reactionTicketId":"ticket-1"}`},
 		{name: "missing version", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","events":[],"reactionTicketId":"ticket-1"}`},
 		{name: "null events", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":1,"events":null,"reactionTicketId":"ticket-1"}`},
+		{name: "missing Event id", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"type":"set","order":1,"commitVersion":1,"recordedAt":"2026-07-18T12:00:00Z"}],"reactionTicketId":"ticket-1"}`},
+		{name: "empty Event type", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"eventId":"event-1","type":"","order":1,"commitVersion":1,"recordedAt":"2026-07-18T12:00:00Z"}],"reactionTicketId":"ticket-1"}`},
+		{name: "unsafe Event order", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"eventId":"event-1","type":"set","order":9007199254740992,"commitVersion":1,"recordedAt":"2026-07-18T12:00:00Z"}],"reactionTicketId":"ticket-1"}`},
+		{name: "non-UTC Event timestamp", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"eventId":"event-1","type":"set","order":1,"commitVersion":1,"recordedAt":"2026-07-18T07:00:00-05:00"}],"reactionTicketId":"ticket-1"}`},
+		{name: "null Event attributes", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"eventId":"event-1","type":"set","order":1,"commitVersion":1,"recordedAt":"2026-07-18T12:00:00Z","attributes":null}],"reactionTicketId":"ticket-1"}`},
+		{name: "descending Event order", body: `{"protocolVersion":1,"kind":"command.response","requestId":"command-request","operationId":"operation-1","status":"committed","version":2,"events":[{"eventId":"event-2","type":"set","order":2,"commitVersion":1,"recordedAt":"2026-07-18T12:00:00Z"},{"eventId":"event-1","type":"set","order":1,"commitVersion":2,"recordedAt":"2026-07-18T12:00:01Z"}],"reactionTicketId":"ticket-1"}`},
 	}
 	for _, test := range commandCases {
 		t.Run("command "+test.name, func(t *testing.T) {
@@ -236,6 +353,43 @@ func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testin
 		for failure := range failures {
 			if failure != nil {
 				t.Fatalf("caller cancellation became a stream failure: %v", failure)
+			}
+		}
+	})
+	t.Run("SSE blocks accept optional space and multiline data", func(t *testing.T) {
+		body := ": keepalive\nevent: subscription.complete\ndata:{\"protocolVersion\":1,\"kind\":\"subscription.complete\",\"requestId\":\"subscription-request\",\ndata: \"operationId\":\"operation-1\"}\nid: ignored\n\n"
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}}
+		messages, failures, err := client.Subscribe(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		message := <-messages
+		if message.Kind != "subscription.complete" || message.OperationID != request.OperationID {
+			t.Fatalf("unexpected terminal message: %#v", message)
+		}
+		for failure := range failures {
+			if failure != nil {
+				t.Fatal(failure)
+			}
+		}
+	})
+	t.Run("terminal SSE block is dispatched at EOF", func(t *testing.T) {
+		body := "data:{\"protocolVersion\":1,\"kind\":\"subscription.complete\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\"}\n"
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}}
+		messages, failures, err := client.Subscribe(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message := <-messages; message.Kind != "subscription.complete" {
+			t.Fatalf("unexpected terminal message: %#v", message)
+		}
+		for failure := range failures {
+			if failure != nil {
+				t.Fatal(failure)
 			}
 		}
 	})
@@ -593,6 +747,9 @@ func TestMalformedRuntimeObservationsAreRejected(t *testing.T) {
 		{name: "null cursor", mutate: func(value map[string]any) { value["cursor"] = nil }},
 		{name: "unsafe dropped count", mutate: func(value map[string]any) { value["droppedCount"] = float64(9007199254740992) }},
 		{name: "null dropped count", mutate: func(value map[string]any) { value["droppedCount"] = nil }},
+		{name: "negative version", mutate: func(value map[string]any) { value["version"] = float64(-1) }},
+		{name: "unsafe version", mutate: func(value map[string]any) { value["version"] = float64(9007199254740992) }},
+		{name: "null version", mutate: func(value map[string]any) { value["version"] = nil }},
 		{name: "null Events", mutate: func(value map[string]any) { value["events"] = nil }},
 		{name: "null attributes", mutate: func(value map[string]any) { value["attributes"] = nil }},
 		{name: "null error", mutate: func(value map[string]any) { value["error"] = nil }},

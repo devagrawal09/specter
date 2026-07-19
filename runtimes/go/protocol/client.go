@@ -154,25 +154,27 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 		defer close(failures)
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 4096), 1<<20)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if !strings.HasPrefix(line, "data: ") {
-				continue
+		var dataLines []string
+		terminal := false
+		dispatch := func() bool {
+			if len(dataLines) == 0 {
+				return true
 			}
-			payload := []byte(strings.TrimPrefix(line, "data: "))
+			payload := []byte(strings.Join(dataLines, "\n"))
+			dataLines = dataLines[:0]
 			var message SubscriptionMessage
 			if err := json.Unmarshal(payload, &message); err != nil {
 				failures <- err
-				return
+				return false
 			}
 			var fields map[string]json.RawMessage
 			if err := json.Unmarshal(payload, &fields); err != nil {
 				failures <- err
-				return
+				return false
 			}
 			if err := validateSubscriptionMessage(request, message, fields); err != nil {
 				failures <- err
-				return
+				return false
 			}
 			select {
 			case messages <- message:
@@ -184,16 +186,42 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 				select {
 				case messages <- message:
 				case <-ctx.Done():
-					return
+					return false
 				}
 			}
-			if message.Kind == "subscription.error" || message.Kind == "subscription.complete" {
+			terminal = message.Kind == "subscription.error" || message.Kind == "subscription.complete"
+			return !terminal
+		}
+		for scanner.Scan() {
+			line := scanner.Text()
+			if line == "" {
+				if !dispatch() {
+					return
+				}
+				continue
+			}
+			if strings.HasPrefix(line, ":") {
+				continue
+			}
+			field, value, found := strings.Cut(line, ":")
+			if !found {
+				field = line
+				value = ""
+			} else if strings.HasPrefix(value, " ") {
+				value = value[1:]
+			}
+			if field == "data" {
+				dataLines = append(dataLines, value)
+			}
+		}
+		if scanner.Err() == nil && ctx.Err() == nil && len(dataLines) > 0 {
+			if !dispatch() {
 				return
 			}
 		}
 		if err := scanner.Err(); err != nil && ctx.Err() == nil {
 			failures <- err
-		} else if ctx.Err() == nil {
+		} else if ctx.Err() == nil && !terminal {
 			failures <- fmt.Errorf("specter protocol: subscription stream ended before a terminal message: %w", io.ErrUnexpectedEOF)
 		}
 	}()
@@ -277,6 +305,9 @@ func validateCommandResponse(request CommandRequest, response CommandResponse, f
 	if !rawInteger(fields, "version", true) || !safeInteger(response.Version) || !rawArray(fields["events"]) {
 		return fmt.Errorf("specter protocol: Command response version and events are invalid")
 	}
+	if err := validateEventReferences(response.Events, fields["events"]); err != nil {
+		return err
+	}
 	_, hasError := fields["error"]
 	_, hasTicket := fields["reactionTicketId"]
 	switch response.Status {
@@ -293,6 +324,28 @@ func validateCommandResponse(request CommandRequest, response CommandResponse, f
 		}
 	default:
 		return fmt.Errorf("specter protocol: unknown Command response status %q", response.Status)
+	}
+	return nil
+}
+
+func validateEventReferences(events []EventReference, raw json.RawMessage) error {
+	var rawEvents []map[string]json.RawMessage
+	if json.Unmarshal(raw, &rawEvents) != nil || len(rawEvents) != len(events) {
+		return fmt.Errorf("specter protocol: Command response Event references are invalid")
+	}
+	var priorOrder int64 = -1
+	for index, event := range events {
+		fields := rawEvents[index]
+		if !hasFields(fields, "eventId", "type", "order", "commitVersion", "recordedAt") || event.EventID == "" || event.Type == "" || !rawInteger(fields, "order", true) || !rawInteger(fields, "commitVersion", true) || !safeInteger(event.Order) || !safeInteger(event.CommitVersion) || !isUTCDateTime(fields["recordedAt"]) {
+			return fmt.Errorf("specter protocol: Command response Event reference %d is invalid", index)
+		}
+		if index > 0 && event.Order <= priorOrder {
+			return fmt.Errorf("specter protocol: Command response Events are not strictly ascending")
+		}
+		if attributes, present := fields["attributes"]; present && !rawObject(attributes) {
+			return fmt.Errorf("specter protocol: Command response Event reference %d attributes are invalid", index)
+		}
+		priorOrder = event.Order
 	}
 	return nil
 }

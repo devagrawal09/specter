@@ -1,4 +1,8 @@
-import type { Client, Transaction } from '@libsql/client/sqlite3'
+import {
+  createClient,
+  type Client,
+  type Transaction,
+} from '@libsql/client/sqlite3'
 import type {
   RuntimeObservation,
   RuntimeObservationBatch,
@@ -23,6 +27,7 @@ export type ObservationReservationResult =
 export async function prepareObservationDeduplication(
   client: Client,
   now = new Date(),
+  segmentPaths: readonly string[] = [],
 ) {
   await client.execute(`CREATE TABLE IF NOT EXISTS accepted_observations (
     source_key TEXT NOT NULL,
@@ -47,13 +52,69 @@ export async function prepareObservationDeduplication(
     )
   }
 
-  // No request from a previous collector process can still own a reservation.
-  await client.execute(
-    "DELETE FROM accepted_observations WHERE status = 'reserved'",
-  )
+  await reconcileObservationReservations(client, segmentPaths, now)
   await client.execute({
     sql: "DELETE FROM accepted_observations WHERE status = 'accepted' AND accepted_at < ?",
     args: [new Date(now.getTime() - 48 * 60 * 60 * 1_000).toISOString()],
+  })
+}
+
+async function reconcileObservationReservations(
+  client: Client,
+  segmentPaths: readonly string[],
+  now: Date,
+) {
+  const outstanding = await client.execute(
+    "SELECT source_key, observation_id FROM accepted_observations WHERE status = 'reserved'",
+  )
+  if (outstanding.rows.length === 0) return
+
+  const persisted = new Set<string>()
+  const pending = new Set(
+    outstanding.rows.map((row) =>
+      observationIdentity(String(row.source_key), String(row.observation_id)),
+    ),
+  )
+
+  for (const path of segmentPaths) {
+    if (pending.size === 0) break
+    const segment = createClient({ url: `file:${path}` })
+    try {
+      const events = await segment.execute({
+        sql: "SELECT payload FROM specter_events WHERE type = 'runtime-observation-recorded'",
+        args: [],
+      })
+      for (const row of events.rows) {
+        const observation = persistedObservation(row.payload)
+        const identity = observationIdentity(
+          sourceKey(observation),
+          observation.observationId,
+        )
+        if (!pending.delete(identity)) continue
+        persisted.add(identity)
+      }
+    } finally {
+      segment.close()
+    }
+  }
+
+  await withWriteTransaction(client, async (transaction) => {
+    for (const row of outstanding.rows) {
+      const key = String(row.source_key)
+      const observationId = String(row.observation_id)
+      const identity = observationIdentity(key, observationId)
+      if (persisted.has(identity)) {
+        await transaction.execute({
+          sql: "UPDATE accepted_observations SET status = 'accepted', reservation_id = NULL, accepted_at = ? WHERE source_key = ? AND observation_id = ? AND status = 'reserved'",
+          args: [now.toISOString(), key, observationId],
+        })
+      } else {
+        await transaction.execute({
+          sql: "DELETE FROM accepted_observations WHERE source_key = ? AND observation_id = ? AND status = 'reserved'",
+          args: [key, observationId],
+        })
+      }
+    }
   })
 }
 
@@ -211,4 +272,40 @@ function sourceKey(observation: RuntimeObservation) {
     source.instanceId,
     source.eventLogId,
   ])
+}
+
+function observationIdentity(source: string, observationId: string) {
+  return `${source}\u0000${observationId}`
+}
+
+function persistedObservation(payload: unknown): RuntimeObservation {
+  if (typeof payload !== 'string') {
+    throw new Error('Expected persisted observability Event payload to be JSON')
+  }
+  const decoded: unknown = JSON.parse(payload)
+  if (!decoded || typeof decoded !== 'object') {
+    throw new Error('Expected persisted observability Event payload object')
+  }
+  const observation = Reflect.get(decoded, 'observation')
+  if (!observation || typeof observation !== 'object') {
+    throw new Error('Expected persisted runtime observation')
+  }
+  const observationId = Reflect.get(observation, 'observationId')
+  const source = Reflect.get(observation, 'source')
+  if (
+    typeof observationId !== 'string' ||
+    !source ||
+    typeof source !== 'object' ||
+    [
+      'application',
+      'environment',
+      'runtimeLanguage',
+      'runtimeVersion',
+      'instanceId',
+      'eventLogId',
+    ].some((field) => typeof Reflect.get(source, field) !== 'string')
+  ) {
+    throw new Error('Expected persisted runtime observation identity')
+  }
+  return observation as RuntimeObservation
 }

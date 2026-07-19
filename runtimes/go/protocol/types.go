@@ -57,6 +57,8 @@ type CommandRequest struct {
 	Command              OperationEnvelope        `json:"command"`
 	IdempotencyKey       string                   `json:"idempotencyKey,omitempty"`
 	ExpectedVersion      *int64                   `json:"expectedVersion,omitempty"`
+
+	fieldsValid bool
 }
 type OperationEnvelope struct {
 	Type    string          `json:"type"`
@@ -91,6 +93,8 @@ type QueryRequest struct {
 	DeliveryID           string                   `json:"deliveryId,omitempty"`
 	AttemptID            string                   `json:"attemptId,omitempty"`
 	Query                OperationEnvelope        `json:"query"`
+
+	fieldsValid bool
 }
 type QueryResponse struct {
 	Envelope
@@ -130,7 +134,149 @@ type SubscriptionRequest struct {
 	AttemptID            string                   `json:"attemptId,omitempty"`
 	Query                OperationEnvelope        `json:"query"`
 	AfterSequence        *int64                   `json:"afterSequence,omitempty"`
+
+	fieldsValid bool
 }
+
+// UnmarshalJSON retains whether optional request fields were present with their
+// protocol-defined JSON types. Go's ordinary value decoding otherwise makes an
+// omitted field indistinguishable from an explicit null for pointers, slices,
+// and strings.
+func (request *CommandRequest) UnmarshalJSON(data []byte) error {
+	type alias CommandRequest
+	var decoded alias
+	valid, sanitized, err := validateRequestFields(data, []string{
+		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
+		"reactionPassId", "deliveryId", "attemptId", "idempotencyKey", "expectedVersion",
+	}, func(fields map[string]json.RawMessage) bool {
+		return validCausalityFields(fields) && optionalNonemptyString(fields, "idempotencyKey") && optionalSafeInteger(fields, "expectedVersion")
+	})
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(sanitized, &decoded); err != nil {
+		return err
+	}
+	*request = CommandRequest(decoded)
+	request.fieldsValid = valid
+	return nil
+}
+
+func (request *QueryRequest) UnmarshalJSON(data []byte) error {
+	type alias QueryRequest
+	var decoded alias
+	valid, sanitized, err := validateRequestFields(data, []string{
+		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
+		"reactionPassId", "deliveryId", "attemptId",
+	}, validCausalityFields)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(sanitized, &decoded); err != nil {
+		return err
+	}
+	*request = QueryRequest(decoded)
+	request.fieldsValid = valid
+	return nil
+}
+
+func (request *SubscriptionRequest) UnmarshalJSON(data []byte) error {
+	type alias SubscriptionRequest
+	var decoded alias
+	valid, sanitized, err := validateRequestFields(data, []string{
+		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
+		"reactionPassId", "deliveryId", "attemptId", "afterSequence",
+	}, func(fields map[string]json.RawMessage) bool {
+		return validCausalityFields(fields) && optionalSafeInteger(fields, "afterSequence")
+	})
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(sanitized, &decoded); err != nil {
+		return err
+	}
+	*request = SubscriptionRequest(decoded)
+	request.fieldsValid = valid
+	return nil
+}
+
+func validateRequestFields(data []byte, optionalNames []string, validate func(map[string]json.RawMessage) bool) (bool, []byte, error) {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return false, nil, err
+	}
+	if validate(fields) {
+		return true, data, nil
+	}
+	// Remove malformed optional fields so the typed decode can retain the
+	// envelope and operation identity used by a correlated structured error.
+	for _, name := range optionalNames {
+		delete(fields, name)
+	}
+	sanitized, err := json.Marshal(fields)
+	return false, sanitized, err
+}
+
+func validCausalityFields(fields map[string]json.RawMessage) bool {
+	for _, name := range []string{"correlationId", "reactionPassId", "deliveryId", "attemptId"} {
+		if !optionalNonemptyString(fields, name) {
+			return false
+		}
+	}
+	for _, name := range []string{"parentOperationIds", "triggeringEventIds"} {
+		raw, present := fields[name]
+		if !present {
+			continue
+		}
+		var values []string
+		if strings.TrimSpace(string(raw)) == "null" || json.Unmarshal(raw, &values) != nil {
+			return false
+		}
+		seen := make(map[string]struct{}, len(values))
+		for _, value := range values {
+			if value == "" {
+				return false
+			}
+			if _, duplicate := seen[value]; duplicate {
+				return false
+			}
+			seen[value] = struct{}{}
+		}
+	}
+	raw, present := fields["triggeringEventOrder"]
+	if !present {
+		return true
+	}
+	var order map[string]json.RawMessage
+	if !rawObject(raw) || json.Unmarshal(raw, &order) != nil || !rawInteger(order, "from", true) || !rawInteger(order, "to", true) {
+		return false
+	}
+	var from, to int64
+	return json.Unmarshal(order["from"], &from) == nil && json.Unmarshal(order["to"], &to) == nil && safeIntegerValue(from) && safeIntegerValue(to) && to >= from
+}
+
+func optionalNonemptyString(fields map[string]json.RawMessage, name string) bool {
+	raw, present := fields[name]
+	if !present {
+		return true
+	}
+	var value string
+	return json.Unmarshal(raw, &value) == nil && value != ""
+}
+
+func optionalSafeInteger(fields map[string]json.RawMessage, name string) bool {
+	raw, present := fields[name]
+	if !present {
+		return true
+	}
+	var value int64
+	return strings.TrimSpace(string(raw)) != "null" && json.Unmarshal(raw, &value) == nil && safeIntegerValue(value)
+}
+
+func safeIntegerValue(value int64) bool {
+	return value >= 0 && value <= 9_007_199_254_740_991
+}
+
 type SubscriptionMessage struct {
 	Envelope
 	OperationID string         `json:"operationId"`

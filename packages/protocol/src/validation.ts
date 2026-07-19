@@ -250,8 +250,8 @@ function runtimeObservation(value: unknown, path: string) {
 function causality(input: Record<string, unknown>, path = '$') {
   string(input.operationId, `${path}.operationId`)
   optionalString(input.correlationId, `${path}.correlationId`)
-  optionalStrings(input.parentOperationIds, `${path}.parentOperationIds`)
-  optionalStrings(input.triggeringEventIds, `${path}.triggeringEventIds`)
+  optionalUniqueStrings(input.parentOperationIds, `${path}.parentOperationIds`)
+  optionalUniqueStrings(input.triggeringEventIds, `${path}.triggeringEventIds`)
   optionalString(input.reactionPassId, `${path}.reactionPassId`)
   optionalString(input.deliveryId, `${path}.deliveryId`)
   optionalString(input.attemptId, `${path}.attemptId`)
@@ -268,13 +268,19 @@ function causality(input: Record<string, unknown>, path = '$') {
 }
 
 function events(value: unknown, path: string) {
+  let previousOrder = -1
   array(value, path).forEach((item, index) => {
     const event = record(item, `${path}[${index}]`)
     string(event.eventId, `${path}[${index}].eventId`)
     string(event.type, `${path}[${index}].type`)
     integer(event.order, `${path}[${index}].order`)
+    if ((event.order as number) <= previousOrder)
+      fail(`${path} must be strictly ascending by Event order`)
+    previousOrder = event.order as number
     integer(event.commitVersion, `${path}[${index}].commitVersion`)
     timestamp(event.recordedAt, `${path}[${index}].recordedAt`)
+    if (event.attributes !== undefined)
+      record(event.attributes, `${path}[${index}].attributes`)
   })
 }
 
@@ -318,6 +324,16 @@ function optionalString(value: unknown, path: string) {
 }
 function optionalStrings(value: unknown, path: string) {
   if (value !== undefined) strings(value, path)
+}
+function optionalUniqueStrings(value: unknown, path: string) {
+  if (value === undefined) return
+  const items = array(value, path)
+  const unique = new Set<string>()
+  items.forEach((item, index) => {
+    const parsed = string(item, `${path}[${index}]`)
+    if (unique.has(parsed)) fail(`${path} must contain unique IDs`)
+    unique.add(parsed)
+  })
 }
 function integer(value: unknown, path: string) {
   if (!Number.isSafeInteger(value) || (value as number) < 0)

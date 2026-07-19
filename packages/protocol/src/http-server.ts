@@ -123,7 +123,11 @@ export function createSpecterProtocolHttpHandler(
         const message = await readMessage(request)
         if (message.kind !== 'subscription.request')
           return wrongKind('subscription.request')
-        return subscriptionResponse(request, message, options.runtime)
+        try {
+          return subscriptionResponse(request, message, options.runtime)
+        } catch (cause) {
+          return subscriptionSetupErrorResponse(message, cause)
+        }
       }
       if (request.method === 'GET' && route.startsWith('/reaction-tickets/')) {
         const reactionTicketId = decodeURIComponent(
@@ -261,6 +265,7 @@ function sse(encoder: TextEncoder, message: SubscriptionMessage) {
 }
 
 async function readMessage(request: Request) {
+  assertJsonContentType(request.headers.get('content-type'))
   let body: unknown
   try {
     body = await request.json()
@@ -272,6 +277,41 @@ async function readMessage(request: Request) {
     })
   }
   return parseProtocolMessage(body)
+}
+
+function assertJsonContentType(header: string | null) {
+  const mediaType = header?.split(';', 1)[0]?.trim().toLowerCase()
+  if (mediaType !== 'application/json') {
+    throw new SpecterProtocolError({
+      code: protocolErrorCodes.invalidMessage,
+      message: 'Content-Type must be application/json.',
+      status: 415,
+    })
+  }
+}
+
+function subscriptionSetupErrorResponse(
+  message: SubscriptionRequest,
+  cause: unknown,
+) {
+  const status =
+    cause instanceof SpecterProtocolError
+      ? cause.status
+      : cause instanceof Error &&
+          'code' in cause &&
+          cause.code === 'SPECTER_UNKNOWN_QUERY'
+        ? 400
+        : 500
+  return json(
+    {
+      protocolVersion: SPECTER_PROTOCOL_VERSION,
+      kind: 'subscription.error',
+      requestId: message.requestId,
+      operationId: message.operationId,
+      error: structuredProtocolError(cause),
+    } satisfies SubscriptionMessage,
+    status,
+  )
 }
 
 function json(value: unknown, status = 200) {

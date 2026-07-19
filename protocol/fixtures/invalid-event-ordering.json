@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.response",
+  "requestId": "invalid-event-order-response",
+  "operationId": "operation-1",
+  "status": "committed",
+  "version": 2,
+  "events": [
+    { "eventId": "event-2", "type": "todo-completed", "order": 2, "recordedAt": "2026-07-18T12:00:01.000Z", "commitVersion": 2 },
+    { "eventId": "event-1", "type": "todo-added", "order": 1, "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": 1 }
+  ],
+  "reactionTicketId": "reaction-1"
+}

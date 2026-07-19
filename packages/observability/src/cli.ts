@@ -5,8 +5,8 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http'
-import { mkdirSync, readdirSync, statSync } from 'node:fs'
-import { basename, dirname, resolve } from 'node:path'
+import { mkdirSync, statSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
@@ -35,6 +35,7 @@ import {
 } from './collector'
 import { createSpecterObservabilityHttpHandler } from './http-handler'
 import { SegmentCoordinator } from './segment-coordinator'
+import { existingSegmentPaths, sqliteDatabaseSize } from './segment-storage'
 
 type ActiveSegment = {
   readonly collector: SpecterObservabilityCollector
@@ -76,14 +77,19 @@ async function serve(commandArgs: readonly string[]) {
   mkdirSync(dirname(databaseBase), { recursive: true })
 
   const controlClient = createClient({ url: `file:${databaseBase}-control.db` })
-  await prepareObservationDeduplication(controlClient)
+  const existingSegments = existingSegmentPaths(databaseBase)
+  await prepareObservationDeduplication(
+    controlClient,
+    new Date(),
+    existingSegments,
+  )
 
-  const initial = await openSegment(databaseBase, latestSegment(databaseBase))
+  const initial = await openSegment(databaseBase, existingSegments.at(-1))
   const segments = new SegmentCoordinator({
     initial,
     shouldRotate(segment: ActiveSegment) {
       const age = Date.now() - segment.openedAt
-      return age >= maxAgeMs || fileSize(segment.path) >= maxBytes
+      return age >= maxAgeMs || sqliteDatabaseSize(segment.path) >= maxBytes
     },
     open: () => openSegment(databaseBase),
     retire(segment: ActiveSegment) {
@@ -235,21 +241,6 @@ async function openSegment(
       signal: abort.signal,
     }),
   }
-}
-
-function latestSegment(databaseBase: string) {
-  const directory = dirname(databaseBase)
-  const prefix = `${basename(databaseBase)}-`
-  const candidates = readdirSync(directory)
-    .filter(
-      (name) =>
-        name.startsWith(prefix) &&
-        name.endsWith('.db') &&
-        /^\d+$/.test(name.slice(prefix.length, -'.db'.length)),
-    )
-    .sort()
-  const latest = candidates.at(-1)
-  return latest ? resolve(directory, latest) : undefined
 }
 
 function requestWithBatch(request: Request, batch: RuntimeObservationBatch) {
@@ -455,14 +446,6 @@ function integerOption(
     throw new UsageError(`${name} must be a positive integer`)
   }
   return value
-}
-
-function fileSize(path: string) {
-  try {
-    return statSync(path).size
-  } catch {
-    return 0
-  }
 }
 
 async function toWebRequest(request: IncomingMessage, origin: string) {

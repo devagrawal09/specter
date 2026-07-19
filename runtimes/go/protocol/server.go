@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"strings"
 
@@ -97,6 +98,10 @@ func (s *Server) command(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, protocolErrorStatus(failure), CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: failure})
 		return
 	}
+	if !request.fieldsValid {
+		writeJSON(w, http.StatusBadRequest, CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "Command request optional fields are invalid."}})
+		return
+	}
 	if request.OperationID == "" || request.Command.Type == "" || len(request.Command.Payload) == 0 {
 		writeJSON(w, http.StatusBadRequest, CommandResponse{Envelope: responseEnvelope(request.Envelope, "command.response"), OperationID: request.OperationID, Status: "rejected", Events: []EventReference{}, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and command type/payload are required."}})
 		return
@@ -135,6 +140,10 @@ func (s *Server) query(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, protocolErrorStatus(failure), QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: failure})
 		return
 	}
+	if !request.fieldsValid {
+		writeJSON(w, http.StatusBadRequest, QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "Query request optional fields are invalid."}})
+		return
+	}
 	if request.OperationID == "" || request.Query.Type == "" || len(request.Query.Payload) == 0 {
 		writeJSON(w, http.StatusBadRequest, QueryResponse{Envelope: responseEnvelope(request.Envelope, "query.response"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "operationId and query type/payload are required."}})
 		return
@@ -154,6 +163,10 @@ func (s *Server) subscription(w http.ResponseWriter, r *http.Request) {
 	}
 	if failure := validateEnvelope(request.Envelope, "subscription.request"); failure != nil {
 		writeJSON(w, protocolErrorStatus(failure), SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: failure})
+		return
+	}
+	if !request.fieldsValid {
+		writeJSON(w, http.StatusBadRequest, SubscriptionMessage{Envelope: responseEnvelope(request.Envelope, "subscription.error"), OperationID: request.OperationID, Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "Subscription request optional fields are invalid."}})
 		return
 	}
 	if request.OperationID == "" || request.Query.Type == "" || len(request.Query.Payload) == 0 {
@@ -281,8 +294,8 @@ func validateObservation(observation RuntimeObservation) *specter.Error {
 	if order := observation.TriggeringEventOrder; order != nil && (!safeInteger(order.From) || !safeInteger(order.To) || order.To < order.From) {
 		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation triggering Event order range is invalid."}
 	}
-	if !safeInteger(observation.Cursor) || !safeInteger(observation.DroppedCount) {
-		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation cursor and dropped count must be safe integers."}
+	if !safeInteger(observation.Cursor) || !safeInteger(observation.DroppedCount) || !safeInteger(observation.Version) {
+		return &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation cursor, dropped count, and version must be safe integers."}
 	}
 	for _, event := range observation.Events {
 		if event.EventID == "" || event.Type == "" || event.RecordedAt.IsZero() || !safeInteger(event.Order) || !safeInteger(event.CommitVersion) {
@@ -332,8 +345,9 @@ func responseEnvelope(request Envelope, kind string) Envelope {
 	return Envelope{ProtocolVersion: Version, Kind: kind, RequestID: request.RequestID}
 }
 func decode(w http.ResponseWriter, r *http.Request, out any) bool {
-	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
-		writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidJSON, Message: "Content-Type must be application/json."}})
+	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		writeJSON(w, http.StatusUnsupportedMediaType, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "Content-Type must be application/json."}})
 		return false
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
