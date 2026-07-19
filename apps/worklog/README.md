@@ -16,9 +16,11 @@ earning an auditable lifetime score.
   updates live subscriptions, and retains explicit direct-SQLite access.
 - Soft editing and archival; the Event Log remains the durable source of truth.
 
-The app is local-only, uses a SQLite database at `data/worklog.db`, and runs on
-fixed port `41736`. Documents, recurring tasks, habits, routines, planning,
-authentication, sync, and application-level import/export are deferred.
+The app is local-only and uses a SQLite database at `data/worklog.db`. The live
+production server uses fixed port `41736`; dev, preview, and verification use
+fixed port `41737` so they can never attach to or displace the live service.
+Documents, recurring tasks, habits, routines, planning, authentication, sync,
+and application-level import/export are deferred.
 
 ## Run it
 
@@ -28,9 +30,10 @@ pnpm build:publishable
 pnpm --filter @specter/worklog dev
 ```
 
-Open `http://127.0.0.1:41736`. The server and CLI use
-`WORKLOG_SQLITE_PATH` when set and otherwise use `./data/worklog.db` relative
-to the app directory.
+Open `http://127.0.0.1:41737` for the dev server. Production defaults to
+`http://127.0.0.1:41736`, and its port can be set explicitly with
+`WORKLOG_PORT`. The server and CLI use `WORKLOG_SQLITE_PATH` when set and
+otherwise use `./data/worklog.db` relative to the app directory.
 
 ### Verification data isolation
 
@@ -43,9 +46,9 @@ pnpm --filter @specter/worklog dev:verify
 ```
 
 That command creates a temporary SQLite database outside the app directory and
-removes it when the server exits. Playwright uses this command automatically and
-refuses to reuse an existing server, so it cannot silently attach to a live
-Worklog instance.
+removes it when the server exits. It runs on `41737`. Playwright uses this
+command automatically and refuses to reuse an existing server, so it cannot
+silently attach to the live Worklog instance on `41736`.
 
 Offline CLI verification must likewise use an explicit temporary database:
 

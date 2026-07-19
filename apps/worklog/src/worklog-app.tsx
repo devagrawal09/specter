@@ -354,9 +354,23 @@ export function WorklogApp() {
           <form class="composer" onSubmit={addJournal}>
             <textarea
               aria-label="Journal entry"
+              aria-keyshortcuts="Meta+Enter"
               placeholder="I’m working on…"
               value={journalBody()}
               onInput={(event) => setJournalBody(event.currentTarget.value)}
+              onKeyDown={(event) => {
+                if (
+                  event.key !== 'Enter' ||
+                  !event.metaKey ||
+                  event.isComposing ||
+                  event.repeat
+                )
+                  return
+
+                event.preventDefault()
+                if (busy() || !journalBody().trim()) return
+                event.currentTarget.form?.requestSubmit()
+              }}
             />
             <div class="composer-footer">
               <label>
@@ -372,7 +386,7 @@ export function WorklogApp() {
                 class="primary"
                 disabled={busy() || !journalBody().trim()}
               >
-                Add to timeline <span>↵</span>
+                Add to timeline <span aria-hidden="true">⌘↵</span>
               </button>
             </div>
           </form>
