@@ -84,7 +84,7 @@ export function createSpecterProtocolHttpClient(
         },
       )
     },
-    observations(
+    async observations(
       input: Omit<
         RuntimeObservationBatch,
         'protocolVersion' | 'kind' | 'requestId'
@@ -96,10 +96,16 @@ export function createSpecterProtocolHttpClient(
         requestId: requestId(),
         ...input,
       }
-      return post<RuntimeObservationAcknowledgement>('/observations', message, {
-        kind: 'observations.ack',
-        requestId: message.requestId,
-      })
+      const acknowledgement = await post<RuntimeObservationAcknowledgement>(
+        '/observations',
+        message,
+        {
+          kind: 'observations.ack',
+          requestId: message.requestId,
+        },
+      )
+      assertCompleteObservationAcknowledgement(message, acknowledgement)
+      return acknowledgement
     },
     subscribe(
       input: Omit<
@@ -333,30 +339,95 @@ async function* decodeSse(stream: ReadableStream<Uint8Array>) {
   const reader = stream.getReader()
   const decoder = new TextDecoder()
   let buffer = ''
+  let block: string[] = []
   try {
     while (true) {
       const { done, value } = await reader.read()
-      buffer += decoder
-        .decode(value, { stream: !done })
-        .replaceAll('\r\n', '\n')
-      let boundary = buffer.indexOf('\n\n')
-      while (boundary >= 0) {
-        const block = buffer.slice(0, boundary)
-        buffer = buffer.slice(boundary + 2)
+      buffer += decoder.decode(value, { stream: !done })
+
+      while (true) {
+        const line = takeSseLine(buffer, done)
+        if (!line) break
+        buffer = buffer.slice(line.consumed)
+        if (line.value !== '') {
+          block.push(line.value)
+          continue
+        }
         const data = block
-          .split('\n')
           .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trimStart())
+          .map((line) => {
+            const value = line.slice(5)
+            return value.startsWith(' ') ? value.slice(1) : value
+          })
+          .join('\n')
+        block = []
+        if (data) yield data
+      }
+      if (done) {
+        if (buffer !== '') block.push(buffer)
+        const data = block
+          .filter((line) => line.startsWith('data:'))
+          .map((line) => {
+            const value = line.slice(5)
+            return value.startsWith(' ') ? value.slice(1) : value
+          })
           .join('\n')
         if (data) yield data
-        boundary = buffer.indexOf('\n\n')
+        return
       }
-      if (done) return
     }
   } finally {
     await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
+}
+
+function takeSseLine(buffer: string, endOfStream: boolean) {
+  const carriageReturn = buffer.indexOf('\r')
+  const lineFeed = buffer.indexOf('\n')
+  let boundary: number
+  if (carriageReturn < 0) boundary = lineFeed
+  else if (lineFeed < 0) boundary = carriageReturn
+  else boundary = Math.min(carriageReturn, lineFeed)
+  if (boundary < 0) return undefined
+
+  if (buffer[boundary] === '\r') {
+    if (boundary + 1 === buffer.length && !endOfStream) return undefined
+    const consumed = buffer[boundary + 1] === '\n' ? boundary + 2 : boundary + 1
+    return { value: buffer.slice(0, boundary), consumed }
+  }
+  return { value: buffer.slice(0, boundary), consumed: boundary + 1 }
+}
+
+function assertCompleteObservationAcknowledgement(
+  batch: RuntimeObservationBatch,
+  acknowledgement: RuntimeObservationAcknowledgement,
+) {
+  const observationIds = new Set(
+    batch.observations.map((observation) => observation.observationId),
+  )
+  const rejectedIds = acknowledgement.rejectedObservationIds ?? []
+  const rejected = new Set(rejectedIds)
+  if (
+    rejected.size !== rejectedIds.length ||
+    rejectedIds.some((observationId) => !observationIds.has(observationId))
+  )
+    throw invalidObservationAcknowledgement('invalid rejected IDs')
+  if (
+    acknowledgement.accepted + acknowledgement.duplicates + rejected.size !==
+    batch.observations.length
+  )
+    throw invalidObservationAcknowledgement(
+      'counts that do not account for the submitted batch',
+    )
+}
+
+function invalidObservationAcknowledgement(reason: string) {
+  return new SpecterProtocolError({
+    code: protocolErrorCodes.transport,
+    message: `Server returned an observation acknowledgement with ${reason}.`,
+    status: 502,
+  })
 }
 
 function remoteError(status: number, payload: unknown) {

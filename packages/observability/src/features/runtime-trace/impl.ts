@@ -97,7 +97,26 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
         addLink(linkedOperations, link.toKey, link.fromKey)
       }
 
-      const operationKeys = new Set(
+      // Resolve every causal edge once, then traverse the undirected causal
+      // graph. The previous fixed-point scan revisited every observation for
+      // every newly discovered operation, making long chains quadratic.
+      for (const observation of state.observations) {
+        const currentOperationKey = operationKey(observation)
+        for (const parent of observation.parentOperationIds ?? []) {
+          const parentKey = resolveParent(observation, parent)
+          if (!parentKey) continue
+          addLink(linkedOperations, currentOperationKey, parentKey)
+          addLink(linkedOperations, parentKey, currentOperationKey)
+        }
+        for (const eventId of observation.triggeringEventIds ?? []) {
+          const producer = producerByEvent.get(eventKey(observation, eventId))
+          if (!producer) continue
+          addLink(linkedOperations, currentOperationKey, producer.key)
+          addLink(linkedOperations, producer.key, currentOperationKey)
+        }
+      }
+
+      const seeds = new Set(
         state.observations
           .filter(
             (observation) =>
@@ -106,37 +125,7 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
           )
           .map((observation) => operationKey(observation)),
       )
-      let changed = true
-      while (changed) {
-        changed = false
-        for (const observation of state.observations) {
-          const currentOperationKey = operationKey(observation)
-          const parents = (observation.parentOperationIds ?? [])
-            .map((parent) => resolveParent(observation, parent))
-            .filter((parent) => parent !== undefined)
-          const eventParents = (observation.triggeringEventIds ?? [])
-            .map((eventId) =>
-              producerByEvent.get(eventKey(observation, eventId)),
-            )
-            .filter((parent) => parent !== undefined && parent !== null)
-            .map((parent) => parent.key)
-          const causes = [...parents, ...eventParents]
-          const links = [...(linkedOperations.get(currentOperationKey) ?? [])]
-          if (operationKeys.has(currentOperationKey)) {
-            for (const related of [...causes, ...links]) {
-              if (!operationKeys.has(related)) {
-                operationKeys.add(related)
-                changed = true
-              }
-            }
-          } else if (
-            [...causes, ...links].some((related) => operationKeys.has(related))
-          ) {
-            operationKeys.add(currentOperationKey)
-            changed = true
-          }
-        }
-      }
+      const operationKeys = connectedOperationKeys(seeds, linkedOperations)
 
       const observations = state.observations
         .filter((observation) => operationKeys.has(operationKey(observation)))
@@ -211,12 +200,14 @@ function buildIdentityLinks(
     string,
     {
       readonly relation: TraceIdentityRelation
-      readonly operations: Map<
-        string,
-        { readonly operationId: string; readonly collectorOrder: number }
-      >
+      readonly operationKeys: Set<string>
+      previous?: {
+        readonly operationKey: string
+        readonly operationId: string
+      }
     }
   >()
+  const links: TraceIdentityLink[] = []
   for (const observation of observations) {
     for (const [relation, identity] of [
       ['reaction-pass', observation.reactionPassId],
@@ -225,40 +216,48 @@ function buildIdentityLinks(
     ] as const) {
       if (!identity) continue
       const groupKey = `${runtimeEventLogIdentity(observation.source)}\u0000${relation}\u0000${identity}`
+      const key = operationKey(observation)
       let group = groups.get(groupKey)
       if (!group) {
-        group = { relation, operations: new Map() }
+        group = { relation, operationKeys: new Set() }
         groups.set(groupKey, group)
       }
-      const key = operationKey(observation)
-      if (!group.operations.has(key)) {
-        group.operations.set(key, {
-          operationId: observation.operationId,
-          collectorOrder: observation.collectorOrder,
+      if (group.operationKeys.has(key)) continue
+      group.operationKeys.add(key)
+      if (group.previous) {
+        links.push({
+          fromKey: group.previous.operationKey,
+          toKey: key,
+          fromOperationId: group.previous.operationId,
+          toOperationId: observation.operationId,
+          relation,
         })
       }
-    }
-  }
-
-  const links: TraceIdentityLink[] = []
-  for (const group of groups.values()) {
-    const operations = [...group.operations.entries()].sort(
-      (left, right) => left[1].collectorOrder - right[1].collectorOrder,
-    )
-    for (let index = 1; index < operations.length; index += 1) {
-      const previous = operations[index - 1]
-      const current = operations[index]
-      if (!previous || !current) continue
-      links.push({
-        fromKey: previous[0],
-        toKey: current[0],
-        fromOperationId: previous[1].operationId,
-        toOperationId: current[1].operationId,
-        relation: group.relation,
-      })
+      group.previous = {
+        operationKey: key,
+        operationId: observation.operationId,
+      }
     }
   }
   return links
+}
+
+function connectedOperationKeys(
+  seeds: ReadonlySet<string>,
+  links: ReadonlyMap<string, ReadonlySet<string>>,
+) {
+  const connected = new Set(seeds)
+  const queue = [...seeds]
+  for (let index = 0; index < queue.length; index += 1) {
+    const current = queue[index]
+    if (!current) continue
+    for (const related of links.get(current) ?? []) {
+      if (connected.has(related)) continue
+      connected.add(related)
+      queue.push(related)
+    }
+  }
+  return connected
 }
 
 function addLink(links: Map<string, Set<string>>, from: string, to: string) {

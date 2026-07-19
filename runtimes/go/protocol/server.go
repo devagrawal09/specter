@@ -48,11 +48,18 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &request) {
 		return
 	}
+	available := s.availableCapabilities()
+	base := CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Runtime: RuntimeDescriptor{Language: "go", Version: s.RuntimeVersion}, Supported: available, Negotiated: []string{}}
 	if failure := validateEnvelope(request.Envelope, "capabilities.request"); failure != nil {
-		writeJSON(w, protocolErrorStatus(failure), CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Error: failure})
+		base.Error = failure
+		writeJSON(w, protocolErrorStatus(failure), base)
 		return
 	}
-	available := s.availableCapabilities()
+	if !request.fieldsValid {
+		base.Error = &specter.Error{Code: specter.ErrInvalidMessage, Message: "Capability arrays must contain nonempty strings when present."}
+		writeJSON(w, http.StatusBadRequest, base)
+		return
+	}
 	set := map[string]struct{}{}
 	for _, capability := range available {
 		set[capability] = struct{}{}
@@ -64,7 +71,8 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if len(missing) > 0 {
-		writeJSON(w, http.StatusBadRequest, CapabilitiesResponse{Envelope: responseEnvelope(request.Envelope, "capabilities.response"), Error: &specter.Error{Code: specter.ErrUnsupportedCapability, Message: "Required capabilities are unsupported.", Details: map[string]any{"missing": missing}}})
+		base.Error = &specter.Error{Code: specter.ErrUnsupportedCapability, Message: "Required capabilities are unsupported.", Details: map[string]any{"missing": missing}}
+		writeJSON(w, http.StatusBadRequest, base)
 		return
 	}
 	negotiated := []string{}
@@ -251,6 +259,10 @@ func (s *Server) observations(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, protocolErrorStatus(failure), ObservationAcknowledgement{Envelope: responseEnvelope(request.Envelope, "observations.ack"), Error: failure})
 		return
 	}
+	if !request.fieldsValid {
+		writeJSON(w, http.StatusBadRequest, ObservationAcknowledgement{Envelope: responseEnvelope(request.Envelope, "observations.ack"), Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "observations must be present and contain an array."}})
+		return
+	}
 	if len(request.Observations) > 100 {
 		writeJSON(w, http.StatusBadRequest, ObservationAcknowledgement{Envelope: responseEnvelope(request.Envelope, "observations.ack"), Error: &specter.Error{Code: specter.ErrInvalidMessage, Message: "Observation batches may contain at most 100 observations."}})
 		return
@@ -352,7 +364,12 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err := decoder.Decode(out); err != nil {
-		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON request."}})
+		code, message := specter.ErrInvalidMessage, "Protocol message is invalid."
+		var syntax *json.SyntaxError
+		if errors.As(err, &syntax) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
+			code, message = specter.ErrInvalidJSON, "Malformed JSON request."
+		}
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: code, Message: message}})
 		return false
 	}
 	var trailing any

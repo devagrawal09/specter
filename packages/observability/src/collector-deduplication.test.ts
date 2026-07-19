@@ -131,6 +131,75 @@ describe('collector cross-segment observation deduplication', () => {
     client.close()
   })
 
+  it('never reclaims a live reservation based only on its age', async () => {
+    const client = controlClient()
+    const startedAt = new Date('2026-07-18T12:00:00.000Z')
+    await prepareObservationDeduplication(client, startedAt)
+    const first = await reserveObservations(
+      batch,
+      client,
+      'slow-live-request',
+      startedAt,
+    )
+    if (first.status !== 'reserved') throw new Error('Expected reservation')
+
+    await expect(
+      reserveObservations(
+        batch,
+        client,
+        'retry-after-six-minutes',
+        new Date('2026-07-18T12:06:00.000Z'),
+      ),
+    ).resolves.toEqual({ status: 'busy' })
+
+    await acceptObservationReservation(
+      first.reservation,
+      first.reservation.batch.observations,
+      client,
+      new Date('2026-07-18T12:06:01.000Z'),
+    )
+    await expect(
+      reserveObservations(batch, client, 'retry-after-completion'),
+    ).resolves.toMatchObject({
+      status: 'reserved',
+      reservation: { duplicates: 1, batch: { observations: [] } },
+    })
+    client.close()
+  })
+
+  it('retains accepted identities for the producer process retry lifetime', async () => {
+    const client = controlClient()
+    const acceptedAt = new Date('2026-07-18T12:00:00.000Z')
+    await prepareObservationDeduplication(client, acceptedAt)
+    const first = await reserveObservations(
+      batch,
+      client,
+      'accepted-request',
+      acceptedAt,
+    )
+    if (first.status !== 'reserved') throw new Error('Expected reservation')
+    await acceptObservationReservation(
+      first.reservation,
+      first.reservation.batch.observations,
+      client,
+      acceptedAt,
+    )
+
+    // Producers retry while alive, with no protocol retry horizon. Even a
+    // much later retry must therefore remain a duplicate.
+    await prepareObservationDeduplication(
+      client,
+      new Date('2027-07-18T12:00:00.000Z'),
+    )
+    await expect(
+      reserveObservations(batch, client, 'year-later-retry'),
+    ).resolves.toMatchObject({
+      status: 'reserved',
+      reservation: { duplicates: 1, batch: { observations: [] } },
+    })
+    client.close()
+  })
+
   it('recovers a segment commit after a crash and rotation without accepting a duplicate retry', async () => {
     const directory = mkdtempSync(join(tmpdir(), 'specter-dedup-recovery-'))
     temporaryDirectories.push(directory)

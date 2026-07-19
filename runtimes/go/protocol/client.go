@@ -29,7 +29,12 @@ func (c *Client) httpClient() *http.Client {
 func (c *Client) Capabilities(ctx context.Context, request CapabilitiesRequest) (CapabilitiesResponse, error) {
 	request.Envelope = prepare(request.Envelope, "capabilities.request")
 	var response CapabilitiesResponse
-	_, err := c.post(ctx, "/capabilities", request, &response, responseEnvelope(request.Envelope, "capabilities.response"))
+	fields, err := c.post(ctx, "/capabilities", request, &response, responseEnvelope(request.Envelope, "capabilities.response"))
+	if fields != nil {
+		if validationErr := validateCapabilitiesResponse(response, fields); validationErr != nil {
+			err = validationErr
+		}
+	}
 	if err == nil && response.Error != nil {
 		err = response.Error
 	}
@@ -66,12 +71,12 @@ func (c *Client) Query(ctx context.Context, request QueryRequest) (QueryResponse
 func (c *Client) SendObservations(ctx context.Context, batch RuntimeObservationBatch) (ObservationAcknowledgement, error) {
 	batch.Envelope = prepare(batch.Envelope, "observations.batch")
 	var response ObservationAcknowledgement
-	_, err := c.post(ctx, "/observations", batch, &response, responseEnvelope(batch.Envelope, "observations.ack"))
+	fields, err := c.post(ctx, "/observations", batch, &response, responseEnvelope(batch.Envelope, "observations.ack"))
 	if err == nil && response.Error != nil {
 		err = response.Error
 	}
 	if err == nil {
-		err = validateObservationAcknowledgement(batch, response)
+		err = validateObservationAcknowledgement(batch, response, fields)
 	}
 	return response, err
 }
@@ -146,7 +151,9 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 		}
 		return nil, nil, &specter.Error{Code: specter.ErrTransportFailure, Message: "Subscription transport failed."}
 	}
-	messages := make(chan SubscriptionMessage, 1)
+	// Keep room for the coalesced latest value and one terminal frame so the
+	// stream reader never has to discard the value or wait for the caller.
+	messages := make(chan SubscriptionMessage, 2)
 	failures := make(chan error, 1)
 	go func() {
 		defer response.Body.Close()
@@ -155,8 +162,15 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 4096), 1<<20)
 		var dataLines []string
+		var eventName string
 		terminal := false
+		lastSequence := int64(-1)
+		if request.AfterSequence != nil {
+			lastSequence = *request.AfterSequence
+		}
 		dispatch := func() bool {
+			name := eventName
+			eventName = ""
 			if len(dataLines) == 0 {
 				return true
 			}
@@ -176,13 +190,33 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 				failures <- err
 				return false
 			}
-			select {
-			case messages <- message:
-			default:
-				select {
-				case <-messages:
-				default:
+			if name != message.Kind {
+				failures <- fmt.Errorf("specter protocol: SSE event name %q does not match message kind %q", name, message.Kind)
+				return false
+			}
+			if message.Kind == "subscription.value" {
+				if message.Sequence <= lastSequence {
+					failures <- fmt.Errorf("specter protocol: subscription sequence %d is not greater than %d", message.Sequence, lastSequence)
+					return false
 				}
+				lastSequence = message.Sequence
+			drainValues:
+				for {
+					select {
+					case <-messages:
+						continue
+					default:
+						break drainValues
+					}
+				}
+				select {
+				case messages <- message:
+				case <-ctx.Done():
+					return false
+				}
+			} else {
+				// Terminal messages must follow the newest unread value rather than
+				// replacing it in the coalescing buffer.
 				select {
 				case messages <- message:
 				case <-ctx.Done():
@@ -212,6 +246,8 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 			}
 			if field == "data" {
 				dataLines = append(dataLines, value)
+			} else if field == "event" {
+				eventName = value
 			}
 		}
 		if scanner.Err() == nil && ctx.Err() == nil && len(dataLines) > 0 {
@@ -296,6 +332,20 @@ func responseErrorOf(response any) *specter.Error {
 	default:
 		return nil
 	}
+}
+
+func validateCapabilitiesResponse(response CapabilitiesResponse, fields map[string]json.RawMessage) error {
+	if !hasFields(fields, "runtime", "supported", "negotiated") || !rawObject(fields["runtime"]) || !rawArray(fields["supported"]) || !rawArray(fields["negotiated"]) {
+		return fmt.Errorf("specter protocol: capabilities response omits required fields")
+	}
+	var runtimeFields map[string]json.RawMessage
+	if json.Unmarshal(fields["runtime"], &runtimeFields) != nil || !hasFields(runtimeFields, "language", "version") || response.Runtime.Language == "" || response.Runtime.Version == "" {
+		return fmt.Errorf("specter protocol: capabilities runtime descriptor is invalid")
+	}
+	if !validCapabilityList(response.Supported) || !validCapabilityList(response.Negotiated) {
+		return fmt.Errorf("specter protocol: capabilities response contains invalid capability names")
+	}
+	return nil
 }
 
 func validateCommandResponse(request CommandRequest, response CommandResponse, fields map[string]json.RawMessage) error {
@@ -420,8 +470,8 @@ func validateReactionTicketResponse(response ReactionTicketResponse, fields map[
 	return nil
 }
 
-func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowledgement ObservationAcknowledgement) error {
-	if acknowledgement.Accepted < 0 || acknowledgement.Duplicates < 0 {
+func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowledgement ObservationAcknowledgement, fields map[string]json.RawMessage) error {
+	if !hasFields(fields, "accepted", "duplicates") || !rawInteger(fields, "accepted", true) || !rawInteger(fields, "duplicates", true) || acknowledgement.Accepted < 0 || acknowledgement.Duplicates < 0 || int64(acknowledgement.Accepted) > maxSafeInteger || int64(acknowledgement.Duplicates) > maxSafeInteger {
 		return fmt.Errorf("specter protocol: observation acknowledgement counts must be non-negative")
 	}
 	observationIDs := make(map[string]struct{}, len(batch.Observations))

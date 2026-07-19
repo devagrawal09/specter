@@ -8,7 +8,6 @@ import type {
   RuntimeObservationBatch,
 } from '@specter-ts/protocol'
 
-const reservationLeaseMs = 5 * 60 * 1_000
 const transactionTails = new WeakMap<Client, Promise<void>>()
 
 export type ObservationReservation = {
@@ -53,10 +52,6 @@ export async function prepareObservationDeduplication(
   }
 
   await reconcileObservationReservations(client, segmentPaths, now)
-  await client.execute({
-    sql: "DELETE FROM accepted_observations WHERE status = 'accepted' AND accepted_at < ?",
-    args: [new Date(now.getTime() - 48 * 60 * 60 * 1_000).toISOString()],
-  })
 }
 
 async function reconcileObservationReservations(
@@ -128,14 +123,10 @@ export async function reserveObservations(
     const pending: Array<{
       readonly observation: RuntimeObservation
       readonly key: string
-      readonly reclaim: boolean
     }> = []
     const pendingKeys = new Set<string>()
     let duplicates = 0
     const reservedAt = now.toISOString()
-    const staleBefore = new Date(
-      now.getTime() - reservationLeaseMs,
-    ).toISOString()
 
     for (const observation of batch.observations) {
       const key = sourceKey(observation)
@@ -150,7 +141,7 @@ export async function reserveObservations(
       })
       const row = existing.rows[0]
       if (!row) {
-        pending.push({ observation, key, reclaim: false })
+        pending.push({ observation, key })
         pendingKeys.add(identity)
         continue
       }
@@ -158,22 +149,17 @@ export async function reserveObservations(
         duplicates += 1
         continue
       }
-      if (
-        String(row.status) === 'reserved' &&
-        String(row.accepted_at) < staleBefore
-      ) {
-        pending.push({ observation, key, reclaim: true })
-        pendingKeys.add(identity)
-        continue
-      }
+      // A reservation belongs to the live request that created it until that
+      // request accepts or releases it. Age cannot prove that the owner died:
+      // persistence and rotation may legitimately take longer than a lease.
+      // Process startup is the safe recovery boundary because it reconciles
+      // every outstanding reservation against all durable segments above.
       return { status: 'busy' }
     }
 
     for (const item of pending) {
       await transaction.execute({
-        sql: item.reclaim
-          ? "UPDATE accepted_observations SET accepted_at = ?, reservation_id = ? WHERE source_key = ? AND observation_id = ? AND status = 'reserved'"
-          : "INSERT INTO accepted_observations (accepted_at, reservation_id, source_key, observation_id, status) VALUES (?, ?, ?, ?, 'reserved')",
+        sql: "INSERT INTO accepted_observations (accepted_at, reservation_id, source_key, observation_id, status) VALUES (?, ?, ?, ?, 'reserved')",
         args: [
           reservedAt,
           reservationId,

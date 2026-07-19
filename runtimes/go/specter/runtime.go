@@ -525,82 +525,95 @@ func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []Per
 }
 
 func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID string, events []PersistedEvent, ticket *reactionTicket, result chan<- error) {
+	passOperation := newID("op")
+	var failures []error
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			failures = append(failures, reactionPanicError(recovered))
+		}
+		var err error
+		passKind := "reaction.pass.completed"
+		if len(failures) > 0 {
+			err = newError(ErrReactionFailure, "One or more Reactions failed.", map[string]any{"failureCount": len(failures)}, errors.Join(failures...))
+			passKind = "reaction.pass.failed"
+		}
+		ticket.mu.Lock()
+		ticket.err = err
+		ticket.mu.Unlock()
+		outcome := map[string]any{"failureCount": len(failures)}
+		observation := Observation{Kind: passKind, OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID, Attributes: outcome}
+		if err != nil {
+			observation.Outcome = "failed"
+			var public *Error
+			if errors.As(err, &public) {
+				observation.Error = public
+			}
+		} else {
+			observation.Outcome = "succeeded"
+		}
+		a.emit(observation)
+		result <- err
 		close(ticket.done)
 		close(result)
 		time.AfterFunc(a.ticketRetention, func() {
 			a.tickets.CompareAndDelete(ticketID, ticket)
 		})
 	}()
-	passOperation := newID("op")
 	a.emit(Observation{Kind: "reaction.pass.started", OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID})
-	var failures []error
 	for name, reaction := range a.reactions {
-		reaction.slice.mu.Lock()
-		before := reaction.slice.cursor
-		through := before
-		if len(events) > 0 {
-			through = events[len(events)-1].GlobalOrder
-		}
-		if err := a.catchUpThrough(ctx, &reaction.slice, name, passOperation, correlation, through); err != nil {
-			failures = append(failures, err)
-			reaction.slice.mu.Unlock()
-			continue
-		}
-		relevant := make([]PersistedEvent, 0)
-		for _, event := range events {
-			if event.GlobalOrder > before {
-				if _, ok := reaction.definition.Apply[event.Type]; ok {
-					relevant = append(relevant, event)
+		func() {
+			reaction.slice.mu.Lock()
+			defer reaction.slice.mu.Unlock()
+			defer func() {
+				if recovered := recover(); recovered != nil {
+					failures = append(failures, reactionPanicError(recovered))
+				}
+			}()
+			before := reaction.slice.cursor
+			through := before
+			if len(events) > 0 {
+				through = events[len(events)-1].GlobalOrder
+			}
+			if err := a.catchUpThrough(ctx, &reaction.slice, name, passOperation, correlation, through); err != nil {
+				failures = append(failures, err)
+				return
+			}
+			relevant := make([]PersistedEvent, 0)
+			for _, event := range events {
+				if event.GlobalOrder > before {
+					if _, ok := reaction.definition.Apply[event.Type]; ok {
+						relevant = append(relevant, event)
+					}
 				}
 			}
-		}
-		if len(relevant) > 0 {
-			deliveryID, attemptID, op := newID("delivery"), newID("attempt"), newID("op")
-			ctxValue := ReactionContext{OperationID: op, CorrelationID: correlation, DeliveryID: deliveryID, AttemptID: attemptID, ScheduledAt: time.Now().UTC()}
-			a.emit(Observation{Kind: "reaction.run.started", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID})
-			effect, runErr := reaction.definition.Handle(ctx, ctxValue, relevant)
-			if runErr == nil {
-				if _, marshalErr := json.Marshal(effect); marshalErr != nil {
-					runErr = newError(ErrInvalidOutput, fmt.Sprintf("Invalid Reaction output for %q.", name), nil, marshalErr)
+			if len(relevant) > 0 {
+				deliveryID, attemptID, op := newID("delivery"), newID("attempt"), newID("op")
+				ctxValue := ReactionContext{OperationID: op, CorrelationID: correlation, DeliveryID: deliveryID, AttemptID: attemptID, ScheduledAt: time.Now().UTC()}
+				a.emit(Observation{Kind: "reaction.run.started", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID})
+				effect, runErr := reaction.definition.Handle(ctx, ctxValue, relevant)
+				if runErr == nil {
+					if _, marshalErr := json.Marshal(effect); marshalErr != nil {
+						runErr = newError(ErrInvalidOutput, fmt.Sprintf("Invalid Reaction output for %q.", name), nil, marshalErr)
+					}
+				}
+				if runErr != nil {
+					failures = append(failures, runErr)
+					var public *Error
+					if !errors.As(runErr, &public) {
+						public = newError(ErrInfrastructure, "Reaction run failed.", nil, runErr)
+					}
+					a.emit(Observation{Kind: "reaction.run.failed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "failed", Error: public})
+				} else {
+					a.emit(Observation{Kind: "reaction.run.completed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "succeeded"})
 				}
 			}
-			if runErr != nil {
-				failures = append(failures, runErr)
-				var public *Error
-				if !errors.As(runErr, &public) {
-					public = newError(ErrInfrastructure, "Reaction run failed.", nil, runErr)
-				}
-				a.emit(Observation{Kind: "reaction.run.failed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "failed", Error: public})
-			} else {
-				a.emit(Observation{Kind: "reaction.run.completed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "succeeded"})
-			}
-		}
-		reaction.slice.mu.Unlock()
+		}()
 	}
 	a.invalidateSubscriptions(parent, correlation)
-	var err error
-	passKind := "reaction.pass.completed"
-	if len(failures) > 0 {
-		err = newError(ErrReactionFailure, "One or more Reactions failed.", map[string]any{"failureCount": len(failures)}, errors.Join(failures...))
-		passKind = "reaction.pass.failed"
-	}
-	ticket.mu.Lock()
-	ticket.err = err
-	ticket.mu.Unlock()
-	outcome := map[string]any{"failureCount": len(failures)}
-	observation := Observation{Kind: passKind, OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID, Attributes: outcome}
-	if err != nil {
-		observation.Outcome = "failed"
-		var public *Error
-		if errors.As(err, &public) {
-			observation.Error = public
-		}
-	} else {
-		observation.Outcome = "succeeded"
-	}
-	a.emit(observation)
-	result <- err
+}
+
+func reactionPanicError(recovered any) error {
+	return newError(ErrInfrastructure, "Reaction execution panicked.", nil, fmt.Errorf("panic: %v", recovered))
 }
 
 func (a *App) ReactionTicket(id string) (ReactionTicketStatus, bool) {

@@ -42,6 +42,82 @@ func TestCapabilityNegotiationAndUnknownOptionalFields(t *testing.T) {
 	}
 }
 
+func TestCapabilityClientRejectsMissingOrNullRequiredResponseFields(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		body string
+	}{
+		{name: "missing supported", body: `{"protocolVersion":1,"kind":"capabilities.response","requestId":"capability-client","runtime":{"language":"go","version":"test"},"negotiated":[]}`},
+		{name: "null supported", body: `{"protocolVersion":1,"kind":"capabilities.response","requestId":"capability-client","runtime":{"language":"go","version":"test"},"supported":null,"negotiated":[]}`},
+		{name: "duplicate supported", body: `{"protocolVersion":1,"kind":"capabilities.response","requestId":"capability-client","runtime":{"language":"go","version":"test"},"supported":["commands","commands"],"negotiated":[]}`},
+		{name: "null runtime language", body: `{"protocolVersion":1,"kind":"capabilities.response","requestId":"capability-client","runtime":{"language":null,"version":"test"},"supported":[],"negotiated":[]}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return jsonResponse(http.StatusOK, test.body), nil
+			})}}
+			_, err := client.Capabilities(context.Background(), protocol.CapabilitiesRequest{Envelope: protocol.Envelope{RequestID: "capability-client"}})
+			if err == nil {
+				t.Fatal("malformed capabilities response was accepted")
+			}
+		})
+	}
+}
+
+func TestServerRejectsNullCapabilityArraysAndInvalidObservationBatchShape(t *testing.T) {
+	handler := (&protocol.Server{App: emptyApp(t), RuntimeVersion: "test", AcceptObservations: func(context.Context, protocol.RuntimeObservationBatch) (protocol.ObservationAcknowledgement, error) {
+		t.Fatal("invalid observation batch reached sink")
+		return protocol.ObservationAcknowledgement{}, nil
+	}}).Handler()
+	for _, body := range []string{
+		`{"protocolVersion":1,"kind":"capabilities.request","requestId":"request-1","required":null}`,
+		`{"protocolVersion":1,"kind":"capabilities.request","requestId":"request-1","optional":null}`,
+		`{"protocolVersion":1,"kind":"capabilities.request","requestId":"request-1","required":["commands","commands"]}`,
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/specter/v1/capabilities", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), string(specter.ErrInvalidMessage)) {
+			t.Fatalf("null capability array was accepted: HTTP %d %s", response.Code, response.Body.String())
+		}
+	}
+	for _, body := range []string{
+		`{"protocolVersion":1,"kind":"observations.batch","requestId":"request-1"}`,
+		`{"protocolVersion":1,"kind":"observations.batch","requestId":"request-1","observations":null}`,
+	} {
+		request := httptest.NewRequest(http.MethodPost, "/specter/v1/observations", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), string(specter.ErrInvalidMessage)) {
+			t.Fatalf("invalid observation batch was accepted: HTTP %d %s", response.Code, response.Body.String())
+		}
+	}
+}
+
+func TestServerDistinguishesInvalidJSONFromInvalidMessage(t *testing.T) {
+	handler := (&protocol.Server{App: emptyApp(t)}).Handler()
+	for _, test := range []struct {
+		name string
+		body string
+		code specter.ErrorCode
+	}{
+		{name: "syntax", body: `{`, code: specter.ErrInvalidJSON},
+		{name: "schema type", body: `{"protocolVersion":"one","kind":"command.request","requestId":"request-1","operationId":"operation-1","command":{"type":"missing","payload":{}}}`, code: specter.ErrInvalidMessage},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(http.MethodPost, "/specter/v1/commands", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), string(test.code)) {
+				t.Fatalf("unexpected classification: HTTP %d %s", response.Code, response.Body.String())
+			}
+		})
+	}
+}
+
 func TestRejectsVersionMismatch(t *testing.T) {
 	app := emptyApp(t)
 	server := httptest.NewServer((&protocol.Server{App: app}).Handler())
@@ -319,7 +395,7 @@ func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testin
 		})
 	}
 	t.Run("unexpected EOF", func(t *testing.T) {
-		body := "data: {\"protocolVersion\":1,\"kind\":\"subscription.value\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\",\"sequence\":1,\"result\":null}\n\n"
+		body := "event: subscription.value\ndata: {\"protocolVersion\":1,\"kind\":\"subscription.value\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\",\"sequence\":1,\"result\":null}\n\n"
 		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 		})}}
@@ -376,7 +452,7 @@ func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testin
 		}
 	})
 	t.Run("terminal SSE block is dispatched at EOF", func(t *testing.T) {
-		body := "data:{\"protocolVersion\":1,\"kind\":\"subscription.complete\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\"}\n"
+		body := "event: subscription.complete\ndata:{\"protocolVersion\":1,\"kind\":\"subscription.complete\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\"}\n"
 		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 		})}}
@@ -395,6 +471,61 @@ func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testin
 	})
 }
 
+func TestSubscriptionClientPreservesLatestValueBeforeTerminalAndValidatesSSEMetadata(t *testing.T) {
+	request := protocol.SubscriptionRequest{Envelope: protocol.Envelope{RequestID: "subscription-order"}, OperationID: "operation-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
+	value := `{"protocolVersion":1,"kind":"subscription.value","requestId":"subscription-order","operationId":"operation-1","sequence":1,"result":"latest"}`
+	complete := `{"protocolVersion":1,"kind":"subscription.complete","requestId":"subscription-order","operationId":"operation-1"}`
+	t.Run("terminal follows unread latest value", func(t *testing.T) {
+		body := "event: subscription.value\ndata: " + value + "\n\nevent: subscription.complete\ndata: " + complete + "\n\n"
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}}
+		messages, failures, err := client.Subscribe(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message := <-messages; message.Kind != "subscription.value" || message.Result != "latest" {
+			t.Fatalf("latest value was lost: %#v", message)
+		}
+		if message := <-messages; message.Kind != "subscription.complete" {
+			t.Fatalf("terminal did not follow latest value: %#v", message)
+		}
+		for failure := range failures {
+			if failure != nil {
+				t.Fatal(failure)
+			}
+		}
+	})
+	for _, test := range []struct {
+		name string
+		body string
+		req  protocol.SubscriptionRequest
+	}{
+		{name: "mismatched event name", body: "event: subscription.complete\ndata: " + value + "\n\n", req: request},
+		{name: "missing event name", body: "data: " + value + "\n\n", req: request},
+		{name: "duplicate sequence", body: "event: subscription.value\ndata: " + value + "\n\nevent: subscription.value\ndata: " + value + "\n\n", req: request},
+		{name: "sequence not beyond afterSequence", body: "event: subscription.value\ndata: " + value + "\n\n", req: func() protocol.SubscriptionRequest {
+			copy := request
+			after := int64(1)
+			copy.AfterSequence = &after
+			return copy
+		}()},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(test.body))}, nil
+			})}}
+			_, failures, err := client.Subscribe(context.Background(), test.req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if failure := <-failures; failure == nil {
+				t.Fatal("invalid SSE stream was accepted")
+			}
+		})
+	}
+}
+
 func TestSubscriptionClientRejectsSharedContradictoryFixtures(t *testing.T) {
 	request := protocol.SubscriptionRequest{Envelope: protocol.Envelope{RequestID: "subscription-response"}, OperationID: "subscription-1", Query: protocol.OperationEnvelope{Type: "value", Payload: json.RawMessage(`{}`)}}
 	for _, name := range []string{"subscription-value-with-error.json", "subscription-error-with-result.json", "subscription-complete-with-sequence.json"} {
@@ -407,7 +538,11 @@ func TestSubscriptionClientRejectsSharedContradictoryFixtures(t *testing.T) {
 			if err := json.Compact(&compact, fixture); err != nil {
 				t.Fatal(err)
 			}
-			body := "data: " + compact.String() + "\n\n"
+			var envelope protocol.Envelope
+			if err := json.Unmarshal(fixture, &envelope); err != nil {
+				t.Fatal(err)
+			}
+			body := "event: " + envelope.Kind + "\ndata: " + compact.String() + "\n\n"
 			client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
 			})}}
@@ -433,6 +568,8 @@ func TestObservationClientRequiresExactAcknowledgement(t *testing.T) {
 		{name: "mismatched request", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"different","accepted":1,"duplicates":0}`},
 		{name: "partial", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0}`},
 		{name: "empty", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request"}`},
+		{name: "null accepted", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":null,"duplicates":1}`},
+		{name: "null duplicates", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":null}`},
 		{name: "non-2xx", status: http.StatusServiceUnavailable, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":0}`},
 		{name: "unknown rejected id", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0,"rejectedObservationIds":["different"]}`},
 	}

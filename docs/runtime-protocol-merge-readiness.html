@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Five-round implementation and merge-readiness report for Specter's language-neutral runtime protocol and shared observability collector."
+      content="Six-round implementation and merge-readiness report for Specter's language-neutral runtime protocol and shared observability collector."
     />
-    <title>Specter Protocol — Round 5 Merge Readiness</title>
+    <title>Specter Protocol — Round 6 Merge Readiness</title>
     <style>
       :root {
         color-scheme: light;
@@ -673,26 +673,27 @@
       <div class="hero" id="top">
         <div class="hero-grid">
           <div>
-            <p class="eyebrow">Runtime protocol · five-round review</p>
+            <p class="eyebrow">Runtime protocol · six-round review</p>
             <h1>Strong foundation. Not merge-ready yet.</h1>
             <p class="hero-copy">
               The language-neutral protocol, Go runtime, shared collector,
               dashboard, and CLI are implemented and their automated checks are
-              green. The fifth and final requested review round found fourteen
-              unresolved correctness, conformance, and scale issues.
+              green. Round 6 closed all fourteen prior findings, then its final
+              independent review confirmed nine new correctness, conformance,
+              lifecycle, and resource-bound issues.
             </p>
           </div>
           <aside class="verdict-card" aria-label="Merge readiness verdict">
             <strong>Do not merge</strong>
             <p>
               Keep PR #13 in draft. Green CI confirms the covered paths; it does
-              not invalidate the round-5 reproductions.
+              not invalidate the round-6 reproductions.
             </p>
             <div class="meta">
-              <div><span>Round</span><b>5 of 5</b></div>
-              <div><span>Blockers</span><b>5 P1</b></div>
-              <div><span>Follow-ups</span><b>9 P2</b></div>
-              <div><span>Head</span><b>7bbcada</b></div>
+              <div><span>Round</span><b>6 of 6</b></div>
+              <div><span>Blockers</span><b>2 P1</b></div>
+              <div><span>Follow-ups</span><b>7 P2</b></div>
+              <div><span>Pull request</span><b>#13 draft</b></div>
             </div>
           </aside>
         </div>
@@ -706,9 +707,9 @@
           <div>
             <h2>CI green and semantic review red are both true.</h2>
             <p class="intro">
-              Five independent review rounds materially hardened the work. The
-              requested stopping condition was round 5, so the final findings are
-              recorded as open work rather than silently repaired in a sixth cycle.
+              Six independent review rounds materially hardened the work. The
+              requested extra round is now complete, so its nine confirmed findings
+              are recorded as open work rather than silently repaired in round 7.
             </p>
           </div>
         </div>
@@ -726,7 +727,7 @@
           <article class="status">
             <span class="status-label">Merge readiness</span>
             <span class="status-value danger">Blocked</span>
-            <p>Five P1 and nine P2 findings need fixes plus regression coverage before another readiness review.</p>
+            <p>Two P1 and seven P2 findings need fixes plus regression coverage before another readiness review.</p>
           </article>
         </div>
       </section>
@@ -773,11 +774,11 @@
         <div class="section-head">
           <div class="section-number">03 · Repairs completed</div>
           <div>
-            <h2>What the five-round process improved.</h2>
+            <h2>What the six-round process improved.</h2>
             <p class="intro">
-              The branch includes six focused repair commits through
-              <code>7bbcada</code>. These changes close the original reported
-              defects and several later review discoveries.
+              The branch includes six earlier repair commits plus the round-6
+              repair set. Together they close the original defects and all
+              fourteen issues reported by round 5.
             </p>
           </div>
         </div>
@@ -835,8 +836,22 @@
           <article class="round">
             <div class="round-id">Round 5</div>
             <div>
-              <h3>Review completed; repairs intentionally stopped</h3>
-              <p>The final review used focused code inspection and targeted reproductions. It found the fourteen open issues below. Per the explicit stopping instruction, no runtime fixes were made after this review.</p>
+              <h3>Fourteen additional gaps identified</h3>
+              <p>The review found scheduler panic, SSE delivery, deduplication lifetime, sequence-zero visibility, refresh ordering, schema validation, stream parsing, trace scaling, and queue-bound defects. Those findings became the round-6 repair scope.</p>
+            </div>
+          </article>
+          <article class="round">
+            <div class="round-id">Round 6</div>
+            <div>
+              <h3>All round-5 findings repaired; final review stopped the cycle</h3>
+              <ul>
+                <li>Go Reaction panics now fail tickets without stranding the scheduler or shutdown; subscription refreshes use generations and fresh causal operations.</li>
+                <li>Go SSE delivery preserves the newest value before terminal frames and enforces sequence and event-name rules; request and response field validation is stricter.</li>
+                <li>TypeScript SSE framing now survives CR, LF, CRLF, UTF-8, and arbitrary chunk boundaries; observation acknowledgements require exact accounting.</li>
+                <li>Collector reservations are not reclaimed while live, sequence zero is visible, traces use adjacency traversal, and total retained telemetry respects the configured bound.</li>
+                <li>Focused regressions increased protocol coverage to 45 tests and observability coverage to 35 tests.</li>
+              </ul>
+              <p>The independent review then confirmed the nine remaining findings below. No round-7 repairs were started.</p>
             </div>
           </article>
         </div>
@@ -844,100 +859,70 @@
 
       <section id="blockers">
         <div class="section-head">
-          <div class="section-number">04 · Round 5 findings</div>
+          <div class="section-number">04 · Round 6 findings</div>
           <div>
             <h2>Open work before merge.</h2>
             <p class="intro">
-              P1 items can lose work, duplicate data, hide valid data, or corrupt
-              runtime state. P2 items violate protocol behavior, causal fidelity,
-              bounded-resource promises, or acceptable scaling characteristics.
+              P1 items can accept incorrect acknowledgements or persist duplicate
+              observations. P2 items leave lifecycle gaps, violate cross-runtime
+              conformance, or leave the collector without a bounded storage model.
             </p>
           </div>
         </div>
         <div class="finding-grid">
           <article class="finding p1">
-            <span class="severity">P1 · Runtime safety</span>
-            <h3>Go Reaction panics escape the scheduler</h3>
-            <p>A handler or apply panic can terminate the process, report a false ticket success, strand queued passes, and prevent clean shutdown.</p>
-            <span class="path">runtimes/go/specter/runtime.go</span>
-          </article>
-          <article class="finding p1">
-            <span class="severity">P1 · Delivery loss</span>
-            <h3>Go SSE terminal frames can replace the newest value</h3>
-            <p>The size-one coalescing channel treats value and terminal messages alike, so completion or error can discard an unread latest result.</p>
-            <span class="path">runtimes/go/protocol/client.go</span>
+            <span class="severity">P1 · Ack integrity</span>
+            <h3>TypeScript validates against a caller-mutated batch</h3>
+            <p>The request serializes one array, then validates the response against the same caller-owned array after awaiting fetch. Mutating that array can make an incomplete acknowledgement pass.</p>
+            <span class="path">packages/protocol/src/http-client.ts</span>
           </article>
           <article class="finding p1">
             <span class="severity">P1 · Duplicate persistence</span>
-            <h3>Live collector reservations expire after five minutes</h3>
-            <p>A slow ingest may still own a reservation when a retry reclaims it, allowing the same observation to persist across a segment rotation.</p>
-            <span class="path">packages/observability/src/collector-deduplication.ts</span>
-          </article>
-          <article class="finding p1">
-            <span class="severity">P1 · Retry contract</span>
-            <h3>Dedupe retention is shorter than retry lifetime</h3>
-            <p>Accepted IDs expire after 48 hours, while a live producer retries indefinitely. A late retry can therefore be accepted and stored twice.</p>
-            <span class="path">collector-deduplication.ts · producer.ts</span>
-          </article>
-          <article class="finding p1">
-            <span class="severity">P1 · Data visibility</span>
-            <h3>Valid sequence zero is hidden</h3>
-            <p>Sequence-zero observations affect overview state but disappear from default activity and SSE queries because zero doubles as “no lower bound.”</p>
-            <span class="path">runtime-activity/impl.ts · http-handler.ts</span>
-          </article>
-          <article class="finding">
-            <span class="severity">P2 · Subscription state</span>
-            <h3>Go refreshes can race and leave stale state</h3>
-            <p>An older initial query can arrive after a newer invalidation refresh and overwrite it. Refresh execution needs serialization or generation checks.</p>
-            <span class="path">runtimes/go/specter/subscription.go</span>
-          </article>
-          <article class="finding">
-            <span class="severity">P2 · Causality</span>
-            <h3>Go refresh causality is disconnected</h3>
-            <p>The invalidation operation ID is discarded, and subsequent refreshes reuse the original subscription operation instead of linking fresh work to its trigger.</p>
-            <span class="path">runtimes/go/specter/subscription.go</span>
+            <h3>A control-index failure can release persisted data</h3>
+            <p>If segment persistence succeeds but final control-index acceptance fails, cleanup deletes the reservation. A live retry can then persist the observation again.</p>
+            <span class="path">packages/observability/src/cli.ts</span>
           </article>
           <article class="finding">
             <span class="severity">P2 · SSE conformance</span>
-            <h3>Go accepts invalid ordering and event names</h3>
-            <p>Duplicate or descending sequences and a mismatched SSE <code>event:</code> name are accepted rather than rejected.</p>
-            <span class="path">runtimes/go/protocol/client.go</span>
+            <h3>TypeScript still accepts invalid event names and order</h3>
+            <p>The parser discards <code>event:</code> fields and does not enforce strictly increasing sequences or the requested <code>afterSequence</code>.</p>
+            <span class="path">packages/protocol/src/http-client.ts</span>
           </article>
           <article class="finding">
-            <span class="severity">P2 · Request validation</span>
-            <h3>Go accepts schema-invalid requests</h3>
-            <p>Null capability arrays and absent or null observations pass validation; syntactically valid type failures are mislabeled as invalid JSON.</p>
-            <span class="path">runtimes/go/protocol/server.go</span>
-          </article>
-          <article class="finding">
-            <span class="severity">P2 · Response validation</span>
-            <h3>Go clients accept missing required fields</h3>
-            <p>Malformed capability responses and empty-batch acknowledgements with missing or null counts can be treated as valid.</p>
-            <span class="path">runtimes/go/protocol/client.go</span>
+            <span class="severity">P2 · Lifecycle completeness</span>
+            <h3>Recovered Go panics leave observations unterminated</h3>
+            <p>A handler panic omits <code>reaction.run.failed</code>; an apply panic can leave <code>slice.catch-up.started</code> without its correlated failure terminal.</p>
+            <span class="path">runtimes/go/specter/runtime.go</span>
           </article>
           <article class="finding">
             <span class="severity">P2 · Stream parsing</span>
-            <h3>TypeScript CRLF parsing depends on chunk boundaries</h3>
-            <p>If a valid CRLF delimiter is split across HTTP chunks, the terminal frame is not parsed and the client reports a false transport failure.</p>
-            <span class="path">packages/protocol/src/http-client.ts</span>
+            <h3>Go rejects valid CR-only SSE streams</h3>
+            <p><code>bufio.Scanner</code> handles LF and CRLF but not a lone CR line delimiter, so a valid CR-only terminal stream ends as an unexpected EOF.</p>
+            <span class="path">runtimes/go/protocol/client.go</span>
           </article>
           <article class="finding">
-            <span class="severity">P2 · Ack accounting</span>
-            <h3>TypeScript accepts incomplete generic acknowledgements</h3>
-            <p>A one-observation batch can resolve when accepted, duplicate, and rejected counts account for none of the submitted item.</p>
-            <span class="path">packages/protocol/src/http-client.ts</span>
+            <span class="severity">P2 · Ack schema</span>
+            <h3>Go accepts null rejected-observation IDs</h3>
+            <p>An acknowledgement with <code>rejectedObservationIds: null</code> passes because counts and decoded IDs are checked without validating the optional raw field type.</p>
+            <span class="path">runtimes/go/protocol/client.go</span>
           </article>
           <article class="finding">
-            <span class="severity">P2 · Query scale</span>
-            <h3>Causal trace closure is quadratic</h3>
-            <p>The implementation repeatedly rescans all observations. A targeted 1,500-operation reverse chain took about 788 ms.</p>
-            <span class="path">packages/observability/src/features/runtime-trace/impl.ts</span>
+            <span class="severity">P2 · Normative alignment</span>
+            <h3>Capability uniqueness differs across implementations</h3>
+            <p>Go rejects duplicate capability names, while the normative schema does not require uniqueness and TypeScript accepts them. The protocol and both implementations must agree.</p>
+            <span class="path">runtimes/go/protocol/types.go · protocol/schemas/messages.schema.json</span>
           </article>
           <article class="finding">
-            <span class="severity">P2 · Queue bound</span>
-            <h3>The producer can retain 10,100 observations</h3>
-            <p>The documented 10,000 limit excludes a pending batch of up to 100. The queue must cap total retained observations without mutating the in-flight batch.</p>
-            <span class="path">packages/observability/src/producer.ts</span>
+            <span class="severity">P2 · Error classification</span>
+            <h3>Go treats a null request as a version mismatch</h3>
+            <p>A JSON <code>null</code> root becomes zero values and reaches version validation, returning HTTP 426 instead of the shared invalid-message error.</p>
+            <span class="path">runtimes/go/protocol/server.go</span>
+          </article>
+          <article class="finding">
+            <span class="severity">P2 · Storage bound</span>
+            <h3>The deduplication index is now unbounded</h3>
+            <p>Non-expiring accepted IDs preserve process-lifetime retry safety but create permanent control-index growth. The protocol needs a finite retry lifecycle or another safe compaction mechanism.</p>
+            <span class="path">packages/observability/src/collector-deduplication.ts · README.md</span>
           </article>
         </div>
       </section>
@@ -948,7 +933,7 @@
           <div>
             <h2>What passed, and what that proves.</h2>
             <p class="intro">
-              The branch is well-tested for its current covered behavior. Round 5
+              The branch is well-tested for its current covered behavior. Round 6
               exposed specific missing cases, so the evidence supports continued
               development—not merge approval.
             </p>
@@ -960,8 +945,8 @@
               <tr><th>Area</th><th>Evidence</th><th>Result</th><th>Interpretation</th></tr>
             </thead>
             <tbody>
-              <tr><td>Protocol package</td><td>Focused TypeScript suite</td><td><span class="pill">37 passed</span> <span class="pill warn">1 external skipped</span></td><td>Covered schema, client, server, HTTP, and SSE behavior passes.</td></tr>
-              <tr><td>Collector</td><td>Focused observability suite</td><td><span class="pill">30 passed</span></td><td>Covered ingestion, persistence, rotation, recovery, producer, and query paths pass.</td></tr>
+              <tr><td>Protocol package</td><td>Focused TypeScript suite</td><td><span class="pill">45 passed</span> <span class="pill warn">1 external skipped</span></td><td>Covered schema, client, server, HTTP, and SSE behavior passes.</td></tr>
+              <tr><td>Collector</td><td>Focused observability suite</td><td><span class="pill">35 passed</span></td><td>Covered ingestion, persistence, rotation, recovery, producer, and query paths pass.</td></tr>
               <tr><td>Go runtime</td><td><code>go test ./...</code>, vet, race</td><td><span class="pill">Passed</span></td><td>Existing unit, conformance, and race coverage is green on Go 1.24.</td></tr>
               <tr><td>Repository baseline</td><td>check, lint, typecheck, build</td><td><span class="pill">Passed</span></td><td>Static analysis and package builds are green, aside from existing non-failing diagnostics.</td></tr>
               <tr><td>Hosted interoperability</td><td>GitHub protocol workflow</td><td><span class="pill">Passed</span></td><td>Fixed-port TypeScript, Go, and collector live interoperability succeeds in CI.</td></tr>
@@ -975,7 +960,7 @@
           <div class="callout-mark">!</div>
           <div>
             <strong>Coverage gap, not contradictory evidence</strong>
-            <p>The fourteen round-5 issues were confirmed by code inspection and targeted reproductions outside the existing suites. Add each reproduction as a regression test alongside its fix.</p>
+            <p>The nine round-6 findings were confirmed by code inspection and targeted reproductions outside the existing suites. Add each reproduction as a regression test alongside its fix.</p>
           </div>
         </div>
       </section>
@@ -996,17 +981,17 @@
           <article class="next-step">
             <span class="step-number">1</span>
             <h3>Close all P1 findings</h3>
-            <p>Recover Go scheduler panics, preserve terminal delivery ordering, make reservations ownership-safe, align retry and dedupe horizons, and expose sequence zero.</p>
+            <p>Snapshot TypeScript telemetry batches before sending, and preserve or reconcile collector reservations after durable segment persistence when control-index finalization fails.</p>
           </article>
           <article class="next-step">
             <span class="step-number">2</span>
             <h3>Close conformance and scale gaps</h3>
-            <p>Repair refresh ordering and causality, enforce schemas and SSE rules, validate acknowledgements, bound the full producer queue, and index trace traversal.</p>
+            <p>Align SSE parsing and ordering in both languages, complete panic lifecycle observations, validate Go null shapes, align capability uniqueness, and define a bounded safe retry lifecycle.</p>
           </article>
           <article class="next-step">
             <span class="step-number">3</span>
             <h3>Re-establish merge evidence</h3>
-            <p>Add all fourteen regressions, rerun TypeScript and Go baselines plus live interop, obtain a new independent all-green review, then move PR #13 out of draft.</p>
+            <p>Add all nine regressions, rerun TypeScript and Go baselines plus live interop, obtain a new independent all-green review, then move PR #13 out of draft.</p>
           </article>
         </div>
       </section>
@@ -1015,7 +1000,7 @@
     <footer>
       <div class="shell footer-row">
         <span>Specter runtime protocol · merge-readiness report</span>
-        <span>Prepared 2026-07-18 · review stopped after round 5</span>
+        <span>Updated 2026-07-18 · review stopped after round 6</span>
       </div>
     </footer>
   </body>

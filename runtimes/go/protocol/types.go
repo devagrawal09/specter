@@ -31,6 +31,8 @@ type CapabilitiesRequest struct {
 	Envelope
 	Required []string `json:"required,omitempty"`
 	Optional []string `json:"optional,omitempty"`
+
+	fieldsValid bool
 }
 type CapabilitiesResponse struct {
 	Envelope
@@ -435,6 +437,8 @@ func isUTCDateTime(raw json.RawMessage) bool {
 type RuntimeObservationBatch struct {
 	Envelope
 	Observations []RuntimeObservation `json:"observations"`
+
+	fieldsValid bool
 }
 type ObservationAcknowledgement struct {
 	Envelope
@@ -442,4 +446,63 @@ type ObservationAcknowledgement struct {
 	Duplicates             int            `json:"duplicates"`
 	RejectedObservationIDs []string       `json:"rejectedObservationIds,omitempty"`
 	Error                  *specter.Error `json:"error,omitempty"`
+}
+
+func (request *CapabilitiesRequest) UnmarshalJSON(data []byte) error {
+	type alias CapabilitiesRequest
+	var decoded alias
+	valid, sanitized, err := validateRequestFields(data, []string{"required", "optional"}, func(fields map[string]json.RawMessage) bool {
+		for _, name := range []string{"required", "optional"} {
+			raw, present := fields[name]
+			if !present {
+				continue
+			}
+			var capabilities []string
+			if !rawArray(raw) || json.Unmarshal(raw, &capabilities) != nil || !validCapabilityList(capabilities) {
+				return false
+			}
+		}
+		return true
+	})
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(sanitized, &decoded); err != nil {
+		return err
+	}
+	*request = CapabilitiesRequest(decoded)
+	request.fieldsValid = valid
+	return nil
+}
+
+func (batch *RuntimeObservationBatch) UnmarshalJSON(data []byte) error {
+	type alias RuntimeObservationBatch
+	var decoded alias
+	valid, sanitized, err := validateRequestFields(data, []string{"observations"}, func(fields map[string]json.RawMessage) bool {
+		raw, present := fields["observations"]
+		return present && rawArray(raw)
+	})
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(sanitized, &decoded); err != nil {
+		return err
+	}
+	*batch = RuntimeObservationBatch(decoded)
+	batch.fieldsValid = valid
+	return nil
+}
+
+func validCapabilityList(capabilities []string) bool {
+	seen := make(map[string]struct{}, len(capabilities))
+	for _, capability := range capabilities {
+		if capability == "" {
+			return false
+		}
+		if _, duplicate := seen[capability]; duplicate {
+			return false
+		}
+		seen[capability] = struct{}{}
+	}
+	return true
 }

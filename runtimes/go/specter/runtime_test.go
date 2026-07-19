@@ -163,6 +163,58 @@ func TestQueuedReactionPassesDoNotSkipLaterCommits(t *testing.T) {
 	}
 }
 
+func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
+	for _, panicAt := range []string{"apply", "handle"} {
+		t.Run(panicAt, func(t *testing.T) {
+			var panicOnce atomic.Bool
+			panicOnce.Store(true)
+			var runs atomic.Int64
+			command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+				return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+			})}
+			reaction := specter.ReactionDefinition{Name: "panic-once", Scenarios: []specter.ReactionScenario{{Description: "runs", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []any{"ok"}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error {
+				if panicAt == "apply" && panicOnce.CompareAndSwap(true, false) {
+					panic("apply secret")
+				}
+				return nil
+			}}, Handle: func(context.Context, specter.ReactionContext, []specter.PersistedEvent) (any, error) {
+				if panicAt == "handle" && panicOnce.CompareAndSwap(true, false) {
+					panic("handler secret")
+				}
+				runs.Add(1)
+				return "ok", nil
+			}}
+			app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			first, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			second, err := app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var public *specter.Error
+			if err := <-first.Reactions; !errors.As(err, &public) || public.Code != specter.ErrReactionFailure {
+				t.Fatalf("panic ticket was not failed: %v", err)
+			}
+			if err := <-second.Reactions; err != nil {
+				t.Fatalf("later Reaction pass was stranded: %v", err)
+			}
+			if runs.Load() != 1 {
+				t.Fatalf("expected later Reaction to run once, got %d", runs.Load())
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			if err := app.Close(ctx); err != nil {
+				t.Fatalf("Close was stranded after panic: %v", err)
+			}
+		})
+	}
+}
+
 func TestReactionQueueDoesNotBlockCommandsBeyondFormerCapacity(t *testing.T) {
 	const commandCount = 1_100
 	started := make(chan struct{})
@@ -405,6 +457,102 @@ func TestSubscriptionKeepsLatestValue(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("subscription did not update")
+	}
+}
+
+func TestSubscriptionDropsStaleInitialRefreshAndLinksInvalidationCausality(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var blockOnce sync.Once
+	var values []string
+	var observationsMu sync.Mutex
+	var observations []specter.Observation
+	invalidationObserved := make(chan struct{})
+	var invalidationOnce sync.Once
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	query := specter.QueryDefinition{Name: "all", Scenarios: []specter.QueryScenario{{Description: "lists", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []string{"one"}}}, Apply: map[string]specter.ApplyFunc{"added": specter.DecodeApply(func(_ context.Context, payload added, _ specter.PersistedEvent) error {
+		values = append(values, payload.ID)
+		return nil
+	})}, Handle: specter.DecodeQuery(func(_ context.Context, _ struct{}) ([]string, error) {
+		snapshot := append([]string(nil), values...)
+		blockOnce.Do(func() {
+			close(started)
+			<-release
+		})
+		return snapshot, nil
+	})}
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Queries: []specter.QueryDefinition{query}, Observe: func(observation specter.Observation) {
+		observationsMu.Lock()
+		observations = append(observations, observation)
+		observationsMu.Unlock()
+		if observation.Kind == "subscription.invalidated" {
+			invalidationOnce.Do(func() { close(invalidationObserved) })
+		}
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	type subscriptionResult struct {
+		sub *specter.Subscription
+		err error
+	}
+	created := make(chan subscriptionResult, 1)
+	go func() {
+		sub, subscribeErr := app.SubscribeJSON(context.Background(), "all", json.RawMessage(`{}`), specter.DispatchOptions{OperationID: "initial-refresh"})
+		created <- subscriptionResult{sub: sub, err: subscribeErr}
+	}()
+	<-started
+	execution, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{OperationID: "command-parent", CorrelationID: "correlation-1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-invalidationObserved:
+	case <-time.After(time.Second):
+		t.Fatal("subscription was not invalidated")
+	}
+	close(release)
+	createdSubscription := <-created
+	if createdSubscription.err != nil {
+		t.Fatal(createdSubscription.err)
+	}
+	defer createdSubscription.sub.Close()
+	if err := <-execution.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case item := <-createdSubscription.sub.C:
+		got := item.Value.([]string)
+		if len(got) != 1 || got[0] != "one" {
+			t.Fatalf("stale initial refresh replaced invalidated value: %#v", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("subscription did not publish invalidation refresh")
+	}
+	observationsMu.Lock()
+	defer observationsMu.Unlock()
+	var invalidationOperation string
+	for _, observation := range observations {
+		if observation.Kind == "subscription.invalidated" {
+			invalidationOperation = observation.OperationID
+			if len(observation.ParentOperationIDs) != 1 || observation.ParentOperationIDs[0] != "command-parent" {
+				t.Fatalf("invalidation lost Command cause: %#v", observation)
+			}
+		}
+	}
+	if invalidationOperation == "" {
+		t.Fatal("missing subscription.invalidated observation")
+	}
+	foundRefresh := false
+	for _, observation := range observations {
+		if observation.Kind == "query.started" && observation.OperationID != "initial-refresh" && len(observation.ParentOperationIDs) == 1 && observation.ParentOperationIDs[0] == invalidationOperation {
+			foundRefresh = observation.CorrelationID == "correlation-1"
+		}
+	}
+	if !foundRefresh {
+		t.Fatal("refresh Query was not assigned a fresh operation causally parented to the invalidation")
 	}
 }
 

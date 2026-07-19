@@ -62,9 +62,19 @@ export function createRuntimeObservationProducer(
   function record(observation: RuntimeObservation) {
     if (closed) return
     telemetrySequence = Math.max(telemetrySequence, observation.sequence)
-    while (queue.length >= capacity) {
+    const immutablePendingCount = pending?.batch.observations.length ?? 0
+    const mutableCapacity = Math.max(0, capacity - immutablePendingCount)
+    while (queue.length >= mutableCapacity && queue.length > 0) {
       queue.shift()
       dropped += 1
+    }
+    if (mutableCapacity === 0) {
+      // The in-flight batch must remain byte-for-byte stable for safe retry.
+      // When it occupies the entire bound, the incoming observation is the
+      // only entry that can be dropped without violating that guarantee.
+      dropped += 1
+      scheduleFlush()
+      return
     }
     queue.push(structuredClone(observation))
     scheduleFlush()
@@ -108,7 +118,9 @@ export function createRuntimeObservationProducer(
         const queuedObservationCount = Math.min(queue.length, batchSize)
         const observations = queue.splice(0, queuedObservationCount)
         const droppedCount =
-          droppedToReport > 0 && observations.length < batchSize
+          droppedToReport > 0 &&
+          observations.length < batchSize &&
+          observations.length < capacity
             ? droppedToReport
             : 0
         if (droppedCount > 0)
@@ -204,7 +216,7 @@ export function createRuntimeObservationProducer(
     flush,
     close,
     inspect: () => ({
-      queued: queue.length + (pending?.queuedObservationCount ?? 0),
+      queued: queue.length + (pending?.batch.observations.length ?? 0),
       dropped,
       closed,
     }),

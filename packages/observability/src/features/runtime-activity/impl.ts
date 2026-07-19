@@ -62,7 +62,8 @@ export function createRuntimeActivity(
               item.correlationId === query.correlationId) &&
             (!query.slice || item.slice === query.slice) &&
             (!query.reaction || item.reaction === query.reaction) &&
-            item.sequence > (query.afterSequence ?? 0),
+            (query.afterSequence === undefined ||
+              item.sequence > query.afterSequence),
         )
         .slice(-query.limit)
         .map((item) => structuredClone(item)),

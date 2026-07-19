@@ -175,7 +175,9 @@ function traceFilterFromUrl(url: URL): RuntimeTraceFilter {
 function filterFromUrl(url: URL): RuntimeActivityFilter {
   const value = (name: string) => url.searchParams.get(name) || undefined
   const after = Number(url.searchParams.get('afterCollectorOrder') ?? 0)
-  const afterSequence = Number(url.searchParams.get('afterSequence') ?? 0)
+  const afterSequenceValue = url.searchParams.get('afterSequence')
+  const afterSequence =
+    afterSequenceValue === null ? undefined : Number(afterSequenceValue)
   const limit = Number(url.searchParams.get('limit') ?? 100)
   return {
     application: value('application'),
@@ -188,9 +190,11 @@ function filterFromUrl(url: URL): RuntimeActivityFilter {
     slice: value('slice'),
     reaction: value('reaction'),
     afterSequence:
-      Number.isSafeInteger(afterSequence) && afterSequence >= 0
+      afterSequence !== undefined &&
+      Number.isSafeInteger(afterSequence) &&
+      afterSequence >= 0
         ? afterSequence
-        : 0,
+        : undefined,
     afterCollectorOrder: Number.isSafeInteger(after) && after >= 0 ? after : 0,
     limit:
       Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 500) : 100,

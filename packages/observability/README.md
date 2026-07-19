@@ -13,8 +13,12 @@ specter-observe serve
 ```
 
 It stores the active segment in SQLite, rotates after 24 hours or 64 MiB, and
-retains accepted batch IDs in a separate 48-hour deduplication database. The
-read-only dashboard is available at `http://127.0.0.1:41736`.
+retains accepted observation IDs in a separate deduplication database. Accepted
+IDs do not expire because a producer retries while its process remains alive;
+an expiry could otherwise accept a late retry twice. This gives deduplication
+priority over a bounded control-index size until the protocol gains an explicit
+producer retry horizon. The read-only dashboard is available at
+`http://127.0.0.1:41736`.
 
 Applications create a bounded producer and adapt the core observer and durable
 outbox transitions into protocol observations:
@@ -41,9 +45,11 @@ const schedule = createDurableReactionScheduler(outbox, {
 ```
 
 The producer never awaits network I/O in `record`, batches at most 100
-observations, retains at most 10,000 by default, drops the oldest under
-pressure, retries while alive, and reports recovered loss as
-`telemetry.dropped`.
+observations, and retains at most 10,000 total observations by default,
+including its immutable in-flight batch. Under pressure it drops the oldest
+mutable queued entry; if the in-flight batch occupies the full bound, it drops
+the incoming entry instead. It retries while alive and reports recovered loss
+as `telemetry.dropped`.
 
 CLI reads are stable JSON/NDJSON by default:
 

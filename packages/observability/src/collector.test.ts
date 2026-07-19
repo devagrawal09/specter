@@ -147,6 +147,69 @@ describe('Specter observability collector', () => {
     })
   })
 
+  it('includes sequence zero in default activity and SSE reads', async () => {
+    const { collector } = await setup()
+    await collector.ingest(
+      batch('sequence-zero', [
+        observation({
+          observationId: 'sequence-zero-observation',
+          sequence: 0,
+          kind: 'query.started',
+          operationId: 'sequence-zero-query',
+        }),
+      ]),
+    )
+
+    await expect(collector.activity()).resolves.toMatchObject([
+      { observationId: 'sequence-zero-observation', sequence: 0 },
+    ])
+    await expect(collector.activity({ afterSequence: 0 })).resolves.toEqual([])
+
+    const handler = createSpecterObservabilityHttpHandler({ collector })
+    const snapshot = await handler(new Request('http://collector/v1/activity'))
+    await expect(snapshot.json()).resolves.toMatchObject([
+      { observationId: 'sequence-zero-observation', sequence: 0 },
+    ])
+
+    const stream = await handler(new Request('http://collector/v1/stream'))
+    const reader = stream.body?.getReader()
+    const frame = await reader?.read()
+    expect(new TextDecoder().decode(frame?.value)).toContain(
+      '"observationId":"sequence-zero-observation"',
+    )
+    await reader?.cancel()
+  })
+
+  it('builds an exact causal closure for a long chain', async () => {
+    const { collector } = await setup()
+    const chainLength = 300
+    const observations = Array.from({ length: chainLength }, (_, index) =>
+      observation({
+        observationId: `scale-observation-${index}`,
+        sequence: index,
+        kind: 'query.completed',
+        operationId: `scale-operation-${index}`,
+        parentOperationIds: index === 0 ? [] : [`scale-operation-${index - 1}`],
+      }),
+    )
+    for (let index = 0; index < observations.length; index += 100) {
+      await collector.ingest(
+        batch(
+          `scale-batch-${index / 100}`,
+          observations.slice(index, index + 100),
+        ),
+      )
+    }
+
+    const trace = await collector.trace(`scale-operation-${chainLength - 1}`)
+    expect(trace.observations).toHaveLength(chainLength)
+    expect(trace.edges).toHaveLength(chainLength - 1)
+    expect(trace.observations[0]?.operationId).toBe('scale-operation-0')
+    expect(trace.observations.at(-1)?.operationId).toBe(
+      `scale-operation-${chainLength - 1}`,
+    )
+  })
+
   it('disambiguates colliding observation and operation IDs by source filters', async () => {
     const { collector } = await setup()
     const otherSource: RuntimeSource = {
@@ -578,14 +641,12 @@ describe('Specter observability collector', () => {
     await producer.flush()
 
     expect(producer.inspect()).toMatchObject({ queued: 0, dropped: 1 })
-    expect(bodies[0]?.observations.map((item) => item.kind)).toEqual([
-      'query.started',
-      'query.started',
-      'telemetry.dropped',
-    ])
-    expect(bodies[0]?.observations.map((item) => item.sequence)).toEqual([
-      2, 3, 4,
-    ])
+    expect(
+      bodies.flatMap((body) => body.observations.map((item) => item.kind)),
+    ).toEqual(['query.started', 'query.started', 'telemetry.dropped'])
+    expect(
+      bodies.flatMap((body) => body.observations.map((item) => item.sequence)),
+    ).toEqual([2, 3, 4])
     expect(
       bodies[0]?.observations.some((item) => item.observationId === 'oldest'),
     ).toBe(false)
@@ -683,7 +744,7 @@ describe('Specter observability collector', () => {
     const producer = createRuntimeObservationProducer({
       endpoint: 'http://collector',
       source,
-      maxQueuedObservations: 2,
+      maxQueuedObservations: 4,
       retryDelayMs: 60_000,
       fetch: async (_input, init) => {
         const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
@@ -744,6 +805,72 @@ describe('Specter observability collector', () => {
     expect(
       bodies[2]?.observations.slice(0, -1).map((item) => item.observationId),
     ).toEqual(['later-1', 'later-2'])
+  })
+
+  it('bounds the immutable in-flight batch and mutable queue together', async () => {
+    const bodies: RuntimeObservationBatch[] = []
+    const started = Promise.withResolvers<void>()
+    const responseGate = Promise.withResolvers<void>()
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      maxQueuedObservations: 2,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        if (bodies.length === 1) {
+          started.resolve()
+          await responseGate.promise
+        }
+        return acknowledgement(body)
+      },
+      idFactory: (() => {
+        let id = 0
+        return () => `bounded-${++id}`
+      })(),
+    })
+    producer.record(
+      observation({
+        observationId: 'in-flight-1',
+        sequence: 1,
+        kind: 'query.started',
+        operationId: 'in-flight-1',
+      }),
+    )
+    producer.record(
+      observation({
+        observationId: 'in-flight-2',
+        sequence: 2,
+        kind: 'query.started',
+        operationId: 'in-flight-2',
+      }),
+    )
+    await started.promise
+
+    for (let sequence = 3; sequence <= 5; sequence += 1) {
+      producer.record(
+        observation({
+          observationId: `pressure-${sequence}`,
+          sequence,
+          kind: 'query.started',
+          operationId: `pressure-${sequence}`,
+        }),
+      )
+      expect(producer.inspect().queued).toBeLessThanOrEqual(2)
+    }
+    expect(producer.inspect()).toMatchObject({ queued: 2, dropped: 3 })
+
+    responseGate.resolve()
+    await producer.flush()
+    expect(bodies[0]?.observations.map((item) => item.observationId)).toEqual([
+      'in-flight-1',
+      'in-flight-2',
+    ])
+    expect(bodies[1]?.observations).toMatchObject([
+      { kind: 'telemetry.dropped', droppedCount: 3 },
+    ])
+    expect(bodies.every((body) => body.observations.length <= 2)).toBe(true)
+    expect(producer.inspect()).toMatchObject({ queued: 0, dropped: 3 })
   })
 
   it.each([

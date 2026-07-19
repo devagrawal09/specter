@@ -30,6 +30,17 @@ const source = {
 
 const fixtureRoot = new URL('../../../protocol/fixtures/', import.meta.url)
 
+function observation(observationId: string, sequence: number) {
+  return {
+    observationId,
+    operationId: `operation-${sequence}`,
+    sequence,
+    observedAt: '2026-01-02T03:04:05.000Z',
+    source,
+    kind: 'query.completed' as const,
+  }
+}
+
 describe('protocol validation', () => {
   it('does not treat inherited object keys as public runtime error codes', () => {
     const cause = new Error('private credential') as Error & { code: string }
@@ -398,6 +409,99 @@ describe('reference HTTP binding', () => {
     ).rejects.toMatchObject({
       code: 'SPECTER_PROTOCOL_VERSION_MISMATCH',
     })
+  })
+
+  it('accepts observation acknowledgements that exactly account for the submitted batch', async () => {
+    const observations = [
+      observation('observation-1', 1),
+      observation('observation-2', 2),
+    ]
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        Response.json({
+          protocolVersion: 1,
+          kind: 'observations.ack',
+          requestId: 'request-1',
+          accepted: 0,
+          duplicates: 1,
+          rejectedObservationIds: ['observation-2'],
+        }),
+    })
+
+    await expect(client.observations({ observations })).resolves.toMatchObject({
+      accepted: 0,
+      duplicates: 1,
+      rejectedObservationIds: ['observation-2'],
+    })
+  })
+
+  it.each([
+    ['under-counts the batch', 1, 0, []],
+    ['over-counts the batch', 3, 0, []],
+    ['repeats a rejected ID', 0, 0, ['observation-1', 'observation-1']],
+    ['rejects an ID outside the batch', 1, 0, ['observation-3']],
+  ])('rejects an observation acknowledgement that %s', async (_, accepted, duplicates, rejectedObservationIds) => {
+    const observations = [
+      observation('observation-1', 1),
+      observation('observation-2', 2),
+    ]
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        Response.json({
+          protocolVersion: 1,
+          kind: 'observations.ack',
+          requestId: 'request-1',
+          accepted,
+          duplicates,
+          rejectedObservationIds,
+        }),
+    })
+
+    await expect(client.observations({ observations })).rejects.toMatchObject({
+      code: 'SPECTER_TRANSPORT_FAILURE',
+      status: 502,
+    })
+  })
+
+  it.each([
+    ['LF', '\n'],
+    ['CR', '\r'],
+    ['CRLF', '\r\n'],
+  ])('parses %s SSE framing across every possible byte boundary', async (_, lineEnding) => {
+    const complete = {
+      protocolVersion: 1,
+      kind: 'subscription.complete',
+      requestId: 'request-1',
+      operationId: 'operation-résumé',
+    }
+    const encoded = new TextEncoder().encode(
+      `data: ${JSON.stringify(complete)}${lineEnding}${lineEnding}`,
+    )
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              for (const byte of encoded)
+                controller.enqueue(Uint8Array.of(byte))
+              controller.close()
+            },
+          }),
+          { headers: { 'content-type': 'text/event-stream' } },
+        ),
+    })
+
+    const received = []
+    for await (const frame of client.subscribe({
+      operationId: 'operation-résumé',
+      query: { type: 'todosQuery', payload: {} },
+    }))
+      received.push(frame.kind)
+
+    expect(received).toEqual(['subscription.complete'])
   })
 
   it.each([
