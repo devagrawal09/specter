@@ -35,17 +35,17 @@ export const pipeline: PipelineStage[] = [
       "Accepted commands append domain facts to the app's ordered Event Log.",
   },
   {
-    id: 'typed-client',
+    id: 'typed-envelope',
     step: '05',
-    title: 'typed client',
+    title: 'typed envelope',
     summary:
-      'Completed Command and Query Slices become flat, typed client methods.',
+      'Completed Slices expose typed command, query, and subscription envelopes.',
   },
 ]
 
 export const specSource = `import { createCommandSlice, event } from '@specter-ts/core/spec'
 
-const addTodoSpec = createCommandSlice('addTodo')
+export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -63,17 +63,15 @@ const addTodoSpec = createCommandSlice('addTodo')
       expect: [],
       reject: { reason: 'Todo title is required' },
     },
-  )
-
-export default addTodoSpec`
+  )`
 
 export const implementationSource = `import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
-import addTodoSpec from './spec'
+import { addTodoSpec } from './spec'
 
-const addTodo = addTodoSpec
+export const addTodo = addTodoSpec
   .inputSchema(
     z.object({ todoId: z.string().min(1), title: z.string() }),
   )
@@ -83,9 +81,7 @@ const addTodo = addTodoSpec
     if (!title) throw new Error('Todo title is required')
 
     return [todoAddedEvent.create({ todoId: command.todoId, title })]
-  })
-
-export default addTodo`
+  })`
 
 export const scenarioTestSource = `import { testSliceImplementations } from '@specter-ts/core/testing'
 
@@ -170,7 +166,7 @@ export const adapters: Adapter[] = [
   {
     slot: 'Client boundary',
     detail: 'How UI or server code reaches the completed app.',
-    swap: 'typed JSON-over-HTTP client · direct server calls',
+    swap: 'typed JSON-over-HTTP envelopes · direct in-process envelopes',
   },
   {
     slot: 'Frontend',
@@ -199,7 +195,7 @@ export const agentBenefits: AgentBenefit[] = [
     body: 'App construction validates registered Events, scenarios, and implementations before exposing the runtime.',
   },
   {
-    title: 'Typed client contract',
-    body: 'Command and Query Slice names become typed client methods instead of stringly typed dispatch calls.',
+    title: 'Typed envelope contract',
+    body: 'Command and Query names stay typed inside explicit envelopes across in-process and project-owned transport boundaries.',
   },
 ]

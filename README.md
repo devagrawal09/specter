@@ -5,6 +5,11 @@ event-sourced applications. Applications call a typed envelope API in process;
 projects own any HTTP, SSE, WebSocket, or other transport used across process
 boundaries.
 
+> **0.3 main-branch preview:** the repository currently documents the upcoming
+> 0.3 API. npm remains on 0.2.1. To explore the preview, see
+> [Getting started from main](docs/getting-started.md) or give this prompt to a
+> coding agent: `Summarize \`git clone https://github.com/devagrawal09/specter.git\``.
+
 This repository is a pnpm workspace:
 
 ```txt
@@ -21,9 +26,9 @@ apps/booking-reference/    Meeting-room booking Reference application
 apps/threadplane-reference/ Threadplane-style workspace Reference application
 ```
 
-## Create A Project
+## Published Stable Release
 
-The published command is:
+The current npm release is 0.2.1. Its published command is:
 
 ```sh
 npm create specter@latest my-app
@@ -40,6 +45,16 @@ Local verification can point generated apps at a packed or workspace core build:
 ```sh
 SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-specter/dist/index.js my-app
 ```
+
+For the unreleased 0.3 API shown in this README, use the
+[main-branch preview guide](docs/getting-started.md) instead of the npm command.
+
+## Documentation
+
+- [Getting started from main](docs/getting-started.md)
+- [Runtime and transport boundaries](docs/guides/runtime-boundaries.md)
+- [Slice specification/implementation split](docs/adr/0001-slice-specification-implementation-split.md)
+- [Envelope runtime and project-owned transport](docs/adr/0002-envelope-runtime-and-project-owned-transport.md)
 
 ## Workspace Commands
 
