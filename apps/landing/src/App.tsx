@@ -12,53 +12,58 @@ import {
   specSource,
 } from './content'
 
-const INSTALL_COMMAND = 'npm create specter@latest my-app'
+const REPOSITORY_URL = 'https://github.com/devagrawal09/specter'
+const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`
+const AGENT_PROMPT = `Summarize \`${CLONE_COMMAND}\``
+const GETTING_STARTED_URL = `${REPOSITORY_URL}/blob/main/docs/getting-started.md`
 
-function CommandLine(): JSX.Element {
+function AgentPrompt(): JSX.Element {
   const [copyStatus, setCopyStatus] = createSignal<
-    'idle' | 'copied' | 'failed'
+    'idle' | 'prompt' | 'command' | 'failed'
   >('idle')
 
-  const copy = async () => {
+  const copy = async (value: string, success: 'prompt' | 'command') => {
     try {
-      await navigator.clipboard.writeText(INSTALL_COMMAND)
-      setCopyStatus('copied')
+      await navigator.clipboard.writeText(value)
+      setCopyStatus(success)
       setTimeout(() => setCopyStatus('idle'), 1600)
     } catch {
       setCopyStatus('failed')
     }
   }
 
-  const visibleStatus = () => {
-    if (copyStatus() === 'copied') return 'copied'
-    if (copyStatus() === 'failed') return 'retry'
-    return 'copy'
-  }
-
   return (
-    <div class="command">
-      <code class="command__text">
-        <span class="command__prompt" aria-hidden="true">
-          $
-        </span>{' '}
-        {INSTALL_COMMAND}
-      </code>
+    <fieldset class="agent-prompt" aria-label="Specter agent prompt">
       <button
         type="button"
-        class="command__copy"
-        aria-label="Copy the Specter project creation command"
-        onClick={copy}
+        class="agent-prompt__all"
+        aria-label="Copy the complete Specter agent prompt"
+        onClick={() => copy(AGENT_PROMPT, 'prompt')}
       >
-        {visibleStatus()}
+        <span class="agent-prompt__lead">Summarize</span>{' '}
+        <code class="agent-prompt__code">`{CLONE_COMMAND}`</code>
+        <span class="agent-prompt__copy">
+          {copyStatus() === 'prompt' ? 'copied prompt' : 'copy prompt'}
+        </span>
+      </button>
+      <button
+        type="button"
+        class="agent-prompt__command"
+        aria-label="Copy only the Specter clone command"
+        onClick={() => copy(CLONE_COMMAND, 'command')}
+      >
+        {copyStatus() === 'command' ? 'copied command' : 'copy command'}
       </button>
       <span class="sr-only" aria-live="polite">
-        {copyStatus() === 'copied'
-          ? 'Install command copied to clipboard.'
-          : copyStatus() === 'failed'
-            ? 'Could not copy the install command. Select and copy it manually.'
-            : ''}
+        {copyStatus() === 'prompt'
+          ? 'Agent prompt copied to clipboard.'
+          : copyStatus() === 'command'
+            ? 'Clone command copied to clipboard.'
+            : copyStatus() === 'failed'
+              ? 'Could not copy to the clipboard. Select and copy it manually.'
+              : ''}
       </span>
-    </div>
+    </fieldset>
   )
 }
 
@@ -74,7 +79,7 @@ export function App(): JSX.Element {
             ▮
           </span>
           <span class="brand__name">Specter</span>
-          <span class="brand__tag">Compiler Console</span>
+          <span class="brand__tag">main preview</span>
         </a>
         <nav class="topnav" aria-label="Pipeline">
           <For each={pipeline}>
@@ -85,30 +90,36 @@ export function App(): JSX.Element {
             )}
           </For>
         </nav>
+        <a class="topbar__link" href={GETTING_STARTED_URL}>
+          Docs
+        </a>
         <a class="topbar__cta" href="#start">
-          Get started
+          Give it to your agent
         </a>
       </header>
 
       <main id="main-content" tabIndex={-1}>
         <section class="hero">
+          <p class="preview-badge">Public preview · tracks main</p>
           <p class="eyebrow">
-            TypeScript framework · event-sourced · vertically sliced
+            Executable specifications · bounded agent context · TypeScript
           </p>
           <h1 class="hero__title">
-            specifications that compile execute and scaffold your app
+            Give your coding agent a better architecture
           </h1>
           <p class="hero__lede">
-            Specter is a TypeScript framework for vertically sliced,
-            event-sourced applications. Each Slice separates an immutable
-            specification from its executable implementation. Scenarios test the
-            selected implementation, and app construction validates that every
-            registered piece conforms before the runtime is exposed.
+            Specter turns each vertical Slice into an immutable specification,
+            an executable implementation, and exact scenarios. Agents get a
+            small behavior boundary to work inside; the runtime checks that the
+            composed application still conforms.
           </p>
           <div class="hero__actions">
-            <CommandLine />
+            <AgentPrompt />
             <a class="btn btn--ghost" href="#pipeline">
               See the pipeline
+            </a>
+            <a class="btn btn--text" href={REPOSITORY_URL}>
+              View on GitHub ↗
             </a>
           </div>
 
@@ -170,7 +181,7 @@ export function App(): JSX.Element {
             <h2>The pipeline</h2>
             <p>
               specification → implementation → scenario tests → event log →
-              typed client. Each boundary has one explicit job.
+              typed envelope. Each boundary has one explicit job.
             </p>
           </div>
         </section>
@@ -389,13 +400,14 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        <section class="stage" id="typed-client">
+        <section class="stage" id="typed-envelope">
           <div class="band__head">
-            <h2>A typed client from the completed app</h2>
+            <h2>One typed envelope API in process or over the wire</h2>
             <p>
-              Command and Query Slice names become flat client methods with
-              their implementation input and output types. UI code calls that
-              contract instead of importing server, database, or Slice modules.
+              The completed app exposes command, query, and subscription
+              envelopes. A project-owned transport carries that same contract to
+              remote UI code without importing server, database, or Slice
+              modules.
             </p>
           </div>
           <figure class="map" aria-labelledby="app-shape-caption">
@@ -403,9 +415,9 @@ export function App(): JSX.Element {
               completed app · explicit composition
             </figcaption>
             <p class="sr-only">
-              A typed client calls the addTodo Command Slice and todosQuery
-              Query Slice. Registered implementations share the app's ordered
-              Event Log.
+              A typed command envelope reaches the addTodo Command Slice and a
+              typed query envelope reaches the todosQuery Query Slice.
+              Registered implementations share the app's ordered Event Log.
             </p>
             <pre class="map__art" aria-hidden="true">
               {MAP_ART}
@@ -414,16 +426,21 @@ export function App(): JSX.Element {
         </section>
 
         <section class="cta" id="start">
-          <h2>Start with one spec</h2>
+          <p class="preview-badge preview-badge--center">Main branch preview</p>
+          <h2>Give Specter to your agent</h2>
           <p>
-            Create the Todo starter with working specifications,
-            implementations, scenario tests, SQLite adapters, and a typed
-            client.
+            Paste this prompt into your coding agent. It points at the source
+            preview so the agent can inspect the architecture before touching
+            your application.
           </p>
-          <CommandLine />
+          <AgentPrompt />
+          <div class="cta__links">
+            <a href={GETTING_STARTED_URL}>Read the preview guide ↗</a>
+            <a href={REPOSITORY_URL}>Browse the repository ↗</a>
+          </div>
           <p class="cta__note">
-            Requires Node and your package manager of choice. No account, no
-            keys.
+            Preview source tracks <code>main</code>. npm remains on the stable
+            0.2.1 release; this page does not announce npm 0.3.0.
           </p>
         </section>
       </main>
@@ -434,7 +451,7 @@ export function App(): JSX.Element {
           apps.
         </span>
         <span class="foot__mark">
-          specification → implementation → validation → event log → client
+          specification → implementation → validation → event log → envelope
         </span>
       </footer>
     </div>
@@ -443,9 +460,9 @@ export function App(): JSX.Element {
 
 const MAP_ART = `        ┌───────────────────────── Specter App ─────────────────────────┐
         │                                                                │
-client  │   addTodo(command) ──▶ [ addTodo ] ──▶ ( todo-added )          │
-  API   │                                                │               │
-        │   todosQuery(query) ◀── [ todosQuery ] ◀────────┘               │
+command │   { type: 'addTodo', payload } ─▶ [ addTodo ] ─▶ ( todo-added )│
+        │                                                    │           │
+ query  │   { type: 'todosQuery', payload } ─▶ [ todosQuery ] ◀─────────┘│
         │                                                                │
         │   specifications + selected implementations + Event Definitions│
         │                                                                │
