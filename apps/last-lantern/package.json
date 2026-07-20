@@ -1,0 +1,42 @@
+{
+  "name": "@specter/last-lantern",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "vite dev",
+    "build": "vite build --mode client && vite build",
+    "start": "node dist/index.js",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "format": "biome format",
+    "lint": "biome lint",
+    "check": "biome check"
+  },
+  "dependencies": {
+    "@solidjs/signals": "2.0.0-beta.13",
+    "@hono/node-server": "2.0.3",
+    "@hono/vite-build": "1.11.1",
+    "@hono/vite-dev-server": "0.25.3",
+    "@libsql/client": "^0.17.3",
+    "@solidjs/web": "2.0.0-beta.13",
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/sqlite": "workspace:*",
+    "hono": "4.12.19",
+    "solid-js": "2.0.0-beta.13",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.5",
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^24.10.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vite-plugin-solid": "3.0.0-next.5",
+    "vitest": "^4.1.5"
+  }
+}
