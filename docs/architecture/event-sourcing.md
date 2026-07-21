@@ -93,8 +93,9 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 - Do not advance a cursor past partially applied State.
 - Keep payloads JSON-compatible when Events use the bundled persistent
   adapters or cross a JSON transport.
-- A Reaction effect is at least once; use its stable delivery ID as the
-  downstream idempotency key.
+- With a durable scheduler or outbox, Reaction delivery is at least once; use
+  its stable delivery ID as the downstream idempotency key. The immediate
+  scheduler is process-local and can lose pending work on a crash.
 
 ## Related documentation
 

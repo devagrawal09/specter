@@ -10,14 +10,15 @@ export type ReactionDeliveryContext = {
 }
 
 export type WaitForReactionsIdle = () => Promise<void>
-/** Requests a durable pass and returns a factory for awaiting its idle point. */
+/** Requests a Reaction pass and returns a factory for awaiting its idle point. */
 export type RequestReactions = () => WaitForReactionsIdle
 
 /**
- * Schedulers serialize and coalesce Reaction passes. The delivery context must
- * be stable across retries so core can derive stable per-Reaction effect IDs.
- * A Reaction may request another pass while the current pass is active; it
- * must never start a nested pass or require that Reaction to await itself.
+ * Schedulers serialize Reaction passes. They may coalesce or queue requests,
+ * but a Reaction may request another pass while the current pass is active
+ * without starting a nested pass or requiring that Reaction to await itself.
+ * The delivery context must be stable across retries so core can derive stable
+ * per-Reaction effect IDs.
  */
 export type ReactionScheduler = (
   run: (context: ReactionDeliveryContext) => Promise<void>,
