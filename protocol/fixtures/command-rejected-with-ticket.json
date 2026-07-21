@@ -1,0 +1,11 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.response",
+  "requestId": "rejected-ticket-response",
+  "operationId": "operation-1",
+  "status": "rejected",
+  "version": 0,
+  "events": [],
+  "reactionTicketId": "reaction-should-not-exist",
+  "error": { "code": "SPECTER_COMMAND_REJECTED", "message": "Command was rejected." }
+}

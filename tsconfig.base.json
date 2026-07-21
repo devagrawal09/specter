@@ -9,7 +9,9 @@
     "paths": {
       "@specter-ts/core": ["./packages/core/src/index.ts"],
       "@specter-ts/core/spec": ["./packages/core/src/spec-entry.ts"],
-      "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"]
+      "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"],
+      "@specter-ts/protocol": ["./packages/protocol/src/index.ts"],
+      "@specter-ts/observability": ["./packages/observability/src/index.ts"]
     },
     "allowImportingTsExtensions": true,
     "verbatimModuleSyntax": true,

@@ -10,6 +10,8 @@ import type {
   EventLogAdapter,
   QueryRef,
   ReactionScheduler,
+  SpecterObserver,
+  SpecterRuntimeOptions,
 } from '@specter-ts/core'
 import { reactionScheduler } from '../../reaction-scheduler'
 import { todoEventDefinitions } from './events'
@@ -27,12 +29,17 @@ export const todoRegistrations = [
 export function createTodoSpecterAppConfig(
   eventLog: EventLogAdapter,
   schedule: ReactionScheduler = reactionScheduler,
+  observability: {
+    readonly observe?: SpecterObserver
+    readonly runtime?: SpecterRuntimeOptions
+  } = {},
 ) {
   return {
     events: todoEventDefinitions,
     eventLog,
     schedule,
     slices: todoRegistrations,
+    ...observability,
   } as const
 }
 

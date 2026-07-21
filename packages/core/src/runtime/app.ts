@@ -40,45 +40,166 @@ import {
   SpecterVersionConflictError,
 } from './errors'
 
-export type SpecterObservation =
-  | {
-      readonly type: 'slice-caught-up'
-      readonly sliceName: string
-      readonly fromOrder: number
-      readonly toOrder: number
-      readonly eventCount: number
-    }
-  | {
-      readonly type: 'command-committed'
-      readonly commandType: string
-      readonly version: number
-      readonly eventCount: number
-      readonly duplicate: boolean
-    }
-  | {
-      readonly type: 'subscriptions-invalidated'
-      readonly queryName: string
-      readonly subscriberCount: number
-    }
-  | {
-      readonly type: 'reaction-run-started'
-      readonly reactionName: string
-    }
-  | {
-      readonly type: 'reaction-run-completed'
-      readonly reactionName: string
-      readonly durationMs: number
-    }
-  | {
-      readonly type: 'reaction-run-failed'
-      readonly reactionName: string
-      readonly durationMs: number
-      readonly cause: unknown
-    }
-  | {
-      readonly type: 'reaction-pass-completed'
-      readonly failureCount: number
-    }
+export type SpecterEventReference = {
+  readonly id: string
+  readonly type: string
+  readonly order: number
+  readonly recordedAt: string
+  /** Present when the observing runtime knows which commit produced the Event. */
+  readonly commitVersion?: number
+}
+
+export type SpecterEventOrderRange = {
+  readonly fromOrder: number
+  readonly toOrder: number
+  readonly eventCount: number
+}
+
+export type SpecterCausality = {
+  readonly correlationId?: string
+  readonly parentOperationIds: readonly string[]
+  readonly causedByEvents: readonly SpecterEventReference[]
+  /** Language-neutral causality retained when full local Event metadata is unavailable. */
+  readonly protocolCausality?: SpecterProtocolCausality
+}
+
+export type SpecterProtocolCausality = {
+  readonly triggeringEventIds?: readonly string[]
+  readonly triggeringEventOrder?: { readonly from: number; readonly to: number }
+  readonly reactionPassId?: string
+  readonly deliveryId?: string
+  readonly attemptId?: string
+}
+
+type SpecterObservationBase = SpecterCausality & {
+  readonly observationId: string
+  readonly observedAt: string
+  readonly operationId: string
+}
+
+export type SpecterObservation = SpecterObservationBase &
+  (
+    | {
+        readonly type: 'command-started'
+        readonly commandType: string
+      }
+    | {
+        readonly type: 'command-completed'
+        readonly commandType: string
+        readonly version: number
+        readonly events: readonly SpecterEventReference[]
+        readonly duplicate: boolean
+        readonly durationMs: number
+      }
+    | {
+        readonly type: 'command-rejected'
+        readonly commandType: string
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+    | {
+        readonly type: 'command-failed'
+        readonly commandType: string
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+    | {
+        readonly type: 'event-persisted'
+        readonly event: SpecterEventReference
+      }
+    | {
+        readonly type: 'query-started'
+        readonly queryName: string
+        readonly subscription: boolean
+      }
+    | {
+        readonly type: 'query-completed'
+        readonly queryName: string
+        readonly subscription: boolean
+        readonly durationMs: number
+      }
+    | {
+        readonly type: 'query-rejected'
+        readonly queryName: string
+        readonly subscription: boolean
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+    | {
+        readonly type: 'query-failed'
+        readonly queryName: string
+        readonly subscription: boolean
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+    | {
+        readonly type: 'slice-caught-up'
+        readonly sliceName: string
+        readonly sliceKind: SliceRegistration['kind']
+        readonly fromOrder: number
+        readonly toOrder: number
+        readonly eventCount: number
+        readonly events: readonly SpecterEventReference[]
+      }
+    | {
+        readonly type: 'subscriptions-invalidated'
+        readonly queryName: string
+        readonly subscriberCount: number
+        readonly changedEventTypes: readonly string[]
+      }
+    | {
+        readonly type: 'reaction-pass-started'
+        readonly passId: string
+        readonly attemptId: string
+        readonly attemptNumber: number
+      }
+    | {
+        readonly type: 'reaction-run-started'
+        readonly reactionName: string
+        readonly runId: string
+        readonly passId: string
+        readonly attemptId: string
+        readonly eventRange?: SpecterEventOrderRange
+      }
+    | {
+        readonly type: 'reaction-run-completed'
+        readonly reactionName: string
+        readonly runId: string
+        readonly passId: string
+        readonly attemptId: string
+        readonly eventRange: SpecterEventOrderRange
+        readonly durationMs: number
+      }
+    | {
+        readonly type: 'reaction-run-failed'
+        readonly reactionName: string
+        readonly runId: string
+        readonly passId: string
+        readonly attemptId: string
+        readonly eventRange?: SpecterEventOrderRange
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+    | {
+        readonly type: 'reaction-pass-completed'
+        readonly passId: string
+        readonly attemptId: string
+        readonly attemptNumber: number
+        readonly eventRanges: readonly SpecterEventOrderRange[]
+        readonly failureCount: number
+        readonly durationMs: number
+      }
+    | {
+        readonly type: 'reaction-pass-failed'
+        readonly passId: string
+        readonly attemptId: string
+        readonly attemptNumber: number
+        readonly eventRanges: readonly SpecterEventOrderRange[]
+        readonly failureCount: number
+        readonly durationMs: number
+        readonly cause: unknown
+      }
+  )
 
 export type SpecterObserver = (observation: SpecterObservation) => void
 
@@ -88,6 +209,23 @@ export type SpecterAppConfig = {
   readonly schedule: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
   readonly observe?: SpecterObserver
+  /** Runtime-only determinism seams; neither function may affect domain data. */
+  readonly runtime?: SpecterRuntimeOptions
+}
+
+export type SpecterRuntimeOptions = {
+  readonly generateId?: () => string
+  /** Returns milliseconds since the Unix epoch. */
+  readonly now?: () => number
+}
+
+export type SpecterOperationOptions = {
+  /** Allows a trusted initiating boundary to preserve its protocol operation ID. */
+  readonly operationId?: string
+  readonly correlationId?: string
+  readonly parentOperationIds?: readonly string[]
+  readonly causedByEvents?: readonly SpecterEventReference[]
+  readonly protocolCausality?: SpecterProtocolCausality
 }
 
 type CommandRegistration<TConfig extends SpecterAppConfig> = Extract<
@@ -161,9 +299,12 @@ export type SpecterQueryResult<
     ? TOutput
     : never
 
-export type CommandExecutionOptions = CommandDispatchOptions
+export type CommandExecutionOptions = CommandDispatchOptions &
+  SpecterOperationOptions
 
 export type CommandExecution = {
+  /** Present on runtime-native executions; optional for legacy transport adapters. */
+  readonly operationId?: string
   readonly events: readonly PersistedEvent[]
   readonly version: number
   readonly duplicate: boolean
@@ -173,7 +314,7 @@ export type CommandExecution = {
 
 export type QuerySubscriptionOptions = {
   readonly signal?: AbortSignal
-}
+} & SpecterOperationOptions
 
 declare const specterAppConfig: unique symbol
 
@@ -185,6 +326,7 @@ export type SpecterApp<TConfig extends SpecterAppConfig> = {
   ) => Promise<CommandExecution>
   query: <const TQuery extends SpecterQueryEnvelope<TConfig>>(
     query: TQuery,
+    options?: SpecterOperationOptions,
   ) => Promise<SpecterQueryResult<TConfig, TQuery['type']>>
   subscribe: <const TQuery extends SpecterQueryEnvelope<TConfig>>(
     query: TQuery,
@@ -214,6 +356,21 @@ type QuerySubscriptionState = {
 }
 
 type CommandCommit = EventLogAppendResult
+
+type OperationContext = SpecterCausality & {
+  readonly operationId: string
+}
+
+type SpecterObservationDetails = SpecterObservation extends infer TObservation
+  ? TObservation extends SpecterObservationBase
+    ? Omit<TObservation, keyof SpecterObservationBase>
+    : never
+  : never
+
+type LocalEventCause = {
+  readonly operationId: string
+  readonly correlationId?: string
+}
 
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   config: TConfig,
@@ -267,8 +424,33 @@ async function createValidatedSpecterApp<
   }
 
   const reactionExecs = new Map<string, ReactionExec>()
+  const activeReactionContexts = new Map<string, OperationContext>()
+  const localEventCauses = new Map<number, LocalEventCause>()
   const subscriptions = new Set<QuerySubscriptionState>()
-  const pendingInvalidationEventTypes = new Set<string>()
+  const pendingInvalidationEvents = new Map<number, SpecterEventReference>()
+
+  const configuredGenerateId = config.runtime?.generateId
+  const configuredNow = config.runtime?.now
+
+  function generateId() {
+    try {
+      const id = configuredGenerateId?.()
+      if (id) return id
+    } catch {
+      // Runtime diagnostic seams are best-effort, just like the observer.
+    }
+    return crypto.randomUUID()
+  }
+
+  function now() {
+    try {
+      const value = configuredNow?.()
+      if (value !== undefined && Number.isFinite(value)) return value
+    } catch {
+      // Runtime diagnostic seams are best-effort, just like the observer.
+    }
+    return Date.now()
+  }
 
   const requestReactions = config.schedule(runReactions)
 
@@ -280,9 +462,39 @@ async function createValidatedSpecterApp<
 
   return app
 
-  function observe(observation: SpecterObservation) {
+  function operationContext(options: SpecterOperationOptions = {}) {
+    return {
+      operationId: options.operationId || generateId(),
+      correlationId: options.correlationId,
+      parentOperationIds: [...(options.parentOperationIds ?? [])],
+      causedByEvents: (options.causedByEvents ?? []).map(
+        sanitizeEventReference,
+      ),
+      protocolCausality: options.protocolCausality
+        ? {
+            ...options.protocolCausality,
+            triggeringEventIds: options.protocolCausality.triggeringEventIds
+              ? [...options.protocolCausality.triggeringEventIds]
+              : undefined,
+            triggeringEventOrder: options.protocolCausality.triggeringEventOrder
+              ? { ...options.protocolCausality.triggeringEventOrder }
+              : undefined,
+          }
+        : undefined,
+    } satisfies OperationContext
+  }
+
+  function observe(
+    context: OperationContext,
+    details: SpecterObservationDetails,
+  ) {
     try {
-      config.observe?.(observation)
+      config.observe?.({
+        ...context,
+        ...details,
+        observationId: generateId(),
+        observedAt: new Date(now()).toISOString(),
+      } as SpecterObservation)
     } catch {
       // Observability is deliberately best-effort and cannot change domain
       // semantics or turn a successful commit into a failed command.
@@ -295,7 +507,8 @@ async function createValidatedSpecterApp<
 
     const exec = await reaction.plugin(
       async (command: CommandEnvelope, options?: CommandDispatchOptions) => {
-        await dispatchReactionCommand(command, options)
+        const activeContext = activeReactionContexts.get(reaction.name)
+        await dispatchReactionCommand(command, options, activeContext)
       },
     )
 
@@ -306,30 +519,18 @@ async function createValidatedSpecterApp<
   async function dispatchReactionCommand(
     envelope: CommandEnvelope,
     options: CommandDispatchOptions = {},
+    parentContext?: OperationContext,
   ) {
-    const command = commands.get(envelope.type)
-    if (!command) throw new SpecterUnknownCommandError(envelope.type)
-
-    validateCommandOptions(options)
-    const fingerprint = options.idempotencyKey
-      ? await fingerprintCommand(envelope)
-      : undefined
-    const commit = await runCommand(command, envelope.payload, {
-      ...options,
-      fingerprint,
+    const context = operationContext({
+      correlationId: parentContext?.correlationId,
+      parentOperationIds: parentContext ? [parentContext.operationId] : [],
+      causedByEvents: parentContext?.causedByEvents,
+      protocolCausality: parentContext?.protocolCausality,
     })
-    observe({
-      type: 'command-committed',
-      commandType: command.name,
-      version: commit.version,
-      eventCount: commit.events.length,
-      duplicate: commit.duplicate,
-    })
+    const commit = await observeCommand(envelope, options, context)
     if (commit.duplicate) return
 
-    for (const event of commit.events) {
-      pendingInvalidationEventTypes.add(event.type)
-    }
+    rememberCommittedEvents(commit, context)
 
     try {
       // The active Reaction drain owns completion. Request another pass without
@@ -347,28 +548,12 @@ async function createValidatedSpecterApp<
     envelope: SpecterCommandEnvelope<TConfig>,
     options: CommandExecutionOptions = {},
   ): Promise<CommandExecution> {
-    const command = commands.get(envelope.type)
-    if (!command) throw new SpecterUnknownCommandError(envelope.type)
-
-    validateCommandOptions(options)
-    const fingerprint = options.idempotencyKey
-      ? await fingerprintCommand(envelope)
-      : undefined
-    const commit = await runCommand(command, envelope.payload, {
-      ...options,
-      fingerprint,
-    })
-
-    observe({
-      type: 'command-committed',
-      commandType: command.name,
-      version: commit.version,
-      eventCount: commit.events.length,
-      duplicate: commit.duplicate,
-    })
+    const context = operationContext(options)
+    const commit = await observeCommand(envelope, options, context)
 
     if (commit.duplicate) {
       return {
+        operationId: context.operationId,
         events: commit.events,
         version: commit.version,
         duplicate: true,
@@ -379,10 +564,8 @@ async function createValidatedSpecterApp<
       }
     }
 
-    for (const event of commit.events) {
-      pendingInvalidationEventTypes.add(event.type)
-    }
-    const commandInvalidation = invalidateSubscriptions()
+    rememberCommittedEvents(commit, context)
+    const commandInvalidation = invalidateSubscriptions(context)
 
     const reactionsPromise = requestReactionCompletion(
       commandInvalidation,
@@ -390,6 +573,7 @@ async function createValidatedSpecterApp<
     )
 
     return {
+      operationId: context.operationId,
       events: commit.events,
       version: commit.version,
       duplicate: false,
@@ -399,11 +583,9 @@ async function createValidatedSpecterApp<
 
   async function dispatchQuery(
     envelope: SpecterQueryEnvelope<TConfig>,
+    options: SpecterOperationOptions = {},
   ): Promise<unknown> {
-    const query = queries.get(envelope.type)
-    if (!query) throw new SpecterUnknownQueryError(envelope.type)
-
-    return runQuery(query, envelope.payload)
+    return observeQuery(envelope, options, false)
   }
 
   function dispatchSubscription(
@@ -411,9 +593,167 @@ async function createValidatedSpecterApp<
     options: QuerySubscriptionOptions = {},
   ): AsyncIterable<unknown> {
     const query = queries.get(envelope.type)
-    if (!query) throw new SpecterUnknownQueryError(envelope.type)
+    if (!query) {
+      const context = operationContext(options)
+      const startedAt = now()
+      observe(context, {
+        type: 'query-started',
+        queryName: envelope.type,
+        subscription: true,
+      })
+      const cause = new SpecterUnknownQueryError(envelope.type)
+      observe(context, {
+        type: 'query-rejected',
+        queryName: envelope.type,
+        subscription: true,
+        durationMs: elapsed(startedAt),
+        cause,
+      })
+      throw cause
+    }
 
     return subscribeQuery(query, envelope.payload, options)
+  }
+
+  async function observeCommand(
+    envelope: CommandEnvelope,
+    options: CommandExecutionOptions | CommandDispatchOptions,
+    context: OperationContext,
+  ) {
+    const startedAt = now()
+    observe(context, {
+      type: 'command-started',
+      commandType: envelope.type,
+    })
+    try {
+      const command = commands.get(envelope.type)
+      if (!command) throw new SpecterUnknownCommandError(envelope.type)
+
+      validateCommandOptions(options)
+      const fingerprint = options.idempotencyKey
+        ? await fingerprintCommand(envelope)
+        : undefined
+      const commit = await runCommand(command, envelope.payload, {
+        ...options,
+        fingerprint,
+        operationContext: context,
+      })
+      const events = eventReferences(commit.events, commit.version)
+      if (!commit.duplicate) {
+        for (const event of events) {
+          observe(context, { type: 'event-persisted', event })
+        }
+      }
+      observe(context, {
+        type: 'command-completed',
+        commandType: command.name,
+        version: commit.version,
+        events,
+        duplicate: commit.duplicate,
+        durationMs: elapsed(startedAt),
+      })
+      return commit
+    } catch (cause) {
+      observe(context, {
+        type: isRejectedOperation(cause)
+          ? 'command-rejected'
+          : 'command-failed',
+        commandType: envelope.type,
+        durationMs: elapsed(startedAt),
+        cause,
+      })
+      throw cause
+    }
+  }
+
+  async function observeQuery(
+    envelope: { readonly type: string; readonly payload: unknown },
+    options: SpecterOperationOptions,
+    subscription: boolean,
+  ) {
+    const context = operationContext(options)
+    const startedAt = now()
+    observe(context, {
+      type: 'query-started',
+      queryName: envelope.type,
+      subscription,
+    })
+    try {
+      const query = queries.get(envelope.type)
+      if (!query) throw new SpecterUnknownQueryError(envelope.type)
+      const result = await runQuery(query, envelope.payload, context)
+      observe(result.operationContext, {
+        type: 'query-completed',
+        queryName: query.name,
+        subscription,
+        durationMs: elapsed(startedAt),
+      })
+      return result.value
+    } catch (cause) {
+      observe(context, {
+        type: isRejectedOperation(cause) ? 'query-rejected' : 'query-failed',
+        queryName: envelope.type,
+        subscription,
+        durationMs: elapsed(startedAt),
+        cause,
+      })
+      throw cause
+    }
+  }
+
+  function rememberCommittedEvents(
+    commit: CommandCommit,
+    context: OperationContext,
+  ) {
+    for (const event of eventReferences(commit.events, commit.version)) {
+      pendingInvalidationEvents.set(event.order, event)
+      localEventCauses.set(event.order, {
+        operationId: context.operationId,
+        correlationId: context.correlationId,
+      })
+      if (localEventCauses.size > 10_000) {
+        const oldestOrder = localEventCauses.keys().next().value
+        if (oldestOrder !== undefined) localEventCauses.delete(oldestOrder)
+      }
+    }
+  }
+
+  function elapsed(startedAt: number) {
+    return Math.max(0, now() - startedAt)
+  }
+
+  function operationContextForEvents(
+    context: OperationContext,
+    events: readonly SpecterEventReference[],
+  ): OperationContext {
+    const localCauses = events.flatMap((event) => {
+      const cause = localEventCauses.get(event.order)
+      return cause ? [cause] : []
+    })
+    const correlationIds = [
+      ...new Set(
+        localCauses.flatMap((cause) =>
+          cause.correlationId ? [cause.correlationId] : [],
+        ),
+      ),
+    ]
+    return {
+      operationId: context.operationId,
+      correlationId:
+        context.correlationId ??
+        (correlationIds.length === 1 ? correlationIds[0] : undefined),
+      parentOperationIds: [
+        ...new Set([
+          ...context.parentOperationIds,
+          ...localCauses.map((cause) => cause.operationId),
+        ]),
+      ],
+      causedByEvents: deduplicateEventReferences([
+        ...context.causedByEvents,
+        ...events,
+      ]),
+      protocolCausality: context.protocolCausality,
+    }
   }
 
   async function settleReactionsAndSubscriptions(
@@ -478,7 +818,10 @@ async function createValidatedSpecterApp<
     slice: SliceRegistration,
     store: SliceStore,
     eventLog: EventLogTransaction = config.eventLog,
-    options: { readonly advanceCursor?: boolean } = {},
+    options: {
+      readonly advanceCursor?: boolean
+      readonly operationContext?: OperationContext
+    } = {},
   ) {
     const handlers = applyBySlice.get(slice)
     const eventTypes = [...(handlers?.keys() ?? [])]
@@ -491,6 +834,7 @@ async function createValidatedSpecterApp<
         fromOrder: order,
         toOrder: order,
         eventCount: 0,
+        events: [] as readonly SpecterEventReference[],
       } as const
     }
 
@@ -530,6 +874,7 @@ async function createValidatedSpecterApp<
         fromOrder: lastAppliedOrder,
         toOrder: lastAppliedOrder,
         eventCount: 0,
+        events: [] as readonly SpecterEventReference[],
       } as const
     }
 
@@ -541,13 +886,21 @@ async function createValidatedSpecterApp<
     const lastEvent = unappliedEvents[unappliedEvents.length - 1]
     if (options.advanceCursor !== false) {
       await store.setLastAppliedOrder(lastEvent.order)
-      observe({
-        type: 'slice-caught-up',
-        sliceName: slice.name,
-        fromOrder: lastAppliedOrder,
-        toOrder: lastEvent.order,
-        eventCount: unappliedEvents.length,
-      })
+      if (options.operationContext) {
+        const catchUpContext = operationContextForEvents(
+          options.operationContext,
+          eventReferences(unappliedEvents),
+        )
+        observe(catchUpContext, {
+          type: 'slice-caught-up',
+          sliceName: slice.name,
+          sliceKind: slice.kind,
+          fromOrder: lastAppliedOrder,
+          toOrder: lastEvent.order,
+          eventCount: unappliedEvents.length,
+          events: eventReferences(unappliedEvents),
+        })
+      }
     }
 
     return {
@@ -556,13 +909,17 @@ async function createValidatedSpecterApp<
       fromOrder: lastAppliedOrder,
       toOrder: lastEvent.order,
       eventCount: unappliedEvents.length,
+      events: eventReferences(unappliedEvents),
     } as const
   }
 
   async function runCommand(
     commandSlice: CommandSlice,
     input: unknown,
-    options: CommandExecutionOptions & { readonly fingerprint?: string },
+    options: CommandExecutionOptions & {
+      readonly fingerprint?: string
+      readonly operationContext: OperationContext
+    },
   ): Promise<CommandCommit> {
     try {
       return await config.eventLog.transaction(async (eventLog) => {
@@ -606,7 +963,9 @@ async function createValidatedSpecterApp<
         }
 
         const store = await commandSlice.store.get(commandSlice.name)
-        await catchUpSlice(commandSlice, store, eventLog)
+        await catchUpSlice(commandSlice, store, eventLog, {
+          operationContext: options.operationContext,
+        })
 
         let events: readonly EventDraft[]
         try {
@@ -653,7 +1012,11 @@ async function createValidatedSpecterApp<
     }
   }
 
-  async function runQuery(query: QuerySlice, input: unknown) {
+  async function runQuery(
+    query: QuerySlice,
+    input: unknown,
+    operationContext: OperationContext,
+  ) {
     try {
       return await query.store.transaction(query.name, async (store) => {
         let parsedInput: unknown
@@ -663,12 +1026,21 @@ async function createValidatedSpecterApp<
           throw new SpecterInvalidInputError('query', query.name, cause)
         }
 
-        await catchUpSlice(query, store)
+        const catchUp = await catchUpSlice(query, store, config.eventLog, {
+          operationContext,
+        })
+        const completedContext = operationContextForEvents(
+          operationContext,
+          catchUp.events,
+        )
 
         const result = await query.handle(parsedInput, store.read)
 
         try {
-          return await decodeOptionalSchema(query.outputSchema, result)
+          return {
+            value: await decodeOptionalSchema(query.outputSchema, result),
+            operationContext: completedContext,
+          }
         } catch (cause) {
           throw new SpecterInvalidOutputError('query', query.name, cause)
         }
@@ -683,9 +1055,24 @@ async function createValidatedSpecterApp<
   }
 
   async function runReactions(passContext: ReactionDeliveryContext) {
+    const passStartedAt = now()
+    const passOperation = operationContext()
+    observe(passOperation, {
+      type: 'reaction-pass-started',
+      passId: passContext.deliveryId,
+      attemptId: passContext.attemptId,
+      attemptNumber: passContext.attemptNumber,
+    })
+
     const results = await Promise.all(
       [...reactions.values()].map(async (reaction) => {
-        const startedAt = Date.now()
+        const startedAt = now()
+        const initialContext = operationContext({
+          parentOperationIds: [passOperation.operationId],
+        })
+        const runId = `${passContext.attemptId}:${reaction.name}`
+        let context: OperationContext = initialContext
+        let eventRange: SpecterEventOrderRange | undefined
         try {
           const store = await reaction.store.get(reaction.name)
           const catchUp = await catchUpSlice(reaction, store, config.eventLog, {
@@ -693,9 +1080,21 @@ async function createValidatedSpecterApp<
           })
           if (!catchUp.advanced) return undefined
 
-          observe({
+          const events = catchUp.events
+          context = operationContextForEvents(initialContext, events)
+          eventRange = {
+            fromOrder: catchUp.fromOrder,
+            toOrder: catchUp.toOrder,
+            eventCount: catchUp.eventCount,
+          }
+
+          observe(context, {
             type: 'reaction-run-started',
             reactionName: reaction.name,
+            runId,
+            passId: passContext.deliveryId,
+            attemptId: passContext.attemptId,
+            eventRange,
           })
 
           const result = await reaction.handle(store.read)
@@ -712,52 +1111,97 @@ async function createValidatedSpecterApp<
             }
 
             const exec = await getReactionExec(reaction)
-            await exec(
-              effect,
-              reactionDeliveryContext(
-                passContext,
-                reaction.name,
-                catchUp.toOrder,
-              ),
-            )
+            activeReactionContexts.set(reaction.name, context)
+            try {
+              await exec(
+                effect,
+                reactionDeliveryContext(
+                  passContext,
+                  reaction.name,
+                  catchUp.toOrder,
+                ),
+              )
+            } finally {
+              activeReactionContexts.delete(reaction.name)
+            }
           }
 
           await store.setLastAppliedOrder(catchUp.toOrder)
 
-          observe({
+          observe(context, {
             type: 'slice-caught-up',
             sliceName: reaction.name,
+            sliceKind: reaction.kind,
             fromOrder: catchUp.fromOrder,
             toOrder: catchUp.toOrder,
             eventCount: catchUp.eventCount,
+            events,
           })
-          observe({
+          observe(context, {
             type: 'reaction-run-completed',
             reactionName: reaction.name,
-            durationMs: Date.now() - startedAt,
+            runId,
+            passId: passContext.deliveryId,
+            attemptId: passContext.attemptId,
+            eventRange,
+            durationMs: elapsed(startedAt),
           })
 
-          return undefined
+          return { eventRange }
         } catch (cause) {
-          observe({
+          activeReactionContexts.delete(reaction.name)
+          observe(context, {
             type: 'reaction-run-failed',
             reactionName: reaction.name,
-            durationMs: Date.now() - startedAt,
+            runId,
+            passId: passContext.deliveryId,
+            attemptId: passContext.attemptId,
+            eventRange,
+            durationMs: elapsed(startedAt),
             cause,
           })
-          return { sliceName: reaction.name, cause }
+          return { sliceName: reaction.name, cause, eventRange }
         }
       }),
     )
 
     const failures = results.filter(
-      (result): result is ReactionRunFailureDetail => result !== undefined,
+      (
+        result,
+      ): result is ReactionRunFailureDetail & {
+        readonly eventRange: SpecterEventOrderRange | undefined
+      } => result !== undefined && 'cause' in result,
     )
-    observe({
+    const eventRanges = mergeEventRanges(
+      results.flatMap((result) =>
+        result?.eventRange ? [result.eventRange] : [],
+      ),
+    )
+    if (failures.length) {
+      const cause = new ReactionRunFailure(
+        failures.map(({ sliceName, cause }) => ({ sliceName, cause })),
+      )
+      observe(passOperation, {
+        type: 'reaction-pass-failed',
+        passId: passContext.deliveryId,
+        attemptId: passContext.attemptId,
+        attemptNumber: passContext.attemptNumber,
+        eventRanges,
+        failureCount: failures.length,
+        durationMs: elapsed(passStartedAt),
+        cause,
+      })
+      throw cause
+    }
+    observe(passOperation, {
       type: 'reaction-pass-completed',
-      failureCount: failures.length,
+      passId: passContext.deliveryId,
+      attemptId: passContext.attemptId,
+      attemptNumber: passContext.attemptNumber,
+      eventRanges,
+      failureCount: 0,
+      durationMs: elapsed(passStartedAt),
     })
-    if (failures.length) throw new ReactionRunFailure(failures)
   }
 
   function subscribeQuery(
@@ -798,7 +1242,11 @@ async function createValidatedSpecterApp<
         if (!state.closed) {
           subscriptions.add(state)
           options.signal?.addEventListener('abort', close, { once: true })
-          void runQuery(query, input).then(
+          void observeQuery(
+            { type: query.name, payload: input },
+            options,
+            true,
+          ).then(
             (value) => enqueueSubscriptionValue(state, value),
             (cause: unknown) => enqueueSubscriptionError(state, cause),
           )
@@ -881,10 +1329,21 @@ async function createValidatedSpecterApp<
     subscription.hasPendingError = true
   }
 
-  async function invalidateSubscriptions() {
-    const changedEventTypes = new Set(pendingInvalidationEventTypes)
-    pendingInvalidationEventTypes.clear()
+  async function invalidateSubscriptions(parentContext?: OperationContext) {
+    const changedEvents = [...pendingInvalidationEvents.values()]
+    pendingInvalidationEvents.clear()
+    const changedEventTypes = new Set(changedEvents.map((event) => event.type))
     if (!changedEventTypes.size || !subscriptions.size) return
+
+    const invalidationContext = operationContextForEvents(
+      operationContext({
+        correlationId: parentContext?.correlationId,
+        parentOperationIds: parentContext ? [parentContext.operationId] : [],
+        causedByEvents: changedEvents,
+        protocolCausality: parentContext?.protocolCausality,
+      }),
+      changedEvents,
+    )
 
     const subscriptionsByQuery = new Map<QuerySlice, QuerySubscriptionState[]>()
     for (const subscription of subscriptions) {
@@ -907,10 +1366,24 @@ async function createValidatedSpecterApp<
       [...subscriptionsByQuery].map(async ([query, activeSubscriptions]) => {
         try {
           await query.store.transaction(query.name, async (store) => {
-            await catchUpSlice(query, store)
+            await catchUpSlice(query, store, config.eventLog, {
+              operationContext: invalidationContext,
+            })
 
             await Promise.all(
               activeSubscriptions.map(async (subscription) => {
+                const queryContext = operationContext({
+                  correlationId: invalidationContext.correlationId,
+                  parentOperationIds: [invalidationContext.operationId],
+                  causedByEvents: changedEvents,
+                  protocolCausality: invalidationContext.protocolCausality,
+                })
+                const startedAt = now()
+                observe(queryContext, {
+                  type: 'query-started',
+                  queryName: query.name,
+                  subscription: true,
+                })
                 try {
                   let parsedInput: unknown
                   try {
@@ -940,24 +1413,38 @@ async function createValidatedSpecterApp<
                     )
                   }
                   enqueueSubscriptionValue(subscription, value)
+                  observe(queryContext, {
+                    type: 'query-completed',
+                    queryName: query.name,
+                    subscription: true,
+                    durationMs: elapsed(startedAt),
+                  })
                 } catch (cause) {
-                  enqueueSubscriptionError(
-                    subscription,
-                    isPublicSpecterError(cause)
-                      ? cause
-                      : new SpecterInfrastructureError(
-                          `Query "${query.name}" failed while invalidating a subscription.`,
-                          cause,
-                        ),
-                  )
+                  const error = isPublicSpecterError(cause)
+                    ? cause
+                    : new SpecterInfrastructureError(
+                        `Query "${query.name}" failed while invalidating a subscription.`,
+                        cause,
+                      )
+                  enqueueSubscriptionError(subscription, error)
+                  observe(queryContext, {
+                    type: isRejectedOperation(error)
+                      ? 'query-rejected'
+                      : 'query-failed',
+                    queryName: query.name,
+                    subscription: true,
+                    durationMs: elapsed(startedAt),
+                    cause: error,
+                  })
                 }
               }),
             )
           })
-          observe({
+          observe(invalidationContext, {
             type: 'subscriptions-invalidated',
             queryName: query.name,
             subscriberCount: activeSubscriptions.length,
+            changedEventTypes: [...changedEventTypes],
           })
         } catch (cause) {
           const error = isPublicSpecterError(cause)
@@ -994,6 +1481,78 @@ function validateCommandOptions(options: CommandExecutionOptions) {
       'idempotencyKey must not be empty.',
     )
   }
+}
+
+function eventReferences(
+  events: readonly PersistedEvent[],
+  commitVersion?: number,
+): readonly SpecterEventReference[] {
+  return events.map((event) => ({
+    id: event.id,
+    type: event.type,
+    order: event.order,
+    recordedAt: event.recordedAt,
+    ...(commitVersion === undefined ? {} : { commitVersion }),
+  }))
+}
+
+function deduplicateEventReferences(
+  events: readonly SpecterEventReference[],
+): readonly SpecterEventReference[] {
+  const byOrder = new Map<number, SpecterEventReference>()
+  for (const event of events) {
+    byOrder.set(event.order, sanitizeEventReference(event))
+  }
+  return [...byOrder.values()].sort((left, right) => left.order - right.order)
+}
+
+function sanitizeEventReference(
+  event: SpecterEventReference,
+): SpecterEventReference {
+  return {
+    id: event.id,
+    type: event.type,
+    order: event.order,
+    recordedAt: event.recordedAt,
+    ...(event.commitVersion === undefined
+      ? {}
+      : { commitVersion: event.commitVersion }),
+  }
+}
+
+function mergeEventRanges(
+  ranges: readonly SpecterEventOrderRange[],
+): readonly SpecterEventOrderRange[] {
+  const sorted = [...ranges].sort(
+    (left, right) => left.fromOrder - right.fromOrder,
+  )
+  const merged: SpecterEventOrderRange[] = []
+  for (const range of sorted) {
+    const previous = merged[merged.length - 1]
+    if (!previous || range.fromOrder > previous.toOrder) {
+      merged.push({ ...range })
+      continue
+    }
+    merged[merged.length - 1] = {
+      fromOrder: Math.min(previous.fromOrder, range.fromOrder),
+      toOrder: Math.max(previous.toOrder, range.toOrder),
+      eventCount: Math.max(previous.eventCount, range.eventCount),
+    }
+  }
+  return merged
+}
+
+function isRejectedOperation(cause: unknown) {
+  if (!(cause instanceof SpecterError)) return false
+  return (
+    cause.code === 'SPECTER_COMMAND_REJECTED' ||
+    cause.code === 'SPECTER_IDEMPOTENCY_CONFLICT' ||
+    cause.code === 'SPECTER_INVALID_COMMAND_OPTIONS' ||
+    cause.code === 'SPECTER_INVALID_INPUT' ||
+    cause.code === 'SPECTER_UNKNOWN_COMMAND' ||
+    cause.code === 'SPECTER_UNKNOWN_QUERY' ||
+    cause.code === 'SPECTER_VERSION_CONFLICT'
+  )
 }
 
 function assertEventLogOrder(

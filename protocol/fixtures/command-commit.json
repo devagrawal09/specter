@@ -1,0 +1,10 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.response",
+  "requestId": "request-1",
+  "operationId": "operation-1",
+  "status": "committed",
+  "version": 1,
+  "events": [{ "eventId": "event-1", "type": "todo-added", "order": 1, "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": 1 }],
+  "reactionTicketId": "reaction-1"
+}

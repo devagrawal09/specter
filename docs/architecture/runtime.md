@@ -96,6 +96,20 @@ the outer Promise settles from the committed response, while
 `execution.reactions` observes a separate completion endpoint. Subscriptions
 use abortable, reconnect-capable SSE.
 
+For cross-language boundaries, Specter also publishes a versioned,
+language-neutral description of observable runtime behavior and a reference
+JSON HTTP/SSE binding. It standardizes capability negotiation, Commands,
+Queries, subscriptions, Reaction-completion tickets, structured errors, and
+runtime-observation batches without moving application Slice definitions,
+handlers, schemas, or persistence layouts across languages.
+
+Protocol implementations require matching major versions, negotiate named
+capabilities, tolerate unknown optional fields, and reject unsupported required
+capabilities. TypeScript and Go conform independently against shared fixtures.
+See the [protocol overview](../../protocol/README.md),
+[behavioral contract](../../protocol/behavior.md), and
+[HTTP binding](../../protocol/http-binding.md).
+
 JSON boundaries must reject non-JSON values such as `undefined`, `bigint`,
 non-finite numbers, functions, symbols, `Map`, `Set`, class instances, and
 cyclic objects. Encode dates as ISO strings. Core can accept richer in-process

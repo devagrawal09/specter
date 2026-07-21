@@ -35,6 +35,7 @@ on what you need to do next.
 ## Operate and integrate
 
 - [Runtime architecture](architecture/runtime.md)
+- [Language-neutral runtime protocol](../protocol/README.md)
 - [Event sourcing](architecture/event-sourcing.md)
 - [Plugins](architecture/plugins.md)
 - [Core runtime API](api-reference/core-runtime.md)
@@ -52,6 +53,7 @@ on what you need to do next.
 - [`@specter-ts/core/testing`](api-reference/core-testing.md)
 - [Persistence packages](api-reference/persistence.md)
 - [`@specter-ts/reaction-outbox`](api-reference/reaction-outbox.md)
+- [`@specter-ts/protocol`](../packages/protocol/README.md)
 - [`@specter-ts/observability`](api-reference/observability.md)
 - [`create-specter`](api-reference/create-specter.md)
 

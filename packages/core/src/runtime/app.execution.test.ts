@@ -8,6 +8,7 @@ import type {
   PersistedEvent,
   ReactionScheduler,
   SliceStoreAdapter,
+  SpecterObservation,
 } from '..'
 import {
   createEventDefinition,
@@ -202,7 +203,213 @@ const immediateScheduler: ReactionScheduler = (run) => {
   }
 }
 
+const idleScheduler: ReactionScheduler = () => () => () => Promise.resolve()
+
 describe('createSpecterApp execution contracts', () => {
+  test('emits deterministic causal Command and Query observations without payloads', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const command = createCommandSlice('recordValue')
+      .description('Records a value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 7,
+        expect: [event('value-recorded', 7)],
+      })
+      .inputSchema<number>()
+      .store(memoryStore({}))
+      .handle(async (value) => [valueRecorded.create(value)])
+    const query = createQuerySlice('currentValue')
+      .description('Reads the current value.')
+      .scenarios({
+        description: 'Reads one value.',
+        given: [event('value-recorded', 7)],
+        when: {},
+        expect: 7,
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<number>()
+      .store(memoryStore({ value: 0 }))
+      .apply(valueRecorded, async (applied, state) => {
+        state.value = applied.payload
+      })
+      .handle(async (_input, state) => state.value)
+    const observations: SpecterObservation[] = []
+    const protocolCausality = {
+      triggeringEventIds: ['remote-event-4', 'remote-event-5'],
+      triggeringEventOrder: { from: 4, to: 5 },
+      reactionPassId: 'remote-pass-1',
+      deliveryId: 'remote-delivery-1',
+      attemptId: 'remote-attempt-2',
+    }
+    let nextId = 1
+    const app = await createSpecterApp({
+      events: [valueRecorded],
+      eventLog: memoryEventLog().adapter,
+      schedule: idleScheduler,
+      slices: [command, query],
+      observe: (observation) => observations.push(observation),
+      runtime: {
+        generateId: () => `runtime-id-${nextId++}`,
+        now: () => 0,
+      },
+    })
+
+    const execution = await app.command(
+      { type: 'recordValue', payload: 7 },
+      {
+        correlationId: 'request-1',
+        parentOperationIds: ['http-request-1'],
+        protocolCausality,
+      },
+    )
+    await expect(
+      app.query(
+        { type: 'currentValue', payload: {} },
+        {
+          operationId: 'protocol-query-1',
+          correlationId: 'request-1',
+          protocolCausality,
+        },
+      ),
+    ).resolves.toBe(7)
+    const subscription = app
+      .subscribe(
+        { type: 'currentValue', payload: {} },
+        {
+          operationId: 'protocol-subscription-1',
+          correlationId: 'request-1',
+          protocolCausality,
+        },
+      )
+      [Symbol.asyncIterator]()
+    await expect(subscription.next()).resolves.toEqual({
+      done: false,
+      value: 7,
+    })
+    await subscription.return?.()
+    await expect(
+      app.command({ type: 'missing', payload: null } as never),
+    ).rejects.toBeInstanceOf(SpecterUnknownCommandError)
+
+    expect(execution.operationId).toBe('runtime-id-1')
+    expect(observations[0]).toEqual({
+      observationId: 'runtime-id-2',
+      observedAt: '1970-01-01T00:00:00.000Z',
+      operationId: execution.operationId,
+      correlationId: 'request-1',
+      parentOperationIds: ['http-request-1'],
+      causedByEvents: [],
+      protocolCausality,
+      type: 'command-started',
+      commandType: 'recordValue',
+    })
+    const persistedObservation = observations.find(
+      (observation) => observation.type === 'event-persisted',
+    )
+    expect(persistedObservation).toMatchObject({
+      operationId: execution.operationId,
+      type: 'event-persisted',
+      event: {
+        id: 'event-1',
+        type: 'value-recorded',
+        order: 1,
+        recordedAt: '1970-01-01T00:00:00.000Z',
+        commitVersion: 1,
+      },
+    })
+    const completedObservation = observations.find(
+      (observation) => observation.type === 'command-completed',
+    )
+    expect(completedObservation).toMatchObject({
+      operationId: execution.operationId,
+      correlationId: 'request-1',
+      type: 'command-completed',
+      commandType: 'recordValue',
+      events: [
+        {
+          id: 'event-1',
+          type: 'value-recorded',
+          order: 1,
+          recordedAt: '1970-01-01T00:00:00.000Z',
+          commitVersion: 1,
+        },
+      ],
+    })
+    expect(persistedObservation).not.toHaveProperty('payload')
+    expect(persistedObservation).not.toHaveProperty('event.payload')
+    expect(observations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'slice-caught-up',
+          sliceName: 'currentValue',
+          sliceKind: 'query',
+          events: [
+            expect.objectContaining({ id: 'event-1', type: 'value-recorded' }),
+          ],
+        }),
+        expect.objectContaining({
+          type: 'query-completed',
+          operationId: 'protocol-query-1',
+          queryName: 'currentValue',
+          correlationId: 'request-1',
+          parentOperationIds: [execution.operationId],
+          causedByEvents: [
+            expect.objectContaining({ id: 'event-1', type: 'value-recorded' }),
+          ],
+          protocolCausality,
+        }),
+        expect.objectContaining({
+          type: 'query-completed',
+          operationId: 'protocol-subscription-1',
+          queryName: 'currentValue',
+          subscription: true,
+          correlationId: 'request-1',
+          protocolCausality,
+        }),
+        expect.objectContaining({
+          type: 'command-rejected',
+          commandType: 'missing',
+          cause: expect.any(SpecterUnknownCommandError),
+        }),
+      ]),
+    )
+  })
+
+  test('isolates every observer failure from Command and Query semantics', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const command = createCommandSlice('recordValue')
+      .description('Records a value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(memoryStore({}))
+      .handle(async (value) => [valueRecorded.create(value)])
+    const app = await createSpecterApp({
+      events: [valueRecorded],
+      eventLog: memoryEventLog().adapter,
+      schedule: idleScheduler,
+      slices: [command],
+      observe: () => {
+        throw new Error('telemetry is unavailable')
+      },
+    })
+
+    await expect(
+      app.command({ type: 'recordValue', payload: 1 }),
+    ).resolves.toMatchObject({ duplicate: false, version: 1 })
+  })
+
   test('exposes collision-safe command/query envelopes and rejects unknown types', async () => {
     const recorded = createEventDefinition(
       'value-recorded',
@@ -447,24 +654,54 @@ describe('createSpecterApp execution contracts', () => {
         attemptNumber: 1,
       }),
     )
-    expect(observe).toHaveBeenCalledWith({
-      type: 'reaction-run-started',
-      reactionName: 'succeed',
-    })
-    expect(observe).toHaveBeenCalledWith({
-      type: 'reaction-run-completed',
-      reactionName: 'succeed',
-      durationMs: expect.any(Number),
-    })
-    expect(observe).toHaveBeenCalledWith({
-      type: 'reaction-run-failed',
-      reactionName: 'failFirst',
-      durationMs: expect.any(Number),
-      cause: firstFailure,
-    })
-    expect(observe).toHaveBeenCalledWith({
-      type: 'reaction-pass-completed',
-      failureCount: 2,
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reaction-run-started',
+        reactionName: 'succeed',
+      }),
+    )
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reaction-run-completed',
+        reactionName: 'succeed',
+        durationMs: expect.any(Number),
+      }),
+    )
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reaction-run-failed',
+        reactionName: 'failFirst',
+        durationMs: expect.any(Number),
+        cause: firstFailure,
+      }),
+    )
+    expect(observe).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'reaction-pass-failed',
+        failureCount: 2,
+      }),
+    )
+    const committedObservation = observe.mock.calls
+      .map(([observation]) => observation)
+      .find((observation) => observation.type === 'command-completed')
+    const successfulRun = observe.mock.calls
+      .map(([observation]) => observation)
+      .find(
+        (observation) =>
+          observation.type === 'reaction-run-started' &&
+          observation.reactionName === 'succeed',
+      )
+    expect(successfulRun).toMatchObject({
+      runId: expect.stringContaining(':succeed'),
+      passId: expect.any(String),
+      attemptId: expect.any(String),
+      parentOperationIds: expect.arrayContaining([
+        committedObservation.operationId,
+      ]),
+      causedByEvents: [
+        expect.objectContaining({ id: 'event-1', type: 'source-recorded' }),
+      ],
+      eventRange: { fromOrder: 0, toOrder: 1, eventCount: 1 },
     })
   })
 

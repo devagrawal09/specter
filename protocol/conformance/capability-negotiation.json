@@ -1,0 +1,8 @@
+{
+  "name": "required capabilities are strict and optional capabilities intersect",
+  "supported": ["commands", "queries"],
+  "cases": [
+    { "required": ["commands"], "optional": ["queries", "future"], "expectNegotiated": ["commands", "queries"] },
+    { "required": ["runtime-observations"], "optional": [], "expectErrorCode": "SPECTER_UNSUPPORTED_CAPABILITY" }
+  ]
+}

@@ -6,6 +6,15 @@ import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
 import { createSpecterApp } from '@specter-ts/core'
 import {
+  createRuntimeObservationEmitter,
+  createRuntimeObservationProducer,
+} from '@specter-ts/observability'
+import {
+  createSpecterProtocolHttpHandler,
+  createSpecterRuntimeProtocolAdapter,
+  type RuntimeSource,
+} from '@specter-ts/protocol'
+import {
   createDurableReactionScheduler,
   type ReactionPass,
 } from '@specter-ts/reaction-outbox'
@@ -42,20 +51,42 @@ const productionDb = drizzle(sqliteClient, {
 })
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
+const runtimeSource: RuntimeSource = {
+  application: 'todo-reference',
+  environment:
+    process.env.SPECTER_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+  runtimeLanguage: 'typescript',
+  runtimeVersion: '0.3.0',
+  instanceId:
+    process.env.SPECTER_INSTANCE_ID ?? `todo-reference-${process.pid}`,
+  eventLogId: process.env.SPECTER_EVENT_LOG_ID ?? sqlitePath,
+}
+const observationProducer = createRuntimeObservationProducer({
+  endpoint: process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
+  source: runtimeSource,
+})
+const runtimeObservability = createRuntimeObservationEmitter({
+  producer: observationProducer,
+  source: runtimeSource,
+})
 const durableSchedule = createDurableReactionScheduler(
   createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
     context: operationalContext,
   }),
   {
+    onTransition: runtimeObservability.outbox,
     onBackgroundError: (cause) =>
       console.error('Specter Reaction worker failed', cause),
   },
 )
 const specterApp = await createSpecterApp(
-  createTodoSpecterAppConfig(persistence.eventLog, (run) =>
-    durableSchedule((context) =>
-      runWithSqliteDb(productionDb, () => run(context)),
-    ),
+  createTodoSpecterAppConfig(
+    persistence.eventLog,
+    (run) =>
+      durableSchedule((context) =>
+        runWithSqliteDb(productionDb, () => run(context)),
+      ),
+    { observe: runtimeObservability.observe },
   ),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
@@ -69,7 +100,17 @@ const handleSpecterRequest = createSpecterHttpHandler({
 
 const app = new Hono()
 
+const handleProtocolRequest = createSpecterProtocolHttpHandler({
+  runtime: createSpecterRuntimeProtocolAdapter({
+    app: specterApp,
+    eventLog: persistence.eventLog,
+    runtimeVersion: runtimeSource.runtimeVersion,
+    run: (operation) => runWithSqliteDb(productionDb, operation),
+  }),
+})
+
 app.all('/api/*', (c) => handleSpecterRequest(c.req.raw))
+app.all('/specter/v1/*', (c) => handleProtocolRequest(c.req.raw))
 
 const routes = app
 

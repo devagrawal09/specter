@@ -1,0 +1,7 @@
+{
+  "protocolVersion": 1,
+  "kind": "subscription.complete",
+  "requestId": "subscription-response",
+  "operationId": "subscription-1",
+  "sequence": 2
+}

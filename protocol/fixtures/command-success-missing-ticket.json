@@ -1,0 +1,9 @@
+{
+  "protocolVersion": 1,
+  "kind": "command.response",
+  "requestId": "missing-ticket-response",
+  "operationId": "operation-1",
+  "status": "committed",
+  "version": 1,
+  "events": []
+}
