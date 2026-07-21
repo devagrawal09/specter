@@ -77,14 +77,20 @@ The Reaction scheduler is a separate concern from the Plugin:
 - The Plugin interprets that effect.
 - The optional outbox worker delivers queued external work.
 
-`immediateReactionScheduler` coalesces passes in process. `createDurableReactionScheduler` stores Reaction-pass jobs and recovers pending or expired passes after a restart. Either scheduler can be paired with an immediate or outbox-backed Plugin depending on the effect boundary.
+`immediateReactionScheduler` serializes queued passes in process and executes
+every request separately. `createDurableReactionScheduler` stores Reaction-pass
+jobs and recovers pending or expired passes after a restart. Either scheduler
+can be paired with an immediate or outbox-backed Plugin depending on the effect
+boundary.
 
 ## Invariants and pitfalls
 
 - Keep the handler deterministic from its caught-up Slice State. Put network calls, clocks, and provider clients in the Plugin or worker.
 - A Reaction produces zero or one effect per handler run. Return `undefined` for no effect.
 - Declare an output schema even when the effect is a same-app Command envelope. The Plugin receives the schema's decoded output.
-- Treat Plugin execution as at least once. Core cannot atomically commit an arbitrary external provider call with the local Slice cursor.
+- Treat every attempted Plugin execution as duplicate-prone. Core cannot
+  atomically commit an arbitrary external provider call with the local Slice
+  cursor. Surviving process restart requires a durable scheduler or outbox.
 - Use idempotent same-app Commands or provider-side idempotency. A successful external call followed by a crash can be retried.
 - Do not await a nested Reaction pass from inside a Reaction-dispatched Command. Core requests another pass without making the active pass wait on itself.
 - One Reaction failure does not prevent independent Reactions in the same pass from running. The pass reports the collected failures after all runnable Reactions settle.

@@ -36,10 +36,14 @@ fails before files are copied.
 
 ## Generate a Slice
 
-Run generators from an existing project's root. Review a dry-run first:
+Run generators from an existing project's root. Point `SPECTER_CHECKOUT` at the
+absolute path of the cloned and built preview repository; do not use `npx` for
+these preview-only commands. Review a dry-run first:
 
 ```sh
-npx create-specter generate slice addTodo \
+SPECTER_CHECKOUT=/absolute/path/to/specter
+node "$SPECTER_CHECKOUT/packages/create-specter/dist/index.js" \
+  generate slice addTodo \
   --kind command \
   --feature todos \
   --dry-run
@@ -89,8 +93,11 @@ before treating the Slice as implemented.
 ## Generate a persistent recovery harness
 
 ```sh
-npx create-specter generate persistent-harness --dry-run
-npx create-specter generate persistent-harness
+SPECTER_CHECKOUT=/absolute/path/to/specter
+node "$SPECTER_CHECKOUT/packages/create-specter/dist/index.js" \
+  generate persistent-harness --dry-run
+node "$SPECTER_CHECKOUT/packages/create-specter/dist/index.js" \
+  generate persistent-harness
 ```
 
 ```text

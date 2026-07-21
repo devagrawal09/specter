@@ -104,7 +104,8 @@ For a long-running process, pass the same `AbortSignal` to `createReactionOutbox
 - Use the stable job ID or idempotency key for provider-side deduplication. Never use `attemptId` as the logical effect identity.
 - A lease does not cancel a handler when it expires. It prevents a stale attempt from overwriting the state of a newer claim.
 - `maxAttempts` must be a positive integer; `leaseMs` and polling intervals must be positive; backoff must be finite and non-negative.
-- `createOutboxReactionPlugin` rejects a non-ISO `scheduledAt` before enqueue.
+- `createOutboxReactionPlugin` rejects an unparseable `scheduledAt` before
+  enqueue. Schedulers should still provide the documented ISO-8601 value.
 - Storage adapters may impose serialization constraints. The SQLite and Postgres adapters persist JSON payloads.
 - `runReactionOutboxWorker` rethrows drain errors unless `onError` is provided.
 

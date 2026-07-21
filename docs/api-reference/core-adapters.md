@@ -26,7 +26,7 @@ preserve transaction, ordering, cursor, idempotency, and retry invariants.
 | `SliceStoreAdapter<TWrite, TRead>` | Retrieves staged State and runs per-Slice local transactions. |
 | `ReactionDeliveryContext` | Stable delivery identity/time and attempt-specific identity/count. |
 | `ReactionScheduler` | Installs a Reaction runner and returns a pass request function. |
-| `RequestReactions` | Requests/coalesces a pass and returns an idle-wait factory. |
+| `RequestReactions` | Requests a pass and returns an idle-wait factory. |
 | `WaitForReactionsIdle` | Waits until the requested Reaction work reaches idle. |
 
 ## Event Log lifecycle
@@ -79,9 +79,10 @@ const waitForIdle = requestReactions()
 await waitForIdle()
 ```
 
-Schedulers serialize and coalesce passes. A Reaction may request more work
-while a pass is active; the scheduler must not start a nested pass or require
-that Reaction to await itself.
+Schedulers serialize passes. The bundled immediate scheduler queues every
+request and runs each pass separately. A Reaction may request more work while a
+pass is active; the scheduler must not start a nested pass or require that
+Reaction to await itself.
 
 `deliveryId` and `scheduledAt` identify the logical delivery and remain stable
 across retries. `attemptId` changes per attempt and `attemptNumber` is one-based.

@@ -148,8 +148,9 @@ export type CommandDispatch = (
 ) => Promise<void>
 
 /**
- * Executes an at-least-once Reaction effect. Plugins should use the stable
- * deliveryId from context as their downstream idempotency key.
+ * Executes a Reaction effect that may be retried. Plugins should use the stable
+ * deliveryId from context as their downstream idempotency key. Durable delivery
+ * across process restarts requires a durable scheduler or outbox.
  */
 export type ReactionExec<TOutput = unknown> = (
   reaction: TOutput,

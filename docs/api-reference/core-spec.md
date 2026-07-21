@@ -33,7 +33,7 @@ type exports.
 | `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and an optional exact rejection reason. |
 | `CommandScenario<TWhen>` | Union of accepted and rejected Command Scenarios. |
 | `QueryScenario<TWhen, TExpect>` | A Query Scenario with Given Events, Query input, and final public output. |
-| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and zero or more expected plugin effects. |
+| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and zero or one expected Plugin effect for one handler run. The current array type is broader than the executable cardinality. |
 | `ScenarioEvent<TType, TPayload>` | Branded exact Event example returned by `event(...)`. |
 | `NonEmptyScenarios<TScenario>` | Tuple requiring at least one Scenario. |
 | `CommandSliceSpec<TName, TScenarios>` | Immutable Command specification and its `inputSchema(...)` completion stage. |

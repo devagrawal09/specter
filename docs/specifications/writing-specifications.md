@@ -32,7 +32,10 @@ export const addTodoSpec = createCommandSlice('addTodo')
   )
 ```
 
-The resulting value has `stage: 'specification'`. It cannot be registered in an app until an implementation supplies the required schema, store, apply, Plugin, and handler steps.
+The resulting value has `stage: 'specification'`. It cannot be registered in an
+app until an implementation supplies its required schema, store, and handler
+stages. Apply registrations are optional and driven by Given Events; only a
+Reaction supplies a Plugin.
 
 ## Scenario shapes
 
@@ -106,7 +109,10 @@ export const todoAddedEvent = createEventDefinition(
 
 Event types use kebab-case. Event payload schemas are validation-only contracts: they must preserve Scenario, emitted, and persisted payloads one-to-one. Do not trim, coerce, strip unknown keys, or generate defaults inside an Event schema. Make such decisions in the Command handler before calling `definition.create(payload)`.
 
-Runtime Event metadata is separate from the domain payload. `event(...)` provides only type and example payload; replay adds deterministic `id`, `recordedAt`, and `order` values when apply handlers need a full Event.
+Runtime Event metadata is separate from the domain payload. `event(...)`
+provides only type and example payload. Replay supplies deterministic `id` and
+`recordedAt` values to apply handlers, then advances the Slice cursor separately
+to the Event's one-based position.
 
 ## Complete the implementation in order
 

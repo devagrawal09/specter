@@ -93,12 +93,12 @@ await execution.reactions
 
 const todos = await app.query({
   type: 'todosQuery',
-  payload: { status: 'open' },
+  payload: { status: 'active' },
 })
 
 for await (const latest of app.subscribe({
   type: 'todosQuery',
-  payload: { status: 'open' },
+  payload: { status: 'active' },
 })) {
   console.log(latest)
 }
