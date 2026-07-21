@@ -411,6 +411,10 @@ h3 {
   color: var(--accent);
 }
 
+.agent-prompt:has(.agent-prompt__command:hover) .agent-prompt__copy {
+  color: var(--ink-faint);
+}
+
 .btn--text {
   color: var(--ink-dim);
   padding-inline: 4px;
