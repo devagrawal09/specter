@@ -51,10 +51,10 @@ For the unreleased 0.3 API shown in this README, use the
 
 ## Documentation
 
+- [Documentation hub](docs/README.md)
 - [Getting started from main](docs/getting-started.md)
-- [Runtime and transport boundaries](docs/guides/runtime-boundaries.md)
-- [Slice specification/implementation split](docs/adr/0001-slice-specification-implementation-split.md)
-- [Envelope runtime and project-owned transport](docs/adr/0002-envelope-runtime-and-project-owned-transport.md)
+- [Specter runtime](docs/architecture/runtime.md)
+- [API reference](docs/api-reference/README.md)
 
 ## Workspace Commands
 
@@ -109,9 +109,8 @@ allowlists registered envelope types, maps stable structured errors, and
 supports reconnectable latest-state query subscriptions. In-process programs
 can use the same app API directly.
 
-See [Runtime and transport boundaries](docs/guides/runtime-boundaries.md) for
-transaction, subscription, schema-mode, idempotency, adapter, and operational
-guidance.
+See [Specter runtime](docs/architecture/runtime.md) for transaction,
+subscription, schema-mode, idempotency, adapter, and operational guidance.
 
 ## Slice Specifications And Implementations
 
