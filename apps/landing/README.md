@@ -5,7 +5,7 @@ TypeScript. The **Compiler Console** variation presents Specter's explicit
 application pipeline:
 
 ```text
-specification → implementation → scenario tests → event log → typed client
+specification → implementation → scenario tests → event log → typed envelope
 ```
 
 The examples follow the current Specter API. A Slice Specification in `spec.ts`
@@ -25,8 +25,9 @@ the runtime.
 - Accepted Commands append domain facts to one ordered Event Log.
 - Each Slice owns private state and catches up by applying relevant Events.
 - Reaction Plugins interpret typed outputs, including external API calls.
-- Completed Command and Query Slices form a flat, typed client contract.
-- The Todo starter is created with `npm create specter@latest my-app`.
+- Completed Slices expose typed command, query, and subscription envelopes.
+- The public preview points agents at the 0.3 source on `main`; npm remains on
+  the stable 0.2.1 release.
 
 ## Design
 

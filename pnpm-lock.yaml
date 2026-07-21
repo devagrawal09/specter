@@ -455,6 +455,73 @@ importers:
         specifier: ^4.1.5
         version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
 
+  apps/worklog:
+    dependencies:
+      '@hono/node-server':
+        specifier: 2.0.3
+        version: 2.0.3(hono@4.12.19)
+      '@hono/vite-build':
+        specifier: 1.11.1
+        version: 1.11.1(hono@4.12.19)
+      '@hono/vite-dev-server':
+        specifier: 0.25.3
+        version: 0.25.3(hono@4.12.19)
+      '@libsql/client':
+        specifier: ^0.17.3
+        version: 0.17.3
+      '@solidjs/web':
+        specifier: 2.0.0-beta.13
+        version: 2.0.0-beta.13(solid-js@2.0.0-beta.13)
+      '@specter-ts/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@specter-ts/memory':
+        specifier: workspace:*
+        version: link:../../packages/memory
+      '@specter-ts/sqlite':
+        specifier: workspace:*
+        version: link:../../packages/sqlite
+      '@tailwindcss/vite':
+        specifier: ^4.1.18
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      hono:
+        specifier: 4.12.19
+        version: 4.12.19
+      solid-js:
+        specifier: 2.0.0-beta.13
+        version: 2.0.0-beta.13
+      tailwindcss:
+        specifier: ^4.1.18
+        version: 4.3.0
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@biomejs/biome':
+        specifier: 2.4.5
+        version: 2.4.5
+      '@playwright/test':
+        specifier: ^1.60.0
+        version: 1.60.0
+      jsdom:
+        specifier: ^28.1.0
+        version: 28.1.0
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
+      typescript:
+        specifier: ^6.0.2
+        version: 6.0.2
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite-plugin-solid:
+        specifier: 3.0.0-next.5
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vitest:
+        specifier: ^4.1.5
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+
   codemods/specter-envelope-api:
     devDependencies:
       '@codemod.com/jssg-types':

@@ -19,6 +19,7 @@ This file is public project guidance for coding agents and agent-assisted contri
 ## Pull Request Workflow
 
 - Do not use GitHub issues for work tracking in this repo.
+- The GitHub CLI (`gh`) is configured in the host environment, not the sandbox. Run `gh` commands with escalated host access; a sandbox authentication or connectivity failure does not mean `gh` is unavailable.
 - Start each public-facing improvement on its own branch and open a draft PR before implementation changes.
 - Keep one coherent public-facing improvement per PR.
 - Create stacked PRs only after maintainer approval.
