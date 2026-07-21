@@ -20,7 +20,8 @@ export {
   type SpecterNodeSqliteRuntime,
 } from './runtime'
 export {
-  createNodeSqliteSliceStore,
+  createNodeSqliteSliceStoreLayer,
+  createNodeSqliteSliceStoreService,
   prepareNodeSqliteSliceStore,
   type NodeSqliteSliceStoreOptions,
 } from './slice-store'

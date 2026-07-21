@@ -1,6 +1,6 @@
 import publishAgentRunReplySpec from './spec'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -44,7 +44,7 @@ const publishAgentRunReply = publishAgentRunReplySpec
     })
   })
   .store(
-    createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
+    defineMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
   )
   .apply(agentRunRequestedEvent, async (event, state) => {
     const payload = event.payload

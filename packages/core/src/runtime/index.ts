@@ -1,8 +1,4 @@
 export { createSpecterApp } from './app'
-export {
-  createSpecterAppFromFeatures,
-  defineSpecterFeature,
-} from './features'
 export type {
   CommandExecution,
   CommandExecutionOptions,
@@ -18,11 +14,6 @@ export type {
   SpecterQueryResult,
   SpecterQueryType,
 } from './app'
-export type {
-  SpecterFeature,
-  SpecterFeatureAppConfig,
-  SpecterFeatureFactory,
-} from './features'
 export {
   ReactionRunFailure,
   specterErrorCodes,
@@ -34,6 +25,8 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterProjectionFailedError,
+  SpecterStoreConfigurationError,
   SpecterUnknownCommandError,
   SpecterUnknownEventError,
   SpecterUnknownQueryError,

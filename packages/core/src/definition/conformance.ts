@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { Effect } from 'effect'
 
 import { isScenarioEvent, type ScenarioEvent } from './scenario-types'
 import { validateSchema, valuesEqual } from './schemas'
@@ -20,6 +21,7 @@ export type ConformanceDiagnostic = {
 }
 
 export class SpecterConformanceError extends AggregateError {
+  readonly _tag = 'SpecterConformanceError' as const
   readonly code = 'SPECTER_CONFORMANCE_FAILED' as const
   readonly diagnostics: readonly ConformanceDiagnostic[]
 
@@ -50,21 +52,24 @@ export type ConformanceOptions = {
   readonly requireCommandSlice?: boolean
 }
 
-export async function assertConforms(
+export function assertConforms(
   input: ConformanceInput,
   options: ConformanceOptions = {},
-): Promise<void> {
-  const diagnostics = await collectConformanceDiagnostics(input, options)
-
-  if (diagnostics.length > 0) {
-    throw new SpecterConformanceError(diagnostics)
-  }
+): Effect.Effect<void, SpecterConformanceError> {
+  return collectConformanceDiagnostics(input, options).pipe(
+    Effect.flatMap((diagnostics) =>
+      diagnostics.length > 0
+        ? Effect.fail(new SpecterConformanceError(diagnostics))
+        : Effect.void,
+    ),
+  )
 }
 
-export async function collectConformanceDiagnostics(
+export function collectConformanceDiagnostics(
   input: ConformanceInput,
   options: ConformanceOptions = {},
-): Promise<readonly ConformanceDiagnostic[]> {
+): Effect.Effect<readonly ConformanceDiagnostic[]> {
+  return Effect.gen(function* () {
   const diagnostics: ConformanceDiagnostic[] = []
   const eventDefinitions = new Map<string, ApplyEventDefinition>()
   const coveredEventTypes = new Set<string>()
@@ -191,7 +196,7 @@ export async function collectConformanceDiagnostics(
 
         givenEventTypes.add(candidate.eventType)
         coveredEventTypes.add(candidate.eventType)
-        await validateScenarioEvent(candidate, eventDefinitions, diagnostics, {
+        yield* validateScenarioEvent(candidate, eventDefinitions, diagnostics, {
           sliceName: slice.name,
           scenarioDescription: scenario.description,
           location: `given[${index}]`,
@@ -201,7 +206,7 @@ export async function collectConformanceDiagnostics(
       switch (slice.kind) {
         case 'command': {
           if (slice.inputSchema) {
-            await validateExample(
+            yield* validateExample(
               slice.inputSchema,
               scenario.when,
               diagnostics,
@@ -228,7 +233,7 @@ export async function collectConformanceDiagnostics(
             }
 
             coveredEventTypes.add(candidate.eventType)
-            await validateScenarioEvent(
+            yield* validateScenarioEvent(
               candidate,
               eventDefinitions,
               diagnostics,
@@ -243,7 +248,7 @@ export async function collectConformanceDiagnostics(
         }
         case 'query': {
           if (slice.inputSchema) {
-            await validateExample(
+            yield* validateExample(
               slice.inputSchema,
               scenario.when,
               diagnostics,
@@ -346,7 +351,8 @@ export async function collectConformanceDiagnostics(
     }
   }
 
-  return diagnostics
+    return diagnostics
+  })
 }
 
 export function commandScenarioEventTypes(
@@ -363,7 +369,7 @@ export function commandScenarioEventTypes(
   return eventTypes
 }
 
-async function validateScenarioEvent(
+function validateScenarioEvent(
   scenarioEvent: ScenarioEvent,
   eventDefinitions: ReadonlyMap<string, ApplyEventDefinition>,
   diagnostics: ConformanceDiagnostic[],
@@ -372,6 +378,7 @@ async function validateScenarioEvent(
     'sliceName' | 'scenarioDescription' | 'location'
   >,
 ) {
+  return Effect.gen(function* () {
   const definition = eventDefinitions.get(scenarioEvent.eventType)
   if (!definition) {
     diagnostics.push({
@@ -384,9 +391,8 @@ async function validateScenarioEvent(
     return
   }
 
-  const result = await validateSchema(
-    definition.schema,
-    scenarioEvent.examplePayload,
+  const result = yield* Effect.promise(() =>
+    validateSchema(definition.schema, scenarioEvent.examplePayload),
   )
   if (!result.success) {
     for (const issue of result.issues) {
@@ -412,15 +418,17 @@ async function validateScenarioEvent(
         'Make the Event schema validation-only, then use analyzeEventPropagation(...) from @specter-ts/core/testing to update every producer, Given example, and apply consumer.',
     })
   }
+  })
 }
 
-async function validateExample(
+function validateExample(
   schema: StandardSchemaV1,
   value: unknown,
   diagnostics: ConformanceDiagnostic[],
   context: Omit<ConformanceDiagnostic, 'message' | 'path'>,
 ) {
-  const result = await validateSchema(schema, value)
+  return Effect.gen(function* () {
+  const result = yield* Effect.promise(() => validateSchema(schema, value))
   if (result.success) return
 
   for (const issue of result.issues) {
@@ -430,6 +438,7 @@ async function validateExample(
       message: issue.message,
     })
   }
+  })
 }
 
 function formatConformanceDiagnostic(diagnostic: ConformanceDiagnostic) {

@@ -238,9 +238,14 @@ export function createPostgresEventLog(
       currentVersion: async () => baseVersion,
       findCommit: (idempotencyKey) => findCommit(pool, idempotencyKey),
       append: (drafts, appendOptions) =>
-        appendAtomically(drafts, {
-          ...appendOptions,
-          expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
+        context.transaction(async (connection) => {
+          await connection.query('SELECT pg_advisory_xact_lock($1)', [
+            advisoryLockKey,
+          ])
+          return append(connection, drafts, {
+            ...appendOptions,
+            expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
+          })
         }),
     }
   }

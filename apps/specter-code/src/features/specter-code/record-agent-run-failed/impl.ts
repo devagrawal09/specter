@@ -1,7 +1,7 @@
 import recordAgentRunFailedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunFailedEvent } from '../events'
 
 const recordAgentRunFailed = recordAgentRunFailedSpec
@@ -13,7 +13,7 @@ const recordAgentRunFailed = recordAgentRunFailedSpec
       error: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const error = command.error.trim()
 

@@ -1,7 +1,7 @@
 import sessionListSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   sessionCreatedEvent,
   sessionDeletedEvent,
@@ -32,7 +32,7 @@ type SessionListState = {
 const sessionList = sessionListSpec
   .inputSchema(z.object({ workspaceId: z.string() }))
   .outputSchema<SessionListItem[]>()
-  .store(createMemorySliceStore<SessionListState>(() => ({ sessions: [] })))
+  .store(defineMemorySliceStore<SessionListState>(() => ({ sessions: [] })))
   .apply(sessionCreatedEvent, async (event, state) => {
     const payload = event.payload
 

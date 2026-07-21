@@ -1,7 +1,7 @@
 import recordToolCallStartedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolCallStartedEvent } from '../events'
 
 const recordToolCallStarted = recordToolCallStartedSpec
@@ -15,7 +15,7 @@ const recordToolCallStarted = recordToolCallStartedSpec
       inputSummary: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [
       toolCallStartedEvent.create({

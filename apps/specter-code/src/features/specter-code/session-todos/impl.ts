@@ -1,7 +1,7 @@
 import sessionTodosSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { todoListUpdatedEvent } from '../events'
 
 type TodoStatus = 'pending' | 'in_progress' | 'completed'
@@ -25,7 +25,7 @@ const sessionTodos = sessionTodosSpec
     }),
   )
   .outputSchema<SessionTodo[]>()
-  .store(createMemorySliceStore<SessionTodosState>(() => ({ bySession: {} })))
+  .store(defineMemorySliceStore<SessionTodosState>(() => ({ bySession: {} })))
   .apply(todoListUpdatedEvent, async (event, state) => {
     const payload = event.payload
     state.bySession[payload.sessionId] = payload.items.map((item) => ({

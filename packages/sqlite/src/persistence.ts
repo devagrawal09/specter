@@ -7,7 +7,7 @@ import {
   type SqliteEventLogOptions,
 } from './event-log'
 import {
-  createSqliteSliceStore,
+  createSqliteSliceStoreService,
   prepareSqliteSliceStore,
   type SqliteSliceStoreOptions,
 } from './slice-store'
@@ -37,14 +37,14 @@ export function createSpecterSqlitePersistence(
     createReactionOutboxStore<TPayload>() {
       return createSqliteReactionOutboxStore<TPayload>(client, { context })
     },
-    createSliceStore<TWriteState, TReadState = Readonly<TWriteState>>(
+    createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,
       storeOptions: Omit<
         SqliteSliceStoreOptions<TWriteState, TReadState>,
         'context'
       > = {},
     ) {
-      return createSqliteSliceStore(client, createState, {
+      return createSqliteSliceStoreService(client, createState, {
         ...storeOptions,
         context,
       })

@@ -11,4 +11,11 @@ export type {
   RequestReactions,
   WaitForReactionsIdle,
 } from './reaction-scheduler'
-export type { SliceStore, SliceStoreAdapter } from './slice-store'
+export type {
+  SliceStoreError,
+  SliceStoreRead,
+  SliceStoreRequirement,
+  SliceStoreService,
+  SliceStoreTag,
+  SliceStoreWrite,
+} from './slice-store'

@@ -1,7 +1,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
 import type { ReactionDeliveryContext } from '../adapters/reaction-scheduler'
-import type { SliceStoreAdapter } from '../adapters/slice-store'
+import type {
+  SliceStoreService,
+  SliceStoreTag,
+} from '../adapters/slice-store'
 import type { Event, EventDefinition, EventDraft } from './events'
 import type {
   CommandScenario,
@@ -13,8 +16,12 @@ import type {
 export type {
   EventLogAdapter,
   ReactionScheduler,
-  SliceStore,
-  SliceStoreAdapter,
+  SliceStoreError,
+  SliceStoreRead,
+  SliceStoreRequirement,
+  SliceStoreService,
+  SliceStoreTag,
+  SliceStoreWrite,
 } from '../adapters'
 
 export type ApplyEventDefinition = {
@@ -77,10 +84,18 @@ export type CommandSlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<CommandScenario> = NonEmptyScenarios<CommandScenario>,
+  TStore extends
+    SliceStoreTag<
+      unknown,
+      SliceStoreService<TReadState, TWriteState, unknown>
+    > = SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
 > = SliceBase<TName, TScenarios> & {
   readonly kind: 'command'
   readonly inputSchema?: StandardSchemaV1<TInput, TCommand>
-  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly handle: (
     command: TCommand,
@@ -98,11 +113,19 @@ export type QuerySlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<QueryScenario> = NonEmptyScenarios<QueryScenario>,
+  TStore extends
+    SliceStoreTag<
+      unknown,
+      SliceStoreService<TReadState, TWriteState, unknown>
+    > = SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
 > = SliceBase<TName, TScenarios> & {
   readonly kind: 'query'
   readonly inputSchema?: StandardSchemaV1<TInput, TQuery>
   readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
-  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly handle: (query: TQuery, state: TReadState) => Promise<TResult>
 }
@@ -169,10 +192,18 @@ export type ReactionSlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<ReactionScenario> = NonEmptyScenarios<ReactionScenario>,
+  TStore extends
+    SliceStoreTag<
+      unknown,
+      SliceStoreService<TReadState, TWriteState, unknown>
+    > = SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
 > = SliceBase<TName, TScenarios> & {
   readonly kind: 'reaction'
   readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
-  readonly store: SliceStoreAdapter<TWriteState, TReadState>
+  readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly plugin: ReactionPlugin<TOutput>
   readonly handle: (state: TReadState) => Promise<TResult | undefined>
@@ -190,6 +221,7 @@ export type SliceRegistration =
       ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,
+      ErasedSliceType,
       ErasedSliceType
     >
   | QuerySlice<
@@ -200,10 +232,12 @@ export type SliceRegistration =
       ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,
+      ErasedSliceType,
       ErasedSliceType
     >
   | ReactionSlice<
       string,
+      ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,

@@ -1,7 +1,7 @@
 import recordToolCallFailedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolCallFailedEvent, toolCallStartedEvent } from '../events'
 
 const recordToolCallFailed = recordToolCallFailedSpec
@@ -15,7 +15,7 @@ const recordToolCallFailed = recordToolCallFailedSpec
       error: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .apply(toolCallStartedEvent, async () => {})
   .handle(async (command) => {
     const error = command.error.trim()

@@ -1,4 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
 import { DatabaseSync } from 'node:sqlite'
 
 export type NodeSqliteRuntimeOptions = {
@@ -8,7 +7,6 @@ export type NodeSqliteRuntimeOptions = {
 
 export class NodeSqliteContext {
   readonly database: DatabaseSync
-  private readonly active = new AsyncLocalStorage<boolean>()
   private tail: Promise<void> = Promise.resolve()
 
   constructor(database: DatabaseSync) {
@@ -16,13 +14,11 @@ export class NodeSqliteContext {
   }
 
   run<T>(operation: () => T | Promise<T>): Promise<T> {
-    if (this.active.getStore()) return Promise.resolve(operation())
-    return this.serialize(() => this.active.run(true, operation))
+    return this.serialize(operation)
   }
 
   transaction<T>(operation: () => T | Promise<T>): Promise<T> {
-    if (this.active.getStore()) return Promise.resolve(operation())
-    return this.run(async () => {
+    return this.serialize(async () => {
       this.database.exec('BEGIN IMMEDIATE')
       try {
         const result = await operation()

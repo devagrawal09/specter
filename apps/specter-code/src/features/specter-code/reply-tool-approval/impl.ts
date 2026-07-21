@@ -1,7 +1,7 @@
 import replyToolApprovalSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolApprovalRepliedEvent } from '../events'
 
 const replyToolApproval = replyToolApprovalSpec
@@ -19,7 +19,7 @@ const replyToolApproval = replyToolApprovalSpec
       reason: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     return [

@@ -23,6 +23,7 @@ import {
   requestThreadplaneFilesystemScanOnServer,
 } from './server-runtime.server'
 import { threadplaneReferenceSpecterAppConfig } from './registry'
+import { threadplaneMemoryStoresLayer } from '../../testing/memory-slice-store'
 
 test('threadplane server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-workspaces-'))
@@ -235,7 +236,10 @@ test('threadplane server functions preserve database state across app reopen', a
     try {
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
-        const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
+        const app = await createSpecterApp(
+          threadplaneReferenceSpecterAppConfig,
+          threadplaneMemoryStoresLayer(),
+        )
         const execution = await app.command({
           type: 'createWorkspace',
           payload: {

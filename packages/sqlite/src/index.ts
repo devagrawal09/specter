@@ -20,7 +20,8 @@ export {
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
 export {
-  createSqliteSliceStore,
+  createSqliteSliceStoreLayer,
+  createSqliteSliceStoreService,
   prepareSqliteSliceStore,
   type SqliteSliceStateCodec,
   type SqliteSliceStoreOptions,

@@ -1,7 +1,7 @@
 import workspaceChatSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postCreatedEvent, postReplyCreatedEvent } from '../events'
 
 type WorkspaceChatItem = {
@@ -34,7 +34,7 @@ const workspaceChat = workspaceChatSpec
     }),
   )
   .outputSchema<WorkspaceChatItem[]>()
-  .store(createMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
+  .store(defineMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
   .apply(postCreatedEvent, async (event, state) => {
     const payload = event.payload
 

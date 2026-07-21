@@ -1,7 +1,7 @@
 import recordWorkspaceFilesystemScanStartedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceFilesystemScanRequestedEvent,
   workspaceFilesystemScanStartedEvent,
@@ -27,7 +27,7 @@ const recordWorkspaceFilesystemScanStarted =
           .optional(),
       }),
     )
-    .store(createMemorySliceStore(() => ({})))
+    .store(defineMemorySliceStore(() => ({})))
     .apply(workspaceFilesystemScanRequestedEvent, async () => {})
     .handle(async (command) => {
       return [

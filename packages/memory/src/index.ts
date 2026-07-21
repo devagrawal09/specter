@@ -9,7 +9,8 @@ export {
   type ImmediateReactionSchedulerOptions,
 } from './reaction-scheduler'
 export {
-  createMemorySliceStore,
-  type MemorySliceStoreAdapter,
+  createMemorySliceStoreLayer,
+  createMemorySliceStoreService,
   type MemorySliceStoreOptions,
+  type MemorySliceStoreService,
 } from './slice-store'

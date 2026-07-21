@@ -1,7 +1,7 @@
 import recordAgentRunStartedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStartedEvent } from '../events'
 
 const recordAgentRunStarted = recordAgentRunStartedSpec
@@ -12,7 +12,7 @@ const recordAgentRunStarted = recordAgentRunStartedSpec
       agentId: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [
       agentRunStartedEvent.create({

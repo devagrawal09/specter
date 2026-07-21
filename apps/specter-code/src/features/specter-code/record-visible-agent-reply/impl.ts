@@ -1,7 +1,7 @@
 import recordVisibleAgentReplySpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postReplyCreatedEvent } from '../events'
 
 const recordVisibleAgentReply = recordVisibleAgentReplySpec
@@ -16,7 +16,7 @@ const recordVisibleAgentReply = recordVisibleAgentReplySpec
       content: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const content = command.content.trim()
 

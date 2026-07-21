@@ -11,13 +11,17 @@ import {
 } from '../../db/client.server'
 import { createSpecterHttpHandler } from '../../transport/specter-http.server'
 import { createThreadplaneReferenceSpecterAppConfig } from './registry'
+import { threadplaneMemoryStoresLayer } from '../../testing/memory-slice-store'
 
 await prepareThreadplaneReferenceDb()
 const threadplaneReferenceSpecterAppConfig =
   createThreadplaneReferenceSpecterAppConfig(
     threadplaneProductionReactionScheduler,
   )
-const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
+const app = await createSpecterApp(
+  threadplaneReferenceSpecterAppConfig,
+  threadplaneMemoryStoresLayer(),
+)
 
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof threadplaneReferenceSpecterAppConfig>,

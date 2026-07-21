@@ -252,10 +252,12 @@ export function createSqliteEventLog(
       currentVersion: async () => baseVersion,
       findCommit: (idempotencyKey) => findCommit(client, idempotencyKey),
       append: (drafts, appendOptions) =>
-        appendAtomically(drafts, {
-          ...appendOptions,
-          expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
-        }),
+        context.transaction((connection) =>
+          append(connection, drafts, {
+            ...appendOptions,
+            expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
+          }),
+        ),
     }
   }
 

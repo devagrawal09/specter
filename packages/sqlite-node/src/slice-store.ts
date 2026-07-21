@@ -1,4 +1,5 @@
-import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   type NodeSqliteContext,
@@ -20,14 +21,14 @@ export function prepareNodeSqliteSliceStore(context: NodeSqliteContext) {
   )`)
 }
 
-export function createNodeSqliteSliceStore<
+export function createNodeSqliteSliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
 >(
   context: NodeSqliteContext,
   createState: () => TWriteState,
   options: NodeSqliteSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreAdapter<TWriteState, TReadState> {
+): SliceStoreService<TReadState, TWriteState, unknown> {
   const read =
     options.read ?? ((state: TWriteState) => state as unknown as TReadState)
   const encode =
@@ -52,14 +53,14 @@ export function createNodeSqliteSliceStore<
     return row
       ? {
           state: decode(requireString(row.state_json, 'Slice State')),
-          order: requireNumber(row.last_applied_order, 'Slice cursor'),
+          cursor: requireNumber(row.last_applied_order, 'Slice cursor'),
         }
-      : { state: createState(), order: 0 }
+      : { state: createState(), cursor: 0 }
   }
 
   function save(
     sliceName: string,
-    entry: { state: TWriteState; order: number },
+    entry: { state: TWriteState; cursor: number },
   ) {
     context.database
       .prepare(
@@ -68,41 +69,64 @@ export function createNodeSqliteSliceStore<
         ) VALUES (?, ?, ?)
         ON CONFLICT(slice_name) DO UPDATE SET
           state_json = excluded.state_json,
-          last_applied_order = excluded.last_applied_order`,
+          last_applied_order = excluded.last_applied_order
+        WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
       )
-      .run(sliceName, encode(entry.state), entry.order)
-  }
-
-  function toStore(
-    sliceName: string,
-    entry: { state: TWriteState; order: number },
-  ): SliceStore<TWriteState, TReadState> {
-    return {
-      write: entry.state,
-      get read() {
-        return read(entry.state)
-      },
-      lastAppliedOrder: async () => entry.order,
-      setLastAppliedOrder: async (order) => {
-        if (!Number.isInteger(order) || order < entry.order) {
-          throw new Error(
-            `Slice cursor must advance monotonically from ${entry.order}, received ${order}`,
-          )
-        }
-        entry.order = order
-        await context.run(() => save(sliceName, entry))
-      },
-    }
+      .run(sliceName, encode(entry.state), entry.cursor)
   }
 
   return {
-    get: (sliceName) => context.run(() => toStore(sliceName, load(sliceName))),
+    read: (sliceName, run) =>
+      Effect.tryPromise({
+        try: () =>
+          context.run(() => {
+            const current = load(sliceName)
+            return run(read(current.state), current.cursor)
+          }),
+        catch: (cause) => cause,
+      }),
     transaction: (sliceName, run) =>
-      context.transaction(async () => {
-        const entry = load(sliceName)
-        const result = await run(toStore(sliceName, entry))
-        save(sliceName, entry)
-        return result
+      Effect.tryPromise({
+        try: () =>
+          context.transaction(async () => {
+            const working = load(sliceName)
+            let published = false
+            const result = await run(
+              working.state,
+              () => read(working.state),
+              working.cursor,
+              async (order) => {
+                if (!Number.isInteger(order) || order < working.cursor) {
+                  throw new Error(
+                    `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
+                  )
+                }
+                working.cursor = order
+                published = true
+              },
+            )
+            if (published) save(sliceName, working)
+            return result
+          }),
+        catch: (cause) => cause,
       }),
   }
+}
+
+export function createNodeSqliteSliceStoreLayer<
+  TIdentifier,
+  TWriteState,
+  TReadState,
+>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
+  context: NodeSqliteContext,
+  createState: () => TWriteState,
+  options: NodeSqliteSliceStoreOptions<TWriteState, TReadState> = {},
+): Layer.Layer<TIdentifier> {
+  return Layer.sync(tag as never, () =>
+    createNodeSqliteSliceStoreService(context, createState, options),
+  ) as Layer.Layer<TIdentifier>
 }

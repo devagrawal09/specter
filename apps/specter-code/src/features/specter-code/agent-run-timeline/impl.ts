@@ -1,7 +1,7 @@
 import agentRunTimelineSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunStreamedEvent,
   toolCallCompletedEvent,
@@ -64,7 +64,7 @@ const agentRunTimeline = agentRunTimelineSpec
   )
   .outputSchema<AgentRunTimeline>()
   .store(
-    createMemorySliceStore<AgentRunTimelineState>(() => ({ timelines: {} })),
+    defineMemorySliceStore<AgentRunTimelineState>(() => ({ timelines: {} })),
   )
   .apply(agentRunStreamedEvent, async (event, state) => {
     const payload = event.payload

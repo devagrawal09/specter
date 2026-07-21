@@ -1,7 +1,7 @@
 import createSessionSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionCreatedEvent } from '../events'
 
 const createSession = createSessionSpec
@@ -25,7 +25,7 @@ const createSession = createSessionSpec
         .optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const title = command.title.trim()

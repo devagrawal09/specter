@@ -1,7 +1,7 @@
 import deleteSessionMessagePartSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionMessagePartDeletedEvent } from '../events'
 
 const deleteSessionMessagePart = deleteSessionMessagePartSpec
@@ -12,7 +12,7 @@ const deleteSessionMessagePart = deleteSessionMessagePartSpec
       partId: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => [
     sessionMessagePartDeletedEvent.create({

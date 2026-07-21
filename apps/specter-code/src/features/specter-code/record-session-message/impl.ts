@@ -1,7 +1,7 @@
 import recordSessionMessageSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { userMessageSubmittedEvent } from '../events'
 
 const recordSessionMessage = recordSessionMessageSpec
@@ -17,7 +17,7 @@ const recordSessionMessage = recordSessionMessageSpec
       }),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const content = command.content.trim()

@@ -1,7 +1,7 @@
 import askQuestionSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { questionAskedEvent } from '../events'
 
 const questionOptionSchema = z.object({
@@ -20,7 +20,7 @@ const askQuestion = askQuestionSpec
       allowFreeform: z.boolean().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const prompt = command.prompt.trim()

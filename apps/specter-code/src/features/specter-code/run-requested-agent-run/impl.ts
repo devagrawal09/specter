@@ -1,6 +1,6 @@
 import runRequestedAgentRunSpec from './spec'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -329,7 +329,7 @@ const runRequestedAgentRun = runRequestedAgentRunSpec
     })
   })
   .store(
-    createMemorySliceStore<RunRequestedAgentRunState>(
+    defineMemorySliceStore<RunRequestedAgentRunState>(
       createRunRequestedAgentRunState,
     ),
   )

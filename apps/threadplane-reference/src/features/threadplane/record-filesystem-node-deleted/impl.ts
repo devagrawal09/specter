@@ -1,7 +1,7 @@
 import recordFilesystemNodeDeletedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   filesystemNodeDeletedEvent,
   filesystemNodeDiscoveredEvent,
@@ -15,7 +15,7 @@ const recordFilesystemNodeDeleted = recordFilesystemNodeDeletedSpec
       path: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .apply(filesystemNodeDiscoveredEvent, async () => {})
   .handle(async (command) => {
     if (

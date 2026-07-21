@@ -17,7 +17,7 @@ import {
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
 
-import { runWithSqliteDb } from './db/specter-sqlite'
+import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
 import { createTodoSpecterAppConfig } from './features/todos/registry'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
@@ -49,15 +49,14 @@ const durableSchedule = createDurableReactionScheduler(
 )
 const specterApp = await createSpecterApp(
   createTodoSpecterAppConfig(persistence.eventLog, (run) =>
-    durableSchedule((context) =>
-      runWithSqliteDb(productionDb, () => run(context)),
-    ),
+    durableSchedule((context) => run(context)),
   ),
+  createSqliteSliceStoreLayer(productionDb),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
   app: specterApp,
   basePath: '/api',
-  run: (operation) => runWithSqliteDb(productionDb, operation),
+  run: (operation) => operation(),
   reactionTickets: createSqliteReactionTicketStore(operationalSqliteClient, {
     context: operationalContext,
   }),

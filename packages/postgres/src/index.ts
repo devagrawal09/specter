@@ -23,7 +23,8 @@ export {
   type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
 export {
-  createPostgresSliceStore,
+  createPostgresSliceStoreLayer,
+  createPostgresSliceStoreService,
   preparePostgresSliceStore,
   type PostgresSliceStoreOptions,
 } from './slice-store'

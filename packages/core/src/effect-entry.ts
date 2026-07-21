@@ -1,15 +1,13 @@
 export {
-  createSpecterAppEffect,
   createSpecterAppLayer,
+  createSpecterPromiseApp,
+  makeSpecterRuntime,
   SpecterRuntime,
 } from './effect/runtime'
-export { createSpecterEffectAdapters } from './effect/adapters'
 export type {
   SpecterEffectApp,
+  SpecterEffectCommandExecution,
   SpecterEffectError,
   SpecterRuntimeService,
+  SpecterStoreRequirements,
 } from './effect/runtime'
-export type {
-  EffectCommandDispatch,
-  RunEffect,
-} from './effect/adapters'

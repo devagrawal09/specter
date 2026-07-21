@@ -1,17 +1,17 @@
 import {
   testEventLogAdapter,
   testReactionScheduler,
-  testSliceStoreAdapter,
+  testSliceStoreService,
 } from '@specter-ts/core/testing'
 
 import { createMemoryEventLog } from './event-log'
 import { createImmediateReactionScheduler } from './reaction-scheduler'
-import { createMemorySliceStore } from './slice-store'
+import { createMemorySliceStoreService } from './slice-store'
 
 testEventLogAdapter('memory', createMemoryEventLog)
 
-testSliceStoreAdapter('memory', {
-  createAdapter: () => createMemorySliceStore(() => ({ value: 0 })),
+testSliceStoreService('memory', {
+  createService: () => createMemorySliceStoreService(() => ({ value: 0 })),
   write: (state, value: number) => {
     state.value = value
   },

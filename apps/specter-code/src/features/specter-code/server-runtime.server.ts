@@ -12,13 +12,17 @@ import {
 import { querySpecterSqliteEvents } from '../../db/specter-sqlite'
 import { createSpecterHttpHandler } from '../../transport/specter-http.server'
 import { createSpecterCodeReferenceSpecterAppConfig } from './registry'
+import { specterCodeMemoryStoresLayer } from '../../testing/memory-slice-store'
 
 await prepareSpecterCodeReferenceDb()
 const specterCodeReferenceSpecterAppConfig =
   createSpecterCodeReferenceSpecterAppConfig(
     specterCodeProductionReactionScheduler,
   )
-const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
+const app = await createSpecterApp(
+  specterCodeReferenceSpecterAppConfig,
+  specterCodeMemoryStoresLayer(),
+)
 
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof specterCodeReferenceSpecterAppConfig>,

@@ -1,7 +1,7 @@
 import updateTodoListSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { todoListUpdatedEvent } from '../events'
 
 const todoItemSchema = z.object({
@@ -19,7 +19,7 @@ const updateTodoList = updateTodoListSpec
       items: z.array(todoItemSchema),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     return [

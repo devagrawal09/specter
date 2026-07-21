@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 export type PostgresQueryResult<TRow extends object = Record<string, unknown>> =
   {
     readonly rows: readonly TRow[]
@@ -40,22 +38,15 @@ export function createPostgresDatabaseContext(
   pool: PostgresPool,
   options: PostgresDatabaseOptions = {},
 ): PostgresDatabaseContext {
-  const scopedConnection = new AsyncLocalStorage<PostgresConnection>()
-  const scopedSerialization = new AsyncLocalStorage<boolean>()
   const advisoryLockKey = options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY
   let serializationTail = Promise.resolve()
 
   return {
     advisoryLockKey,
     connection() {
-      const connection = scopedConnection.getStore()
-      return connection ?? pool
+      return pool
     },
     async serialize(run) {
-      if (scopedSerialization.getStore() || scopedConnection.getStore()) {
-        return run()
-      }
-
       const previous = serializationTail
       let release = () => {}
       const current = new Promise<void>((resolve) => {
@@ -66,20 +57,17 @@ export function createPostgresDatabaseContext(
       await previous
 
       try {
-        return await scopedSerialization.run(true, run)
+        return await run()
       } finally {
         release()
         if (serializationTail === queued) serializationTail = Promise.resolve()
       }
     },
     async transaction(run) {
-      const active = scopedConnection.getStore()
-      if (active) return run(active)
-
       const client = await pool.connect()
       try {
         await client.query('BEGIN')
-        const result = await scopedConnection.run(client, () => run(client))
+        const result = await run(client)
         await client.query('COMMIT')
         return result
       } catch (cause) {

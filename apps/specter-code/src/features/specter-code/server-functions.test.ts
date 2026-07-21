@@ -32,6 +32,7 @@ import {
   updateSpecterCodeTodoListOnServer,
 } from './server-runtime.server'
 import { specterCodeReferenceSpecterAppConfig } from './registry'
+import { specterCodeMemoryStoresLayer } from '../../testing/memory-slice-store'
 
 test('specterCode server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'specter-code-workspaces-'))
@@ -398,7 +399,10 @@ test('specterCode server functions preserve database state across app reopen', a
     try {
       await prepareSpecterSqlite(firstSqlite)
       await runWithSqliteDb(firstSqlite, async () => {
-        const app = await createSpecterApp(specterCodeReferenceSpecterAppConfig)
+        const app = await createSpecterApp(
+          specterCodeReferenceSpecterAppConfig,
+          specterCodeMemoryStoresLayer(),
+        )
         const execution = await app.command({
           type: 'createWorkspace',
           payload: {

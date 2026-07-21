@@ -24,6 +24,7 @@
     "@tanstack/router-plugin": "1.167.16",
     "@tanstack/solid-router": "1.168.8",
     "@tanstack/solid-start": "1.167.14",
+    "effect": "4.0.0-beta.78",
     "solid-js": "^1.9.12",
     "tailwindcss": "^4.1.18",
     "zod": "^4.4.3"

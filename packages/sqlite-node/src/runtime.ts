@@ -1,4 +1,9 @@
-import type { EventLogAdapter, ReactionScheduler } from '@specter-ts/core'
+import type {
+  EventLogAdapter,
+  ReactionScheduler,
+  SliceStoreService,
+  SliceStoreTag,
+} from '@specter-ts/core'
 import {
   createDurableReactionScheduler,
   type DurableReactionSchedulerOptions,
@@ -22,7 +27,7 @@ import {
   prepareNodeSqliteReactionOutbox,
 } from './reaction-outbox'
 import {
-  createNodeSqliteSliceStore,
+  createNodeSqliteSliceStoreLayer,
   prepareNodeSqliteSliceStore,
   type NodeSqliteSliceStoreOptions,
 } from './slice-store'
@@ -37,17 +42,25 @@ export type SpecterNodeSqliteRuntime = {
   readonly eventLog: EventLogAdapter
   readonly schedule: ReactionScheduler
   readonly reactionOutbox: ReactionOutboxStore<ReactionPass>
-  readonly createSliceStore: <TWriteState, TReadState = Readonly<TWriteState>>(
+  readonly sliceStoreLayer: <
+    TIdentifier,
+    TWriteState,
+    TReadState = Readonly<TWriteState>,
+  >(
+    tag: SliceStoreTag<
+      TIdentifier,
+      SliceStoreService<TReadState, TWriteState, unknown>
+    >,
     createState: () => TWriteState,
     options?: NodeSqliteSliceStoreOptions<TWriteState, TReadState>,
-  ) => import('@specter-ts/core').SliceStoreAdapter<TWriteState, TReadState>
+  ) => Layer.Layer<TIdentifier>
   readonly createReactionOutboxStore: <
     TPayload,
   >() => ReactionOutboxStore<TPayload>
   readonly close: () => Promise<void>
 }
 
-export const SpecterNodeSqlite = Context.GenericTag<SpecterNodeSqliteRuntime>(
+export const SpecterNodeSqlite = Context.Service<SpecterNodeSqliteRuntime>(
   '@specter-ts/sqlite-node/SpecterNodeSqlite',
 )
 
@@ -72,8 +85,13 @@ export function openSpecterNodeSqlite(
     eventLog: createNodeSqliteEventLog(context, options.eventLog),
     schedule,
     reactionOutbox,
-    createSliceStore: (createState, storeOptions) =>
-      createNodeSqliteSliceStore(context, createState, storeOptions),
+    sliceStoreLayer: (tag, createState, storeOptions) =>
+      createNodeSqliteSliceStoreLayer(
+        tag,
+        context,
+        createState,
+        storeOptions,
+      ),
     createReactionOutboxStore: () =>
       createNodeSqliteReactionOutboxStore(context),
     close: async () => {
@@ -88,7 +106,7 @@ export function openSpecterNodeSqlite(
 export function createSpecterNodeSqliteLayer(
   options: SpecterNodeSqliteOptions,
 ): Layer.Layer<SpecterNodeSqliteRuntime> {
-  return Layer.scoped(
+  return Layer.effect(
     SpecterNodeSqlite,
     Effect.acquireRelease(
       Effect.sync(() => openSpecterNodeSqlite(options)),

@@ -1,7 +1,7 @@
 import deleteSessionMessageSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionMessageDeletedEvent } from '../events'
 
 const deleteSessionMessage = deleteSessionMessageSpec
@@ -15,7 +15,7 @@ const deleteSessionMessage = deleteSessionMessageSpec
       reason: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => [
     sessionMessageDeletedEvent.create({

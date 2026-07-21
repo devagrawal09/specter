@@ -1,6 +1,6 @@
 import runRequestedFilesystemScanSpec from './spec'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   filesystemNodeChangedEvent,
   filesystemNodeDeletedEvent,
@@ -151,7 +151,7 @@ const runRequestedFilesystemScan = runRequestedFilesystemScanSpec
     })
   })
   .store(
-    createMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
+    defineMemorySliceStore<RunRequestedFilesystemScanState>(() => ({
       requestedScans: [],
       plannedSnapshots: {},
       terminalScanIds: new Set(),

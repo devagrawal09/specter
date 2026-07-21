@@ -1,4 +1,5 @@
-import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createPostgresDatabaseContext,
@@ -24,14 +25,14 @@ export async function preparePostgresSliceStore(pool: PostgresPool) {
   )`)
 }
 
-export function createPostgresSliceStore<
+export function createPostgresSliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
 >(
   pool: PostgresPool,
   createState: () => TWriteState,
   options: PostgresSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreAdapter<TWriteState, TReadState> {
+): SliceStoreService<TReadState, TWriteState, unknown> {
   const context =
     options.context ?? createPostgresDatabaseContext(pool, options)
   const read =
@@ -48,17 +49,17 @@ export function createPostgresSliceStore<
       [sliceName],
     )
     const row = result.rows[0]
-    if (!row) return { state: createState(), order: 0 }
+    if (!row) return { state: createState(), cursor: 0 }
     return {
       state: postgresJson<TWriteState>(row.state_json, 'Slice State'),
-      order: postgresNumber(row.last_applied_order, 'Slice cursor'),
+      cursor: postgresNumber(row.last_applied_order, 'Slice cursor'),
     }
   }
 
   async function save(
     connection: PostgresConnection,
     sliceName: string,
-    entry: { state: TWriteState; order: number },
+    entry: { state: TWriteState; cursor: number },
   ) {
     const encoded = JSON.stringify(entry.state)
     if (encoded === undefined) {
@@ -72,49 +73,63 @@ export function createPostgresSliceStore<
       ) VALUES ($1, $2::jsonb, $3)
       ON CONFLICT(slice_name) DO UPDATE SET
         state_json = excluded.state_json,
-        last_applied_order = excluded.last_applied_order`,
-      [sliceName, encoded, entry.order],
+        last_applied_order = excluded.last_applied_order
+      WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
+      [sliceName, encoded, entry.cursor],
     )
   }
 
-  function toStore(
-    entry: {
-      state: TWriteState
-      order: number
-    },
-    commitAtCursor?: () => Promise<void>,
-  ): SliceStore<TWriteState, TReadState> {
-    return {
-      write: entry.state,
-      get read() {
-        return read(entry.state)
-      },
-      lastAppliedOrder: async () => entry.order,
-      setLastAppliedOrder: async (order) => {
-        if (!Number.isInteger(order) || order < entry.order) {
-          throw new Error(
-            `Slice cursor must advance monotonically from ${entry.order}, received ${order}`,
-          )
-        }
-        entry.order = order
-        await commitAtCursor?.()
-      },
-    }
-  }
-
   return {
-    async get(sliceName) {
-      const connection = context.connection()
-      const entry = await load(connection, sliceName)
-      return toStore(entry, () => save(connection, sliceName, entry))
-    },
-    transaction(sliceName, run) {
-      return context.transaction(async (connection) => {
-        const entry = await load(connection, sliceName)
-        const result = await run(toStore(entry))
-        await save(connection, sliceName, entry)
-        return result
-      })
-    },
+    read: (sliceName, run) =>
+      Effect.tryPromise({
+        try: async () => {
+          const current = await load(context.connection(), sliceName)
+          return run(read(current.state), current.cursor)
+        },
+        catch: (cause) => cause,
+      }),
+    transaction: (sliceName, run) =>
+      Effect.tryPromise({
+        try: () =>
+          context.transaction(async (connection) => {
+            const working = await load(connection, sliceName)
+            let published = false
+            const result = await run(
+              working.state,
+              () => read(working.state),
+              working.cursor,
+              async (order) => {
+                if (!Number.isInteger(order) || order < working.cursor) {
+                  throw new Error(
+                    `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
+                  )
+                }
+                working.cursor = order
+                published = true
+              },
+            )
+            if (published) await save(connection, sliceName, working)
+            return result
+          }),
+        catch: (cause) => cause,
+      }),
   }
+}
+
+export function createPostgresSliceStoreLayer<
+  TIdentifier,
+  TWriteState,
+  TReadState,
+>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
+  pool: PostgresPool,
+  createState: () => TWriteState,
+  options: PostgresSliceStoreOptions<TWriteState, TReadState> = {},
+): Layer.Layer<TIdentifier> {
+  return Layer.sync(tag as never, () =>
+    createPostgresSliceStoreService(pool, createState, options),
+  ) as Layer.Layer<TIdentifier>
 }

@@ -1,5 +1,6 @@
 import type { Client } from '@libsql/client'
-import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createSqliteDatabaseContext,
@@ -39,14 +40,14 @@ export async function prepareSqliteSliceStore(client: Client) {
   )`)
 }
 
-export function createSqliteSliceStore<
+export function createSqliteSliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
 >(
   client: Client,
   createState: () => TWriteState,
   options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreAdapter<TWriteState, TReadState> {
+): SliceStoreService<TReadState, TWriteState, unknown> {
   const context = options.context ?? createSqliteDatabaseContext(client)
   const codec = options.codec ?? jsonCodec<TWriteState>()
   const read =
@@ -60,17 +61,17 @@ export function createSqliteSliceStore<
       args: [sliceName],
     })
     const row = result.rows[0]
-    if (!row) return { state: createState(), order: 0 }
+    if (!row) return { state: createState(), cursor: 0 }
     return {
       state: codec.decode(requireString(row.state_json, 'Slice State')),
-      order: requireNumber(row.last_applied_order, 'Slice cursor'),
+      cursor: requireNumber(row.last_applied_order, 'Slice cursor'),
     }
   }
 
   async function save(
     connection: SqliteConnection,
     sliceName: string,
-    entry: { state: TWriteState; order: number },
+    entry: { state: TWriteState; cursor: number },
   ) {
     await connection.execute({
       sql: `INSERT INTO specter_slice_states (
@@ -80,49 +81,63 @@ export function createSqliteSliceStore<
         ) VALUES (?, ?, ?)
         ON CONFLICT(slice_name) DO UPDATE SET
           state_json = excluded.state_json,
-          last_applied_order = excluded.last_applied_order`,
-      args: [sliceName, codec.encode(entry.state), entry.order],
+          last_applied_order = excluded.last_applied_order
+        WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
+      args: [sliceName, codec.encode(entry.state), entry.cursor],
     })
   }
 
-  function toStore(
-    entry: {
-      state: TWriteState
-      order: number
-    },
-    commitAtCursor?: () => Promise<void>,
-  ): SliceStore<TWriteState, TReadState> {
-    return {
-      write: entry.state,
-      get read() {
-        return read(entry.state)
-      },
-      lastAppliedOrder: async () => entry.order,
-      setLastAppliedOrder: async (order) => {
-        if (!Number.isInteger(order) || order < entry.order) {
-          throw new Error(
-            `Slice cursor must advance monotonically from ${entry.order}, received ${order}`,
-          )
-        }
-        entry.order = order
-        await commitAtCursor?.()
-      },
-    }
-  }
-
   return {
-    async get(sliceName) {
-      const connection = context.connection()
-      const entry = await load(connection, sliceName)
-      return toStore(entry, () => save(connection, sliceName, entry))
-    },
-    transaction(sliceName, run) {
-      return context.transaction(async (connection) => {
-        const entry = await load(connection, sliceName)
-        const result = await run(toStore(entry))
-        await save(connection, sliceName, entry)
-        return result
-      })
-    },
+    read: (sliceName, run) =>
+      Effect.tryPromise({
+        try: async () => {
+          const entry = await load(context.connection(), sliceName)
+          return run(read(entry.state), entry.cursor)
+        },
+        catch: (cause) => cause,
+      }),
+    transaction: (sliceName, run) =>
+      Effect.tryPromise({
+        try: () =>
+          context.transaction(async (connection) => {
+            const entry = await load(connection, sliceName)
+            let published = false
+            const result = await run(
+              entry.state,
+              () => read(entry.state),
+              entry.cursor,
+              async (order) => {
+                if (!Number.isInteger(order) || order < entry.cursor) {
+                  throw new Error(
+                    `Slice cursor must advance monotonically from ${entry.cursor}, received ${order}`,
+                  )
+                }
+                entry.cursor = order
+                published = true
+              },
+            )
+            if (published) await save(connection, sliceName, entry)
+            return result
+          }),
+        catch: (cause) => cause,
+      }),
   }
+}
+
+export function createSqliteSliceStoreLayer<
+  TIdentifier,
+  TWriteState,
+  TReadState,
+>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
+  client: Client,
+  createState: () => TWriteState,
+  options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
+): Layer.Layer<TIdentifier> {
+  return Layer.sync(tag as never, () =>
+    createSqliteSliceStoreService(client, createState, options),
+  ) as Layer.Layer<TIdentifier>
 }

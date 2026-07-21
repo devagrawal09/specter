@@ -5,7 +5,7 @@ export {
   replay,
   testEventLogAdapter,
   testReactionScheduler,
-  testSliceStoreAdapter,
+  testSliceStoreService,
   testSliceImplementation,
   testSliceImplementations,
 } from './testing'

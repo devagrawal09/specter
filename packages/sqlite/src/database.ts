@@ -1,5 +1,3 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 import type { Client, Transaction } from '@libsql/client'
 
 export type SqliteConnection = Client | Transaction
@@ -14,21 +12,15 @@ export type SqliteDatabaseContext = {
 export function createSqliteDatabaseContext(
   client: Client,
 ): SqliteDatabaseContext {
-  const scopedConnection = new AsyncLocalStorage<SqliteConnection>()
-  const scopedSerialization = new AsyncLocalStorage<boolean>()
   let transactionTail = Promise.resolve()
   let serializationTail = Promise.resolve()
 
   return {
     client,
     connection() {
-      return scopedConnection.getStore() ?? client
+      return client
     },
     async serialize(run) {
-      if (scopedSerialization.getStore() || scopedConnection.getStore()) {
-        return run()
-      }
-
       const previous = serializationTail
       let release = () => {}
       const current = new Promise<void>((resolve) => {
@@ -39,16 +31,13 @@ export function createSqliteDatabaseContext(
       await previous
 
       try {
-        return await scopedSerialization.run(true, run)
+        return await run()
       } finally {
         release()
         if (serializationTail === queued) serializationTail = Promise.resolve()
       }
     },
     async transaction(run) {
-      const active = scopedConnection.getStore()
-      if (active) return run(active)
-
       const previous = transactionTail
       let release = () => {}
       const current = new Promise<void>((resolve) => {
@@ -61,10 +50,7 @@ export function createSqliteDatabaseContext(
       let transaction: Transaction | undefined
       try {
         transaction = await client.transaction('write')
-        const activeTransaction = transaction
-        const result = await scopedConnection.run(activeTransaction, () =>
-          run(activeTransaction),
-        )
+        const result = await run(transaction)
         await transaction.commit()
         return result
       } catch (cause) {

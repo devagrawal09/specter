@@ -1,7 +1,7 @@
 import pendingQuestionsSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { questionAnsweredEvent, questionAskedEvent } from '../events'
 
 type PendingQuestionOption = {
@@ -29,7 +29,7 @@ const pendingQuestions = pendingQuestionsSpec
     }),
   )
   .outputSchema<PendingQuestion[]>()
-  .store(createMemorySliceStore<PendingQuestionsState>(() => ({ pending: {} })))
+  .store(defineMemorySliceStore<PendingQuestionsState>(() => ({ pending: {} })))
   .apply(questionAskedEvent, async (event, state) => {
     const payload = event.payload
     state.pending[payload.questionId] = {

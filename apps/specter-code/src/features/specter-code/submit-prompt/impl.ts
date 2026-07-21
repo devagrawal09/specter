@@ -1,7 +1,7 @@
 import submitPromptSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunRequestedEvent, userMessageSubmittedEvent } from '../events'
 
 const submitPrompt = submitPromptSpec
@@ -20,7 +20,7 @@ const submitPrompt = submitPromptSpec
       }),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const content = command.content.trim()

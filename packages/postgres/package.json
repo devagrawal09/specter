@@ -24,9 +24,13 @@
     "@specter-ts/core": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*"
   },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.78"
+  },
   "devDependencies": {
     "@types/pg": "^8.15.5",
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "pg": "^8.16.3",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",

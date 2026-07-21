@@ -1,7 +1,7 @@
 import ptySessionsSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   ptySessionEndedEvent,
   ptySessionOutputEvent,
@@ -40,7 +40,7 @@ const ptySessions = ptySessionsSpec
     }),
   )
   .outputSchema<PtySessionProjection[]>()
-  .store(createMemorySliceStore<PtySessionsState>(() => ({ sessions: {} })))
+  .store(defineMemorySliceStore<PtySessionsState>(() => ({ sessions: {} })))
   .apply(ptySessionStartedEvent, async (event, state) => {
     const payload = event.payload
     state.sessions[payload.ptySessionId] = {

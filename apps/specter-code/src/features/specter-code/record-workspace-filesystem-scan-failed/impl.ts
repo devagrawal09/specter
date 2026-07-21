@@ -1,7 +1,7 @@
 import recordWorkspaceFilesystemScanFailedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanFailedEvent } from '../events'
 
 const recordWorkspaceFilesystemScanFailed =
@@ -13,7 +13,7 @@ const recordWorkspaceFilesystemScanFailed =
         error: z.string(),
       }),
     )
-    .store(createMemorySliceStore(() => ({})))
+    .store(defineMemorySliceStore(() => ({})))
     .handle(async (command) => {
       return [
         workspaceFilesystemScanFailedEvent.create({

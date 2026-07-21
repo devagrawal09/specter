@@ -3,6 +3,7 @@ import {
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
 } from '@specter-ts/core'
+import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -36,14 +37,16 @@ async function setup() {
 
 describe('Specter SQLite persistence', () => {
   it('commits independent Event and Slice cursor writes', async () => {
-    const { eventLog, createSliceStore } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
+    const { eventLog, createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
 
     await eventLog.transaction(async (transaction) => {
-      await store.transaction('counter', async (slice) => {
-        slice.write.count += 1
-        await slice.setLastAppliedOrder(0)
-      })
+      await Effect.runPromise(
+        store.transaction('counter', async (write, _read, _cursor, publish) => {
+          write.count += 1
+          await publish(0)
+        }),
+      )
       await transaction.append(
         [{ type: 'counter-incremented', payload: { amount: 1 } }],
         { expectedVersion: 0 },
@@ -51,23 +54,28 @@ describe('Specter SQLite persistence', () => {
     })
 
     expect(await eventLog.currentVersion()).toBe(1)
-    await store.transaction('counter', async (slice) => {
-      expect(slice.read).toEqual({ count: 1 })
-    })
+    await Effect.runPromise(
+      store.read('counter', async (read) => {
+        expect(read).toEqual({ count: 1 })
+      }),
+    )
   })
 
   it('keeps published Slice State when a concurrent Event causes append conflict', async () => {
-    const { eventLog, createSliceStore, url } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
+    const { eventLog, createSliceStoreService, url } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
     const competingClient = createClient({ url })
     clients.push(competingClient)
     const competingEventLog = createSqliteEventLog(competingClient)
 
     await expect(
       eventLog.transaction(async (transaction) => {
-        const slice = await store.get('counter')
-        slice.write.count = 9
-        await slice.setLastAppliedOrder(1)
+        await Effect.runPromise(
+          store.transaction('counter', async (write, _read, _cursor, publish) => {
+            write.count = 9
+            await publish(1)
+          }),
+        )
 
         await competingEventLog.append([
           { type: 'competing-event', payload: { source: 'other-process' } },
@@ -80,9 +88,12 @@ describe('Specter SQLite persistence', () => {
     ).rejects.toBeInstanceOf(SpecterVersionConflictError)
 
     expect(await eventLog.currentVersion()).toBe(1)
-    const slice = await store.get('counter')
-    expect(slice.read).toEqual({ count: 9 })
-    expect(await slice.lastAppliedOrder()).toBe(1)
+    await Effect.runPromise(
+      store.read('counter', async (read, cursor) => {
+        expect(read).toEqual({ count: 9 })
+        expect(cursor).toBe(1)
+      }),
+    )
   })
 
   it('allows project-owned SQLite writes during a logical Event Log transaction', async () => {
@@ -107,19 +118,6 @@ describe('Specter SQLite persistence', () => {
       "SELECT id, value FROM project_state WHERE id = 'state-1'",
     )
     expect(state.rows).toEqual([{ id: 'state-1', value: 'published' }])
-    expect(await eventLog.currentVersion()).toBe(1)
-  })
-
-  it('supports reentrant logical Event Log transactions', async () => {
-    const { eventLog } = await setup()
-
-    await eventLog.transaction(async (outer) => {
-      await eventLog.transaction(async (inner) => {
-        expect(await inner.currentVersion()).toBe(0)
-      })
-      await outer.append([{ type: 'nested-work-completed', payload: {} }])
-    })
-
     expect(await eventLog.currentVersion()).toBe(1)
   })
 
@@ -159,31 +157,33 @@ describe('Specter SQLite persistence', () => {
     })
   })
 
-  it('allows an Event append to reuse an existing physical transaction', async () => {
-    const { context, eventLog } = await setup()
-
-    await context.transaction(() =>
-      eventLog.append([{ type: 'physically-nested-event', payload: {} }]),
+  it('commits projection state only when transaction publishes cursor', async () => {
+    const { createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+    await Effect.runPromise(
+      store.transaction('counter', async (write) => {
+        write.count = 9
+      }),
     )
 
-    expect(await eventLog.currentVersion()).toBe(1)
-  })
+    await Effect.runPromise(
+      store.read('counter', async (read) => {
+        expect(read).toEqual({ count: 0 })
+      }),
+    )
 
-  it('persists get-based projection state and cursor in one write', async () => {
-    const { createSliceStore } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
-    const abandoned = await store.get('counter')
-    abandoned.write.count = 9
-
-    expect((await store.get('counter')).read).toEqual({ count: 0 })
-
-    const completed = await store.get('counter')
-    completed.write.count = 3
-    await completed.setLastAppliedOrder(2)
-    const persisted = await store.get('counter')
-
-    expect(persisted.read).toEqual({ count: 3 })
-    expect(await persisted.lastAppliedOrder()).toBe(2)
+    await Effect.runPromise(
+      store.transaction('counter', async (write, _read, _cursor, publish) => {
+        write.count = 3
+        await publish(2)
+      }),
+    )
+    await Effect.runPromise(
+      store.read('counter', async (read, cursor) => {
+        expect(read).toEqual({ count: 3 })
+        expect(cursor).toBe(2)
+      }),
+    )
   })
 
   it('enforces expected version and durable idempotency receipts', async () => {

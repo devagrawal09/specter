@@ -1,7 +1,7 @@
 import recordWorkspaceFilesystemScanCompletedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanCompletedEvent } from '../events'
 
 const recordWorkspaceFilesystemScanCompleted =
@@ -15,7 +15,7 @@ const recordWorkspaceFilesystemScanCompleted =
         deletedNodeCount: z.number().int().nonnegative(),
       }),
     )
-    .store(createMemorySliceStore(() => ({})))
+    .store(defineMemorySliceStore(() => ({})))
     .handle(async (command) => {
       return [
         workspaceFilesystemScanCompletedEvent.create({

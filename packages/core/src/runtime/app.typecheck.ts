@@ -7,7 +7,6 @@ import type {
   SpecterAppConfigOf,
   SpecterCommandEnvelope,
   SpecterQueryEnvelope,
-  SliceStoreAdapter,
 } from '..'
 import * as core from '..'
 
@@ -36,7 +35,6 @@ type Config = Omit<SpecterAppConfig, 'slices'> & {
 }
 
 declare const app: SpecterApp<Config>
-declare const store: SliceStoreAdapter<{ count: number }>
 
 const execution = app.command({
   type: 'addTodo',
@@ -57,13 +55,6 @@ app.command({ type: 'addTodo', payload: { completed: false } })
 app.query({ type: 'todoCount', payload: { title: 'wrong' } })
 // @ts-expect-error Reaction names are not remotely dispatchable Queries.
 app.query({ type: 'notifyTodo', payload: undefined })
-
-async function readCapabilityIsReadonly() {
-  const state = (await store.get('counter')).read
-  // @ts-expect-error Handler read capabilities are immutable by default.
-  state.count += 1
-}
-void readCapabilityIsReadonly
 
 // @ts-expect-error Specification builders are available only from /spec.
 core.createCommandSlice

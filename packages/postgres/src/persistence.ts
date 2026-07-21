@@ -9,7 +9,7 @@ import {
   type PostgresEventLogOptions,
 } from './event-log'
 import {
-  createPostgresSliceStore,
+  createPostgresSliceStoreService,
   preparePostgresSliceStore,
   type PostgresSliceStoreOptions,
 } from './slice-store'
@@ -37,14 +37,14 @@ export function createSpecterPostgresPersistence(
     createReactionOutboxStore<TPayload>() {
       return createPostgresReactionOutboxStore<TPayload>(pool, { context })
     },
-    createSliceStore<TWriteState, TReadState = Readonly<TWriteState>>(
+    createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,
       storeOptions: Omit<
         PostgresSliceStoreOptions<TWriteState, TReadState>,
         'context' | keyof PostgresDatabaseOptions
       > = {},
     ) {
-      return createPostgresSliceStore(pool, createState, {
+      return createPostgresSliceStoreService(pool, createState, {
         ...storeOptions,
         context,
       })

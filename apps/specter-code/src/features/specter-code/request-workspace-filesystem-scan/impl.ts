@@ -1,7 +1,7 @@
 import requestWorkspaceFilesystemScanSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanRequestedEvent } from '../events'
 
 const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
@@ -27,7 +27,7 @@ const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
       ]),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [
       workspaceFilesystemScanRequestedEvent.create({

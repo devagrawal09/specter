@@ -1,7 +1,7 @@
 import sessionTranscriptSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunRequestedEvent,
   postReplyCreatedEvent,
@@ -34,7 +34,7 @@ const sessionTranscript = sessionTranscriptSpec
   .inputSchema(z.object({ sessionId: z.string() }))
   .outputSchema<TranscriptItem[]>()
   .store(
-    createMemorySliceStore<SessionTranscriptState>(() => ({
+    defineMemorySliceStore<SessionTranscriptState>(() => ({
       items: [],
       messageSessions: {},
       runMessageIds: {},

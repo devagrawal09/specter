@@ -1,7 +1,7 @@
 import recordAgentRunStreamedSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStreamedEvent } from '../events'
 
 const recordAgentRunStreamed = recordAgentRunStreamedSpec
@@ -15,7 +15,7 @@ const recordAgentRunStreamed = recordAgentRunStreamedSpec
       delta: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const delta = command.delta
 

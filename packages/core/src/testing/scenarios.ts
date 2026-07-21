@@ -1,4 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest'
+import { Context, Effect } from 'effect'
+
+import type { SliceStoreService } from '../adapters'
 
 import {
   assertConforms,
@@ -17,7 +20,9 @@ import {
 
 export type ScenarioTestOptions = {
   readonly events: readonly ApplyEventDefinition[]
-  readonly runScenario?: <T>(run: () => Promise<T>) => Promise<T>
+  readonly runScenario?: <T>(
+    program: Effect.Effect<T, unknown, unknown>,
+  ) => Promise<T>
 }
 
 export function testSliceImplementation(
@@ -31,13 +36,18 @@ export function testSliceImplementations(
   implementations: readonly SliceRegistration[],
   options: ScenarioTestOptions,
 ) {
-  const runScenario = options.runScenario ?? ((run) => run())
+  const runScenario =
+    options.runScenario ??
+    (<T>(program: Effect.Effect<T, unknown, unknown>) =>
+      Effect.runPromise(program as Effect.Effect<T, unknown, never>))
 
   describe('Specter Slice implementations', () => {
     beforeAll(() =>
-      assertConforms(
-        { events: options.events, slices: implementations },
-        { requireCommandSlice: false },
+      Effect.runPromise(
+        assertConforms(
+          { events: options.events, slices: implementations },
+          { requireCommandSlice: false },
+        ),
       ),
     )
 
@@ -84,42 +94,50 @@ function testCommandScenario(
   implementation: Extract<SliceRegistration, { kind: 'command' }>,
   scenario: CommandScenario,
   eventDefinitions: readonly ApplyEventDefinition[],
-  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
-    const result = await runScenario(async () => {
-      await replay([implementation], eventDefinitions, scenario.given)
-      const state = await implementation.store.get(implementation.name)
-      const command = await decodeOptionalSchema(
-        implementation.inputSchema,
-        scenario.when,
-      )
+    const result = await runScenario(
+      replay([implementation], eventDefinitions, scenario.given).pipe(
+        Effect.andThen(
+          Effect.result(withStoreRead(implementation, async (state) => {
+            const command = await decodeOptionalSchema(
+              implementation.inputSchema,
+              scenario.when,
+            )
 
-      try {
-        const events = await implementation.handle(command, state.read)
+            const events = await implementation.handle(command, state)
 
-        if (events.length === 0) {
-          throw new Error(`Command emitted no events: ${implementation.name}`)
-        }
-
-        const allowedEventTypes = commandScenarioEventTypes(implementation)
-        const decodedEvents = await Promise.all(
-          events.map(async (draft, index) => {
-            if (!allowedEventTypes.has(draft.type)) {
+            if (events.length === 0) {
               throw new Error(
-                `Command "${implementation.name}" emitted unauthorized Event "${draft.type}" at index ${index}.`,
+                `Command emitted no events: ${implementation.name}`,
               )
             }
 
-            return decodeEventDraft(eventDefinitions, draft)
-          }),
-        )
+            const allowedEventTypes = commandScenarioEventTypes(implementation)
+            const decodedEvents = await Promise.all(
+              events.map(async (draft, index) => {
+                if (!allowedEventTypes.has(draft.type)) {
+                  throw new Error(
+                    `Command "${implementation.name}" emitted unauthorized Event "${draft.type}" at index ${index}.`,
+                  )
+                }
 
-        return { _tag: 'Right' as const, right: decodedEvents }
-      } catch (error) {
-        return { _tag: 'Left' as const, left: error }
-      }
-    })
+                return decodeEventDraft(eventDefinitions, draft)
+              }),
+            )
+
+            return decodedEvents
+          })).pipe(
+            Effect.map((result) =>
+              result._tag === 'Failure'
+                ? { _tag: 'Left' as const, left: result.failure }
+                : { _tag: 'Right' as const, right: result.success },
+            ),
+          ),
+        ),
+      ),
+    )
 
     if (scenario.expect.length === 0) {
       expect(result._tag).toBe('Left')
@@ -162,20 +180,24 @@ function testQueryScenario(
   implementation: Extract<SliceRegistration, { kind: 'query' }>,
   scenario: QueryScenario,
   eventDefinitions: readonly ApplyEventDefinition[],
-  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
-    const result = await runScenario(async () => {
-      await replay([implementation], eventDefinitions, scenario.given)
-      const state = await implementation.store.get(implementation.name)
-      const input = await decodeOptionalSchema(
-        implementation.inputSchema,
-        scenario.when,
-      )
-      const output = await implementation.handle(input, state.read)
+    const result = await runScenario(
+      replay([implementation], eventDefinitions, scenario.given).pipe(
+        Effect.andThen(
+          withStoreRead(implementation, async (state) => {
+            const input = await decodeOptionalSchema(
+              implementation.inputSchema,
+              scenario.when,
+            )
+            const output = await implementation.handle(input, state)
 
-      return decodeOptionalSchema(implementation.outputSchema, output)
-    })
+            return decodeOptionalSchema(implementation.outputSchema, output)
+          }),
+        ),
+      ),
+    )
     expect(result).toEqual(scenario.expect)
   })
 }
@@ -184,18 +206,24 @@ function testReactionScenario(
   implementation: Extract<SliceRegistration, { kind: 'reaction' }>,
   scenario: ReactionScenario,
   eventDefinitions: readonly ApplyEventDefinition[],
-  runScenario: <T>(run: () => Promise<T>) => Promise<T>,
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
   it(scenario.description, async () => {
-    const result = await runScenario(async () => {
-      await replay([implementation], eventDefinitions, scenario.given)
-      const state = await implementation.store.get(implementation.name)
-      const output = await implementation.handle(state.read)
+    const result = await runScenario(
+      replay([implementation], eventDefinitions, scenario.given).pipe(
+        Effect.andThen(
+          withStoreRead(implementation, async (state) => {
+            const output = await implementation.handle(state)
 
-      if (output === undefined) return []
+            if (output === undefined) return []
 
-      return [await decodeOptionalSchema(implementation.outputSchema, output)]
-    })
+            return [
+              await decodeOptionalSchema(implementation.outputSchema, output),
+            ]
+          }),
+        ),
+      ),
+    )
     expect(result).toEqual(scenario.expect)
   })
 }
@@ -222,11 +250,12 @@ async function decodeEventDraft(
   }
 }
 
-export async function replay(
+export function replay(
   implementations: readonly SliceRegistration[],
   eventDefinitions: readonly ApplyEventDefinition[],
   events: readonly ScenarioEvent[],
 ) {
+  return Effect.gen(function* () {
   const definitionsByType = new Map(
     eventDefinitions.map(
       (definition) => [definition.type, definition] as const,
@@ -242,7 +271,9 @@ export async function replay(
     const id = `scenario-event-${index + 1}`
     const order = index + 1
     const recordedAt = '1970-01-01T00:00:00.000Z'
-    const payload = await definition.decode(scenarioEvent.examplePayload)
+    const payload = yield* Effect.promise(() =>
+      definition.decode(scenarioEvent.examplePayload),
+    )
     if (!valuesEqual(payload, scenarioEvent.examplePayload)) {
       throw new Error(
         `Event schema transformed Scenario Event payload for "${scenarioEvent.eventType}".`,
@@ -255,18 +286,55 @@ export async function replay(
       )
       if (!apply) continue
 
-      const state = await implementation.store.get(implementation.name)
-      await apply.handle(
-        {
-          type: scenarioEvent.eventType,
-          payload,
-          id,
-          recordedAt,
+      yield* withStoreTransaction(
+        implementation,
+        async (write, _read, _cursor, publishCursor) => {
+          await apply.handle(
+            {
+              type: scenarioEvent.eventType,
+              payload,
+              id,
+              recordedAt,
+            },
+            write,
+          )
+          await publishCursor(order)
         },
-        state.write,
       )
-
-      await state.setLastAppliedOrder(order)
     }
   }
+  })
+}
+
+function resolveStore(implementation: SliceRegistration) {
+  return Effect.gen(function* () {
+    const context = yield* Effect.context<never>()
+    const found = Context.getOption(context, implementation.store as never)
+    if (found._tag === 'None') {
+      return yield* Effect.fail(
+        new Error(
+          `Missing Slice Store Layer for "${implementation.name}" (${implementation.store.key}).`,
+        ),
+      )
+    }
+    return found.value as SliceStoreService<unknown, unknown, unknown>
+  })
+}
+
+function withStoreRead<T>(
+  implementation: SliceRegistration,
+  run: (state: unknown, cursor: number) => Promise<T>,
+) {
+  return resolveStore(implementation).pipe(
+    Effect.flatMap((store) => store.read(implementation.name, run)),
+  )
+}
+
+function withStoreTransaction<T>(
+  implementation: SliceRegistration,
+  run: Parameters<SliceStoreService<unknown, unknown, unknown>['transaction']>[1],
+) {
+  return resolveStore(implementation).pipe(
+    Effect.flatMap((store) => store.transaction(implementation.name, run)),
+  ) as Effect.Effect<T, unknown>
 }

@@ -1,7 +1,7 @@
 import workspaceFilesystemStatusSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceFilesystemInitializedEvent,
   workspaceFilesystemScanCompletedEvent,
@@ -72,7 +72,7 @@ const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
   )
   .outputSchema<WorkspaceFilesystemStatus>()
   .store(
-    createMemorySliceStore<WorkspaceFilesystemStatusState>(() => ({
+    defineMemorySliceStore<WorkspaceFilesystemStatusState>(() => ({
       statuses: {},
     })),
   )

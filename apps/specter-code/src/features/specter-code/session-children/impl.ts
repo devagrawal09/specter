@@ -1,7 +1,7 @@
 import sessionChildrenSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   sessionCreatedEvent,
   sessionDeletedEvent,
@@ -32,7 +32,7 @@ type SessionChildrenState = {
 const sessionChildren = sessionChildrenSpec
   .inputSchema(z.object({ sessionId: z.string() }))
   .outputSchema<SessionChild[]>()
-  .store(createMemorySliceStore<SessionChildrenState>(() => ({ sessions: {} })))
+  .store(defineMemorySliceStore<SessionChildrenState>(() => ({ sessions: {} })))
   .apply(sessionCreatedEvent, async (event, state) => {
     const payload = event.payload
     if (!payload.parentSessionId) return

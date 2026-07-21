@@ -1,7 +1,7 @@
 import createWorkspaceSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceCreatedEvent,
   workspaceFilesystemInitializedEvent,
@@ -22,7 +22,7 @@ const createWorkspace = createWorkspaceSpec
         .optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const name = command.name.trim()
     const workspaceId = command.workspaceId

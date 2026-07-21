@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
+import { Effect } from 'effect'
 
 import type {
   EventLogAdapter,
   ReactionScheduler,
-  SliceStoreAdapter,
+  SliceStoreService,
 } from '../adapters'
 
 type AdapterFactory<T> = () => T | Promise<T>
@@ -60,45 +61,59 @@ export function testEventLogAdapter(
 }
 
 export type SliceStoreConformanceOptions<TWriteState, TReadState, TValue> = {
-  readonly createAdapter: AdapterFactory<
-    SliceStoreAdapter<TWriteState, TReadState>
+  readonly createService: AdapterFactory<
+    SliceStoreService<TReadState, TWriteState, unknown>
   >
   readonly write: (state: TWriteState, value: TValue) => void | Promise<void>
   readonly read: (state: TReadState) => TValue | Promise<TValue>
   readonly value: TValue
 }
 
-export function testSliceStoreAdapter<TWriteState, TReadState, TValue>(
+export function testSliceStoreService<TWriteState, TReadState, TValue>(
   name: string,
   options: SliceStoreConformanceOptions<TWriteState, TReadState, TValue>,
 ) {
-  describe(`${name} Slice Store adapter`, () => {
+  describe(`${name} Slice Store service`, () => {
     it('publishes state and cursor through the store boundary', async () => {
-      const adapter = await options.createAdapter()
-      const staged = await adapter.get('adapterConformance')
-      expect(await staged.lastAppliedOrder()).toBe(0)
-      await options.write(staged.write, options.value)
-      await staged.setLastAppliedOrder(7)
+      const service = await options.createService()
+      await Effect.runPromise(
+        service.transaction(
+          'adapterConformance',
+          async (write, _read, cursor, publishCursor) => {
+            expect(cursor).toBe(0)
+            await options.write(write, options.value)
+            await publishCursor(7)
+          },
+        ),
+      )
 
-      const published = await adapter.get('adapterConformance')
-      expect(await options.read(published.read)).toEqual(options.value)
-      expect(await published.lastAppliedOrder()).toBe(7)
+      const published = await Effect.runPromise(
+        service.read('adapterConformance', async (read, cursor) => ({
+          value: await options.read(read),
+          cursor,
+        })),
+      )
+      expect(published).toEqual({ value: options.value, cursor: 7 })
     })
 
     it('runs grouped work through transaction', async () => {
-      const adapter = await options.createAdapter()
-      const result = await adapter.transaction(
-        'adapterConformance',
-        async (store) => {
-          await options.write(store.write, options.value)
-          await store.setLastAppliedOrder(9)
-          return options.read(store.read)
-        },
+      const service = await options.createService()
+      const result = await Effect.runPromise(
+        service.transaction(
+          'adapterConformance',
+          async (write, read, _cursor, publishCursor) => {
+            await options.write(write, options.value)
+            await publishCursor(9)
+            return options.read(read())
+          },
+        ),
       )
 
       expect(result).toEqual(options.value)
       await expect(
-        (await adapter.get('adapterConformance')).lastAppliedOrder(),
+        Effect.runPromise(
+          service.read('adapterConformance', async (_read, cursor) => cursor),
+        ),
       ).resolves.toBe(9)
     })
   })

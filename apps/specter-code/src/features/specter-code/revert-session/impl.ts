@@ -1,7 +1,7 @@
 import revertSessionSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionRevertRequestedEvent } from '../events'
 
 const fileSnapshotInput = z.object({
@@ -26,7 +26,7 @@ const revertSession = revertSessionSpec
       reason: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     if (command.snapshots.length === 0) {

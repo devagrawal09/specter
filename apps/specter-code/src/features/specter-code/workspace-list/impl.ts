@@ -1,7 +1,7 @@
 import workspaceListSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceCreatedEvent } from '../events'
 
 type WorkspaceListItem = {
@@ -20,7 +20,7 @@ type WorkspaceListState = {
 const workspaceList = workspaceListSpec
   .inputSchema(z.object({}))
   .outputSchema<WorkspaceListItem[]>()
-  .store(createMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
+  .store(defineMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
   .apply(workspaceCreatedEvent, async (event, state) => {
     const payload = event.payload
 

@@ -1,7 +1,8 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, test } from 'vitest'
+import { Effect } from 'effect'
 
-import type { SliceStoreAdapter } from '../adapters'
+import { createTestSliceStore } from '../testing/test-slice-store'
 import {
   assertConforms,
   collectConformanceDiagnostics,
@@ -22,25 +23,6 @@ function schema<TInput, TOutput>(
       validate: (value) => ({ value: decode(value as TInput) }),
     },
   }
-}
-
-function memoryStore<TState extends object>(
-  state: TState,
-): SliceStoreAdapter<TState> {
-  const adapter: SliceStoreAdapter<TState> = {
-    async get() {
-      return {
-        write: state,
-        read: state,
-        lastAppliedOrder: async () => 0,
-        setLastAppliedOrder: async () => undefined,
-      }
-    },
-    async transaction(sliceName, run) {
-      return run(await adapter.get(sliceName))
-    },
-  }
-  return adapter
 }
 
 describe('conformance diagnostics', () => {
@@ -79,7 +61,7 @@ describe('conformance diagnostics', () => {
       })
     const implementation = specification
       .inputSchema<{ value: number }>()
-      .store(memoryStore({ value: 0 }))
+      .store(createTestSliceStore({ value: 0 }).tag)
       .apply(applyOnly, async (applied, state) => {
         state.value = applied.payload.value
       })
@@ -94,7 +76,9 @@ describe('conformance diagnostics', () => {
       slices: [implementation],
     }
 
-    const diagnostics = await collectConformanceDiagnostics(input)
+    const diagnostics = await Effect.runPromise(
+      collectConformanceDiagnostics(input),
+    )
 
     expect(diagnostics).toEqual(
       expect.arrayContaining([
@@ -118,7 +102,12 @@ describe('conformance diagnostics', () => {
       ]),
     )
 
-    await expect(assertConforms(input)).rejects.toMatchObject({
+    const result = await Effect.runPromise(Effect.result(assertConforms(input)))
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Success') throw new Error('conformance unexpectedly passed')
+    const failure: SpecterConformanceError = result.failure
+    expect(failure).toMatchObject({
+      _tag: 'SpecterConformanceError',
       name: 'SpecterConformanceError',
       diagnostics,
       errors: expect.arrayContaining([
@@ -145,17 +134,19 @@ describe('conformance diagnostics', () => {
         expect: [event('value-recorded', { value: 2 })],
       })
       .inputSchema<{ value: number }>()
-      .store(memoryStore({ value: 0 }))
+      .store(createTestSliceStore({ value: 0 }).tag)
       .apply(valueRecorded, async (applied, state) => {
         state.value = applied.payload.value
       })
       .handle(async (command) => [valueRecorded.create(command)])
 
     await expect(
-      collectConformanceDiagnostics({
-        events: [valueRecorded],
-        slices: [implementation],
-      }),
+      Effect.runPromise(
+        collectConformanceDiagnostics({
+          events: [valueRecorded],
+          slices: [implementation],
+        }),
+      ),
     ).resolves.toEqual([])
   })
 
@@ -174,20 +165,24 @@ describe('conformance diagnostics', () => {
       })
       .inputSchema<Record<string, never>>()
       .outputSchema<number>()
-      .store(memoryStore({ value: 0 }))
+      .store(createTestSliceStore({ value: 0 }).tag)
       .apply(valueRecorded, async (applied, state) => {
         state.value = applied.payload.value
       })
       .handle(async (_input, state) => state.value)
 
     await expect(
-      assertConforms(
-        { events: [valueRecorded], slices: [query] },
-        { requireCommandSlice: false },
+      Effect.runPromise(
+        assertConforms(
+          { events: [valueRecorded], slices: [query] },
+          { requireCommandSlice: false },
+        ),
       ),
     ).resolves.toBeUndefined()
     await expect(
-      assertConforms({ events: [valueRecorded], slices: [query] }),
+      Effect.runPromise(
+        assertConforms({ events: [valueRecorded], slices: [query] }),
+      ),
     ).rejects.toMatchObject({
       diagnostics: expect.arrayContaining([
         expect.objectContaining({ code: 'missing-command-slice' }),
@@ -209,14 +204,16 @@ describe('conformance diagnostics', () => {
         expect: [event('value-recorded', 1)],
       })
       .inputSchema<number>()
-      .store(memoryStore({}))
+      .store(createTestSliceStore({}).tag)
       .handle(async (value) => [valueRecorded.create(value)])
 
     await expect(
-      assertConforms({
-        events: [valueRecorded],
-        slices: [implementation],
-      }),
+      Effect.runPromise(
+        assertConforms({
+          events: [valueRecorded],
+          slices: [implementation],
+        }),
+      ),
     ).rejects.toMatchObject({
       code: 'SPECTER_CONFORMANCE_FAILED',
       diagnostics: expect.arrayContaining([
@@ -245,16 +242,18 @@ describe('conformance diagnostics', () => {
       .outputSchema(
         schema<{ value: number }, string>(({ value }) => `Value ${value}`),
       )
-      .store(memoryStore({ value: 0 }))
+      .store(createTestSliceStore({ value: 0 }).tag)
       .apply(valueRecorded, async (applied, state) => {
         state.value = applied.payload
       })
       .handle(async (_input, state) => ({ value: state.value }))
 
     await expect(
-      assertConforms(
-        { events: [valueRecorded], slices: [query] },
-        { requireCommandSlice: false },
+      Effect.runPromise(
+        assertConforms(
+          { events: [valueRecorded], slices: [query] },
+          { requireCommandSlice: false },
+        ),
       ),
     ).resolves.toBeUndefined()
   })

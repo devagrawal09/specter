@@ -1,7 +1,7 @@
 import recordFilesystemNodeDiscoveredSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { filesystemNodeDiscoveredEvent } from '../events'
 
 const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
@@ -17,7 +17,7 @@ const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
       modifiedAt: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     if (
       command.path.startsWith('/') ||

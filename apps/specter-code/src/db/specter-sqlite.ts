@@ -9,8 +9,6 @@ import {
   type EventLogAppendOptions,
   type EventLogCommit,
   type PersistedEvent,
-  type SliceStore,
-  type SliceStoreAdapter,
 } from '@specter-ts/core'
 
 export type SqliteDb = Client | Transaction
@@ -26,11 +24,6 @@ export type SpecterSqliteEventRecord = {
   type: string
   payload: unknown
   recordedAt: string
-}
-
-type SliceEntry<TState> = {
-  state: TState
-  order: number
 }
 
 const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
@@ -212,24 +205,6 @@ export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
 
 export function hasSqliteDbBinding() {
   return scopedSqliteDb.getStore() !== undefined
-}
-
-export function createSqliteSliceStore<TState>(
-  createState: () => TState,
-): SliceStoreAdapter<TState> {
-  return {
-    get: async (sliceName) => createSliceStore(sliceName, createState),
-    transaction: (sliceName, run) =>
-      runInTransaction(async () => {
-        const entry = await loadSliceEntry(sliceName, createState)
-        const store = createStore(sliceName, entry, true)
-        const result = await run(store)
-
-        await saveSliceEntry(sliceName, entry)
-
-        return result
-      }),
-  }
 }
 
 export async function querySpecterSqliteEvents(
@@ -484,105 +459,6 @@ async function runInTransaction<T>(run: () => Promise<T>) {
 
 function isTransaction(db: SqliteDb): db is Transaction {
   return !('transaction' in db)
-}
-
-async function createSliceStore<TState>(
-  sliceName: string,
-  createState: () => TState,
-): Promise<SliceStore<TState>> {
-  const entry = await loadSliceEntry(sliceName, createState)
-  return createStore(sliceName, entry, false)
-}
-
-function createStore<TState>(
-  sliceName: string,
-  entry: SliceEntry<TState>,
-  persistAfterTransaction: boolean,
-): SliceStore<TState> {
-  return {
-    write: entry.state,
-    read: entry.state,
-    lastAppliedOrder: async () => entry.order,
-    setLastAppliedOrder: async (order) => {
-      entry.order = order
-
-      if (!persistAfterTransaction) {
-        await saveSliceEntry(sliceName, entry)
-      }
-    },
-  }
-}
-
-async function loadSliceEntry<TState>(
-  sliceName: string,
-  createState: () => TState,
-): Promise<SliceEntry<TState>> {
-  const result = await getDb().execute({
-    sql: `
-      SELECT state_json, last_applied_order
-      FROM specter_slice_states
-      WHERE slice_name = ?
-    `,
-    args: [sliceName],
-  })
-  const row = result.rows[0]
-
-  if (!row) {
-    return { state: createState(), order: 0 }
-  }
-
-  return {
-    state: deserializeState(toStringValue(row.state_json)) as TState,
-    order: toNumber(row.last_applied_order),
-  }
-}
-
-async function saveSliceEntry<TState>(
-  sliceName: string,
-  entry: SliceEntry<TState>,
-) {
-  await getDb().execute({
-    sql: `
-      INSERT INTO specter_slice_states (
-        slice_name,
-        state_json,
-        last_applied_order
-      )
-      VALUES (?, ?, ?)
-      ON CONFLICT(slice_name) DO UPDATE SET
-        state_json = excluded.state_json,
-        last_applied_order = excluded.last_applied_order
-    `,
-    args: [sliceName, serializeState(entry.state), entry.order],
-  })
-}
-
-function serializeState(value: unknown) {
-  return JSON.stringify(value, (_key, nestedValue) => {
-    if (nestedValue instanceof Set) {
-      return {
-        __specterSerializedType: 'Set',
-        values: [...nestedValue],
-      }
-    }
-
-    return nestedValue
-  })
-}
-
-function deserializeState(value: string) {
-  return JSON.parse(value, (_key, nestedValue) => {
-    if (
-      nestedValue &&
-      typeof nestedValue === 'object' &&
-      nestedValue.__specterSerializedType === 'Set' &&
-      Array.isArray(nestedValue.values)
-    ) {
-      return new Set(nestedValue.values)
-    }
-
-    return nestedValue
-  })
 }
 
 function toStringValue(value: unknown) {

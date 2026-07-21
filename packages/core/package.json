@@ -38,10 +38,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@standard-schema/spec": "^1.1.0",
-    "effect": "^3.21.2"
+    "@standard-schema/spec": "^1.1.0"
   },
   "peerDependencies": {
+    "effect": "4.0.0-beta.78",
     "vitest": "^4.1.5"
   },
   "peerDependenciesMeta": {
@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

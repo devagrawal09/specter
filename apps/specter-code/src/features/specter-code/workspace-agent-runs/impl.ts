@@ -1,7 +1,7 @@
 import workspaceAgentRunsSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -34,7 +34,7 @@ const workspaceAgentRuns = workspaceAgentRunsSpec
     }),
   )
   .outputSchema<WorkspaceAgentRun[]>()
-  .store(createMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
+  .store(defineMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
   .apply(agentRunRequestedEvent, async (event, state) => {
     const payload = event.payload
     if (payload.workspaceId) {

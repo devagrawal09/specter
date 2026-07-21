@@ -1,7 +1,7 @@
 import workspaceFilesystemTreeSpec from './spec'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   filesystemNodeChangedEvent,
   filesystemNodeDeletedEvent,
@@ -31,7 +31,7 @@ const workspaceFilesystemTree = workspaceFilesystemTreeSpec
   )
   .outputSchema<WorkspaceFilesystemNode[]>()
   .store(
-    createMemorySliceStore<WorkspaceFilesystemTreeState>(() => ({ nodes: [] })),
+    defineMemorySliceStore<WorkspaceFilesystemTreeState>(() => ({ nodes: [] })),
   )
   .apply(filesystemNodeDiscoveredEvent, async (event, state) => {
     const payload = event.payload

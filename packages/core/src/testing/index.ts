@@ -2,7 +2,7 @@ export { eventsFor } from './events-for'
 export {
   testEventLogAdapter,
   testReactionScheduler,
-  testSliceStoreAdapter,
+  testSliceStoreService,
 } from './adapter-conformance'
 export type { SliceStoreConformanceOptions } from './adapter-conformance'
 export {
