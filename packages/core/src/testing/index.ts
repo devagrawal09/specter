@@ -1,5 +1,11 @@
 export { eventsFor } from './events-for'
 export {
+  testEventLogAdapter,
+  testReactionScheduler,
+  testSliceStoreAdapter,
+} from './adapter-conformance'
+export type { SliceStoreConformanceOptions } from './adapter-conformance'
+export {
   analyzeEventPropagation,
   formatEventPropagation,
   type EventApplyReference,

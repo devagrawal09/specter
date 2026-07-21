@@ -3,6 +3,9 @@ export {
   eventsFor,
   formatEventPropagation,
   replay,
+  testEventLogAdapter,
+  testReactionScheduler,
+  testSliceStoreAdapter,
   testSliceImplementation,
   testSliceImplementations,
 } from './testing'
@@ -16,4 +19,5 @@ export type {
   ReactionScenario,
   ScenarioEvent,
   ScenarioTestOptions,
+  SliceStoreConformanceOptions,
 } from './testing'

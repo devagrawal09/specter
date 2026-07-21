@@ -41,8 +41,6 @@ const durableReactionScheduler = createDurableReactionScheduler(
     maxAttempts: 10,
     backoffMs: (attemptNumber) =>
       Math.min(5 * 60_000, 5_000 * 2 ** (attemptNumber - 1)),
-    onBackgroundError: (cause) =>
-      console.error('Narayan Reaction worker failed', cause),
   },
 )
 

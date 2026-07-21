@@ -46,10 +46,6 @@ const durableSchedule = createDurableReactionScheduler(
   createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
     context: operationalContext,
   }),
-  {
-    onBackgroundError: (cause) =>
-      console.error('Specter Reaction worker failed', cause),
-  },
 )
 const specterApp = await createSpecterApp(
   createTodoSpecterAppConfig(persistence.eventLog, (run) =>

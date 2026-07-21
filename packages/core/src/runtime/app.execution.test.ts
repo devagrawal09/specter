@@ -203,6 +203,61 @@ const immediateScheduler: ReactionScheduler = (run) => {
 }
 
 describe('createSpecterApp execution contracts', () => {
+  test('awaits one startup Reaction recovery pass when Reactions exist', async () => {
+    const sourceRecorded = createEventDefinition(
+      'source-recorded',
+      schema<number, number>((value) => value),
+    )
+    const delivered = vi.fn(async () => undefined)
+    const command = createCommandSlice('recordSource')
+      .description('Records a source.')
+      .scenarios({
+        description: 'Records a source.',
+        given: [],
+        when: 7,
+        expect: [event('source-recorded', 7)],
+      })
+      .inputSchema<number>()
+      .store(memoryStore({}))
+      .handle(async (value) => [sourceRecorded.create(value)])
+    const reaction = createReactionSlice('recoverSource')
+      .description('Recovers committed source work on startup.')
+      .scenarios({
+        description: 'Delivers a committed source.',
+        given: [event('source-recorded', 7)],
+        expect: [7],
+      })
+      .outputSchema<number>()
+      .plugin(async () => delivered)
+      .store(memoryStore({ value: 0 }))
+      .apply(sourceRecorded, async (applied, state) => {
+        state.value = applied.payload
+      })
+      .handle(async (state) => state.value)
+
+    await createSpecterApp({
+      events: [sourceRecorded],
+      eventLog: memoryEventLog([
+        {
+          id: 'event-1',
+          order: 1,
+          recordedAt: '2026-07-20T00:00:00.000Z',
+          type: 'source-recorded',
+          payload: 7,
+        },
+      ]).adapter,
+      schedule: immediateScheduler,
+      slices: [command, reaction],
+    })
+
+    expect(delivered).toHaveBeenCalledWith(
+      7,
+      expect.objectContaining({
+        deliveryId: expect.stringContaining('recoverSource:1'),
+      }),
+    )
+  })
+
   test('exposes collision-safe command/query envelopes and rejects unknown types', async () => {
     const recorded = createEventDefinition(
       'value-recorded',
@@ -254,7 +309,7 @@ describe('createSpecterApp execution contracts', () => {
     await expect(
       app.query({ type: 'missing', payload: null } as never),
     ).rejects.toBeInstanceOf(SpecterUnknownQueryError)
-    expect(Object.keys(app)).toEqual(['command', 'query', 'subscribe'])
+    expect(Object.keys(app)).toEqual(['command', 'query', 'subscribe', 'close'])
   })
 
   test('awaits async conformance and rejects unauthorized command Events', async () => {
@@ -872,7 +927,6 @@ describe('createSpecterApp execution contracts', () => {
       schedule: immediateScheduler,
       slices: [command],
     })
-
     const first = await app.command(
       { type: 'recordValue', payload: 1 },
       { expectedVersion: 0, idempotencyKey: 'request-1' },
@@ -902,6 +956,51 @@ describe('createSpecterApp execution contracts', () => {
       expectedVersion: 0,
       actualVersion: 1,
     } satisfies Partial<SpecterVersionConflictError>)
+  })
+
+  test('fingerprints canonical decoded Command input once', async () => {
+    const recorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const decode = vi.fn((input: string | number) => Number(input))
+    const handle = vi.fn(async (value: number) => [recorded.create(value)])
+    const command = createCommandSlice('recordDecodedValue')
+      .description('Records a schema-decoded value.')
+      .scenarios({
+        description: 'Records a decoded value.',
+        given: [],
+        when: '7',
+        expect: [event('value-recorded', 7)],
+      })
+      .inputSchema(schema<string | number, number>(decode))
+      .store(memoryStore({}))
+      .handle(handle)
+    const eventLog = memoryEventLog()
+    const app = await createSpecterApp({
+      events: [recorded],
+      eventLog: eventLog.adapter,
+      schedule: immediateScheduler,
+      slices: [command],
+    })
+    decode.mockClear()
+
+    const first = await app.command(
+      { type: 'recordDecodedValue', payload: '7' },
+      { idempotencyKey: 'decoded-request-1' },
+    )
+    const duplicate = await app.command(
+      { type: 'recordDecodedValue', payload: 7 },
+      { idempotencyKey: 'decoded-request-1' },
+    )
+
+    expect(duplicate.duplicate).toBe(true)
+    expect(first.events[0]?.payload).toBe(7)
+    await expect(
+      eventLog.adapter.findCommit('decoded-request-1'),
+    ).resolves.toMatchObject({ fingerprint: expect.stringMatching(/^v2:/) })
+    expect(decode).toHaveBeenCalledTimes(2)
+    expect(handle).toHaveBeenCalledTimes(1)
   })
 
   test('uses the decision version as append CAS without caller expectedVersion', async () => {

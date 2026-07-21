@@ -1,6 +1,6 @@
 # API reference
 
-Specter is a set of small TypeScript packages for executable Slice specifications, an Event-sourced runtime, persistence adapters, durable Reactions, and operational visibility. This reference describes the `0.3.0` API currently on `main`. The published npm release remains `0.2.1`; use the repository checkout when evaluating this preview.
+Specter is a set of small TypeScript packages for executable Slice specifications, an Event-sourced runtime, persistence adapters, durable Reactions, and operational visibility. This reference describes the `0.4.0` API currently on `main`. The published npm release remains `0.2.1`; use the repository checkout when evaluating this preview.
 
 Public package entrypoints are the source of truth. Import only the names documented here rather than reaching into package `src` or `dist` directories.
 
@@ -9,10 +9,12 @@ Public package entrypoints are the source of truth. Import only the names docume
 | Package or import | Purpose | Reference |
 | --- | --- | --- |
 | `@specter-ts/core` | Event definitions, completed Slice types, runtime, adapters, envelopes, observations, and public errors | [Core runtime API](./core-runtime.md) and [core adapter contracts](./core-adapters.md) |
+| `@specter-ts/core/effect` | Effect-native app operations, scoped Layer construction, Context service, and shared Slice adapter bridge | [Core runtime API](./core-runtime.md) |
 | `@specter-ts/core/spec` | Specification builders, Scenario Event helper, and specification types | [Core specification API](./core-spec.md) |
 | `@specter-ts/core/testing` | Scenario runners, replay, focused Event catalogs, and Event propagation analysis | [Core testing API](./core-testing.md) |
 | `@specter-ts/memory` | In-memory Event Log, Slice Store, and immediate Reaction scheduler | [Persistence API](./persistence.md) |
 | `@specter-ts/sqlite` | libSQL/SQLite Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
+| `@specter-ts/sqlite-node` | Native `node:sqlite` adapters and scoped Effect runtime bundle | [Persistence API](./persistence.md) |
 | `@specter-ts/postgres` | Postgres Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
 | `@specter-ts/reaction-outbox` | Durable Reaction Plugin, scheduler, worker, store contract, retries, and dead-letter handling | [Reaction outbox API](./reaction-outbox.md) |
 | `@specter-ts/observability` | Runtime and outbox signals, instrumentation, recorders, reporters, and development snapshots | [Observability API](./observability.md) |

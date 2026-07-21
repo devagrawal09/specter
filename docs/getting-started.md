@@ -119,5 +119,5 @@ pnpm build
 - [Runtime architecture](architecture/runtime.md) for transactions,
   subscriptions, and Reaction completion.
 
-The preview tracks `main` and may change before npm 0.3.0 is published. Do not
+The preview tracks `main` and may change before npm 0.4.0 is published. Do not
 describe it as the stable npm release.

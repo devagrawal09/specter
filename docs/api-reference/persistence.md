@@ -1,8 +1,8 @@
 # Persistence API
 
-**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`
+**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/sqlite-node`, `@specter-ts/postgres`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 Specter provides deterministic memory adapters and persistent SQLite and
 Postgres presets. All three implement the contracts from `@specter-ts/core`.
@@ -15,6 +15,7 @@ projections.
 | --- | --- |
 | `@specter-ts/memory` | Unit tests, Scenario runners, examples, and local tools that do not need restart durability. |
 | `@specter-ts/sqlite` | Default single-process persistent applications using a libSQL client. |
+| `@specter-ts/sqlite-node` | Node-only services wanting native `DatabaseSync`, one durable runtime bundle, and Effect-scoped lifecycle. |
 | `@specter-ts/postgres` | Multi-process services that need database transactions, advisory locking, and concurrent outbox claiming. |
 
 ## `@specter-ts/memory`
@@ -103,6 +104,43 @@ The preset shares context so nested Event Log, State, and outbox operations use
 the active transaction correctly. Use a separately prepared operational client
 and context when the durable worker must run independently of request/domain
 database work.
+
+## `@specter-ts/sqlite-node`
+
+`openSpecterNodeSqlite(options)` opens one native `node:sqlite` database,
+enables WAL and busy timeout, prepares Specter tables, and returns:
+
+- durable `eventLog` and `schedule` adapters;
+- shared Reaction-pass outbox;
+- `createSliceStore` and `createReactionOutboxStore` factories;
+- idempotent `close()`.
+
+```ts
+import {
+  createSpecterNodeSqliteLayer,
+  SpecterNodeSqlite,
+} from '@specter-ts/sqlite-node'
+import { Effect } from 'effect'
+
+const PersistenceLive = createSpecterNodeSqliteLayer({
+  filename: './data/app.db',
+})
+
+const config = Effect.gen(function* () {
+  const persistence = yield* SpecterNodeSqlite
+  return {
+    events,
+    slices,
+    eventLog: persistence.eventLog,
+    schedule: persistence.schedule,
+  } as const
+})
+```
+
+`createSpecterNodeSqliteLayer` acquires and closes `DatabaseSync` with Effect
+Scope. One async-local serialized context prevents unrelated operations from
+entering an active SQLite transaction. This package intentionally targets
+native Node SQLite; it is not a generic SQL abstraction.
 
 ## `@specter-ts/postgres`
 

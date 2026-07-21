@@ -38,13 +38,7 @@ const reactionOutbox = createSqliteReactionOutboxStore<ReactionPass>(
   operationalSqlite,
   { context: operationalContext },
 )
-const durableReactionScheduler = createDurableReactionScheduler(
-  reactionOutbox,
-  {
-    onBackgroundError: (cause) =>
-      console.error('Threadplane Reaction worker failed', cause),
-  },
-)
+const durableReactionScheduler = createDurableReactionScheduler(reactionOutbox)
 
 export const threadplaneReactionTickets = createSqliteReactionTicketStore(
   operationalSqlite,

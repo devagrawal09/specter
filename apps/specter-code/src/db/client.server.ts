@@ -37,13 +37,7 @@ const reactionOutbox = createSqliteReactionOutboxStore<ReactionPass>(
   operationalSqlite,
   { context: operationalContext },
 )
-const durableReactionScheduler = createDurableReactionScheduler(
-  reactionOutbox,
-  {
-    onBackgroundError: (cause) =>
-      console.error('Specter Code Reaction worker failed', cause),
-  },
-)
+const durableReactionScheduler = createDurableReactionScheduler(reactionOutbox)
 
 export const specterCodeReactionTickets = createSqliteReactionTicketStore(
   operationalSqlite,

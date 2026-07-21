@@ -15,7 +15,6 @@ export type DurableReactionSchedulerOptions = {
   readonly signal?: AbortSignal
   readonly idFactory?: () => string
   readonly onTransition?: ReactionOutboxTransitionListener<ReactionPass>
-  readonly onBackgroundError?: (cause: unknown) => void
 }
 
 export type ReactionPass = {
@@ -38,10 +37,6 @@ export function createDurableReactionScheduler(
           attemptNumber: context.attemptNumber,
         })
       },
-    })
-
-    void worker.drain().catch((cause) => {
-      options.onBackgroundError?.(cause)
     })
 
     return () => {

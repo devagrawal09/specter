@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/observability",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Operational signals and in-memory diagnostics for Specter applications.",
   "type": "module",
   "license": "MIT",

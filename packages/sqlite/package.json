@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/sqlite",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "SQLite Event Log, Slice Store, and Reaction outbox adapters for Specter.",
   "type": "module",
   "license": "MIT",

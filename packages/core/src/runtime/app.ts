@@ -88,6 +88,8 @@ export type SpecterAppConfig = {
   readonly schedule: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
   readonly observe?: SpecterObserver
+  /** Releases app-owned adapter resources. Called once by `app.close()`. */
+  readonly dispose?: () => Promise<void>
 }
 
 type CommandRegistration<TConfig extends SpecterAppConfig> = Extract<
@@ -190,6 +192,7 @@ export type SpecterApp<TConfig extends SpecterAppConfig> = {
     query: TQuery,
     options?: QuerySubscriptionOptions,
   ) => AsyncIterable<SpecterQueryResult<TConfig, TQuery['type']>>
+  close: () => Promise<void>
 }
 
 export type SpecterAppConfigOf<TApp> =
@@ -206,6 +209,7 @@ type QuerySubscriptionState = {
   readonly pendingNext: PendingSubscriptionNext[]
   readonly abortSignal?: AbortSignal
   readonly abortListener: () => void
+  readonly close: () => void
   closed: boolean
   hasBufferedValue: boolean
   bufferedValue: unknown
@@ -269,6 +273,7 @@ async function createValidatedSpecterApp<
   const reactionExecs = new Map<string, ReactionExec>()
   const subscriptions = new Set<QuerySubscriptionState>()
   const pendingInvalidationEventTypes = new Set<string>()
+  let closePromise: Promise<void> | undefined
 
   const requestReactions = config.schedule(runReactions)
 
@@ -276,7 +281,20 @@ async function createValidatedSpecterApp<
     command: dispatchCommand,
     query: dispatchQuery,
     subscribe: dispatchSubscription,
+    close: closeApp,
   }) as SpecterApp<TConfig>
+
+  if (reactions.size > 0) {
+    try {
+      await requestReactions()()
+    } catch (cause) {
+      if (isPublicSpecterError(cause)) throw cause
+      throw new SpecterInfrastructureError(
+        'The startup Reaction recovery pass failed.',
+        cause,
+      )
+    }
+  }
 
   return app
 
@@ -287,6 +305,16 @@ async function createValidatedSpecterApp<
       // Observability is deliberately best-effort and cannot change domain
       // semantics or turn a successful commit into a failed command.
     }
+  }
+
+  function closeApp() {
+    if (!closePromise) {
+      closePromise = (async () => {
+        for (const subscription of [...subscriptions]) subscription.close()
+        await config.dispose?.()
+      })()
+    }
+    return closePromise
   }
 
   async function getReactionExec(reaction: ReactionSlice<string, unknown>) {
@@ -311,10 +339,11 @@ async function createValidatedSpecterApp<
     if (!command) throw new SpecterUnknownCommandError(envelope.type)
 
     validateCommandOptions(options)
+    const parsedCommand = await decodeCommandInput(command, envelope.payload)
     const fingerprint = options.idempotencyKey
-      ? await fingerprintCommand(envelope)
+      ? await fingerprintCommand(command.name, parsedCommand)
       : undefined
-    const commit = await runCommand(command, envelope.payload, {
+    const commit = await runCommand(command, parsedCommand, {
       ...options,
       fingerprint,
     })
@@ -351,10 +380,11 @@ async function createValidatedSpecterApp<
     if (!command) throw new SpecterUnknownCommandError(envelope.type)
 
     validateCommandOptions(options)
+    const parsedCommand = await decodeCommandInput(command, envelope.payload)
     const fingerprint = options.idempotencyKey
-      ? await fingerprintCommand(envelope)
+      ? await fingerprintCommand(command.name, parsedCommand)
       : undefined
-    const commit = await runCommand(command, envelope.payload, {
+    const commit = await runCommand(command, parsedCommand, {
       ...options,
       fingerprint,
     })
@@ -561,7 +591,7 @@ async function createValidatedSpecterApp<
 
   async function runCommand(
     commandSlice: CommandSlice,
-    input: unknown,
+    parsedCommand: unknown,
     options: CommandExecutionOptions & { readonly fingerprint?: string },
   ): Promise<CommandCommit> {
     try {
@@ -588,20 +618,6 @@ async function createValidatedSpecterApp<
           throw new SpecterVersionConflictError(
             options.expectedVersion,
             version,
-          )
-        }
-
-        let parsedCommand: unknown
-        try {
-          parsedCommand = await decodeOptionalSchema(
-            commandSlice.inputSchema,
-            input,
-          )
-        } catch (cause) {
-          throw new SpecterInvalidInputError(
-            'command',
-            commandSlice.name,
-            cause,
           )
         }
 
@@ -788,6 +804,7 @@ async function createValidatedSpecterApp<
           pendingNext: [],
           abortSignal: options.signal,
           abortListener: close,
+          close,
           closed: options.signal?.aborted ?? false,
           hasBufferedValue: false,
           bufferedValue: undefined,
@@ -975,6 +992,14 @@ async function createValidatedSpecterApp<
   }
 }
 
+async function decodeCommandInput(command: CommandSlice, input: unknown) {
+  try {
+    return await decodeOptionalSchema(command.inputSchema, input)
+  } catch (cause) {
+    throw new SpecterInvalidInputError('command', command.name, cause)
+  }
+}
+
 function validateCommandOptions(options: CommandExecutionOptions) {
   if (
     options.expectedVersion !== undefined &&
@@ -1030,10 +1055,16 @@ function reactionDeliveryContext(
   }
 }
 
-async function fingerprintCommand(command: CommandEnvelope) {
+async function fingerprintCommand(
+  commandType: string,
+  decodedPayload: unknown,
+) {
   let serialized: string
   try {
-    serialized = canonicalSerialize(command, new Set())
+    serialized = canonicalSerialize(
+      { type: commandType, payload: decodedPayload },
+      new Set(),
+    )
   } catch (cause) {
     throw new SpecterInvalidCommandOptionsError(
       'Commands using idempotencyKey must contain structurally serializable payloads.',
@@ -1045,9 +1076,10 @@ async function fingerprintCommand(command: CommandEnvelope) {
     'SHA-256',
     new TextEncoder().encode(serialized),
   )
-  return [...new Uint8Array(digest)]
+  const hash = [...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('')
+  return `v2:${hash}`
 }
 
 function canonicalSerialize(value: unknown, ancestors: Set<object>): string {

@@ -2,7 +2,7 @@
 
 **Import:** `@specter-ts/core/testing`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, replays Scenario Events into isolated Slice State, derives focused Event catalogs, and reports where an Event contract propagates. It is intended for tests and development tooling, not application runtime code.
 
@@ -16,6 +16,9 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
+| `testEventLogAdapter` | `(name, factory) => void` | Runs shared ordering, transaction, and idempotency receipt tests. |
+| `testSliceStoreAdapter` | `(name, options) => void` | Runs shared State publication, cursor, and transaction tests. |
+| `testReactionScheduler` | `(name, factory) => void` | Runs shared request, delivery-context, and idle-settlement tests. |
 
 ## Public types
 

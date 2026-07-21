@@ -6,6 +6,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: './src/index.ts',
+        effect: './src/effect-entry.ts',
         spec: './src/spec-entry.ts',
         testing: './src/testing-entry.ts',
       },

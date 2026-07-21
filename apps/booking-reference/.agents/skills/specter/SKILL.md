@@ -20,9 +20,10 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 - Use `@specter-ts/core/spec` in `spec.ts` for Slice specification builders and `event(type, payload)`.
 - Use `@specter-ts/core` in implementations and runtime wiring for Event Definitions, app creation, envelope/reference types, adapters, and structured errors.
+- Use `@specter-ts/core/effect` for Effect-native app operations, scoped Layers, Context access, Streams, and one shared Effect-to-Promise Slice adapter boundary.
 - Use `@specter-ts/core/testing` for Scenario tests, focused Event catalogs, and replay helpers.
 - Use local `src/db/*` and `src/transport/*` modules for stores, persistence, Scenario database setup, HTTP/SSE transport, and schema exports.
-- Do not import `@specter-ts/core/client`; that subpath does not exist in Specter 0.3.
+- Do not import `@specter-ts/core/client`; that subpath does not exist in Specter 0.4.
 
 ## Slice Files
 
@@ -84,6 +85,7 @@ await execution.reactions
 ```
 
 - A Command resolves after its Events commit. `execution.reactions` separately reports aggregate Reaction completion or failure.
+- App construction requests and awaits one startup Reaction recovery pass when Reactions exist. `app.close()` releases app-owned resources and active subscriptions.
 - Subscriptions emit current state, fan out per subscriber, coalesce intermediate states for slow consumers, and retain the newest value.
 - Reaction effects are arbitrary plugin-defined values. Dispatching another Command is one explicit plugin pattern.
 - Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps; `context.attemptId` changes for each attempt.
@@ -115,6 +117,7 @@ await execution.reactions
 3. Complete the specification in `impl.ts`, keeping State private and applying each Given Event type.
 4. Register the implementation and Event Definitions.
 5. Await `createSpecterApp(config)` in runtime wiring.
+   For app-owned stores, use `defineSpecterFeature(() => ...)` and `createSpecterAppFromFeatures(...)` so each app constructs fresh feature state. Effect applications may instead acquire `createSpecterAppLayer(configEffect)` in Scope.
 6. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
 7. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
 8. Run focused checks, then the complete project baseline.

@@ -27,6 +27,8 @@ export type {
 } from './definition'
 export {
   createSpecterApp,
+  createSpecterAppFromFeatures,
+  defineSpecterFeature,
   ReactionRunFailure,
   specterErrorCodes,
   SpecterCommandRejectedError,
@@ -56,6 +58,9 @@ export type {
   SpecterObservation,
   SpecterOperationKind,
   SpecterObserver,
+  SpecterFeature,
+  SpecterFeatureAppConfig,
+  SpecterFeatureFactory,
   SpecterQueryEnvelope,
   SpecterQueryResult,
   SpecterQueryType,

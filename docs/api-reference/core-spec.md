@@ -1,6 +1,6 @@
 # `@specter-ts/core/spec`
 
-**Status:** Specter 0.3 main-branch preview. This entrypoint is not the stable
+**Status:** Specter 0.4 main-branch preview. This entrypoint is not the stable
 npm 0.2.1 API.
 
 ```ts

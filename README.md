@@ -1,12 +1,12 @@
 # Specter
 
-Specter is a Promise-based TypeScript framework for vertically sliced,
-event-sourced applications. Applications call a typed envelope API in process;
-projects own any HTTP, SSE, WebSocket, or other transport used across process
-boundaries.
+Specter is a TypeScript framework for vertically sliced, event-sourced
+applications. It provides an Effect-native runtime with a Promise facade for
+non-Effect callers. Projects own any HTTP, SSE, WebSocket, or other transport
+used across process boundaries.
 
-> **0.3 main-branch preview:** the repository currently documents the upcoming
-> 0.3 API. npm remains on 0.2.1. To explore the preview, see
+> **0.4 main-branch preview:** the repository currently documents the upcoming
+> 0.4 API. npm remains on 0.2.1. To explore the preview, see
 > [Getting started from main](docs/getting-started.md) or give this prompt to a
 > coding agent: `Summarize \`git clone https://github.com/devagrawal09/specter.git\``.
 
@@ -16,6 +16,7 @@ This repository is a pnpm workspace:
 packages/core/             @specter-ts/core framework/runtime package
 packages/memory/           deterministic test adapters and immediate scheduler
 packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
+packages/sqlite-node/      scoped native node:sqlite runtime bundle
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
 packages/observability/    Event, projection, subscription, and Reaction signals
@@ -46,7 +47,7 @@ Local verification can point generated apps at a packed or workspace core build:
 SPECTER_CORE_SPEC=file:/absolute/path/to/packages/core node packages/create-specter/dist/index.js my-app
 ```
 
-For the unreleased 0.3 API shown in this README, use the
+For the unreleased 0.4 API shown in this README, use the
 [main-branch preview guide](docs/getting-started.md) instead of the npm command.
 
 ## Documentation
@@ -156,14 +157,14 @@ pnpm release:dry-run
 pnpm release:publish
 ```
 
-The unpublished `0.3.0` release set contains `@specter-ts/core`,
+The unpublished `0.4.0` release set contains `@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
-`@specter-ts/reaction-outbox`, `@specter-ts/observability`, and
+`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/observability`, and
 `create-specter`. Release verification builds every publishable package before
 workspace typechecks/tests, validates the envelope codemod package, packs and
 tests a generated starter, and runs that starter's Playwright workflow.
 
-`release:auth` checks all seven names. It verifies that the authenticated npm
+`release:auth` checks all eight names. It verifies that the authenticated npm
 identity owns every package that already exists. A 404 is recorded explicitly
 as an unpublished, first-publish package rather than mistaken for an auth
 failure; those names require `@specter-ts` scope publication rights. On later

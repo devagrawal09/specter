@@ -2,7 +2,7 @@
 
 **Import:** `@specter-ts/observability`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 ## Purpose
 

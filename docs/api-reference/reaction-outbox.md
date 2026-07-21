@@ -2,7 +2,7 @@
 
 **Import:** `@specter-ts/reaction-outbox`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 The Reaction outbox package provides storage-independent, at-least-once background delivery. It can durably schedule whole Specter Reaction passes, durably enqueue an individual Reaction effect through a Plugin, or run a general payload worker against any conforming outbox store.
 
@@ -34,7 +34,7 @@ The Reaction outbox package provides storage-independent, at-least-once backgrou
 | `ReactionOutboxTransition<TPayload>` | Discriminated lifecycle notification for enqueue, attempt, retry, dead-letter, and replay transitions. |
 | `ReactionOutboxTransitionListener<TPayload>` | Best-effort observer of outbox transitions. |
 | `OutboxReactionPluginOptions<TEffect, TPayload>` | Store and optional effect-to-payload mapper for `createOutboxReactionPlugin`. |
-| `DurableReactionSchedulerOptions` | Retry, lease, clock, sleep, cancellation, identity, transition, and background-error options for the scheduler. |
+| `DurableReactionSchedulerOptions` | Retry, lease, clock, sleep, cancellation, identity, and transition options for the scheduler. |
 | `ReactionPass` | `{ kind: 'reaction-pass' }` payload used by the durable scheduler. |
 | `ReactionOutboxWorkerOptions<TPayload>` | Store, handler, retry policy, lease, clock, cancellation, identity, and transition options for a worker. |
 | `ReactionOutboxWorker<TPayload>` | Worker methods: `enqueue`, `drain`, and `retryDeadLetter`. |
@@ -61,7 +61,7 @@ Transition listeners are operational only: listener failures are swallowed and c
 
 These integrations protect different boundaries:
 
-- `createDurableReactionScheduler` stores a `ReactionPass`. When the worker handles it, core catches up and runs every eligible Reaction. It resumes pending and expired passes when the app is constructed.
+- `createDurableReactionScheduler` stores a `ReactionPass`. When the worker handles it, core catches up and runs every eligible Reaction. Core requests and awaits the startup recovery pass; the scheduler owns only persistence, retry, and drain mechanics.
 - `createOutboxReactionPlugin` is attached to one Reaction Slice. It stores that Slice's decoded effect and returns after enqueue, moving slow or remote I/O out of the Reaction pass.
 
 The Plugin uses core's per-Reaction `deliveryId` as both job ID and idempotency key. If a process crashes after enqueue but before the Slice cursor is published, the retried Reaction deduplicates the same job. Its optional `map(effect, deliveryContext)` runs before enqueue and can shape a provider-specific payload.

@@ -1,0 +1,70 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+import { DatabaseSync } from 'node:sqlite'
+
+export type NodeSqliteRuntimeOptions = {
+  readonly filename: string
+  readonly busyTimeoutMs?: number
+}
+
+export class NodeSqliteContext {
+  readonly database: DatabaseSync
+  private readonly active = new AsyncLocalStorage<boolean>()
+  private tail: Promise<void> = Promise.resolve()
+
+  constructor(database: DatabaseSync) {
+    this.database = database
+  }
+
+  run<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (this.active.getStore()) return Promise.resolve(operation())
+    return this.serialize(() => this.active.run(true, operation))
+  }
+
+  transaction<T>(operation: () => T | Promise<T>): Promise<T> {
+    if (this.active.getStore()) return Promise.resolve(operation())
+    return this.run(async () => {
+      this.database.exec('BEGIN IMMEDIATE')
+      try {
+        const result = await operation()
+        this.database.exec('COMMIT')
+        return result
+      } catch (cause) {
+        this.database.exec('ROLLBACK')
+        throw cause
+      }
+    })
+  }
+
+  private async serialize<T>(operation: () => T | Promise<T>) {
+    const previous = this.tail
+    let release = () => {}
+    const current = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    this.tail = previous.then(() => current)
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+    }
+  }
+}
+
+export function openNodeSqlite(options: NodeSqliteRuntimeOptions) {
+  const database = new DatabaseSync(options.filename)
+  database.exec('PRAGMA journal_mode = WAL')
+  database.exec(`PRAGMA busy_timeout = ${options.busyTimeoutMs ?? 5000}`)
+  database.exec('PRAGMA foreign_keys = ON')
+  return new NodeSqliteContext(database)
+}
+
+export function requireNumber(value: unknown, field: string) {
+  if (typeof value !== 'number') throw new TypeError(`Expected ${field} number`)
+  return value
+}
+
+export function requireString(value: unknown, field: string) {
+  if (typeof value !== 'string') throw new TypeError(`Expected ${field} string`)
+  return value
+}

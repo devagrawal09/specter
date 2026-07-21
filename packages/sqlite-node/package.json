@@ -1,0 +1,35 @@
+{
+  "name": "@specter-ts/sqlite-node",
+  "version": "0.4.0",
+  "description": "Scoped node:sqlite persistence and Reaction scheduling for Specter.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
+    "effect": "^3.21.2"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  },
+  "publishConfig": { "access": "public" }
+}

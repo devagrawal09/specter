@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/postgres",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Postgres Event Log, Slice Store, and Reaction outbox adapters for Specter.",
   "type": "module",
   "license": "MIT",

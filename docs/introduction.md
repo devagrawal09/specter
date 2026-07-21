@@ -6,7 +6,7 @@ Specification: a name, a description, and concrete Scenarios. A coding agent or
 human can read those examples before navigating persistence, transport, or
 framework wiring.
 
-This documentation describes the **0.3 main-branch preview**. The stable npm
+This documentation describes the **0.4 main-branch preview**. The stable npm
 release remains 0.2.1.
 
 ## Agent-ready specifications

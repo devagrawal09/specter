@@ -257,6 +257,30 @@ describe('Reaction outbox worker', () => {
 })
 
 describe('durable Reaction scheduler compatibility', () => {
+  it('waits for core to request startup recovery', async () => {
+    const store = createMemoryReactionOutboxStore<{
+      kind: 'reaction-pass'
+    }>()
+    await store.enqueue({
+      id: 'pending-pass',
+      idempotencyKey: 'pending-pass',
+      payload: { kind: 'reaction-pass' },
+      requestedAt: new Date(0),
+      availableAt: new Date(0),
+    })
+    const run = vi.fn(async () => undefined)
+    const request = createDurableReactionScheduler(store, {
+      idFactory: () => 'startup-pass',
+      now: () => new Date(1),
+    })(run)
+
+    await Promise.resolve()
+    expect(run).not.toHaveBeenCalled()
+
+    await request()()
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
   it('settles the idle promise only after a queued pass succeeds', async () => {
     const store = createMemoryReactionOutboxStore<{
       kind: 'reaction-pass'

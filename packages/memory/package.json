@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/memory",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Deterministic in-memory Event Log, Slice Store, and Reaction scheduler for Specter.",
   "type": "module",
   "license": "MIT",

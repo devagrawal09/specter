@@ -2,7 +2,7 @@
 
 **Import:** `@specter-ts/core`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 Slice specification builders live in
 `@specter-ts/core/spec`; test helpers live in `@specter-ts/core/testing`.
@@ -19,6 +19,8 @@ network transport and no application database schema.
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
 | `createSpecterApp(config)` | Asynchronously validates a complete app configuration and returns a typed `SpecterApp`. |
+| `defineSpecterFeature(factory)` | Defines one plain app-scoped feature factory while preserving inferred Event and Slice types. |
+| `createSpecterAppFromFeatures(config)` | Constructs every feature once for an app, then validates and creates it. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
 | `SpecterError` | Base class for structured runtime errors with a `code`. |
@@ -86,7 +88,7 @@ network transport and no application database schema.
 | --- | --- |
 | `SpecterAppConfig` | Base configuration: Events, Event Log, scheduler, Slices, and optional observer. |
 | `SpecterAppConfigOf<TApp>` | Infers the configuration carried by a typed app. |
-| `SpecterApp<TConfig>` | Typed `command`, `query`, and `subscribe` operations. |
+| `SpecterApp<TConfig>` | Typed `command`, `query`, `subscribe`, and idempotent `close` operations. |
 | `SpecterCommandEnvelope<TConfig>` | Union of all registered Command envelopes. |
 | `SpecterQueryEnvelope<TConfig>` | Union of all registered Query envelopes. |
 | `SpecterCommandType<TConfig>` | Union of registered Command names. |
@@ -106,6 +108,11 @@ network transport and no application database schema.
 `createSpecterApp(...)` returns a Promise because it validates the Event
 catalog, Scenarios, schemas, apply coverage, and selected implementations before
 exposing the app. Await it exactly once during application wiring.
+
+When Reactions are registered, construction requests and awaits one startup
+Reaction pass. This recovers Events committed before a previous process died
+without requiring an unrelated Command. Startup scheduler or Reaction failure
+rejects construction. Command-only apps do not request a pass.
 
 ```ts
 import { createSpecterApp } from '@specter-ts/core'
@@ -131,7 +138,45 @@ const execution = await app.command(
 
 // The Event commit happened before app.command resolved.
 await execution.reactions
+await app.close()
 ```
+
+Command input schemas run before idempotency fingerprinting. Specter stores a
+versioned `v2:` fingerprint of the canonical decoded payload and passes that
+same decoded value to the handler.
+
+## Effect runtime
+
+Import Effect integration from `@specter-ts/core/effect`. Specifications remain
+Effect-free.
+
+```ts
+import { createSpecterAppLayer, SpecterRuntime } from '@specter-ts/core/effect'
+import { Effect } from 'effect'
+
+const SpecterLive = createSpecterAppLayer(
+  Effect.gen(function* () {
+    const persistence = yield* Persistence
+    return createTodoConfig(persistence)
+  }),
+)
+
+const program = Effect.gen(function* () {
+  const app = yield* SpecterRuntime
+  return yield* app.command({ type: 'addTodo', payload })
+})
+```
+
+`createSpecterAppEffect(config)` retains exact envelope inference on a directly
+constructed Effect app. `createSpecterAppLayer(configEffect)` acquires it in a
+Scope, exposes `SpecterRuntime` through Context, and closes app resources on
+release. Query subscriptions are Effect `Stream` values.
+
+For Effect-based Slice implementations, construct one
+`createSpecterEffectAdapters(managedRuntime.runPromise)` bridge. Its `adapt`
+method converts handlers and apply functions; `reactionPlugin` gives Plugins an
+Effect Command dispatcher. Individual Slices keep service requirements and do
+not call `Effect.runPromise`.
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent
