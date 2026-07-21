@@ -225,6 +225,33 @@ describe('capabilities', () => {
       negotiateCapabilities({ required: ['future'] }, ['commands']),
     ).toThrowError(SpecterProtocolError)
   })
+
+  it.each([
+    [
+      'request',
+      {
+        protocolVersion: 1,
+        requestId: 'request-1',
+        kind: 'capabilities.request',
+        required: ['commands', 'commands'],
+      },
+    ],
+    [
+      'response',
+      {
+        protocolVersion: 1,
+        requestId: 'request-1',
+        kind: 'capabilities.response',
+        runtime: { language: 'typescript', version: 'test' },
+        supported: ['commands', 'commands'],
+        negotiated: [],
+      },
+    ],
+  ])('rejects duplicate capability names in a %s', (_, message) => {
+    expect(() => parseProtocolMessage(message)).toThrowError(
+      expect.objectContaining({ code: 'SPECTER_INVALID_MESSAGE' }),
+    )
+  })
 })
 
 describe('reference HTTP binding', () => {
@@ -465,6 +492,39 @@ describe('reference HTTP binding', () => {
     })
   })
 
+  it('validates an acknowledgement against the immutable submitted observation snapshot', async () => {
+    const started = Promise.withResolvers<void>()
+    const respond = Promise.withResolvers<void>()
+    const observations = [
+      observation('observation-1', 1),
+      observation('observation-2', 2),
+    ]
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => {
+        started.resolve()
+        await respond.promise
+        return Response.json({
+          protocolVersion: 1,
+          kind: 'observations.ack',
+          requestId: 'request-1',
+          accepted: 1,
+          duplicates: 0,
+        })
+      },
+    })
+
+    const result = client.observations({ observations })
+    await started.promise
+    observations.pop()
+    respond.resolve()
+
+    await expect(result).rejects.toMatchObject({
+      code: 'SPECTER_TRANSPORT_FAILURE',
+      status: 502,
+    })
+  })
+
   it.each([
     ['LF', '\n'],
     ['CR', '\r'],
@@ -477,7 +537,7 @@ describe('reference HTTP binding', () => {
       operationId: 'operation-résumé',
     }
     const encoded = new TextEncoder().encode(
-      `data: ${JSON.stringify(complete)}${lineEnding}${lineEnding}`,
+      `event: subscription.complete${lineEnding}data: ${JSON.stringify(complete)}${lineEnding}${lineEnding}`,
     )
     const client = createSpecterProtocolHttpClient('http://runtime', {
       requestId: () => 'request-1',
@@ -505,6 +565,51 @@ describe('reference HTTP binding', () => {
   })
 
   it.each([
+    [
+      'mismatched event name',
+      (value: string) => `event: subscription.complete\ndata: ${value}\n\n`,
+      undefined,
+    ],
+    ['missing event name', (value: string) => `data: ${value}\n\n`, undefined],
+    [
+      'duplicate sequence',
+      (value: string) =>
+        `event: subscription.value\ndata: ${value}\n\nevent: subscription.value\ndata: ${value}\n\n`,
+      undefined,
+    ],
+    [
+      'sequence at afterSequence',
+      (value: string) => `event: subscription.value\ndata: ${value}\n\n`,
+      1,
+    ],
+  ])('rejects a subscription stream with a %s', async (_, body, afterSequence) => {
+    const value = JSON.stringify({
+      protocolVersion: 1,
+      kind: 'subscription.value',
+      requestId: 'request-1',
+      operationId: 'operation-1',
+      sequence: 1,
+      result: [],
+    })
+    const client = createSpecterProtocolHttpClient('http://runtime', {
+      requestId: () => 'request-1',
+      fetch: async () => new Response(body(value)),
+    })
+
+    await expect(
+      (async () => {
+        for await (const _frame of client.subscribe({
+          operationId: 'operation-1',
+          query: { type: 'todosQuery', payload: {} },
+          afterSequence,
+        })) {
+          // Validation occurs before an invalid frame is exposed.
+        }
+      })(),
+    ).rejects.toMatchObject({ code: 'SPECTER_TRANSPORT_FAILURE' })
+  })
+
+  it.each([
     ['request ID', { requestId: 'wrong-request' }],
     ['operation ID', { operationId: 'wrong-operation' }],
   ])('rejects subscription frames with a mismatched %s', async (_, mismatch) => {
@@ -524,7 +629,9 @@ describe('reference HTTP binding', () => {
           new ReadableStream({
             start(controller) {
               controller.enqueue(
-                new TextEncoder().encode(`data: ${JSON.stringify(frame)}\n\n`),
+                new TextEncoder().encode(
+                  `event: ${frame.kind}\ndata: ${JSON.stringify(frame)}\n\n`,
+                ),
               )
               controller.close()
             },
@@ -549,7 +656,7 @@ describe('reference HTTP binding', () => {
       requestId: () => 'request-1',
       fetch: async () =>
         new Response(
-          `data: ${JSON.stringify({
+          `event: query.response\ndata: ${JSON.stringify({
             protocolVersion: 1,
             kind: 'query.response',
             requestId: 'request-1',
@@ -713,7 +820,9 @@ describe('reference HTTP binding', () => {
             start(controller) {
               for (const frame of frames) {
                 controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify(frame)}\n\n`),
+                  encoder.encode(
+                    `event: ${frame.kind}\ndata: ${JSON.stringify(frame)}\n\n`,
+                  ),
                 )
               }
               controller.close()
@@ -754,7 +863,9 @@ describe('reference HTTP binding', () => {
     ],
   ])('rejects a truncated %s subscription stream', async (_, frames) => {
     const body = frames
-      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+      .map(
+        (frame) => `event: ${frame.kind}\ndata: ${JSON.stringify(frame)}\n\n`,
+      )
       .join('')
     const client = createSpecterProtocolHttpClient('http://runtime', {
       requestId: () => 'request-1',
@@ -785,7 +896,10 @@ describe('reference HTTP binding', () => {
     }
     const client = createSpecterProtocolHttpClient('http://runtime', {
       requestId: () => 'request-1',
-      fetch: async () => new Response(`data: ${JSON.stringify(value)}\n\n`),
+      fetch: async () =>
+        new Response(
+          `event: subscription.value\ndata: ${JSON.stringify(value)}\n\n`,
+        ),
     })
     const iterator = client
       .subscribe(
@@ -842,7 +956,10 @@ describe('reference HTTP binding', () => {
     }
     const client = createSpecterProtocolHttpClient('http://runtime', {
       requestId: () => 'request-1',
-      fetch: async () => new Response(`data: ${JSON.stringify(complete)}\n\n`),
+      fetch: async () =>
+        new Response(
+          `event: subscription.complete\ndata: ${JSON.stringify(complete)}\n\n`,
+        ),
     })
 
     const received = []

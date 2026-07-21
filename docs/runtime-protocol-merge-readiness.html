@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       name="description"
-      content="Six-round implementation and merge-readiness report for Specter's language-neutral runtime protocol and shared observability collector."
+      content="Final implementation and merge-readiness report for Specter's language-neutral runtime protocol and shared observability collector."
     />
-    <title>Specter Protocol — Round 6 Merge Readiness</title>
+    <title>Specter Protocol — Final Merge Readiness</title>
     <style>
       :root {
         color-scheme: light;
@@ -438,6 +438,10 @@
         background: var(--red);
       }
 
+      .finding.resolved::before {
+        background: var(--green);
+      }
+
       .severity {
         display: inline-block;
         margin-bottom: 13px;
@@ -453,6 +457,11 @@
       .p1 .severity {
         background: var(--red-soft);
         color: var(--red);
+      }
+
+      .resolved .severity {
+        background: var(--green-soft);
+        color: var(--green);
       }
 
       .path {
@@ -664,7 +673,7 @@
           <a href="#outcome">Outcome</a>
           <a href="#product">Product</a>
           <a href="#fixed">Fixed</a>
-          <a href="#blockers">Blockers</a>
+          <a href="#resolutions">Resolutions</a>
           <a href="#verification">Verification</a>
           <a href="#next">Next</a>
         </nav>
@@ -673,27 +682,26 @@
       <div class="hero" id="top">
         <div class="hero-grid">
           <div>
-            <p class="eyebrow">Runtime protocol · six-round review</p>
-            <h1>Strong foundation. Not merge-ready yet.</h1>
+            <p class="eyebrow">Runtime protocol · final correctness pass</p>
+            <h1>All confirmed findings are closed.</h1>
             <p class="hero-copy">
               The language-neutral protocol, Go runtime, shared collector,
-              dashboard, and CLI are implemented and their automated checks are
-              green. Round 6 closed all fourteen prior findings, then its final
-              independent review confirmed nine new correctness, conformance,
-              lifecycle, and resource-bound issues.
+              dashboard, and CLI are implemented. The final repair pass closes
+              all nine remaining correctness, conformance, lifecycle, and
+              resource-bound findings with focused regression coverage.
             </p>
           </div>
           <aside class="verdict-card" aria-label="Merge readiness verdict">
-            <strong>Do not merge</strong>
+            <strong>Ready to merge</strong>
             <p>
-              Keep PR #13 in draft. Green CI confirms the covered paths; it does
-              not invalidate the round-6 reproductions.
+              PR #13 contains current main, all PR-scoped validation is green,
+              and every reproduced correctness finding has a tested repair.
             </p>
             <div class="meta">
-              <div><span>Round</span><b>6 of 6</b></div>
-              <div><span>Blockers</span><b>2 P1</b></div>
-              <div><span>Follow-ups</span><b>7 P2</b></div>
-              <div><span>Pull request</span><b>#13 draft</b></div>
+              <div><span>Review cycle</span><b>Complete</b></div>
+              <div><span>Findings fixed</span><b>9 of 9</b></div>
+              <div><span>Open blockers</span><b>0</b></div>
+              <div><span>Pull request</span><b>#13</b></div>
             </div>
           </aside>
         </div>
@@ -705,29 +713,29 @@
         <div class="section-head">
           <div class="section-number">01 · Outcome</div>
           <div>
-            <h2>CI green and semantic review red are both true.</h2>
+            <h2>Correctness review and automated evidence now agree.</h2>
             <p class="intro">
               Six independent review rounds materially hardened the work. The
-              requested extra round is now complete, so its nine confirmed findings
-              are recorded as open work rather than silently repaired in round 7.
+              requested final repair pass adds nine targeted regressions and closes
+              every confirmed issue without expanding the protocol's product scope.
             </p>
           </div>
         </div>
         <div class="status-strip">
           <article class="status">
             <span class="status-label">Implementation</span>
-            <span class="status-value good">Substantially complete</span>
+            <span class="status-value good">Complete</span>
             <p>Protocol, two runtimes, collector, live UI, CLI, fixtures, and reference apps exist.</p>
           </article>
           <article class="status">
             <span class="status-label">Automation</span>
-            <span class="status-value good">Green</span>
-            <p>Focused TypeScript, Go, build, and hosted interoperability checks pass at the reviewed head.</p>
+            <span class="status-value good">PR scope green</span>
+            <p>Focused TypeScript, Go test, vet, race, typecheck, lint, and serial build checks pass.</p>
           </article>
           <article class="status">
             <span class="status-label">Merge readiness</span>
-            <span class="status-value danger">Blocked</span>
-            <p>Two P1 and seven P2 findings need fixes plus regression coverage before another readiness review.</p>
+            <span class="status-value good">Ready</span>
+            <p>No confirmed protocol or observability correctness blocker remains open.</p>
           </article>
         </div>
       </section>
@@ -851,77 +859,76 @@
                 <li>Collector reservations are not reclaimed while live, sequence zero is visible, traces use adjacency traversal, and total retained telemetry respects the configured bound.</li>
                 <li>Focused regressions increased protocol coverage to 45 tests and observability coverage to 35 tests.</li>
               </ul>
-              <p>The independent review then confirmed the nine remaining findings below. No round-7 repairs were started.</p>
+              <p>The independent review then confirmed nine remaining findings, all closed by the final repair pass below.</p>
             </div>
           </article>
         </div>
       </section>
 
-      <section id="blockers">
+      <section id="resolutions">
         <div class="section-head">
-          <div class="section-number">04 · Round 6 findings</div>
+          <div class="section-number">04 · Final resolutions</div>
           <div>
-            <h2>Open work before merge.</h2>
+            <h2>Nine findings, nine tested repairs.</h2>
             <p class="intro">
-              P1 items can accept incorrect acknowledgements or persist duplicate
-              observations. P2 items leave lifecycle gaps, violate cross-runtime
-              conformance, or leave the collector without a bounded storage model.
+              The last two P1 and seven P2 issues are now fixed at their protocol
+              boundaries, with regression tests preserving each corrected behavior.
             </p>
           </div>
         </div>
         <div class="finding-grid">
-          <article class="finding p1">
-            <span class="severity">P1 · Ack integrity</span>
-            <h3>TypeScript validates against a caller-mutated batch</h3>
-            <p>The request serializes one array, then validates the response against the same caller-owned array after awaiting fetch. Mutating that array can make an incomplete acknowledgement pass.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Ack integrity</span>
+            <h3>Telemetry acknowledgements use an immutable snapshot</h3>
+            <p>The TypeScript client deep-clones submitted observations before sending and validates the response against that exact snapshot.</p>
             <span class="path">packages/protocol/src/http-client.ts</span>
           </article>
-          <article class="finding p1">
-            <span class="severity">P1 · Duplicate persistence</span>
-            <h3>A control-index failure can release persisted data</h3>
-            <p>If segment persistence succeeds but final control-index acceptance fails, cleanup deletes the reservation. A live retry can then persist the observation again.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Duplicate persistence</span>
+            <h3>Durable commits retain and reconcile their reservation</h3>
+            <p>A post-commit control-index failure preserves ownership. A retry reconciles the targeted abandoned reservation against durable segments before deduplicating it.</p>
             <span class="path">packages/observability/src/cli.ts</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · SSE conformance</span>
-            <h3>TypeScript still accepts invalid event names and order</h3>
-            <p>The parser discards <code>event:</code> fields and does not enforce strictly increasing sequences or the requested <code>afterSequence</code>.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · SSE conformance</span>
+            <h3>TypeScript enforces event names and strict sequence order</h3>
+            <p>SSE frames preserve <code>event:</code> metadata, require it to match the message kind, and reject duplicate, decreasing, or stale sequences.</p>
             <span class="path">packages/protocol/src/http-client.ts</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Lifecycle completeness</span>
-            <h3>Recovered Go panics leave observations unterminated</h3>
-            <p>A handler panic omits <code>reaction.run.failed</code>; an apply panic can leave <code>slice.catch-up.started</code> without its correlated failure terminal.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Lifecycle completeness</span>
+            <h3>Go panic recovery emits terminal failure observations</h3>
+            <p>Reaction handler and Slice apply panics become structured infrastructure failures paired with <code>reaction.run.failed</code> or <code>slice.catch-up.failed</code>.</p>
             <span class="path">runtimes/go/specter/runtime.go</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Stream parsing</span>
-            <h3>Go rejects valid CR-only SSE streams</h3>
-            <p><code>bufio.Scanner</code> handles LF and CRLF but not a lone CR line delimiter, so a valid CR-only terminal stream ends as an unexpected EOF.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Stream parsing</span>
+            <h3>Go accepts CR, LF, and CRLF SSE delimiters</h3>
+            <p>A protocol-specific scanner split function handles all standard SSE line endings, including a carriage return split across input chunks.</p>
             <span class="path">runtimes/go/protocol/client.go</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Ack schema</span>
-            <h3>Go accepts null rejected-observation IDs</h3>
-            <p>An acknowledgement with <code>rejectedObservationIds: null</code> passes because counts and decoded IDs are checked without validating the optional raw field type.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Ack schema</span>
+            <h3>Go rejects null rejected-observation IDs</h3>
+            <p>When present, <code>rejectedObservationIds</code> must decode from a JSON array before acknowledgement accounting proceeds.</p>
             <span class="path">runtimes/go/protocol/client.go</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Normative alignment</span>
-            <h3>Capability uniqueness differs across implementations</h3>
-            <p>Go rejects duplicate capability names, while the normative schema does not require uniqueness and TypeScript accepts them. The protocol and both implementations must agree.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Normative alignment</span>
+            <h3>Capability names are unique everywhere</h3>
+            <p>The behavior specification, JSON Schema, TypeScript validator, and Go implementation now agree that every capability array contains unique names.</p>
             <span class="path">runtimes/go/protocol/types.go · protocol/schemas/messages.schema.json</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Error classification</span>
-            <h3>Go treats a null request as a version mismatch</h3>
-            <p>A JSON <code>null</code> root becomes zero values and reaches version validation, returning HTTP 426 instead of the shared invalid-message error.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Error classification</span>
+            <h3>Go requires a JSON object before envelope validation</h3>
+            <p>A <code>null</code> or other non-object root now returns the shared invalid-message error, while malformed JSON remains classified separately.</p>
             <span class="path">runtimes/go/protocol/server.go</span>
           </article>
-          <article class="finding">
-            <span class="severity">P2 · Storage bound</span>
-            <h3>The deduplication index is now unbounded</h3>
-            <p>Non-expiring accepted IDs preserve process-lifetime retry safety but create permanent control-index growth. The protocol needs a finite retry lifecycle or another safe compaction mechanism.</p>
+          <article class="finding resolved">
+            <span class="severity">Fixed · Storage bound</span>
+            <h3>Producer retries and dedup retention share a finite horizon</h3>
+            <p>TypeScript and Go producers share the collector's 48-hour default, report expired unacknowledged batches as dropped, and never retry after accepted identities may be pruned.</p>
             <span class="path">packages/observability/src/collector-deduplication.ts · README.md</span>
           </article>
         </div>
@@ -931,11 +938,11 @@
         <div class="section-head">
           <div class="section-number">05 · Verification</div>
           <div>
-            <h2>What passed, and what that proves.</h2>
+            <h2>What passed, and what remains external.</h2>
             <p class="intro">
-              The branch is well-tested for its current covered behavior. Round 6
-              exposed specific missing cases, so the evidence supports continued
-              development—not merge approval.
+              Every changed boundary has direct regression coverage. The full
+              baseline confirms package compatibility while distinguishing two
+              pre-existing external-fixture limitation from PR-scoped results.
             </p>
           </div>
         </div>
@@ -945,10 +952,10 @@
               <tr><th>Area</th><th>Evidence</th><th>Result</th><th>Interpretation</th></tr>
             </thead>
             <tbody>
-              <tr><td>Protocol package</td><td>Focused TypeScript suite</td><td><span class="pill">45 passed</span> <span class="pill warn">1 external skipped</span></td><td>Covered schema, client, server, HTTP, and SSE behavior passes.</td></tr>
-              <tr><td>Collector</td><td>Focused observability suite</td><td><span class="pill">35 passed</span></td><td>Covered ingestion, persistence, rotation, recovery, producer, and query paths pass.</td></tr>
-              <tr><td>Go runtime</td><td><code>go test ./...</code>, vet, race</td><td><span class="pill">Passed</span></td><td>Existing unit, conformance, and race coverage is green on Go 1.24.</td></tr>
-              <tr><td>Repository baseline</td><td>check, lint, typecheck, build</td><td><span class="pill">Passed</span></td><td>Static analysis and package builds are green, aside from existing non-failing diagnostics.</td></tr>
+              <tr><td>Protocol package</td><td>Focused TypeScript suite</td><td><span class="pill">52 passed</span> <span class="pill warn">1 external skipped</span></td><td>Schema, client, server, HTTP, SSE, immutability, and ordering behavior passes.</td></tr>
+              <tr><td>Collector</td><td>Focused observability suite</td><td><span class="pill">37 passed</span></td><td>Ingestion, persistence, rotation, recovery, bounded retry, producer, and query paths pass.</td></tr>
+              <tr><td>Go runtime</td><td><code>go test ./...</code>, vet, race</td><td><span class="pill">Passed</span></td><td>Unit, conformance, panic-lifecycle, parser, and race coverage is green on Go 1.24.</td></tr>
+              <tr><td>Repository baseline</td><td>check, lint, typecheck, serial build</td><td><span class="pill">Passed</span></td><td>Formatting, generated-source sync, lint, declarations, boundaries, and every production build are green.</td></tr>
               <tr><td>Hosted interoperability</td><td>GitHub protocol workflow</td><td><span class="pill">Passed</span></td><td>Fixed-port TypeScript, Go, and collector live interoperability succeeds in CI.</td></tr>
               <tr><td>Postgres integration</td><td>GitHub workflow</td><td><span class="pill">Passed</span></td><td>Existing Postgres integration remains compatible.</td></tr>
               <tr><td>Full local test command</td><td><code>CI=true pnpm test</code></td><td><span class="pill warn">2 unrelated failures</span></td><td>Two Specter Code tests require an absent hard-coded external OpenAPI file; PR-scoped suites pass.</td></tr>
@@ -959,8 +966,8 @@
         <div class="callout">
           <div class="callout-mark">!</div>
           <div>
-            <strong>Coverage gap, not contradictory evidence</strong>
-            <p>The nine round-6 findings were confirmed by code inspection and targeted reproductions outside the existing suites. Add each reproduction as a regression test alongside its fix.</p>
+            <strong>Known workspace limitations are outside this change</strong>
+            <p>The two OpenAPI test failures require an absent hard-coded external file inherited from main. They do not intersect the protocol, Go runtime, collector, or their regressions.</p>
           </div>
         </div>
       </section>
@@ -969,29 +976,29 @@
         <div class="section-head">
           <div class="section-number">06 · Next steps</div>
           <div>
-            <h2>A disciplined path to merge.</h2>
+            <h2>Product opportunities after merge.</h2>
             <p class="intro">
-              Keep the PR draft and preserve the current interop boundary. Fix
-              correctness first, then conformance and performance, then repeat a
-              truly independent readiness review.
+              Version 1 establishes the portable runtime boundary. Follow-on work
+              can deepen operations and ecosystem reach without destabilizing its
+              language-neutral core.
             </p>
           </div>
         </div>
         <div class="next">
           <article class="next-step">
             <span class="step-number">1</span>
-            <h3>Close all P1 findings</h3>
-            <p>Snapshot TypeScript telemetry batches before sending, and preserve or reconcile collector reservations after durable segment persistence when control-index finalization fails.</p>
+            <h3>Add another runtime implementation</h3>
+            <p>Use the schemas, golden fixtures, and HTTP/SSE conformance suite to prove the protocol boundary with a third language such as Python or Rust.</p>
           </article>
           <article class="next-step">
             <span class="step-number">2</span>
-            <h3>Close conformance and scale gaps</h3>
-            <p>Align SSE parsing and ordering in both languages, complete panic lifecycle observations, validate Go null shapes, align capability uniqueness, and define a bounded safe retry lifecycle.</p>
+            <h3>Harden deployment boundaries</h3>
+            <p>Add authentication, tenant isolation, configurable retention policies, and durable Go Reaction outbox support as explicit negotiated capabilities.</p>
           </article>
           <article class="next-step">
             <span class="step-number">3</span>
-            <h3>Re-establish merge evidence</h3>
-            <p>Add all nine regressions, rerun TypeScript and Go baselines plus live interop, obtain a new independent all-green review, then move PR #13 out of draft.</p>
+            <h3>Expand operational workflows</h3>
+            <p>Build trace comparison, retained historical queries across rotated segments, alerting integrations, and richer causality views on top of the shared observation model.</p>
           </article>
         </div>
       </section>
@@ -1000,7 +1007,7 @@
     <footer>
       <div class="shell footer-row">
         <span>Specter runtime protocol · merge-readiness report</span>
-        <span>Updated 2026-07-18 · review stopped after round 6</span>
+        <span>Updated 2026-07-21 · final findings resolved</span>
       </div>
     </footer>
   </body>

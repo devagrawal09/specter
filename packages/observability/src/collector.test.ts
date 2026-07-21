@@ -738,6 +738,51 @@ describe('Specter observability collector', () => {
     expect(requestIds[0]).toBe(requestIds[1])
   })
 
+  it('expires an unacknowledged batch at the deduplication retry horizon and reports its loss', async () => {
+    const bodies: RuntimeObservationBatch[] = []
+    let currentTime = new Date('2026-07-18T12:00:00.000Z')
+    let attempts = 0
+    const producer = createRuntimeObservationProducer({
+      endpoint: 'http://collector',
+      source,
+      retryWindowMs: 1_000,
+      retryDelayMs: 60_000,
+      now: () => currentTime,
+      fetch: async (_input, init) => {
+        const body = JSON.parse(String(init?.body)) as RuntimeObservationBatch
+        bodies.push(body)
+        attempts += 1
+        if (attempts === 1) throw new Error('response lost')
+        return acknowledgement(body)
+      },
+      idFactory: (() => {
+        let id = 0
+        return () => `horizon-${++id}`
+      })(),
+    })
+    producer.record(
+      observation({
+        observationId: 'expires-before-retry',
+        sequence: 1,
+        kind: 'query.started',
+        operationId: 'query-1',
+      }),
+    )
+
+    await producer.flush()
+    currentTime = new Date('2026-07-18T12:00:01.001Z')
+    await producer.flush()
+
+    expect(bodies).toHaveLength(2)
+    expect(bodies[0]?.observations).toMatchObject([
+      { observationId: 'expires-before-retry' },
+    ])
+    expect(bodies[1]?.observations).toMatchObject([
+      { kind: 'telemetry.dropped', droppedCount: 1 },
+    ])
+    expect(producer.inspect()).toMatchObject({ queued: 0, dropped: 1 })
+  })
+
   it('retries an immutable batch when queue pressure changes later observations', async () => {
     const bodies: RuntimeObservationBatch[] = []
     let attempts = 0

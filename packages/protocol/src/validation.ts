@@ -64,15 +64,15 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
 
   switch (kind) {
     case 'capabilities.request':
-      optionalStrings(message.required, '$.required')
-      optionalStrings(message.optional, '$.optional')
+      optionalUniqueStrings(message.required, '$.required')
+      optionalUniqueStrings(message.optional, '$.optional')
       break
     case 'capabilities.response': {
       const runtime = record(message.runtime, '$.runtime')
       string(runtime.language, '$.runtime.language')
       string(runtime.version, '$.runtime.version')
-      strings(message.supported, '$.supported')
-      strings(message.negotiated, '$.negotiated')
+      uniqueStrings(message.supported, '$.supported')
+      uniqueStrings(message.negotiated, '$.negotiated')
       break
     }
     case 'command.request':
@@ -327,11 +327,14 @@ function optionalStrings(value: unknown, path: string) {
 }
 function optionalUniqueStrings(value: unknown, path: string) {
   if (value === undefined) return
+  uniqueStrings(value, path)
+}
+function uniqueStrings(value: unknown, path: string) {
   const items = array(value, path)
   const unique = new Set<string>()
   items.forEach((item, index) => {
     const parsed = string(item, `${path}[${index}]`)
-    if (unique.has(parsed)) fail(`${path} must contain unique IDs`)
+    if (unique.has(parsed)) fail(`${path} must contain unique strings`)
     unique.add(parsed)
   })
 }

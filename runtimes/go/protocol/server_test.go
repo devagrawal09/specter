@@ -104,6 +104,7 @@ func TestServerDistinguishesInvalidJSONFromInvalidMessage(t *testing.T) {
 		code specter.ErrorCode
 	}{
 		{name: "syntax", body: `{`, code: specter.ErrInvalidJSON},
+		{name: "null", body: `null`, code: specter.ErrInvalidMessage},
 		{name: "schema type", body: `{"protocolVersion":"one","kind":"command.request","requestId":"request-1","operationId":"operation-1","command":{"type":"missing","payload":{}}}`, code: specter.ErrInvalidMessage},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -469,6 +470,24 @@ func TestSubscriptionClientValidatesFailuresAndRequiresTerminalMessage(t *testin
 			}
 		}
 	})
+	t.Run("CR-only SSE framing is accepted", func(t *testing.T) {
+		body := "event: subscription.complete\rdata: {\"protocolVersion\":1,\"kind\":\"subscription.complete\",\"requestId\":\"subscription-request\",\"operationId\":\"operation-1\"}\r\r"
+		client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Status: "200 OK", Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(body))}, nil
+		})}}
+		messages, failures, err := client.Subscribe(context.Background(), request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if message := <-messages; message.Kind != "subscription.complete" {
+			t.Fatalf("unexpected terminal message: %#v", message)
+		}
+		for failure := range failures {
+			if failure != nil {
+				t.Fatal(failure)
+			}
+		}
+	})
 }
 
 func TestSubscriptionClientPreservesLatestValueBeforeTerminalAndValidatesSSEMetadata(t *testing.T) {
@@ -570,6 +589,7 @@ func TestObservationClientRequiresExactAcknowledgement(t *testing.T) {
 		{name: "empty", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request"}`},
 		{name: "null accepted", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":null,"duplicates":1}`},
 		{name: "null duplicates", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":null}`},
+		{name: "null rejected ids", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":0,"rejectedObservationIds":null}`},
 		{name: "non-2xx", status: http.StatusServiceUnavailable, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":1,"duplicates":0}`},
 		{name: "unknown rejected id", status: http.StatusOK, body: `{"protocolVersion":1,"kind":"observations.ack","requestId":"observation-request","accepted":0,"duplicates":0,"rejectedObservationIds":["different"]}`},
 	}

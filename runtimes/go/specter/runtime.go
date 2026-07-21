@@ -512,8 +512,20 @@ func (a *App) catchUpEvents(ctx context.Context, slice *sliceRuntime, sliceName,
 	a.emit(Observation{Kind: "slice.catch-up.completed", OperationID: operationID, CorrelationID: correlationID, Slice: sliceName, Cursor: slice.cursor, Attributes: map[string]any{"from": from, "eventCount": len(events)}})
 	return nil
 }
-func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []PersistedEvent) error {
-	for _, event := range events {
+func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []PersistedEvent) (err error) {
+	var currentEvent *PersistedEvent
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			details := map[string]any{}
+			if currentEvent != nil {
+				details["eventType"] = currentEvent.Type
+			}
+			err = newError(ErrInfrastructure, "Slice projection panicked.", details, fmt.Errorf("panic: %v", recovered))
+		}
+	}()
+	for index := range events {
+		event := events[index]
+		currentEvent = &event
 		if apply := slice.apply[event.Type]; apply != nil {
 			if err := apply(ctx, event); err != nil {
 				return newError(ErrInfrastructure, "Slice projection failed.", map[string]any{"eventType": event.Type}, err)
@@ -521,6 +533,7 @@ func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []Per
 		}
 		slice.cursor = event.GlobalOrder
 	}
+	currentEvent = nil
 	return nil
 }
 
@@ -590,7 +603,7 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 				deliveryID, attemptID, op := newID("delivery"), newID("attempt"), newID("op")
 				ctxValue := ReactionContext{OperationID: op, CorrelationID: correlation, DeliveryID: deliveryID, AttemptID: attemptID, ScheduledAt: time.Now().UTC()}
 				a.emit(Observation{Kind: "reaction.run.started", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID})
-				effect, runErr := reaction.definition.Handle(ctx, ctxValue, relevant)
+				effect, runErr := runReactionHandler(reaction.definition.Handle, ctx, ctxValue, relevant)
 				if runErr == nil {
 					if _, marshalErr := json.Marshal(effect); marshalErr != nil {
 						runErr = newError(ErrInvalidOutput, fmt.Sprintf("Invalid Reaction output for %q.", name), nil, marshalErr)
@@ -614,6 +627,15 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 
 func reactionPanicError(recovered any) error {
 	return newError(ErrInfrastructure, "Reaction execution panicked.", nil, fmt.Errorf("panic: %v", recovered))
+}
+
+func runReactionHandler(handle ReactionHandle, ctx context.Context, reactionContext ReactionContext, events []PersistedEvent) (effect any, err error) {
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			err = reactionPanicError(recovered)
+		}
+	}()
+	return handle(ctx, reactionContext, events)
 }
 
 func (a *App) ReactionTicket(id string) (ReactionTicketStatus, bool) {

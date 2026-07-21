@@ -169,6 +169,8 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 			var panicOnce atomic.Bool
 			panicOnce.Store(true)
 			var runs atomic.Int64
+			var observationsMu sync.Mutex
+			var observations []specter.Observation
 			command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
 				return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
 			})}
@@ -184,7 +186,11 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 				runs.Add(1)
 				return "ok", nil
 			}}
-			app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
+			app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}, Observe: func(observation specter.Observation) {
+				observationsMu.Lock()
+				observations = append(observations, observation)
+				observationsMu.Unlock()
+			}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -210,6 +216,40 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 			defer cancel()
 			if err := app.Close(ctx); err != nil {
 				t.Fatalf("Close was stranded after panic: %v", err)
+			}
+
+			startedKind, completedKind, failedKind := "reaction.run.started", "reaction.run.completed", "reaction.run.failed"
+			if panicAt == "apply" {
+				startedKind, completedKind, failedKind = "slice.catch-up.started", "slice.catch-up.completed", "slice.catch-up.failed"
+			}
+			observationsMu.Lock()
+			defer observationsMu.Unlock()
+			terminalOperations := map[string]bool{}
+			failedOperations := map[string]bool{}
+			startedOperations := map[string]bool{}
+			for _, observation := range observations {
+				if observation.Kind == startedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
+					startedOperations[observation.OperationID] = true
+				}
+				if observation.Kind == failedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
+					failedOperations[observation.OperationID] = true
+					terminalOperations[observation.OperationID] = true
+				}
+				if observation.Kind == completedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
+					terminalOperations[observation.OperationID] = true
+				}
+			}
+			foundFailureTerminal := false
+			for operationID := range startedOperations {
+				if !terminalOperations[operationID] {
+					t.Fatalf("%s operation %s has no terminal observation: %#v", startedKind, operationID, observations)
+				}
+				if failedOperations[operationID] {
+					foundFailureTerminal = true
+				}
+			}
+			if !foundFailureTerminal {
+				t.Fatalf("%s was not paired with %s: %#v", startedKind, failedKind, observations)
 			}
 		})
 	}

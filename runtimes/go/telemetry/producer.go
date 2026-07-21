@@ -14,14 +14,27 @@ import (
 
 const DefaultQueueCapacity = 10_000
 const MaximumBatchSize = 100
+const DefaultRetryWindow = 48 * time.Hour
+
+const defaultRetryDelay = time.Second
+
+type ProducerOptions struct {
+	Capacity    int
+	RetryWindow time.Duration
+	RetryDelay  time.Duration
+	Now         func() time.Time
+}
 
 type Producer struct {
-	client   *protocol.Client
-	source   protocol.RuntimeSource
-	capacity int
-	stop     chan struct{}
-	done     chan struct{}
-	wake     chan struct{}
+	client      *protocol.Client
+	source      protocol.RuntimeSource
+	capacity    int
+	retryWindow time.Duration
+	retryDelay  time.Duration
+	now         func() time.Time
+	stop        chan struct{}
+	done        chan struct{}
+	wake        chan struct{}
 
 	queueMu   sync.Mutex
 	queue     []protocol.RuntimeObservation
@@ -35,17 +48,37 @@ type Producer struct {
 }
 
 func NewProducer(client *protocol.Client, source protocol.RuntimeSource, capacity int) *Producer {
+	return NewProducerWithOptions(client, source, ProducerOptions{Capacity: capacity})
+}
+
+func NewProducerWithOptions(client *protocol.Client, source protocol.RuntimeSource, options ProducerOptions) *Producer {
+	capacity := options.Capacity
 	if capacity <= 0 {
 		capacity = DefaultQueueCapacity
 	}
+	retryWindow := options.RetryWindow
+	if retryWindow <= 0 {
+		retryWindow = DefaultRetryWindow
+	}
+	retryDelay := options.RetryDelay
+	if retryDelay <= 0 {
+		retryDelay = defaultRetryDelay
+	}
+	now := options.Now
+	if now == nil {
+		now = time.Now
+	}
 	producer := &Producer{
-		client:   client,
-		source:   source,
-		capacity: capacity,
-		stop:     make(chan struct{}),
-		done:     make(chan struct{}),
-		wake:     make(chan struct{}, 1),
-		queue:    make([]protocol.RuntimeObservation, capacity),
+		client:      client,
+		source:      source,
+		capacity:    capacity,
+		retryWindow: retryWindow,
+		retryDelay:  retryDelay,
+		now:         now,
+		stop:        make(chan struct{}),
+		done:        make(chan struct{}),
+		wake:        make(chan struct{}, 1),
+		queue:       make([]protocol.RuntimeObservation, capacity),
 	}
 	go producer.run()
 	return producer
@@ -94,6 +127,9 @@ func (p *Producer) run() {
 	defer close(p.done)
 	var pending []protocol.RuntimeObservation
 	pendingRequestID := ""
+	var pendingSince time.Time
+	pendingQueuedCount := 0
+	var pendingDroppedCount int64
 	stopping := false
 	retry := time.NewTimer(time.Hour)
 	if !retry.Stop() {
@@ -102,7 +138,7 @@ func (p *Producer) run() {
 	defer retry.Stop()
 	for {
 		if len(pending) == 0 {
-			pending = p.takeBatch()
+			pending, pendingQueuedCount, pendingDroppedCount = p.takeBatch()
 			if len(pending) == 0 {
 				if stopping {
 					return
@@ -115,14 +151,27 @@ func (p *Producer) run() {
 					continue
 				}
 			}
+			pendingSince = p.now()
 		}
 		if pendingRequestID == "" {
 			pendingRequestID = p.requestID()
+		}
+		if p.now().Sub(pendingSince) >= p.retryWindow {
+			p.restoreDropped(int64(pendingQueuedCount) + pendingDroppedCount)
+			pending = nil
+			pendingRequestID = ""
+			pendingSince = time.Time{}
+			pendingQueuedCount = 0
+			pendingDroppedCount = 0
+			continue
 		}
 		batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending}
 		if p.send(batch) {
 			pending = nil
 			pendingRequestID = ""
+			pendingSince = time.Time{}
+			pendingQueuedCount = 0
+			pendingDroppedCount = 0
 			continue
 		}
 		if stopping {
@@ -133,7 +182,7 @@ func (p *Producer) run() {
 			}
 			return
 		}
-		retry.Reset(time.Second)
+		retry.Reset(p.retryDelay)
 		select {
 		case <-retry.C:
 		case <-p.stop:
@@ -149,15 +198,16 @@ func (p *Producer) run() {
 }
 
 func (p *Producer) lossObservation(dropped int64) protocol.RuntimeObservation {
-	observedAt := time.Now().UTC()
+	observedAt := p.now().UTC()
 	loss := specter.Observation{ObservationID: fmt.Sprintf("dropped_%d", observedAt.UnixNano()), Kind: "telemetry.dropped", ObservedAt: observedAt, OperationID: "telemetry", DroppedCount: dropped}
 	return protocol.RuntimeObservation{Observation: loss, Sequence: p.sequence.Add(1), Source: p.source}
 }
 
-func (p *Producer) takeBatch() []protocol.RuntimeObservation {
+func (p *Producer) takeBatch() ([]protocol.RuntimeObservation, int, int64) {
 	p.queueMu.Lock()
 	defer p.queueMu.Unlock()
 	count := min(p.queueSize, MaximumBatchSize)
+	reportedDropped := int64(0)
 	batch := make([]protocol.RuntimeObservation, 0, MaximumBatchSize)
 	for range count {
 		batch = append(batch, p.queue[p.queueHead])
@@ -168,11 +218,21 @@ func (p *Producer) takeBatch() []protocol.RuntimeObservation {
 	if p.queueSize == 0 {
 		p.queueHead = 0
 		if p.dropped > 0 && len(batch) < MaximumBatchSize {
-			batch = append(batch, p.lossObservation(p.dropped))
+			reportedDropped = p.dropped
+			batch = append(batch, p.lossObservation(reportedDropped))
 			p.dropped = 0
 		}
 	}
-	return batch
+	return batch, count, reportedDropped
+}
+
+func (p *Producer) restoreDropped(count int64) {
+	if count == 0 {
+		return
+	}
+	p.queueMu.Lock()
+	p.dropped += count
+	p.queueMu.Unlock()
 }
 
 func (p *Producer) signal() {
@@ -182,7 +242,7 @@ func (p *Producer) signal() {
 	}
 }
 func (p *Producer) requestID() string {
-	return fmt.Sprintf("telemetry_%d_%d", time.Now().UTC().UnixNano(), p.sequence.Load())
+	return fmt.Sprintf("telemetry_%d_%d", p.now().UTC().UnixNano(), p.sequence.Load())
 }
 func (p *Producer) send(batch protocol.RuntimeObservationBatch) bool {
 	if len(batch.Observations) == 0 {

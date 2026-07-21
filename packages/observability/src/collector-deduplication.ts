@@ -8,6 +8,8 @@ import type {
   RuntimeObservationBatch,
 } from '@specter-ts/protocol'
 
+import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
+
 const transactionTails = new WeakMap<Client, Promise<void>>()
 
 export type ObservationReservation = {
@@ -21,12 +23,16 @@ export type ObservationReservationResult =
       readonly status: 'reserved'
       readonly reservation: ObservationReservation
     }
-  | { readonly status: 'busy' }
+  | {
+      readonly status: 'busy'
+      readonly reservationIds: readonly string[]
+    }
 
 export async function prepareObservationDeduplication(
   client: Client,
   now = new Date(),
   segmentPaths: readonly string[] = [],
+  retryWindowMs = DEFAULT_OBSERVATION_RETRY_WINDOW_MS,
 ) {
   await client.execute(`CREATE TABLE IF NOT EXISTS accepted_observations (
     source_key TEXT NOT NULL,
@@ -52,21 +58,29 @@ export async function prepareObservationDeduplication(
   }
 
   await reconcileObservationReservations(client, segmentPaths, now)
+  await pruneAcceptedObservations(client, now, retryWindowMs)
 }
 
-async function reconcileObservationReservations(
+export async function reconcileObservationReservations(
   client: Client,
   segmentPaths: readonly string[],
   now: Date,
+  reservationIds?: readonly string[],
 ) {
   const outstanding = await client.execute(
-    "SELECT source_key, observation_id FROM accepted_observations WHERE status = 'reserved'",
+    "SELECT source_key, observation_id, reservation_id FROM accepted_observations WHERE status = 'reserved'",
   )
-  if (outstanding.rows.length === 0) return
+  const reservationFilter = reservationIds ? new Set(reservationIds) : undefined
+  const rows = reservationFilter
+    ? outstanding.rows.filter((row) =>
+        reservationFilter.has(String(row.reservation_id)),
+      )
+    : outstanding.rows
+  if (rows.length === 0) return
 
   const persisted = new Set<string>()
   const pending = new Set(
-    outstanding.rows.map((row) =>
+    rows.map((row) =>
       observationIdentity(String(row.source_key), String(row.observation_id)),
     ),
   )
@@ -94,7 +108,7 @@ async function reconcileObservationReservations(
   }
 
   await withWriteTransaction(client, async (transaction) => {
-    for (const row of outstanding.rows) {
+    for (const row of rows) {
       const key = String(row.source_key)
       const observationId = String(row.observation_id)
       const identity = observationIdentity(key, observationId)
@@ -118,6 +132,7 @@ export async function reserveObservations(
   client: Client,
   reservationId: string,
   now = new Date(),
+  retryWindowMs = DEFAULT_OBSERVATION_RETRY_WINDOW_MS,
 ): Promise<ObservationReservationResult> {
   return withWriteTransaction(client, async (transaction) => {
     const pending: Array<{
@@ -125,8 +140,14 @@ export async function reserveObservations(
       readonly key: string
     }> = []
     const pendingKeys = new Set<string>()
+    const busyReservationIds = new Set<string>()
     let duplicates = 0
     const reservedAt = now.toISOString()
+
+    await transaction.execute({
+      sql: "DELETE FROM accepted_observations WHERE status = 'accepted' AND accepted_at < ?",
+      args: [new Date(now.getTime() - retryWindowMs).toISOString()],
+    })
 
     for (const observation of batch.observations) {
       const key = sourceKey(observation)
@@ -136,7 +157,7 @@ export async function reserveObservations(
         continue
       }
       const existing = await transaction.execute({
-        sql: 'SELECT status, accepted_at FROM accepted_observations WHERE source_key = ? AND observation_id = ?',
+        sql: 'SELECT status, accepted_at, reservation_id FROM accepted_observations WHERE source_key = ? AND observation_id = ?',
         args: [key, observation.observationId],
       })
       const row = existing.rows[0]
@@ -154,7 +175,14 @@ export async function reserveObservations(
       // persistence and rotation may legitimately take longer than a lease.
       // Process startup is the safe recovery boundary because it reconciles
       // every outstanding reservation against all durable segments above.
-      return { status: 'busy' }
+      busyReservationIds.add(String(row.reservation_id))
+    }
+
+    if (busyReservationIds.size > 0) {
+      return {
+        status: 'busy',
+        reservationIds: [...busyReservationIds],
+      }
     }
 
     for (const item of pending) {
@@ -180,6 +208,17 @@ export async function reserveObservations(
         duplicates,
       },
     }
+  })
+}
+
+async function pruneAcceptedObservations(
+  client: Client,
+  now: Date,
+  retryWindowMs: number,
+) {
+  await client.execute({
+    sql: "DELETE FROM accepted_observations WHERE status = 'accepted' AND accepted_at < ?",
+    args: [new Date(now.getTime() - retryWindowMs).toISOString()],
   })
 }
 

@@ -26,6 +26,7 @@ import {
   acceptObservationReservation,
   type ObservationReservation,
   prepareObservationDeduplication,
+  reconcileObservationReservations,
   releaseObservationReservation,
   reserveObservations,
 } from './collector-deduplication'
@@ -36,6 +37,7 @@ import {
 import { createSpecterObservabilityHttpHandler } from './http-handler'
 import { SegmentCoordinator } from './segment-coordinator'
 import { existingSegmentPaths, sqliteDatabaseSize } from './segment-storage'
+import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 
 type ActiveSegment = {
   readonly collector: SpecterObservabilityCollector
@@ -74,6 +76,11 @@ async function serve(commandArgs: readonly string[]) {
     24 * 60 * 60 * 1_000,
   )
   const maxBytes = integerOption(commandArgs, '--max-bytes', 64 * 1024 * 1024)
+  const retryWindowMs = integerOption(
+    commandArgs,
+    '--retry-window-ms',
+    DEFAULT_OBSERVATION_RETRY_WINDOW_MS,
+  )
   mkdirSync(dirname(databaseBase), { recursive: true })
 
   const controlClient = createClient({ url: `file:${databaseBase}-control.db` })
@@ -82,6 +89,7 @@ async function serve(commandArgs: readonly string[]) {
     controlClient,
     new Date(),
     existingSegments,
+    retryWindowMs,
   )
 
   const initial = await openSegment(databaseBase, existingSegments.at(-1))
@@ -99,11 +107,13 @@ async function serve(commandArgs: readonly string[]) {
       segment.client.close()
     },
   })
+  const liveReservationIds = new Set<string>()
 
   const server = createServer(async (request, response) => {
     let releaseSegment: (() => void) | undefined
     let reservation: ObservationReservation | undefined
     let reservationCompleted = false
+    let segmentCommitCompleted = false
     try {
       const lease = await segments.acquire()
       releaseSegment = lease.release
@@ -117,13 +127,36 @@ async function serve(commandArgs: readonly string[]) {
       const observationBatch = isDedupeCandidate(observationInput)
         ? observationInput
         : undefined
-      const reservationResult = observationBatch
+      let reservationResult = observationBatch
         ? await reserveObservations(
             observationBatch,
             controlClient,
             crypto.randomUUID(),
+            new Date(),
+            retryWindowMs,
           )
         : undefined
+      if (
+        observationBatch &&
+        reservationResult?.status === 'busy' &&
+        reservationResult.reservationIds.every(
+          (reservationId) => !liveReservationIds.has(reservationId),
+        )
+      ) {
+        await reconcileObservationReservations(
+          controlClient,
+          existingSegmentPaths(databaseBase),
+          new Date(),
+          reservationResult.reservationIds,
+        )
+        reservationResult = await reserveObservations(
+          observationBatch,
+          controlClient,
+          crypto.randomUUID(),
+          new Date(),
+          retryWindowMs,
+        )
+      }
       if (reservationResult?.status === 'busy') {
         await sendWebResponse(response, observationReservationBusy())
         return
@@ -141,11 +174,13 @@ async function serve(commandArgs: readonly string[]) {
         )
         return
       }
+      if (reservation) liveReservationIds.add(reservation.reservationId)
       const handlerRequest = reservation
         ? requestWithBatch(webRequest, reservation.batch)
         : webRequest
       let webResponse = await active.handler(handlerRequest)
       if (observationBatch && reservation && webResponse.ok) {
+        segmentCommitCompleted = true
         const acknowledgement = (await webResponse
           .clone()
           .json()) as RuntimeObservationAcknowledgement
@@ -183,7 +218,8 @@ async function serve(commandArgs: readonly string[]) {
         }),
       )
     } finally {
-      if (reservation && !reservationCompleted) {
+      if (reservation) liveReservationIds.delete(reservation.reservationId)
+      if (reservation && !reservationCompleted && !segmentCommitCompleted) {
         await releaseObservationReservation(reservation, controlClient).catch(
           () => {},
         )
@@ -499,5 +535,8 @@ Common options:
   --correlation ID      Filter by correlation ID
   --slice NAME          Filter by Slice
   --reaction NAME       Filter by Reaction
-  --sequence NUMBER     Filter after source-local sequence`)
+  --sequence NUMBER     Filter after source-local sequence
+
+Serve options:
+  --retry-window-ms N   Bound producer retry deduplication (default 48 hours)`)
 }

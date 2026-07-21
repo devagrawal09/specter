@@ -1,6 +1,7 @@
 package protocol
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -56,7 +57,7 @@ func (s *Server) capabilities(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !request.fieldsValid {
-		base.Error = &specter.Error{Code: specter.ErrInvalidMessage, Message: "Capability arrays must contain nonempty strings when present."}
+		base.Error = &specter.Error{Code: specter.ErrInvalidMessage, Message: "Capability arrays must contain unique nonempty strings when present."}
 		writeJSON(w, http.StatusBadRequest, base)
 		return
 	}
@@ -363,7 +364,8 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 		return false
 	}
 	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20))
-	if err := decoder.Decode(out); err != nil {
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
 		code, message := specter.ErrInvalidMessage, "Protocol message is invalid."
 		var syntax *json.SyntaxError
 		if errors.As(err, &syntax) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, io.EOF) {
@@ -375,6 +377,15 @@ func decode(w http.ResponseWriter, r *http.Request, out any) bool {
 	var trailing any
 	if err := decoder.Decode(&trailing); err != io.EOF {
 		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON request."}})
+		return false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "Protocol message must be a JSON object."}})
+		return false
+	}
+	if err := json.Unmarshal(raw, out); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": &specter.Error{Code: specter.ErrInvalidMessage, Message: "Protocol message is invalid."}})
 		return false
 	}
 	return true

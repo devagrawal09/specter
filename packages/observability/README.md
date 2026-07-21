@@ -13,11 +13,12 @@ specter-observe serve
 ```
 
 It stores the active segment in SQLite, rotates after 24 hours or 64 MiB, and
-retains accepted observation IDs in a separate deduplication database. Accepted
-IDs do not expire because a producer retries while its process remains alive;
-an expiry could otherwise accept a late retry twice. This gives deduplication
-priority over a bounded control-index size until the protocol gains an explicit
-producer retry horizon. The read-only dashboard is available at
+retains accepted observation IDs in a separate deduplication database for a
+48-hour retry window by default. Producers use the same default horizon and
+report an unacknowledged batch as dropped instead of retrying after its identity
+can expire. Override both sides together with the TypeScript producer's
+`retryWindowMs`, the Go producer's `ProducerOptions.RetryWindow`, and the
+collector's `--retry-window-ms` option. The read-only dashboard is available at
 `http://127.0.0.1:41736`.
 
 Applications create a bounded producer and adapt the core observer and durable
@@ -49,7 +50,8 @@ observations, and retains at most 10,000 total observations by default,
 including its immutable in-flight batch. Under pressure it drops the oldest
 mutable queued entry; if the in-flight batch occupies the full bound, it drops
 the incoming entry instead. It retries while alive and reports recovered loss
-as `telemetry.dropped`.
+as `telemetry.dropped`, including a batch that remains unacknowledged through
+the retry horizon.
 
 CLI reads are stable JSON/NDJSON by default:
 

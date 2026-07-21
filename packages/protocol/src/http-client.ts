@@ -90,11 +90,12 @@ export function createSpecterProtocolHttpClient(
         'protocolVersion' | 'kind' | 'requestId'
       >,
     ) {
+      const observations = structuredClone(input.observations)
       const message: RuntimeObservationBatch = {
         protocolVersion: 1,
         kind: 'observations.batch',
         requestId: requestId(),
-        ...input,
+        observations,
       }
       const acknowledgement = await post<RuntimeObservationAcknowledgement>(
         '/observations',
@@ -228,15 +229,18 @@ export function createSpecterProtocolHttpClient(
         status: response.status,
       })
     let terminal = false
+    let lastSequence = message.afterSequence ?? -1
     try {
-      for await (const data of decodeSse(response.body)) {
-        const parsed = parseSubscriptionFrame(data)
+      for await (const frame of decodeSse(response.body)) {
+        const parsed = parseSubscriptionFrame(frame.data)
         if (
           parsed.kind !== 'subscription.value' &&
           parsed.kind !== 'subscription.error' &&
           parsed.kind !== 'subscription.complete'
         )
           throw responseMismatch('subscription message kind')
+        if (frame.eventName !== parsed.kind)
+          throw responseMismatch('SSE event name')
         assertResponseCorrelation(parsed, {
           kind: parsed.kind,
           requestId: message.requestId,
@@ -248,6 +252,15 @@ export function createSpecterProtocolHttpClient(
             message: 'Subscription stream sent a frame after termination.',
             status: 502,
           })
+        if (parsed.kind === 'subscription.value') {
+          if (parsed.sequence <= lastSequence)
+            throw new SpecterProtocolError({
+              code: protocolErrorCodes.transport,
+              message: `Subscription sequence ${parsed.sequence} is not greater than ${lastSequence}.`,
+              status: 502,
+            })
+          lastSequence = parsed.sequence
+        }
         terminal =
           parsed.kind === 'subscription.error' ||
           parsed.kind === 'subscription.complete'
@@ -353,26 +366,14 @@ async function* decodeSse(stream: ReadableStream<Uint8Array>) {
           block.push(line.value)
           continue
         }
-        const data = block
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => {
-            const value = line.slice(5)
-            return value.startsWith(' ') ? value.slice(1) : value
-          })
-          .join('\n')
+        const frame = decodeSseBlock(block)
         block = []
-        if (data) yield data
+        if (frame) yield frame
       }
       if (done) {
         if (buffer !== '') block.push(buffer)
-        const data = block
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => {
-            const value = line.slice(5)
-            return value.startsWith(' ') ? value.slice(1) : value
-          })
-          .join('\n')
-        if (data) yield data
+        const frame = decodeSseBlock(block)
+        if (frame) yield frame
         return
       }
     }
@@ -380,6 +381,22 @@ async function* decodeSse(stream: ReadableStream<Uint8Array>) {
     await reader.cancel().catch(() => undefined)
     reader.releaseLock()
   }
+}
+
+function decodeSseBlock(lines: readonly string[]) {
+  let eventName: string | undefined
+  const dataLines: string[] = []
+  for (const line of lines) {
+    if (line.startsWith(':')) continue
+    const separator = line.indexOf(':')
+    const field = separator < 0 ? line : line.slice(0, separator)
+    const rawValue = separator < 0 ? '' : line.slice(separator + 1)
+    const value = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue
+    if (field === 'event') eventName = value
+    else if (field === 'data') dataLines.push(value)
+  }
+  if (dataLines.length === 0) return undefined
+  return { eventName, data: dataLines.join('\n') }
 }
 
 function takeSseLine(buffer: string, endOfStream: boolean) {

@@ -161,6 +161,7 @@ func (c *Client) Subscribe(ctx context.Context, request SubscriptionRequest) (<-
 		defer close(failures)
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 4096), 1<<20)
+		scanner.Split(splitSSELines)
 		var dataLines []string
 		var eventName string
 		terminal := false
@@ -474,6 +475,9 @@ func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowled
 	if !hasFields(fields, "accepted", "duplicates") || !rawInteger(fields, "accepted", true) || !rawInteger(fields, "duplicates", true) || acknowledgement.Accepted < 0 || acknowledgement.Duplicates < 0 || int64(acknowledgement.Accepted) > maxSafeInteger || int64(acknowledgement.Duplicates) > maxSafeInteger {
 		return fmt.Errorf("specter protocol: observation acknowledgement counts must be non-negative")
 	}
+	if raw, present := fields["rejectedObservationIds"]; present && !rawArray(raw) {
+		return fmt.Errorf("specter protocol: rejectedObservationIds must be an array when present")
+	}
 	observationIDs := make(map[string]struct{}, len(batch.Observations))
 	for _, observation := range batch.Observations {
 		observationIDs[observation.ObservationID] = struct{}{}
@@ -493,6 +497,26 @@ func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowled
 		return fmt.Errorf("specter protocol: acknowledgement accounts for %d of %d observations", accounted, len(batch.Observations))
 	}
 	return nil
+}
+
+func splitSSELines(data []byte, atEOF bool) (advance int, token []byte, err error) {
+	for index, character := range data {
+		if character != '\r' && character != '\n' {
+			continue
+		}
+		if character == '\r' && index+1 == len(data) && !atEOF {
+			return 0, nil, nil
+		}
+		advance = index + 1
+		if character == '\r' && index+1 < len(data) && data[index+1] == '\n' {
+			advance++
+		}
+		return advance, data[:index], nil
+	}
+	if atEOF && len(data) > 0 {
+		return len(data), data, nil
+	}
+	return 0, nil, nil
 }
 func prepare(envelope Envelope, kind string) Envelope {
 	envelope.ProtocolVersion = Version

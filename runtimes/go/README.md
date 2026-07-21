@@ -11,6 +11,10 @@ This Go 1.24 module is an independent, standard-library-only reference implement
 - protocol-v1 HTTP/JSON and SSE server/client bindings; and
 - a bounded, non-blocking, best-effort telemetry producer.
 
+The telemetry producer retries an immutable batch for up to 48 hours by default,
+matching the collector's deduplication horizon. Use `NewProducerWithOptions` to
+configure `ProducerOptions.RetryWindow` when the collector uses another value.
+
 Run the reference app with Go 1.24:
 
 ```sh

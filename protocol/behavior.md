@@ -5,8 +5,9 @@
 A client sends required and optional named capabilities. A server MUST fail the
 request with `SPECTER_UNSUPPORTED_CAPABILITY` when any required capability is
 missing. The response's `negotiated` list contains supported requested
-capabilities. Version mismatch is `SPECTER_PROTOCOL_VERSION_MISMATCH` and SHOULD
-use HTTP 426 in the reference binding.
+capabilities. Capability arrays contain unique names. Version mismatch is
+`SPECTER_PROTOCOL_VERSION_MISMATCH` and SHOULD use HTTP 426 in the reference
+binding.
 
 The v1 capability names are `commands`, `queries`, `query-subscriptions`,
 `reaction-tickets`, and `runtime-observations`. An implementation MAY publish
@@ -37,8 +38,9 @@ tickets produce a public not-found error.
 A Query returns one JSON-compatible public value or a structured error.
 Subscriptions first emit current state, then newer values. A slow consumer MAY
 receive coalesced changes but MUST eventually receive the newest value. Sequence
-numbers are monotonically increasing within a subscription. `afterSequence`
-allows a binding to resume when supported.
+numbers are strictly increasing within a subscription and every emitted value
+MUST be greater than `afterSequence` when it is present. `afterSequence` allows a
+binding to resume when supported.
 
 Cancellation MUST stop iteration and release request/database context. An SSE
 stream ends with `subscription.complete`; runtime failures are emitted as
@@ -53,9 +55,12 @@ parents and causes are valid for coalesced Reaction passes.
 
 Runtime producers MUST be non-blocking with respect to application work.
 Producers SHOULD queue at most 10,000 observations, send batches of at most 100,
-retry while alive, and drop oldest entries under pressure. After recovery they
-emit `telemetry.dropped` with `droppedCount`. Collectors deduplicate by source
-identity plus `observationId` and acknowledge accepted and duplicate counts.
+retry while alive within the collector's deduplication retry window, and drop
+oldest entries under pressure. A batch that reaches that horizon is reported as
+lost rather than retried after its deduplication identity may expire. After
+recovery producers emit `telemetry.dropped` with `droppedCount`. Collectors
+deduplicate by source identity plus `observationId` and acknowledge accepted and
+duplicate counts.
 
 Only Event metadata is standard. Projects MAY add sanitized JSON `attributes`;
 Command inputs, Query results, domain Event payloads, and raw private errors MUST

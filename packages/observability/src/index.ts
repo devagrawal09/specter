@@ -22,6 +22,7 @@ export {
   type RuntimeObservationProducer,
   type RuntimeObservationProducerOptions,
 } from './producer'
+export { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 export {
   createRuntimeObservationEmitter,
   createSpecterProtocolObserver,

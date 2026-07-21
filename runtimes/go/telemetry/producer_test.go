@@ -103,6 +103,50 @@ func TestProducerRetriesTheSameImmutableBatchUntilExactlyAcknowledged(t *testing
 	}
 }
 
+func TestProducerExpiresAnUnacknowledgedBatchAtTheRetryHorizonAndReportsItsLoss(t *testing.T) {
+	requests := make(chan protocol.RuntimeObservationBatch, 2)
+	var attempts atomic.Int64
+	var currentTime atomic.Int64
+	currentTime.Store(time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC).UnixNano())
+	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var batch protocol.RuntimeObservationBatch
+		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
+			return nil, err
+		}
+		requests <- batch
+		accepted := 0
+		if attempts.Add(1) > 1 {
+			accepted = len(batch.Observations)
+		}
+		body := fmt.Sprintf(`{"protocolVersion":1,"kind":"observations.ack","requestId":%q,"accepted":%d,"duplicates":0}`, batch.RequestID, accepted)
+		return jsonResponse(body), nil
+	})}}
+	producer := telemetry.NewProducerWithOptions(client, testSource(), telemetry.ProducerOptions{
+		Capacity:    8,
+		RetryWindow: time.Second,
+		RetryDelay:  100 * time.Millisecond,
+		Now: func() time.Time {
+			return time.Unix(0, currentTime.Load()).UTC()
+		},
+	})
+	producer.Observe(testObservation("observation-1", nil))
+	first := receiveBatch(t, requests, time.Second)
+	currentTime.Add(int64(2 * time.Second))
+	second := receiveBatch(t, requests, time.Second)
+
+	if first.RequestID == second.RequestID {
+		t.Fatalf("expired batch retained request ID %q", first.RequestID)
+	}
+	if len(second.Observations) != 1 || second.Observations[0].Kind != "telemetry.dropped" || second.Observations[0].DroppedCount != 1 {
+		t.Fatalf("expired batch loss was not reported: %#v", second.Observations)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := producer.Close(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestProducerSanitizesObservationErrorsBeforeTransmission(t *testing.T) {
 	received := make(chan protocol.RuntimeObservationBatch, 1)
 	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {

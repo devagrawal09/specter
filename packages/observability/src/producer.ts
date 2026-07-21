@@ -6,6 +6,8 @@ import type {
 } from '@specter-ts/protocol'
 import { parseProtocolMessage } from '@specter-ts/protocol'
 
+import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
+
 export type RuntimeObservationProducerOptions = {
   readonly endpoint: string
   readonly source: RuntimeSource
@@ -16,6 +18,7 @@ export type RuntimeObservationProducerOptions = {
   readonly maxBatchSize?: number
   readonly retryDelayMs?: number
   readonly maxRetryDelayMs?: number
+  readonly retryWindowMs?: number
   readonly closeTimeoutMs?: number
 }
 
@@ -40,6 +43,10 @@ export function createRuntimeObservationProducer(
   const batchSize = boundedPositiveInteger(options.maxBatchSize, 100, 100)
   const initialRetryDelay = options.retryDelayMs ?? 100
   const maxRetryDelay = options.maxRetryDelayMs ?? 5_000
+  const retryWindow = boundedPositiveInteger(
+    options.retryWindowMs,
+    DEFAULT_OBSERVATION_RETRY_WINDOW_MS,
+  )
   const closeTimeout = Math.max(0, options.closeTimeoutMs ?? 5_000)
   const queue: RuntimeObservation[] = []
   let dropped = 0
@@ -56,6 +63,7 @@ export function createRuntimeObservationProducer(
         readonly batch: RuntimeObservationBatch
         readonly queuedObservationCount: number
         readonly droppedCount: number
+        readonly createdAt: number
       }
     | undefined
 
@@ -128,6 +136,7 @@ export function createRuntimeObservationProducer(
         pending = {
           queuedObservationCount,
           droppedCount,
+          createdAt: now().getTime(),
           batch: {
             protocolVersion: 1,
             kind: 'observations.batch',
@@ -135,6 +144,13 @@ export function createRuntimeObservationProducer(
             observations,
           },
         }
+      }
+
+      if (now().getTime() - pending.createdAt >= retryWindow) {
+        dropped += pending.queuedObservationCount
+        pending = undefined
+        retryDelay = initialRetryDelay
+        continue
       }
 
       try {

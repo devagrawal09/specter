@@ -15,6 +15,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import {
   acceptObservationReservation,
   prepareObservationDeduplication,
+  reconcileObservationReservations,
   releaseObservationReservation,
   reserveObservations,
 } from './collector-deduplication'
@@ -150,7 +151,10 @@ describe('collector cross-segment observation deduplication', () => {
         'retry-after-six-minutes',
         new Date('2026-07-18T12:06:00.000Z'),
       ),
-    ).resolves.toEqual({ status: 'busy' })
+    ).resolves.toMatchObject({
+      status: 'busy',
+      reservationIds: ['slow-live-request'],
+    })
 
     await acceptObservationReservation(
       first.reservation,
@@ -159,7 +163,12 @@ describe('collector cross-segment observation deduplication', () => {
       new Date('2026-07-18T12:06:01.000Z'),
     )
     await expect(
-      reserveObservations(batch, client, 'retry-after-completion'),
+      reserveObservations(
+        batch,
+        client,
+        'retry-after-completion',
+        new Date('2026-07-18T12:06:02.000Z'),
+      ),
     ).resolves.toMatchObject({
       status: 'reserved',
       reservation: { duplicates: 1, batch: { observations: [] } },
@@ -167,7 +176,7 @@ describe('collector cross-segment observation deduplication', () => {
     client.close()
   })
 
-  it('retains accepted identities for the producer process retry lifetime', async () => {
+  it('retains accepted identities through the retry window and prunes them afterwards', async () => {
     const client = controlClient()
     const acceptedAt = new Date('2026-07-18T12:00:00.000Z')
     await prepareObservationDeduplication(client, acceptedAt)
@@ -185,18 +194,83 @@ describe('collector cross-segment observation deduplication', () => {
       acceptedAt,
     )
 
-    // Producers retry while alive, with no protocol retry horizon. Even a
-    // much later retry must therefore remain a duplicate.
-    await prepareObservationDeduplication(
-      client,
-      new Date('2027-07-18T12:00:00.000Z'),
-    )
     await expect(
-      reserveObservations(batch, client, 'year-later-retry'),
+      reserveObservations(
+        batch,
+        client,
+        'within-window-retry',
+        new Date('2026-07-20T11:59:59.000Z'),
+      ),
     ).resolves.toMatchObject({
       status: 'reserved',
       reservation: { duplicates: 1, batch: { observations: [] } },
     })
+
+    await expect(
+      reserveObservations(
+        batch,
+        client,
+        'after-window-retry',
+        new Date('2026-07-20T12:00:01.000Z'),
+      ),
+    ).resolves.toMatchObject({
+      status: 'reserved',
+      reservation: { duplicates: 0, batch: { observations: [observation] } },
+    })
+    client.close()
+  })
+
+  it('recovers a durable segment commit after live control-index finalization fails', async () => {
+    const directory = mkdtempSync(
+      join(tmpdir(), 'specter-dedup-live-recovery-'),
+    )
+    temporaryDirectories.push(directory)
+    const segmentPath = join(directory, 'collector-20260718120000000.db')
+    const client = createClient({
+      url: `file:${join(directory, 'control.db')}`,
+    })
+    await prepareObservationDeduplication(client)
+    const reserved = await reserveObservations(
+      batch,
+      client,
+      'failed-finalization',
+    )
+    if (reserved.status !== 'reserved') throw new Error('Expected reservation')
+
+    const segment = createClient({ url: `file:${segmentPath}` })
+    await prepareSpecterSqlite(segment)
+    const persistence = createSpecterSqlitePersistence(segment)
+    const collector = await createSpecterObservabilityCollector({
+      eventLog: persistence.eventLog,
+      store: persistence.createSliceStore(createCollectorState),
+    })
+    await collector.ingest(reserved.reservation.batch)
+
+    const blocked = await reserveObservations(batch, client, 'live-retry')
+    expect(blocked).toMatchObject({
+      status: 'busy',
+      reservationIds: ['failed-finalization'],
+    })
+    if (blocked.status !== 'busy') throw new Error('Expected busy retry')
+
+    await reconcileObservationReservations(
+      client,
+      [segmentPath],
+      new Date(),
+      blocked.reservationIds,
+    )
+    await expect(
+      reserveObservations(batch, client, 'recovered-retry'),
+    ).resolves.toMatchObject({
+      status: 'reserved',
+      reservation: { duplicates: 1, batch: { observations: [] } },
+    })
+
+    const count = await segment.execute(
+      "SELECT COUNT(*) AS count FROM specter_events WHERE type = 'runtime-observation-recorded'",
+    )
+    expect(Number(count.rows[0]?.count)).toBe(1)
+    segment.close()
     client.close()
   })
 
