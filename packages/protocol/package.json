@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/protocol",
   "version": "0.3.0",
-  "description": "Language-neutral Specter protocol types, validation, and HTTP/SSE bindings.",
+  "description": "Language-neutral Specter runtime-observation protocol types and validation.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -19,9 +19,6 @@
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
-  },
-  "dependencies": {
-    "@specter-ts/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

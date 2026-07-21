@@ -25,8 +25,12 @@ type ProducerOptions struct {
 	Now         func() time.Time
 }
 
+type ObservationSender interface {
+	SendObservations(context.Context, protocol.RuntimeObservationBatch) (protocol.ObservationAcknowledgement, error)
+}
+
 type Producer struct {
-	client      *protocol.Client
+	client      ObservationSender
 	source      protocol.RuntimeSource
 	capacity    int
 	retryWindow time.Duration
@@ -47,11 +51,11 @@ type Producer struct {
 	closeOnce sync.Once
 }
 
-func NewProducer(client *protocol.Client, source protocol.RuntimeSource, capacity int) *Producer {
+func NewProducer(client ObservationSender, source protocol.RuntimeSource, capacity int) *Producer {
 	return NewProducerWithOptions(client, source, ProducerOptions{Capacity: capacity})
 }
 
-func NewProducerWithOptions(client *protocol.Client, source protocol.RuntimeSource, options ProducerOptions) *Producer {
+func NewProducerWithOptions(client ObservationSender, source protocol.RuntimeSource, options ProducerOptions) *Producer {
 	capacity := options.Capacity
 	if capacity <= 0 {
 		capacity = DefaultQueueCapacity
@@ -92,7 +96,7 @@ func (p *Producer) Observe(observation specter.Observation) {
 		return
 	}
 	if observation.Error != nil {
-		observation.Error = protocol.PublicError(observation.Error)
+		observation.Error = protocol.SanitizeObservationError(observation.Error)
 	}
 	runtimeObservation := protocol.RuntimeObservation{Observation: observation, Sequence: p.sequence.Add(1), Source: p.source}
 	if p.queueSize == p.capacity {

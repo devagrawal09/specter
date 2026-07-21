@@ -4,7 +4,6 @@ export const protocolErrorCodes = {
   invalidJson: 'SPECTER_INVALID_JSON',
   invalidMessage: 'SPECTER_INVALID_MESSAGE',
   versionMismatch: 'SPECTER_PROTOCOL_VERSION_MISMATCH',
-  unsupportedCapability: 'SPECTER_UNSUPPORTED_CAPABILITY',
   routeNotFound: 'SPECTER_ROUTE_NOT_FOUND',
   internal: 'SPECTER_INTERNAL_ERROR',
   transport: 'SPECTER_TRANSPORT_FAILURE',
@@ -56,8 +55,6 @@ const publicProtocolErrorMessages: Readonly<Record<string, string>> = {
   [protocolErrorCodes.invalidMessage]: 'Protocol message is invalid.',
   [protocolErrorCodes.versionMismatch]:
     'The protocol major version is unsupported.',
-  [protocolErrorCodes.unsupportedCapability]:
-    'One or more required capabilities are unsupported.',
   [protocolErrorCodes.routeNotFound]: 'Route not found.',
   [protocolErrorCodes.internal]:
     'The Specter runtime could not complete the request.',

@@ -1,13 +1,17 @@
 {
   "protocolVersion": 1,
-  "kind": "command.response",
-  "requestId": "invalid-event-order-response",
-  "operationId": "operation-1",
-  "status": "committed",
-  "version": 2,
-  "events": [
-    { "eventId": "event-2", "type": "todo-completed", "order": 2, "recordedAt": "2026-07-18T12:00:01.000Z", "commitVersion": 2 },
-    { "eventId": "event-1", "type": "todo-added", "order": 1, "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": 1 }
-  ],
-  "reactionTicketId": "reaction-1"
+  "kind": "observations.batch",
+  "requestId": "invalid-event-order-request",
+  "observations": [{
+    "observationId": "invalid-event-order-observation",
+    "sequence": 2,
+    "observedAt": "2026-07-18T12:00:01.000Z",
+    "source": { "application": "todo", "environment": "test", "runtimeLanguage": "typescript", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+    "kind": "events.persisted",
+    "operationId": "operation-1",
+    "events": [
+      { "eventId": "event-2", "type": "todo-completed", "order": 2, "recordedAt": "2026-07-18T12:00:01.000Z", "commitVersion": 2 },
+      { "eventId": "event-1", "type": "todo-added", "order": 1, "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": 1 }
+    ]
+  }]
 }

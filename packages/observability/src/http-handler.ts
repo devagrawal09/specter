@@ -1,7 +1,5 @@
 import {
   assertRuntimeObservationBatch,
-  negotiateCapabilities,
-  parseProtocolMessage,
   protocolErrorCodes,
   SpecterProtocolError,
   structuredProtocolError,
@@ -40,40 +38,12 @@ export function createSpecterObservabilityHttpHandler(
       )
     }
     const route = url.pathname.slice(basePath.length) || '/'
+    const isObservationProtocolRoute = route === '/specter/v1/observations'
 
     try {
       if (request.method === 'GET' && route === '/') {
         return new Response(renderCollectorHtml(basePath), {
           headers: { 'content-type': 'text/html; charset=utf-8' },
-        })
-      }
-      if (request.method === 'GET' && route === '/specter/v1/capabilities') {
-        return Response.json({
-          protocolVersion: 1,
-          kind: 'capabilities.response',
-          requestId: url.searchParams.get('requestId') ?? crypto.randomUUID(),
-          runtime: { language: 'typescript', version: '0.3.0' },
-          supported: ['runtime-observations'],
-          negotiated: [],
-        })
-      }
-      if (request.method === 'POST' && route === '/specter/v1/capabilities') {
-        requireJsonContentType(request)
-        const message = parseProtocolMessage(await readJson(request))
-        if (message.kind !== 'capabilities.request') {
-          return errorResponse(
-            400,
-            protocolErrorCodes.invalidMessage,
-            'Protocol message is invalid.',
-          )
-        }
-        return Response.json({
-          protocolVersion: 1,
-          kind: 'capabilities.response',
-          requestId: message.requestId,
-          runtime: { language: 'typescript', version: '0.3.0' },
-          supported: ['runtime-observations'],
-          negotiated: negotiateCapabilities(message, ['runtime-observations']),
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/observations') {
@@ -82,6 +52,7 @@ export function createSpecterObservabilityHttpHandler(
         assertRuntimeObservationBatch(body)
         return Response.json(await options.collector.ingest(body), {
           status: 202,
+          headers: { 'Specter-Protocol-Version': '1' },
         })
       }
       if (request.method === 'GET' && route === '/v1/overview') {
@@ -124,15 +95,12 @@ export function createSpecterObservabilityHttpHandler(
         cause instanceof SpecterProtocolError ? cause.status : 500,
         error.code,
         error.message,
+        isObservationProtocolRoute,
       )
     }
   }
 
-  return async (request: Request) => {
-    const response = await handle(request)
-    response.headers.set('Specter-Protocol-Version', '1')
-    return response
-  }
+  return handle
 }
 
 function requireJsonContentType(request: Request) {
@@ -269,6 +237,17 @@ function streamActivity(
   )
 }
 
-function errorResponse(status: number, code: string, message: string) {
-  return Response.json({ error: { code, message } }, { status })
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+  protocol = false,
+) {
+  return Response.json(
+    { error: { code, message } },
+    {
+      status,
+      headers: protocol ? { 'Specter-Protocol-Version': '1' } : undefined,
+    },
+  )
 }

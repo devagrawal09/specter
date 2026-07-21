@@ -1,42 +1,15 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://specter.dev/protocol/v1/messages.schema.json",
-  "title": "Specter protocol v1 messages",
+  "title": "Specter runtime observability protocol v1 messages",
   "allOf": [{ "$ref": "envelope.schema.json" }],
   "oneOf": [
-    { "$ref": "#/$defs/capabilitiesRequest" },
-    { "$ref": "#/$defs/capabilitiesResponse" },
-    { "$ref": "#/$defs/commandRequest" },
-    { "$ref": "#/$defs/commandResponse" },
-    { "$ref": "#/$defs/queryRequest" },
-    { "$ref": "#/$defs/queryResponse" },
-    { "$ref": "#/$defs/subscriptionRequest" },
-    { "$ref": "#/$defs/subscriptionValue" },
-    { "$ref": "#/$defs/subscriptionError" },
-    { "$ref": "#/$defs/subscriptionComplete" },
-    { "$ref": "#/$defs/reactionTicketRequest" },
-    { "$ref": "#/$defs/reactionTicketResponse" },
     { "$ref": "#/$defs/observationBatch" },
     { "$ref": "#/$defs/observationAck" }
   ],
   "$defs": {
     "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-    "jsonEnvelope": { "type": "object", "required": ["type", "payload"], "properties": { "type": { "type": "string", "minLength": 1 }, "payload": {} } },
-    "causality": { "type": "object", "required": ["operationId"], "properties": { "operationId": { "type": "string", "minLength": 1 }, "correlationId": { "type": "string", "minLength": 1 }, "parentOperationIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }, "triggeringEventIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }, "triggeringEventOrder": { "type": "object", "required": ["from", "to"], "properties": { "from": { "$ref": "#/$defs/safeInteger" }, "to": { "$ref": "#/$defs/safeInteger" } } }, "reactionPassId": { "type": "string", "minLength": 1 }, "deliveryId": { "type": "string", "minLength": 1 }, "attemptId": { "type": "string", "minLength": 1 } } },
-    "error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string", "minLength": 1 }, "message": { "type": "string", "minLength": 1 }, "details": {}, "retryable": { "type": "boolean" } } },
-    "capabilitiesRequest": { "properties": { "kind": { "const": "capabilities.request" }, "required": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }, "optional": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } },
-    "capabilitiesResponse": { "required": ["runtime", "supported", "negotiated"], "properties": { "kind": { "const": "capabilities.response" }, "runtime": { "type": "object", "required": ["language", "version"], "properties": { "language": { "type": "string", "minLength": 1 }, "version": { "type": "string", "minLength": 1 } } }, "supported": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } }, "negotiated": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } },
-    "commandRequest": { "allOf": [{ "$ref": "#/$defs/causality" }], "required": ["command"], "properties": { "kind": { "const": "command.request" }, "command": { "$ref": "#/$defs/jsonEnvelope" }, "idempotencyKey": { "type": "string", "minLength": 1 }, "expectedVersion": { "$ref": "#/$defs/safeInteger" } } },
-    "commandResponse": { "required": ["operationId", "status", "version", "events"], "properties": { "kind": { "const": "command.response" }, "operationId": { "type": "string", "minLength": 1 }, "status": { "enum": ["committed", "duplicate", "rejected"] }, "version": { "$ref": "#/$defs/safeInteger" }, "events": { "type": "array", "items": { "$ref": "runtime-observation.schema.json#/$defs/eventReference" } }, "reactionTicketId": { "type": "string", "minLength": 1 }, "error": { "$ref": "#/$defs/error" } }, "oneOf": [{ "properties": { "status": { "enum": ["committed", "duplicate"] } }, "required": ["reactionTicketId"], "not": { "required": ["error"] } }, { "properties": { "status": { "const": "rejected" }, "events": { "maxItems": 0 } }, "required": ["error"], "not": { "required": ["reactionTicketId"] } }] },
-    "queryRequest": { "allOf": [{ "$ref": "#/$defs/causality" }], "required": ["query"], "properties": { "kind": { "const": "query.request" }, "query": { "$ref": "#/$defs/jsonEnvelope" } } },
-    "queryResponse": { "required": ["operationId"], "properties": { "kind": { "const": "query.response" }, "operationId": { "type": "string", "minLength": 1 }, "result": {}, "error": { "$ref": "#/$defs/error" } }, "oneOf": [{ "required": ["result"], "not": { "required": ["error"] } }, { "required": ["error"], "not": { "required": ["result"] } }] },
-    "subscriptionRequest": { "allOf": [{ "$ref": "#/$defs/causality" }], "required": ["query"], "properties": { "kind": { "const": "subscription.request" }, "query": { "$ref": "#/$defs/jsonEnvelope" }, "afterSequence": { "$ref": "#/$defs/safeInteger" } } },
-    "subscriptionValue": { "required": ["operationId", "sequence", "result"], "properties": { "kind": { "const": "subscription.value" }, "operationId": { "type": "string", "minLength": 1 }, "sequence": { "$ref": "#/$defs/safeInteger" }, "result": {} }, "not": { "required": ["error"] } },
-    "subscriptionError": { "required": ["operationId", "error"], "properties": { "kind": { "const": "subscription.error" }, "operationId": { "type": "string", "minLength": 1 }, "error": { "$ref": "#/$defs/error" } }, "allOf": [{ "not": { "required": ["result"] } }, { "not": { "required": ["sequence"] } }] },
-    "subscriptionComplete": { "required": ["operationId"], "properties": { "kind": { "const": "subscription.complete" }, "operationId": { "type": "string", "minLength": 1 } }, "allOf": [{ "not": { "required": ["result"] } }, { "not": { "required": ["error"] } }, { "not": { "required": ["sequence"] } }] },
-    "reactionTicketRequest": { "required": ["reactionTicketId"], "properties": { "kind": { "const": "reaction-ticket.request" }, "reactionTicketId": { "type": "string", "minLength": 1 } } },
-    "reactionTicketResponse": { "required": ["reactionTicketId", "status"], "properties": { "kind": { "const": "reaction-ticket.response" }, "reactionTicketId": { "type": "string", "minLength": 1 }, "status": { "enum": ["pending", "completed", "failed"] }, "error": { "$ref": "#/$defs/error" } }, "oneOf": [{ "properties": { "status": { "enum": ["pending", "completed"] } }, "not": { "required": ["error"] } }, { "properties": { "status": { "const": "failed" } }, "required": ["error"] }] },
     "observationBatch": { "required": ["observations"], "properties": { "kind": { "const": "observations.batch" }, "observations": { "type": "array", "maxItems": 100, "items": { "$ref": "runtime-observation.schema.json" } } } },
-    "observationAck": { "required": ["accepted", "duplicates"], "properties": { "kind": { "const": "observations.ack" }, "accepted": { "$ref": "#/$defs/safeInteger" }, "duplicates": { "$ref": "#/$defs/safeInteger" }, "rejectedObservationIds": { "type": "array", "items": { "type": "string", "minLength": 1 } } } }
+    "observationAck": { "required": ["accepted", "duplicates"], "properties": { "kind": { "const": "observations.ack" }, "accepted": { "$ref": "#/$defs/safeInteger" }, "duplicates": { "$ref": "#/$defs/safeInteger" }, "rejectedObservationIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } }
   }
 }

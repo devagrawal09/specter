@@ -2,14 +2,18 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
+	"mime"
 	"net/http"
 	"os"
 	"os/signal"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -33,12 +37,14 @@ type todo struct {
 	Title  string `json:"title"`
 }
 
+var apiOperationCounter atomic.Uint64
+
 func main() {
 	collectorURL := os.Getenv("SPECTER_COLLECTOR_URL")
 	if collectorURL == "" {
 		collectorURL = "http://127.0.0.1:41736/specter/v1"
 	}
-	producer := telemetry.NewProducer(&protocol.Client{BaseURL: collectorURL}, protocol.RuntimeSource{Application: "go-todo-reference", Environment: environment(), RuntimeLanguage: "go", RuntimeVersion: "0.1.0", InstanceID: fmt.Sprintf("go-todo-%d", time.Now().UnixNano()), EventLogID: "go-todo-memory"}, telemetry.DefaultQueueCapacity)
+	producer := telemetry.NewProducer(&protocol.ObservationClient{BaseURL: collectorURL}, protocol.RuntimeSource{Application: "go-todo-reference", Environment: environment(), RuntimeLanguage: "go", RuntimeVersion: "0.1.0", InstanceID: fmt.Sprintf("go-todo-%d", time.Now().UnixNano()), EventLogID: "go-todo-memory"}, telemetry.DefaultQueueCapacity)
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
@@ -53,7 +59,7 @@ func main() {
 		defer cancel()
 		_ = app.Close(ctx)
 	}()
-	server := &http.Server{Addr: address, Handler: (&protocol.Server{App: app, RuntimeVersion: "0.1.0"}).Handler(), ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: address, Handler: newTodoHandler(app), ReadHeaderTimeout: 5 * time.Second}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go func() {
@@ -62,10 +68,102 @@ func main() {
 		defer cancel()
 		_ = server.Shutdown(shutdown)
 	}()
-	log.Printf("Go Todo Specter protocol server listening on http://%s", address)
+	log.Printf("Go Todo project API listening on http://%s", address)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func newTodoHandler(app *specter.App) http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {
+		writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
+	})
+	mux.HandleFunc("POST /todos", func(writer http.ResponseWriter, request *http.Request) {
+		var input addTodoInput
+		if err := decodeJSON(writer, request, &input); err != nil {
+			writeAPIError(writer, http.StatusBadRequest, "INVALID_REQUEST", "Request body must be a Todo JSON object.")
+			return
+		}
+		execution, err := app.Command(request.Context(), "addTodo", input, specter.DispatchOptions{
+			OperationID:    operationID(request),
+			CorrelationID:  request.Header.Get("X-Correlation-ID"),
+			IdempotencyKey: request.Header.Get("Idempotency-Key"),
+		})
+		if err != nil {
+			status, code, message := publicAPIError(err)
+			writeAPIError(writer, status, code, message)
+			return
+		}
+		status := http.StatusCreated
+		outcome := "committed"
+		if execution.Duplicate {
+			status = http.StatusOK
+			outcome = "duplicate"
+		}
+		writeJSON(writer, status, map[string]any{
+			"operationId": execution.OperationID,
+			"status":      outcome,
+			"version":     execution.Version,
+		})
+	})
+	mux.HandleFunc("GET /todos", func(writer http.ResponseWriter, request *http.Request) {
+		result, err := app.Query(request.Context(), "todosQuery", struct{}{})
+		if err != nil {
+			writeAPIError(writer, http.StatusInternalServerError, "INTERNAL_ERROR", "Todos could not be loaded.")
+			return
+		}
+		writeJSON(writer, http.StatusOK, result)
+	})
+	return mux
+}
+
+func decodeJSON(writer http.ResponseWriter, request *http.Request, output any) error {
+	mediaType, _, err := mime.ParseMediaType(request.Header.Get("Content-Type"))
+	if err != nil || mediaType != "application/json" {
+		return errors.New("Content-Type must be application/json")
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(writer, request.Body, 64<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(output); err != nil {
+		return err
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return errors.New("request body must contain one JSON value")
+	}
+	return nil
+}
+
+func operationID(request *http.Request) string {
+	if value := request.Header.Get("X-Specter-Operation-ID"); value != "" {
+		return value
+	}
+	return fmt.Sprintf("http_%d_%d", time.Now().UTC().UnixNano(), apiOperationCounter.Add(1))
+}
+
+func publicAPIError(err error) (int, string, string) {
+	var failure *specter.Error
+	if !errors.As(err, &failure) {
+		return http.StatusInternalServerError, "INTERNAL_ERROR", "Todo operation failed."
+	}
+	switch failure.Code {
+	case specter.ErrCommandRejected, specter.ErrInvalidInput:
+		return http.StatusBadRequest, "TODO_REJECTED", "Todo could not be added."
+	case specter.ErrIdempotencyConflict, specter.ErrVersionConflict:
+		return http.StatusConflict, "TODO_CONFLICT", "Todo request conflicts with an earlier change."
+	default:
+		return http.StatusInternalServerError, "INTERNAL_ERROR", "Todo operation failed."
+	}
+}
+
+func writeAPIError(writer http.ResponseWriter, status int, code, message string) {
+	writeJSON(writer, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func writeJSON(writer http.ResponseWriter, status int, value any) {
+	writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writer.WriteHeader(status)
+	_ = json.NewEncoder(writer).Encode(value)
 }
 
 func environment() string {

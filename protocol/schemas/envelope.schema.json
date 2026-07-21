@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://specter.dev/protocol/v1/envelope.schema.json",
-  "title": "Specter protocol v1 envelope",
+  "title": "Specter runtime observability protocol v1 envelope",
   "type": "object",
   "required": ["protocolVersion", "kind", "requestId"],
   "properties": {

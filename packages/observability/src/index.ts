@@ -30,3 +30,4 @@ export {
   type RuntimeObservationEmitter,
 } from './runtime-adapter'
 export { renderCollectorHtml } from './ui'
+export type { RuntimeSource } from '@specter-ts/protocol'

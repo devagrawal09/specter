@@ -1,0 +1,5 @@
+{
+  "protocolVersion": 1,
+  "kind": "observations.batch",
+  "requestId": "malformed-batch-request"
+}

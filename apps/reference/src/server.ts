@@ -8,12 +8,8 @@ import { createSpecterApp } from '@specter-ts/core'
 import {
   createRuntimeObservationEmitter,
   createRuntimeObservationProducer,
-} from '@specter-ts/observability'
-import {
-  createSpecterProtocolHttpHandler,
-  createSpecterRuntimeProtocolAdapter,
   type RuntimeSource,
-} from '@specter-ts/protocol'
+} from '@specter-ts/observability'
 import {
   createDurableReactionScheduler,
   type ReactionPass,
@@ -100,17 +96,7 @@ const handleSpecterRequest = createSpecterHttpHandler({
 
 const app = new Hono()
 
-const handleProtocolRequest = createSpecterProtocolHttpHandler({
-  runtime: createSpecterRuntimeProtocolAdapter({
-    app: specterApp,
-    eventLog: persistence.eventLog,
-    runtimeVersion: runtimeSource.runtimeVersion,
-    run: (operation) => runWithSqliteDb(productionDb, operation),
-  }),
-})
-
 app.all('/api/*', (c) => handleSpecterRequest(c.req.raw))
-app.all('/specter/v1/*', (c) => handleProtocolRequest(c.req.raw))
 
 const routes = app
 

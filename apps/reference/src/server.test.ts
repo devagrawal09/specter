@@ -65,6 +65,16 @@ test('handles command followed by immediate query without SQLITE_BUSY', async ()
   ])
 })
 
+test('does not expose the removed language-neutral operational API', async () => {
+  const response = await postJson('/specter/v1/commands', {
+    protocolVersion: 1,
+    kind: 'command.request',
+    requestId: 'removed-api',
+  })
+
+  expect(response.status).toBe(404)
+})
+
 function postJson(path: string, body: unknown) {
   return app.request(path, {
     method: 'POST',

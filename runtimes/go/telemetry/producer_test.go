@@ -19,18 +19,24 @@ import (
 
 func TestProducerEnrichesAndBatchesObservations(t *testing.T) {
 	received := make(chan protocol.RuntimeObservationBatch, 1)
-	app, err := specter.NewApp(specter.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	handler := (&protocol.Server{App: app, AcceptObservations: func(_ context.Context, batch protocol.RuntimeObservationBatch) (protocol.ObservationAcknowledgement, error) {
+	handler := http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		var batch protocol.RuntimeObservationBatch
+		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		received <- batch
-		return protocol.ObservationAcknowledgement{Accepted: len(batch.Observations)}, nil
-	}}).Handler()
+		writer.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(writer).Encode(protocol.ObservationAcknowledgement{
+			Envelope: protocol.Envelope{ProtocolVersion: protocol.Version, Kind: "observations.ack", RequestID: batch.RequestID},
+			Accepted: len(batch.Observations),
+		})
+	})
 	server := httptest.NewServer(handler)
 	defer server.Close()
 	source := protocol.RuntimeSource{Application: "test", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"}
-	producer := telemetry.NewProducer(&protocol.Client{BaseURL: server.URL + "/specter/v1"}, source, 8)
+	producer := telemetry.NewProducer(&protocol.ObservationClient{BaseURL: server.URL + "/specter/v1"}, source, 8)
 	producer.Observe(specter.Observation{ObservationID: "observation-1", ObservedAt: time.Now().UTC(), Kind: "command.started", OperationID: "operation-1"})
 	select {
 	case batch := <-received:
@@ -48,7 +54,7 @@ func TestProducerEnrichesAndBatchesObservations(t *testing.T) {
 }
 
 func TestObserveDoesNotBlockDuringCollectorOutage(t *testing.T) {
-	producer := telemetry.NewProducer(&protocol.Client{BaseURL: "http://127.0.0.1:1/specter/v1"}, protocol.RuntimeSource{Application: "test", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"}, 1)
+	producer := telemetry.NewProducer(&protocol.ObservationClient{BaseURL: "http://127.0.0.1:1/specter/v1"}, protocol.RuntimeSource{Application: "test", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"}, 1)
 	started := time.Now()
 	for index := 0; index < 100; index++ {
 		producer.Observe(specter.Observation{ObservationID: "observation", ObservedAt: time.Now().UTC(), Kind: "command.started", OperationID: "operation"})
@@ -64,7 +70,7 @@ func TestObserveDoesNotBlockDuringCollectorOutage(t *testing.T) {
 func TestProducerRetriesTheSameImmutableBatchUntilExactlyAcknowledged(t *testing.T) {
 	requests := make(chan protocol.RuntimeObservationBatch, 2)
 	var attempts atomic.Int64
-	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &protocol.ObservationClient{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var batch protocol.RuntimeObservationBatch
 		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
 			return nil, err
@@ -108,7 +114,7 @@ func TestProducerExpiresAnUnacknowledgedBatchAtTheRetryHorizonAndReportsItsLoss(
 	var attempts atomic.Int64
 	var currentTime atomic.Int64
 	currentTime.Store(time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC).UnixNano())
-	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &protocol.ObservationClient{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var batch protocol.RuntimeObservationBatch
 		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
 			return nil, err
@@ -149,7 +155,7 @@ func TestProducerExpiresAnUnacknowledgedBatchAtTheRetryHorizonAndReportsItsLoss(
 
 func TestProducerSanitizesObservationErrorsBeforeTransmission(t *testing.T) {
 	received := make(chan protocol.RuntimeObservationBatch, 1)
-	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &protocol.ObservationClient{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var batch protocol.RuntimeObservationBatch
 		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
 			return nil, err
@@ -196,7 +202,7 @@ func TestProducerSanitizesObservationErrorsBeforeTransmission(t *testing.T) {
 func TestProducerPreservesSequenceOrderAcrossOverflowRetryAndClose(t *testing.T) {
 	requests := make(chan protocol.RuntimeObservationBatch, 4)
 	var attempts atomic.Int64
-	client := &protocol.Client{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+	client := &protocol.ObservationClient{BaseURL: "http://specter.invalid/specter/v1", HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		var batch protocol.RuntimeObservationBatch
 		if err := json.NewDecoder(request.Body).Decode(&batch); err != nil {
 			return nil, err
