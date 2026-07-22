@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
 	"strings"
 
 	"github.com/devagrawal09/specter/runtimes/go/specter"
@@ -30,9 +32,18 @@ func ValidateMessageJSON(data []byte) error {
 	if !json.Valid(data) {
 		return &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON message."}
 	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	var jsonValue any
+	if decoder.Decode(&jsonValue) != nil || !validateJSONValue(jsonValue) {
+		return invalidMessage("Protocol messages must contain JSON-safe values.")
+	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil || fields == nil {
 		return invalidMessage("Protocol message must be an object.")
+	}
+	if !rawInteger(fields, "protocolVersion", true) {
+		return invalidMessage("protocolVersion must be a non-negative JSON-safe integer.")
 	}
 	var envelope Envelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
@@ -89,7 +100,7 @@ func validateObservation(observation RuntimeObservation) *specter.Error {
 	if _, offset := observation.ObservedAt.Zone(); offset != 0 {
 		return invalidMessage("Observation timestamp must be UTC.")
 	}
-	if observation.decoded && (!observation.timestampsValid || !observation.typesValid || !observation.causalityValid) {
+	if observation.decoded && (!observation.fieldsValid || !observation.timestampValid || !observation.attributesValid || !observation.errorValid) {
 		return invalidMessage("Observation fields do not match the protocol types.")
 	}
 	if _, ok := observationKinds[observation.Kind]; !ok {
@@ -105,24 +116,33 @@ func validateObservation(observation RuntimeObservation) *specter.Error {
 	if order := observation.TriggeringEventOrder; order != nil && (!safeInteger(order.From) || !safeInteger(order.To) || order.To < order.From) {
 		return invalidMessage("Observation triggering Event order range is invalid.")
 	}
-	if !safeInteger(observation.Cursor) || !safeInteger(observation.DroppedCount) || !safeInteger(observation.Version) {
-		return invalidMessage("Observation cursor, dropped count, and version must be safe integers.")
+	if !safeInteger(observation.Cursor) || !safeInteger(observation.DroppedCount) {
+		return invalidMessage("Observation cursor and dropped count must be safe integers.")
 	}
 	previousEventOrder := int64(-1)
 	for _, event := range observation.Events {
 		if event.EventID == "" || event.Type == "" || event.RecordedAt.IsZero() || !safeInteger(event.Order) || !safeInteger(event.CommitVersion) {
 			return invalidMessage("Observation Event references require identity, UTC timestamp, and safe order and version.")
 		}
-		if event.Order <= previousEventOrder {
+		if int64(event.Order) <= previousEventOrder {
 			return invalidMessage("Observation Event references must be strictly ascending by Event order.")
 		}
-		previousEventOrder = event.Order
+		previousEventOrder = int64(event.Order)
 		if _, offset := event.RecordedAt.Zone(); offset != 0 {
 			return invalidMessage("Observation Event timestamps must be UTC.")
 		}
+		if event.decoded && (!event.fieldsValid || !event.timestampValid || !event.attributesValid) {
+			return invalidMessage("Observation Event fields do not match the protocol types.")
+		}
+		if event.Attributes != nil && !validateJSONValue(event.Attributes) {
+			return invalidMessage("Observation Event attributes must contain JSON values with safe integers.")
+		}
 	}
-	if observation.Error != nil && (observation.Error.Code == "" || observation.Error.Message == "") {
+	if observation.Error != nil && (observation.Error.Code == "" || observation.Error.Message == "" || !validateJSONValue(observation.Error.Details)) {
 		return invalidMessage("Observation errors require a code and message.")
+	}
+	if observation.Attributes != nil && !validateJSONValue(observation.Attributes) {
+		return invalidMessage("Observation attributes must contain JSON values with safe integers.")
 	}
 	if observation.Outcome != "" && observation.Outcome != "succeeded" && observation.Outcome != "rejected" && observation.Outcome != "failed" {
 		return invalidMessage("Observation outcome is invalid.")
@@ -145,7 +165,7 @@ func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowled
 		}
 		rejected[id] = struct{}{}
 	}
-	accounted := acknowledgement.Accepted + acknowledgement.Duplicates + len(rejected)
+	accounted := int(acknowledgement.Accepted) + int(acknowledgement.Duplicates) + len(rejected)
 	if accounted != len(batch.Observations) {
 		return fmt.Errorf("specter protocol: acknowledgement accounts for %d of %d observations", accounted, len(batch.Observations))
 	}
@@ -153,7 +173,7 @@ func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowled
 }
 
 func validateObservationAcknowledgementShape(acknowledgement ObservationAcknowledgement, fields map[string]json.RawMessage) error {
-	if !hasFields(fields, "accepted", "duplicates") || !rawInteger(fields, "accepted", true) || !rawInteger(fields, "duplicates", true) || acknowledgement.Accepted < 0 || acknowledgement.Duplicates < 0 || int64(acknowledgement.Accepted) > maxSafeInteger || int64(acknowledgement.Duplicates) > maxSafeInteger {
+	if !hasFields(fields, "accepted", "duplicates") || !rawInteger(fields, "accepted", true) || !rawInteger(fields, "duplicates", true) || !safeInteger(acknowledgement.Accepted) || !safeInteger(acknowledgement.Duplicates) {
 		return invalidMessage("Observation acknowledgement counts must be non-negative safe integers.")
 	}
 	if raw, present := fields["rejectedObservationIds"]; present && !rawArray(raw) {
@@ -179,7 +199,7 @@ func validateEnvelope(envelope Envelope, kind string) *specter.Error {
 	if envelope.Kind != kind {
 		return invalidMessage(fmt.Sprintf("Expected message kind %q.", kind))
 	}
-	if strings.TrimSpace(envelope.RequestID) == "" {
+	if envelope.RequestID == "" {
 		return invalidMessage("requestId is required.")
 	}
 	return nil
@@ -189,8 +209,65 @@ func invalidMessage(message string) *specter.Error {
 	return &specter.Error{Code: specter.ErrInvalidMessage, Message: message}
 }
 
-func safeInteger(value int64) bool {
-	return value >= 0 && value <= maxSafeInteger
+func safeInteger(value SafeInteger) bool {
+	return value >= 0 && int64(value) <= maxSafeInteger
+}
+
+func validateJSONValue(value any) bool {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return false
+	}
+	decoder := json.NewDecoder(strings.NewReader(string(data)))
+	decoder.UseNumber()
+	var normalized any
+	if decoder.Decode(&normalized) != nil {
+		return false
+	}
+	return validateDecodedJSONValue(normalized)
+}
+
+func validateDecodedJSONValue(value any) bool {
+	if value == nil {
+		return true
+	}
+	switch typed := value.(type) {
+	case string, bool:
+		return true
+	case json.Number:
+		if exact, ok := new(big.Rat).SetString(typed.String()); ok && exact.IsInt() {
+			absolute := new(big.Int).Abs(exact.Num())
+			return absolute.Cmp(big.NewInt(maxSafeInteger)) <= 0
+		}
+		float, err := typed.Float64()
+		return err == nil && validateJSONFloat(float)
+	case float32:
+		return validateJSONFloat(float64(typed))
+	case float64:
+		return validateJSONFloat(typed)
+	case map[string]any:
+		for _, item := range typed {
+			if !validateDecodedJSONValue(item) {
+				return false
+			}
+		}
+		return true
+	case []any:
+		for _, item := range typed {
+			if !validateDecodedJSONValue(item) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func validateJSONFloat(value float64) bool {
+	if math.IsInf(value, 0) || math.IsNaN(value) {
+		return false
+	}
+	return math.Trunc(value) != value || math.Abs(value) <= float64(maxSafeInteger)
 }
 
 func uniqueNonempty(ids []string) bool {
@@ -217,14 +294,14 @@ func hasFields(fields map[string]json.RawMessage, names ...string) bool {
 }
 
 // SanitizeObservationError reduces a runtime failure to telemetry-safe data.
-func SanitizeObservationError(err error) *specter.Error {
+func SanitizeObservationError(err error) *StructuredError {
 	var public *specter.Error
 	if errors.As(err, &public) {
 		if message, ok := observationErrorMessages[public.Code]; ok {
-			return &specter.Error{Code: public.Code, Message: message}
+			return &StructuredError{Code: string(public.Code), Message: message}
 		}
 	}
-	return &specter.Error{Code: specter.ErrInfrastructure, Message: "Runtime operation failed."}
+	return &StructuredError{Code: string(specter.ErrInfrastructure), Message: "Runtime operation failed."}
 }
 
 var observationErrorMessages = map[specter.ErrorCode]string{

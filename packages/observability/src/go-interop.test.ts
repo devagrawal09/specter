@@ -63,7 +63,7 @@ it.skipIf(!hasGo)(
       eventLogId: 'typescript-interop-log',
     }
     const producer = createRuntimeObservationProducer({
-      endpoint: collectorUrl,
+      collectorUrl,
       source: typescriptSource,
       retryDelayMs: 1,
     })

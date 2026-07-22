@@ -53,7 +53,7 @@ const source = {
 }
 
 const producer = createRuntimeObservationProducer({
-  endpoint: 'http://127.0.0.1:41736',
+  collectorUrl: 'http://127.0.0.1:41736',
   source,
 })
 

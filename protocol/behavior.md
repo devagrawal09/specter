@@ -35,9 +35,10 @@ deduplicate using source identity plus `observationId`; it MUST NOT use
 accepted and duplicate counts and MAY list rejected observation IDs.
 
 Runtime producers MUST be non-blocking with respect to application work.
-Producers SHOULD queue at most 10,000 observations, retry an immutable in-flight
-batch while alive within the collector's deduplication retry window, and drop
-oldest mutable queued entries under pressure. A batch that reaches that horizon
+Producers SHOULD retain at most 10,000 observations total, including the
+immutable in-flight batch, retry that batch while alive within the collector's
+deduplication retry window, and drop oldest mutable queued entries under
+pressure. A batch that reaches that horizon
 is reported as lost rather than retried after its identity may expire. After
 recovery producers emit `telemetry.dropped` with `droppedCount`.
 

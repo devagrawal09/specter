@@ -7,11 +7,9 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/devagrawal09/specter/runtimes/go/protocol"
-	"github.com/devagrawal09/specter/runtimes/go/specter"
 )
 
 func main() {
@@ -19,22 +17,20 @@ func main() {
 		log.Fatal("usage: observation-fixture <collector-url>")
 	}
 	client := &protocol.ObservationClient{
-		BaseURL: strings.TrimRight(os.Args[1], "/") + "/specter/v1",
+		CollectorURL: os.Args[1],
 	}
 	acknowledgement, err := client.SendObservations(
 		context.Background(),
 		protocol.RuntimeObservationBatch{
 			Envelope: protocol.Envelope{RequestID: "go-interop-request"},
 			Observations: []protocol.RuntimeObservation{{
-				Observation: specter.Observation{
-					ObservationID: "go-interop-observation",
-					Kind:          "command.completed",
-					ObservedAt:    time.Now().UTC(),
-					OperationID:   "go-interop-operation",
-					CommandType:   "addTodo",
-					Outcome:       "succeeded",
-				},
-				Sequence: 1,
+				ObservationID: "go-interop-observation",
+				Kind:          "command.completed",
+				ObservedAt:    time.Now().UTC(),
+				OperationID:   "go-interop-operation",
+				CommandType:   "addTodo",
+				Outcome:       "succeeded",
+				Sequence:      1,
 				Source: protocol.RuntimeSource{
 					Application:     "go-interop",
 					Environment:     "test",

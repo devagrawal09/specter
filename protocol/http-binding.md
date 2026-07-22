@@ -1,7 +1,8 @@
 # Reference HTTP binding
 
-The default base path is `/specter/v1`. All JSON responses include
-`Specter-Protocol-Version: 1`.
+The default base path is `/specter/v1`. Every response for the exact
+`/specter/v1/observations` protocol route includes
+`Specter-Protocol-Version: 1`, including wrong-method and failure responses.
 
 | Method | Path | Request kind | Response kind |
 | --- | --- | --- | --- |

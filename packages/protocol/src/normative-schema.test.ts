@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 const protocolRoot = new URL('../../../protocol/', import.meta.url)
 const schemaNames = [
+  'json-value.schema.json',
   'envelope.schema.json',
   'messages.schema.json',
   'runtime-observation.schema.json',

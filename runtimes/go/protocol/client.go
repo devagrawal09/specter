@@ -13,8 +13,8 @@ import (
 // ObservationClient sends runtime metadata to a Specter collector. It cannot
 // execute application Commands or Queries.
 type ObservationClient struct {
-	BaseURL    string
-	HTTPClient *http.Client
+	CollectorURL string
+	HTTPClient   *http.Client
 }
 
 func (client *ObservationClient) httpClient() *http.Client {
@@ -33,7 +33,7 @@ func (client *ObservationClient) SendObservations(ctx context.Context, batch Run
 	if err != nil {
 		return ObservationAcknowledgement{}, err
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(client.BaseURL, "/")+"/observations", bytes.NewReader(body))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimRight(client.CollectorURL, "/")+"/specter/v1/observations", bytes.NewReader(body))
 	if err != nil {
 		return ObservationAcknowledgement{}, err
 	}
@@ -62,9 +62,6 @@ func (client *ObservationClient) SendObservations(ctx context.Context, batch Run
 	expected := Envelope{ProtocolVersion: Version, Kind: "observations.ack", RequestID: batch.RequestID}
 	if acknowledgement.Envelope != expected {
 		return acknowledgement, fmt.Errorf("specter protocol: acknowledgement envelope does not match batch")
-	}
-	if acknowledgement.Error != nil {
-		return acknowledgement, acknowledgement.Error
 	}
 	if response.StatusCode >= 300 {
 		return acknowledgement, fmt.Errorf("specter protocol: HTTP %s", response.Status)

@@ -88,6 +88,7 @@ export function createSpecterObservabilityHttpHandler(
         404,
         'SPECTER_OBSERVABILITY_ROUTE_NOT_FOUND',
         'Route not found.',
+        isObservationProtocolRoute,
       )
     } catch (cause) {
       const error = structuredProtocolError(cause)

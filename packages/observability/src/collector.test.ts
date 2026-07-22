@@ -521,10 +521,23 @@ describe('Specter observability collector', () => {
       }),
     )
     expect(wrongContentType.status).toBe(415)
+    expect(wrongContentType.headers.get('Specter-Protocol-Version')).toBe('1')
     await expect(wrongContentType.json()).resolves.toEqual({
       error: {
         code: 'SPECTER_INVALID_MESSAGE',
         message: 'Protocol message is invalid.',
+      },
+    })
+
+    const wrongMethod = await handler(
+      new Request('http://collector/specter/v1/observations'),
+    )
+    expect(wrongMethod.status).toBe(404)
+    expect(wrongMethod.headers.get('Specter-Protocol-Version')).toBe('1')
+    await expect(wrongMethod.json()).resolves.toEqual({
+      error: {
+        code: 'SPECTER_OBSERVABILITY_ROUTE_NOT_FOUND',
+        message: 'Route not found.',
       },
     })
 
@@ -608,7 +621,7 @@ describe('Specter observability collector', () => {
   it('drops oldest queued telemetry without backpressuring the caller', async () => {
     const bodies: RuntimeObservationBatch[] = []
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 2,
       fetch: async (_input, init) => {
@@ -664,7 +677,7 @@ describe('Specter observability collector', () => {
   it('reports dropped telemetry after earlier sequences across batch boundaries', async () => {
     const bodies: RuntimeObservationBatch[] = []
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 1,
       maxBatchSize: 1,
@@ -710,7 +723,7 @@ describe('Specter observability collector', () => {
     const requestIds: string[] = []
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryDelayMs: 60_000,
       fetch: async (_input, init) => {
@@ -752,7 +765,7 @@ describe('Specter observability collector', () => {
     let currentTime = new Date('2026-07-18T12:00:00.000Z')
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryWindowMs: 1_000,
       retryDelayMs: 60_000,
@@ -796,7 +809,7 @@ describe('Specter observability collector', () => {
     const bodies: RuntimeObservationBatch[] = []
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 4,
       retryDelayMs: 60_000,
@@ -866,7 +879,7 @@ describe('Specter observability collector', () => {
     const started = Promise.withResolvers<void>()
     const responseGate = Promise.withResolvers<void>()
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 2,
       fetch: async (_input, init) => {
@@ -963,7 +976,7 @@ describe('Specter observability collector', () => {
     const bodies: RuntimeObservationBatch[] = []
     let attempt = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryDelayMs: 60_000,
       fetch: async (_input, init) => {
@@ -993,7 +1006,7 @@ describe('Specter observability collector', () => {
 
   it('accepts an acknowledgement that explicitly rejects the complete batch', async () => {
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 0,
       maxBatchSize: 0,

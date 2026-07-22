@@ -40,12 +40,13 @@ type Producer struct {
 	done        chan struct{}
 	wake        chan struct{}
 
-	queueMu   sync.Mutex
-	queue     []protocol.RuntimeObservation
-	queueHead int
-	queueSize int
-	dropped   int64
-	stopped   bool
+	queueMu     sync.Mutex
+	queue       []protocol.RuntimeObservation
+	queueHead   int
+	queueSize   int
+	pendingSize int
+	dropped     int64
+	stopped     bool
 
 	sequence  atomic.Int64
 	closeOnce sync.Once
@@ -95,11 +96,14 @@ func (p *Producer) Observe(observation specter.Observation) {
 		p.queueMu.Unlock()
 		return
 	}
-	if observation.Error != nil {
-		observation.Error = protocol.SanitizeObservationError(observation.Error)
+	runtimeObservation := protocol.ObservationFromRuntime(observation, p.source, p.sequence.Add(1))
+	if p.queueSize+p.pendingSize == p.capacity && p.queueSize == 0 {
+		p.dropped++
+		p.queueMu.Unlock()
+		p.signal()
+		return
 	}
-	runtimeObservation := protocol.RuntimeObservation{Observation: observation, Sequence: p.sequence.Add(1), Source: p.source}
-	if p.queueSize == p.capacity {
+	if p.queueSize+p.pendingSize == p.capacity {
 		p.queue[p.queueHead] = protocol.RuntimeObservation{}
 		p.queueHead = (p.queueHead + 1) % p.capacity
 		p.dropped++
@@ -161,7 +165,7 @@ func (p *Producer) run() {
 			pendingRequestID = p.requestID()
 		}
 		if p.now().Sub(pendingSince) >= p.retryWindow {
-			p.restoreDropped(int64(pendingQueuedCount) + pendingDroppedCount)
+			p.releasePending(int64(pendingQueuedCount) + pendingDroppedCount)
 			pending = nil
 			pendingRequestID = ""
 			pendingSince = time.Time{}
@@ -171,6 +175,7 @@ func (p *Producer) run() {
 		}
 		batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{RequestID: pendingRequestID}, Observations: pending}
 		if p.send(batch) {
+			p.releasePending(0)
 			pending = nil
 			pendingRequestID = ""
 			pendingSince = time.Time{}
@@ -180,6 +185,7 @@ func (p *Producer) run() {
 		}
 		if stopping {
 			if p.send(batch) {
+				p.releasePending(0)
 				pending = nil
 				pendingRequestID = ""
 				continue
@@ -192,6 +198,7 @@ func (p *Producer) run() {
 		case <-p.stop:
 			stopping = true
 			if p.send(batch) {
+				p.releasePending(0)
 				pending = nil
 				pendingRequestID = ""
 				continue
@@ -203,8 +210,9 @@ func (p *Producer) run() {
 
 func (p *Producer) lossObservation(dropped int64) protocol.RuntimeObservation {
 	observedAt := p.now().UTC()
-	loss := specter.Observation{ObservationID: fmt.Sprintf("dropped_%d", observedAt.UnixNano()), Kind: "telemetry.dropped", ObservedAt: observedAt, OperationID: "telemetry", DroppedCount: dropped}
-	return protocol.RuntimeObservation{Observation: loss, Sequence: p.sequence.Add(1), Source: p.source}
+	sequence := p.sequence.Add(1)
+	loss := specter.Observation{ObservationID: fmt.Sprintf("dropped_%d_%d", observedAt.UnixNano(), sequence), Kind: "telemetry.dropped", ObservedAt: observedAt, OperationID: "telemetry", DroppedCount: dropped}
+	return protocol.ObservationFromRuntime(loss, p.source, sequence)
 }
 
 func (p *Producer) takeBatch() ([]protocol.RuntimeObservation, int, int64) {
@@ -227,15 +235,14 @@ func (p *Producer) takeBatch() ([]protocol.RuntimeObservation, int, int64) {
 			p.dropped = 0
 		}
 	}
+	p.pendingSize = len(batch)
 	return batch, count, reportedDropped
 }
 
-func (p *Producer) restoreDropped(count int64) {
-	if count == 0 {
-		return
-	}
+func (p *Producer) releasePending(dropped int64) {
 	p.queueMu.Lock()
-	p.dropped += count
+	p.pendingSize = 0
+	p.dropped += dropped
 	p.queueMu.Unlock()
 }
 

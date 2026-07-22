@@ -58,7 +58,8 @@ const runtimeSource: RuntimeSource = {
   eventLogId: process.env.SPECTER_EVENT_LOG_ID ?? sqlitePath,
 }
 const observationProducer = createRuntimeObservationProducer({
-  endpoint: process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
+  collectorUrl:
+    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
   source: runtimeSource,
 })
 const runtimeObservability = createRuntimeObservationEmitter({
@@ -97,6 +98,12 @@ const handleSpecterRequest = createSpecterHttpHandler({
 const app = new Hono()
 
 app.all('/api/*', (c) => handleSpecterRequest(c.req.raw))
+app.all('/specter/v1', (c) =>
+  c.json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } }, 404),
+)
+app.all('/specter/v1/*', (c) =>
+  c.json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } }, 404),
+)
 
 const routes = app
 

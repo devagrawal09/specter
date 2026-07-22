@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -90,11 +91,7 @@ func TestObservationValidationRejectsMalformedAndMismatchedBatches(t *testing.T)
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			var batch protocol.RuntimeObservationBatch
-			if err := json.Unmarshal([]byte(test.body), &batch); err != nil {
-				t.Fatal(err)
-			}
-			err := protocol.ValidateObservationBatch(batch)
+			err := protocol.ValidateMessageJSON([]byte(test.body))
 			var failure *specter.Error
 			if err == nil || !errors.As(err, &failure) {
 				t.Fatalf("expected structured validation failure, got %v", err)
@@ -119,10 +116,53 @@ func TestObservationValidationRejectsProgrammaticNullObservations(t *testing.T) 
 	}
 }
 
+func TestObservationValidationRejectsNonJSONProgrammaticMetadata(t *testing.T) {
+	cycle := map[string]any{}
+	cycle["self"] = cycle
+	for name, attributes := range map[string]map[string]any{
+		"not a number":   {"value": math.NaN()},
+		"function":       {"value": func() {}},
+		"cycle":          cycle,
+		"unsafe integer": {"value": int64(9_007_199_254_740_992)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			observation := validObservation()
+			observation.Attributes = attributes
+			batch := protocol.RuntimeObservationBatch{Envelope: protocol.Envelope{ProtocolVersion: protocol.Version, Kind: "observations.batch", RequestID: "request-1"}, Observations: []protocol.RuntimeObservation{observation}}
+			if err := protocol.ValidateObservationBatch(batch); err == nil {
+				t.Fatal("accepted non-JSON programmatic metadata")
+			}
+		})
+	}
+}
+
+func TestRuntimeAdapterDoesNotEmitRemovedWireFields(t *testing.T) {
+	observation := protocol.ObservationFromRuntime(specter.Observation{
+		ObservationID: "observation-1", Kind: "command.completed", ObservedAt: time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC), OperationID: "operation-1",
+		Version: 2, Duplicate: true, ReactionTicketID: "ticket-1",
+	}, protocol.RuntimeSource{Application: "todo", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"}, 1)
+	encoded, err := json.Marshal(observation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(encoded, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for _, removed := range []string{"version", "duplicate", "reactionTicketId"} {
+		if _, present := fields[removed]; present {
+			t.Fatalf("adapter emitted removed wire field %q: %s", removed, encoded)
+		}
+	}
+	if string(fields["attributes"]) != `{"duplicate":true,"reactionTicketId":"ticket-1","version":2}` {
+		t.Fatalf("runtime metadata was not preserved as attributes: %s", fields["attributes"])
+	}
+}
+
 func TestObservationClientSendsOnlyTheIngestionRequestAndValidatesAck(t *testing.T) {
 	var path, method string
 	client := &protocol.ObservationClient{
-		BaseURL: "http://collector.invalid/specter/v1",
+		CollectorURL: "http://collector.invalid",
 		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 			path, method = request.URL.Path, request.Method
 			var batch protocol.RuntimeObservationBatch
@@ -152,7 +192,7 @@ func TestObservationClientRejectsMismatchedAndPartialAcknowledgements(t *testing
 	}
 	for _, body := range tests {
 		client := &protocol.ObservationClient{
-			BaseURL: "http://collector.invalid/specter/v1",
+			CollectorURL: "http://collector.invalid",
 			HTTPClient: &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
 				return jsonResponse(body), nil
 			})},
@@ -169,9 +209,9 @@ func TestObservationClientRejectsMismatchedAndPartialAcknowledgements(t *testing
 
 func validObservation() protocol.RuntimeObservation {
 	return protocol.RuntimeObservation{
-		Observation: specter.Observation{ObservationID: "observation-1", Kind: "command.started", ObservedAt: time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC), OperationID: "operation-1"},
-		Sequence:    1,
-		Source:      protocol.RuntimeSource{Application: "todo", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"},
+		ObservationID: "observation-1", Kind: "command.started", ObservedAt: time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC), OperationID: "operation-1",
+		Sequence: 1,
+		Source:   protocol.RuntimeSource{Application: "todo", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"},
 	}
 }
 

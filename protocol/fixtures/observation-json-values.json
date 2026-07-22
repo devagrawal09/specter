@@ -1,0 +1,39 @@
+{
+  "protocolVersion": 1.0,
+  "kind": "observations.batch",
+  "requestId": "json-values-request",
+  "observations": [
+    {
+      "observationId": "json-values-scalar",
+      "sequence": 1e0,
+      "observedAt": "2026-07-18T12:00:00Z",
+      "source": { "application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+      "kind": "command.failed",
+      "operationId": "operation-1",
+      "triggeringEventOrder": { "from": 1.0, "to": 1e0 },
+      "events": [{ "eventId": "event-1", "type": "todo-added", "order": 1.0, "recordedAt": "2026-07-18T12:00:00Z", "commitVersion": 1e0, "attributes": { "nested": [1.25] } }],
+      "cursor": 0.0,
+      "droppedCount": 0e0,
+      "attributes": { "nested": { "items": [null, true, "value", -9007199254740991, 1.25] } },
+      "error": { "code": "TEST", "message": "Safe failure.", "details": "scalar", "retryable": true }
+    },
+    {
+      "observationId": "json-values-array",
+      "sequence": 2.0,
+      "observedAt": "2026-07-18T12:00:01.123Z",
+      "source": { "application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+      "kind": "query.failed",
+      "operationId": "operation-2",
+      "error": { "code": "TEST", "message": "Safe failure.", "details": [{ "nested": 9007199254740991 }], "retryable": false }
+    },
+    {
+      "observationId": "json-values-null",
+      "sequence": 3,
+      "observedAt": "2026-07-18T12:00:02Z",
+      "source": { "application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+      "kind": "query.failed",
+      "operationId": "operation-3",
+      "error": { "code": "TEST", "message": "Safe failure.", "details": null }
+    }
+  ]
+}

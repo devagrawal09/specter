@@ -20,8 +20,10 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 
 - Messages are UTF-8 JSON objects and MUST contain `protocolVersion`, `kind`,
   and `requestId`. Version 1 is the first protocol major.
-- IDs are non-empty strings. Timestamps are RFC 3339 UTC strings. Integers MUST
-  be in the JSON-safe range and non-negative where the schemas say so.
+- IDs are non-empty strings. Timestamps use the canonical RFC 3339 UTC spelling
+  `YYYY-MM-DDTHH:mm:ss(.digits)?Z` and must name a real calendar instant.
+  Integers MUST be in the JSON-safe range and non-negative where the schemas say
+  so; equivalent JSON spellings such as `1`, `1.0`, and `1e0` are accepted.
 - Implementations MUST reject a different major version and MUST ignore unknown
   optional object members.
 - Domain values MUST be JSON values. `undefined`, non-finite numbers, bigint,
@@ -34,6 +36,7 @@ The key words **MUST**, **MUST NOT**, **SHOULD**, and **MAY** are normative.
 - [Behavior and causality](behavior.md)
 - [Reference HTTP binding](http-binding.md)
 - [Message schemas](schemas/messages.schema.json)
+- [Recursive JSON value schema](schemas/json-value.schema.json)
 - [Runtime observation schema](schemas/runtime-observation.schema.json)
 - [Behavioral conformance vectors](conformance/README.md)
 

@@ -247,9 +247,46 @@ function optionalInteger(value: unknown, path: string) {
 }
 function timestamp(value: unknown, path: string) {
   const input = string(value, path)
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/.exec(input)
+  if (!match) fail(`${path} must be an RFC 3339 UTC timestamp`)
+  const [
+    ,
+    yearInput,
+    monthInput,
+    dayInput,
+    hourInput,
+    minuteInput,
+    secondInput,
+  ] = match
+  const year = Number(yearInput)
+  const month = Number(monthInput)
+  const day = Number(dayInput)
+  const hour = Number(hourInput)
+  const minute = Number(minuteInput)
+  const second = Number(secondInput)
+  const daysInMonth = [
+    31,
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ]
   if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(input) ||
-    Number.isNaN(Date.parse(input))
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > (daysInMonth[month - 1] ?? 0) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
   ) {
     fail(`${path} must be an RFC 3339 UTC timestamp`)
   }

@@ -33,8 +33,8 @@ It binds strictly to `127.0.0.1:41737` and exposes a project-owned Todo API:
 
 The reference app does not expose `/specter/v1` routes. It only sends runtime
 observations outward to `http://127.0.0.1:41736/specter/v1/observations` by
-default. Set `SPECTER_COLLECTOR_URL` to select another collector protocol base
-URL. The observation protocol performs no capability negotiation; SQLite,
+default. Set `SPECTER_COLLECTOR_URL` to another collector root URL. The
+observation protocol performs no capability negotiation; SQLite,
 Postgres, and durable Reaction-outbox support remain runtime-specific concerns.
 
 Validate the module with:

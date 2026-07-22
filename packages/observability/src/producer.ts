@@ -9,7 +9,7 @@ import { parseProtocolMessage } from '@specter-ts/protocol'
 import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 
 export type RuntimeObservationProducerOptions = {
-  readonly endpoint: string
+  readonly collectorUrl: string
   readonly source: RuntimeSource
   readonly fetch?: typeof globalThis.fetch
   readonly idFactory?: () => string
@@ -157,7 +157,7 @@ export function createRuntimeObservationProducer(
         const abort = new AbortController()
         requestAbort = abort
         const response = await fetchImplementation(
-          `${options.endpoint.replace(/\/$/, '')}/specter/v1/observations`,
+          `${options.collectorUrl.replace(/\/$/, '')}/specter/v1/observations`,
           {
             method: 'POST',
             headers: {

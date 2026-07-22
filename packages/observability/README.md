@@ -38,7 +38,7 @@ const source = {
   eventLogId: './data/app.db',
 }
 const producer = createRuntimeObservationProducer({
-  endpoint: 'http://127.0.0.1:41736',
+  collectorUrl: 'http://127.0.0.1:41736',
   source,
 })
 const telemetry = createRuntimeObservationEmitter({ producer, source })
