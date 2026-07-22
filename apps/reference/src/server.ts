@@ -48,7 +48,7 @@ const runtimeSource: RuntimeSource = {
   environment:
     process.env.SPECTER_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
   runtimeLanguage: 'typescript',
-  runtimeVersion: '0.3.0',
+  runtimeVersion: '0.4.0',
   instanceId:
     process.env.SPECTER_INSTANCE_ID ?? `todo-reference-${process.pid}`,
   eventLogId: process.env.SPECTER_EVENT_LOG_ID ?? sqlitePath,

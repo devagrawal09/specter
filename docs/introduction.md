@@ -28,6 +28,8 @@ export const addTodoSpec = createCommandSlice('addTodo')
     when: { todoId: 'todo-1', title: 'Ship it' },
     expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
   })
+
+export default addTodoSpec
 ```
 
 The example says what the use case means in domain language. It does not choose
@@ -35,17 +37,21 @@ a database, transport, schema library, or server framework.
 
 ## Specification and implementation
 
-Every Slice has two required files:
+Every Slice has two required source files and one generated portable contract:
 
-- `spec.ts` exports the immutable Slice Specification. It imports from
-  `@specter-ts/spec` and contains only descriptions and Scenarios.
-- `impl.ts` exports the completed Slice Implementation. It supplies runtime
-  schemas, a private Slice Store, Event apply handlers, a Reaction Plugin when
-  needed, and the final handler.
+- `spec.ts` default-exports exactly one immutable Slice Specification. It
+  imports from `@specter-ts/spec` and contains only descriptions and Scenarios.
+- `spec.json` is generated beside it by `specter-spec export`. It is the strict,
+  versioned contract consumed by every implementation language and by tooling.
+- `impl.ts` loads `spec.json` and exports the completed Slice Implementation.
+  It supplies runtime schemas, a private Slice Store, Event apply handlers, a
+  Reaction Plugin when needed, and the final handler.
 
-The split lets one specification evaluate different implementations and keeps
-operational choices out of the behavioral contract. Both files use named
-exports so their relationship remains explicit.
+The split lets one specification evaluate implementations in TypeScript, Go,
+or another runtime while keeping operational choices out of the behavioral
+contract. A TypeScript specification may also expose a convenient named alias,
+but its default export is the exporter's authoritative input; implementations
+never import it directly.
 
 ## Commands, Queries, and Reactions
 
@@ -59,7 +65,8 @@ A Specter application composes three Slice kinds:
   or dispatch a follow-up Command.
 
 All three express behavior through Scenarios. Their implementation builders use
-different stages, but share the same `spec.ts` / `impl.ts` boundary.
+different stages, but share the same `spec.ts` → `spec.json` → `impl.*`
+boundary.
 
 ## Event Log and Slice State
 

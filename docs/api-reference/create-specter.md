@@ -60,7 +60,7 @@ create-specter generate slice <lowerCamelName>
 
 | Argument or option | Default | Behavior |
 | --- | --- | --- |
-| `<lowerCamelName>` | required | Slice name and named export base, such as `addTodo`. |
+| `<lowerCamelName>` | required | Slice name and implementation export base, such as `addTodo`. |
 | `--kind` | required | Generates a `command`, `query`, or `reaction` builder chain. |
 | `--feature` | required | Kebab-case feature directory, such as `todos`. |
 | `--root` | `src/features` | Relative Slice root. Absolute and parent-traversing paths are rejected. |
@@ -71,8 +71,8 @@ The generator creates one bundle of eight files:
 
 ```text
 src/features/todos/add-todo/
-├── spec.ts           # required named Slice Specification
-├── impl.ts           # required named Slice Implementation
+├── spec.ts           # required default-exported authoring source
+├── impl.ts           # required named TypeScript implementation
 ├── events.ts         # starter Event Definition and catalog
 ├── projection.ts     # starter private Slice State
 ├── registry.ts       # explicit registration arrays
@@ -81,9 +81,12 @@ src/features/todos/add-todo/
 └── MIGRATION.md      # database and registration checklist
 ```
 
-Only `spec.ts` and `impl.ts` are framework-required artifacts. The other files
-are explicit starter choices. Merge generated registration and schema exports
-into the application's existing composition points instead of creating parallel
+Only `spec.ts` and `impl.ts` are framework-required source artifacts. The other
+files are explicit starter choices. The generated project runs
+`specter-spec export` before development, typecheck, tests, and builds; that
+step writes ignored adjacent `spec.json`, which `impl.ts` consumes as its only
+specification input. Merge generated registration and schema exports into the
+application's existing composition points instead of creating parallel
 registries.
 
 Generated templates contain tracer names and `TODO` markers. Replace them with

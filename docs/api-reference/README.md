@@ -29,7 +29,9 @@ project-owned code, as described in [Runtime architecture](../architecture/runti
 - Import scenario-test helpers from `@specter-ts/core/testing` in tests.
 - Import runtime values and completed implementation types from `@specter-ts/core` in application wiring and `impl.ts` files.
 - Import persistence, scheduling, outbox, and observability capabilities from their named packages.
-- Use named exports. These packages do not expose default exports.
+- Use named package exports. These packages do not expose default exports; the
+  required default export from each application-owned `spec.ts` is a separate
+  authoring convention used by `specter-spec export`.
 - Runtime schemas are Standard Schema-compatible values supplied by the application. Type-only imports disappear at build time and do not validate data.
 
 ## Related concepts

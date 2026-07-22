@@ -111,17 +111,19 @@ the outer Promise settles from the committed response, while
 `execution.reactions` observes a separate completion endpoint. Subscriptions
 use abortable, reconnect-capable SSE.
 
-For cross-language observability, Specter publishes a versioned,
-language-neutral description of runtime-observation metadata and a one-endpoint
-JSON HTTP binding. Runtimes send `observations.batch` messages to a collector;
-the collector returns `observations.ack`. Matching major versions are required,
-and unknown optional fields are tolerated.
+For cross-language tooling, Specter publishes versioned, language-neutral
+contracts for runtime-observation metadata and portable Slice specifications.
+Runtimes send `observations.batch` and `specifications.publish` messages through
+independent JSON HTTP ingestion lanes; the collector acknowledges, retries, and
+deduplicates each lane separately. Matching major versions are required, and
+unknown optional fields are tolerated.
 
-This protocol observes Command, Query, subscription, projection, and Reaction
-activity but does not invoke them. Application Slice definitions, handlers,
-schemas, persistence layouts, and remote APIs remain language-native. The
-dashboard and CLI query the collector's separate read API. TypeScript and Go
-telemetry implementations conform independently against shared fixtures.
+The protocol observes Command, Query, subscription, projection, and Reaction
+activity but does not invoke them. Portable specifications describe behavioral
+examples, not handlers, runtime schemas, persistence, or application APIs. The
+unified dashboard renders those exact specifications beside digest-correlated
+telemetry; it and the CLI query the collector's separate API. TypeScript and Go
+implementations conform independently against shared fixtures.
 See the [protocol overview](../../protocol/README.md),
 [behavioral contract](../../protocol/behavior.md), and
 [HTTP binding](../../protocol/http-binding.md).

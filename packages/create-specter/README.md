@@ -23,7 +23,8 @@ npx create-specter generate slice requestInvite \
 
 Remove `--dry-run` after reviewing the file list. The generator creates:
 
-- required `spec.ts` and `impl.ts` files with named exports;
+- required `spec.ts` with one default-exported specification and `impl.ts` with
+  a named implementation export;
 - optional Slice-owned `events.ts` and `projection.ts` support files;
 - optional local `registry.ts` and focused `scenarios.test.ts` wiring;
 - optional `db-schema.ts` re-export and `MIGRATION.md` checklist.
@@ -31,6 +32,9 @@ Remove `--dry-run` after reviewing the file list. The generator creates:
 The support files are concrete starter choices, not additional framework
 requirements. Keep `spec.ts` and `impl.ts` even if the Event catalog,
 projection, registry, or tests are organized differently in an existing app.
+Project scripts run `specter-spec export` before development, typecheck, tests,
+and builds so each `impl.ts` consumes an adjacent generated `spec.json` rather
+than importing `spec.ts`.
 
 Supported kinds are `command`, `query`, and `reaction`. Existing files are
 never replaced unless `--force` is supplied. The generated registry is local on

@@ -143,7 +143,7 @@ export default addTodoSpec
 ```ts
 // add-todo/impl.ts
 import { implementCommand } from '@specter-ts/core'
-import specification from './spec.json'
+import specification from './spec.json' with { type: 'json' }
 
 export const addTodo = implementCommand(specification)
   .inputSchema(addTodoInputSchema)
