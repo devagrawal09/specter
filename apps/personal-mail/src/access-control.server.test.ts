@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 
 import {
   accessConfiguration,
+  requestHasActionAuthorization,
   requestIsAuthorized,
 } from './access-control.server'
 
@@ -58,5 +59,26 @@ describe('Personal Mail access control', () => {
         SPECTER_MAIL_ACCESS_MODE: 'tailscale',
       }),
     ).toThrow('TAILSCALE_ALLOWED_LOGIN is required in tailscale mode')
+  })
+
+  test('requires a non-simple action header for state-changing requests', () => {
+    expect(
+      requestHasActionAuthorization(
+        new Request('http://127.0.0.1:41738/api/sync', { method: 'POST' }),
+      ),
+    ).toBe(false)
+    expect(
+      requestHasActionAuthorization(
+        new Request('http://127.0.0.1:41738/api/sync', {
+          method: 'POST',
+          headers: { 'x-personal-mail-action': '1' },
+        }),
+      ),
+    ).toBe(true)
+    expect(
+      requestHasActionAuthorization(
+        new Request('http://127.0.0.1:41738/api/status'),
+      ),
+    ).toBe(true)
   })
 })

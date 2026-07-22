@@ -384,6 +384,9 @@ async function api<T = unknown>(
     ...init,
     headers: {
       ...(init.body ? { 'content-type': 'application/json' } : {}),
+      ...(init.method && init.method !== 'GET'
+        ? { 'x-personal-mail-action': '1' }
+        : {}),
       ...init.headers,
     },
   })

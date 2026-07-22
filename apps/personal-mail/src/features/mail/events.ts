@@ -20,6 +20,14 @@ export const gmailThreadRecordedEvent = createEventDefinition(
   }),
 )
 
+export const gmailThreadRemovedEvent = createEventDefinition(
+  'gmail-thread-removed',
+  z.object({
+    threadId: z.string().min(1),
+    gmailHistoryId: z.string().min(1),
+  }),
+)
+
 export const threadAnalysisRequestedEvent = createEventDefinition(
   'thread-analysis-requested',
   z.object({
@@ -103,6 +111,7 @@ export const mailboxActionReconciliationNeededEvent = createEventDefinition(
 
 export const mailEventDefinitions = [
   gmailThreadRecordedEvent,
+  gmailThreadRemovedEvent,
   threadAnalysisRequestedEvent,
   threadAnalyzedEvent,
   automationRuleCreatedEvent,

@@ -28,6 +28,7 @@ export function createAiAnalyzer(
         `${configuration.baseUrl.replace(/\/$/, '')}/chat/completions`,
         {
           method: 'POST',
+          redirect: 'error',
           headers: {
             'content-type': 'application/json',
             ...(configuration.apiKey
@@ -76,8 +77,10 @@ function providerConfiguration(
   env: NodeJS.ProcessEnv,
 ) {
   if (provider === 'local') {
+    const baseUrl = env.AI_LOCAL_BASE_URL ?? 'http://127.0.0.1:11434/v1'
+    assertLoopbackUrl(baseUrl)
     return {
-      baseUrl: env.AI_LOCAL_BASE_URL ?? 'http://127.0.0.1:11434/v1',
+      baseUrl,
       model: env.AI_LOCAL_MODEL ?? 'llama3.2',
       apiKey: env.AI_LOCAL_API_KEY,
     }
@@ -89,4 +92,19 @@ function providerConfiguration(
     throw new Error('Cloud AI is not configured')
   }
   return { baseUrl, model, apiKey }
+}
+
+function assertLoopbackUrl(value: string) {
+  let url: URL
+  try {
+    url = new URL(value)
+  } catch {
+    throw new Error('Local AI endpoint must be a valid loopback URL')
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error('Local AI endpoint must use HTTP or HTTPS')
+  }
+  if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) {
+    throw new Error('Local AI endpoint must use a loopback host')
+  }
 }

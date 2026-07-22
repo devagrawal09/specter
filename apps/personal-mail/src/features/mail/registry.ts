@@ -7,6 +7,7 @@ import { createAutomationRule } from './create-automation-rule/impl'
 import { mailEventDefinitions } from './events'
 import { inboxQuery } from './inbox-query/impl'
 import { recordGmailThread } from './record-gmail-thread/impl'
+import { recordGmailThreadRemoved } from './record-gmail-thread-removed/impl'
 import { recordMailboxActionResult } from './record-mailbox-action-result/impl'
 import { recordThreadAnalysis } from './record-thread-analysis/impl'
 import { requestMailboxAction } from './request-mailbox-action/impl'
@@ -15,6 +16,7 @@ import { rulesQuery } from './rules-query/impl'
 
 export const mailRegistrations = {
   recordGmailThread,
+  recordGmailThreadRemoved,
   requestThreadAnalysis,
   recordThreadAnalysis,
   createAutomationRule,

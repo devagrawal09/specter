@@ -31,7 +31,7 @@ describe('AI adapter', () => {
     const result = await createAiAnalyzer({ fetch, env: {} }).analyze(effect)
     expect(fetch).toHaveBeenCalledWith(
       'http://127.0.0.1:11434/v1/chat/completions',
-      expect.objectContaining({ method: 'POST' }),
+      expect.objectContaining({ method: 'POST', redirect: 'error' }),
     )
     expect(result).toEqual({
       summary: 'Review requested.',
@@ -48,6 +48,18 @@ describe('AI adapter', () => {
     await expect(
       analyzer.analyze({ ...effect, provider: 'cloud' }),
     ).rejects.toThrow('Cloud AI is not configured')
+  })
+
+  test('refuses to send default-local analysis to a non-loopback host', async () => {
+    const fetch = vi.fn()
+    const analyzer = createAiAnalyzer({
+      fetch,
+      env: { AI_LOCAL_BASE_URL: 'https://ai.example.com/v1' },
+    })
+    await expect(analyzer.analyze(effect)).rejects.toThrow(
+      'Local AI endpoint must use a loopback host',
+    )
+    expect(fetch).not.toHaveBeenCalled()
   })
 
   test('rejects malformed provider output', async () => {

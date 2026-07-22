@@ -36,3 +36,8 @@ export function requestIsAuthorized(
     request.headers.get('tailscale-user-login') === configuration.allowedLogin
   )
 }
+
+export function requestHasActionAuthorization(request: Request) {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(request.method)) return true
+  return request.headers.get('x-personal-mail-action') === '1'
+}

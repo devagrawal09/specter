@@ -67,6 +67,9 @@ const historySchema = z.object({
         labelsRemoved: z
           .array(z.object({ message: threadRefSchema }))
           .optional(),
+        messagesDeleted: z
+          .array(z.object({ message: threadRefSchema }))
+          .optional(),
       }),
     )
     .optional(),
@@ -92,6 +95,13 @@ export type NormalizedGmailThread = {
   receivedAt: string
   unread: boolean
   labels: string[]
+}
+
+export type GmailSyncBatch = {
+  threads: NormalizedGmailThread[]
+  removedThreadIds: string[]
+  nextHistoryId: string
+  full: boolean
 }
 
 export function createGmailService(options: {
@@ -211,7 +221,7 @@ export function createGmailService(options: {
     }
   }
 
-  async function sync(): Promise<NormalizedGmailThread[]> {
+  async function sync(): Promise<GmailSyncBatch> {
     const [state] = await db
       .select()
       .from(gmailSyncState)
@@ -236,7 +246,7 @@ export function createGmailService(options: {
     do {
       const query = new URLSearchParams({
         maxResults: '50',
-        q: 'in:anywhere newer_than:90d',
+        q: 'in:inbox newer_than:90d',
       })
       if (pageToken) query.set('pageToken', pageToken)
       const page = listThreadsSchema.parse(
@@ -246,12 +256,17 @@ export function createGmailService(options: {
       pageToken = threadIds.length < 200 ? page.nextPageToken : undefined
     } while (pageToken)
     const threads = await Promise.all(threadIds.map(loadThread))
-    await saveSyncState(profile.historyId)
-    return threads
+    return {
+      threads,
+      removedThreadIds: [],
+      nextHistoryId: profile.historyId,
+      full: true,
+    }
   }
 
   async function incrementalSync(startHistoryId: string) {
     const threadIds = new Set<string>()
+    const deletedThreadIds = new Set<string>()
     let pageToken: string | undefined
     let latestHistoryId = startHistoryId
     do {
@@ -270,12 +285,40 @@ export function createGmailService(options: {
           threadIds.add(item.message.threadId ?? item.message.id)
         for (const item of entry.labelsRemoved ?? [])
           threadIds.add(item.message.threadId ?? item.message.id)
+        for (const item of entry.messagesDeleted ?? []) {
+          const threadId = item.message.threadId ?? item.message.id
+          threadIds.add(threadId)
+          deletedThreadIds.add(threadId)
+        }
       }
       pageToken = page.nextPageToken
     } while (pageToken)
-    const threads = await Promise.all([...threadIds].map(loadThread))
-    await saveSyncState(latestHistoryId)
-    return threads
+    const loaded = await Promise.all(
+      [...threadIds].map(async (threadId) => {
+        try {
+          return { thread: await loadThread(threadId) }
+        } catch (cause) {
+          if (cause instanceof GmailHttpError && cause.status === 404) {
+            return { removedThreadId: threadId }
+          }
+          throw cause
+        }
+      }),
+    )
+    const threads = loaded.flatMap((item) => (item.thread ? [item.thread] : []))
+    const removedThreadIds = new Set(
+      loaded.flatMap((item) =>
+        item.removedThreadId ? [item.removedThreadId] : [],
+      ),
+    )
+    for (const thread of threads) deletedThreadIds.delete(thread.threadId)
+    for (const threadId of deletedThreadIds) removedThreadIds.add(threadId)
+    return {
+      threads,
+      removedThreadIds: [...removedThreadIds],
+      nextHistoryId: latestHistoryId,
+      full: false,
+    }
   }
 
   async function loadThread(threadId: string) {
@@ -287,7 +330,7 @@ export function createGmailService(options: {
     return normalizeThread(thread)
   }
 
-  async function saveSyncState(historyId: string) {
+  async function commitSyncState(historyId: string) {
     await db
       .insert(gmailSyncState)
       .values({ account: 'me', historyId, lastSyncedAt: now().toISOString() })
@@ -307,6 +350,12 @@ export function createGmailService(options: {
       .from(gmailActionAttempts)
       .where(eq(gmailActionAttempts.deliveryId, deliveryId))
       .all()
+    if (existing?.status === 'failed') {
+      return {
+        status: 'failed' as const,
+        reason: existing.error ?? 'Gmail previously rejected the action',
+      }
+    }
     if (existing) {
       const current = await loadThread(effect.threadId)
       if (actionIsVisible(current.labels, effect.action)) {
@@ -347,6 +396,14 @@ export function createGmailService(options: {
       )
       if (!response.ok) {
         const reason = `Gmail rejected the action with HTTP ${response.status}`
+        if (
+          response.status === 408 ||
+          response.status === 429 ||
+          response.status >= 500
+        ) {
+          await markAttempt(deliveryId, 'ambiguous', reason)
+          throw new GmailRetryableError(reason)
+        }
         await markAttempt(deliveryId, 'failed', reason)
         return { status: 'failed', reason }
       }
@@ -363,7 +420,7 @@ export function createGmailService(options: {
       }
       const reason = cause instanceof Error ? cause.message : String(cause)
       await markAttempt(deliveryId, 'ambiguous', reason)
-      return { status: 'reconciliationNeeded', reason }
+      throw cause
     }
   }
 
@@ -386,21 +443,28 @@ export function createGmailService(options: {
   }
 
   async function gmailFetch(path: string, init: RequestInit = {}) {
+    const url = `https://gmail.googleapis.com/gmail/v1${path}`
     const accessToken = await validAccessToken()
-    return fetchImplementation(`https://gmail.googleapis.com/gmail/v1${path}`, {
+    const response = await fetchImplementation(url, {
       ...init,
       headers: { ...init.headers, authorization: `Bearer ${accessToken}` },
     })
+    if (response.status !== 401) return response
+    const refreshedToken = await validAccessToken(true)
+    return fetchImplementation(url, {
+      ...init,
+      headers: { ...init.headers, authorization: `Bearer ${refreshedToken}` },
+    })
   }
 
-  async function validAccessToken() {
+  async function validAccessToken(forceRefresh = false) {
     const [credentials] = await db
       .select()
       .from(gmailCredentials)
       .where(eq(gmailCredentials.account, 'me'))
       .all()
     if (!credentials) throw new Error('Gmail is not connected')
-    if (credentials.expiresAt > now().getTime() + 60_000)
+    if (!forceRefresh && credentials.expiresAt > now().getTime() + 60_000)
       return credentials.accessToken
     if (!credentials.refreshToken)
       throw new Error('Gmail refresh token is unavailable')
@@ -437,6 +501,7 @@ export function createGmailService(options: {
     finishAuthorization,
     connectionStatus,
     sync,
+    commitSyncState,
     loadThread,
     applyMailboxAction,
   }
@@ -447,6 +512,8 @@ export class GmailHttpError extends Error {
     super(`Gmail API returned HTTP ${status}`)
   }
 }
+
+class GmailRetryableError extends Error {}
 
 export function normalizeThread(
   thread: z.infer<typeof threadSchema>,
@@ -465,6 +532,9 @@ export function normalizeThread(
     ]),
   )
   const receivedAt = Number(message.internalDate)
+  const labels = [
+    ...new Set(messages.flatMap((candidate) => candidate.labelIds ?? [])),
+  ]
   return {
     threadId: thread.id,
     messageId: message.id,
@@ -476,8 +546,8 @@ export function normalizeThread(
     receivedAt: Number.isFinite(receivedAt)
       ? new Date(receivedAt).toISOString()
       : new Date(headers.get('date') ?? 0).toISOString(),
-    unread: (message.labelIds ?? []).includes('UNREAD'),
-    labels: message.labelIds ?? [],
+    unread: labels.includes('UNREAD'),
+    labels,
   }
 }
 

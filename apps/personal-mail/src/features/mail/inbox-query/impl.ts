@@ -6,6 +6,7 @@ import { z } from 'zod'
 import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   gmailThreadRecordedEvent,
+  gmailThreadRemovedEvent,
   mailboxActionAppliedEvent,
   threadAnalyzedEvent,
 } from '../events'
@@ -94,6 +95,12 @@ export const inboxQuery = implementQuery(specification)
       })
       .run()
   })
+  .apply(gmailThreadRemovedEvent, async (event, db) => {
+    await db
+      .delete(inboxProjection)
+      .where(eq(inboxProjection.threadId, event.payload.threadId))
+      .run()
+  })
   .apply(threadAnalyzedEvent, async (event, db) => {
     await db
       .update(inboxProjection)
@@ -144,6 +151,7 @@ export const inboxQuery = implementQuery(specification)
       .orderBy(desc(inboxProjection.receivedAt))
       .all()
     return rows
+      .filter((row) => parseLabels(row.labelsJson).has('INBOX'))
       .filter((row) =>
         query.filter === 'unread'
           ? row.unread

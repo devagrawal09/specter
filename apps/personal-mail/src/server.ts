@@ -14,6 +14,7 @@ import { Layer } from 'effect'
 
 import {
   accessConfiguration,
+  requestHasActionAuthorization,
   requestIsAuthorized,
 } from './access-control.server'
 import { createAiAnalyzer } from './adapters/ai.server'
@@ -78,6 +79,9 @@ app.use('*', async (c, next) => {
       { error: 'Personal Mail is available only to its configured owner.' },
       403,
     )
+  }
+  if (!requestHasActionAuthorization(c.req.raw)) {
+    return c.json({ error: 'Action authorization header is required.' }, 403)
   }
   c.header('cache-control', 'no-store')
   c.header('x-content-type-options', 'nosniff')
@@ -224,22 +228,55 @@ function syncMailbox() {
 }
 
 async function runSync() {
-  const threads = await gmail.sync()
-  for (const thread of threads) {
+  const batch = await gmail.sync()
+  const existingInbox = batch.full
+    ? await specterApp.query({
+        type: 'inboxQuery',
+        payload: { filter: 'all', search: '' },
+      })
+    : []
+  for (const thread of batch.threads) {
     const execution = await specterApp.command(
       { type: 'recordGmailThread', payload: thread },
       { idempotencyKey: `gmail:${thread.threadId}:${thread.historyId}` },
     )
     trackReactions(execution.reactions)
   }
+  const importedThreadIds = new Set(
+    batch.threads.map((thread) => thread.threadId),
+  )
+  const removedThreadIds = new Set(batch.removedThreadIds)
+  if (batch.full) {
+    for (const thread of existingInbox) {
+      if (!importedThreadIds.has(thread.threadId)) {
+        removedThreadIds.add(thread.threadId)
+      }
+    }
+  }
+  for (const threadId of removedThreadIds) {
+    const removalId = `gmail-removed:${threadId}:${batch.nextHistoryId}`
+    const execution = await specterApp.command(
+      {
+        type: 'recordGmailThreadRemoved',
+        payload: {
+          threadId,
+          gmailHistoryId: batch.nextHistoryId,
+        },
+      },
+      { idempotencyKey: removalId },
+    )
+    trackReactions(execution.reactions)
+  }
+  await gmail.commitSyncState(batch.nextHistoryId)
 
   const inbox = await specterApp.query({
     type: 'inboxQuery',
     payload: { filter: 'all', search: '' },
   })
   for (const thread of inbox) {
-    if (thread.analysis) continue
+    if (!importedThreadIds.has(thread.threadId)) continue
     const analysisId = `local:${thread.threadId}:${thread.historyId}`
+    if (thread.analysis?.analysisId === analysisId) continue
     const execution = await specterApp.command(
       {
         type: 'requestThreadAnalysis',
@@ -257,7 +294,7 @@ async function runSync() {
   }
 
   return {
-    imported: threads.length,
+    imported: batch.threads.length,
     automations: await evaluateAutomations(specterApp),
   }
 }
