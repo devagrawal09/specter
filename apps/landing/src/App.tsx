@@ -6,7 +6,9 @@ import {
   eventLog,
   externalApiSource,
   implementationSource,
+  observabilityOutput,
   pipeline,
+  portableSpecSource,
   reactionSource,
   scenarioTestSource,
   specSource,
@@ -79,7 +81,7 @@ export function App(): JSX.Element {
             ▮
           </span>
           <span class="brand__name">Specter</span>
-          <span class="brand__tag">main preview</span>
+          <span class="brand__tag">0.4 · main</span>
         </a>
         <nav class="topnav" aria-label="Pipeline">
           <For each={pipeline}>
@@ -100,18 +102,18 @@ export function App(): JSX.Element {
 
       <main id="main-content" tabIndex={-1}>
         <section class="hero">
-          <p class="preview-badge">Public preview · tracks main</p>
+          <p class="preview-badge">Specter 0.4 · source preview</p>
           <p class="eyebrow">
-            Executable specifications · bounded agent context · TypeScript
+            Executable specifications · portable JSON · TypeScript + Go
           </p>
           <h1 class="hero__title">
             Give your coding agent a better architecture
           </h1>
           <p class="hero__lede">
-            Specter turns each vertical Slice into an immutable specification,
-            an executable implementation, and exact scenarios. Agents get a
-            small behavior boundary to work inside; the runtime checks that the
-            composed application still conforms.
+            Specter turns each vertical Slice into an exact, portable behavior
+            contract. Coding agents work inside a small feature boundary;
+            TypeScript and Go runtimes execute the same scenarios, and the
+            dashboard shows intended behavior beside real execution.
           </p>
           <div class="hero__actions">
             <AgentPrompt />
@@ -159,18 +161,17 @@ export function App(): JSX.Element {
               </p>
             </article>
             <article class="card">
-              <h3>Implement the how</h3>
+              <h3>Export one portable contract</h3>
               <p>
-                Complete that specification in <code>impl.ts</code> with
-                schemas, a private store, apply handlers, and its terminal
-                handler.
+                Deterministically export adjacent <code>spec.json</code>. Every
+                runtime and tool consumes the same strict contract.
               </p>
             </article>
             <article class="card">
-              <h3>Validate and compose</h3>
+              <h3>Implement, validate, and compose</h3>
               <p>
-                Run every scenario against the implementation, then register one
-                complete implementation per Slice in the Specter App.
+                Supply language-native schemas and handlers, run every scenario,
+                then register one implementation per Slice.
               </p>
             </article>
           </div>
@@ -180,8 +181,8 @@ export function App(): JSX.Element {
           <div class="band__head">
             <h2>The pipeline</h2>
             <p>
-              specification → implementation → scenario tests → event log →
-              typed envelope. Each boundary has one explicit job.
+              specification → portable JSON → implementation → scenario tests →
+              event log → typed envelope. Each boundary has one explicit job.
             </p>
           </div>
         </section>
@@ -217,6 +218,30 @@ export function App(): JSX.Element {
           </div>
         </section>
 
+        <section class="stage" id="portable-contract">
+          <div class="stage__grid stage__grid--flip">
+            <CodeBlock
+              label="features/todos/add-todo/spec.json"
+              tag="portable contract"
+              code={portableSpecSource}
+            />
+            <div class="stage__copy">
+              <span class="stage__step">02 · portable JSON</span>
+              <h2>One behavior contract, independent of runtime language</h2>
+              <p>
+                <code>specter-spec export</code> converts the TypeScript
+                authoring DSL into strict, versioned JSON. Implementations,
+                scenario runners, and visual tools consume only this artifact.
+              </p>
+              <ul class="ticks">
+                <li>Unknown fields and unsafe JSON values are rejected.</li>
+                <li>Canonical bytes produce a stable specification digest.</li>
+                <li>TypeScript and Go validate the same fixtures.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
         <section class="stage" id="implementation">
           <div class="stage__grid stage__grid--flip">
             <CodeBlock
@@ -225,7 +250,7 @@ export function App(): JSX.Element {
               code={implementationSource}
             />
             <div class="stage__copy">
-              <span class="stage__step">02 · implementation</span>
+              <span class="stage__step">03 · implementation</span>
               <h2>Runtime details complete the specification</h2>
               <p>
                 The implementation loads generated portable JSON, supplies the
@@ -247,7 +272,7 @@ export function App(): JSX.Element {
         <section class="stage" id="scenario-tests">
           <div class="stage__grid">
             <div class="stage__copy">
-              <span class="stage__step">03 · scenario tests</span>
+              <span class="stage__step">04 · scenario tests</span>
               <h2>Run every implementation against its contract</h2>
               <p>
                 A small test entry point registers the selected implementations,
@@ -279,7 +304,7 @@ export function App(): JSX.Element {
               code={eventLog}
             />
             <div class="stage__copy">
-              <span class="stage__step">04 · event log</span>
+              <span class="stage__step">05 · event log</span>
               <h2>Accepted facts stay in one ordered history</h2>
               <p>
                 The Event Log is the durable source of truth for a Specter App.
@@ -371,7 +396,8 @@ export function App(): JSX.Element {
                 <li>Output schemas validate the value before execution.</li>
                 <li>Service credentials stay in server-side plugin modules.</li>
                 <li>
-                  Swap an interpreter without rewriting the specification.
+                  Use the stable delivery ID for downstream idempotency; wrap
+                  slow effects with the optional outbox.
                 </li>
               </ul>
             </div>
@@ -401,6 +427,7 @@ export function App(): JSX.Element {
 
         <section class="stage" id="typed-envelope">
           <div class="band__head">
+            <span class="stage__step">06 · typed envelope</span>
             <h2>One typed envelope API in process or over the wire</h2>
             <p>
               The completed app exposes command, query, and subscription
@@ -424,8 +451,39 @@ export function App(): JSX.Element {
           </figure>
         </section>
 
+        <section class="stage" id="observability">
+          <div class="stage__grid">
+            <div class="stage__copy">
+              <span class="stage__step">observe · specification + runtime</span>
+              <h2>See intended behavior beside real execution</h2>
+              <p>
+                Runtimes publish each immutable specification once, then attach
+                its digest to Slice telemetry. The shared collector joins both
+                streams without becoming part of application execution.
+              </p>
+              <ul class="ticks">
+                <li>
+                  Browse the whole Slice and every Given / When / Then lane.
+                </li>
+                <li>
+                  Filter activity and causal traces to the exact spec version.
+                </li>
+                <li>TypeScript and Go producers appear in one dashboard.</li>
+              </ul>
+            </div>
+            <CodeBlock
+              label="observability dashboard / addTodo"
+              tag="spec + telemetry"
+              tone="output"
+              code={observabilityOutput}
+            />
+          </div>
+        </section>
+
         <section class="cta" id="start">
-          <p class="preview-badge preview-badge--center">Main branch preview</p>
+          <p class="preview-badge preview-badge--center">
+            Specter 0.4 · available on main
+          </p>
           <h2>Give Specter to your agent</h2>
           <p>
             Paste this prompt into your coding agent. It points at the source
@@ -438,19 +496,19 @@ export function App(): JSX.Element {
             <a href={REPOSITORY_URL}>Browse the repository ↗</a>
           </div>
           <p class="cta__note">
-            Preview source tracks <code>main</code>. npm remains on the stable
-            0.2.1 release; this page does not announce npm 0.3.0.
+            Specter 0.4 source is available on <code>main</code>. npm remains on
+            the stable 0.2.1 release until the 0.4 packages are published.
           </p>
         </section>
       </main>
 
       <footer class="foot">
         <span>
-          Specter · a TypeScript framework for vertically sliced, event-sourced
-          apps.
+          Specter · portable Slice specifications for vertically sliced,
+          event-sourced apps.
         </span>
         <span class="foot__mark">
-          specification → implementation → validation → event log → envelope
+          spec.ts → spec.json → implementation → validation → runtime
         </span>
       </footer>
     </div>
