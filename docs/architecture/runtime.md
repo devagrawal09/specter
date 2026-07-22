@@ -87,7 +87,11 @@ The scheduler coordinates wakeups; it does not own Reaction correctness.
 Single-process apps use the default in-memory scheduler. Stateless or
 distributed apps provide a durable scheduler adapter backed by Redis, SQLite,
 or another shared store. Scheduler state is rebuildable from Event Log commits
-and Reaction cursors during startup.
+and Reaction cursors during startup. Every bound durable worker independently
+discovers pending and expired shared work, so failover does not need another
+Command.
+Scheduling acknowledges adapter acceptance before Command completion and
+returns a separate Effect used by `execution.reactions` to await processing.
 
 Direct plugins hold the Slice Store transaction open. Wrap slow external
 effects with `withReactionOutbox`; enqueue then commits atomically, while the

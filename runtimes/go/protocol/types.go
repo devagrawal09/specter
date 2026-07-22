@@ -112,6 +112,7 @@ type RuntimeObservation struct {
 	CommandType          string           `json:"commandType,omitempty"`
 	QueryType            string           `json:"queryType,omitempty"`
 	Slice                string           `json:"slice,omitempty"`
+	SpecificationDigest  string           `json:"specificationDigest,omitempty"`
 	Reaction             string           `json:"reaction,omitempty"`
 	Events               []EventReference `json:"events,omitempty"`
 	Cursor               SafeInteger      `json:"cursor,omitempty"`
@@ -198,6 +199,23 @@ type ObservationAcknowledgement struct {
 	RejectedObservationIDs []string    `json:"rejectedObservationIds,omitempty"`
 }
 
+type PublishedSpecification struct {
+	Digest   string          `json:"digest"`
+	Document json.RawMessage `json:"document"`
+}
+
+type SpecificationPublication struct {
+	Envelope
+	Source         RuntimeSource            `json:"source"`
+	Specifications []PublishedSpecification `json:"specifications"`
+}
+
+type SpecificationAcknowledgement struct {
+	Envelope
+	AcceptedDigests []string `json:"acceptedDigests"`
+	RejectedDigests []string `json:"rejectedDigests,omitempty"`
+}
+
 // ObservationFromRuntime is the single explicit adapter from Go runtime facts
 // to the language-neutral wire DTO. Caller-owned metadata is snapshotted here.
 func ObservationFromRuntime(observation specter.Observation, source RuntimeSource, sequence int64) RuntimeObservation {
@@ -222,7 +240,8 @@ func ObservationFromRuntime(observation specter.Observation, source RuntimeSourc
 		ParentOperationIDs: append([]string(nil), observation.ParentOperationIDs...), TriggeringEventIDs: append([]string(nil), observation.TriggeringEventIDs...),
 		DeliveryID: observation.DeliveryID,
 		Outcome:    observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
-		Reaction: observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
+		SpecificationDigest: observation.SpecificationDigest,
+		Reaction:            observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
 		Attributes: attributes,
 	}
 	if observation.TriggeringEventOrder != nil {

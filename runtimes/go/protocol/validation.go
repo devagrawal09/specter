@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"regexp"
 	"strings"
 
+	"github.com/devagrawal09/specter/runtimes/go/specification"
 	"github.com/devagrawal09/specter/runtimes/go/specter"
 )
 
@@ -25,8 +27,10 @@ var observationKinds = map[string]struct{}{
 	"telemetry.dropped": {},
 }
 
-// ValidateMessageJSON validates either message family in the observation
-// protocol while ignoring unknown optional fields.
+var specificationDigestPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+// ValidateMessageJSON validates observation and specification message families
+// while ignoring unknown optional fields.
 func ValidateMessageJSON(data []byte) error {
 	if !json.Valid(data) {
 		return &specter.Error{Code: specter.ErrInvalidJSON, Message: "Malformed JSON message."}
@@ -64,8 +68,20 @@ func ValidateMessageJSON(data []byte) error {
 			return invalidMessage("Observation acknowledgement fields do not match the protocol types.")
 		}
 		return validateObservationAcknowledgementShape(acknowledgement, fields)
+	case "specifications.publish":
+		var publication SpecificationPublication
+		if err := json.Unmarshal(data, &publication); err != nil {
+			return invalidMessage("Specification publication fields do not match the protocol types.")
+		}
+		return validateSpecificationPublication(publication, fields)
+	case "specifications.ack":
+		var acknowledgement SpecificationAcknowledgement
+		if err := json.Unmarshal(data, &acknowledgement); err != nil {
+			return invalidMessage("Specification acknowledgement fields do not match the protocol types.")
+		}
+		return validateSpecificationAcknowledgement(acknowledgement, fields)
 	default:
-		return invalidMessage("Unknown observation protocol message kind.")
+		return invalidMessage("Unknown protocol message kind.")
 	}
 }
 
@@ -146,7 +162,69 @@ func validateObservation(observation RuntimeObservation) *specter.Error {
 	if observation.Outcome != "" && observation.Outcome != "succeeded" && observation.Outcome != "rejected" && observation.Outcome != "failed" {
 		return invalidMessage("Observation outcome is invalid.")
 	}
+	if observation.SpecificationDigest != "" && !specificationDigestPattern.MatchString(observation.SpecificationDigest) {
+		return invalidMessage("Observation specificationDigest must be a canonical sha256 digest.")
+	}
 	return nil
+}
+
+func validateSpecificationPublication(publication SpecificationPublication, fields map[string]json.RawMessage) error {
+	if failure := validateEnvelope(publication.Envelope, "specifications.publish"); failure != nil {
+		return failure
+	}
+	if !hasFields(fields, "source", "specifications") || !rawObject(fields["source"]) || !rawArray(fields["specifications"]) {
+		return invalidMessage("Specification publication requires a source and specifications array.")
+	}
+	if !validRuntimeSource(publication.Source) {
+		return invalidMessage("Specification publication source fields are required.")
+	}
+	if len(publication.Specifications) > 100 {
+		return invalidMessage("Specification publications may contain at most 100 specifications.")
+	}
+	for _, published := range publication.Specifications {
+		if !specificationDigestPattern.MatchString(published.Digest) || len(published.Document) == 0 {
+			return invalidMessage("Published specifications require a canonical digest and document.")
+		}
+		document, err := specification.ParseJSON(published.Document)
+		if err != nil {
+			return invalidMessage("Published specification document is invalid.")
+		}
+		digest, err := document.Digest()
+		if err != nil || digest != published.Digest {
+			return invalidMessage("Published specification digest does not match its canonical document.")
+		}
+	}
+	return nil
+}
+
+func validateSpecificationAcknowledgement(acknowledgement SpecificationAcknowledgement, fields map[string]json.RawMessage) error {
+	if failure := validateEnvelope(acknowledgement.Envelope, "specifications.ack"); failure != nil {
+		return failure
+	}
+	if !hasFields(fields, "acceptedDigests") || !rawArray(fields["acceptedDigests"]) {
+		return invalidMessage("Specification acknowledgement requires acceptedDigests.")
+	}
+	if rejected, present := fields["rejectedDigests"]; present && !rawArray(rejected) {
+		return invalidMessage("rejectedDigests must be an array when present.")
+	}
+	if !validUniqueDigests(acknowledgement.AcceptedDigests) || !validUniqueDigests(acknowledgement.RejectedDigests) {
+		return invalidMessage("Specification acknowledgement digests must be canonical and unique.")
+	}
+	return nil
+}
+
+func validUniqueDigests(digests []string) bool {
+	seen := make(map[string]struct{}, len(digests))
+	for _, digest := range digests {
+		if !specificationDigestPattern.MatchString(digest) {
+			return false
+		}
+		if _, duplicate := seen[digest]; duplicate {
+			return false
+		}
+		seen[digest] = struct{}{}
+	}
+	return true
 }
 
 func validateObservationAcknowledgement(batch RuntimeObservationBatch, acknowledgement ObservationAcknowledgement, fields map[string]json.RawMessage) error {
@@ -202,6 +280,10 @@ func validateEnvelope(envelope Envelope, kind string) *specter.Error {
 		return invalidMessage("requestId is required.")
 	}
 	return nil
+}
+
+func validRuntimeSource(source RuntimeSource) bool {
+	return source.Application != "" && source.Environment != "" && source.RuntimeLanguage != "" && source.RuntimeVersion != "" && source.InstanceID != "" && source.EventLogID != ""
 }
 
 func invalidMessage(message string) *specter.Error {

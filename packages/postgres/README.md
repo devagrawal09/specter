@@ -24,7 +24,7 @@ text. This preserves top-level JSON strings such as `"null"`, `"123"`, and
 await prepareSpecterPostgres(pool)
 
 const persistence = createSpecterPostgresPersistence(pool)
-const todosStore = persistence.createSliceStore(() => ({ todos: [] }))
+const todosStore = persistence.createSliceStoreService(() => ({ todos: [] }))
 const outboxStore = persistence.createReactionOutboxStore()
 ```
 

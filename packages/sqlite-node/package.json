@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/sqlite-node",
   "version": "0.4.0",
-  "description": "Scoped node:sqlite persistence and Reaction scheduling for Specter.",
+  "description": "Scoped node:sqlite persistence for Specter.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,

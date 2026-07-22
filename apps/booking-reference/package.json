@@ -27,7 +27,6 @@
     "@specter-ts/core": "workspace:*",
     "@specter-ts/spec": "workspace:*",
     "@specter-ts/memory": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@hono/node-server": "2.0.3",
     "@hono/vite-build": "1.11.1",

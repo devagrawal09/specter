@@ -68,6 +68,7 @@ describe('normative Draft 2020-12 schemas', () => {
     const behaviorOnlyInvalid = new Set([
       'invalid-causality-range.json',
       'invalid-event-ordering.json',
+      'invalid-specification-digest.json',
     ])
 
     for (const fixture of manifest.cases) {
@@ -82,8 +83,8 @@ describe('normative Draft 2020-12 schemas', () => {
         expect(fixture.valid, fixture.name).toBe(false)
         continue
       }
-      // Draft 2020-12 cannot compare sibling numeric values. The runtime
-      // validator separately enforces triggeringEventOrder.to >= from.
+      // Draft 2020-12 cannot compare sibling values or recompute a content
+      // digest. Runtime validators enforce those behavioral constraints.
       const schemaValid = fixture.valid || behaviorOnlyInvalid.has(fixture.file)
       expect(validate?.(value), fixture.name).toBe(schemaValid)
     }

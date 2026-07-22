@@ -10,11 +10,6 @@ export {
   type NodeSqliteEventLogOptions,
 } from './event-log'
 export {
-  createNodeSqliteReactionSchedulerLayer,
-  createNodeSqliteReactionSchedulerService,
-  prepareNodeSqliteReactionScheduler,
-} from './reaction-scheduler'
-export {
   createSpecterNodeSqliteLayer,
   SpecterNodeSqlite,
   type SpecterNodeSqliteOptions,

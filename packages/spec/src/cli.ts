@@ -53,13 +53,24 @@ async function discover(inputs: readonly string[]) {
 }
 
 async function isolatedExport(file: string) {
+  const tsconfig = await nearestTsconfig(dirname(file))
   await new Promise<void>((accept, reject) => {
     const child = spawn(
       process.execPath,
-      [fileURLToPath(import.meta.url), '__export-one', file],
+      [
+        '--import',
+        import.meta.resolve('tsx'),
+        fileURLToPath(import.meta.url),
+        '__export-one',
+        file,
+      ],
       {
         stdio: 'inherit',
-        env: { ...process.env, SPECTER_SPEC_EXPORT_CHILD: '1' },
+        env: {
+          ...process.env,
+          SPECTER_SPEC_EXPORT_CHILD: '1',
+          ...(tsconfig ? { TSX_TSCONFIG_PATH: tsconfig } : {}),
+        },
       },
     )
     child.once('error', reject)
@@ -67,6 +78,21 @@ async function isolatedExport(file: string) {
       code === 0 ? accept() : reject(new Error(`Failed to export ${file}.`)),
     )
   })
+}
+
+async function nearestTsconfig(start: string) {
+  let directory = start
+  for (;;) {
+    const candidate = resolve(directory, 'tsconfig.json')
+    try {
+      if ((await lstat(candidate)).isFile()) return candidate
+    } catch {
+      // Continue toward the filesystem root.
+    }
+    const parent = dirname(directory)
+    if (parent === directory) return undefined
+    directory = parent
+  }
 }
 
 async function walkSpecifications(directory: string): Promise<string[]> {

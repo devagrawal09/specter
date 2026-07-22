@@ -31,6 +31,10 @@ specter-spec export src/features/todos/add-todo/spec.ts
 specter-spec export 'src/features/**/spec.ts'
 ```
 
+Export requires Node.js 20.19 or newer. Each source runs in a fresh process
+through Specter's bundled TypeScript loader, using the nearest `tsconfig.json`
+for project path aliases and TypeScript syntax.
+
 The v1 document has a strict, versioned portable-JSON profile: unknown fields,
 unsafe integers, non-finite numbers, sparse arrays, `undefined`, bigint,
 functions, symbols, class instances, and cycles are rejected. Digests are

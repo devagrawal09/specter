@@ -11,6 +11,9 @@
     "specter-spec": "./dist/cli.js"
   },
   "files": ["dist"],
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -22,6 +25,9 @@
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-imports.mjs",
     "test": "pnpm build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.22.3"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",

@@ -10,14 +10,10 @@ import {
   type RuntimeSource,
 } from '@specter-ts/observability'
 import {
-  createDurableReactionSchedulerLayer,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
-import {
   createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
+  createSqliteReactionSchedulerLayer,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionOutbox,
+  prepareSqliteReactionScheduler,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
 import { Layer } from 'effect'
@@ -43,7 +39,7 @@ const operationalSqliteClient = createClient({ url: sqliteUrl })
 await prepareSpecterSqlite(sqliteClient)
 await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
-await prepareSqliteReactionOutbox(operationalSqliteClient)
+await prepareSqliteReactionScheduler(operationalSqliteClient)
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
@@ -68,10 +64,9 @@ const runtimeObservability = createRuntimeObservationEmitter({
   source: runtimeSource,
   specificationDigests: todoSpecificationDigests,
 })
-const reactionSchedulerLayer = createDurableReactionSchedulerLayer(
-  createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
-    context: operationalContext,
-  }),
+const reactionSchedulerLayer = createSqliteReactionSchedulerLayer(
+  operationalSqliteClient,
+  { context: operationalContext },
 )
 const specterApp = await createSpecterApp(
   todoSpecterAppConfig,

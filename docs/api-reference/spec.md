@@ -24,9 +24,9 @@ CLI, strict validation, canonical serialization, and SHA-256 digests.
 | `createQuerySlice(name)` | Starts a staged Query Slice Specification. |
 | `createReactionSlice(name)` | Starts a staged Reaction Slice Specification. |
 | `event(type, payload)` | Creates an exact Scenario Event example for `given` or a Command `expect`. |
-| `parseSliceSpecification(value)` | Strictly validates portable JSON data and rejects unknown or non-JSON values. |
-| `serializeSliceSpecification(value)` | Produces deterministic sorted-key JSON. |
-| `digestSliceSpecification(value)` | Produces the canonical `sha256:` digest used by runtimes and observability. |
+| `parseSpecification(value)` | Strictly validates portable JSON data and rejects unknown or non-JSON values. |
+| `serializeSpecification(value)` | Produces deterministic sorted-key JSON. |
+| `digestSpecification(value)` | Produces the canonical `sha256:` digest used by runtimes and observability. |
 
 ## Type exports
 
@@ -84,7 +84,7 @@ untrusted transport input and public output.
 ```ts
 import { createCommandSlice, event } from '@specter-ts/spec'
 
-export const addTodoSpec = createCommandSlice('addTodo')
+export default createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -113,7 +113,7 @@ validation, not a rejected domain Scenario.
 ```ts
 import { createQuerySlice, event } from '@specter-ts/spec'
 
-export const todosQuerySpec = createQuerySlice('todosQuery')
+export default createQuerySlice('todosQuery')
   .description('Lists visible todos by status.')
   .scenarios({
     description: 'Returns active todos.',
@@ -150,7 +150,7 @@ function completedTodoEvents(count: number) {
   }).flat()
 }
 
-export const todoCompletionCheerSpec = createReactionSlice(
+export default createReactionSlice(
   'todoCompletionCheer',
 )
   .description('Requests a cheer when a completion milestone is reached.')

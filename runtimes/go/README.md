@@ -8,7 +8,7 @@ This Go 1.24 module is an independent, standard-library-only Specter runtime. It
 - immediate Reactions with separately observable completion tickets;
 - latest-value/coalescing Query subscriptions;
 - structured Specter errors and causal runtime observations;
-- an observation-only protocol-v1 ingestion client; and
+- a protocol-v1 client for observation ingestion and specification publication;
 - a bounded, non-blocking, best-effort telemetry producer.
 
 Commands, Queries, subscriptions, and Reaction tickets are runtime concepts,
@@ -31,10 +31,16 @@ It binds strictly to `127.0.0.1:41737` and exposes a project-owned Todo API:
 - `GET /todos` executes its `todosQuery`; and
 - `GET /healthz` reports process health.
 
-The reference app does not expose `/specter/v1` routes. It only sends runtime
+The reference app does not expose `/specter/v1` routes. It sends runtime
 observations outward to `http://127.0.0.1:41739/specter/v1/observations` by
-default. Set `SPECTER_COLLECTOR_URL` to another collector root URL. The
-observation protocol performs no capability negotiation; SQLite,
+default. The protocol client also validates and can publish portable Slice
+documents to `/specter/v1/specifications`; the Go specification package shares
+the TypeScript digest and strict-validation vectors. Pass those published
+digests through `specter.Config.SpecificationDigests`; the runtime then attaches
+the matching digest to every Command, Query, Reaction, and Slice observation.
+Set
+`SPECTER_COLLECTOR_URL` to another collector root URL. The protocol performs no
+capability negotiation; SQLite,
 Postgres, and durable Reaction-outbox support remain runtime-specific concerns.
 
 Validate the module with:

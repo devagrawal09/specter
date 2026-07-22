@@ -67,6 +67,40 @@ describe('specter-spec export', () => {
       JSON.parse(readFileSync(join(root, 'two', 'spec.json'), 'utf8')).name,
     ).toBe('two')
   })
+
+  it('honors the nearest tsconfig and transforms imported TypeScript', () => {
+    const root = fixtureRoot()
+    write(
+      join(root, 'tsconfig.json'),
+      JSON.stringify({
+        compilerOptions: {
+          baseUrl: '.',
+          paths: { '@domain/*': ['domain/*'] },
+        },
+      }),
+    )
+    write(
+      join(root, 'domain', 'values.ts'),
+      `export enum ExampleValue { One = 'one' }\n`,
+    )
+    write(
+      join(root, 'feature', 'spec.ts'),
+      `import { createCommandSlice, event } from '${api}'
+import { ExampleValue } from '@domain/values'
+export default createCommandSlice('aliasedSpec').description('Aliased spec.').scenarios({ description: 'Uses imported TypeScript.', given: [], when: { value: ExampleValue.One }, expect: [event('value-recorded', { value: ExampleValue.One })] })
+`,
+    )
+
+    const result = run(join(root, 'feature', 'spec.ts'))
+
+    expect(result.status, result.stderr).toBe(0)
+    expect(
+      JSON.parse(readFileSync(join(root, 'feature', 'spec.json'), 'utf8')),
+    ).toMatchObject({
+      name: 'aliasedSpec',
+      scenarios: [{ when: { value: 'one' } }],
+    })
+  })
 })
 
 function fixtureRoot() {

@@ -7,6 +7,7 @@ import type {
   RuntimeTrace,
 } from './collector-model'
 import type { CollectedSpecification } from './specification-catalog'
+import { executionSummary } from './dashboard-model'
 
 const base =
   document.querySelector<HTMLMetaElement>('meta[name="specter-base"]')
@@ -67,6 +68,7 @@ const correlated = createMemo(() => {
       applications.has(item.source.application),
   )
 })
+const correlatedSummary = createMemo(() => executionSummary(correlated()))
 
 function json(value: unknown) {
   return JSON.stringify(value, null, 2)
@@ -152,7 +154,7 @@ function App() {
       if (!lane) return null
       const then = scenarioThen(doc, lane)
       return html`<header class="topbar"><div><div class="eyebrow">${doc.kind} Slice · format v${doc.formatVersion}</div><h1>${doc.name}</h1><p class="muted">${doc.description}</p><div class="digest">${item.digest}</div></div><span class=${`status ${then.status}`}>${then.status}</span></header>
-      <section class="stats"><div class="stat"><span class="muted">Scenarios</span><strong>${doc.scenarios.length}</strong></div><div class="stat"><span class="muted">Executions</span><strong>${correlated().length}</strong></div><div class="stat"><span class="muted">Failures</span><strong>${correlated().filter((entry) => entry.outcome === 'failed' || entry.outcome === 'rejected').length}</strong></div><div class="stat"><span class="muted">Max projection lag</span><strong>${Math.max(0, ...(overview()?.sources.map((source) => source.projectionLag) ?? []))}</strong></div></section>
+      <section class="stats"><div class="stat"><span class="muted">Scenarios</span><strong>${doc.scenarios.length}</strong></div><div class="stat"><span class="muted">Executions</span><strong>${correlatedSummary().executions}</strong></div><div class="stat"><span class="muted">Failures</span><strong>${correlatedSummary().failures}</strong></div><div class="stat"><span class="muted">Max projection lag</span><strong>${Math.max(0, ...(overview()?.sources.map((source) => source.projectionLag) ?? []))}</strong></div></section>
       <div class="grid"><div><section class="panel"><h2>Whole-Slice map</h2><${SliceMap} specification=${item} /></section><section class="panel"><h2>Given / When / Then lanes</h2><div class="lane-tabs" role="tablist">${doc.scenarios.map((scenario, index) => html`<button class="lane-tab" role="tab" aria-selected=${selectedScenario() === index} onClick=${() => setSelectedScenario(index)}>${index + 1}. ${scenario.description}</button>`)}</div><div class="gwt"><article class="step"><h3>Given</h3><pre>${json(lane.given)}</pre></article><article class="step"><h3>When</h3><pre>${json('when' in lane ? lane.when : { trigger: 'events applied' })}</pre></article><article class="step"><h3>Then · ${then.status}</h3><pre>${json(then.value)}</pre></article></div></section></div>
       <section class="panel"><h2>Correlated telemetry</h2><div class="activity">${
         correlated().length

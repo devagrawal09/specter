@@ -36,7 +36,6 @@
     "@specter-ts/core": "0.4.0",
     "@specter-ts/spec": "0.4.0",
     "@specter-ts/memory": "0.4.0",
-    "@specter-ts/reaction-outbox": "0.4.0",
     "@specter-ts/sqlite": "0.4.0",
     "@tailwindcss/vite": "^4.1.18",
     "drizzle-orm": "^0.45.2",

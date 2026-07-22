@@ -51,9 +51,17 @@ const telemetry = createRuntimeObservationEmitter({
   specificationDigests,
 })
 
-const config = { /* Events, Slices, adapters */ observe: telemetry.observe }
-const schedule = createDurableReactionScheduler(outbox, {
-  onTransition: telemetry.outbox,
+const app = await createSpecterApp(config, Layer.mergeAll(
+  EventLogLive,
+  SliceStoresLive,
+  ReactionSchedulerLive,
+  Layer.succeed(SpecterObserver, telemetry.observer),
+))
+
+// Optional slow external delivery remains a Plugin concern.
+const durablePlugin = withReactionOutbox(plugin, {
+  store: persistence.createReactionOutboxStore(),
+  worker: { onTransition: telemetry.outbox },
 })
 ```
 

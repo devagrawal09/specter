@@ -139,7 +139,7 @@ func TestObservationValidationRejectsNonJSONProgrammaticMetadata(t *testing.T) {
 func TestRuntimeAdapterDoesNotEmitRemovedWireFields(t *testing.T) {
 	observation := protocol.ObservationFromRuntime(specter.Observation{
 		ObservationID: "observation-1", Kind: "command.completed", ObservedAt: time.Date(2026, 7, 18, 12, 0, 0, 0, time.UTC), OperationID: "operation-1",
-		Version: 2, Duplicate: true, ReactionTicketID: "ticket-1",
+		Version: 2, Duplicate: true, ReactionTicketID: "ticket-1", SpecificationDigest: "sha256:eaf05020c0bbee5b8afb871f0a28b83678270c602495cc1476beb9b53cda20fd",
 	}, protocol.RuntimeSource{Application: "todo", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"}, 1)
 	encoded, err := json.Marshal(observation)
 	if err != nil {
@@ -156,6 +156,9 @@ func TestRuntimeAdapterDoesNotEmitRemovedWireFields(t *testing.T) {
 	}
 	if string(fields["attributes"]) != `{"duplicate":true,"reactionTicketId":"ticket-1","version":2}` {
 		t.Fatalf("runtime metadata was not preserved as attributes: %s", fields["attributes"])
+	}
+	if string(fields["specificationDigest"]) != `"sha256:eaf05020c0bbee5b8afb871f0a28b83678270c602495cc1476beb9b53cda20fd"` {
+		t.Fatalf("specification digest was not preserved: %s", fields["specificationDigest"])
 	}
 }
 
@@ -204,6 +207,40 @@ func TestObservationClientRejectsMismatchedAndPartialAcknowledgements(t *testing
 		if err == nil {
 			t.Fatalf("accepted invalid acknowledgement %s", body)
 		}
+	}
+}
+
+func TestSpecificationClientPublishesValidatedDocuments(t *testing.T) {
+	document, err := os.ReadFile("../../../specification/fixtures/add-todo.spec.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var path, method string
+	client := &protocol.ObservationClient{
+		CollectorURL: "http://collector.invalid",
+		HTTPClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			path, method = request.URL.Path, request.Method
+			var publication protocol.SpecificationPublication
+			if err := json.NewDecoder(request.Body).Decode(&publication); err != nil {
+				return nil, err
+			}
+			body := fmt.Sprintf(`{"protocolVersion":1,"kind":"specifications.ack","requestId":%q,"acceptedDigests":[%q]}`, publication.RequestID, publication.Specifications[0].Digest)
+			return jsonResponse(body), nil
+		})},
+	}
+	digest := "sha256:eaf05020c0bbee5b8afb871f0a28b83678270c602495cc1476beb9b53cda20fd"
+	acknowledgement, err := client.SendSpecifications(context.Background(), protocol.SpecificationPublication{
+		Source:         protocol.RuntimeSource{Application: "todo", Environment: "test", RuntimeLanguage: "go", RuntimeVersion: "test", InstanceID: "instance", EventLogID: "log"},
+		Specifications: []protocol.PublishedSpecification{{Digest: digest, Document: document}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if path != "/specter/v1/specifications" || method != http.MethodPost {
+		t.Fatalf("sent %s %s", method, path)
+	}
+	if len(acknowledgement.AcceptedDigests) != 1 || acknowledgement.AcceptedDigests[0] != digest {
+		t.Fatalf("unexpected acknowledgement: %#v", acknowledgement)
 	}
 }
 

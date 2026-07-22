@@ -6,12 +6,6 @@ export {
   type ReactionOutboxPluginOptions,
 } from './plugin'
 export type { MemoryReactionOutboxStore } from './memory-store'
-export {
-  createDurableReactionSchedulerLayer,
-  createDurableReactionSchedulerService,
-  type DurableReactionSchedulerOptions,
-  type ReactionPass,
-} from './scheduler'
 export type {
   EnqueueReactionInput,
   EnqueueReactionResult,

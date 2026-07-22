@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   canonicalizeSpecification,
@@ -5,6 +6,7 @@ import {
   digestSpecification,
   event,
   parseSpecification,
+  parseSpecificationJson,
   serializeSpecification,
 } from './index.ts'
 
@@ -80,6 +82,41 @@ describe('portable Slice specification', () => {
     expect(canonical.indexOf('"€"')).toBeLessThan(canonical.indexOf('"😀"'))
     expect(digestSpecification(unicode)).toBe(
       'sha256:55b5fb1832af7eb3a48eb72f161765c1b07f95c04bad0e10204c7d477e018b1c',
+    )
+  })
+
+  it('matches the shared ECMAScript Unicode string vector', () => {
+    const fixture = readFileSync(
+      new URL(
+        '../../../specification/fixtures/unicode-strings.spec.json',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    const parsed = parseSpecificationJson(fixture)
+    const canonical = canonicalizeSpecification(parsed)
+
+    expect(canonical).toContain('\u2028')
+    expect(canonical).toContain('\u2029')
+    expect(JSON.parse(canonical).scenarios[0].when.literalEscapes).toBe(
+      '\\u2028 and \\u2029',
+    )
+    expect(digestSpecification(parsed)).toBe(
+      'sha256:4c6675c9d9e5daf8e475adbfadf34d5fb94c0a097fa6b12e4ef1d1d6e14955ec',
+    )
+  })
+
+  it('rejects the shared unpaired-surrogate vector', () => {
+    const fixture = readFileSync(
+      new URL(
+        '../../../specification/fixtures/invalid-lone-surrogate.spec.json',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+
+    expect(() => parseSpecificationJson(fixture)).toThrow(
+      'unpaired UTF-16 surrogate',
     )
   })
 })

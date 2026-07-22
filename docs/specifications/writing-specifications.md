@@ -11,7 +11,7 @@ Import the specification surface from `@specter-ts/spec`:
 ```ts
 import { createCommandSlice, event } from '@specter-ts/spec'
 
-export const addTodoSpec = createCommandSlice('addTodo')
+export default createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -32,10 +32,10 @@ export const addTodoSpec = createCommandSlice('addTodo')
   )
 ```
 
-The resulting value has `stage: 'specification'`. It cannot be registered in an
-app until an implementation supplies its required schema, store, and handler
-stages. Apply registrations are optional and driven by Given Events; only a
-Reaction supplies a Plugin.
+The result is portable JSON data. `specter-spec export` executes the default
+export in an isolated TypeScript process and writes an adjacent `spec.json`.
+Implementations consume that generated document, never the TypeScript builder
+object directly.
 
 ## Scenario shapes
 
@@ -116,7 +116,21 @@ to the Event's one-based position.
 
 ## Complete the implementation in order
 
-The builders deliberately make infrastructure choices unavailable in `spec.ts`. Complete each kind in its required order:
+Import the generated document and start the kind-specific implementation
+builder. This keeps infrastructure choices unavailable in `spec.ts` while
+dogfooding the same contract that Go, Rust, and tooling consume:
+
+```ts
+import { implementCommand } from '@specter-ts/core'
+import specification from './spec.json' with { type: 'json' }
+
+export const addTodo = implementCommand(specification)
+  .inputSchema<AddTodoInput>()
+  .store(TodosStore)
+  .handle(handleAddTodo)
+```
+
+Complete each kind in its required order:
 
 | Slice kind | Required implementation order |
 | --- | --- |

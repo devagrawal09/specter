@@ -24,6 +24,8 @@ process.
 | `createSqliteDatabaseContext` | Serialized, nestable Effect transaction context. |
 | `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log. |
 | `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store. |
+| `createSqliteReactionSchedulerService` / `createSqliteReactionSchedulerLayer` | Durable, multi-runtime Reaction coordination. |
+| `prepareSqliteReactionScheduler` | Creates the dedicated scheduler table and index. |
 | `createSqliteReactionOutboxStore` | Durable outbox Store. |
 | `createSpecterSqlitePersistence` | Shared context and factories. |
 
@@ -33,6 +35,9 @@ const persistence = createSpecterSqlitePersistence(client)
 
 const dependencies = Layer.mergeAll(
   Layer.succeed(EventLog, persistence.eventLog),
+  createSqliteReactionSchedulerLayer(client, {
+    context: persistence.context,
+  }),
   Layer.succeed(
     TodosStore,
     persistence.createSliceStoreService(() => ({ todos: [] })),
@@ -44,6 +49,13 @@ const dependencies = Layer.mergeAll(
 `transaction` nests by joining active Effect context. This lets direct ORM Slice
 Stores, nested default-Plugin Commands, and outbox enqueue share one transaction
 without AsyncLocalStorage.
+
+The scheduler table is a rebuildable coordination index. Event Log commits and
+Reaction Slice cursors remain authoritative; a failed execution stays pending
+and every bound runtime polls and claims shared pending or expired work without
+requiring a later Command. An explicit request rechecks even a completed
+scheduler boundary, so resetting a rebuildable Slice cursor cannot be masked by
+stale coordination state.
 
 ## Native Node SQLite
 

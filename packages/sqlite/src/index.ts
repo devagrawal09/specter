@@ -23,6 +23,12 @@ export {
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
 export {
+  createSqliteReactionSchedulerLayer,
+  createSqliteReactionSchedulerService,
+  prepareSqliteReactionScheduler,
+  type SqliteReactionSchedulerOptions,
+} from './reaction-scheduler'
+export {
   createSqliteSliceStoreLayer,
   createSqliteSliceStoreService,
   prepareSqliteSliceStore,

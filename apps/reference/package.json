@@ -33,7 +33,6 @@
     "@specter-ts/spec": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@specter-ts/observability": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "drizzle-orm": "^0.45.2",

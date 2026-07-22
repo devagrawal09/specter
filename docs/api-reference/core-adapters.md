@@ -29,12 +29,18 @@ uses it as durable Reaction work stream.
 | `SliceStoreRead/Write/Error/Requirement` | Infer types from Store Tag. |
 
 ```ts
+import { implementQuery } from '@specter-ts/core'
+
+import specification from './spec.json' with { type: 'json' }
+
 class TodosStore extends Context.Service<
   TodosStore,
   SliceStoreService<Readonly<TodosState>, TodosState, TodosStoreFailure>
 >()('app/TodosStore') {}
 
-const todos = todosSpec
+const todos = implementQuery(specification)
+  .inputSchema<TodosQuery>()
+  .outputSchema<readonly Todo[]>()
   .store(TodosStore, { eager: true })
   .apply(todoAdded, applyTodo)
   .handle(handleTodos)
@@ -54,12 +60,27 @@ or last-write-wins publication internally, but cannot rerun developer code.
 
 `{ eager: true }` catches Slice up at startup. Default catches up before handle.
 
+## Reaction scheduler
+
+| Export | Purpose |
+| --- | --- |
+| `ReactionScheduler` | Optional Effect Reference with a process-local default. |
+| `ReactionSchedulerService` | Binds one executor; `schedule(throughOrder)` acknowledges acceptance and returns a separate completion Effect. |
+| `ReactionSchedulerFailure` | Typed bind, scheduling, or completion failure. |
+
+Event Log commits and Reaction Slice cursors own correctness. A scheduler only
+wakes and serializes processing, so its coordination state must be rebuildable.
+Single-process runtimes use the default in-memory implementation; stateless or
+distributed runtimes supply a persistent adapter such as SQLite or Redis. A
+durable adapter must let any bound worker discover accepted work after the
+originating runtime exits.
+
 ## Reaction delivery context
 
 `ReactionDeliveryContext` contains stable `deliveryId`, commit `throughOrder`,
-and durable `scheduledAt`. Core scheduler adapter and core attempt IDs do not
-exist. Runtime runner reads Event Log commits and uses Reaction Slice cursor as
-completion checkpoint.
+and durable `scheduledAt`. Attempt IDs belong only to an optional outbox worker.
+Runtime processing reads Event Log commits and uses the Reaction Slice cursor as
+the completion checkpoint.
 
 ## Invariants
 

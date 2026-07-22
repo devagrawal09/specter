@@ -14,8 +14,12 @@ export function assertPortableJson(
   path = '$',
   seen = new Set<object>(),
 ): asserts value is JsonValue {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean')
+  if (value === null || typeof value === 'boolean') return
+  if (typeof value === 'string') {
+    if (hasUnpairedSurrogate(value))
+      fail(`${path} must not contain an unpaired UTF-16 surrogate.`)
     return
+  }
   if (typeof value === 'number') {
     if (
       !Number.isFinite(value) ||
@@ -44,12 +48,31 @@ export function assertPortableJson(
         assertPortableJson(value[index], `${path}[${index}]`, seen)
       }
     } else {
-      for (const [key, item] of Object.entries(value))
+      for (const [key, item] of Object.entries(value)) {
+        if (hasUnpairedSurrogate(key))
+          fail(
+            `${path} must not contain an object key with an unpaired UTF-16 surrogate.`,
+          )
         assertPortableJson(item, `${path}.${key}`, seen)
+      }
     }
   } finally {
     seen.delete(value)
   }
+}
+
+function hasUnpairedSurrogate(value: string) {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index)
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = value.charCodeAt(index + 1)
+      if (next < 0xdc00 || next > 0xdfff) return true
+      index += 1
+    } else if (code >= 0xdc00 && code <= 0xdfff) {
+      return true
+    }
+  }
+  return false
 }
 
 export function parseSpecification(input: unknown): SliceSpecification {

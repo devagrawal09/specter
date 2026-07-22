@@ -3,6 +3,8 @@
   "cases": [
     { "name": "observation-batch", "file": "observation-batch.json", "valid": true },
     { "name": "observation-ack", "file": "observation-ack.json", "valid": true },
+    { "name": "specification-publication", "file": "specification-publication.json", "valid": true },
+    { "name": "specification-ack", "file": "specification-ack.json", "valid": true },
     { "name": "observation-full-metadata", "file": "observation-full-metadata.json", "valid": true },
     { "name": "causality-fields", "file": "causality-fields.json", "valid": true },
     { "name": "unknown-optional-field", "file": "unknown-optional-field.json", "valid": true },
@@ -28,6 +30,8 @@
     { "name": "missing-protocol-version", "file": "missing-protocol-version.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "null-protocol-version", "file": "null-protocol-version.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "duplicate-rejected-observation-ids", "file": "duplicate-rejected-observation-ids.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "invalid-specification-digest", "file": "invalid-specification-digest.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
+    { "name": "invalid-observation-specification-digest", "file": "invalid-observation-specification-digest.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "invalid-root-array", "file": "invalid-root-array.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "invalid-root-string", "file": "invalid-root-string.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },
     { "name": "invalid-root-number", "file": "invalid-root-number.json", "valid": false, "errorCode": "SPECTER_INVALID_MESSAGE" },

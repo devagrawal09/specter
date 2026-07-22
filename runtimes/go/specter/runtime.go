@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -27,6 +28,7 @@ type Observation struct {
 	QueryType            string           `json:"queryType,omitempty"`
 	ReactionName         string           `json:"reaction,omitempty"`
 	Slice                string           `json:"slice,omitempty"`
+	SpecificationDigest  string           `json:"specificationDigest,omitempty"`
 	Cursor               int64            `json:"cursor,omitempty"`
 	ReactionTicketID     string           `json:"reactionTicketId,omitempty"`
 	DeliveryID           string           `json:"deliveryId,omitempty"`
@@ -61,6 +63,7 @@ type Config struct {
 	Queries                 []QueryDefinition
 	Reactions               []ReactionDefinition
 	Observe                 Observer
+	SpecificationDigests    map[string]string
 	ReactionTicketRetention time.Duration
 }
 
@@ -83,21 +86,22 @@ type reactionRuntime struct {
 }
 
 type App struct {
-	log              *MemoryEventLog
-	events           map[string]struct{}
-	commands         map[string]*commandRuntime
-	queries          map[string]*queryRuntime
-	reactions        map[string]*reactionRuntime
-	observe          Observer
-	subMu            sync.Mutex
-	subscriptions    map[uint64]*Subscription
-	nextSubscription atomic.Uint64
-	tickets          sync.Map
-	ticketRetention  time.Duration
-	reactionQueue    reactionScheduler
-	lifecycleMu      sync.RWMutex
-	closed           bool
-	closeOnce        sync.Once
+	log                  *MemoryEventLog
+	events               map[string]struct{}
+	commands             map[string]*commandRuntime
+	queries              map[string]*queryRuntime
+	reactions            map[string]*reactionRuntime
+	observe              Observer
+	specificationDigests map[string]string
+	subMu                sync.Mutex
+	subscriptions        map[uint64]*Subscription
+	nextSubscription     atomic.Uint64
+	tickets              sync.Map
+	ticketRetention      time.Duration
+	reactionQueue        reactionScheduler
+	lifecycleMu          sync.RWMutex
+	closed               bool
+	closeOnce            sync.Once
 }
 
 const DefaultReactionTicketRetention = 5 * time.Minute
@@ -216,7 +220,7 @@ func NewApp(config Config) (*App, error) {
 	if config.ReactionTicketRetention <= 0 {
 		config.ReactionTicketRetention = DefaultReactionTicketRetention
 	}
-	app := &App{log: config.EventLog, events: map[string]struct{}{}, commands: map[string]*commandRuntime{}, queries: map[string]*queryRuntime{}, reactions: map[string]*reactionRuntime{}, observe: config.Observe, subscriptions: map[uint64]*Subscription{}, ticketRetention: config.ReactionTicketRetention}
+	app := &App{log: config.EventLog, events: map[string]struct{}{}, commands: map[string]*commandRuntime{}, queries: map[string]*queryRuntime{}, reactions: map[string]*reactionRuntime{}, observe: config.Observe, specificationDigests: map[string]string{}, subscriptions: map[uint64]*Subscription{}, ticketRetention: config.ReactionTicketRetention}
 	for _, name := range config.Events {
 		if name == "" {
 			return nil, newError(ErrConformanceFailed, "Event type must not be empty.", nil, nil)
@@ -268,6 +272,18 @@ func NewApp(config Config) (*App, error) {
 	for _, definition := range config.Reactions {
 		d := definition
 		app.reactions[d.Name] = &reactionRuntime{definition: d, slice: sliceRuntime{apply: d.Apply}}
+	}
+	for sliceName, digest := range config.SpecificationDigests {
+		_, command := app.commands[sliceName]
+		_, query := app.queries[sliceName]
+		_, reaction := app.reactions[sliceName]
+		if !command && !query && !reaction {
+			return nil, newError(ErrConformanceFailed, fmt.Sprintf("Specification digest references unknown Slice %q.", sliceName), nil, nil)
+		}
+		if !validSpecificationDigest(digest) {
+			return nil, newError(ErrConformanceFailed, fmt.Sprintf("Specification digest for Slice %q must use canonical sha256:<lowercase-hex> form.", sliceName), nil, nil)
+		}
+		app.specificationDigests[sliceName] = digest
 	}
 	app.reactionQueue = newReactionScheduler(func(pass reactionPass) {
 		app.afterCommit(context.Background(), pass.parent, pass.correlation, pass.ticketID, pass.events, pass.ticket, pass.result)
@@ -710,9 +726,34 @@ func (a *App) emit(observation Observation) {
 	if a.observe == nil {
 		return
 	}
+	if observation.SpecificationDigest == "" {
+		observation.SpecificationDigest = a.specificationDigests[observationSlice(observation)]
+	}
 	observation.ObservationID = newID("obs")
 	observation.ObservedAt = time.Now().UTC()
 	func() { defer func() { _ = recover() }(); a.observe(observation) }()
+}
+
+func observationSlice(observation Observation) string {
+	if observation.Slice != "" {
+		return observation.Slice
+	}
+	if observation.CommandType != "" {
+		return observation.CommandType
+	}
+	if observation.QueryType != "" {
+		return observation.QueryType
+	}
+	return observation.ReactionName
+}
+
+func validSpecificationDigest(digest string) bool {
+	const prefix = "sha256:"
+	if !strings.HasPrefix(digest, prefix) || digest != strings.ToLower(digest) {
+		return false
+	}
+	decoded, err := hex.DecodeString(strings.TrimPrefix(digest, prefix))
+	return err == nil && len(decoded) == sha256.Size
 }
 func (a *App) emitFailure(kind, operation, correlation, command, query string, err error) {
 	var public *Error

@@ -16,12 +16,14 @@ import {
   prepareSqliteReactionOutbox,
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
+import { prepareSqliteReactionScheduler } from './reaction-scheduler'
 
 export async function prepareSpecterSqlite(client: Client) {
   await client.execute('PRAGMA journal_mode = WAL')
   await client.execute('PRAGMA busy_timeout = 5000')
   await prepareSqliteEventLog(client)
   await prepareSqliteSliceStore(client)
+  await prepareSqliteReactionScheduler(client)
   await prepareSqliteReactionOutbox(client)
 }
 

@@ -174,7 +174,7 @@ export const runtimeTrace = implementQuery(specification)
     return { operationId, observations, edges }
   })
 
-type TraceIdentityRelation = 'reaction-pass' | 'delivery' | 'attempt'
+type TraceIdentityRelation = 'delivery'
 
 type TraceIdentityLink = {
   readonly fromKey: string

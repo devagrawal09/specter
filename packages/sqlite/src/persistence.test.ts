@@ -39,6 +39,25 @@ async function setup() {
 }
 
 describe('Specter SQLite persistence', () => {
+  it('prepares the durable Reaction scheduler with the combined schema', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-sqlite-'))
+    tempDirectories.push(directory)
+    const client = createClient({
+      url: `file:${join(directory, 'specter.db')}`,
+    })
+    clients.push(client)
+
+    await prepareSpecterSqlite(client)
+
+    const result = await client.execute(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name = 'specter_reaction_scheduler'`,
+    )
+    expect(result.rows.map((row) => row.name)).toEqual([
+      'specter_reaction_scheduler',
+    ])
+  })
+
   it('passes native Event Log conformance', async () => {
     const { eventLog } = await setup()
     await Effect.runPromise(eventLogConformance(Effect.succeed(eventLog)))

@@ -18,6 +18,16 @@ export type SpecterCausality = {
   readonly triggeringEventOrder?: { readonly from: number; readonly to: number }
 }
 
+export const SpecterObservationCausality = Context.Reference<SpecterCausality>(
+  '@specter-ts/core/SpecterObservationCausality',
+  {
+    defaultValue: () => ({
+      parentOperationIds: [],
+      causedByEvents: [],
+    }),
+  },
+)
+
 type SpecterObservationBase = SpecterCausality & {
   readonly observationId: string
   readonly observedAt: string
