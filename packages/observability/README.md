@@ -23,7 +23,7 @@ report an unacknowledged batch as dropped instead of retrying after its identity
 can expire. Override both sides together with the TypeScript producer's
 `retryWindowMs`, the Go producer's `ProducerOptions.RetryWindow`, and the
 collector's `--retry-window-ms` option. The read-only dashboard is available at
-`http://127.0.0.1:41736`.
+`http://127.0.0.1:41738`.
 
 Applications create a bounded producer and adapt the core observer and durable
 outbox transitions into protocol observations:
@@ -38,7 +38,7 @@ const source = {
   eventLogId: './data/app.db',
 }
 const producer = createRuntimeObservationProducer({
-  collectorUrl: 'http://127.0.0.1:41736',
+  collectorUrl: 'http://127.0.0.1:41738',
   source,
 })
 const telemetry = createRuntimeObservationEmitter({ producer, source })

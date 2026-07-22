@@ -65,7 +65,7 @@ try {
 }
 
 async function serve(commandArgs: readonly string[]) {
-  const port = integerOption(commandArgs, '--port', 41736)
+  const port = integerOption(commandArgs, '--port', 41738)
   const host = stringOption(commandArgs, '--host', '127.0.0.1')
   const databaseBase = resolve(
     stringOption(commandArgs, '--database', './data/specter-observability'),
@@ -456,7 +456,7 @@ async function fetchJson(url: string) {
 }
 
 function endpoint(commandArgs: readonly string[]) {
-  return stringOption(commandArgs, '--url', 'http://127.0.0.1:41736').replace(
+  return stringOption(commandArgs, '--url', 'http://127.0.0.1:41738').replace(
     /\/$/,
     '',
   )
@@ -524,13 +524,13 @@ function help() {
   console.log(`specter-observe <command>
 
 Commands:
-  serve     Run the collector on strict port 41736
+  serve     Run the collector on strict port 41738
   snapshot  Print the current collector overview
   watch     Stream activity as NDJSON
   trace ID  Print a causal operation trace
 
 Common options:
-  --url URL             Collector URL (default http://127.0.0.1:41736)
+  --url URL             Collector URL (default http://127.0.0.1:41738)
   --format json|text    Output format
   --application NAME    Filter by application
   --environment NAME    Filter by environment

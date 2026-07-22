@@ -59,7 +59,7 @@ const runtimeSource: RuntimeSource = {
 }
 const observationProducer = createRuntimeObservationProducer({
   collectorUrl:
-    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
+    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41738',
   source: runtimeSource,
 })
 const runtimeObservability = createRuntimeObservationEmitter({
