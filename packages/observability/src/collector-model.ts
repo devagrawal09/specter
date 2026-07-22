@@ -28,6 +28,8 @@ export type RuntimeSourceSummary = {
   readonly source: RuntimeSource
   readonly observationCount: number
   readonly failureCount: number
+  readonly rejectionCount: number
+  readonly droppedObservationCount: number
   readonly lastSequence: number
   readonly lastObservedAt: string
   readonly projectionLag: number
@@ -38,6 +40,7 @@ export type RuntimeOverview = {
   readonly collectorVersion: number
   readonly observationCount: number
   readonly failureCount: number
+  readonly rejectionCount: number
   readonly droppedObservationCount: number
   readonly sources: readonly RuntimeSourceSummary[]
   readonly kinds: Readonly<Record<string, number>>

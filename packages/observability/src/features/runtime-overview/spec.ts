@@ -27,12 +27,15 @@ export const runtimeOverviewSpec = createQuerySlice('runtimeOverview')
       collectorVersion: 1,
       observationCount: 1,
       failureCount: 0,
+      rejectionCount: 0,
       droppedObservationCount: 0,
       sources: [
         {
           source: observation.source,
           observationCount: 1,
           failureCount: 0,
+          rejectionCount: 0,
+          droppedObservationCount: 0,
           lastSequence: 1,
           lastObservedAt: observation.observedAt,
           projectionLag: 0,

@@ -14,9 +14,11 @@ import specification from './spec.json' with { type: 'json' }
 
 const failed = (kind: string, outcome?: string) =>
   outcome === 'failed' ||
-  outcome === 'rejected' ||
   kind.includes('failed') ||
   kind.includes('dead-letter')
+
+const rejected = (kind: string, outcome?: string) =>
+  outcome === 'rejected' || kind.includes('rejected')
 
 const sourceKey = (source: RuntimeSourceSummary['source']) =>
   [
@@ -49,12 +51,16 @@ export const runtimeOverview = implementQuery(specification)
     const sourceCursors = new Map<string, number>()
     const kinds: Record<string, number> = {}
     let failureCount = 0
+    let rejectionCount = 0
     let droppedObservationCount = 0
 
     for (const observation of state.observations) {
       const isFailure = failed(observation.kind, observation.outcome)
+      const isRejection = rejected(observation.kind, observation.outcome)
       if (isFailure) failureCount += 1
-      droppedObservationCount += observation.droppedCount ?? 0
+      if (isRejection) rejectionCount += 1
+      const dropped = observation.droppedCount ?? 0
+      droppedObservationCount += dropped
       kinds[observation.kind] = (kinds[observation.kind] ?? 0) + 1
 
       const key = sourceKey(observation.source)
@@ -73,6 +79,9 @@ export const runtimeOverview = implementQuery(specification)
         source: observation.source,
         observationCount: (previous?.observationCount ?? 0) + 1,
         failureCount: (previous?.failureCount ?? 0) + (isFailure ? 1 : 0),
+        rejectionCount: (previous?.rejectionCount ?? 0) + (isRejection ? 1 : 0),
+        droppedObservationCount:
+          (previous?.droppedObservationCount ?? 0) + dropped,
         lastSequence: Math.max(
           previous?.lastSequence ?? 0,
           observation.sequence,
@@ -92,6 +101,7 @@ export const runtimeOverview = implementQuery(specification)
       collectorVersion: copied.observations.at(-1)?.collectorOrder ?? 0,
       observationCount: copied.observations.length,
       failureCount,
+      rejectionCount,
       droppedObservationCount,
       sources: [...summaries.values()].sort((left, right) =>
         sourceKey(left.source).localeCompare(sourceKey(right.source)),

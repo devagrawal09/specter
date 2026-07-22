@@ -353,6 +353,30 @@ describe('Specter observability collector', () => {
     ])
   })
 
+  it('reports expected command rejections separately from runtime failures', async () => {
+    const { collector } = await setup()
+
+    await collector.ingest(
+      batch('rejected-command', [
+        observation({
+          observationId: 'rejection-1',
+          sequence: 1,
+          kind: 'command.rejected',
+          operationId: 'command-1',
+          outcome: 'rejected',
+          commandType: 'removeTodo',
+        }),
+      ]),
+    )
+
+    await expect(collector.overview()).resolves.toMatchObject({
+      observationCount: 1,
+      failureCount: 0,
+      rejectionCount: 1,
+      sources: [{ failureCount: 0, rejectionCount: 1 }],
+    })
+  })
+
   it('resolves a unique parent operation across instances and rejects ambiguous parents', async () => {
     const { collector } = await setup()
     const secondInstance: RuntimeSource = {
@@ -492,9 +516,11 @@ describe('Specter observability collector', () => {
     expect(ingestion.headers.get('Specter-Protocol-Version')).toBe('1')
     const overview = await handler(new Request('http://collector/v1/overview'))
     expect(overview.headers.get('Specter-Protocol-Version')).toBeNull()
+    expect(overview.headers.get('cache-control')).toBe('no-store')
     await expect(overview.json()).resolves.toMatchObject({ failureCount: 1 })
     const dashboard = await handler(new Request('http://collector/'))
     expect(dashboard.headers.get('Specter-Protocol-Version')).toBeNull()
+    expect(dashboard.headers.get('cache-control')).toBe('no-store')
     const html = await dashboard.text()
     expect(html).toContain('Specter runtime observability')
     expect(html).not.toContain('<private>')
