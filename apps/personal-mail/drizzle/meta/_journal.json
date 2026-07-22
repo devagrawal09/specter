@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1784721600000,
+      "tag": "0000_personal_mail",
+      "breakpoints": true
+    }
+  ]
+}
