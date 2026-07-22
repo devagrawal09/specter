@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const sessionListSpec = createQuerySlice('sessionList')
   .description('Lists coding-agent sessions for a workspace.')

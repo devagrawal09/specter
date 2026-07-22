@@ -5,10 +5,11 @@ import {
   createSpecterApp,
   EventLog,
   EventLogFailure,
+  implementCommand,
   SpecterVersionConflictError,
   type SliceStoreService,
 } from '@specter-ts/core'
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 import { Context, Effect, Layer } from 'effect'
 
 import type {
@@ -196,7 +197,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
 
     await run(commandLog.append([counterIncremented.create({ amount: 1 })]))
 
-    const incrementCounter = createCommandSlice('incrementCounter')
+    const incrementCounterSpecification = createCommandSlice('incrementCounter')
       .description('Increments a counter after reading its Event projection.')
       .scenarios({
         description: 'Increments an existing counter.',
@@ -204,6 +205,9 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
         when: { amount: 9 },
         expect: [event('counter-incremented', { amount: 9 })],
       })
+    const incrementCounter = implementCommand(
+      JSON.stringify(incrementCounterSpecification),
+    )
       .inputSchema<{ amount: number }>()
       .store(CounterStore)
       .apply(counterIncremented, async (persisted, state) => {
@@ -221,7 +225,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     const app = await createSpecterApp(
       {
         events: [counterIncremented],
-        slices: [incrementCounter],
+        slices: { incrementCounter },
       },
       Layer.mergeAll(
         Layer.succeed(EventLog, commandLog),

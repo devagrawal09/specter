@@ -1,5 +1,6 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { createSpecterApp, EventLog } from '@specter-ts/core'
+import { createSpecterApp, EventLog, type SpecterApp } from '@specter-ts/core'
+import { eventsFor } from '@specter-ts/core/testing'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
@@ -17,6 +18,7 @@ const serverDbDir = mkdtempSync(join(tmpdir(), 'threadplane-server-'))
 process.env.THREADPLANE_REFERENCE_DB_PATH = join(serverDbDir, 'app.db')
 
 const {
+  closeThreadplaneServerRuntime,
   createThreadplanePostOnServer,
   createThreadplaneWorkspaceOnServer,
   getThreadplaneFilesystemStatusOnServer,
@@ -30,11 +32,17 @@ const {
   requestThreadplaneAgentRunOnServer,
   requestThreadplaneFilesystemScanOnServer,
 } = await import('./server-runtime.server')
-import { threadplaneReferenceSpecterAppConfig } from './registry'
+import {
+  threadplaneEventDefinitions,
+  threadplaneScaffoldRegistrations,
+} from './registry'
 import { threadplaneMemoryStoresLayer } from '../../testing/memory-slice-store'
 import { resetMemorySliceStores } from '../../testing/memory-slice-store'
 
-afterAll(() => rmSync(serverDbDir, { recursive: true, force: true }))
+afterAll(async () => {
+  await closeThreadplaneServerRuntime()
+  rmSync(serverDbDir, { recursive: true, force: true })
+})
 
 test('threadplane server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-workspaces-'))
@@ -125,20 +133,26 @@ test('threadplane server functions wrap workspace, chat, scan, and run slices', 
       }),
     ).toBeDefined()
 
-    expect(
-      await listThreadplaneWorkspaceChatOnServer({
-        workspaceId: 'workspace-main',
-      }),
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
-          content: 'I found the issue.',
-          parentPostId: 'post-main',
-          sourceRunId: runId,
+    await expect
+      .poll(() =>
+        listThreadplaneWorkspaceChatOnServer({
+          workspaceId: 'workspace-main',
         }),
-      ]),
-    )
+      )
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            author: {
+              type: 'agent',
+              agentId: 'specter',
+              displayName: 'Specter',
+            },
+            content: 'I found the issue.',
+            parentPostId: 'post-main',
+            sourceRunId: runId,
+          }),
+        ]),
+      )
 
     expect(
       await readThreadplaneWorkspaceTextFileOnServer({
@@ -240,22 +254,33 @@ test('threadplane preview reads reject unsafe files and read valid text', async 
 test('threadplane server functions preserve database state across app reopen', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-reference-'))
   const sqlitePath = join(tempDir, 'app.db')
+  const persistenceTestConfig = {
+    events: eventsFor(
+      threadplaneScaffoldRegistrations.createWorkspace,
+      threadplaneEventDefinitions,
+    ),
+    slices: {
+      createWorkspace: threadplaneScaffoldRegistrations.createWorkspace,
+      workspaceList: threadplaneScaffoldRegistrations.workspaceList,
+    },
+  } as const
 
   try {
     const firstSqlite = createClient({ url: `file:${sqlitePath}` })
 
+    let firstApp: SpecterApp<typeof persistenceTestConfig> | undefined
     try {
       await prepareSpecterSqlite(firstSqlite)
       const persistence = createSpecterSqlitePersistence(firstSqlite)
-      const app = await createSpecterApp(
-        threadplaneReferenceSpecterAppConfig,
+      firstApp = await createSpecterApp(
+        persistenceTestConfig,
         Layer.mergeAll(
           Layer.succeed(EventLog, persistence.eventLog),
           createImmediateReactionSchedulerLayer(),
           threadplaneMemoryStoresLayer(),
         ),
       )
-      const execution = await app.command({
+      const execution = await firstApp.command({
         type: 'createWorkspace',
         payload: {
           workspaceId: 'workspace-durable',
@@ -264,31 +289,36 @@ test('threadplane server functions preserve database state across app reopen', a
         },
       })
       await execution.reactions
-      await app.query({ type: 'workspaceList', payload: {} })
+      await firstApp.query({ type: 'workspaceList', payload: {} })
     } finally {
+      await firstApp?.close()
       firstSqlite.close()
     }
 
     resetMemorySliceStores()
     const secondSqlite = createClient({ url: `file:${sqlitePath}` })
 
+    let secondApp: SpecterApp<typeof persistenceTestConfig> | undefined
     try {
       await prepareSpecterSqlite(secondSqlite)
       const persistence = createSpecterSqlitePersistence(secondSqlite)
-      const app = await createSpecterApp(
-        threadplaneReferenceSpecterAppConfig,
+      secondApp = await createSpecterApp(
+        persistenceTestConfig,
         Layer.mergeAll(
           Layer.succeed(EventLog, persistence.eventLog),
           createImmediateReactionSchedulerLayer(),
           threadplaneMemoryStoresLayer(),
         ),
       )
-      expect(await app.query({ type: 'workspaceList', payload: {} })).toEqual(
+      expect(
+        await secondApp.query({ type: 'workspaceList', payload: {} }),
+      ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: expect.any(String) }),
         ]),
       )
     } finally {
+      await secondApp?.close()
       secondSqlite.close()
     }
   } finally {

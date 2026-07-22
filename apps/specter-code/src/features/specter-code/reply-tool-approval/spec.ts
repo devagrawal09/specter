@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const replyToolApprovalSpec = createCommandSlice('replyToolApproval')
   .description('Records the user decision for a pending tool approval request.')

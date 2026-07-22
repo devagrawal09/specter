@@ -1,10 +1,11 @@
-import submitPromptSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunRequestedEvent, userMessageSubmittedEvent } from '../events'
 
-const submitPrompt = submitPromptSpec
+const submitPrompt = implementCommand(specification)
   .inputSchema(
     z.object({
       messageId: z.string(),

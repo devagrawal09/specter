@@ -87,11 +87,6 @@ After adding a generated projection:
 3. inspect the generated SQL migration;
 4. run the focused Scenario test against an isolated database.
 
-For durability work, `create-specter generate persistent-harness` creates an
-on-disk test harness under `src/testing/persistence` by default. It exercises
-restart, replay, cursor failure, and Reaction retry behavior without becoming
-production app wiring.
-
 ## Transport ownership
 
 Core exposes typed envelope operations but deliberately does not ship an HTTP,
@@ -107,7 +102,7 @@ database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 
 ## Import boundaries
 
-- `spec.ts` imports `@specter-ts/core/spec` and implementation-independent
+- `spec.ts` imports `@specter-ts/spec` and implementation-independent
   domain constants only.
 - `impl.ts` may import core implementation types, local Event Definitions,
   its private projection, Store adapters, and Reaction Plugins.

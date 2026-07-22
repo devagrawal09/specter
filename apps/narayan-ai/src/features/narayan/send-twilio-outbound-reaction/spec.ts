@@ -1,4 +1,4 @@
-import { createReactionSlice, event } from '@specter-ts/core/spec'
+import { createReactionSlice, event } from '@specter-ts/spec'
 
 export default createReactionSlice('sendTwilioOutboundReaction')
   .description('Sends requested outbound WhatsApp messages through Twilio.')

@@ -43,8 +43,16 @@ describe('Slice generator', () => {
       /export const invitationListSpec = _createQuerySlice\('invitationList'\)/,
     )
     assert.match(
+      readFileSync(join(base, 'spec.ts'), 'utf8'),
+      /export default invitationListSpec/,
+    )
+    assert.match(
       readFileSync(join(base, 'impl.ts'), 'utf8'),
-      /export const invitationList = _spec/,
+      /export const invitationList = _implementQuery\(_specification\)/,
+    )
+    assert.match(
+      readFileSync(join(base, 'impl.ts'), 'utf8'),
+      /from '\.\/spec\.json'/,
     )
     assert.match(
       readFileSync(join(base, 'scenarios.test.ts'), 'utf8'),
@@ -94,7 +102,7 @@ describe('Slice generator', () => {
     )
   })
 
-  it('creates a Reaction with a native Effect plugin boundary', () => {
+  it('creates a Reaction with default same-app Command dispatch', () => {
     const cwd = projectDirectory()
     generateSlice({
       cwd,
@@ -107,13 +115,9 @@ describe('Slice generator', () => {
       join(cwd, 'src/features/invitations/send-invitation/impl.ts'),
       'utf8',
     )
-    assert.match(
-      implementation,
-      /\.plugin\(\(_dispatch\) =>\n    _Effect\.succeed/,
-    )
-    assert.match(implementation, /external adapter inside this Effect/)
-    assert.match(implementation, /idempotencyKey: context.deliveryId/)
-    assert.match(implementation, /context.scheduledAt/)
+    assert.doesNotMatch(implementation, /\.plugin\(/)
+    assert.match(implementation, /_implementReaction\(_specification\)/)
+    assert.match(implementation, /\.handle\(async \(db\)/)
   })
 
   it('computes database imports for a custom Slice root', () => {

@@ -28,9 +28,9 @@ import {
 } from '../events'
 import { runIdSchema } from '../shared'
 import { snapshotWorld, type ColonyBenchWorldSnapshot } from '../state'
-import { liveWorldSnapshotSpec } from './spec'
-
-export const createLiveWorldSnapshot = liveWorldSnapshotSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
+export const createLiveWorldSnapshot = implementQuery(specification)
   .inputSchema(runIdSchema)
   .outputSchema<ColonyBenchWorldSnapshot>()
   .store(simulationStore)

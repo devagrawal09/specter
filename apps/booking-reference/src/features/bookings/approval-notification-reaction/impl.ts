@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   approvalNotificationRecordedEvent,
   bookingApprovedEvent,
@@ -18,7 +19,7 @@ export const approvalNotificationSqlStates = sqliteTable(
   },
 )
 
-const approvalNotificationReaction = spec
+const approvalNotificationReaction = implementReaction(specification)
   .outputSchema(
     z.object({
       type: z.literal('recordApprovalNotification'),

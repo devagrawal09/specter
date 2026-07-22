@@ -3,7 +3,12 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
 import { Hono } from 'hono'
-import { createSpecterApp, EventLog } from '@specter-ts/core'
+import { createSpecterApp, EventLog, SpecterObserver } from '@specter-ts/core'
+import {
+  createRuntimeObservationEmitter,
+  createRuntimeObservationProducer,
+  type RuntimeSource,
+} from '@specter-ts/observability'
 import {
   createDurableReactionSchedulerLayer,
   type ReactionPass,
@@ -19,6 +24,10 @@ import { Layer } from 'effect'
 
 import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
 import { todoSpecterAppConfig } from './features/todos/registry'
+import {
+  todoSpecificationDigests,
+  todoSpecifications,
+} from './features/todos/specifications'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
   createSqliteReactionTicketStore,
@@ -38,6 +47,27 @@ await prepareSqliteReactionOutbox(operationalSqliteClient)
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
+const runtimeSource: RuntimeSource = {
+  application: 'todo-reference',
+  environment:
+    process.env.SPECTER_ENVIRONMENT ?? process.env.NODE_ENV ?? 'development',
+  runtimeLanguage: 'typescript',
+  runtimeVersion: '0.3.0',
+  instanceId:
+    process.env.SPECTER_INSTANCE_ID ?? `todo-reference-${process.pid}`,
+  eventLogId: process.env.SPECTER_EVENT_LOG_ID ?? sqlitePath,
+}
+const observationProducer = createRuntimeObservationProducer({
+  collectorUrl:
+    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41739',
+  source: runtimeSource,
+  specifications: todoSpecifications,
+})
+const runtimeObservability = createRuntimeObservationEmitter({
+  producer: observationProducer,
+  source: runtimeSource,
+  specificationDigests: todoSpecificationDigests,
+})
 const reactionSchedulerLayer = createDurableReactionSchedulerLayer(
   createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
     context: operationalContext,
@@ -49,6 +79,7 @@ const specterApp = await createSpecterApp(
     Layer.succeed(EventLog, persistence.eventLog),
     reactionSchedulerLayer,
     createSqliteSliceStoreLayer(persistence.context),
+    Layer.succeed(SpecterObserver, runtimeObservability.observer),
   ),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
@@ -63,6 +94,12 @@ const handleSpecterRequest = createSpecterHttpHandler({
 const app = new Hono()
 
 app.all('/api/*', (c) => handleSpecterRequest(c.req.raw))
+app.all('/specter/v1', (c) =>
+  c.json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } }, 404),
+)
+app.all('/specter/v1/*', (c) =>
+  c.json({ error: { code: 'NOT_FOUND', message: 'Route not found.' } }, 404),
+)
 
 const routes = app
 

@@ -15,22 +15,23 @@ import {
 
 export type SpecterAppConfig = {
   readonly events: readonly ApplyEventDefinition[]
-  readonly slices: readonly SliceRegistration[]
+  readonly slices: Readonly<Record<string, SliceRegistration>>
 }
 
-type CommandRegistration<TConfig extends SpecterAppConfig> = Extract<
-  TConfig['slices'][number],
-  { kind: 'command' }
->
+type SliceKeyOfKind<
+  TConfig extends SpecterAppConfig,
+  TKind extends SliceRegistration['kind'],
+> = {
+  [TKey in keyof TConfig['slices'] & string]: TConfig['slices'][TKey] extends {
+    readonly kind: TKind
+  }
+    ? TKey
+    : never
+}[keyof TConfig['slices'] & string]
 
-type QueryRegistration<TConfig extends SpecterAppConfig> = Extract<
-  TConfig['slices'][number],
-  { kind: 'query' }
->
-
-type CommandEnvelopeFor<TCommand> =
+type CommandEnvelopeFor<TName extends string, TCommand> =
   TCommand extends CommandSlice<
-    infer TName,
+    infer _TName,
     infer TInput,
     infer _TCommand,
     infer _TWriteState,
@@ -46,7 +47,7 @@ type CommandEnvelopeFor<TCommand> =
 
 type QueryEnvelopeFor<TQuery> =
   TQuery extends QuerySlice<
-    infer TName,
+    infer _TName,
     infer TInput,
     infer _TQuery,
     infer _TResult,
@@ -57,16 +58,31 @@ type QueryEnvelopeFor<TQuery> =
     infer _TStore
   >
     ? {
-        readonly type: TName
+        readonly type: never
         readonly payload: TInput
       }
     : never
 
-export type SpecterCommandEnvelope<TConfig extends SpecterAppConfig> =
-  CommandEnvelopeFor<CommandRegistration<TConfig>>
+type QueryEnvelopeForKey<TName extends string, TQuery> =
+  QueryEnvelopeFor<TQuery> extends infer TEnvelope
+    ? TEnvelope extends { readonly payload: infer TPayload }
+      ? { readonly type: TName; readonly payload: TPayload }
+      : never
+    : never
 
-export type SpecterQueryEnvelope<TConfig extends SpecterAppConfig> =
-  QueryEnvelopeFor<QueryRegistration<TConfig>>
+export type SpecterCommandEnvelope<TConfig extends SpecterAppConfig> = {
+  [TName in SliceKeyOfKind<TConfig, 'command'>]: CommandEnvelopeFor<
+    TName,
+    TConfig['slices'][TName]
+  >
+}[SliceKeyOfKind<TConfig, 'command'>]
+
+export type SpecterQueryEnvelope<TConfig extends SpecterAppConfig> = {
+  [TName in SliceKeyOfKind<TConfig, 'query'>]: QueryEnvelopeForKey<
+    TName,
+    TConfig['slices'][TName]
+  >
+}[SliceKeyOfKind<TConfig, 'query'>]
 
 export type SpecterCommandType<TConfig extends SpecterAppConfig> =
   SpecterCommandEnvelope<TConfig>['type']
@@ -78,7 +94,7 @@ export type SpecterQueryResult<
   TConfig extends SpecterAppConfig,
   TType extends SpecterQueryType<TConfig>,
 > =
-  Extract<QueryRegistration<TConfig>, { name: TType }> extends QuerySlice<
+  TConfig['slices'][TType] extends QuerySlice<
     infer _TName,
     infer _TInput,
     infer _TQuery,

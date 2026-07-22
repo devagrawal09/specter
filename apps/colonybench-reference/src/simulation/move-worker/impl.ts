@@ -33,9 +33,9 @@ import {
   stepToward,
 } from '../shared'
 import { clonePosition } from '../state'
-import { moveWorkerSpec } from './spec'
-
-export const createMoveWorker = moveWorkerSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createMoveWorker = implementCommand(specification)
   .inputSchema(moveWorkerSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

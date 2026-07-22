@@ -3,8 +3,8 @@ import { z } from 'zod'
 
 import { applyRunCreated } from '../apply'
 import { runCreatedEvent, runFrameRecordedEvent } from '../events'
-import { recordRunFrameSpec } from './spec'
-
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 const frameSchema = z.object({
   runId: z.string(),
   tick: z.number().int().nonnegative(),
@@ -16,7 +16,7 @@ const frameSchema = z.object({
   eventTypes: z.array(z.string()),
 })
 
-export const createRecordRunFrame = recordRunFrameSpec
+export const createRecordRunFrame = implementCommand(specification)
   .inputSchema(frameSchema)
   .store(controlStore)
   .apply(runCreatedEvent, applyRunCreated)

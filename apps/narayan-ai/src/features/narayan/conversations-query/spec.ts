@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export default createQuerySlice('conversationsQuery')
   .description('Summarizes WhatsApp conversations by phone number.')

@@ -10,8 +10,20 @@ const projectName = 'generated-project'
 const projectDirectory = join(temporaryRoot, projectName)
 
 try {
+  run('pnpm', ['--filter', '@specter-ts/spec', 'build'], repositoryRoot)
   run('pnpm', ['--filter', '@specter-ts/core', 'build'], repositoryRoot)
   run('pnpm', ['--filter', '@specter-ts/memory', 'build'], repositoryRoot)
+  run(
+    'pnpm',
+    [
+      '--filter',
+      '@specter-ts/spec',
+      'pack',
+      '--pack-destination',
+      temporaryRoot,
+    ],
+    repositoryRoot,
+  )
   run(
     'pnpm',
     ['--filter', '@specter-ts/reaction-outbox', 'build'],
@@ -75,6 +87,7 @@ try {
     repositoryRoot,
   )
 
+  const specificationTarball = findTarball('specter-ts-spec-')
   const coreTarball = findTarball('specter-ts-core-')
   const memoryTarball = findTarball('specter-ts-memory-')
   const reactionOutboxTarball = findTarball('specter-ts-reaction-outbox-')
@@ -93,26 +106,13 @@ try {
     ],
     temporaryRoot,
     {
+      SPECTER_SPEC_SPEC: `file:${specificationTarball}`,
       SPECTER_CORE_SPEC: `file:${coreTarball}`,
       SPECTER_MEMORY_SPEC: `file:${memoryTarball}`,
       SPECTER_REACTION_OUTBOX_SPEC: `file:${reactionOutboxTarball}`,
       SPECTER_SQLITE_SPEC: `file:${sqliteTarball}`,
     },
   )
-  run(
-    'npm',
-    [
-      'exec',
-      '--yes',
-      `--package=${initializerTarball}`,
-      '--',
-      'create-specter',
-      'generate',
-      'persistent-harness',
-    ],
-    projectDirectory,
-  )
-
   for (const script of ['check', 'lint', 'typecheck', 'test', 'build']) {
     run('npm', ['run', script], projectDirectory)
   }

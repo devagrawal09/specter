@@ -19,7 +19,7 @@ import { tasksQuery } from './tasks-query/impl'
 import { timelineQuery } from './timeline-query/impl'
 import { topicsQuery } from './topics-query/impl'
 
-export const worklogRegistrations = [
+export const worklogRegistrations = {
   addJournalEntry,
   editJournalEntry,
   changeJournalEntryArchived,
@@ -37,7 +37,7 @@ export const worklogRegistrations = [
   topicsQuery,
   connectionsQuery,
   scoreQuery,
-] as const
+} as const
 
 export const worklogAppConfig = {
   events: worklogEventDefinitions,

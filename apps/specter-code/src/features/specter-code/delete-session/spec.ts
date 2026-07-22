@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const deleteSessionSpec = createCommandSlice('deleteSession')
   .description('Deletes a coding-agent session from active session lists.')

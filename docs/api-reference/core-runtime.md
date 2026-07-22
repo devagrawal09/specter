@@ -5,7 +5,7 @@
 **Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 Slice specification builders live in
-`@specter-ts/core/spec`; test helpers live in `@specter-ts/core/testing`.
+`@specter-ts/spec`; test helpers live in `@specter-ts/core/testing`.
 
 ## Purpose
 

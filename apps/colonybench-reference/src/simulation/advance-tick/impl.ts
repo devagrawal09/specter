@@ -32,9 +32,9 @@ import {
   SOURCE_MAX_ENERGY,
   SOURCE_REGEN_PER_TICK,
 } from '../state'
-import { advanceTickSpec } from './spec'
-
-export const createAdvanceTick = advanceTickSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createAdvanceTick = implementCommand(specification)
   .inputSchema(runIdSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

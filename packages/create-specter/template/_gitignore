@@ -12,6 +12,7 @@ dist-ssr/
 .turbo/
 .cache/
 coverage/
+**/spec.json
 playwright-report/
 test-results/
 

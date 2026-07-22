@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const deleteSessionMessageSpec = createCommandSlice('deleteSessionMessage')
   .description('Deletes a user-visible session message from the transcript.')

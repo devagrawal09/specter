@@ -1,9 +1,10 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
-import type { ScopedSqliteDb } from '../../../db/specter-sqlite'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
+import type { ScopedSqliteDb } from '../../../db/specter-store'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   bookingApprovedEvent,
   bookingCanceledEvent,
@@ -35,7 +36,7 @@ export const roomScheduleBookings = sqliteTable('room_schedule_bookings', {
   status: text('status').notNull(),
 })
 
-const roomScheduleQuery = spec
+const roomScheduleQuery = implementQuery(specification)
   .inputSchema(
     z.object({ day: z.string().optional(), status: z.string().optional() }),
   )

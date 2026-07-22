@@ -94,7 +94,7 @@ After replay, the runner decodes `when`, reads the Slice State, and calls the Co
 - Every emitted type must appear in an accepted outcome in the Command's specification.
 - Emitted payloads are decoded by their Event Definitions and must not be transformed.
 - The resulting `{ type, payload }` values must exactly equal the ordered `expect` array.
-- Rejected Scenarios require the handler to throw. If `reject.reason` is present, the thrown error's message must match it.
+- Rejected Scenarios require the handler to throw, and the thrown error's message must match `reject.reason`.
 
 ### Queries
 
@@ -133,5 +133,5 @@ Use separate unit or transport tests for malformed envelopes, schema issue mappi
 - [Writing executable specifications](./writing-specifications.md)
 - [Conformance](./conformance.md)
 - [Core testing API](../api-reference/core-testing.md)
-- [Core specification API](../api-reference/core-spec.md)
+- [Core specification API](../api-reference/spec.md)
 - [Runtime architecture](../architecture/runtime.md)

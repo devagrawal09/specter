@@ -1,5 +1,6 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { createSpecterApp, EventLog } from '@specter-ts/core'
+import { createSpecterApp, EventLog, type SpecterApp } from '@specter-ts/core'
+import { eventsFor } from '@specter-ts/core/testing'
 import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
@@ -19,6 +20,7 @@ process.env.SPECTER_CODE_DB_PATH = join(serverDbDir, 'app.db')
 
 const {
   askSpecterCodeQuestionOnServer,
+  closeSpecterCodeServerRuntime,
   createSpecterCodePostOnServer,
   createSpecterCodeSessionOnServer,
   createSpecterCodeWorkspaceOnServer,
@@ -40,14 +42,20 @@ const {
   submitSpecterCodePromptOnServer,
   updateSpecterCodeTodoListOnServer,
 } = await import('./server-runtime.server')
-import { specterCodeReferenceSpecterAppConfig } from './registry'
+import {
+  specterCodeEventDefinitions,
+  specterCodeScaffoldRegistrations,
+} from './registry'
 import {
   resetMemorySliceStores,
   specterCodeMemoryStoresLayer,
 } from '../../testing/memory-slice-store'
 import { projectSpecterCodeEvent } from './adapters/read-models'
 
-afterAll(() => rmSync(serverDbDir, { recursive: true, force: true }))
+afterAll(async () => {
+  await closeSpecterCodeServerRuntime()
+  rmSync(serverDbDir, { recursive: true, force: true })
+})
 
 test('specterCode server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'specter-code-workspaces-'))
@@ -138,20 +146,26 @@ test('specterCode server functions wrap workspace, chat, scan, and run slices', 
       }),
     ).toBeDefined()
 
-    expect(
-      await listSpecterCodeWorkspaceChatOnServer({
-        workspaceId: 'workspace-main',
-      }),
-    ).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          author: { type: 'agent', agentId: 'specter', displayName: 'Specter' },
-          content: 'I found the issue.',
-          parentPostId: 'post-main',
-          sourceRunId: runId,
+    await expect
+      .poll(() =>
+        listSpecterCodeWorkspaceChatOnServer({
+          workspaceId: 'workspace-main',
         }),
-      ]),
-    )
+      )
+      .toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            author: {
+              type: 'agent',
+              agentId: 'specter',
+              displayName: 'Specter',
+            },
+            content: 'I found the issue.',
+            parentPostId: 'post-main',
+            sourceRunId: runId,
+          }),
+        ]),
+      )
 
     expect(
       await readSpecterCodeWorkspaceTextFileOnServer({
@@ -407,25 +421,36 @@ test('specterCode preview reads reject unsafe files and read valid text', async 
 test('specterCode server functions preserve database state across app reopen', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'specter-code-'))
   const sqlitePath = join(tempDir, 'app.db')
+  const persistenceTestConfig = {
+    events: eventsFor(
+      specterCodeScaffoldRegistrations.createWorkspace,
+      specterCodeEventDefinitions,
+    ),
+    slices: {
+      createWorkspace: specterCodeScaffoldRegistrations.createWorkspace,
+      workspaceList: specterCodeScaffoldRegistrations.workspaceList,
+    },
+  } as const
 
   try {
     const firstSqlite = createClient({ url: `file:${sqlitePath}` })
 
+    let firstApp: SpecterApp<typeof persistenceTestConfig> | undefined
     try {
       await prepareSpecterSqlite(firstSqlite)
       const eventLog = createSpecterCodeEventLogService(
         firstSqlite,
         projectSpecterCodeEvent,
       )
-      const app = await createSpecterApp(
-        specterCodeReferenceSpecterAppConfig,
+      firstApp = await createSpecterApp(
+        persistenceTestConfig,
         Layer.mergeAll(
           Layer.succeed(EventLog, eventLog),
           createImmediateReactionSchedulerLayer(),
           specterCodeMemoryStoresLayer(),
         ),
       )
-      const execution = await app.command({
+      const execution = await firstApp.command({
         type: 'createWorkspace',
         payload: {
           workspaceId: 'workspace-durable',
@@ -434,34 +459,39 @@ test('specterCode server functions preserve database state across app reopen', a
         },
       })
       await execution.reactions
-      await app.query({ type: 'workspaceList', payload: {} })
+      await firstApp.query({ type: 'workspaceList', payload: {} })
     } finally {
+      await firstApp?.close()
       firstSqlite.close()
     }
 
     resetMemorySliceStores()
     const secondSqlite = createClient({ url: `file:${sqlitePath}` })
 
+    let secondApp: SpecterApp<typeof persistenceTestConfig> | undefined
     try {
       await prepareSpecterSqlite(secondSqlite)
       const eventLog = createSpecterCodeEventLogService(
         secondSqlite,
         projectSpecterCodeEvent,
       )
-      const app = await createSpecterApp(
-        specterCodeReferenceSpecterAppConfig,
+      secondApp = await createSpecterApp(
+        persistenceTestConfig,
         Layer.mergeAll(
           Layer.succeed(EventLog, eventLog),
           createImmediateReactionSchedulerLayer(),
           specterCodeMemoryStoresLayer(),
         ),
       )
-      expect(await app.query({ type: 'workspaceList', payload: {} })).toEqual(
+      expect(
+        await secondApp.query({ type: 'workspaceList', payload: {} }),
+      ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ name: expect.any(String) }),
         ]),
       )
     } finally {
+      await secondApp?.close()
       secondSqlite.close()
     }
   } finally {

@@ -18,7 +18,7 @@ import {
   createQuerySlice,
   createReactionSlice,
   event,
-} from '../spec-entry'
+} from '../definition'
 import { createSpecterAppLayer, SpecterRuntime } from './runtime'
 
 type State = { values: number[]; published?: boolean }
@@ -85,7 +85,7 @@ describe('Effect-native runtime', () => {
       .handle(async (_input, state) => state.values)
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [command, eagerValues, lazyValues],
+      slices: { recordValue: command, eagerValues, lazyValues },
     } as const).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -120,7 +120,7 @@ describe('Effect-native runtime', () => {
       .handle(async (value) => [valueRecorded.create(value)])
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [command],
+      slices: { recordValue: command },
     } as const).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -177,7 +177,7 @@ describe('Effect-native runtime', () => {
     )
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [recordValue, values],
+      slices: { recordValue, values },
     } as const).pipe(Layer.provide(dependencies))
     const program = Effect.gen(function* () {
       const app = yield* SpecterRuntime
@@ -227,7 +227,7 @@ describe('Effect-native runtime', () => {
       .handle(async (state) => state.values.at(-1))
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [recordValue, reaction],
+      slices: { recordValue, publishValue: reaction },
     } as const).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -285,7 +285,7 @@ describe('Effect-native runtime', () => {
       .handle(async (state) => state.values.at(-1))
     const config = {
       events: [valueRecorded],
-      slices: [command, reaction],
+      slices: { recordValue: command, publishValue: reaction },
     } as const
     const dependencies = Layer.merge(
       Layer.succeed(EventLog, eventLog),
@@ -370,7 +370,7 @@ describe('Effect-native runtime', () => {
     const app = await createSpecterApp(
       {
         events: [valueRecorded],
-        slices: [recordValues, reaction],
+        slices: { recordValues, publishValues: reaction },
       } as const,
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
@@ -440,7 +440,11 @@ describe('Effect-native runtime', () => {
     const app = await createSpecterApp(
       {
         events: [valueRecorded, otherRecorded],
-        slices: [recordOther, recordValue, reaction],
+        slices: {
+          recordOther,
+          recordValue,
+          publishRelevantValue: reaction,
+        },
       } as const,
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
@@ -503,7 +507,7 @@ describe('Effect-native runtime', () => {
     const app = await createSpecterApp(
       {
         events: [valueRecorded],
-        slices: [recordValue, reaction],
+        slices: { recordValue, publishValue: reaction },
       } as const,
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
@@ -587,7 +591,11 @@ describe('Effect-native runtime', () => {
       })
     const layer = createSpecterAppLayer({
       events: [valueRecorded, valuePublished],
-      slices: [record, publish, reaction],
+      slices: {
+        recordValue: record,
+        publishValue: publish,
+        publishRecordedValue: reaction,
+      },
     } as const).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -621,7 +629,10 @@ describe('Effect-native runtime', () => {
       .inputSchema<number>()
       .store(ValuesStore)
       .handle(async (value) => [valueRecorded.create(value)])
-    const config = { events: [valueRecorded], slices: [command] } as const
+    const config = {
+      events: [valueRecorded],
+      slices: { recordValue: command },
+    } as const
     const eventLog = makeEventLogService()
     const runCommand = (payload: number) =>
       Effect.runPromise(
@@ -689,7 +700,7 @@ describe('Effect-native runtime', () => {
     const store = makeStoreService()
     const layer = createSpecterAppLayer({
       events: [firstRecorded, secondRecorded],
-      slices: [command, query],
+      slices: { recordFirst: command, values: query },
     } as const).pipe(
       Layer.provide(
         Layer.mergeAll(
@@ -753,7 +764,7 @@ describe('Effect-native runtime', () => {
       .handle(async (_input, state) => [...state.values])
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [command, query],
+      slices: { recordValue: command, values: query },
     } as const).pipe(
       Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
@@ -799,7 +810,7 @@ describe('Effect-native runtime', () => {
       .handle(async () => undefined)
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [command, query],
+      slices: { recordValue: command, missingValue: query },
     } as const).pipe(
       Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
@@ -865,7 +876,7 @@ describe('Effect-native runtime', () => {
     const app = await createSpecterApp(
       {
         events: [valueRecorded, otherRecorded],
-        slices: [recordValue, recordOther, values],
+        slices: { recordValue, recordOther, values },
       } as const,
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
@@ -939,7 +950,7 @@ describe('Effect-native runtime', () => {
       .handle(async (_input, state) => [...state.values])
     const config = {
       events: [valueRecorded],
-      slices: [command, query],
+      slices: { recordValue: command, values: query },
     } as const
     const dependencies = () =>
       Layer.mergeAll(
@@ -973,7 +984,7 @@ describe('Effect-native runtime', () => {
       .handle(async (value) => [valueRecorded.create(value)])
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: [command],
+      slices: { recordValue: command },
     } as const).pipe(
       Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )

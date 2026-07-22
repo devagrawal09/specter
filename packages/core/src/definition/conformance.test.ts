@@ -74,7 +74,7 @@ describe('conformance diagnostics', () => {
       ])
     const input = {
       events: [givenOnly, applyOnly, transformed],
-      slices: [implementation],
+      slices: { implementation },
     }
 
     const diagnostics = await Effect.runPromise(
@@ -146,7 +146,7 @@ describe('conformance diagnostics', () => {
       Effect.runPromise(
         collectConformanceDiagnostics({
           events: [valueRecorded],
-          slices: [implementation],
+          slices: { recordValue: implementation },
         }),
       ),
     ).resolves.toEqual([])
@@ -176,14 +176,17 @@ describe('conformance diagnostics', () => {
     await expect(
       Effect.runPromise(
         assertConforms(
-          { events: [valueRecorded], slices: [query] },
+          { events: [valueRecorded], slices: { readValue: query } },
           { requireCommandSlice: false },
         ),
       ),
     ).resolves.toBeUndefined()
     await expect(
       Effect.runPromise(
-        assertConforms({ events: [valueRecorded], slices: [query] }),
+        assertConforms({
+          events: [valueRecorded],
+          slices: { readValue: query },
+        }),
       ),
     ).rejects.toMatchObject({
       diagnostics: expect.arrayContaining([
@@ -230,7 +233,7 @@ describe('conformance diagnostics', () => {
       Effect.runPromise(
         assertConforms({
           events: [valueRecorded],
-          slices: [command, reaction],
+          slices: { recordValue: command, repeatValue: reaction },
         }),
       ),
     ).resolves.toBeUndefined()
@@ -257,7 +260,7 @@ describe('conformance diagnostics', () => {
       Effect.runPromise(
         assertConforms({
           events: [valueRecorded],
-          slices: [implementation],
+          slices: { implementation },
         }),
       ),
     ).rejects.toMatchObject({
@@ -297,7 +300,7 @@ describe('conformance diagnostics', () => {
     await expect(
       Effect.runPromise(
         assertConforms(
-          { events: [valueRecorded], slices: [query] },
+          { events: [valueRecorded], slices: { valueLabel: query } },
           { requireCommandSlice: false },
         ),
       ),
@@ -321,7 +324,7 @@ describe('conformance diagnostics', () => {
 
     const diagnostics = await Effect.runPromise(
       collectConformanceDiagnostics(
-        { events: [], slices: [malformed as never] },
+        { events: [], slices: { malformed: malformed as never } },
         { requireCommandSlice: false },
       ),
     )

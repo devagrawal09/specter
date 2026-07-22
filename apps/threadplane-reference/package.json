@@ -4,19 +4,21 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-    "dev": "vite dev",
+    "dev": "pnpm spec:build && vite dev",
     "dev:kill": "fuser -k 41732/tcp || true",
-    "build": "vite build",
+    "build": "pnpm spec:build && vite build",
     "start": "node .output/server/index.mjs",
     "preview": "vite preview",
-    "test": "vitest run --exclude 'tests/e2e/**'",
+    "test": "pnpm spec:build && vitest run --exclude 'tests/e2e/**'",
     "test:e2e": "playwright test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "spec:build": "node ../../packages/spec/dist/cli.js export src/features"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.18",
     "@libsql/client": "^0.17.3",
     "@specter-ts/core": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@tanstack/router-core": "1.168.8",

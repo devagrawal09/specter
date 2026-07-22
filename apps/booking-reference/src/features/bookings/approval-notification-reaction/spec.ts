@@ -1,4 +1,4 @@
-import { createReactionSlice, event } from '@specter-ts/core/spec'
+import { createReactionSlice, event } from '@specter-ts/spec'
 export default createReactionSlice('approvalNotificationReaction')
   .description(
     'Requests approval notification recording after booking approval.',

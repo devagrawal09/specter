@@ -27,9 +27,9 @@ import {
   workerSpawnedEvent,
 } from '../events'
 import { isAdjacent, rejectCommand, workerCommandSchema } from '../shared'
-import { upgradeBaseSpec } from './spec'
-
-export const createUpgradeBase = upgradeBaseSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createUpgradeBase = implementCommand(specification)
   .inputSchema(workerCommandSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

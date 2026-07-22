@@ -13,8 +13,27 @@ const schemaNames = [
 const schemas = schemaNames.map((name) =>
   JSON.parse(readFileSync(new URL(`schemas/${name}`, protocolRoot), 'utf8')),
 )
+const specificationRoot = new URL('../../../specification/', import.meta.url)
+const specificationSchema = JSON.parse(
+  readFileSync(new URL('schemas/slice.schema.json', specificationRoot), 'utf8'),
+)
 
 describe('normative Draft 2020-12 schemas', () => {
+  it('validates the language-neutral Slice fixture and rejects schema drift', () => {
+    const fixture = JSON.parse(
+      readFileSync(
+        new URL('fixtures/add-todo.spec.json', specificationRoot),
+        'utf8',
+      ),
+    )
+    const validate = new Ajv2020({ allErrors: true, strict: true }).compile(
+      specificationSchema,
+    )
+
+    expect(validate(fixture), JSON.stringify(validate.errors)).toBe(true)
+    expect(validate({ ...fixture, implementation: 'typescript' })).toBe(false)
+  })
+
   it('validates shared fixtures with a real Draft 2020-12 engine', () => {
     const ajv = new Ajv2020({
       allErrors: true,
@@ -25,6 +44,7 @@ describe('normative Draft 2020-12 schemas', () => {
       strictRequired: false,
     })
     addFormats(ajv)
+    ajv.addSchema(specificationSchema)
     for (const schema of schemas) {
       expect(schema).toMatchObject({
         $schema: 'https://json-schema.org/draft/2020-12/schema',

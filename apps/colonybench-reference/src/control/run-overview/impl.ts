@@ -15,9 +15,9 @@ import {
   runStartedEvent,
 } from '../events'
 import type { ColonyBenchRunOverview } from '../state'
-import { runOverviewSpec } from './spec'
-
-export const createRunOverview = runOverviewSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
+export const createRunOverview = implementQuery(specification)
   .inputSchema(z.object({ runId: z.string() }))
   .outputSchema<ColonyBenchRunOverview>()
   .store(controlStore)

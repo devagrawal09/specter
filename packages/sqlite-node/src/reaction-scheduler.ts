@@ -42,8 +42,9 @@ export function createNodeSqliteReactionSchedulerService(
   context: NodeSqliteContext,
   scope: Scope.Scope,
   now: () => Date = () => new Date(),
+  waitIntervalMs = 25,
 ): ReactionSchedulerService {
-  const active = new Map<number, Fiber.Fiber<void, unknown>>()
+  const active = new Map<number, Fiber.Fiber<void, any>>()
 
   function decode(row: Record<string, unknown>): Delivery {
     return {
@@ -134,31 +135,11 @@ export function createNodeSqliteReactionSchedulerService(
   }
 
   return {
-    schedule: (throughOrder, execute) =>
+    bind: ({ execute, reconcile }) =>
       Effect.gen(function* () {
-        const running = active.get(throughOrder)
-        if (running) return Fiber.join(running) as Effect.Effect<void, any>
-        const delivery = yield* Effect.try({
-          try: () => ensure(throughOrder),
-          catch: (cause) => new ReactionSchedulerFailure('schedule', cause),
-        })
-        if (delivery.status === 'completed') return Effect.void
-        const fiber = yield* Effect.forkIn(
-          runDelivery(delivery, execute).pipe(
-            Effect.ensuring(
-              Effect.sync(() => {
-                active.delete(throughOrder)
-              }),
-            ),
-          ),
-          scope,
-        )
-        active.set(throughOrder, fiber)
-        return Fiber.join(fiber)
-      }),
-    recover: (execute) =>
-      Effect.gen(function* () {
-        const deliveries = yield* Effect.try({
+        yield* reconcile
+
+        const pending = yield* Effect.try({
           try: () =>
             context.database
               .prepare(
@@ -168,10 +149,62 @@ export function createNodeSqliteReactionSchedulerService(
               )
               .all()
               .map((row) => decode(row as Record<string, unknown>)),
-          catch: (cause) => new ReactionSchedulerFailure('recover', cause),
+          catch: (cause) => new ReactionSchedulerFailure('reconcile', cause),
         })
-        for (const delivery of deliveries) {
-          yield* runDelivery(delivery, execute)
+
+        const start = (delivery: Delivery) =>
+          Effect.gen(function* () {
+            if (
+              delivery.status === 'completed' ||
+              active.has(delivery.throughOrder)
+            )
+              return
+            const fiber = yield* Effect.forkIn(
+              runDelivery(delivery, execute).pipe(
+                Effect.ensuring(
+                  Effect.sync(() => {
+                    active.delete(delivery.throughOrder)
+                  }),
+                ),
+              ),
+              scope,
+            )
+            active.set(delivery.throughOrder, fiber)
+          })
+
+        for (const delivery of pending) yield* start(delivery)
+
+        return {
+          request: (throughOrder: number) =>
+            Effect.gen(function* () {
+              const delivery = yield* Effect.try({
+                try: () => ensure(throughOrder),
+                catch: (cause) =>
+                  new ReactionSchedulerFailure('request', cause),
+              })
+              yield* start(delivery)
+            }),
+          await: (throughOrder: number) =>
+            Effect.gen(function* () {
+              for (;;) {
+                const delivery = yield* Effect.try({
+                  try: () => get(throughOrder),
+                  catch: (cause) => new ReactionSchedulerFailure('wait', cause),
+                })
+                if (!delivery) {
+                  return yield* Effect.fail(
+                    new ReactionSchedulerFailure(
+                      'wait',
+                      new Error(`Unknown Reaction delivery: ${throughOrder}`),
+                    ),
+                  )
+                }
+                if (delivery.status === 'completed') return
+                const fiber = active.get(throughOrder)
+                if (fiber) yield* Fiber.join(fiber)
+                else yield* Effect.sleep(`${waitIntervalMs} millis`)
+              }
+            }),
         }
       }),
   }

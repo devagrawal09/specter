@@ -115,7 +115,11 @@ export function createPrettyConsoleSpecterObserver(): SpecterObserverService {
 
 export const SpecterObserver = Context.Reference<SpecterObserverService>(
   '@specter-ts/core/SpecterObserver',
-  { defaultValue: createPrettyConsoleSpecterObserver },
+  {
+    defaultValue: () => ({
+      observe: () => Effect.void,
+    }),
+  },
 )
 
 export type SpecterIdService = {

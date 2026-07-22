@@ -44,7 +44,7 @@ export class SpecterConformanceError extends AggregateError {
 
 export type ConformanceInput = {
   readonly events: readonly ApplyEventDefinition[]
-  readonly slices: readonly SliceRegistration[]
+  readonly slices: Readonly<Record<string, SliceRegistration>>
 }
 
 export type ConformanceOptions = {
@@ -100,7 +100,7 @@ export function collectConformanceDiagnostics(
 
     if (
       options.requireCommandSlice !== false &&
-      !input.slices.some((slice) => slice.kind === 'command')
+      !Object.values(input.slices).some((slice) => slice.kind === 'command')
     ) {
       diagnostics.push({
         code: 'missing-command-slice',
@@ -108,7 +108,14 @@ export function collectConformanceDiagnostics(
       })
     }
 
-    for (const slice of input.slices) {
+    for (const [registrationName, slice] of Object.entries(input.slices)) {
+      if (registrationName !== slice.name) {
+        diagnostics.push({
+          code: 'slice-registration-name-mismatch',
+          sliceName: slice.name,
+          message: `Registry key "${registrationName}" does not match specification name "${slice.name}". Rename the registry key or rebuild spec.json.`,
+        })
+      }
       if (sliceNames.has(slice.name)) {
         diagnostics.push({
           code: 'duplicate-slice-name',

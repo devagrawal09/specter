@@ -22,7 +22,8 @@ import {
   type Task,
   type Topic,
 } from '../model'
-import { changeConnectionArchivedSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type State = {
   journals: Map<string, { archived: boolean }>
@@ -40,7 +41,7 @@ const store = defineWorklogMemoryStore<State>(() => ({
   awards: new Set(),
 }))
 
-export const changeConnectionArchived = changeConnectionArchivedSpec
+export const changeConnectionArchived = implementCommand(specification)
   .inputSchema(
     z
       .object({

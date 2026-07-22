@@ -112,7 +112,7 @@ pnpm build
   for ownership and dependency rules.
 - [Writing specifications](specifications/writing-specifications.md) and
   [Slice tests](specifications/slice-tests.md) for executable Scenarios.
-- [`@specter-ts/core/spec` API](api-reference/core-spec.md) for the exact
+- [`@specter-ts/spec` API](api-reference/spec.md) for the exact
   builders and types.
 - [Runtime architecture](architecture/runtime.md) for transactions,
   subscriptions, and Reaction completion.

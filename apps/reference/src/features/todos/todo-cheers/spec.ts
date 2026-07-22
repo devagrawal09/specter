@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export const todoCheersSpec = createQuerySlice('todoCheers')
   .description('Shows the latest todo cheer.')
@@ -30,3 +30,5 @@ export const todoCheersSpec = createQuerySlice('todoCheers')
       },
     },
   )
+
+export default todoCheersSpec

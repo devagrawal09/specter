@@ -6,13 +6,13 @@ import { createRunList } from './run-list/impl'
 import { createRunOverview } from './run-overview/impl'
 import { createRunTimeline } from './run-timeline/impl'
 import { createStartRun } from './start-run/impl'
-export const controlSlices = [
-  createCreateRun,
-  createStartRun,
-  createCompleteRun,
-  createRecordRunFrame,
-  createRunDetail,
-  createRunList,
-  createRunTimeline,
-  createRunOverview,
-] as const
+export const controlSlices = {
+  createRun: createCreateRun,
+  startRun: createStartRun,
+  completeRun: createCompleteRun,
+  recordRunFrame: createRecordRunFrame,
+  runDetail: createRunDetail,
+  runList: createRunList,
+  runTimeline: createRunTimeline,
+  runOverview: createRunOverview,
+} as const

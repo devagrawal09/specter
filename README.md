@@ -14,6 +14,7 @@ This repository is a pnpm workspace:
 
 ```txt
 packages/core/             @specter-ts/core framework/runtime package
+packages/spec/             @specter-ts/spec portable authoring and export package
 packages/memory/           deterministic test adapters and immediate scheduler
 packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
 packages/sqlite-node/      scoped native node:sqlite runtime bundle
@@ -74,11 +75,14 @@ pnpm dev:booking
 pnpm dev:threadplane
 ```
 
-The existing Reference applications use fixed port `41731`; the Threadplane Reference application uses fixed port `41732`.
+The Todo and Booking Reference applications use fixed port `41731`; the
+Threadplane Reference uses `41732`, the observability collector uses `41739`,
+and the Go Todo reference uses `41737`.
 
-Workspace apps resolve `@specter-ts/core`, `@specter-ts/core/spec`, and
-`@specter-ts/core/testing` to local source through `tsconfig.base.json`, so app
-tests do not require a prebuilt `packages/core/dist`.
+Workspace apps resolve `@specter-ts/core` and `@specter-ts/core/testing` to
+local source through `tsconfig.base.json`. Root build, test, and typecheck
+scripts build `@specter-ts/spec` once, export adjacent `spec.json` files, then
+run dependent packages.
 
 ## Runtime Envelopes
 
@@ -122,7 +126,7 @@ Each Slice separates its immutable specification from its executable implementat
 
 ```ts
 // add-todo/spec.ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -132,11 +136,16 @@ export const addTodoSpec = createCommandSlice('addTodo')
     when: { todoId: 'todo-1', title: 'Ship it' },
     expect: [event('todo-added', { todoId: 'todo-1', title: 'Ship it' })],
   })
+
+export default addTodoSpec
 ```
 
 ```ts
 // add-todo/impl.ts
-export const addTodo = addTodoSpec
+import { implementCommand } from '@specter-ts/core'
+import specification from './spec.json'
+
+export const addTodo = implementCommand(specification)
   .inputSchema(addTodoInputSchema)
   .store(todoStore)
   .handle(async (command) => [todoAddedEvent.create(command)])
@@ -144,13 +153,11 @@ export const addTodo = addTodoSpec
 
 Query implementations add `.outputSchema(...)`; Reaction implementations add `.outputSchema(...)` and `.plugin(...)`. After `.store(...)`, implementations may register typed handlers with `.apply(eventDefinition, handler)` before terminating with `.handle(...)`.
 
-Specifications use exact `event(type, payload)` examples and ship with the application. `createSpecterApp(...)` is asynchronous because construction validates all specifications, Event schemas, and selected implementations before exposing the app.
+Specifications use exact `event(type, payload)` examples. `specter-spec export` converts each `spec.ts` to an adjacent `spec.json`; TypeScript and non-TypeScript implementations consume only that portable JSON. `createSpecterApp(...)` is asynchronous because construction validates all specifications, Event schemas, and selected implementations before exposing the app.
 
-`create-specter generate slice` emits named `spec.ts`/`impl.ts` exports plus
+`create-specter generate slice` emits a default-exported `spec.ts`, a JSON-backed named `impl.ts` export, plus
 optional Slice-owned Event, projection, registry, test, schema-export, and
-migration support files. `create-specter generate persistent-harness` emits an
-executable SQLite restart/replay/reset harness with durable Reaction scheduling
-and wired failure injection. Use `analyzeEventPropagation(...)` from
+migration support files. Use `analyzeEventPropagation(...)` from
 `@specter-ts/core/testing` before evolving an Event payload.
 
 ## Release
@@ -160,7 +167,8 @@ pnpm release:dry-run
 pnpm release:publish
 ```
 
-The unpublished `0.4.0` release set contains `@specter-ts/core`,
+The unpublished `0.4.0` release set contains `@specter-ts/spec`,
+`@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
 `@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/protocol`,
 `@specter-ts/observability`, and
@@ -168,7 +176,7 @@ The unpublished `0.4.0` release set contains `@specter-ts/core`,
 workspace typechecks/tests, validates the envelope codemod package, packs and
 tests a generated starter, and runs that starter's Playwright workflow.
 
-`release:auth` checks all eight names. It verifies that the authenticated npm
+`release:auth` checks all nine names. It verifies that the authenticated npm
 identity owns every package that already exists. A 404 is recorded explicitly
 as an unpublished, first-publish package rather than mistaken for an auth
 failure; those names require `@specter-ts` scope publication rights. On later

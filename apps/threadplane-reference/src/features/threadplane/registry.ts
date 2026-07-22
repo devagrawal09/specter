@@ -30,7 +30,7 @@ import { threadplaneEventDefinitions } from './events'
 
 export { threadplaneEventDefinitions }
 
-export const threadplaneScaffoldRegistrations = [
+export const threadplaneScaffoldRegistrations = {
   createWorkspace,
   workspaceList,
   createPost,
@@ -44,8 +44,8 @@ export const threadplaneScaffoldRegistrations = [
   recordFilesystemNodeDiscovered,
   recordFilesystemNodeChanged,
   recordFilesystemNodeDeleted,
-  filesystemStatus,
-  filesystemTree,
+  workspaceFilesystemStatus: filesystemStatus,
+  workspaceFilesystemTree: filesystemTree,
   requestAgentRun,
   recordAgentRunStarted,
   recordAgentRunStreamed,
@@ -59,7 +59,7 @@ export const threadplaneScaffoldRegistrations = [
   runRequestedFilesystemScan,
   runRequestedAgentRun,
   publishAgentRunReply,
-] as const
+} as const
 
 export const threadplaneSliceSkeletons = threadplaneScaffoldRegistrations
 

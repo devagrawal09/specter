@@ -1,4 +1,5 @@
-import workspaceAgentRunsSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -27,7 +28,7 @@ type WorkspaceAgentRunsState = {
   runs: WorkspaceAgentRun[]
 }
 
-const workspaceAgentRuns = workspaceAgentRunsSpec
+const workspaceAgentRuns = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),

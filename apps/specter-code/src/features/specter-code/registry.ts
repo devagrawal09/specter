@@ -53,7 +53,7 @@ import { specterCodeEventDefinitions } from './events'
 
 export { specterCodeEventDefinitions }
 
-export const specterCodeScaffoldRegistrations = [
+export const specterCodeScaffoldRegistrations = {
   createWorkspace,
   workspaceList,
   createSession,
@@ -80,8 +80,8 @@ export const specterCodeScaffoldRegistrations = [
   recordFilesystemNodeDiscovered,
   recordFilesystemNodeChanged,
   recordFilesystemNodeDeleted,
-  filesystemStatus,
-  filesystemTree,
+  workspaceFilesystemStatus: filesystemStatus,
+  workspaceFilesystemTree: filesystemTree,
   requestAgentRun,
   recordAgentRunStarted,
   recordAgentRunStreamed,
@@ -105,7 +105,7 @@ export const specterCodeScaffoldRegistrations = [
   runRequestedFilesystemScan,
   runRequestedAgentRun,
   publishAgentRunReply,
-] as const
+} as const
 
 export const specterCodeSliceSkeletons = specterCodeScaffoldRegistrations
 

@@ -34,9 +34,9 @@ import {
   roadIdForSite,
 } from '../shared'
 import { BUILD_AMOUNT, clonePosition } from '../state'
-import { buildConstructionSiteSpec } from './spec'
-
-export const createBuildConstructionSite = buildConstructionSiteSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createBuildConstructionSite = implementCommand(specification)
   .inputSchema(buildConstructionSiteSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

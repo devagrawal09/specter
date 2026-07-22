@@ -28,9 +28,9 @@ import {
 } from '../events'
 import { isAdjacent, rejectCommand, repairRoadSchema } from '../shared'
 import { REPAIR_AMOUNT } from '../state'
-import { repairRoadSpec } from './spec'
-
-export const createRepairRoad = repairRoadSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createRepairRoad = implementCommand(specification)
   .inputSchema(repairRoadSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

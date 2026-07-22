@@ -92,7 +92,7 @@ type StoreRequirement<TStore> =
     : never
 
 export type SpecterStoreRequirements<TConfig extends SpecterAppConfig> =
-  StoreRequirement<StoreOf<TConfig['slices'][number]>>
+  StoreRequirement<StoreOf<TConfig['slices'][keyof TConfig['slices']]>>
 
 export type SpecterRuntimeRequirements<TConfig extends SpecterAppConfig> =
   | SpecterStoreRequirements<TConfig>
@@ -170,7 +170,6 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     const scheduler = yield* ReactionScheduler
     const observer = yield* SpecterObserver
     const ids = yield* SpecterIds
-    const scope = yield* Effect.scope
     const services = yield* Effect.context<SpecterStoreRequirements<TConfig>>()
     const eventDefinitions = new Map<string, ApplyEventDefinition>()
     const commands = new Map<string, AnyCommand>()
@@ -189,7 +188,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       eventDefinitions.set(eventDefinition.type, eventDefinition)
     }
 
-    for (const slice of config.slices) {
+    for (const slice of Object.values(config.slices)) {
       if (slice.kind === 'command') {
         commands.set(slice.name, slice)
         allowedCommandEvents.set(slice, commandScenarioEventTypes(slice))
@@ -223,14 +222,21 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       discard: true,
     })
 
-    if (reactions.size > 0) {
-      yield* scheduler.recover(runReactions)
-      const currentVersion = yield* eventLog.currentVersion
-      const completion = yield* scheduler.schedule(currentVersion, runReactions)
-      yield* Effect.forkIn(completion, scope)
-    }
+    const reactionScheduler =
+      reactions.size === 0
+        ? undefined
+        : yield* scheduler.bind({
+            execute: runReactions,
+            reconcile: Effect.gen(function* () {
+              const currentVersion = yield* eventLog.currentVersion
+              const scheduledAt = new Date(
+                yield* Clock.currentTimeMillis,
+              ).toISOString()
+              yield* runReactions({ throughOrder: currentVersion, scheduledAt })
+            }),
+          })
 
-    for (const slice of config.slices) {
+    for (const slice of Object.values(config.slices)) {
       if (slice.eager) {
         yield* catchUpSlice(slice)
       }
@@ -285,10 +291,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         })
 
         yield* invalidateSubscriptions(commit.events)
+        yield* reactionScheduler?.request(commit.version) ?? Effect.void
         const reactionsCompletion =
-          reactions.size === 0
-            ? Effect.void
-            : yield* scheduler.schedule(commit.version, runReactions)
+          reactionScheduler?.await(commit.version) ?? Effect.void
 
         for (const event of commit.events) {
           yield* observe(operationId, {

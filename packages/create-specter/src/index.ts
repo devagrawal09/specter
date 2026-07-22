@@ -138,13 +138,23 @@ function patchPackageJson(targetDirectory: string, projectName: string) {
 
   packageJson.name = projectName
 
+  const specificationSpec = process.env.SPECTER_SPEC_SPEC
   const coreSpec = process.env.SPECTER_CORE_SPEC
   const memorySpec = process.env.SPECTER_MEMORY_SPEC
   const reactionOutboxSpec = process.env.SPECTER_REACTION_OUTBOX_SPEC
   const sqliteSpec = process.env.SPECTER_SQLITE_SPEC
 
-  if (coreSpec || memorySpec || reactionOutboxSpec || sqliteSpec) {
+  if (
+    specificationSpec ||
+    coreSpec ||
+    memorySpec ||
+    reactionOutboxSpec ||
+    sqliteSpec
+  ) {
     packageJson.dependencies = packageJson.dependencies ?? {}
+    if (specificationSpec) {
+      packageJson.dependencies['@specter-ts/spec'] = specificationSpec
+    }
     if (coreSpec) packageJson.dependencies['@specter-ts/core'] = coreSpec
     if (memorySpec) packageJson.dependencies['@specter-ts/memory'] = memorySpec
     if (reactionOutboxSpec) {

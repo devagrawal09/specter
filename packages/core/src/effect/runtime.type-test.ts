@@ -1,7 +1,7 @@
 import { Context, Layer } from 'effect'
 
-import { EventLog, type SliceStoreService } from '..'
-import { createCommandSlice, event } from '../spec-entry'
+import { EventLog, implementCommand, type SliceStoreService } from '..'
+import { createCommandSlice, event } from '@specter-ts/spec'
 import { createSpecterAppLayer } from './runtime'
 
 type Equal<TLeft, TRight> =
@@ -16,14 +16,18 @@ class RuntimeTypeStore extends Context.Service<
   SliceStoreService<Readonly<State>, State>
 >()('specter-type-test/RuntimeTypeStore') {}
 
-const command = createCommandSlice('recordValue')
-  .description('Records a value.')
-  .scenarios({
-    description: 'Records a value.',
-    given: [],
-    when: 1,
-    expect: [event('value-recorded', 1)],
-  })
+const command = implementCommand(
+  JSON.stringify(
+    createCommandSlice('recordValue')
+      .description('Records a value.')
+      .scenarios({
+        description: 'Records a value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      }),
+  ),
+)
   .inputSchema<number>()
   .store(RuntimeTypeStore)
   .handle(async () => [])
@@ -33,7 +37,7 @@ declare const eventLogService: EventLog['Service']
 
 const runtimeLayer = createSpecterAppLayer({
   events: [],
-  slices: [command],
+  slices: { command },
 } as const)
 
 export type MissingRuntimeRequirements = Expect<

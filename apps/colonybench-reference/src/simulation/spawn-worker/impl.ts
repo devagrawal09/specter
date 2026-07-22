@@ -29,9 +29,9 @@ import {
 } from '../events'
 import { rejectCommand, runIdSchema } from '../shared'
 import { clonePosition, SPAWN_WORKER_COST } from '../state'
-import { spawnWorkerSpec } from './spec'
-
-export const createSpawnWorker = spawnWorkerSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createSpawnWorker = implementCommand(specification)
   .inputSchema(runIdSchema.extend({ workerId: z.string() }))
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

@@ -1,4 +1,5 @@
-import publishAgentRunReplySpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
@@ -36,7 +37,7 @@ type PublishAgentRunReplyState = {
   }[]
 }
 
-const publishAgentRunReply = publishAgentRunReplySpec
+const publishAgentRunReply = implementReaction(specification)
   .outputSchema<RecordVisibleAgentReplyCommand>()
   .store(
     defineMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),

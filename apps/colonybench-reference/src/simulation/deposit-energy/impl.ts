@@ -27,9 +27,9 @@ import {
   workerSpawnedEvent,
 } from '../events'
 import { isAdjacent, rejectCommand, workerCommandSchema } from '../shared'
-import { depositEnergySpec } from './spec'
-
-export const createDepositEnergy = depositEnergySpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createDepositEnergy = implementCommand(specification)
   .inputSchema(workerCommandSchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

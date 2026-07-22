@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { roomCreatedEvent, roomRetiredEvent } from '../events'
 
 export const createRoomSqlRooms = sqliteTable('create_room_sql_rooms', {
@@ -13,7 +14,7 @@ export const createRoomSqlRooms = sqliteTable('create_room_sql_rooms', {
   retired: integer('retired', { mode: 'boolean' }).notNull().default(false),
 })
 
-const createRoom = spec
+const createRoom = implementCommand(specification)
   .inputSchema(
     z.object({
       roomId: z.string().min(1),

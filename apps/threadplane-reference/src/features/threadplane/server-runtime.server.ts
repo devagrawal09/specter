@@ -17,6 +17,10 @@ const app = await createSpecterApp(
   threadplaneDependenciesLayer(),
 )
 
+export function closeThreadplaneServerRuntime() {
+  return app.close()
+}
+
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof threadplaneReferenceSpecterAppConfig>,
 ) {

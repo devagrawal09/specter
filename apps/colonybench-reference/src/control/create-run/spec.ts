@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const createRunSpec = createCommandSlice('createRun')
   .description('Creates a ColonyBench run.')
@@ -13,3 +13,5 @@ export const createRunSpec = createCommandSlice('createRun')
       }),
     ],
   })
+
+export default createRunSpec

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const replyQuestionSpec = createCommandSlice('replyQuestion')
   .description('Records the user answer for a pending OpenCode-style question.')

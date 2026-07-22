@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const spawnWorkerSpec = createCommandSlice('spawnWorker')
   .description('Spawns a worker with an explicit ID by spending base energy.')
@@ -100,3 +100,5 @@ export const spawnWorkerSpec = createCommandSlice('spawnWorker')
       ],
     },
   )
+
+export default spawnWorkerSpec

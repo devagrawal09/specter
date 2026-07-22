@@ -62,7 +62,7 @@ export type CommandEnvelope<
 type SliceBase<
   TName extends string,
   TScenarios extends NonEmptyScenarios<
-    CommandScenario | QueryScenario | ReactionScenario<unknown>
+    CommandScenario | QueryScenario | ReactionScenario
   >,
 > = {
   readonly stage: 'implementation'

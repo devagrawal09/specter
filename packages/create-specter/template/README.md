@@ -34,7 +34,7 @@ This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md`
 Create each Slice specification in `spec.ts` with a stable API name, a human-readable description, and nonempty scenarios:
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 createCommandSlice('addTodo')
   .description('Adds a todo to the list.')

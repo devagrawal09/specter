@@ -2,7 +2,7 @@
 
 - Keep each Slice specification immutable in its own `spec.ts`. Specifications
   contain only a name, description, and nonempty scenarios built with
-  `@specter-ts/core/spec` and `event()`.
+  `@specter-ts/spec` and `event()`.
 - Complete schemas, the parameterized store, repeated typed `apply`
   registrations, and the handler in the neighboring `impl.ts`.
 - The union of a Slice's scenario `given` Event types must exactly match its

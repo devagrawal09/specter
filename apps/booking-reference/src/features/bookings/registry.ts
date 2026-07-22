@@ -15,7 +15,7 @@ import rescheduleBooking from './reschedule-booking/impl'
 import retireRoom from './retire-room/impl'
 import roomScheduleQuery from './room-schedule-query/impl'
 
-export const bookingRegistrations = [
+export const bookingRegistrations = {
   createRoom,
   retireRoom,
   requestBooking,
@@ -30,7 +30,7 @@ export const bookingRegistrations = [
   roomScheduleQuery,
   pendingApprovalsQuery,
   bookingActivityQuery,
-] as const
+} as const
 
 export const bookingSpecterAppConfig = {
   events: bookingEventDefinitions,

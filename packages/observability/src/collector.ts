@@ -1,6 +1,8 @@
 import type {
   RuntimeObservationBatch,
   RuntimeObservationAcknowledgement,
+  SpecificationAcknowledgement,
+  SpecificationPublication,
 } from '@specter-ts/protocol'
 import {
   createSpecterApp,
@@ -9,8 +11,6 @@ import {
   ReactionScheduler,
   type ReactionSchedulerService,
   type SliceStoreService,
-  type SpecterApp,
-  type SpecterAppConfig,
   SpecterCommandRejectedError,
 } from '@specter-ts/core'
 import { Layer } from 'effect'
@@ -29,24 +29,34 @@ import { recordRuntimeObservations } from './features/runtime-observations/impl'
 import { observabilityEventDefinitions } from './features/runtime-observations/events'
 import { runtimeOverview } from './features/runtime-overview/impl'
 import { runtimeTrace } from './features/runtime-trace/impl'
+import {
+  createMemorySpecificationCatalog,
+  type SpecificationCatalog,
+  type SpecificationFilter,
+} from './specification-catalog'
 
 export type SpecterObservabilityCollectorOptions = {
   readonly eventLog: EventLogService
   readonly store: SliceStoreService<CollectorState, CollectorState, unknown>
   readonly scheduler?: ReactionSchedulerService
+  readonly now?: () => Date
+  readonly specifications?: SpecificationCatalog
 }
 
 export async function createSpecterObservabilityCollector(
   options: SpecterObservabilityCollectorOptions,
 ) {
+  const now = options.now ?? (() => new Date())
+  const specifications =
+    options.specifications ?? createMemorySpecificationCatalog()
   const config = {
     events: observabilityEventDefinitions,
-    slices: [
+    slices: {
       recordRuntimeObservations,
       runtimeOverview,
       runtimeActivity,
       runtimeTrace,
-    ],
+    },
   } as const
   const schedulerLayer = options.scheduler
     ? Layer.succeed(ReactionScheduler, options.scheduler)
@@ -56,10 +66,7 @@ export async function createSpecterObservabilityCollector(
     schedulerLayer,
     Layer.succeed(CollectorStore, options.store),
   )
-  const app = (await createSpecterApp(
-    config,
-    dependencies,
-  )) as SpecterApp<SpecterAppConfig>
+  const app = await createSpecterApp(config, dependencies)
 
   return {
     app,
@@ -78,7 +85,7 @@ export async function createSpecterObservabilityCollector(
           type: 'recordRuntimeObservations',
           payload: {
             requestId: batch.requestId,
-            observations: batch.observations,
+            observations: [...batch.observations],
           },
         })
         return {
@@ -105,6 +112,21 @@ export async function createSpecterObservabilityCollector(
         }
         throw cause
       }
+    },
+    async publishSpecifications(publication: SpecificationPublication) {
+      const acceptedDigests = await specifications.publish(publication, now())
+      return {
+        protocolVersion: 1,
+        kind: 'specifications.ack',
+        requestId: publication.requestId,
+        acceptedDigests,
+      } satisfies SpecificationAcknowledgement
+    },
+    specifications(filter: SpecificationFilter = {}) {
+      return specifications.list(filter)
+    },
+    pruneSpecifications(digests: readonly `sha256:${string}`[]) {
+      return specifications.prune(digests)
     },
     overview() {
       return app.query({

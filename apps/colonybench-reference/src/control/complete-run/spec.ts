@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const created = event('colonybench-run-created', {
   runId: 'run-1',
@@ -40,3 +40,5 @@ export const completeRunSpec = createCommandSlice('completeRun')
       reject: { reason: 'Run not found: missing-run' },
     },
   )
+
+export default completeRunSpec

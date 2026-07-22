@@ -8,7 +8,7 @@ import recordTwilioMessageSent from './record-twilio-message-sent/impl'
 import sendTwilioOutboundReaction from './send-twilio-outbound-reaction/impl'
 import { narayanEventDefinitions } from './events'
 
-export const narayanRegistrations = [
+export const narayanRegistrations = {
   recordIncomingTwilioMessage,
   recordAssistantReply,
   recordTwilioMessageSent,
@@ -17,7 +17,7 @@ export const narayanRegistrations = [
   sendTwilioOutboundReaction,
   conversationsQuery,
   conversationMessagesQuery,
-] as const
+} as const
 
 export const narayanSpecterAppConfig = {
   events: narayanEventDefinitions,

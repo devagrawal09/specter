@@ -17,6 +17,7 @@ dist-ssr/
 coverage/
 playwright-report/
 test-results/
+**/spec.json
 
 # Local environment and secrets
 .env

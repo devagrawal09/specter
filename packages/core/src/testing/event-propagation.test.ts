@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, it } from 'vitest'
 
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, createQuerySlice, event } from '../spec-entry'
+import { createCommandSlice, createQuerySlice, event } from '../definition'
 import {
   analyzeEventPropagation,
   formatEventPropagation,
@@ -49,7 +49,7 @@ describe('Event propagation analysis', () => {
 
     const [impact] = analyzeEventPropagation({
       events: [todoAdded],
-      slices: [addTodo, todosQuery],
+      slices: { addTodo, todosQuery },
     })
 
     expect(impact).toMatchObject({
@@ -123,7 +123,7 @@ describe('Event propagation analysis', () => {
 
     const [impact] = analyzeEventPropagation({
       events: [todoAdded],
-      slices: [addTodo],
+      slices: { addTodo },
     })
 
     expect(impact?.producedBy).toMatchObject([
@@ -145,11 +145,11 @@ describe('Event propagation analysis', () => {
   it('rejects duplicate and unknown Event catalogs with remediation context', () => {
     const todoAdded = createEventDefinition('todo-added', schema)
     expect(() =>
-      analyzeEventPropagation({ events: [todoAdded, todoAdded], slices: [] }),
+      analyzeEventPropagation({ events: [todoAdded, todoAdded], slices: {} }),
     ).toThrow('registered more than once')
     expect(() =>
       analyzeEventPropagation(
-        { events: [todoAdded], slices: [] },
+        { events: [todoAdded], slices: {} },
         'todo-removed',
       ),
     ).toThrow('Register its EventDefinition first')

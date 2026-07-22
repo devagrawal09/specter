@@ -8,7 +8,7 @@ import { todosQuery } from './todos-query/impl'
 import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { todoEventDefinitions } from './events'
 
-export const todoRegistrations = [
+export const todoRegistrations = {
   addTodo,
   changeTodoCompletion,
   removeTodo,
@@ -16,7 +16,7 @@ export const todoRegistrations = [
   todoCompletionCheer,
   todosQuery,
   todoCheers,
-] as const
+} as const
 
 export const todoSpecterAppConfig = {
   events: todoEventDefinitions,

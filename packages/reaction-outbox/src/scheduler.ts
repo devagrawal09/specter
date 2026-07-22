@@ -4,7 +4,7 @@ import {
   type ReactionScheduleContext,
   type ReactionSchedulerService,
 } from '@specter-ts/core'
-import { Effect, Fiber, Layer, Semaphore, type Scope } from 'effect'
+import { Effect, Layer, Semaphore, type Scope } from 'effect'
 
 import type { ReactionOutboxStore } from './types'
 
@@ -39,26 +39,23 @@ export function createDurableReactionSchedulerService(
   }
 
   function drainOne<E>(
-    execute: (
-      context: ReactionScheduleContext,
-    ) => Effect.Effect<void, E>,
+    execute: (context: ReactionScheduleContext) => Effect.Effect<void, E>,
   ): Effect.Effect<boolean, E | ReactionSchedulerFailure> {
     return semaphore.withPermit(
       Effect.gen(function* () {
         const claimTime = now()
-        yield* store.requeueExpired(claimTime).pipe(
-          Effect.mapError(
-            (cause) => new ReactionSchedulerFailure('recover', cause),
-          ),
-        )
-        const claim = yield* store
-          .claimNext(
-            claimTime,
-            new Date(claimTime.getTime() + leaseMs),
-          )
+        yield* store
+          .requeueExpired(claimTime)
           .pipe(
             Effect.mapError(
-              (cause) => new ReactionSchedulerFailure('recover', cause),
+              (cause) => new ReactionSchedulerFailure('reconcile', cause),
+            ),
+          )
+        const claim = yield* store
+          .claimNext(claimTime, new Date(claimTime.getTime() + leaseMs))
+          .pipe(
+            Effect.mapError(
+              (cause) => new ReactionSchedulerFailure('reconcile', cause),
             ),
           )
         if (!claim) return false
@@ -75,7 +72,7 @@ export function createDurableReactionSchedulerService(
             )
             .pipe(
               Effect.mapError(
-                (cause) => new ReactionSchedulerFailure('recover', cause),
+                (cause) => new ReactionSchedulerFailure('reconcile', cause),
               ),
             )
           return yield* Effect.fail(result.failure)
@@ -84,7 +81,7 @@ export function createDurableReactionSchedulerService(
           .complete(claim.id, claim.activeAttemptId, now())
           .pipe(
             Effect.mapError(
-              (cause) => new ReactionSchedulerFailure('recover', cause),
+              (cause) => new ReactionSchedulerFailure('reconcile', cause),
             ),
           )
         return true
@@ -93,9 +90,7 @@ export function createDurableReactionSchedulerService(
   }
 
   function drainAll<E>(
-    execute: (
-      context: ReactionScheduleContext,
-    ) => Effect.Effect<void, E>,
+    execute: (context: ReactionScheduleContext) => Effect.Effect<void, E>,
   ): Effect.Effect<void, E | ReactionSchedulerFailure> {
     return Effect.gen(function* () {
       while (yield* drainOne(execute)) {
@@ -104,14 +99,18 @@ export function createDurableReactionSchedulerService(
     })
   }
 
-  function waitFor(jobId: string): Effect.Effect<void, ReactionSchedulerFailure> {
+  function waitFor(
+    jobId: string,
+  ): Effect.Effect<void, ReactionSchedulerFailure> {
     return Effect.gen(function* () {
       for (;;) {
-        const job = yield* store.get(jobId).pipe(
-          Effect.mapError(
-            (cause) => new ReactionSchedulerFailure('wait', cause),
-          ),
-        )
+        const job = yield* store
+          .get(jobId)
+          .pipe(
+            Effect.mapError(
+              (cause) => new ReactionSchedulerFailure('wait', cause),
+            ),
+          )
         if (!job) {
           return yield* Effect.fail(
             new ReactionSchedulerFailure(
@@ -132,27 +131,35 @@ export function createDurableReactionSchedulerService(
   }
 
   return {
-    schedule: (throughOrder, execute) =>
+    bind: ({ execute, reconcile }) =>
       Effect.gen(function* () {
-        const jobId = `reaction-through-${throughOrder}`
-        const requestedAt = now()
-        yield* store
-          .enqueue({
-            id: jobId,
-            idempotencyKey: jobId,
-            payload: { throughOrder },
-            requestedAt,
-            availableAt: requestedAt,
-          })
-          .pipe(
-            Effect.mapError(
-              (cause) => new ReactionSchedulerFailure('schedule', cause),
-            ),
-          )
-        const fiber = yield* Effect.forkIn(drainAll(execute), scope)
-        return Fiber.join(fiber).pipe(Effect.flatMap(() => waitFor(jobId)))
+        yield* reconcile
+        yield* Effect.forkIn(drainAll(execute), scope)
+
+        return {
+          request: (throughOrder: number) =>
+            Effect.gen(function* () {
+              const jobId = `reaction-through-${throughOrder}`
+              const requestedAt = now()
+              yield* store
+                .enqueue({
+                  id: jobId,
+                  idempotencyKey: jobId,
+                  payload: { throughOrder },
+                  requestedAt,
+                  availableAt: requestedAt,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) => new ReactionSchedulerFailure('request', cause),
+                  ),
+                )
+              yield* Effect.forkIn(drainAll(execute), scope)
+            }),
+          await: (throughOrder: number) =>
+            waitFor(`reaction-through-${throughOrder}`),
+        }
       }),
-    recover: (execute) => drainAll(execute),
   }
 }
 

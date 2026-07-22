@@ -38,6 +38,10 @@ import { createSpecterObservabilityHttpHandler } from './http-handler'
 import { SegmentCoordinator } from './segment-coordinator'
 import { existingSegmentPaths, sqliteDatabaseSize } from './segment-storage'
 import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
+import {
+  createSqliteSpecificationCatalog,
+  type SpecificationCatalog,
+} from './specification-catalog'
 
 type ActiveSegment = {
   readonly collector: SpecterObservabilityCollector
@@ -65,7 +69,7 @@ try {
 }
 
 async function serve(commandArgs: readonly string[]) {
-  const port = integerOption(commandArgs, '--port', 41736)
+  const port = integerOption(commandArgs, '--port', 41739)
   const host = stringOption(commandArgs, '--host', '127.0.0.1')
   const databaseBase = resolve(
     stringOption(commandArgs, '--database', './data/specter-observability'),
@@ -91,15 +95,21 @@ async function serve(commandArgs: readonly string[]) {
     existingSegments,
     retryWindowMs,
   )
+  const specificationCatalog =
+    await createSqliteSpecificationCatalog(controlClient)
 
-  const initial = await openSegment(databaseBase, existingSegments.at(-1))
+  const initial = await openSegment(
+    databaseBase,
+    existingSegments.at(-1),
+    specificationCatalog,
+  )
   const segments = new SegmentCoordinator({
     initial,
     shouldRotate(segment: ActiveSegment) {
       const age = Date.now() - segment.openedAt
       return age >= maxAgeMs || sqliteDatabaseSize(segment.path) >= maxBytes
     },
-    open: () => openSegment(databaseBase),
+    open: () => openSegment(databaseBase, undefined, specificationCatalog),
     retire(segment: ActiveSegment) {
       segment.abort.abort(new Error('Observability segment rotated'))
     },
@@ -258,6 +268,7 @@ async function serve(commandArgs: readonly string[]) {
 async function openSegment(
   databaseBase: string,
   existingPath?: string,
+  specifications?: SpecificationCatalog,
 ): Promise<ActiveSegment> {
   const timestamp = new Date().toISOString().replaceAll(/[^0-9]/g, '')
   const path = existingPath ?? `${databaseBase}-${timestamp}.db`
@@ -270,6 +281,7 @@ async function openSegment(
   const collector = await createSpecterObservabilityCollector({
     eventLog: persistence.eventLog,
     store: persistence.createSliceStoreService(createCollectorState),
+    specifications,
   })
   const abort = new AbortController()
   return {
@@ -456,7 +468,7 @@ async function fetchJson(url: string) {
 }
 
 function endpoint(commandArgs: readonly string[]) {
-  return stringOption(commandArgs, '--url', 'http://127.0.0.1:41736').replace(
+  return stringOption(commandArgs, '--url', 'http://127.0.0.1:41739').replace(
     /\/$/,
     '',
   )
@@ -524,13 +536,13 @@ function help() {
   console.log(`specter-observe <command>
 
 Commands:
-  serve     Run the collector on strict port 41736
+  serve     Run the collector on strict port 41739
   snapshot  Print the current collector overview
   watch     Stream activity as NDJSON
   trace ID  Print a causal operation trace
 
 Common options:
-  --url URL             Collector URL (default http://127.0.0.1:41736)
+  --url URL             Collector URL (default http://127.0.0.1:41739)
   --format json|text    Output format
   --application NAME    Filter by application
   --environment NAME    Filter by environment

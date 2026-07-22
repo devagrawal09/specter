@@ -117,5 +117,5 @@ The report is static: it reads the supplied executable registry and does not dis
 - [Writing executable specifications](../specifications/writing-specifications.md)
 - [Testing Slice implementations](../specifications/slice-tests.md)
 - [Conformance](../specifications/conformance.md)
-- [Core specification API](./core-spec.md)
+- [Core specification API](./spec.md)
 - [Core runtime API](./core-runtime.md)

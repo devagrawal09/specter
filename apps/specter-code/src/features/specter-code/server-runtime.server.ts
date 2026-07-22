@@ -20,6 +20,10 @@ const app = await createSpecterApp(
   specterCodeDependenciesLayer(),
 )
 
+export function closeSpecterCodeServerRuntime() {
+  return app.close()
+}
+
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof specterCodeReferenceSpecterAppConfig>,
 ) {

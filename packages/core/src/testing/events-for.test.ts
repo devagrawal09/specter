@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, test } from 'vitest'
 
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, event } from '../spec-entry'
+import { createCommandSlice, event } from '../definition'
 import { eventsFor } from './events-for'
 import { createTestSliceStore } from './test-slice-store'
 

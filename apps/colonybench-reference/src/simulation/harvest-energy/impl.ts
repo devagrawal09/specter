@@ -28,9 +28,9 @@ import {
 } from '../events'
 import { harvestEnergySchema, isAdjacent, rejectCommand } from '../shared'
 import { HARVEST_AMOUNT } from '../state'
-import { harvestEnergySpec } from './spec'
-
-export const createHarvestEnergy = harvestEnergySpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createHarvestEnergy = implementCommand(specification)
   .inputSchema(harvestEnergySchema)
   .store(simulationStore)
   .apply(simulationInitializedEvent, applySimulationInitialized)

@@ -1,7 +1,12 @@
 import { createEventDefinition } from '@specter-ts/core'
+import {
+  observationKinds,
+  type JsonValue,
+  type RuntimeObservation,
+} from '@specter-ts/protocol'
 import { z } from 'zod'
 
-const jsonValueSchema: z.ZodType<unknown> = z.lazy(() =>
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
     z.string(),
     z.number().finite(),
@@ -23,9 +28,9 @@ const sourceSchema = z
   })
   .passthrough()
 
-export const runtimeObservationSchema = z
+export const runtimeObservationSchema: z.ZodType<RuntimeObservation> = z
   .object({
-    kind: z.string().min(1),
+    kind: z.enum(observationKinds),
     observationId: z.string().min(1),
     sequence: z.number().int().nonnegative(),
     observedAt: z.iso.datetime(),

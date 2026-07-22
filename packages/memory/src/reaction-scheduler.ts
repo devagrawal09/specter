@@ -16,20 +16,34 @@ export function createImmediateReactionSchedulerService(
   const semaphore = Semaphore.makeUnsafe(1)
 
   return {
-    schedule: (throughOrder, execute) =>
+    bind: ({ execute, reconcile }) =>
       Effect.gen(function* () {
-        const fiber = yield* Effect.forkIn(
-          semaphore.withPermit(
-            execute({
-              throughOrder,
-              scheduledAt: now().toISOString(),
+        yield* reconcile
+        const active = new Map<number, Fiber.Fiber<void, any>>()
+        const request = (throughOrder: number) =>
+          Effect.gen(function* () {
+            if (active.has(throughOrder)) return
+            const fiber = yield* Effect.forkIn(
+              semaphore.withPermit(
+                execute({
+                  throughOrder,
+                  scheduledAt: now().toISOString(),
+                }),
+              ),
+              scope,
+            )
+            active.set(throughOrder, fiber)
+          })
+        return {
+          request,
+          await: (throughOrder: number) =>
+            Effect.gen(function* () {
+              yield* request(throughOrder)
+              const fiber = active.get(throughOrder)
+              if (fiber) yield* Fiber.join(fiber)
             }),
-          ),
-          scope,
-        )
-        return Fiber.join(fiber)
+        }
       }),
-    recover: () => Effect.void,
   }
 }
 

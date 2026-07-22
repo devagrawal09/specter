@@ -6,17 +6,16 @@ import type {
   SqliteConnection,
   SqliteDatabaseContext,
 } from '@specter-ts/sqlite'
-import { Context, Effect, Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 
 import * as schema from './schema'
 import { sliceCursors } from './specter-schema'
+import { sqliteSliceStore } from './specter-store'
+
+export { sqliteSliceStore } from './specter-store'
 
 export type SqliteDb = ReturnType<typeof drizzle<typeof schema>>
 type ScopedSqliteDb = SqliteDb
-
-export const sqliteSliceStore = Context.Service<
-  SliceStoreService<ScopedSqliteDb, ScopedSqliteDb, unknown>
->('@specter/reference/SqliteSliceStore')
 
 export function createSqliteSliceStoreLayer(context: SqliteDatabaseContext) {
   const database = (client: SqliteConnection) =>

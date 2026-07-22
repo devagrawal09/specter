@@ -1,4 +1,5 @@
-import runRequestedAgentRunSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
@@ -227,7 +228,7 @@ export function nextRunRequestedAgentRunCommand(
   }
 }
 
-const runRequestedAgentRun = runRequestedAgentRunSpec
+const runRequestedAgentRun = implementReaction(specification)
   .outputSchema<RunRequestedAgentRunCommand>()
   .store(
     defineMemorySliceStore<RunRequestedAgentRunState>(

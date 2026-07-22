@@ -7,13 +7,14 @@ import {
 } from '../events'
 import { defineWorklogMemoryStore } from '../memory-store'
 import type { Topic } from '../model'
-import { editTopicSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 const store = defineWorklogMemoryStore(() => ({
   topics: new Map<string, Topic>(),
 }))
 
-export const editTopic = editTopicSpec
+export const editTopic = implementCommand(specification)
   .inputSchema(
     z
       .object({

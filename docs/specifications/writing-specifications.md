@@ -6,10 +6,10 @@ This keeps *what must happen* in `spec.ts` and *how it happens* in `impl.ts`.
 
 ## Specification first
 
-Import the specification surface from `@specter-ts/core/spec`:
+Import the specification surface from `@specter-ts/spec`:
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -57,11 +57,11 @@ type CommandScenario =
       given: readonly ScenarioEvent[]
       when: unknown
       expect: readonly []
-      reject?: { reason: string }
+      reject: { reason: string }
     }
 ```
 
-An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and may state the exact thrown error message as `reject.reason`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification.
+An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and must state the exact thrown error message as `reject.reason`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification.
 
 ### Query Scenarios
 
@@ -163,7 +163,7 @@ Update the Event Definition, all reported Scenario examples, every producer, and
 
 ## Related documentation
 
-- [Core specification API](../api-reference/core-spec.md)
+- [Core specification API](../api-reference/spec.md)
 - [Testing Slice implementations](./slice-tests.md)
 - [Conformance](./conformance.md)
 - [Vertical Slice Architecture](../architecture/vertical-slice-architecture.md)

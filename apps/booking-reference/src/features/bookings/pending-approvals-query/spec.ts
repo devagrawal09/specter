@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 export default createQuerySlice('pendingApprovalsQuery')
   .description('Lists bookings still awaiting approval.')
   .scenarios(

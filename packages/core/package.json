@@ -25,11 +25,6 @@
       "types": "./dist/effect-entry.d.ts",
       "import": "./dist/effect.js",
       "default": "./dist/effect.js"
-    },
-    "./spec": {
-      "types": "./dist/spec-entry.d.ts",
-      "import": "./dist/spec.js",
-      "default": "./dist/spec.js"
     }
   },
   "scripts": {
@@ -38,6 +33,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@specter-ts/spec": "workspace:*",
     "@standard-schema/spec": "^1.1.0"
   },
   "peerDependencies": {

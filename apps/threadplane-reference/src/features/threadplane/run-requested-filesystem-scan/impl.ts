@@ -1,4 +1,5 @@
-import runRequestedFilesystemScanSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 import { Effect } from 'effect'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -60,7 +61,7 @@ const scanProgress = (state: RunRequestedFilesystemScanState, scanId: string) =>
 
 const snapshotKey = (node: FilesystemNodeSnapshot) => JSON.stringify(node)
 
-const runRequestedFilesystemScan = runRequestedFilesystemScanSpec
+const runRequestedFilesystemScan = implementReaction(specification)
   .outputSchema<RunWorkspaceFilesystemScanCommand>()
   .plugin((command) =>
     Effect.succeed((job, context) =>

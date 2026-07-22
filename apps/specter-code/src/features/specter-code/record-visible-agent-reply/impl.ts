@@ -1,10 +1,11 @@
-import recordVisibleAgentReplySpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postReplyCreatedEvent } from '../events'
 
-const recordVisibleAgentReply = recordVisibleAgentReplySpec
+const recordVisibleAgentReply = implementCommand(specification)
   .inputSchema(
     z.object({
       replyId: z.string(),

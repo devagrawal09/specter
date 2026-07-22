@@ -2,15 +2,16 @@ import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
-import { removeTodoSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
 })
 
-export const removeTodo = removeTodoSpec
+export const removeTodo = implementCommand(specification)
   .inputSchema(z.object({ todoId: z.string().min(1) }))
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {

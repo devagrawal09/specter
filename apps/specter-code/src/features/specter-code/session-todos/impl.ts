@@ -1,4 +1,5 @@
-import sessionTodosSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -18,7 +19,7 @@ type SessionTodosState = {
   bySession: Record<string, SessionTodo[]>
 }
 
-const sessionTodos = sessionTodosSpec
+const sessionTodos = implementQuery(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),

@@ -1,4 +1,5 @@
-import workspaceFilesystemStatusSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -64,7 +65,7 @@ const getStatus = (
   return status
 }
 
-const workspaceFilesystemStatus = workspaceFilesystemStatusSpec
+const workspaceFilesystemStatus = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),

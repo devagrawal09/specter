@@ -275,7 +275,7 @@ function specTemplate(
   return `import {
   ${factory.slice(1)} as ${factory},
   event as _event,
-} from '@specter-ts/core/spec'
+} from '@specter-ts/spec'
 
 ${declaration}
 ${description}
@@ -284,6 +284,8 @@ ${description}
     given: ${given},${when}
     expect: ${expectation},
   })
+
+export default ${names.sliceName}Spec
 `
 }
 
@@ -321,14 +323,15 @@ function implementationTemplate(
   const store = '_sqliteSliceStore'
 
   if (kind === 'command') {
-    return `import { z as _schema } from 'zod'
+    return `import { implementCommand as _implementCommand } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementCommand(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .store(${store})
   .apply(_recordedEvent, async (event, db) => {
@@ -370,15 +373,16 @@ export const ${names.sliceName} = _spec
     return rows`
 
   if (kind === 'query') {
-    return `import { eq as _equals } from 'drizzle-orm'
+    return `import { implementQuery as _implementQuery } from '@specter-ts/core'
+import { eq as _equals } from 'drizzle-orm'
 import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementQuery(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .outputSchema(
     _schema.array(
@@ -407,29 +411,17 @@ export const ${names.sliceName} = _spec
   const reactionBody = `${reactionQuery}
     return rows[0]`
 
-  return `import { z as _schema } from 'zod'
-import { Effect as _Effect } from 'effect'
+  return `import { implementReaction as _implementReaction } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementReaction(_specification)
   .outputSchema(
     _schema.object({ requestId: _schema.string(), value: _schema.string() }),
-  )
-  .plugin((_dispatch) =>
-    _Effect.succeed((_effect, context) =>
-      _Effect.sync(() => {
-        void context
-        // TODO: invoke the external adapter inside this Effect.
-        // Same-app follow-ups must call _dispatch(effect, {
-        //   idempotencyKey: context.deliveryId,
-        // }) so an at-least-once retry cannot duplicate follow-up Events.
-        // Use context.scheduledAt for retry-stable domain time; never new Date().
-      }),
-    ),
   )
   .store(${store})
   .apply(_recordedEvent, async (event, db) => {

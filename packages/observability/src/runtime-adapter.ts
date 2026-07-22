@@ -23,6 +23,7 @@ export type RuntimeObservationAdapterOptions = {
   readonly source: RuntimeSource
   readonly idFactory?: () => string
   readonly now?: () => Date
+  readonly specificationDigests?: Readonly<Record<string, `sha256:${string}`>>
 }
 
 export type RuntimeObservationEmitter = {
@@ -67,9 +68,24 @@ export function createRuntimeObservationEmitter(
     observe: (observation) =>
       Effect.sync(() => {
         try {
-          options.producer.record(
-            fromSpecterObservation(observation, options.source, ++sequence),
+          const protocol = fromSpecterObservation(
+            observation,
+            options.source,
+            ++sequence,
           )
+          const slice =
+            protocol.slice ??
+            protocol.commandType ??
+            protocol.queryType ??
+            protocol.reaction
+          const specificationDigest = slice
+            ? options.specificationDigests?.[slice]
+            : undefined
+          options.producer.record({
+            ...protocol,
+            ...(slice ? { slice } : {}),
+            ...(specificationDigest ? { specificationDigest } : {}),
+          })
         } catch {
           // Telemetry must never delay or change application execution.
         }

@@ -2,9 +2,10 @@ import { desc } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { todoCheerCreatedEvent } from '../events'
-import { todoCheersSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
   milestone: integer('milestone').primaryKey(),
@@ -14,7 +15,7 @@ export const todoSqlCheersState = sqliteTable('todo_sql_cheers', {
 export type TodoSqlCheer = typeof todoSqlCheersState.$inferSelect
 export type TodoSqlCheersState = { latestCheer: TodoSqlCheer | null }
 
-export const todoCheers = todoCheersSpec
+export const todoCheers = implementQuery(specification)
   .inputSchema(z.object({}))
   .outputSchema(
     z.object({

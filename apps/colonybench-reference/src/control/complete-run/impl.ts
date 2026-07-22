@@ -3,9 +3,9 @@ import { z } from 'zod'
 
 import { applyRunCompleted, applyRunCreated, applyRunStarted } from '../apply'
 import { runCompletedEvent, runCreatedEvent, runStartedEvent } from '../events'
-import { completeRunSpec } from './spec'
-
-export const createCompleteRun = completeRunSpec
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createCompleteRun = implementCommand(specification)
   .inputSchema(z.object({ runId: z.string() }))
   .store(controlStore)
   .apply(runCreatedEvent, applyRunCreated)

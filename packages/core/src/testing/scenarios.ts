@@ -33,9 +33,14 @@ export function testSliceImplementation(
 }
 
 export function testSliceImplementations(
-  implementations: readonly SliceRegistration[],
+  registrations:
+    | readonly SliceRegistration[]
+    | Readonly<Record<string, SliceRegistration>>,
   options: ScenarioTestOptions,
 ) {
+  const implementations = Array.isArray(registrations)
+    ? registrations
+    : Object.values(registrations)
   const runScenario =
     options.runScenario ??
     (<T>(program: Effect.Effect<T, unknown, unknown>) =>
@@ -45,7 +50,15 @@ export function testSliceImplementations(
     beforeAll(() =>
       Effect.runPromise(
         assertConforms(
-          { events: options.events, slices: implementations },
+          {
+            events: options.events,
+            slices: Object.fromEntries(
+              implementations.map((implementation) => [
+                implementation.name,
+                implementation,
+              ]),
+            ),
+          },
           { requireCommandSlice: false },
         ),
       ),

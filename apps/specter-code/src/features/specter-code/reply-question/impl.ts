@@ -1,10 +1,11 @@
-import replyQuestionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { questionAnsweredEvent } from '../events'
 
-const replyQuestion = replyQuestionSpec
+const replyQuestion = implementCommand(specification)
   .inputSchema(
     z.object({
       questionId: z.string(),

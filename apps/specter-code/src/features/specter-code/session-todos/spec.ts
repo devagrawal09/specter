@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const sessionTodosSpec = createQuerySlice('sessionTodos')
   .description('Lists the latest todo list for a session.')

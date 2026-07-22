@@ -5,11 +5,40 @@
   "allOf": [{ "$ref": "envelope.schema.json" }],
   "oneOf": [
     { "$ref": "#/$defs/observationBatch" },
-    { "$ref": "#/$defs/observationAck" }
+    { "$ref": "#/$defs/observationAck" },
+    { "$ref": "#/$defs/specificationPublication" },
+    { "$ref": "#/$defs/specificationAck" }
   ],
   "$defs": {
     "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "observationBatch": { "required": ["observations"], "properties": { "kind": { "const": "observations.batch" }, "observations": { "type": "array", "maxItems": 100, "items": { "$ref": "runtime-observation.schema.json" } } } },
-    "observationAck": { "required": ["accepted", "duplicates"], "properties": { "kind": { "const": "observations.ack" }, "accepted": { "$ref": "#/$defs/safeInteger" }, "duplicates": { "$ref": "#/$defs/safeInteger" }, "rejectedObservationIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } }
+    "observationAck": { "required": ["accepted", "duplicates"], "properties": { "kind": { "const": "observations.ack" }, "accepted": { "$ref": "#/$defs/safeInteger" }, "duplicates": { "$ref": "#/$defs/safeInteger" }, "rejectedObservationIds": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } } } },
+    "digest": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "runtimeSource": {
+      "type": "object",
+      "required": ["application", "environment", "runtimeLanguage", "runtimeVersion", "instanceId", "eventLogId"],
+      "properties": {
+        "application": { "type": "string", "minLength": 1 }, "environment": { "type": "string", "minLength": 1 },
+        "runtimeLanguage": { "type": "string", "minLength": 1 }, "runtimeVersion": { "type": "string", "minLength": 1 },
+        "instanceId": { "type": "string", "minLength": 1 }, "eventLogId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
+    },
+    "specificationPublication": {
+      "required": ["source", "specifications"],
+      "properties": {
+        "kind": { "const": "specifications.publish" },
+        "source": { "$ref": "#/$defs/runtimeSource" },
+        "specifications": { "type": "array", "maxItems": 100, "items": { "type": "object", "required": ["digest", "document"], "properties": { "digest": { "$ref": "#/$defs/digest" }, "document": { "$ref": "https://specter.dev/specification/v1/slice.schema.json" } }, "additionalProperties": { "$ref": "json-value.schema.json" } } }
+      }
+    },
+    "specificationAck": {
+      "required": ["acceptedDigests"],
+      "properties": {
+        "kind": { "const": "specifications.ack" },
+        "acceptedDigests": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } },
+        "rejectedDigests": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/digest" } }
+      }
+    }
   }
 }

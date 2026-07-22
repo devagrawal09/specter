@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export default createQuerySlice('bookingActivityQuery')
   .description('Shows recent booking and room activity.')
