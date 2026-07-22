@@ -110,7 +110,7 @@ database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 
 ## Import boundaries
 
-- `spec.ts` imports `@specter-ts/core/spec` and implementation-independent
+- `spec.ts` imports `@specter-ts/spec` and implementation-independent
   domain constants only.
 - `impl.ts` may import core implementation types, local Event Definitions,
   its private projection, Store adapters, and Reaction Plugins.

@@ -4,12 +4,13 @@ import { z } from 'zod'
 import { applyRunCompleted, applyRunCreated, applyRunStarted } from '../apply'
 import { runCompletedEvent, runCreatedEvent, runStartedEvent } from '../events'
 import type { ColonyBenchControlState, ColonyBenchRun } from '../state'
-import { runListSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export function createRunList(
   store: SliceStoreAdapter<ColonyBenchControlState>,
 ) {
-  return runListSpec
+  return implementQuery<'runList'>(specification)
     .inputSchema(z.object({}))
     .outputSchema<ColonyBenchRun[]>()
     .store(store)

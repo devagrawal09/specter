@@ -1,10 +1,11 @@
-import replyToolApprovalSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolApprovalRepliedEvent } from '../events'
 
-const replyToolApproval = replyToolApprovalSpec
+const replyToolApproval = implementCommand<'replyToolApproval'>(specification)
   .inputSchema(
     z.object({
       requestId: z.string(),

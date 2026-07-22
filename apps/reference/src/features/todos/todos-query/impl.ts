@@ -8,7 +8,8 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import { todosQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   id: text('id').primaryKey(),
@@ -28,7 +29,7 @@ const todoOutputSchema = z.array(
   }),
 )
 
-export const todosQuery = todosQuerySpec
+export const todosQuery = implementQuery<'todosQuery'>(specification)
   .inputSchema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),

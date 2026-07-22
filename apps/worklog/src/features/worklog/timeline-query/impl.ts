@@ -16,7 +16,8 @@ import {
 } from '../events'
 import { createWorklogMemoryStore } from '../memory-store'
 import type { EntityRef } from '../model'
-import { timelineQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 type TimelineItem = {
   id: string
@@ -49,7 +50,7 @@ const publicItem = z
   })
   .strict()
 
-export const timelineQuery = timelineQuerySpec
+export const timelineQuery = implementQuery<'timelineQuery'>(specification)
   .inputSchema(
     z
       .object({

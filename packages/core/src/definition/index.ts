@@ -26,6 +26,9 @@ export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
+  implementCommand,
+  implementQuery,
+  implementReaction,
 } from './builders'
 export type {
   CommandSliceSpec,

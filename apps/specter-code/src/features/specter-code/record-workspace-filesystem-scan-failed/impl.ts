@@ -1,11 +1,12 @@
-import recordWorkspaceFilesystemScanFailedSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanFailedEvent } from '../events'
 
 const recordWorkspaceFilesystemScanFailed =
-  recordWorkspaceFilesystemScanFailedSpec
+  implementCommand<'recordWorkspaceFilesystemScanFailed'>(specification)
     .inputSchema(
       z.object({
         scanId: z.string(),

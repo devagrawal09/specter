@@ -43,7 +43,7 @@ export const pipeline: PipelineStage[] = [
   },
 ]
 
-export const specSource = `import { createCommandSlice, event } from '@specter-ts/core/spec'
+export const specSource = `import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -63,15 +63,18 @@ export const addTodoSpec = createCommandSlice('addTodo')
       expect: [],
       reject: { reason: 'Todo title is required' },
     },
-  )`
+  )
 
-export const implementationSource = `import { z } from 'zod'
+export default addTodoSpec`
+
+export const implementationSource = `import { implementCommand } from '@specter-ts/core'
+import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { todoAddedEvent } from '../events'
-import { addTodoSpec } from './spec'
+import specification from './spec.json'
 
-export const addTodo = addTodoSpec
+export const addTodo = implementCommand<'addTodo'>(specification)
   .inputSchema(
     z.object({ todoId: z.string().min(1), title: z.string() }),
   )

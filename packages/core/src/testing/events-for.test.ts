@@ -3,7 +3,7 @@ import { describe, expect, test } from 'vitest'
 
 import type { SliceStoreAdapter } from '../adapters'
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, event } from '../spec-entry'
+import { createCommandSlice, event } from '../definition'
 import { eventsFor } from './events-for'
 
 const schema = {

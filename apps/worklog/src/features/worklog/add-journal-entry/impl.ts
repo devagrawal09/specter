@@ -2,11 +2,14 @@ import { z } from 'zod'
 
 import { journalEntryAddedEvent, pointAwardedEvent } from '../events'
 import { createWorklogMemoryStore } from '../memory-store'
-import { addJournalEntrySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 const store = createWorklogMemoryStore(() => ({ ids: new Set<string>() }))
 
-export const addJournalEntry = addJournalEntrySpec
+export const addJournalEntry = implementCommand<'addJournalEntry'>(
+  specification,
+)
   .inputSchema(
     z
       .object({

@@ -2,9 +2,12 @@ import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { twilioOutboundMessageSentEvent } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const recordTwilioMessageSent = spec
+const recordTwilioMessageSent = implementCommand<'recordTwilioMessageSent'>(
+  specification,
+)
   .inputSchema(
     z.object({
       outboundMessageId: z.string().min(1),

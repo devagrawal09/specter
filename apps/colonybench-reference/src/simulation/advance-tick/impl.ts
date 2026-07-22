@@ -33,12 +33,13 @@ import {
   SOURCE_REGEN_PER_TICK,
   type ColonyBenchSimulationState,
 } from '../state'
-import { advanceTickSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createAdvanceTick(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return advanceTickSpec
+  return implementCommand<'advanceTick'>(specification)
     .inputSchema(runIdSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

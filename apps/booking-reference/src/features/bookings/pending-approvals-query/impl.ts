@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   bookingApprovedEvent,
@@ -21,7 +22,9 @@ export const pendingApprovalRows = sqliteTable('pending_approval_rows', {
   status: text('status').notNull(),
 })
 
-const pendingApprovalsQuery = spec
+const pendingApprovalsQuery = implementQuery<'pendingApprovalsQuery'>(
+  specification,
+)
   .inputSchema(z.object({}))
   .outputSchema(
     z.array(

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const recordAgentRunStreamedSpec = createCommandSlice('recordAgentRunStreamed')
   .description('Records streamed Agent Run text output.')

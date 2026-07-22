@@ -3,7 +3,8 @@ import { z } from 'zod'
 import { connectionArchiveChangedEvent, recordsConnectedEvent } from '../events'
 import { createWorklogMemoryStore } from '../memory-store'
 import type { Connection } from '../model'
-import { connectionsQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 const store = createWorklogMemoryStore(() => ({
   connections: new Map<string, Connection>(),
@@ -12,7 +13,9 @@ const refSchema = z
   .object({ kind: z.enum(['journal', 'task', 'topic']), id: z.string() })
   .strict()
 
-export const connectionsQuery = connectionsQuerySpec
+export const connectionsQuery = implementQuery<'connectionsQuery'>(
+  specification,
+)
   .inputSchema(z.object({ includeArchived: z.boolean() }).strict())
   .outputSchema(
     z.array(

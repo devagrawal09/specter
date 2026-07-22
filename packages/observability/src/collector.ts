@@ -1,6 +1,8 @@
 import type {
   RuntimeObservationBatch,
   RuntimeObservationAcknowledgement,
+  SpecificationAcknowledgement,
+  SpecificationPublication,
 } from '@specter-ts/protocol'
 import {
   createSpecterApp,
@@ -26,18 +28,26 @@ import { createRecordRuntimeObservations } from './features/runtime-observations
 import { observabilityEventDefinitions } from './features/runtime-observations/events'
 import { createRuntimeOverview } from './features/runtime-overview/impl'
 import { createRuntimeTrace } from './features/runtime-trace/impl'
+import {
+  createMemorySpecificationCatalog,
+  type SpecificationCatalog,
+  type SpecificationFilter,
+} from './specification-catalog'
 
 export type SpecterObservabilityCollectorOptions = {
   readonly eventLog: EventLogAdapter
   readonly store: SliceStoreAdapter<CollectorState>
   readonly schedule?: ReactionScheduler
   readonly now?: () => Date
+  readonly specifications?: SpecificationCatalog
 }
 
 export async function createSpecterObservabilityCollector(
   options: SpecterObservabilityCollectorOptions,
 ) {
   const now = options.now ?? (() => new Date())
+  const specifications =
+    options.specifications ?? createMemorySpecificationCatalog()
   const recordRuntimeObservations = createRecordRuntimeObservations(
     options.store,
   )
@@ -101,6 +111,21 @@ export async function createSpecterObservabilityCollector(
         }
         throw cause
       }
+    },
+    async publishSpecifications(publication: SpecificationPublication) {
+      const acceptedDigests = await specifications.publish(publication, now())
+      return {
+        protocolVersion: 1,
+        kind: 'specifications.ack',
+        requestId: publication.requestId,
+        acceptedDigests,
+      } satisfies SpecificationAcknowledgement
+    },
+    specifications(filter: SpecificationFilter = {}) {
+      return specifications.list(filter)
+    },
+    pruneSpecifications(digests: readonly `sha256:${string}`[]) {
+      return specifications.prune(digests)
     },
     overview() {
       return app.query({

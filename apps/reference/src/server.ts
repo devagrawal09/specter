@@ -24,6 +24,10 @@ import {
 
 import { runWithSqliteDb } from './db/specter-sqlite'
 import { createTodoSpecterAppConfig } from './features/todos/registry'
+import {
+  todoSpecificationDigests,
+  todoSpecifications,
+} from './features/todos/specifications'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
   createSqliteReactionTicketStore,
@@ -61,10 +65,12 @@ const observationProducer = createRuntimeObservationProducer({
   collectorUrl:
     process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
   source: runtimeSource,
+  specifications: todoSpecifications,
 })
 const runtimeObservability = createRuntimeObservationEmitter({
   producer: observationProducer,
   source: runtimeSource,
+  specificationDigests: todoSpecificationDigests,
 })
 const durableSchedule = createDurableReactionScheduler(
   createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {

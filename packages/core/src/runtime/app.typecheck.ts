@@ -65,9 +65,9 @@ async function readCapabilityIsReadonly() {
 }
 void readCapabilityIsReadonly
 
-// @ts-expect-error Specification builders are available only from /spec.
+// @ts-expect-error Specification builders are available only from @specter-ts/spec.
 core.createCommandSlice
-// @ts-expect-error Scenario event helpers are available only from /spec.
+// @ts-expect-error Scenario event helpers are available only from @specter-ts/spec.
 core.event
 // @ts-expect-error Core no longer owns a browser/client transport.
 core.defineSpecterClient

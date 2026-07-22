@@ -351,7 +351,7 @@ function specTemplate(
   return `import {
   ${factory.slice(1)} as ${factory},
   event as _event,
-} from '@specter-ts/core/spec'
+} from '@specter-ts/spec'
 
 ${declaration}
 ${description}
@@ -360,6 +360,8 @@ ${description}
     given: ${given},${when}
     expect: ${expectation},
   })
+
+export default ${names.sliceName}Spec
 `
 }
 
@@ -397,14 +399,15 @@ function implementationTemplate(
   const store = '_sqliteSliceStore'
 
   if (kind === 'command') {
-    return `import { z as _schema } from 'zod'
+    return `import { implementCommand as _implementCommand } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementCommand<'${names.sliceName}'>(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .store(${store})
   .apply(_recordedEvent, async (event, db) => {
@@ -446,15 +449,16 @@ export const ${names.sliceName} = _spec
     return rows`
 
   if (kind === 'query') {
-    return `import { eq as _equals } from 'drizzle-orm'
+    return `import { implementQuery as _implementQuery } from '@specter-ts/core'
+import { eq as _equals } from 'drizzle-orm'
 import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementQuery<'${names.sliceName}'>(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .outputSchema(
     _schema.array(
@@ -483,14 +487,15 @@ export const ${names.sliceName} = _spec
   const reactionBody = `${reactionQuery}
     return rows[0]`
 
-  return `import { z as _schema } from 'zod'
+  return `import { implementReaction as _implementReaction } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementReaction<'${names.sliceName}'>(_specification)
   .outputSchema(
     _schema.object({ requestId: _schema.string(), value: _schema.string() }),
   )
@@ -883,13 +888,19 @@ export function failOnceAt(expected: PersistenceCrashPoint) {
 }
 
 function persistentHarnessTestTemplate() {
-  return `import { createEventDefinition, createSpecterApp } from '@specter-ts/core'
+  return `import {
+  createEventDefinition,
+  createSpecterApp,
+  implementCommand,
+  implementQuery,
+  implementReaction,
+} from '@specter-ts/core'
 import {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
   event,
-} from '@specter-ts/core/spec'
+} from '@specter-ts/spec'
 import { z } from 'zod'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -1041,7 +1052,9 @@ function createRecoveryApp(
   runtime: PersistentHarnessRuntime,
   effects: string[],
 ) {
-  const incrementRecoveryCounter = incrementRecoveryCounterSpec
+  const incrementRecoveryCounter = implementCommand<'incrementRecoveryCounter'>(
+    JSON.stringify(incrementRecoveryCounterSpec),
+  )
     .inputSchema(
       z.object({ commandId: z.string(), amount: z.number().int().positive() }),
     )
@@ -1051,7 +1064,9 @@ function createRecoveryApp(
     })
     .handle(async (command) => [counterIncremented.create(command)])
 
-  const recoveryCounter = recoveryCounterSpec
+  const recoveryCounter = implementQuery<'recoveryCounter'>(
+    JSON.stringify(recoveryCounterSpec),
+  )
     .inputSchema(z.object({}))
     .outputSchema(z.number().int().nonnegative())
     .store(runtime.createSliceStore(() => ({ count: 0 })))
@@ -1060,7 +1075,9 @@ function createRecoveryApp(
     })
     .handle(async (_query, state) => state.count)
 
-  const recordRecoveryAudit = recordRecoveryAuditSpec
+  const recordRecoveryAudit = implementReaction<'recordRecoveryAudit'>(
+    JSON.stringify(recordRecoveryAuditSpec),
+  )
     .outputSchema(z.object({ commandId: z.string() }))
     .plugin(async (_dispatch) => async (effect) => {
       effects.push(effect.commandId)

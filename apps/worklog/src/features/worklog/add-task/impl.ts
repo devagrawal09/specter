@@ -2,11 +2,12 @@ import { z } from 'zod'
 
 import { pointAwardedEvent, taskAddedEvent } from '../events'
 import { createWorklogMemoryStore } from '../memory-store'
-import { addTaskSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 const store = createWorklogMemoryStore(() => ({ ids: new Set<string>() }))
 
-export const addTask = addTaskSpec
+export const addTask = implementCommand<'addTask'>(specification)
   .inputSchema(
     z
       .object({

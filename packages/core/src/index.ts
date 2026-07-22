@@ -4,7 +4,13 @@ export type {
   EventDraft,
   PersistedEvent,
 } from './definition'
-export { createEventDefinition, SpecterConformanceError } from './definition'
+export {
+  createEventDefinition,
+  implementCommand,
+  implementQuery,
+  implementReaction,
+  SpecterConformanceError,
+} from './definition'
 export type {
   ApplyEventDefinition,
   ApplyRegistration,

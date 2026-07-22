@@ -1,4 +1,5 @@
-import sessionListSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -29,7 +30,7 @@ type SessionListState = {
   sessions: SessionListItem[]
 }
 
-const sessionList = sessionListSpec
+const sessionList = implementQuery<'sessionList'>(specification)
   .inputSchema(z.object({ workspaceId: z.string() }))
   .outputSchema<SessionListItem[]>()
   .store(createMemorySliceStore<SessionListState>(() => ({ sessions: [] })))

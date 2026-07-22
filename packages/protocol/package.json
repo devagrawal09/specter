@@ -20,6 +20,9 @@
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
+  "dependencies": {
+    "@specter-ts/spec": "workspace:*"
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
     "ajv": "^8.20.0",

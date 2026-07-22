@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const harvestEnergySpec = createCommandSlice('harvestEnergy')
   .description('Harvests energy from an adjacent source into a worker.')
@@ -85,3 +85,5 @@ export const harvestEnergySpec = createCommandSlice('harvestEnergy')
       ],
     },
   )
+
+export default harvestEnergySpec

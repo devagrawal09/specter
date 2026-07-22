@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { implementQuery, type SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
@@ -8,12 +8,12 @@ import type {
 } from '../../collector-model'
 import { runtimeObservationIdentity } from '../../collector-model'
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
-import { runtimeActivitySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
 
 export function createRuntimeActivity(
   store: SliceStoreAdapter<CollectorState>,
 ) {
-  return runtimeActivitySpec
+  return implementQuery<'runtimeActivity'>(specification)
     .inputSchema(
       z.object({
         application: z.string().min(1).optional(),

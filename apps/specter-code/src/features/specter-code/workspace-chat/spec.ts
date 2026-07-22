@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const workspaceChatSpec = createQuerySlice('workspaceChat')
   .description('Shows posts and replies in a workspace chat.')

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export default createCommandSlice('recordTwilioMessageSent')
   .description('Records a successful Twilio outbound send.')

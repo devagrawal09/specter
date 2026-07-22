@@ -10,7 +10,8 @@ import {
 } from '../events'
 import { createWorklogMemoryStore } from '../memory-store'
 import { references, type Connection, type Task } from '../model'
-import { tasksQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 type State = { tasks: Map<string, Task>; connections: Map<string, Connection> }
 const store = createWorklogMemoryStore<State>(() => ({
@@ -33,7 +34,7 @@ const outputSchema = z.array(
     .strict(),
 )
 
-export const tasksQuery = tasksQuerySpec
+export const tasksQuery = implementQuery<'tasksQuery'>(specification)
   .inputSchema(
     z
       .object({

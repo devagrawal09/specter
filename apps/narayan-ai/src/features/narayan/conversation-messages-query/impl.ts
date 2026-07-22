@@ -10,7 +10,8 @@ import {
   twilioOutboundMessageFailedEvent,
   twilioOutboundMessageSentEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export const narayanConversationMessages = sqliteTable(
   'narayan_conversation_messages',
@@ -39,7 +40,9 @@ const messageSchema = z.object({
   sortOrder: z.number(),
 })
 
-const conversationMessagesQuery = spec
+const conversationMessagesQuery = implementQuery<'conversationMessagesQuery'>(
+  specification,
+)
   .inputSchema(z.object({ phoneNumber: z.string().min(1) }))
   .outputSchema(z.array(messageSchema))
   .store(sqliteSliceStore)

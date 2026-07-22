@@ -9,7 +9,8 @@ import {
   twilioInboundMessageRecordedEvent,
 } from '../events'
 import { mastraOpenRouterPlugin } from './mastra-openrouter-plugin.server'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 
 export type ConversationHistoryMessage = {
   role: 'user' | 'assistant'
@@ -47,106 +48,107 @@ export const narayanAssistantReplyReactionMessages = sqliteTable(
   },
 )
 
-const generateAssistantReplyReaction = spec
-  .outputSchema(
-    z.object({
-      type: z.literal('generateAssistantReply'),
-      payload: z.object({
-        inboundMessageId: z.string(),
-        from: z.string(),
-        body: z.string(),
-        recentMessages: z.array(
-          z.object({ role: z.enum(['user', 'assistant']), body: z.string() }),
-        ),
+const generateAssistantReplyReaction =
+  implementReaction<'generateAssistantReplyReaction'>(specification)
+    .outputSchema(
+      z.object({
+        type: z.literal('generateAssistantReply'),
+        payload: z.object({
+          inboundMessageId: z.string(),
+          from: z.string(),
+          body: z.string(),
+          recentMessages: z.array(
+            z.object({ role: z.enum(['user', 'assistant']), body: z.string() }),
+          ),
+        }),
       }),
-    }),
-  )
-  .plugin(mastraOpenRouterPlugin)
-  .store(sqliteSliceStore)
-  .apply(twilioInboundMessageRecordedEvent, async (event, db) => {
-    const payload = event.payload
-    const sortOrder = eventSortOrder(event)
-    await db
-      .insert(narayanAssistantReplyReactionInbound)
-      .values({
-        inboundMessageId: payload.inboundMessageId,
-        from: payload.from,
-        body: payload.body,
-        receivedAt: payload.receivedAt,
-        sortOrder,
-        replied: 'false',
-      })
-      .onConflictDoNothing()
-      .run()
-    await db
-      .insert(narayanAssistantReplyReactionMessages)
-      .values({
-        messageId: payload.inboundMessageId,
-        phoneNumber: payload.from,
-        role: 'user',
-        body: payload.body,
-        createdAt: payload.receivedAt,
-        sortOrder,
-      })
-      .onConflictDoNothing()
-      .run()
-  })
-  .apply(assistantReplyGeneratedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .update(narayanAssistantReplyReactionInbound)
-      .set({ replied: 'true' })
-      .where(
-        eq(
-          narayanAssistantReplyReactionInbound.inboundMessageId,
-          payload.inboundMessageId,
-        ),
-      )
-      .run()
-    await db
-      .insert(narayanAssistantReplyReactionMessages)
-      .values({
-        messageId: payload.outboundMessageId,
-        phoneNumber: payload.to,
-        role: 'assistant',
-        body: payload.body,
-        createdAt: payload.generatedAt,
-        sortOrder: eventSortOrder(event),
-      })
-      .onConflictDoNothing()
-      .run()
-  })
-  .handle(async (db) => {
-    const rows = await db
-      .select()
-      .from(narayanAssistantReplyReactionInbound)
-      .where(eq(narayanAssistantReplyReactionInbound.replied, 'false'))
-      .orderBy(asc(narayanAssistantReplyReactionInbound.sortOrder))
-      .all()
-    const message = rows[0]
-    if (!message) return undefined
+    )
+    .plugin(mastraOpenRouterPlugin)
+    .store(sqliteSliceStore)
+    .apply(twilioInboundMessageRecordedEvent, async (event, db) => {
+      const payload = event.payload
+      const sortOrder = eventSortOrder(event)
+      await db
+        .insert(narayanAssistantReplyReactionInbound)
+        .values({
+          inboundMessageId: payload.inboundMessageId,
+          from: payload.from,
+          body: payload.body,
+          receivedAt: payload.receivedAt,
+          sortOrder,
+          replied: 'false',
+        })
+        .onConflictDoNothing()
+        .run()
+      await db
+        .insert(narayanAssistantReplyReactionMessages)
+        .values({
+          messageId: payload.inboundMessageId,
+          phoneNumber: payload.from,
+          role: 'user',
+          body: payload.body,
+          createdAt: payload.receivedAt,
+          sortOrder,
+        })
+        .onConflictDoNothing()
+        .run()
+    })
+    .apply(assistantReplyGeneratedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .update(narayanAssistantReplyReactionInbound)
+        .set({ replied: 'true' })
+        .where(
+          eq(
+            narayanAssistantReplyReactionInbound.inboundMessageId,
+            payload.inboundMessageId,
+          ),
+        )
+        .run()
+      await db
+        .insert(narayanAssistantReplyReactionMessages)
+        .values({
+          messageId: payload.outboundMessageId,
+          phoneNumber: payload.to,
+          role: 'assistant',
+          body: payload.body,
+          createdAt: payload.generatedAt,
+          sortOrder: eventSortOrder(event),
+        })
+        .onConflictDoNothing()
+        .run()
+    })
+    .handle(async (db) => {
+      const rows = await db
+        .select()
+        .from(narayanAssistantReplyReactionInbound)
+        .where(eq(narayanAssistantReplyReactionInbound.replied, 'false'))
+        .orderBy(asc(narayanAssistantReplyReactionInbound.sortOrder))
+        .all()
+      const message = rows[0]
+      if (!message) return undefined
 
-    const history = await db
-      .select()
-      .from(narayanAssistantReplyReactionMessages)
-      .where(
-        eq(narayanAssistantReplyReactionMessages.phoneNumber, message.from),
-      )
-      .orderBy(asc(narayanAssistantReplyReactionMessages.sortOrder))
-      .all()
+      const history = await db
+        .select()
+        .from(narayanAssistantReplyReactionMessages)
+        .where(
+          eq(narayanAssistantReplyReactionMessages.phoneNumber, message.from),
+        )
+        .orderBy(asc(narayanAssistantReplyReactionMessages.sortOrder))
+        .all()
 
-    return {
-      type: 'generateAssistantReply' as const,
-      payload: {
-        inboundMessageId: message.inboundMessageId,
-        from: message.from,
-        body: message.body,
-        recentMessages: sessionMessages(
-          history.filter((item) => item.sortOrder <= message.sortOrder),
-        ),
-      },
-    }
-  })
+      return {
+        type: 'generateAssistantReply' as const,
+        payload: {
+          inboundMessageId: message.inboundMessageId,
+          from: message.from,
+          body: message.body,
+          recentMessages: sessionMessages(
+            history.filter((item) => item.sortOrder <= message.sortOrder),
+          ),
+        },
+      }
+    })
 
 function sessionMessages(
   messages: (typeof narayanAssistantReplyReactionMessages.$inferSelect)[],

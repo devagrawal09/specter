@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   approvalNotificationRecordedEvent,
@@ -18,57 +19,58 @@ export const approvalNotificationSqlStates = sqliteTable(
   },
 )
 
-const approvalNotificationReaction = spec
-  .outputSchema(
-    z.object({
-      type: z.literal('recordApprovalNotification'),
-      payload: z.object({ bookingId: z.string() }),
-    }),
-  )
-  .plugin(
-    async (command) => async (payload, context) =>
-      command(payload as never, { idempotencyKey: context.deliveryId }),
-  )
-  .store(sqliteSliceStore)
-  .apply(bookingRequestedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .insert(approvalNotificationSqlStates)
-      .values({
-        bookingId: payload.bookingId,
-        approved: false,
-        notified: false,
-      })
-      .onConflictDoNothing()
-      .run()
-  })
-  .apply(bookingApprovedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .update(approvalNotificationSqlStates)
-      .set({ approved: true })
-      .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
-      .run()
-  })
-  .apply(approvalNotificationRecordedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .update(approvalNotificationSqlStates)
-      .set({ notified: true })
-      .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
-      .run()
-  })
-  .handle(async (db) => {
-    const pending = (
-      await db.select().from(approvalNotificationSqlStates).all()
-    ).find((row) => row.approved && !row.notified)
+const approvalNotificationReaction =
+  implementReaction<'approvalNotificationReaction'>(specification)
+    .outputSchema(
+      z.object({
+        type: z.literal('recordApprovalNotification'),
+        payload: z.object({ bookingId: z.string() }),
+      }),
+    )
+    .plugin(
+      async (command) => async (payload, context) =>
+        command(payload as never, { idempotencyKey: context.deliveryId }),
+    )
+    .store(sqliteSliceStore)
+    .apply(bookingRequestedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .insert(approvalNotificationSqlStates)
+        .values({
+          bookingId: payload.bookingId,
+          approved: false,
+          notified: false,
+        })
+        .onConflictDoNothing()
+        .run()
+    })
+    .apply(bookingApprovedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .update(approvalNotificationSqlStates)
+        .set({ approved: true })
+        .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
+        .run()
+    })
+    .apply(approvalNotificationRecordedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .update(approvalNotificationSqlStates)
+        .set({ notified: true })
+        .where(eq(approvalNotificationSqlStates.bookingId, payload.bookingId))
+        .run()
+    })
+    .handle(async (db) => {
+      const pending = (
+        await db.select().from(approvalNotificationSqlStates).all()
+      ).find((row) => row.approved && !row.notified)
 
-    if (!pending) return
+      if (!pending) return
 
-    return {
-      type: 'recordApprovalNotification',
-      payload: { bookingId: pending.bookingId },
-    }
-  })
+      return {
+        type: 'recordApprovalNotification',
+        payload: { bookingId: pending.bookingId },
+      }
+    })
 
 export default approvalNotificationReaction

@@ -7,12 +7,13 @@ import type {
   ColonyBenchControlState,
   ColonyBenchRunFrameSummary,
 } from '../state'
-import { runTimelineSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export function createRunTimeline(
   store: SliceStoreAdapter<ColonyBenchControlState>,
 ) {
-  return runTimelineSpec
+  return implementQuery<'runTimeline'>(specification)
     .inputSchema(z.object({ runId: z.string() }))
     .outputSchema<ColonyBenchRunFrameSummary[]>()
     .store(store)

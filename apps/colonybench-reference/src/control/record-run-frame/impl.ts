@@ -4,7 +4,8 @@ import { z } from 'zod'
 import { applyRunCreated } from '../apply'
 import { runCreatedEvent, runFrameRecordedEvent } from '../events'
 import type { ColonyBenchControlState } from '../state'
-import { recordRunFrameSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 const frameSchema = z.object({
   runId: z.string(),
@@ -20,7 +21,7 @@ const frameSchema = z.object({
 export function createRecordRunFrame(
   store: SliceStoreAdapter<ColonyBenchControlState>,
 ) {
-  return recordRunFrameSpec
+  return implementCommand<'recordRunFrame'>(specification)
     .inputSchema(frameSchema)
     .store(store)
     .apply(runCreatedEvent, applyRunCreated)

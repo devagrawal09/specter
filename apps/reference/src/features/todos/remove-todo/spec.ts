@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const removeTodoSpec = createCommandSlice('removeTodo')
   .description('Removes an existing todo.')
@@ -14,6 +14,7 @@ export const removeTodoSpec = createCommandSlice('removeTodo')
       given: [],
       when: { todoId: 'missing' },
       expect: [],
+      reject: { reason: 'Todo not found' },
     },
     {
       description: 'Rejects removing a todo twice.',
@@ -23,5 +24,8 @@ export const removeTodoSpec = createCommandSlice('removeTodo')
       ],
       when: { todoId: 'todo-1' },
       expect: [],
+      reject: { reason: 'Todo not found' },
     },
   )
+
+export default removeTodoSpec

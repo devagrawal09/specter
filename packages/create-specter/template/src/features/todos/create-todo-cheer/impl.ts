@@ -9,7 +9,8 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import { createTodoCheerSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export const createTodoCheerSqlTodoStates = sqliteTable(
   'create_todo_cheer_sql_todo_states',
@@ -27,7 +28,9 @@ export const createTodoCheerSqlMilestoneStates = sqliteTable(
   { milestone: integer('milestone').primaryKey() },
 )
 
-export const createTodoCheer = createTodoCheerSpec
+export const createTodoCheer = implementCommand<'createTodoCheer'>(
+  specification,
+)
   .inputSchema(z.object({ milestone: z.number().int().positive() }))
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {

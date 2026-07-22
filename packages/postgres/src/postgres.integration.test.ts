@@ -3,10 +3,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   createEventDefinition,
   createSpecterApp,
+  implementCommand,
   SpecterVersionConflictError,
   type ReactionScheduler,
 } from '@specter-ts/core'
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 import type {
   PostgresPool,
@@ -162,7 +163,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
 
     await commandLog.append([counterIncremented.create({ amount: 1 })])
 
-    const incrementCounter = createCommandSlice('incrementCounter')
+    const incrementCounterSpec = createCommandSlice('incrementCounter')
       .description('Increments a counter after reading its Event projection.')
       .scenarios({
         description: 'Increments an existing counter.',
@@ -170,6 +171,9 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
         when: { amount: 9 },
         expect: [event('counter-incremented', { amount: 9 })],
       })
+    const incrementCounter = implementCommand<'incrementCounter'>(
+      JSON.stringify(incrementCounterSpec),
+    )
       .inputSchema<{ amount: number }>()
       .store(store)
       .apply(counterIncremented, async (persisted, state) => {

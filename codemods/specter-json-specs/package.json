@@ -1,0 +1,18 @@
+{
+  "name": "specter-json-specs",
+  "version": "0.1.0",
+  "description": "Migrate Specter Slice implementations from direct spec.ts imports to generated spec.json.",
+  "packageManager": "pnpm@11.1.3",
+  "type": "module",
+  "scripts": {
+    "test": "pnpm dlx codemod@1.12.12 jssg test -l typescript ./scripts/codemod.ts",
+    "check-types": "tsc --noEmit",
+    "validate": "pnpm dlx codemod@1.12.12 workflow validate -w workflow.yaml",
+    "validate-package": "pnpm dlx codemod@1.12.12 ai call validate_codemod_package --input '{\"package_path\":\".\"}'",
+    "verify": "pnpm test && pnpm check-types && pnpm validate && pnpm validate-package"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "1.6.2",
+    "typescript": "6.0.2"
+  }
+}

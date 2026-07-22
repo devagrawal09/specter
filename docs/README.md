@@ -47,7 +47,7 @@ on what you need to do next.
 ## API reference
 
 - [API reference index](api-reference/README.md)
-- [`@specter-ts/core/spec`](api-reference/core-spec.md)
+- [`@specter-ts/spec`](api-reference/spec.md)
 - [`@specter-ts/core`](api-reference/core-runtime.md)
 - [Core adapter contracts](api-reference/core-adapters.md)
 - [`@specter-ts/core/testing`](api-reference/core-testing.md)

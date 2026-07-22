@@ -28,12 +28,13 @@ import {
 } from '../events'
 import { isAdjacent, rejectCommand, workerCommandSchema } from '../shared'
 import type { ColonyBenchSimulationState } from '../state'
-import { upgradeBaseSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createUpgradeBase(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return upgradeBaseSpec
+  return implementCommand<'upgradeBase'>(specification)
     .inputSchema(workerCommandSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

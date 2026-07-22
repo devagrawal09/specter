@@ -1,4 +1,5 @@
-import pendingPermissionsSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -21,7 +22,7 @@ type PendingPermissionsState = {
   pending: Record<string, PendingPermission>
 }
 
-const pendingPermissions = pendingPermissionsSpec
+const pendingPermissions = implementQuery<'pendingPermissions'>(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),

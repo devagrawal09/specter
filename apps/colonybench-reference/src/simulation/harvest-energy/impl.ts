@@ -28,12 +28,13 @@ import {
 } from '../events'
 import { harvestEnergySchema, isAdjacent, rejectCommand } from '../shared'
 import { HARVEST_AMOUNT, type ColonyBenchSimulationState } from '../state'
-import { harvestEnergySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createHarvestEnergy(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return harvestEnergySpec
+  return implementCommand<'harvestEnergy'>(specification)
     .inputSchema(harvestEnergySchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

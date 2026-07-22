@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { SliceStoreAdapter } from '../adapters'
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, createQuerySlice, event } from '../spec-entry'
+import { createCommandSlice, createQuerySlice, event } from '../definition'
 import {
   analyzeEventPropagation,
   formatEventPropagation,

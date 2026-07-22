@@ -5,9 +5,12 @@ import {
   assistantReplyGeneratedEvent,
   twilioOutboundMessageRequestedEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const recordAssistantReply = spec
+const recordAssistantReply = implementCommand<'recordAssistantReply'>(
+  specification,
+)
   .inputSchema(
     z.object({
       inboundMessageId: z.string().min(1),

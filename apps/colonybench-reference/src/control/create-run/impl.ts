@@ -3,12 +3,13 @@ import { z } from 'zod'
 
 import { runCreatedEvent } from '../events'
 import type { ColonyBenchControlState } from '../state'
-import { createRunSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createCreateRun(
   store: SliceStoreAdapter<ColonyBenchControlState>,
 ) {
-  return createRunSpec
+  return implementCommand<'createRun'>(specification)
     .inputSchema(z.object({ runId: z.string(), name: z.string().optional() }))
     .store(store)
     .handle(async (command) => [

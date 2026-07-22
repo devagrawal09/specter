@@ -33,12 +33,13 @@ import {
   SPAWN_WORKER_COST,
   type ColonyBenchSimulationState,
 } from '../state'
-import { spawnWorkerSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createSpawnWorker(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return spawnWorkerSpec
+  return implementCommand<'spawnWorker'>(specification)
     .inputSchema(runIdSchema.extend({ workerId: z.string() }))
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

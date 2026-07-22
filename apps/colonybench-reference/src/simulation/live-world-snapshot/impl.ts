@@ -32,12 +32,13 @@ import {
   type ColonyBenchSimulationState,
   type ColonyBenchWorldSnapshot,
 } from '../state'
-import { liveWorldSnapshotSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export function createLiveWorldSnapshot(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return liveWorldSnapshotSpec
+  return implementQuery<'liveWorldSnapshot'>(specification)
     .inputSchema(runIdSchema)
     .outputSchema<ColonyBenchWorldSnapshot>()
     .store(store)

@@ -8,7 +8,8 @@ import {
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import { changeTodoCompletionSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export const todoCompletionSqlStates = sqliteTable(
   'todo_completion_sql_states',
@@ -21,7 +22,9 @@ export const todoCompletionSqlStates = sqliteTable(
   },
 )
 
-export const changeTodoCompletion = changeTodoCompletionSpec
+export const changeTodoCompletion = implementCommand<'changeTodoCompletion'>(
+  specification,
+)
   .inputSchema(
     z.object({
       todoId: z.string().min(1),

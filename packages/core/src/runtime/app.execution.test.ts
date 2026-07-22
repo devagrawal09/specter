@@ -24,7 +24,7 @@ import {
   createQuerySlice,
   createReactionSlice,
   event,
-} from '../spec-entry'
+} from '../definition'
 import { createSpecterApp } from './app'
 
 function schema<TInput, TOutput>(

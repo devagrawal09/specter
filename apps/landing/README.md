@@ -9,7 +9,7 @@ specification → implementation → scenario tests → event log → typed enve
 ```
 
 The examples follow the current Specter API. A Slice Specification in `spec.ts`
-imports from `@specter-ts/core/spec` and contains only its name, description,
+imports from `@specter-ts/spec` and contains only its name, description,
 and exact scenarios. A separate `impl.ts` completes schemas, a Reaction Plugin
 when applicable, private Slice State, apply handlers, and the terminal handler.
 `testSliceImplementations` runs the selected implementations against their

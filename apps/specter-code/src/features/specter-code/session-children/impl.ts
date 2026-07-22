@@ -1,4 +1,5 @@
-import sessionChildrenSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -29,7 +30,7 @@ type SessionChildrenState = {
   sessions: Record<string, SessionChild>
 }
 
-const sessionChildren = sessionChildrenSpec
+const sessionChildren = implementQuery<'sessionChildren'>(specification)
   .inputSchema(z.object({ sessionId: z.string() }))
   .outputSchema<SessionChild[]>()
   .store(createMemorySliceStore<SessionChildrenState>(() => ({ sessions: {} })))

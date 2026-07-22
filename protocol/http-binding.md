@@ -7,6 +7,7 @@ The default base path is `/specter/v1`. Every response for the exact
 | Method | Path | Request kind | Response kind |
 | --- | --- | --- | --- |
 | POST | `/observations` | `observations.batch` | `observations.ack` |
+| POST | `/specifications` | `specifications.publish` | `specifications.ack` |
 
 POST bodies require a parsed media type of `application/json`; media-type
 parameters such as `charset=utf-8` are allowed. Bindings MAY add authentication,

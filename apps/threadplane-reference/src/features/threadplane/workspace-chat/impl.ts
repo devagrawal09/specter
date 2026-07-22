@@ -1,4 +1,5 @@
-import workspaceChatSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -27,7 +28,7 @@ type WorkspaceChatState = {
   posts: WorkspaceChatItem[]
 }
 
-const workspaceChat = workspaceChatSpec
+const workspaceChat = implementQuery<'workspaceChat'>(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),

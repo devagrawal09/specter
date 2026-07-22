@@ -1,10 +1,11 @@
-import requestAgentRunSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunRequestedEvent } from '../events'
 
-const requestAgentRun = requestAgentRunSpec
+const requestAgentRun = implementCommand<'requestAgentRun'>(specification)
   .inputSchema(
     z.object({
       runId: z.string(),

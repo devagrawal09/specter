@@ -4,7 +4,11 @@ export default defineConfig({
   build: {
     emptyOutDir: true,
     lib: {
-      entry: { index: './src/index.ts', cli: './src/cli.ts' },
+      entry: {
+        index: './src/index.ts',
+        cli: './src/cli.ts',
+        dashboard: './src/dashboard.ts',
+      },
       formats: ['es'],
     },
     rollupOptions: {

@@ -1,4 +1,5 @@
-import agentRunTimelineSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -55,7 +56,7 @@ const getTimeline = (
   return timeline
 }
 
-const agentRunTimeline = agentRunTimelineSpec
+const agentRunTimeline = implementQuery<'agentRunTimeline'>(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),

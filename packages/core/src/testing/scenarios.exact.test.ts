@@ -7,7 +7,7 @@ import {
   createQuerySlice,
   createReactionSlice,
   event,
-} from '../spec-entry'
+} from '../definition'
 import { eventsFor } from './events-for'
 import { testSliceImplementations } from './scenarios'
 

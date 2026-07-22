@@ -1,5 +1,5 @@
 import type { RuntimeObservation } from '@specter-ts/protocol'
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { implementCommand, type SliceStoreAdapter } from '@specter-ts/core'
 import { z } from 'zod'
 
 import {
@@ -10,12 +10,12 @@ import {
   runtimeObservationRecordedEvent,
   runtimeObservationSchema,
 } from './events'
-import { recordRuntimeObservationsSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
 
 export function createRecordRuntimeObservations(
   store: SliceStoreAdapter<CollectorState>,
 ) {
-  return recordRuntimeObservationsSpec
+  return implementCommand<'recordRuntimeObservations'>(specification)
     .inputSchema(
       z.object({
         requestId: z.string().min(1),

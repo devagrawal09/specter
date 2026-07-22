@@ -1,10 +1,11 @@
-import updateSessionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionUpdatedEvent } from '../events'
 
-const updateSession = updateSessionSpec
+const updateSession = implementCommand<'updateSession'>(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),

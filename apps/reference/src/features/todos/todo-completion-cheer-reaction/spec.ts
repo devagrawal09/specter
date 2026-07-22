@@ -1,4 +1,4 @@
-import { createReactionSlice, event } from '@specter-ts/core/spec'
+import { createReactionSlice, event } from '@specter-ts/spec'
 
 function completedTodoEvents(count: number) {
   return Array.from({ length: count }, (_, index) => {
@@ -63,3 +63,5 @@ export const todoCompletionCheerSpec = createReactionSlice(
       expect: [],
     },
   )
+
+export default todoCompletionCheerSpec

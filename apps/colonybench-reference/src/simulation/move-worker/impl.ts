@@ -33,12 +33,13 @@ import {
   stepToward,
 } from '../shared'
 import { clonePosition, type ColonyBenchSimulationState } from '../state'
-import { moveWorkerSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createMoveWorker(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return moveWorkerSpec
+  return implementCommand<'moveWorker'>(specification)
     .inputSchema(moveWorkerSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

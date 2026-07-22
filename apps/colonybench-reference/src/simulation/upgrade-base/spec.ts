@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const upgradeBaseSpec = createCommandSlice('upgradeBase')
   .description('Consumes adjacent worker energy as base upgrade progress.')
@@ -95,3 +95,5 @@ export const upgradeBaseSpec = createCommandSlice('upgradeBase')
       ],
     },
   )
+
+export default upgradeBaseSpec

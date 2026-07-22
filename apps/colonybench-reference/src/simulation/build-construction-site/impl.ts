@@ -37,12 +37,13 @@ import {
   clonePosition,
   type ColonyBenchSimulationState,
 } from '../state'
-import { buildConstructionSiteSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createBuildConstructionSite(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return buildConstructionSiteSpec
+  return implementCommand<'buildConstructionSite'>(specification)
     .inputSchema(buildConstructionSiteSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

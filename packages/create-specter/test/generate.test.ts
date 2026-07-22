@@ -44,8 +44,16 @@ describe('Slice generator', () => {
       /export const invitationListSpec = _createQuerySlice\('invitationList'\)/,
     )
     assert.match(
+      readFileSync(join(base, 'spec.ts'), 'utf8'),
+      /export default invitationListSpec/,
+    )
+    assert.match(
       readFileSync(join(base, 'impl.ts'), 'utf8'),
-      /export const invitationList = _spec/,
+      /export const invitationList = _implementQuery<'invitationList'>\(_specification\)/,
+    )
+    assert.match(
+      readFileSync(join(base, 'impl.ts'), 'utf8'),
+      /from '\.\/spec\.json'/,
     )
     assert.match(
       readFileSync(join(base, 'scenarios.test.ts'), 'utf8'),

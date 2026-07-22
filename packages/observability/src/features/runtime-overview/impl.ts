@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { implementQuery, type SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
@@ -10,7 +10,7 @@ import {
   type RuntimeSourceSummary,
 } from '../../collector-model'
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
-import { runtimeOverviewSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
 
 const failed = (kind: string, outcome?: string) =>
   outcome === 'failed' ||
@@ -32,7 +32,7 @@ export function createRuntimeOverview(
   store: SliceStoreAdapter<CollectorState>,
   now: () => Date,
 ) {
-  return runtimeOverviewSpec
+  return implementQuery<'runtimeOverview'>(specification)
     .inputSchema(z.object({}))
     .outputSchema<RuntimeOverview>()
     .store(store)

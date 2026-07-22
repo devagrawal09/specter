@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const observation = {
   kind: 'reaction.run.completed',
@@ -28,3 +28,5 @@ export const runtimeTraceSpec = createQuerySlice('runtimeTrace')
       edges: [],
     },
   })
+
+export default runtimeTraceSpec

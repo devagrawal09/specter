@@ -18,7 +18,7 @@ can be reviewed, tested, and checked for conformance without importing runtime
 details.
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -38,7 +38,7 @@ a database, transport, schema library, or server framework.
 Every Slice has two required files:
 
 - `spec.ts` exports the immutable Slice Specification. It imports from
-  `@specter-ts/core/spec` and contains only descriptions and Scenarios.
+  `@specter-ts/spec` and contains only descriptions and Scenarios.
 - `impl.ts` exports the completed Slice Implementation. It supplies runtime
   schemas, a private Slice Store, Event apply handlers, a Reaction Plugin when
   needed, and the final handler.

@@ -3,7 +3,7 @@ import path from 'node:path'
 import ts from 'typescript'
 
 const repoRoot = process.cwd()
-const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts']
+const sourceExtensions = ['.ts', '.tsx', '.mts', '.cts', '.json']
 const featureRoots = findFeatureRoots()
 const files = featureRoots.flatMap(walk)
 const violations = []
@@ -94,24 +94,33 @@ function checkFile(filePath) {
     }
   }
 
-  if (
-    basename === 'impl.ts' &&
-    !imports.some(({ specifier }) => {
-      if (!specifier.startsWith('.')) return false
-      const target = resolveRelativeImport(filePath, specifier)
-      return target && path.basename(target) === 'spec.ts'
-    })
-  ) {
-    addViolation(filePath, 'impl.ts must import its adjacent spec.ts')
+  if (basename === 'impl.ts') {
+    if (
+      imports.some(({ specifier }) => {
+        if (!specifier.startsWith('.')) return false
+        const target = resolveRelativeImport(filePath, specifier)
+        return target && path.basename(target) === 'spec.ts'
+      })
+    ) {
+      addViolation(filePath, 'impl.ts must not import executable spec.ts')
+    }
+
+    if (
+      !imports.some(({ specifier }) =>
+        /(?:^|\/)spec\.json$/.test(specifier),
+      )
+    ) {
+      addViolation(filePath, 'impl.ts must import its adjacent spec.json')
+    }
   }
 }
 
 function checkSpecificationImport(filePath, specifier, targetPath) {
   if (!specifier.startsWith('.')) {
-    if (specifier !== '@specter-ts/core/spec') {
+    if (specifier !== '@specter-ts/spec') {
       addViolation(
         filePath,
-        `spec.ts may only use @specter-ts/core/spec as an external value import; found ${specifier}`,
+        `spec.ts may only use @specter-ts/spec as an external value import; found ${specifier}`,
       )
     }
     return

@@ -1,10 +1,11 @@
-import deleteSessionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionDeletedEvent } from '../events'
 
-const deleteSession = deleteSessionSpec
+const deleteSession = implementCommand<'deleteSession'>(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),

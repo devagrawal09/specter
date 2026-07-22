@@ -1,4 +1,4 @@
-import { createReactionSlice, event } from '@specter-ts/core/spec'
+import { createReactionSlice, event } from '@specter-ts/spec'
 
 const publishAgentRunReplySpec = createReactionSlice('publishAgentRunReply')
   .description(

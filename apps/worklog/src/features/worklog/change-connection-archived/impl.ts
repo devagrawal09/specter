@@ -22,7 +22,8 @@ import {
   type Task,
   type Topic,
 } from '../model'
-import { changeConnectionArchivedSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type State = {
   journals: Map<string, { archived: boolean }>
@@ -40,129 +41,135 @@ const store = createWorklogMemoryStore<State>(() => ({
   awards: new Set(),
 }))
 
-export const changeConnectionArchived = changeConnectionArchivedSpec
-  .inputSchema(
-    z
-      .object({
-        connectionId: z.string().min(1),
-        archived: z.boolean(),
-        changedAt: z.string().datetime({ offset: true }),
-      })
-      .strict(),
-  )
-  .store(store)
-  .apply(journalEntryAddedEvent, async (event, state) => {
-    state.journals.set(event.payload.journalEntryId, { archived: false })
-  })
-  .apply(journalEntryArchiveChangedEvent, async (event, state) => {
-    const journal = state.journals.get(event.payload.journalEntryId)
-    if (journal) journal.archived = event.payload.archived
-  })
-  .apply(taskAddedEvent, async (event, state) => {
-    state.tasks.set(event.payload.taskId, {
-      id: event.payload.taskId,
-      title: event.payload.title,
-      notes: event.payload.notes,
-      dueAt: event.payload.dueAt,
-      createdAt: event.payload.createdAt,
-      completed: false,
-      completedAt: null,
-      archived: false,
-    })
-  })
-  .apply(taskCompletionChangedEvent, async (event, state) => {
-    const task = state.tasks.get(event.payload.taskId)
-    if (task) {
-      task.completed = event.payload.completed
-      task.completedAt = event.payload.completed
-        ? event.payload.changedAt
-        : null
-    }
-  })
-  .apply(taskArchiveChangedEvent, async (event, state) => {
-    const task = state.tasks.get(event.payload.taskId)
-    if (task) task.archived = event.payload.archived
-  })
-  .apply(topicAddedEvent, async (event, state) => {
-    state.topics.set(event.payload.topicId, {
-      id: event.payload.topicId,
-      name: event.payload.name,
-      description: event.payload.description,
-      createdAt: event.payload.createdAt,
-      archived: false,
-    })
-  })
-  .apply(topicArchiveChangedEvent, async (event, state) => {
-    const topic = state.topics.get(event.payload.topicId)
-    if (topic) topic.archived = event.payload.archived
-  })
-  .apply(recordsConnectedEvent, async (event, state) => {
-    state.connections.set(event.payload.connectionId, {
-      id: event.payload.connectionId,
-      left: event.payload.left,
-      right: event.payload.right,
-      connectedAt: event.payload.connectedAt,
-      archived: false,
-    })
-  })
-  .apply(connectionArchiveChangedEvent, async (event, state) => {
-    const connection = state.connections.get(event.payload.connectionId)
-    if (connection) connection.archived = event.payload.archived
-  })
-  .apply(pointAwardedEvent, async (event, state) => {
-    state.awards.add(event.payload.awardKey)
-  })
-  .handle(async (command, state) => {
-    const connection = state.connections.get(command.connectionId)
-    if (!connection) throw new Error('Connection not found')
-    if (connection.archived === command.archived)
-      throw new Error('Connection archival state is already requested')
-    const events: EventDraft[] = [connectionArchiveChangedEvent.create(command)]
-    if (!isActive(connection.left, state) || !isActive(connection.right, state))
-      return events
-
-    const taskRef =
-      connection.left.kind === 'task'
-        ? connection.left
-        : connection.right.kind === 'task'
-          ? connection.right
-          : undefined
-    const topicRef =
-      connection.left.kind === 'topic'
-        ? connection.left
-        : connection.right.kind === 'topic'
-          ? connection.right
-          : undefined
-    if (command.archived) {
-      if (taskRef && topicRef)
-        appendEligibleTopicAward(events, topicRef, command.changedAt, state, {
-          excludedConnectionId: connection.id,
+export const changeConnectionArchived =
+  implementCommand<'changeConnectionArchived'>(specification)
+    .inputSchema(
+      z
+        .object({
+          connectionId: z.string().min(1),
+          archived: z.boolean(),
+          changedAt: z.string().datetime({ offset: true }),
         })
-      return events
-    }
-
-    if (taskRef && state.tasks.get(taskRef.id)?.completed) {
-      const awardKey = `connection:${connection.id}:completed-task`
-      if (!state.awards.has(awardKey))
-        events.push(
-          pointAwardedEvent.create({
-            awardKey,
-            reason: 'completed-task-connection',
-            points: 1,
-            subject: taskRef,
-            related: [otherEnd(connection, taskRef)],
-            awardedAt: command.changedAt,
-          }),
-        )
-    }
-
-    if (taskRef && topicRef) {
-      appendEligibleTopicAward(events, topicRef, command.changedAt, state, {
-        includedConnectionId: connection.id,
+        .strict(),
+    )
+    .store(store)
+    .apply(journalEntryAddedEvent, async (event, state) => {
+      state.journals.set(event.payload.journalEntryId, { archived: false })
+    })
+    .apply(journalEntryArchiveChangedEvent, async (event, state) => {
+      const journal = state.journals.get(event.payload.journalEntryId)
+      if (journal) journal.archived = event.payload.archived
+    })
+    .apply(taskAddedEvent, async (event, state) => {
+      state.tasks.set(event.payload.taskId, {
+        id: event.payload.taskId,
+        title: event.payload.title,
+        notes: event.payload.notes,
+        dueAt: event.payload.dueAt,
+        createdAt: event.payload.createdAt,
+        completed: false,
+        completedAt: null,
+        archived: false,
       })
-    }
-    return events
-  })
+    })
+    .apply(taskCompletionChangedEvent, async (event, state) => {
+      const task = state.tasks.get(event.payload.taskId)
+      if (task) {
+        task.completed = event.payload.completed
+        task.completedAt = event.payload.completed
+          ? event.payload.changedAt
+          : null
+      }
+    })
+    .apply(taskArchiveChangedEvent, async (event, state) => {
+      const task = state.tasks.get(event.payload.taskId)
+      if (task) task.archived = event.payload.archived
+    })
+    .apply(topicAddedEvent, async (event, state) => {
+      state.topics.set(event.payload.topicId, {
+        id: event.payload.topicId,
+        name: event.payload.name,
+        description: event.payload.description,
+        createdAt: event.payload.createdAt,
+        archived: false,
+      })
+    })
+    .apply(topicArchiveChangedEvent, async (event, state) => {
+      const topic = state.topics.get(event.payload.topicId)
+      if (topic) topic.archived = event.payload.archived
+    })
+    .apply(recordsConnectedEvent, async (event, state) => {
+      state.connections.set(event.payload.connectionId, {
+        id: event.payload.connectionId,
+        left: event.payload.left,
+        right: event.payload.right,
+        connectedAt: event.payload.connectedAt,
+        archived: false,
+      })
+    })
+    .apply(connectionArchiveChangedEvent, async (event, state) => {
+      const connection = state.connections.get(event.payload.connectionId)
+      if (connection) connection.archived = event.payload.archived
+    })
+    .apply(pointAwardedEvent, async (event, state) => {
+      state.awards.add(event.payload.awardKey)
+    })
+    .handle(async (command, state) => {
+      const connection = state.connections.get(command.connectionId)
+      if (!connection) throw new Error('Connection not found')
+      if (connection.archived === command.archived)
+        throw new Error('Connection archival state is already requested')
+      const events: EventDraft[] = [
+        connectionArchiveChangedEvent.create(command),
+      ]
+      if (
+        !isActive(connection.left, state) ||
+        !isActive(connection.right, state)
+      )
+        return events
+
+      const taskRef =
+        connection.left.kind === 'task'
+          ? connection.left
+          : connection.right.kind === 'task'
+            ? connection.right
+            : undefined
+      const topicRef =
+        connection.left.kind === 'topic'
+          ? connection.left
+          : connection.right.kind === 'topic'
+            ? connection.right
+            : undefined
+      if (command.archived) {
+        if (taskRef && topicRef)
+          appendEligibleTopicAward(events, topicRef, command.changedAt, state, {
+            excludedConnectionId: connection.id,
+          })
+        return events
+      }
+
+      if (taskRef && state.tasks.get(taskRef.id)?.completed) {
+        const awardKey = `connection:${connection.id}:completed-task`
+        if (!state.awards.has(awardKey))
+          events.push(
+            pointAwardedEvent.create({
+              awardKey,
+              reason: 'completed-task-connection',
+              points: 1,
+              subject: taskRef,
+              related: [otherEnd(connection, taskRef)],
+              awardedAt: command.changedAt,
+            }),
+          )
+      }
+
+      if (taskRef && topicRef) {
+        appendEligibleTopicAward(events, topicRef, command.changedAt, state, {
+          includedConnectionId: connection.id,
+        })
+      }
+      return events
+    })
 
 function isActive(ref: EntityRef, state: State) {
   if (ref.kind === 'journal')

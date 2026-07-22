@@ -38,6 +38,10 @@ import { createSpecterObservabilityHttpHandler } from './http-handler'
 import { SegmentCoordinator } from './segment-coordinator'
 import { existingSegmentPaths, sqliteDatabaseSize } from './segment-storage'
 import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
+import {
+  createSqliteSpecificationCatalog,
+  type SpecificationCatalog,
+} from './specification-catalog'
 
 type ActiveSegment = {
   readonly collector: SpecterObservabilityCollector
@@ -91,15 +95,21 @@ async function serve(commandArgs: readonly string[]) {
     existingSegments,
     retryWindowMs,
   )
+  const specificationCatalog =
+    await createSqliteSpecificationCatalog(controlClient)
 
-  const initial = await openSegment(databaseBase, existingSegments.at(-1))
+  const initial = await openSegment(
+    databaseBase,
+    existingSegments.at(-1),
+    specificationCatalog,
+  )
   const segments = new SegmentCoordinator({
     initial,
     shouldRotate(segment: ActiveSegment) {
       const age = Date.now() - segment.openedAt
       return age >= maxAgeMs || sqliteDatabaseSize(segment.path) >= maxBytes
     },
-    open: () => openSegment(databaseBase),
+    open: () => openSegment(databaseBase, undefined, specificationCatalog),
     retire(segment: ActiveSegment) {
       segment.abort.abort(new Error('Observability segment rotated'))
     },
@@ -258,6 +268,7 @@ async function serve(commandArgs: readonly string[]) {
 async function openSegment(
   databaseBase: string,
   existingPath?: string,
+  specifications?: SpecificationCatalog,
 ): Promise<ActiveSegment> {
   const timestamp = new Date().toISOString().replaceAll(/[^0-9]/g, '')
   const path = existingPath ?? `${databaseBase}-${timestamp}.db`
@@ -270,6 +281,7 @@ async function openSegment(
   const collector = await createSpecterObservabilityCollector({
     eventLog: persistence.eventLog,
     store: persistence.createSliceStore(createCollectorState),
+    specifications,
   })
   const abort = new AbortController()
   return {

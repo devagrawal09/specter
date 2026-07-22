@@ -1,5 +1,6 @@
 import {
   assertRuntimeObservationBatch,
+  assertSpecificationPublication,
   protocolErrorCodes,
   SpecterProtocolError,
   structuredProtocolError,
@@ -11,6 +12,7 @@ import type {
 } from './collector-model'
 import type { SpecterObservabilityCollector } from './collector'
 import { renderCollectorHtml } from './ui'
+import { readFile } from 'node:fs/promises'
 
 export type SpecterObservabilityHttpHandlerOptions = {
   readonly collector: SpecterObservabilityCollector
@@ -38,12 +40,26 @@ export function createSpecterObservabilityHttpHandler(
       )
     }
     const route = url.pathname.slice(basePath.length) || '/'
-    const isObservationProtocolRoute = route === '/specter/v1/observations'
+    const isProtocolRoute =
+      route === '/specter/v1/observations' ||
+      route === '/specter/v1/specifications'
 
     try {
       if (request.method === 'GET' && route === '/') {
         return new Response(renderCollectorHtml(basePath), {
           headers: { 'content-type': 'text/html; charset=utf-8' },
+        })
+      }
+      if (request.method === 'GET' && route === '/dashboard.js') {
+        const source = await readFile(
+          new URL('./dashboard.js', import.meta.url),
+          'utf8',
+        )
+        return new Response(source, {
+          headers: {
+            'content-type': 'text/javascript; charset=utf-8',
+            'cache-control': 'no-cache',
+          },
         })
       }
       if (request.method === 'POST' && route === '/specter/v1/observations') {
@@ -53,6 +69,35 @@ export function createSpecterObservabilityHttpHandler(
         return Response.json(await options.collector.ingest(body), {
           status: 202,
           headers: { 'Specter-Protocol-Version': '1' },
+        })
+      }
+      if (request.method === 'POST' && route === '/specter/v1/specifications') {
+        requireJsonContentType(request)
+        const body = await readJson(request)
+        assertSpecificationPublication(body)
+        return Response.json(
+          await options.collector.publishSpecifications(body),
+          {
+            status: 202,
+            headers: { 'Specter-Protocol-Version': '1' },
+          },
+        )
+      }
+      if (request.method === 'GET' && route === '/v1/specifications') {
+        return Response.json(
+          await options.collector.specifications({
+            application: url.searchParams.get('application') || undefined,
+            slice: url.searchParams.get('slice') || undefined,
+            digest: url.searchParams.get('digest') || undefined,
+          }),
+        )
+      }
+      if (request.method === 'DELETE' && route === '/v1/specifications') {
+        requireJsonContentType(request)
+        const body = await readJson(request)
+        const digests = specificationDigests(body)
+        return Response.json({
+          removed: await options.collector.pruneSpecifications(digests),
         })
       }
       if (request.method === 'GET' && route === '/v1/overview') {
@@ -88,7 +133,7 @@ export function createSpecterObservabilityHttpHandler(
         404,
         'SPECTER_OBSERVABILITY_ROUTE_NOT_FOUND',
         'Route not found.',
-        isObservationProtocolRoute,
+        isProtocolRoute,
       )
     } catch (cause) {
       const error = structuredProtocolError(cause)
@@ -96,12 +141,38 @@ export function createSpecterObservabilityHttpHandler(
         cause instanceof SpecterProtocolError ? cause.status : 500,
         error.code,
         error.message,
-        isObservationProtocolRoute,
+        isProtocolRoute,
       )
     }
   }
 
   return handle
+}
+
+function specificationDigests(value: unknown): readonly `sha256:${string}`[] {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !('digests' in value) ||
+    !Array.isArray(value.digests)
+  )
+    throw new SpecterProtocolError({
+      code: protocolErrorCodes.invalidMessage,
+      message: 'digests must be an array.',
+    })
+  const digests = value.digests
+  if (
+    !digests.every(
+      (digest): digest is `sha256:${string}` =>
+        typeof digest === 'string' && /^sha256:[a-f0-9]{64}$/.test(digest),
+    )
+  )
+    throw new SpecterProtocolError({
+      code: protocolErrorCodes.invalidMessage,
+      message: 'digests must contain canonical sha256 digests.',
+    })
+  return digests
 }
 
 function requireJsonContentType(request: Request) {

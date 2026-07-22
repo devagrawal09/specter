@@ -1,4 +1,5 @@
-import revertSessionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -10,7 +11,7 @@ const fileSnapshotInput = z.object({
   content: z.string().optional(),
 })
 
-const revertSession = revertSessionSpec
+const revertSession = implementCommand<'revertSession'>(specification)
   .inputSchema(
     z.object({
       revertId: z.string(),

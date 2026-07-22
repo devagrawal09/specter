@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { implementQuery, type SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
@@ -14,10 +14,10 @@ import {
   runtimeSourceIdentity,
 } from '../../collector-model'
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
-import { runtimeTraceSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
 
 export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
-  return runtimeTraceSpec
+  return implementQuery<'runtimeTrace'>(specification)
     .inputSchema(
       z.object({
         operationId: z.string().min(1),

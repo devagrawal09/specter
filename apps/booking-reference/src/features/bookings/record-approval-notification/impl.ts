@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import {
   approvalNotificationRecordedEvent,
@@ -23,51 +24,55 @@ export const recordApprovalNotificationSqlBookings = sqliteTable(
   },
 )
 
-const recordApprovalNotification = spec
-  .inputSchema(z.object({ bookingId: z.string().min(1) }))
-  .store(sqliteSliceStore)
-  .apply(bookingRequestedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .insert(recordApprovalNotificationSqlBookings)
-      .values({ ...payload, status: 'pending' })
-      .onConflictDoNothing()
-      .run()
-  })
-  .apply(bookingApprovedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .update(recordApprovalNotificationSqlBookings)
-      .set({ status: 'approved' })
-      .where(
-        eq(recordApprovalNotificationSqlBookings.bookingId, payload.bookingId),
-      )
-      .run()
-  })
-  .handle(async (command, db) => {
-    const booking = (
+const recordApprovalNotification =
+  implementCommand<'recordApprovalNotification'>(specification)
+    .inputSchema(z.object({ bookingId: z.string().min(1) }))
+    .store(sqliteSliceStore)
+    .apply(bookingRequestedEvent, async (event, db) => {
+      const payload = event.payload
       await db
-        .select()
-        .from(recordApprovalNotificationSqlBookings)
+        .insert(recordApprovalNotificationSqlBookings)
+        .values({ ...payload, status: 'pending' })
+        .onConflictDoNothing()
+        .run()
+    })
+    .apply(bookingApprovedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .update(recordApprovalNotificationSqlBookings)
+        .set({ status: 'approved' })
         .where(
           eq(
             recordApprovalNotificationSqlBookings.bookingId,
-            command.bookingId,
+            payload.bookingId,
           ),
         )
-        .all()
-    )[0]
-    if (!booking) throw new Error('Booking not found')
-    if (booking.status !== 'approved')
-      throw new Error(
-        'Only approved bookings can create approval notifications',
-      )
-    return [
-      approvalNotificationRecordedEvent.create({
-        bookingId: command.bookingId,
-        message: `${booking.requesterName}'s booking for ${booking.purpose} was approved.`,
-      }),
-    ]
-  })
+        .run()
+    })
+    .handle(async (command, db) => {
+      const booking = (
+        await db
+          .select()
+          .from(recordApprovalNotificationSqlBookings)
+          .where(
+            eq(
+              recordApprovalNotificationSqlBookings.bookingId,
+              command.bookingId,
+            ),
+          )
+          .all()
+      )[0]
+      if (!booking) throw new Error('Booking not found')
+      if (booking.status !== 'approved')
+        throw new Error(
+          'Only approved bookings can create approval notifications',
+        )
+      return [
+        approvalNotificationRecordedEvent.create({
+          bookingId: command.bookingId,
+          message: `${booking.requesterName}'s booking for ${booking.purpose} was approved.`,
+        }),
+      ]
+    })
 
 export default recordApprovalNotification

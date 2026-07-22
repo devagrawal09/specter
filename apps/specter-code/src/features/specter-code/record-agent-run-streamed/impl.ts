@@ -1,10 +1,13 @@
-import recordAgentRunStreamedSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStreamedEvent } from '../events'
 
-const recordAgentRunStreamed = recordAgentRunStreamedSpec
+const recordAgentRunStreamed = implementCommand<'recordAgentRunStreamed'>(
+  specification,
+)
   .inputSchema(
     z.object({
       runId: z.string(),

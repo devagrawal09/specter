@@ -7,12 +7,13 @@ import type {
   ColonyBenchSimulationState,
   ColonyBenchSimulationStatus,
 } from '../state'
-import { liveSimulationStatusSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export function createLiveSimulationStatus(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return liveSimulationStatusSpec
+  return implementQuery<'liveSimulationStatus'>(specification)
     .inputSchema(runIdSchema)
     .outputSchema<ColonyBenchSimulationStatus>()
     .store(store)

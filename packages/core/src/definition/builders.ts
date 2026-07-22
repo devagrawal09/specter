@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { parseSpecification, parseSpecificationJson } from '@specter-ts/spec'
 
 import type { EventDraft } from './events'
 import type {
@@ -356,6 +357,21 @@ export function createCommandSlice<const TName extends string>(
   })
 }
 
+export function implementCommand<const TName extends string = string>(
+  input: unknown,
+): CommandSliceSpec<TName> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'command')
+    throw new Error(
+      `implementCommand expected a command specification, received ${specification.kind}.`,
+    )
+  return createCommandSpec(
+    specification.name as TName,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
+}
+
 function createCommandSpec<
   TName extends string,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
@@ -441,6 +457,21 @@ export function createQuerySlice<const TName extends string>(
         createQuerySpec(name, description, freezeScenarios(scenarios)),
     }),
   })
+}
+
+export function implementQuery<const TName extends string = string>(
+  input: unknown,
+): QuerySliceSpec<TName> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'query')
+    throw new Error(
+      `implementQuery expected a query specification, received ${specification.kind}.`,
+    )
+  return createQuerySpec(
+    specification.name as TName,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
 }
 
 function createQuerySpec<
@@ -537,6 +568,28 @@ export function createReactionSlice<const TName extends string>(
         createReactionSpec(name, description, freezeScenarios(scenarios)),
     }),
   })
+}
+
+export function implementReaction<const TName extends string = string>(
+  input: unknown,
+): ReactionSliceSpec<TName> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'reaction')
+    throw new Error(
+      `implementReaction expected a reaction specification, received ${specification.kind}.`,
+    )
+  return createReactionSpec(
+    specification.name as TName,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
+}
+
+function loadSpecification(input: unknown) {
+  if (typeof input === 'string') return parseSpecificationJson(input)
+  if (input instanceof Uint8Array)
+    return parseSpecificationJson(new TextDecoder().decode(input))
+  return parseSpecification(input)
 }
 
 function createReactionSpec<

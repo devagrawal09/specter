@@ -18,7 +18,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 ## Canonical Imports
 
-- Use `@specter-ts/core/spec` in `spec.ts` for Slice specification builders and `event(type, payload)`.
+- Use `@specter-ts/spec` in `spec.ts` for Slice specification builders, portable specification types, and `event(type, payload)`.
 - Use `@specter-ts/core` in implementations and runtime wiring for Event Definitions, app creation, envelope/reference types, adapters, and structured errors.
 - Use `@specter-ts/core/testing` for Scenario tests, focused Event catalogs, and replay helpers.
 - Use local `src/db/*` and `src/transport/*` modules for stores, persistence, Scenario database setup, HTTP/SSE transport, and schema exports.
@@ -28,16 +28,25 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 Every Slice contract requires these two files:
 
-- `spec.ts` exports `<sliceName>Spec` and defines only `name → description → scenarios`.
-- `impl.ts` imports that specification and exports `<sliceName>` after completing the implementation stages.
+- `spec.ts` default-exports `<sliceName>Spec` and defines only `name → description → scenarios`.
+- `impl.ts` imports adjacent generated `spec.json`, passes it to the kind-specific `implementCommand`, `implementQuery`, or `implementReaction` function, and exports `<sliceName>` after completing the implementation stages.
 
-Use named exports for both files. A generator may add adjacent Slice-owned
+The implementation never imports or executes `spec.ts`. Run `specter-spec export src/features` before TypeScript build, test, or typecheck so every `spec.ts` produces an adjacent ignored `spec.json`. A generator may add adjacent Slice-owned
 support files such as `events.ts`, `projection.ts`, `registry.ts`, a Scenario
 test, a database-schema re-export, or a migration checklist. Those files are
 optional support artifacts; they never replace the required `spec.ts` and
 `impl.ts` boundary.
 
-Specifications may import only `@specter-ts/core/spec` and implementation-independent domain constants. They must not import Event Definitions, schemas, stores, plugins, database/server modules, implementations, or sibling Slices.
+Specifications may import only `@specter-ts/spec` and implementation-independent domain constants. They must not import Event Definitions, schemas, stores, plugins, database/server modules, implementations, or sibling Slices. Their exported value must contain only strict portable JSON data.
+
+Start implementations with the matching kind-specific loader:
+
+```ts
+import { implementCommand } from '@specter-ts/core'
+import specification from './spec.json'
+
+export const addTodo = implementCommand<'addTodo'>(specification)
+```
 
 Implementations follow these exact builder orders:
 
@@ -53,7 +62,7 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 - Use `event('todo-added', { todoId: 'todo-1', title: 'Ship it' })`; never call an Event Definition from `spec.ts`.
 - Event types use kebab-case; Slice names use lower camel case.
 - Scenario payloads are exact. Include every ID-shaped field and domain timestamp.
-- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and may state an exact rejection reason. Invalid schema input is not a Scenario.
+- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and must state the exact rejection reason. Invalid schema input is not a Scenario.
 - Across a Slice's Scenarios, the union of Given Event types exactly equals the implementation's apply Event types.
 - Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed.
 - Every registered Event Definition and Slice appears in executable Scenario coverage.
@@ -112,12 +121,13 @@ await execution.reactions
 
 1. Add or update kebab-case Event Definitions in the feature's `events.ts`.
 2. Write or update exact Scenarios in `spec.ts`.
-3. Complete the specification in `impl.ts`, keeping State private and applying each Given Event type.
-4. Register the implementation and Event Definitions.
-5. Await `createSpecterApp(config)` in runtime wiring.
-6. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
-7. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
-8. Run focused checks, then the complete project baseline.
+3. Export the specifications with `specter-spec export src/features`.
+4. Load adjacent `spec.json` with the kind-specific implementation function in `impl.ts`, keeping State private and applying each Given Event type.
+5. Register the implementation and Event Definitions.
+6. Await `createSpecterApp(config)` in runtime wiring.
+7. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
+8. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
+9. Run focused checks, then the complete project baseline.
 
 When an Event payload changes, run `analyzeEventPropagation(...)` from
 `@specter-ts/core/testing` and use `formatEventPropagation(...)` to enumerate

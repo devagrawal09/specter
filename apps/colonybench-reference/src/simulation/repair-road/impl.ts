@@ -28,12 +28,13 @@ import {
 } from '../events'
 import { isAdjacent, rejectCommand, repairRoadSchema } from '../shared'
 import { REPAIR_AMOUNT, type ColonyBenchSimulationState } from '../state'
-import { repairRoadSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createRepairRoad(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return repairRoadSpec
+  return implementCommand<'repairRoad'>(specification)
     .inputSchema(repairRoadSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

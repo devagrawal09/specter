@@ -1,4 +1,5 @@
-import updateTodoListSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -11,7 +12,7 @@ const todoItemSchema = z.object({
   priority: z.enum(['low', 'medium', 'high']).optional(),
 })
 
-const updateTodoList = updateTodoListSpec
+const updateTodoList = implementCommand<'updateTodoList'>(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),

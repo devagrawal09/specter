@@ -28,12 +28,13 @@ import {
 } from '../events'
 import { isAdjacent, rejectCommand, workerCommandSchema } from '../shared'
 import type { ColonyBenchSimulationState } from '../state'
-import { depositEnergySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export function createDepositEnergy(
   store: SliceStoreAdapter<ColonyBenchSimulationState>,
 ) {
-  return depositEnergySpec
+  return implementCommand<'depositEnergy'>(specification)
     .inputSchema(workerCommandSchema)
     .store(store)
     .apply(simulationInitializedEvent, applySimulationInitialized)

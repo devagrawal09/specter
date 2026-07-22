@@ -22,7 +22,8 @@ import {
   type Task,
   type Topic,
 } from '../model'
-import { connectRecordsSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type EntityState = { archived: boolean }
 type State = {
@@ -47,7 +48,7 @@ const refSchema = z
   .object({ kind: z.enum(['journal', 'task', 'topic']), id: z.string().min(1) })
   .strict()
 
-export const connectRecords = connectRecordsSpec
+export const connectRecords = implementCommand<'connectRecords'>(specification)
   .inputSchema(
     z
       .object({

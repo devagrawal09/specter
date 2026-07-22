@@ -1,7 +1,8 @@
 import { eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { sqliteSliceStore } from '../../../db/specter-sqlite'
 import { activeBookingStatuses, overlaps } from '../booking-state'
 import {
@@ -38,7 +39,7 @@ export const rescheduleBookingSqlBookings = sqliteTable(
   },
 )
 
-const rescheduleBooking = spec
+const rescheduleBooking = implementCommand<'rescheduleBooking'>(specification)
   .inputSchema(
     z.object({
       bookingId: z.string().min(1),

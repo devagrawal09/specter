@@ -1,4 +1,4 @@
-# `@specter-ts/core/spec`
+# `@specter-ts/spec`
 
 **Status:** Specter 0.3 main-branch preview. This entrypoint is not the stable
 npm 0.2.1 API.
@@ -9,12 +9,12 @@ import {
   createQuerySlice,
   createReactionSlice,
   event,
-} from '@specter-ts/core/spec'
+} from '@specter-ts/spec'
 ```
 
-This entrypoint defines Slice Specifications without importing runtime,
-persistence, or implementation details. It has four runtime exports and ten
-type exports.
+This package defines portable Slice Specifications without importing runtime,
+persistence, or implementation details. It also ships the `specter-spec export`
+CLI, strict validation, canonical serialization, and SHA-256 digests.
 
 ## Runtime exports
 
@@ -24,23 +24,26 @@ type exports.
 | `createQuerySlice(name)` | Starts a staged Query Slice Specification. |
 | `createReactionSlice(name)` | Starts a staged Reaction Slice Specification. |
 | `event(type, payload)` | Creates an exact Scenario Event example for `given` or a Command `expect`. |
+| `parseSliceSpecification(value)` | Strictly validates portable JSON data and rejects unknown or non-JSON values. |
+| `serializeSliceSpecification(value)` | Produces deterministic sorted-key JSON. |
+| `digestSliceSpecification(value)` | Produces the canonical `sha256:` digest used by runtimes and observability. |
 
 ## Type exports
 
 | Export | Purpose |
 | --- | --- |
 | `AcceptedCommandScenario<TWhen>` | A Command Scenario with one or more expected Scenario Events and no rejection. |
-| `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and an optional exact rejection reason. |
+| `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and its exact rejection reason. |
 | `CommandScenario<TWhen>` | Union of accepted and rejected Command Scenarios. |
 | `QueryScenario<TWhen, TExpect>` | A Query Scenario with Given Events, Query input, and final public output. |
 | `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and zero or one expected Plugin effect for one handler run. The current array type is broader than the executable cardinality. |
 | `ScenarioEvent<TType, TPayload>` | Branded exact Event example returned by `event(...)`. |
 | `NonEmptyScenarios<TScenario>` | Tuple requiring at least one Scenario. |
-| `CommandSliceSpec<TName, TScenarios>` | Immutable Command specification and its `inputSchema(...)` completion stage. |
-| `QuerySliceSpec<TName, TScenarios>` | Immutable Query specification and its `inputSchema(...)` completion stage. |
-| `ReactionSliceSpec<TName, TScenarios>` | Immutable Reaction specification and its `outputSchema(...)` completion stage. |
+| `CommandSliceSpecification<TName, TScenarios>` | Portable immutable Command specification data. |
+| `QuerySliceSpecification<TName, TScenarios>` | Portable immutable Query specification data. |
+| `ReactionSliceSpecification<TName, TScenarios>` | Portable immutable Reaction specification data. |
 
-These are all public exports from `@specter-ts/core/spec`. Implementation types
+These are all public exports from `@specter-ts/spec`. Implementation types
 such as `CommandSlice`, Event Definitions, adapters, and the Specter App are
 exported from `@specter-ts/core` instead.
 
@@ -52,14 +55,23 @@ All builders begin with the same structural stages:
 create...Slice(name) -> description(text) -> scenarios(first, ...rest)
 ```
 
-The result is an immutable Slice Specification with `stage`, `kind`, `name`,
-`description`, and `scenarios`. Calling the next method begins the separate
-Slice Implementation stages:
+The result is immutable JSON-compatible data with `$schema`, `formatVersion`,
+`kind`, `name`, `description`, and `scenarios`. Default-export it from `spec.ts`,
+then run:
+
+```sh
+specter-spec export src/features
+```
+
+Implementations in any language load the resulting adjacent `spec.json`.
+TypeScript starts the separate Slice Implementation stages with
+`implementCommand`, `implementQuery`, or `implementReaction` from
+`@specter-ts/core`:
 
 ```text
-Command:  inputSchema -> store -> apply* -> handle
-Query:    inputSchema -> outputSchema -> store -> apply* -> handle
-Reaction: outputSchema -> plugin -> store -> apply* -> handle
+implementCommand(specification):  inputSchema -> store -> apply* -> handle
+implementQuery(specification):    inputSchema -> outputSchema -> store -> apply* -> handle
+implementReaction(specification): outputSchema -> plugin -> store -> apply* -> handle
 ```
 
 An omitted schema argument or a type argument such as
@@ -70,7 +82,7 @@ untrusted transport input and public output.
 ## Command specification
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -92,14 +104,14 @@ export const addTodoSpec = createCommandSlice('addTodo')
 ```
 
 An accepted Command Scenario must expect at least one Event. A rejected
-Command Scenario must expect no Events. `reject.reason`, when present, is
+Command Scenario must expect no Events. `reject.reason` is required and is
 matched exactly by the Scenario runner. Invalid schema input is transport
 validation, not a rejected domain Scenario.
 
 ## Query specification
 
 ```ts
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export const todosQuerySpec = createQuerySlice('todosQuery')
   .description('Lists visible todos by status.')
@@ -126,7 +138,7 @@ private Slice State or a raw database row.
 ## Reaction specification
 
 ```ts
-import { createReactionSlice, event } from '@specter-ts/core/spec'
+import { createReactionSlice, event } from '@specter-ts/spec'
 
 function completedTodoEvents(count: number) {
   return Array.from({ length: count }, (_, index) => {

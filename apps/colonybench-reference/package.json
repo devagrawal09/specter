@@ -3,13 +3,15 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
-    "build": "vite build",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "dev": "pnpm spec:build && vite dev",
+    "build": "pnpm spec:build && vite build",
+    "test": "pnpm spec:build && vitest run",
+    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "spec:build": "specter-spec export src"
   },
   "dependencies": {
     "@specter-ts/core": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@libsql/client": "^0.17.3",
     "zod": "^4.4.3"

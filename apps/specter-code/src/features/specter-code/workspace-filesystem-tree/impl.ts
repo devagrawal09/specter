@@ -1,4 +1,5 @@
-import workspaceFilesystemTreeSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -22,7 +23,9 @@ type WorkspaceFilesystemTreeState = {
   nodes: WorkspaceFilesystemNode[]
 }
 
-const workspaceFilesystemTree = workspaceFilesystemTreeSpec
+const workspaceFilesystemTree = implementQuery<'workspaceFilesystemTree'>(
+  specification,
+)
   .inputSchema(
     z.object({
       workspaceId: z.string(),

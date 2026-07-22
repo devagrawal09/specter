@@ -8,7 +8,8 @@ import {
   twilioOutboundMessageRequestedEvent,
   twilioOutboundMessageSentEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 import { twilioOutboundPlugin } from './twilio-outbound-plugin.server'
 
 export type SendTwilioOutboundEffect = {
@@ -27,73 +28,74 @@ export const narayanTwilioOutboundReactionMessages = sqliteTable(
   },
 )
 
-const sendTwilioOutboundReaction = spec
-  .outputSchema(
-    z.object({
-      type: z.literal('sendTwilioOutbound'),
-      payload: z.object({
-        outboundMessageId: z.string(),
-        to: z.string(),
-        body: z.string(),
+const sendTwilioOutboundReaction =
+  implementReaction<'sendTwilioOutboundReaction'>(specification)
+    .outputSchema(
+      z.object({
+        type: z.literal('sendTwilioOutbound'),
+        payload: z.object({
+          outboundMessageId: z.string(),
+          to: z.string(),
+          body: z.string(),
+        }),
       }),
-    }),
-  )
-  .plugin(twilioOutboundPlugin)
-  .store(sqliteSliceStore)
-  .apply(twilioOutboundMessageRequestedEvent, async (event, db) => {
-    const payload = event.payload
-    await db
-      .insert(narayanTwilioOutboundReactionMessages)
-      .values({
-        outboundMessageId: payload.outboundMessageId,
-        to: payload.to,
-        body: payload.body,
-        status: 'requested',
-      })
-      .onConflictDoNothing()
-      .run()
-  })
-  .apply(twilioOutboundMessageSentEvent, async (event, db) => {
-    await db
-      .update(narayanTwilioOutboundReactionMessages)
-      .set({ status: 'sent' })
-      .where(
-        eq(
-          narayanTwilioOutboundReactionMessages.outboundMessageId,
-          event.payload.outboundMessageId,
-        ),
-      )
-      .run()
-  })
-  .apply(twilioOutboundMessageFailedEvent, async (event, db) => {
-    await db
-      .update(narayanTwilioOutboundReactionMessages)
-      .set({ status: 'failed' })
-      .where(
-        eq(
-          narayanTwilioOutboundReactionMessages.outboundMessageId,
-          event.payload.outboundMessageId,
-        ),
-      )
-      .run()
-  })
-  .handle(async (db) => {
-    const rows = await db
-      .select()
-      .from(narayanTwilioOutboundReactionMessages)
-      .where(eq(narayanTwilioOutboundReactionMessages.status, 'requested'))
-      .all()
-    const message = rows[0]
-    if (!message) return undefined
+    )
+    .plugin(twilioOutboundPlugin)
+    .store(sqliteSliceStore)
+    .apply(twilioOutboundMessageRequestedEvent, async (event, db) => {
+      const payload = event.payload
+      await db
+        .insert(narayanTwilioOutboundReactionMessages)
+        .values({
+          outboundMessageId: payload.outboundMessageId,
+          to: payload.to,
+          body: payload.body,
+          status: 'requested',
+        })
+        .onConflictDoNothing()
+        .run()
+    })
+    .apply(twilioOutboundMessageSentEvent, async (event, db) => {
+      await db
+        .update(narayanTwilioOutboundReactionMessages)
+        .set({ status: 'sent' })
+        .where(
+          eq(
+            narayanTwilioOutboundReactionMessages.outboundMessageId,
+            event.payload.outboundMessageId,
+          ),
+        )
+        .run()
+    })
+    .apply(twilioOutboundMessageFailedEvent, async (event, db) => {
+      await db
+        .update(narayanTwilioOutboundReactionMessages)
+        .set({ status: 'failed' })
+        .where(
+          eq(
+            narayanTwilioOutboundReactionMessages.outboundMessageId,
+            event.payload.outboundMessageId,
+          ),
+        )
+        .run()
+    })
+    .handle(async (db) => {
+      const rows = await db
+        .select()
+        .from(narayanTwilioOutboundReactionMessages)
+        .where(eq(narayanTwilioOutboundReactionMessages.status, 'requested'))
+        .all()
+      const message = rows[0]
+      if (!message) return undefined
 
-    return {
-      type: 'sendTwilioOutbound' as const,
-      payload: {
-        outboundMessageId: message.outboundMessageId,
-        to: message.to,
-        body: message.body,
-      },
-    }
-  })
+      return {
+        type: 'sendTwilioOutbound' as const,
+        payload: {
+          outboundMessageId: message.outboundMessageId,
+          to: message.to,
+          body: message.body,
+        },
+      }
+    })
 
 export default sendTwilioOutboundReaction

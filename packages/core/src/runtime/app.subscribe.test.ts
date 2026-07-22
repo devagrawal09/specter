@@ -14,7 +14,7 @@ import {
   createQuerySlice,
   createReactionSlice,
   event,
-} from '../spec-entry'
+} from '../definition'
 import { createSpecterApp } from './app'
 
 const anySchema = {

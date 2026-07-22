@@ -1,4 +1,5 @@
-import askQuestionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { createMemorySliceStore } from '../../../testing/memory-slice-store'
@@ -9,7 +10,7 @@ const questionOptionSchema = z.object({
   label: z.string(),
 })
 
-const askQuestion = askQuestionSpec
+const askQuestion = implementCommand<'askQuestion'>(specification)
   .inputSchema(
     z.object({
       questionId: z.string(),
