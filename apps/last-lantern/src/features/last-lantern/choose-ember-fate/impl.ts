@@ -5,14 +5,16 @@ import {
   lanternTestCompletedEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { chooseEmberFateSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createLastLanternMemoryStore(() => ({
-  recovered: false,
-  completed: false,
-}))
+export const { store: chooseEmberFateStore, layer: chooseEmberFateStoreLayer } =
+  createLastLanternMemoryStore('chooseEmberFate', () => ({
+    recovered: false,
+    completed: false,
+  }))
 
-export const chooseEmberFate = chooseEmberFateSpec
+export const chooseEmberFate = implementCommand(specification)
   .inputSchema(
     z
       .object({
@@ -21,7 +23,7 @@ export const chooseEmberFate = chooseEmberFateSpec
       })
       .strict(),
   )
-  .store(store)
+  .store(chooseEmberFateStore)
   .apply(lanternCheckpointRecoveredEvent, async (_event, state) => {
     state.recovered = true
   })

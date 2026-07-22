@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -84,3 +84,5 @@ export const lanternTableQuerySpec = createQuerySlice('lanternTableQuery')
       ],
     },
   })
+
+export default lanternTableQuerySpec

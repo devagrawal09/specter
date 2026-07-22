@@ -167,9 +167,18 @@ importers:
       '@specter-ts/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@specter-ts/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@specter-ts/spec':
+        specifier: workspace:*
+        version: link:../../packages/spec
       '@specter-ts/sqlite':
         specifier: workspace:*
         version: link:../../packages/sqlite
+      effect:
+        specifier: 4.0.0-beta.78
+        version: 4.0.0-beta.78
       hono:
         specifier: 4.12.19
         version: 4.12.19

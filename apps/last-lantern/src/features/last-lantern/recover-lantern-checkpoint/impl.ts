@@ -5,18 +5,22 @@ import {
   lanternCheckpointRecoveredEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { recoverLanternCheckpointSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createLastLanternMemoryStore(() => ({
+export const {
+  store: recoverLanternCheckpointStore,
+  layer: recoverLanternCheckpointStoreLayer,
+} = createLastLanternMemoryStore('recoverLanternCheckpoint', () => ({
   ready: false,
   recovered: false,
 }))
 
-export const recoverLanternCheckpoint = recoverLanternCheckpointSpec
+export const recoverLanternCheckpoint = implementCommand(specification)
   .inputSchema(
     z.object({ recoveredAt: z.string().datetime({ offset: true }) }).strict(),
   )
-  .store(store)
+  .store(recoverLanternCheckpointStore)
   .apply(emberCaughtEvent, async (_event, state) => {
     state.ready = true
   })

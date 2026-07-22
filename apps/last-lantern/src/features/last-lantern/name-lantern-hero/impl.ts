@@ -1,14 +1,16 @@
 import { z } from 'zod'
 import { lanternHeroNamedEvent, lanternTestStartedEvent } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { nameLanternHeroSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createLastLanternMemoryStore(() => ({
-  started: false,
-  named: false,
-}))
+export const { store: nameLanternHeroStore, layer: nameLanternHeroStoreLayer } =
+  createLastLanternMemoryStore('nameLanternHero', () => ({
+    started: false,
+    named: false,
+  }))
 
-export const nameLanternHero = nameLanternHeroSpec
+export const nameLanternHero = implementCommand(specification)
   .inputSchema(
     z
       .object({
@@ -17,7 +19,7 @@ export const nameLanternHero = nameLanternHeroSpec
       })
       .strict(),
   )
-  .store(store)
+  .store(nameLanternHeroStore)
   .apply(lanternTestStartedEvent, async (_event, state) => {
     state.started = true
   })

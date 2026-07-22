@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -64,3 +64,5 @@ export const recordLanternSpeechSpec = createCommandSlice('recordLanternSpeech')
       reject: { reason: 'That utterance has already been recorded' },
     },
   )
+
+export default recordLanternSpeechSpec

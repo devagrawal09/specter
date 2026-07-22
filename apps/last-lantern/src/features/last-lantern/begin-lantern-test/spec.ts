@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -19,3 +19,5 @@ export const beginLanternTestSpec = createCommandSlice('beginLanternTest')
       reject: { reason: 'The Last Lantern has already begun' },
     },
   )
+
+export default beginLanternTestSpec

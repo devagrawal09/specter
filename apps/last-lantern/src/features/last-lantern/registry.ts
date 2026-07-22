@@ -1,16 +1,40 @@
-import type { EventLogAdapter } from '@specter-ts/core'
-import { immediateReactionScheduler } from '@specter-ts/memory'
-import { approachEmberSpirit } from './approach-ember-spirit/impl'
-import { beginLanternTest } from './begin-lantern-test/impl'
-import { chooseEmberFate } from './choose-ember-fate/impl'
-import { lastLanternEventDefinitions } from './events'
-import { lanternTableQuery } from './lantern-table-query/impl'
-import { nameLanternHero } from './name-lantern-hero/impl'
-import { recordLanternSpeech } from './record-lantern-speech/impl'
-import { recoverLanternCheckpoint } from './recover-lantern-checkpoint/impl'
-import { resolveLanternRoll } from './resolve-lantern-roll/impl'
+import { Layer } from 'effect'
 
-export const lastLanternRegistrations = [
+import {
+  approachEmberSpirit,
+  approachEmberSpiritStoreLayer,
+} from './approach-ember-spirit/impl'
+import {
+  beginLanternTest,
+  beginLanternTestStoreLayer,
+} from './begin-lantern-test/impl'
+import {
+  chooseEmberFate,
+  chooseEmberFateStoreLayer,
+} from './choose-ember-fate/impl'
+import { lastLanternEventDefinitions } from './events'
+import {
+  lanternTableQuery,
+  lanternTableQueryStoreLayer,
+} from './lantern-table-query/impl'
+import {
+  nameLanternHero,
+  nameLanternHeroStoreLayer,
+} from './name-lantern-hero/impl'
+import {
+  recordLanternSpeech,
+  recordLanternSpeechStoreLayer,
+} from './record-lantern-speech/impl'
+import {
+  recoverLanternCheckpoint,
+  recoverLanternCheckpointStoreLayer,
+} from './recover-lantern-checkpoint/impl'
+import {
+  resolveLanternRoll,
+  resolveLanternRollStoreLayer,
+} from './resolve-lantern-roll/impl'
+
+export const lastLanternRegistrations = {
   beginLanternTest,
   nameLanternHero,
   approachEmberSpirit,
@@ -19,15 +43,24 @@ export const lastLanternRegistrations = [
   chooseEmberFate,
   recordLanternSpeech,
   lanternTableQuery,
-] as const
+} as const
 
-export function createLastLanternAppConfig(eventLog: EventLogAdapter) {
-  return {
-    events: lastLanternEventDefinitions,
-    eventLog,
-    schedule: immediateReactionScheduler,
-    slices: lastLanternRegistrations,
-  } as const
+export const lastLanternAppConfig = {
+  events: lastLanternEventDefinitions,
+  slices: lastLanternRegistrations,
+} as const
+
+export function createLastLanternStoreLayer() {
+  return Layer.mergeAll(
+    beginLanternTestStoreLayer,
+    nameLanternHeroStoreLayer,
+    approachEmberSpiritStoreLayer,
+    resolveLanternRollStoreLayer,
+    recoverLanternCheckpointStoreLayer,
+    chooseEmberFateStoreLayer,
+    recordLanternSpeechStoreLayer,
+    lanternTableQueryStoreLayer,
+  )
 }
 
-export type LastLanternAppConfig = ReturnType<typeof createLastLanternAppConfig>
+export type LastLanternAppConfig = typeof lastLanternAppConfig

@@ -4,13 +4,17 @@ import {
   lanternPlayerSpokeEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { recordLanternSpeechSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createLastLanternMemoryStore(() => ({
+export const {
+  store: recordLanternSpeechStore,
+  layer: recordLanternSpeechStoreLayer,
+} = createLastLanternMemoryStore('recordLanternSpeech', () => ({
   utteranceIds: new Set<string>(),
 }))
 
-export const recordLanternSpeech = recordLanternSpeechSpec
+export const recordLanternSpeech = implementCommand(specification)
   .inputSchema(
     z
       .object({
@@ -21,7 +25,7 @@ export const recordLanternSpeech = recordLanternSpeechSpec
       })
       .strict(),
   )
-  .store(store)
+  .store(recordLanternSpeechStore)
   .apply(lanternPlayerSpokeEvent, async (event, state) => {
     state.utteranceIds.add(event.payload.utteranceId)
   })

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -208,3 +208,5 @@ export const resolveLanternRollSpec = createCommandSlice('resolveLanternRoll')
       reject: { reason: 'No matching physical roll is pending' },
     },
   )
+
+export default resolveLanternRollSpec

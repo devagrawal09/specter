@@ -1,16 +1,18 @@
 {
   "name": "@specter/last-lantern",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "type": "module",
   "license": "MIT",
   "scripts": {
+    "predev": "pnpm spec:build",
     "dev": "vite dev",
-    "build": "vite build --mode client && vite build",
+    "build": "pnpm spec:build && vite build --mode client && vite build",
     "start": "node dist/index.js",
     "preview": "vite preview",
-    "test": "vitest run",
-    "typecheck": "tsc --noEmit",
+    "test": "pnpm spec:build && vitest run",
+    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "spec:build": "node ../../packages/spec/dist/cli.js export src/features",
     "format": "biome format",
     "lint": "biome lint",
     "check": "biome check"
@@ -24,7 +26,10 @@
     "@solidjs/web": "2.0.0-beta.13",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
+    "@specter-ts/observability": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
+    "effect": "4.0.0-beta.78",
     "hono": "4.12.19",
     "solid-js": "2.0.0-beta.13",
     "zod": "^4.4.3"

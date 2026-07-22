@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -48,3 +48,5 @@ export const recoverLanternCheckpointSpec = createCommandSlice(
       reject: { reason: 'The checkpoint has already been recovered' },
     },
   )
+
+export default recoverLanternCheckpointSpec

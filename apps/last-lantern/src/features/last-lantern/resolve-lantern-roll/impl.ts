@@ -8,19 +8,23 @@ import {
   runeTrialSucceededEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { resolveLanternRollSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type Pending = {
   challenge: 'read-runes' | 'catch-ember'
   sides: 6 | 20
   target: number
 }
-const store = createLastLanternMemoryStore(() => ({
+export const {
+  store: resolveLanternRollStore,
+  layer: resolveLanternRollStoreLayer,
+} = createLastLanternMemoryStore('resolveLanternRoll', () => ({
   pending: new Map<string, Pending>(),
   resolved: new Set<string>(),
 }))
 
-export const resolveLanternRoll = resolveLanternRollSpec
+export const resolveLanternRoll = implementCommand(specification)
   .inputSchema(
     z
       .object({
@@ -31,7 +35,7 @@ export const resolveLanternRoll = resolveLanternRollSpec
       })
       .strict(),
   )
-  .store(store)
+  .store(resolveLanternRollStore)
   .apply(lanternRollRequestedEvent, async (event, state) => {
     state.pending.set(event.payload.rollId, {
       challenge: event.payload.challenge,

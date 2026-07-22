@@ -6,15 +6,19 @@ import {
   lanternTestStartedEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { approachEmberSpiritSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createLastLanternMemoryStore(() => ({
+export const {
+  store: approachEmberSpiritStore,
+  layer: approachEmberSpiritStoreLayer,
+} = createLastLanternMemoryStore('approachEmberSpirit', () => ({
   started: false,
   named: false,
   approached: false,
 }))
 
-export const approachEmberSpirit = approachEmberSpiritSpec
+export const approachEmberSpirit = implementCommand(specification)
   .inputSchema(
     z
       .object({
@@ -24,7 +28,7 @@ export const approachEmberSpirit = approachEmberSpiritSpec
       })
       .strict(),
   )
-  .store(store)
+  .store(approachEmberSpiritStore)
   .apply(lanternTestStartedEvent, async (_event, state) => {
     state.started = true
   })

@@ -16,7 +16,8 @@ import {
   runeTrialSucceededEvent,
 } from '../events'
 import { createLastLanternMemoryStore } from '../memory-store'
-import { lanternTableQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 const stage = z.enum([
   'not-started',
@@ -58,7 +59,10 @@ type TableState = {
   transcript: Array<z.infer<typeof transcriptItem>>
 }
 
-const store = createLastLanternMemoryStore<TableState>(() => ({
+export const {
+  store: lanternTableQueryStore,
+  layer: lanternTableQueryStoreLayer,
+} = createLastLanternMemoryStore<TableState>('lanternTableQuery', () => ({
   stage: 'not-started',
   heroName: null,
   approach: null,
@@ -70,7 +74,7 @@ const store = createLastLanternMemoryStore<TableState>(() => ({
   transcript: [],
 }))
 
-export const lanternTableQuery = lanternTableQuerySpec
+export const lanternTableQuery = implementQuery(specification)
   .inputSchema(z.object({}).strict())
   .outputSchema(
     z
@@ -87,7 +91,7 @@ export const lanternTableQuery = lanternTableQuerySpec
       })
       .strict(),
   )
-  .store(store)
+  .store(lanternTableQueryStore)
   .apply(lanternTestStartedEvent, async (_event, state) => {
     state.stage = 'name-hero'
   })

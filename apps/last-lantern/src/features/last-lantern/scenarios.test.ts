@@ -1,26 +1,30 @@
 import { createSpecterApp } from '@specter-ts/core'
 import { testSliceImplementations } from '@specter-ts/core/testing'
-import { createMemoryEventLog } from '@specter-ts/memory'
+import { createMemoryEventLogLayer } from '@specter-ts/memory'
+import { Effect, Layer } from 'effect'
 import { expect, test } from 'vitest'
+
 import { lastLanternEventDefinitions } from './events'
-import { resetLastLanternMemoryStores } from './memory-store'
 import {
-  createLastLanternAppConfig,
+  createLastLanternStoreLayer,
+  lastLanternAppConfig,
   lastLanternRegistrations,
 } from './registry'
 
 testSliceImplementations(lastLanternRegistrations, {
   events: lastLanternEventDefinitions,
-  runScenario: async <T>(run: () => Promise<T>) => {
-    resetLastLanternMemoryStores()
-    return run()
-  },
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) =>
+    Effect.runPromise(
+      program.pipe(
+        Effect.provide(createLastLanternStoreLayer()),
+      ) as Effect.Effect<T, unknown, never>,
+    ),
 })
 
 test('commits the complete two-roll success path through the real Specter app', async () => {
-  resetLastLanternMemoryStores()
   const app = await createSpecterApp(
-    createLastLanternAppConfig(createMemoryEventLog()),
+    lastLanternAppConfig,
+    Layer.mergeAll(createMemoryEventLogLayer(), createLastLanternStoreLayer()),
   )
   const at = '2026-07-20T20:00:00.000Z'
   const run = async (

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-20T20:00:00.000Z'
 
@@ -22,3 +22,5 @@ export const nameLanternHeroSpec = createCommandSlice('nameLanternHero')
       reject: { reason: 'The hero has already been named' },
     },
   )
+
+export default nameLanternHeroSpec

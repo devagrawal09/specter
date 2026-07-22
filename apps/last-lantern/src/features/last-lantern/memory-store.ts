@@ -1,13 +1,22 @@
-import { createMemorySliceStore } from '@specter-ts/memory'
+import type { SliceStoreService } from '@specter-ts/core'
+import { createMemorySliceStoreLayer } from '@specter-ts/memory'
+import { Context } from 'effect'
 
-const stores: Array<{ reset(sliceName?: string): void }> = []
-
-export function createLastLanternMemoryStore<T>(createState: () => T) {
-  const store = createMemorySliceStore(createState)
-  stores.push(store)
-  return store
+type LastLanternStoreIdentifier<TState> = {
+  readonly _lastLanternStoreState: TState
 }
 
-export function resetLastLanternMemoryStores() {
-  for (const store of stores) store.reset()
+export function createLastLanternMemoryStore<TState>(
+  sliceName: string,
+  createState: () => TState,
+) {
+  const store = Context.Service<
+    LastLanternStoreIdentifier<TState>,
+    SliceStoreService<Readonly<TState>, TState, unknown>
+  >(`@specter/last-lantern/${sliceName}Store`)
+
+  return {
+    store,
+    layer: createMemorySliceStoreLayer(store, createState),
+  }
 }
