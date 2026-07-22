@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const createWorkspaceSpec = createCommandSlice('createWorkspace')
   .description('Creates a workspace for posts, agents, and workspace files.')

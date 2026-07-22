@@ -1,15 +1,17 @@
 export {
   createMemoryEventLog,
+  createMemoryEventLogLayer,
   type MemoryEventLog,
   type MemoryEventLogOptions,
 } from './event-log'
 export {
-  createImmediateReactionScheduler,
-  immediateReactionScheduler,
+  createMemorySliceStoreLayer,
+  createMemorySliceStoreService,
+  type MemorySliceStoreOptions,
+  type MemorySliceStoreService,
+} from './slice-store'
+export {
+  createImmediateReactionSchedulerLayer,
+  createImmediateReactionSchedulerService,
   type ImmediateReactionSchedulerOptions,
 } from './reaction-scheduler'
-export {
-  createMemorySliceStore,
-  type MemorySliceStoreAdapter,
-  type MemorySliceStoreOptions,
-} from './slice-store'

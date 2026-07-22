@@ -40,7 +40,7 @@ Overall verdict: Specter is already effective for explicit, auditable workflows,
 | 7 | First-party HTTP/browser template | Resolved in the starter with typed Command/Query/SSE routes, JSON/error boundaries, fixed strict ports, separated Vitest/Playwright globs, browser preflight, and an executable Playwright workflow. |
 | 8 | Explicit subscription start/context semantics | Resolved in [runtime boundary guidance](../guides/runtime-boundaries.md) and the server transport, which scopes iterator activation, iteration, cancellation, and cleanup. |
 | 9 | Conformance remediation and propagation tooling | Resolved by position/path-aware conformance guidance plus `analyzeEventPropagation(...)` and `formatEventPropagation(...)` in `@specter-ts/core/testing`. |
-| 10 | Event/Reaction/projection observability | Resolved by `@specter-ts/observability`, including a framework-agnostic development panel for persisted Events, cursor lag, subscriptions, Reaction runs, replay/catch-up, and outbox attempts. |
+| 10 | Event/Reaction/projection observability | Resolved by `@specter-ts/observability`: TypeScript and Go runtimes send metadata through the observation-only protocol to one persistent collector, whose read-only dashboard and CLI show activity, lag, failures, and causal traces. |
 | 11 | Idempotency and concurrency primitives | Resolved by `idempotencyKey`, durable commit receipts, `expectedVersion`, and serialized/optimistic Event Log adapter behavior. |
 | 12 | Prominent schema-mode tradeoffs | Resolved in [runtime boundary guidance](../guides/runtime-boundaries.md#schema-modes), the canonical Specter agent skill, and untrusted-boundary starter schemas. |
 
@@ -224,15 +224,3 @@ The initiating command's facts can already be durable when a reaction fails and 
 - Only ED Ops implements browser push from the runtime subscription; the other two demonstrate runtime invalidation in integration tests and typed browser refresh after commands.
 - The immediate in-process schedulers prove reaction execution and idleness, not crash-safe delivery.
 - Playwright executable overrides are environment-specific and intentionally documented rather than treated as Specter defects.
-
-## Detailed artifacts
-
-- ED Ops app: `/tmp/specter-app-evals/ed-ops/apps/ed-ops-evaluation`
-- ED Ops report: `/tmp/specter-app-evals/ed-ops/docs/evaluations/ed-ops-specter-report.md`
-- ED Ops build log: `/tmp/specter-app-evals/ed-ops/apps/ed-ops-evaluation/BUILD_LOG.md`
-- Cold Chain app: `/tmp/specter-app-evals/cold-chain/apps/cold-chain-evaluation`
-- Cold Chain report: `/tmp/specter-app-evals/cold-chain/docs/evaluations/cold-chain-specter-report.md`
-- Cold Chain build log: `/tmp/specter-app-evals/cold-chain/apps/cold-chain-evaluation/BUILD_LOG.md`
-- Claims app: `/tmp/specter-app-evals/claims/apps/claims-evaluation`
-- Claims report: `/tmp/specter-app-evals/claims/docs/evaluations/claims-specter-report.md`
-- Claims build log: `/tmp/specter-app-evals/claims/apps/claims-evaluation/BUILD_LOG.md`

@@ -1,6 +1,7 @@
-import publishAgentRunReplySpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -36,15 +37,10 @@ type PublishAgentRunReplyState = {
   }[]
 }
 
-const publishAgentRunReply = publishAgentRunReplySpec
+const publishAgentRunReply = implementReaction(specification)
   .outputSchema<RecordVisibleAgentReplyCommand>()
-  .plugin(async (dispatch) => async (payload, context) => {
-    await dispatch(payload as never, {
-      idempotencyKey: context.deliveryId,
-    })
-  })
   .store(
-    createMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
+    defineMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
   )
   .apply(agentRunRequestedEvent, async (event, state) => {
     const payload = event.payload

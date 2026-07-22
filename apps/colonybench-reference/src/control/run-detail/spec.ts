@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export const runDetailSpec = createQuerySlice('runDetail')
   .description('Returns one ColonyBench run.')
@@ -20,3 +20,5 @@ export const runDetailSpec = createQuerySlice('runDetail')
       expect: { runId: 'run-1', name: 'Run', status: 'completed' },
     },
   )
+
+export default runDetailSpec

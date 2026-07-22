@@ -2,12 +2,13 @@ import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   twilioInboundDuplicateIgnoredEvent,
   twilioInboundMessageRecordedEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 export const narayanInboundCommandMessages = sqliteTable(
   'narayan_inbound_command_messages',
@@ -17,7 +18,7 @@ export const narayanInboundCommandMessages = sqliteTable(
   },
 )
 
-const recordIncomingTwilioMessage = spec
+const recordIncomingTwilioMessage = implementCommand(specification)
   .inputSchema(
     z.object({
       inboundMessageId: z.string().min(1),

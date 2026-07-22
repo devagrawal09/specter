@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://devagrawal09.github.io/specter/sitemap.xml

@@ -5,19 +5,21 @@ import { createSpecterApp, type SpecterCommandEnvelope } from '@specter-ts/core'
 
 import {
   prepareThreadplaneReferenceDb,
-  runWithThreadplaneReferenceDb,
-  threadplaneProductionReactionScheduler,
+  threadplaneDependenciesLayer,
   threadplaneReactionTickets,
 } from '../../db/client.server'
 import { createSpecterHttpHandler } from '../../transport/specter-http.server'
-import { createThreadplaneReferenceSpecterAppConfig } from './registry'
+import { threadplaneReferenceSpecterAppConfig } from './registry'
 
 await prepareThreadplaneReferenceDb()
-const threadplaneReferenceSpecterAppConfig =
-  createThreadplaneReferenceSpecterAppConfig(
-    threadplaneProductionReactionScheduler,
-  )
-const app = await createSpecterApp(threadplaneReferenceSpecterAppConfig)
+const app = await createSpecterApp(
+  threadplaneReferenceSpecterAppConfig,
+  threadplaneDependenciesLayer(),
+)
+
+export function closeThreadplaneServerRuntime() {
+  return app.close()
+}
 
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof threadplaneReferenceSpecterAppConfig>,
@@ -29,7 +31,6 @@ async function runSpecterCommand(
 export const handleThreadplaneSpecterRequest = createSpecterHttpHandler({
   app,
   basePath: '/api/specter',
-  run: runWithThreadplaneReferenceDb,
   reactionTickets: threadplaneReactionTickets,
 })
 
@@ -82,9 +83,7 @@ const resolvePreviewPath = (workspaceId: string, filePath: string) => {
 }
 
 export async function listThreadplaneWorkspacesOnServer() {
-  return runWithThreadplaneReferenceDb(async () =>
-    app.query({ type: 'workspaceList', payload: {} }),
-  )
+  return app.query({ type: 'workspaceList', payload: {} })
 }
 
 export async function createThreadplaneWorkspaceOnServer(data: {
@@ -92,10 +91,8 @@ export async function createThreadplaneWorkspaceOnServer(data: {
   scanId: string
   name: string
 }) {
-  return runWithThreadplaneReferenceDb(async () => {
-    await runSpecterCommand({ type: 'createWorkspace', payload: data })
-    return app.query({ type: 'workspaceList', payload: {} })
-  })
+  await runSpecterCommand({ type: 'createWorkspace', payload: data })
+  return app.query({ type: 'workspaceList', payload: {} })
 }
 
 export async function createThreadplanePostOnServer(data: {
@@ -104,9 +101,7 @@ export async function createThreadplanePostOnServer(data: {
   author: { userId?: string; displayName: string }
   content: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    runSpecterCommand({ type: 'createPost', payload: data }),
-  )
+  return runSpecterCommand({ type: 'createPost', payload: data })
 }
 
 export async function replyToThreadplanePostOnServer(data: {
@@ -116,17 +111,13 @@ export async function replyToThreadplanePostOnServer(data: {
   author: { userId?: string; displayName: string }
   content: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    runSpecterCommand({ type: 'replyToPost', payload: data }),
-  )
+  return runSpecterCommand({ type: 'replyToPost', payload: data })
 }
 
 export async function listThreadplaneWorkspaceChatOnServer(data: {
   workspaceId: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    app.query({ type: 'workspaceChat', payload: data }),
-  )
+  return app.query({ type: 'workspaceChat', payload: data })
 }
 
 export async function requestThreadplaneFilesystemScanOnServer(data: {
@@ -138,29 +129,23 @@ export async function requestThreadplaneFilesystemScanOnServer(data: {
     | { type: 'agent'; agentId: string; displayName: string }
     | { type: 'system' }
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    runSpecterCommand({
-      type: 'requestWorkspaceFilesystemScan',
-      payload: data,
-    }),
-  )
+  return runSpecterCommand({
+    type: 'requestWorkspaceFilesystemScan',
+    payload: data,
+  })
 }
 
 export async function listThreadplaneFilesystemTreeOnServer(data: {
   workspaceId: string
   parentPath?: string | null
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    app.query({ type: 'workspaceFilesystemTree', payload: data }),
-  )
+  return app.query({ type: 'workspaceFilesystemTree', payload: data })
 }
 
 export async function getThreadplaneFilesystemStatusOnServer(data: {
   workspaceId: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    app.query({ type: 'workspaceFilesystemStatus', payload: data }),
-  )
+  return app.query({ type: 'workspaceFilesystemStatus', payload: data })
 }
 
 export async function requestThreadplaneAgentRunOnServer(data: {
@@ -174,26 +159,20 @@ export async function requestThreadplaneAgentRunOnServer(data: {
     | { type: 'agent'; agentId: string; displayName: string }
     | { type: 'system' }
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    runSpecterCommand({ type: 'requestAgentRun', payload: data }),
-  )
+  return runSpecterCommand({ type: 'requestAgentRun', payload: data })
 }
 
 export async function listThreadplaneWorkspaceAgentRunsOnServer(data: {
   workspaceId: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    app.query({ type: 'workspaceAgentRuns', payload: data }),
-  )
+  return app.query({ type: 'workspaceAgentRuns', payload: data })
 }
 
 export async function listThreadplaneAgentRunTimelineOnServer(data: {
   workspaceId: string
   runId: string
 }) {
-  return runWithThreadplaneReferenceDb(() =>
-    app.query({ type: 'agentRunTimeline', payload: data }),
-  )
+  return app.query({ type: 'agentRunTimeline', payload: data })
 }
 
 export async function readThreadplaneWorkspaceTextFileOnServer(data: {

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 export default createCommandSlice('releaseRoom')
   .description('Releases rooms from checked-in bookings.')
   .scenarios(

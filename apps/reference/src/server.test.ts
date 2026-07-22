@@ -65,6 +65,25 @@ test('handles command followed by immediate query without SQLITE_BUSY', async ()
   ])
 })
 
+test('does not expose the removed language-neutral operational API', async () => {
+  const routes = [
+    ['GET', '/specter/v1'],
+    ['GET', '/specter/v1/capabilities'],
+    ['POST', '/specter/v1/commands'],
+    ['GET', '/specter/v1/reaction-tickets/ticket-1'],
+    ['DELETE', '/specter/v1/observations'],
+  ] as const
+
+  for (const [method, path] of routes) {
+    const response = await app.request(path, { method })
+    expect(response.status, `${method} ${path}`).toBe(404)
+    expect(response.headers.get('content-type')).toContain('application/json')
+    await expect(response.json()).resolves.toEqual({
+      error: { code: 'NOT_FOUND', message: 'Route not found.' },
+    })
+  }
+})
+
 function postJson(path: string, body: unknown) {
   return app.request(path, {
     method: 'POST',

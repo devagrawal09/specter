@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-18T15:00:00.000Z'
 
@@ -86,3 +86,5 @@ export const editTopicSpec = createCommandSlice('editTopic')
       reject: { reason: 'Topic not found' },
     },
   )
+
+export default editTopicSpec

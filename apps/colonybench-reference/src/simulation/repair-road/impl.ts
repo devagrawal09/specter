@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { simulationStore } from '../store'
 
 import {
   applyBaseUpgraded,
@@ -27,60 +27,55 @@ import {
   workerSpawnedEvent,
 } from '../events'
 import { isAdjacent, rejectCommand, repairRoadSchema } from '../shared'
-import { REPAIR_AMOUNT, type ColonyBenchSimulationState } from '../state'
-import { repairRoadSpec } from './spec'
-
-export function createRepairRoad(
-  store: SliceStoreAdapter<ColonyBenchSimulationState>,
-) {
-  return repairRoadSpec
-    .inputSchema(repairRoadSchema)
-    .store(store)
-    .apply(simulationInitializedEvent, applySimulationInitialized)
-    .apply(workerMovedEvent, applyWorkerMoved)
-    .apply(workerHarvestedEvent, applyWorkerHarvested)
-    .apply(workerDepositedEvent, applyWorkerDeposited)
-    .apply(baseUpgradedEvent, applyBaseUpgraded)
-    .apply(workerSpawnedEvent, applyWorkerSpawned)
-    .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
-    .apply(roadCompletedEvent, applyRoadCompleted)
-    .apply(tickAdvancedEvent, applyTickAdvanced)
-    .apply(roadRepairedEvent, applyRoadRepaired)
-    .apply(commandRejectedEvent, applyCommandRejected)
-    .handle(async (command, state) => {
-      const world = state.worlds[command.runId]
-      if (!world)
-        return rejectCommand(command.runId, 'repairRoad', 'world_missing')
-      const worker = world.workers[command.workerId]
-      if (!worker)
-        return rejectCommand(command.runId, 'repairRoad', 'worker_missing')
-      const road = world.roads[command.roadId]
-      if (!road)
-        return rejectCommand(command.runId, 'repairRoad', 'road_missing')
-      if (!isAdjacent(worker.position, road.position)) {
-        return rejectCommand(
-          command.runId,
-          'repairRoad',
-          'worker_not_adjacent_to_road',
-        )
-      }
-      if (worker.energy <= 0)
-        return rejectCommand(command.runId, 'repairRoad', 'worker_empty')
-      if (road.hits >= road.hitsMax)
-        return rejectCommand(command.runId, 'repairRoad', 'road_full_hits')
-      const amount = Math.min(
-        REPAIR_AMOUNT,
-        worker.energy,
-        road.hitsMax - road.hits,
+import { REPAIR_AMOUNT } from '../state'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createRepairRoad = implementCommand(specification)
+  .inputSchema(repairRoadSchema)
+  .store(simulationStore)
+  .apply(simulationInitializedEvent, applySimulationInitialized)
+  .apply(workerMovedEvent, applyWorkerMoved)
+  .apply(workerHarvestedEvent, applyWorkerHarvested)
+  .apply(workerDepositedEvent, applyWorkerDeposited)
+  .apply(baseUpgradedEvent, applyBaseUpgraded)
+  .apply(workerSpawnedEvent, applyWorkerSpawned)
+  .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
+  .apply(roadCompletedEvent, applyRoadCompleted)
+  .apply(tickAdvancedEvent, applyTickAdvanced)
+  .apply(roadRepairedEvent, applyRoadRepaired)
+  .apply(commandRejectedEvent, applyCommandRejected)
+  .handle(async (command, state) => {
+    const world = state.worlds[command.runId]
+    if (!world)
+      return rejectCommand(command.runId, 'repairRoad', 'world_missing')
+    const worker = world.workers[command.workerId]
+    if (!worker)
+      return rejectCommand(command.runId, 'repairRoad', 'worker_missing')
+    const road = world.roads[command.roadId]
+    if (!road) return rejectCommand(command.runId, 'repairRoad', 'road_missing')
+    if (!isAdjacent(worker.position, road.position)) {
+      return rejectCommand(
+        command.runId,
+        'repairRoad',
+        'worker_not_adjacent_to_road',
       )
-      return [
-        roadRepairedEvent.create({
-          runId: command.runId,
-          workerId: command.workerId,
-          roadId: command.roadId,
-          amount,
-          hits: road.hits + amount,
-        }),
-      ]
-    })
-}
+    }
+    if (worker.energy <= 0)
+      return rejectCommand(command.runId, 'repairRoad', 'worker_empty')
+    if (road.hits >= road.hitsMax)
+      return rejectCommand(command.runId, 'repairRoad', 'road_full_hits')
+    const amount = Math.min(
+      REPAIR_AMOUNT,
+      worker.energy,
+      road.hitsMax - road.hits,
+    )
+    return [
+      roadRepairedEvent.create({
+        runId: command.runId,
+        workerId: command.workerId,
+        roadId: command.roadId,
+        amount,
+        hits: road.hits + amount,
+      }),
+    ]
+  })

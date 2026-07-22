@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const pendingPermissionsSpec = createQuerySlice('pendingPermissions')
   .description('Lists unresolved tool approval requests for a session.')

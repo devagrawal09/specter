@@ -1,7 +1,8 @@
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   approvalNotificationRecordedEvent,
   bookingApprovedEvent,
@@ -24,7 +25,7 @@ export const bookingActivityRows = sqliteTable('booking_activity_rows', {
   message: text('message').notNull(),
 })
 
-const bookingActivityQuery = spec
+const bookingActivityQuery = implementQuery(specification)
   .inputSchema(z.object({}))
   .outputSchema(
     z.array(

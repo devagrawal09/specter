@@ -1,1 +1,1 @@
-export { immediateReactionScheduler as reactionScheduler } from '@specter-ts/memory'
+export { createImmediateReactionSchedulerLayer as reactionSchedulerLayer } from '@specter-ts/memory'

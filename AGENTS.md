@@ -16,6 +16,13 @@ This file is public project guidance for coding agents and agent-assisted contri
 - Keep Specter examples small, explicit, and scenario-tested.
 - Prefer changes that are easy for app developers and coding agents to inspect feature-by-feature.
 
+## Architecture Changes
+
+- Backward compatibility is not a default constraint. Prefer coherent breaking changes over legacy shims when old APIs conflict with a simpler design.
+- Start from existing durable truth before adding coordination state. Make derived indexes rebuildable whenever possible.
+- Keep core semantics smaller than adapter mechanics. Put locking, leases, retries, and persistence strategy behind adapter contracts.
+- Keep optional guarantees optional. For example, wrap slow Reaction plugins with an outbox instead of forcing outbox machinery into every Reaction.
+
 ## Pull Request Workflow
 
 - Do not use GitHub issues for work tracking in this repo.

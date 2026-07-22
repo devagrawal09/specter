@@ -2,29 +2,24 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
-import { createSpecterApp } from '@specter-ts/core'
-import {
-  createDurableReactionScheduler,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
+import { createSpecterApp, EventLog } from '@specter-ts/core'
 import {
   createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
+  createSqliteReactionSchedulerLayer,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionOutbox,
+  prepareSqliteReactionScheduler,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
+import { Layer } from 'effect'
 
-import { runWithSqliteDb } from './db/specter-sqlite'
-import { createBookingSpecterAppConfig } from './features/bookings/registry'
+import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
+import { bookingSpecterAppConfig } from './features/bookings/registry'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
   createSqliteReactionTicketStore,
   prepareSqliteReactionTicketStore,
 } from './transport/specter-reaction-tickets-sqlite.server'
-import * as schema from './db/schema'
 import './styles.css?url'
 
 const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
@@ -35,33 +30,26 @@ const operationalSqliteClient = createClient({ url: sqliteUrl })
 await prepareSpecterSqlite(sqliteClient)
 await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
-await prepareSqliteReactionOutbox(operationalSqliteClient)
+await prepareSqliteReactionScheduler(operationalSqliteClient)
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
-const productionDb = drizzle(sqliteClient, {
-  schema,
-})
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
-const durableSchedule = createDurableReactionScheduler(
-  createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
-    context: operationalContext,
-  }),
-  {
-    onBackgroundError: (cause) =>
-      console.error('Specter Reaction worker failed', cause),
-  },
+const reactionSchedulerLayer = createSqliteReactionSchedulerLayer(
+  operationalSqliteClient,
+  { context: operationalContext },
 )
 const specterApp = await createSpecterApp(
-  createBookingSpecterAppConfig(persistence.eventLog, (run) =>
-    durableSchedule((context) =>
-      runWithSqliteDb(productionDb, () => run(context)),
-    ),
+  bookingSpecterAppConfig,
+  Layer.mergeAll(
+    Layer.succeed(EventLog, persistence.eventLog),
+    reactionSchedulerLayer,
+    createSqliteSliceStoreLayer(persistence.context),
   ),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
   app: specterApp,
   basePath: '/api',
-  run: (operation) => runWithSqliteDb(productionDb, operation),
+  run: (operation) => operation(),
   reactionTickets: createSqliteReactionTicketStore(operationalSqliteClient, {
     context: operationalContext,
   }),
@@ -133,19 +121,17 @@ async function seedRooms() {
     },
   ]
 
-  await runWithSqliteDb(productionDb, async () => {
-    for (const room of rooms) {
-      try {
-        const execution = await specterApp.command({
-          type: 'createRoom',
-          payload: room,
-        })
-        await execution.reactions
-      } catch (cause) {
-        if (!messageFromCause(cause).includes('already in use')) {
-          throw cause
-        }
+  for (const room of rooms) {
+    try {
+      const execution = await specterApp.command({
+        type: 'createRoom',
+        payload: room,
+      })
+      await execution.reactions
+    } catch (cause) {
+      if (!messageFromCause(cause).includes('already in use')) {
+        throw cause
       }
     }
-  })
+  }
 }

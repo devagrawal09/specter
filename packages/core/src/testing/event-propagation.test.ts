@@ -1,13 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, it } from 'vitest'
 
-import type { SliceStoreAdapter } from '../adapters'
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, createQuerySlice, event } from '../spec-entry'
+import { createCommandSlice, createQuerySlice, event } from '../definition'
 import {
   analyzeEventPropagation,
   formatEventPropagation,
 } from './event-propagation'
+import { createTestSliceStore } from './test-slice-store'
 
 const schema = {
   '~standard': {
@@ -17,23 +17,7 @@ const schema = {
   },
 } as StandardSchemaV1
 
-function store(): SliceStoreAdapter<Record<string, unknown>> {
-  const state = {}
-  const adapter: SliceStoreAdapter<Record<string, unknown>> = {
-    async get() {
-      return {
-        write: state,
-        read: state,
-        lastAppliedOrder: async () => 0,
-        setLastAppliedOrder: async () => undefined,
-      }
-    },
-    async transaction(sliceName, run) {
-      return run(await adapter.get(sliceName))
-    },
-  }
-  return adapter
-}
+const store = createTestSliceStore<Record<string, unknown>>({})
 
 describe('Event propagation analysis', () => {
   it('names every producer scenario, Given example, and apply handler affected by an Event payload change', () => {
@@ -47,7 +31,7 @@ describe('Event propagation analysis', () => {
         expect: [event('todo-added', { todoId: 'todo-1' })],
       })
       .inputSchema<{ todoId: string }>()
-      .store(store())
+      .store(store.tag)
       .handle(async (input) => [todoAdded.create(input)])
     const todosQuery = createQuerySlice('todosQuery')
       .description('Lists todos.')
@@ -59,13 +43,13 @@ describe('Event propagation analysis', () => {
       })
       .inputSchema<Record<string, never>>()
       .outputSchema<readonly { todoId: string }[]>()
-      .store(store())
+      .store(store.tag)
       .apply(todoAdded, async () => undefined)
       .handle(async () => [{ todoId: 'todo-1' }])
 
     const [impact] = analyzeEventPropagation({
       events: [todoAdded],
-      slices: [addTodo, todosQuery],
+      slices: { addTodo, todosQuery },
     })
 
     expect(impact).toMatchObject({
@@ -133,13 +117,13 @@ describe('Event propagation analysis', () => {
         },
       )
       .inputSchema<Record<string, never>>()
-      .store(store())
+      .store(store.tag)
       .apply(todoAdded, async () => undefined)
       .handle(async () => [todoAdded.create({ todoId: 'todo-2' })])
 
     const [impact] = analyzeEventPropagation({
       events: [todoAdded],
-      slices: [addTodo],
+      slices: { addTodo },
     })
 
     expect(impact?.producedBy).toMatchObject([
@@ -161,11 +145,11 @@ describe('Event propagation analysis', () => {
   it('rejects duplicate and unknown Event catalogs with remediation context', () => {
     const todoAdded = createEventDefinition('todo-added', schema)
     expect(() =>
-      analyzeEventPropagation({ events: [todoAdded, todoAdded], slices: [] }),
+      analyzeEventPropagation({ events: [todoAdded, todoAdded], slices: {} }),
     ).toThrow('registered more than once')
     expect(() =>
       analyzeEventPropagation(
-        { events: [todoAdded], slices: [] },
+        { events: [todoAdded], slices: {} },
         'todo-removed',
       ),
     ).toThrow('Register its EventDefinition first')

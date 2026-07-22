@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 function completedTodoEvents(count: number) {
   return Array.from({ length: count }, (_, index) => {
@@ -18,6 +18,7 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       given: [],
       when: { milestone: 4 },
       expect: [],
+      reject: { reason: 'Todo cheer milestone must be a multiple of 5' },
     },
     {
       description:
@@ -25,6 +26,7 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       given: completedTodoEvents(4),
       when: { milestone: 5 },
       expect: [],
+      reject: { reason: 'Todo cheer milestone has not been reached' },
     },
     {
       description: 'Rejects a cheer milestone that was already created.',
@@ -37,6 +39,7 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       ],
       when: { milestone: 5 },
       expect: [],
+      reject: { reason: 'Todo cheer milestone already exists' },
     },
     {
       description:
@@ -59,5 +62,8 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       ],
       when: { milestone: 5 },
       expect: [],
+      reject: { reason: 'Todo cheer milestone has not been reached' },
     },
   )
+
+export default createTodoCheerSpec

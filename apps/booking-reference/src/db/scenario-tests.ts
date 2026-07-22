@@ -1,8 +1,13 @@
 import { createClient } from '@libsql/client/sqlite3'
 import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { migrate } from 'drizzle-orm/libsql/migrator'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { runWithSqliteDb } from './specter-sqlite'
+import { Effect } from 'effect'
+import { createSqliteDatabaseContext } from '@specter-ts/sqlite'
+
+import { createSqliteSliceStoreLayer } from './specter-sqlite'
 import * as schema from './schema'
 
 export type SqliteScenarioOptions = {
@@ -10,8 +15,11 @@ export type SqliteScenarioOptions = {
 }
 
 export function sqliteScenario(options: SqliteScenarioOptions) {
-  return async <T>(run: () => Promise<T>) => {
-    const sqlite = createClient({ url: 'file::memory:' })
+  return async <T>(program: Effect.Effect<T, unknown, unknown>) => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-booking-'))
+    const sqlite = createClient({
+      url: `file:${join(directory, 'scenario.db')}`,
+    })
 
     try {
       const db = drizzle(sqlite, { schema })
@@ -20,9 +28,16 @@ export function sqliteScenario(options: SqliteScenarioOptions) {
           options.migrationsFolder ?? join(process.cwd(), 'drizzle'),
       })
 
-      return await runWithSqliteDb(db, run)
+      return await Effect.runPromise(
+        program.pipe(
+          Effect.provide(
+            createSqliteSliceStoreLayer(createSqliteDatabaseContext(sqlite)),
+          ),
+        ) as Effect.Effect<T, unknown, never>,
+      )
     } finally {
       sqlite.close()
+      rmSync(directory, { recursive: true, force: true })
     }
   }
 }

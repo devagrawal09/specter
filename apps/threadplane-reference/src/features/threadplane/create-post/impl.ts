@@ -1,10 +1,11 @@
-import createPostSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postCreatedEvent } from '../events'
 
-const createPost = createPostSpec
+const createPost = implementCommand(specification)
   .inputSchema(
     z.object({
       postId: z.string(),
@@ -16,7 +17,7 @@ const createPost = createPostSpec
       content: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const content = command.content.trim()
 

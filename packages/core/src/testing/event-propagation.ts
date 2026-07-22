@@ -29,7 +29,7 @@ export type EventPropagation = {
 
 export type EventPropagationInput = {
   readonly events: readonly ApplyEventDefinition[]
-  readonly slices: readonly SliceRegistration[]
+  readonly slices: Readonly<Record<string, SliceRegistration>>
 }
 
 /**
@@ -66,7 +66,7 @@ export function analyzeEventPropagation(
     const scenarioExamples: EventScenarioReference[] = []
     const consumedBy: EventApplyReference[] = []
 
-    for (const slice of input.slices) {
+    for (const slice of Object.values(input.slices)) {
       for (const [applyIndex, apply] of slice.apply.entries()) {
         if (apply.event.type === definition.type) {
           consumedBy.push({

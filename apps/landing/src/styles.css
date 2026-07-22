@@ -140,6 +140,17 @@ main,
   padding: 2px 8px;
 }
 
+.topbar__link {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.topbar__link:hover {
+  color: var(--accent);
+}
+
 .topnav {
   display: flex;
   gap: 4px;
@@ -169,6 +180,7 @@ main,
   background: var(--accent);
   padding: 8px 14px;
   border-radius: 8px;
+  white-space: nowrap;
 }
 
 .topbar__cta:hover {
@@ -213,6 +225,24 @@ h3 {
 /* ---------- hero ---------- */
 .hero {
   padding-top: clamp(48px, 7vw, 88px);
+}
+
+.preview-badge {
+  display: inline-flex;
+  margin: 0 0 16px;
+  padding: 5px 10px;
+  border: 1px solid rgba(246, 193, 119, 0.38);
+  border-radius: 999px;
+  color: var(--amber);
+  background: rgba(246, 193, 119, 0.07);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.preview-badge--center {
+  margin-inline: auto;
 }
 
 .eyebrow {
@@ -305,47 +335,93 @@ h3 {
   color: var(--accent);
 }
 
-.command {
-  display: inline-flex;
-  align-items: stretch;
-  max-width: 100%;
+.agent-prompt {
+  position: relative;
+  display: inline-grid;
+  max-width: min(100%, 670px);
+  min-inline-size: 0;
+  margin: 0;
+  padding: 0;
   border: 1px solid var(--line);
   border-radius: 9px;
-  overflow: hidden;
   background: #05070a;
 }
 
-.command__text {
-  display: inline-flex;
+.agent-prompt__all {
+  display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
+  padding: 11px 120px 11px 16px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--ink);
+  background: transparent;
   font-family: var(--mono);
   font-size: 14px;
-  color: var(--ink);
-  padding: 11px 16px;
-  min-width: 0;
-  overflow-x: auto;
+  text-align: left;
   white-space: nowrap;
+  cursor: pointer;
 }
 
-.command__prompt {
+.agent-prompt__lead {
   color: var(--accent);
 }
 
-.command__copy {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--ink-dim);
-  background: var(--panel-bar);
-  border: none;
-  border-left: 1px solid var(--line);
-  padding: 0 16px;
-  cursor: pointer;
-  transition: color 0.15s ease;
-  flex-shrink: 0;
+.agent-prompt__code {
+  min-width: 0;
+  overflow-x: auto;
+  color: var(--ink);
 }
 
-.command__copy:hover {
+.agent-prompt__copy {
+  position: absolute;
+  right: 14px;
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.agent-prompt__command {
+  position: absolute;
+  z-index: 2;
+  right: 10px;
+  bottom: -30px;
+  padding: 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  opacity: 0;
+  color: var(--ink-dim);
+  background: var(--panel-bar);
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  pointer-events: none;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease;
+}
+
+.agent-prompt:hover .agent-prompt__command,
+.agent-prompt:focus-within .agent-prompt__command {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.agent-prompt__all:hover .agent-prompt__copy,
+.agent-prompt__command:hover {
+  color: var(--accent);
+}
+
+.agent-prompt:has(.agent-prompt__command:hover) .agent-prompt__copy {
+  color: var(--ink-faint);
+}
+
+.btn--text {
+  color: var(--ink-dim);
+  padding-inline: 4px;
+}
+
+.btn--text:hover {
   color: var(--accent);
 }
 
@@ -618,8 +694,27 @@ h3 {
   margin: 0 auto 26px;
 }
 
-.cta .command {
+.cta .agent-prompt {
   margin: 0 auto;
+}
+
+.cta__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px 20px;
+  margin-top: 28px;
+}
+
+.cta__links a {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.cta__links a:hover {
+  color: var(--accent);
 }
 
 .cta__note {
@@ -669,6 +764,22 @@ h3 {
 }
 
 /* ---------- responsive ---------- */
+@media (max-width: 1240px) {
+  .topbar {
+    gap: 16px;
+    padding-inline: 24px;
+  }
+
+  .brand__tag {
+    display: none;
+  }
+
+  .topnav__link {
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+}
+
 @media (max-width: 900px) {
   .stage__grid {
     grid-template-columns: 1fr;
@@ -691,11 +802,37 @@ h3 {
   .grid--4 {
     grid-template-columns: 1fr;
   }
-  .command {
+  .agent-prompt {
     width: 100%;
   }
-  .command__text {
-    flex: 1;
+
+  .agent-prompt__all {
+    display: block;
+    padding-right: 16px;
+    white-space: normal;
+  }
+
+  .agent-prompt__lead {
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .agent-prompt__code {
+    display: block;
+    overflow: visible;
+    overflow-wrap: anywhere;
+  }
+
+  .agent-prompt__copy {
+    display: none;
+  }
+
+  .agent-prompt__command {
+    position: static;
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+    margin: 0 8px 8px;
   }
 
   .hero__title {

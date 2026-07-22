@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const changeTodoCompletionSpec = createCommandSlice(
   'changeTodoCompletion',
@@ -27,12 +27,14 @@ export const changeTodoCompletionSpec = createCommandSlice(
       ],
       when: { todoId: 'todo-1', completed: true },
       expect: [],
+      reject: { reason: 'Todo completion is already in requested state' },
     },
     {
       description: 'Rejects a completion change for a missing todo.',
       given: [],
       when: { todoId: 'missing', completed: true },
       expect: [],
+      reject: { reason: 'Todo not found' },
     },
     {
       description: 'Rejects a completion change for a removed todo.',
@@ -42,5 +44,8 @@ export const changeTodoCompletionSpec = createCommandSlice(
       ],
       when: { todoId: 'todo-1', completed: true },
       expect: [],
+      reject: { reason: 'Todo not found' },
     },
   )
+
+export default changeTodoCompletionSpec

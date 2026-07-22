@@ -1,7 +1,8 @@
-import workspaceListSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceCreatedEvent } from '../events'
 
 type WorkspaceListItem = {
@@ -17,10 +18,10 @@ type WorkspaceListState = {
   workspaces: WorkspaceListItem[]
 }
 
-const workspaceList = workspaceListSpec
+const workspaceList = implementQuery(specification)
   .inputSchema(z.object({}))
   .outputSchema<WorkspaceListItem[]>()
-  .store(createMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
+  .store(defineMemorySliceStore<WorkspaceListState>(() => ({ workspaces: [] })))
   .apply(workspaceCreatedEvent, async (event, state) => {
     const payload = event.payload
 

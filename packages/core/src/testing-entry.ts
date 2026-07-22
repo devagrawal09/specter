@@ -1,8 +1,13 @@
 export {
   analyzeEventPropagation,
+  AdapterConformanceFailure,
+  eventLogConformance,
   eventsFor,
   formatEventPropagation,
   replay,
+  sliceStoreConformance,
+  testEventLogService,
+  testSliceStoreService,
   testSliceImplementation,
   testSliceImplementations,
 } from './testing'
@@ -16,4 +21,5 @@ export type {
   ReactionScenario,
   ScenarioEvent,
   ScenarioTestOptions,
+  SliceStoreConformanceOptions,
 } from './testing'

@@ -1,5 +1,7 @@
 # Dependencies
 node_modules/
+node_modules
+**/node_modules
 .pnpm-store/
 
 # Build outputs and generated caches
@@ -15,6 +17,7 @@ dist-ssr/
 coverage/
 playwright-report/
 test-results/
+**/spec.json
 
 # Local environment and secrets
 .env

@@ -1,7 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, test } from 'vitest'
 
-import type { SliceStoreAdapter } from '../adapters'
+import { createTestSliceStore } from '../testing/test-slice-store'
 import { createCommandSlice, createEventDefinition, event } from './index'
 
 function identitySchema<T>(): StandardSchemaV1<T, T> {
@@ -12,28 +12,6 @@ function identitySchema<T>(): StandardSchemaV1<T, T> {
       validate: (value) => ({ value: value as T }),
     },
   }
-}
-
-function memoryStore<TState extends object>(
-  state: TState,
-): SliceStoreAdapter<TState> {
-  let lastAppliedOrder = 0
-  const adapter: SliceStoreAdapter<TState> = {
-    async get() {
-      return {
-        write: state,
-        read: state,
-        lastAppliedOrder: async () => lastAppliedOrder,
-        setLastAppliedOrder: async (order) => {
-          lastAppliedOrder = order
-        },
-      }
-    },
-    async transaction(sliceName, run) {
-      return run(await adapter.get(sliceName))
-    },
-  }
-  return adapter
 }
 
 describe('Slice specifications', () => {
@@ -53,16 +31,18 @@ describe('Slice specifications', () => {
 
     const firstState = { count: 0 }
     const secondState = { count: 100 }
+    const firstStore = createTestSliceStore(firstState)
+    const secondStore = createTestSliceStore(secondState)
     const first = specification
       .inputSchema(identitySchema<{ amount: number }>())
-      .store(memoryStore(firstState))
+      .store(firstStore.tag)
       .apply(countChanged, async (applied, state) => {
         state.count += applied.payload.amount
       })
       .handle(async (command) => [countChanged.create(command)])
     const second = specification
       .inputSchema(identitySchema<{ amount: number }>())
-      .store(memoryStore(secondState))
+      .store(secondStore.tag, { eager: true })
       .apply(countChanged, async (applied, state) => {
         state.count -= applied.payload.amount
       })
@@ -82,9 +62,9 @@ describe('Slice specifications', () => {
     expect(first.scenarios).toBe(specification.scenarios)
     expect(second.scenarios).toBe(specification.scenarios)
     expect(first.apply).not.toBe(second.apply)
+    expect(first.eager).toBe(false)
+    expect(second.eager).toBe(true)
 
-    const firstStore = await first.store.get(first.name)
-    const secondStore = await second.store.get(second.name)
     await first.apply[0].handle(
       {
         type: 'count-changed',
@@ -92,7 +72,7 @@ describe('Slice specifications', () => {
         id: 'first-event',
         recordedAt: '1970-01-01T00:00:00.000Z',
       },
-      firstStore.write,
+      firstState,
     )
     await second.apply[0].handle(
       {
@@ -101,7 +81,7 @@ describe('Slice specifications', () => {
         id: 'second-event',
         recordedAt: '1970-01-01T00:00:00.000Z',
       },
-      secondStore.write,
+      secondState,
     )
 
     expect(firstState.count).toBe(3)

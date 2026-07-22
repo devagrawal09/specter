@@ -1,10 +1,11 @@
-import recordFilesystemNodeDiscoveredSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { filesystemNodeDiscoveredEvent } from '../events'
 
-const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
+const recordFilesystemNodeDiscovered = implementCommand(specification)
   .inputSchema(
     z.object({
       scanId: z.string(),
@@ -17,7 +18,7 @@ const recordFilesystemNodeDiscovered = recordFilesystemNodeDiscoveredSpec
       modifiedAt: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     if (
       command.path.startsWith('/') ||

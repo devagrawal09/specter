@@ -114,7 +114,7 @@ test('routes CLI commands through the server and updates active subscriptions', 
   await iterator.return?.()
 })
 
-test('rejects untrusted browser requests before command dispatch', async () => {
+test('requires JSON and the Worklog client header before command dispatch', async () => {
   const envelope = {
     type: 'addTask',
     payload: {
@@ -143,35 +143,12 @@ test('rejects untrusted browser requests before command dispatch', async () => {
     }),
   )
 
-  const crossOrigin = await app.request('/api/command', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      origin: 'https://hostile.example',
-      [specterClientHeader]: specterClientHeaderValue,
-    },
-    body: JSON.stringify({ envelope }),
-  })
-  expect(crossOrigin.status).toBe(403)
-
   const missingClientHeader = await app.request('/api/command', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ envelope }),
   })
   expect(missingClientHeader.status).toBe(403)
-
-  const untrustedHost = await app.fetch(
-    new Request('http://worklog.example/api/command', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        [specterClientHeader]: specterClientHeaderValue,
-      },
-      body: JSON.stringify({ envelope }),
-    }),
-  )
-  expect(untrustedHost.status).toBe(403)
 
   const tasks = await postJson('/api/query', {
     envelope: {
@@ -182,6 +159,23 @@ test('rejects untrusted browser requests before command dispatch', async () => {
   expect(await tasks.json()).not.toEqual(
     expect.arrayContaining([expect.objectContaining({ id: 'hostile-task' })]),
   )
+})
+
+test('accepts a private proxy hostname and HTTPS browser origin', async () => {
+  const proxyRequest = await app.fetch(
+    new Request('http://worklog.tailnet.example/api/query', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://worklog.tailnet.example',
+        [specterClientHeader]: specterClientHeaderValue,
+      },
+      body: JSON.stringify({
+        envelope: { type: 'scoreQuery', payload: { limit: 50 } },
+      }),
+    }),
+  )
+  expect(proxyRequest.status).toBe(200)
 })
 
 function postJson(path: string, body: unknown) {

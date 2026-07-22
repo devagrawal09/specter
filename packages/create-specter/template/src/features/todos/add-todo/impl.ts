@@ -1,12 +1,13 @@
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { todoAddedEvent } from '../events'
-import { addTodoSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 const maxTitleLength = 120
 
-export const addTodo = addTodoSpec
+export const addTodo = implementCommand(specification)
   .inputSchema(
     z.object({
       todoId: z.string().min(1),

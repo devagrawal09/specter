@@ -5,28 +5,36 @@ TypeScript. The **Compiler Console** variation presents Specter's explicit
 application pipeline:
 
 ```text
-specification → implementation → scenario tests → event log → typed client
+specification → portable JSON → implementation → scenario tests → event log → typed envelope
 ```
 
-The examples follow the current Specter API. A Slice Specification in `spec.ts`
-imports from `@specter-ts/core/spec` and contains only its name, description,
-and exact scenarios. A separate `impl.ts` completes schemas, a Reaction Plugin
-when applicable, private Slice State, apply handlers, and the terminal handler.
+The examples follow the Specter 0.4 API. A Slice Specification in `spec.ts`
+imports from `@specter-ts/spec` and contains only its name, description, and
+exact scenarios. `specter-spec export` writes the adjacent, language-neutral
+`spec.json`; TypeScript and Go implementations consume that same portable
+contract. A separate `impl.ts` completes schemas, a Reaction Plugin when
+applicable, private Slice State, apply handlers, and the terminal handler.
 `testSliceImplementations` runs the selected implementations against their
 specifications, while app construction validates conformance before exposing
 the runtime.
 
 ## What the page communicates
 
-- Specter is a TypeScript framework for vertically sliced, event-sourced apps.
+- Specter provides portable Slice specifications for vertically sliced,
+  event-sourced apps, with TypeScript authoring and TypeScript/Go runtimes.
 - Command, Query, and Reaction Slices separate the immutable “what” from the
   executable “how.”
 - Scenario Events use exact payload examples and Event types use kebab-case.
 - Accepted Commands append domain facts to one ordered Event Log.
 - Each Slice owns private state and catches up by applying relevant Events.
 - Reaction Plugins interpret typed outputs, including external API calls.
-- Completed Command and Query Slices form a flat, typed client contract.
-- The Todo starter is created with `npm create specter@latest my-app`.
+- Event Logs own committed work, Slice cursors own completion, and scheduler
+  adapters coordinate Reaction execution.
+- The unified dashboard presents exact GWT behavior beside digest-correlated
+  runtime telemetry.
+- Completed Slices expose typed command, query, and subscription envelopes.
+- The public preview points agents at the 0.4 source on `main`; npm remains on
+  the stable 0.2.1 release.
 
 ## Design
 

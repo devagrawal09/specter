@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "kind": "observations.batch",
+  "requestId": "invalid-event-attributes-request",
+  "observations": [{
+    "observationId": "invalid-event-attributes-observation",
+    "sequence": 1,
+    "observedAt": "2026-07-18T12:00:00.000Z",
+    "source": { "application": "todo", "environment": "test", "runtimeLanguage": "typescript", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+    "kind": "events.persisted",
+    "operationId": "operation-1",
+    "events": [{ "eventId": "event-1", "type": "todo-added", "order": 1, "recordedAt": "2026-07-18T12:00:00.000Z", "commitVersion": 1, "attributes": ["not", "an", "object"] }]
+  }]
+}

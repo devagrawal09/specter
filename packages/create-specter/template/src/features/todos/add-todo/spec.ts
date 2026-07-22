@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const maxTitleLength = 120
 
@@ -34,3 +34,5 @@ export const addTodoSpec = createCommandSlice('addTodo')
       },
     },
   )
+
+export default addTodoSpec

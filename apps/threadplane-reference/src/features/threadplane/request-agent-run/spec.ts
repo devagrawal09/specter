@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const requestAgentRunSpec = createCommandSlice('requestAgentRun')
   .description('Requests an Agent Run for workspace agent work.')

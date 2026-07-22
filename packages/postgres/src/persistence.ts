@@ -4,18 +4,19 @@ import {
   type PostgresPool,
 } from './database'
 import {
-  createPostgresEventLog,
+  createPostgresEventLogService,
   preparePostgresEventLog,
   type PostgresEventLogOptions,
 } from './event-log'
 import {
-  createPostgresSliceStore,
+  createPostgresSliceStoreService,
   preparePostgresSliceStore,
   type PostgresSliceStoreOptions,
 } from './slice-store'
 import {
   createPostgresReactionOutboxStore,
   preparePostgresReactionOutbox,
+  type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
 
 export async function prepareSpecterPostgres(pool: PostgresPool) {
@@ -29,22 +30,30 @@ export function createSpecterPostgresPersistence(
   options: Omit<PostgresEventLogOptions, 'context'> = {},
 ) {
   const context = createPostgresDatabaseContext(pool, options)
-  const eventLog = createPostgresEventLog(pool, { ...options, context })
+  const eventLog = createPostgresEventLogService(pool, { ...options, context })
 
   return {
     context,
     eventLog,
-    createReactionOutboxStore<TPayload>() {
-      return createPostgresReactionOutboxStore<TPayload>(pool, { context })
+    createReactionOutboxStore<TPayload>(
+      outboxOptions: Omit<
+        PostgresReactionOutboxOptions<TPayload>,
+        'context' | keyof PostgresDatabaseOptions
+      > = {},
+    ) {
+      return createPostgresReactionOutboxStore<TPayload>(pool, {
+        ...outboxOptions,
+        context,
+      })
     },
-    createSliceStore<TWriteState, TReadState = Readonly<TWriteState>>(
+    createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,
       storeOptions: Omit<
         PostgresSliceStoreOptions<TWriteState, TReadState>,
         'context' | keyof PostgresDatabaseOptions
       > = {},
     ) {
-      return createPostgresSliceStore(pool, createState, {
+      return createPostgresSliceStoreService(pool, createState, {
         ...storeOptions,
         context,
       })

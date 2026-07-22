@@ -6,13 +6,19 @@ export default defineConfig({
     lib: {
       entry: {
         index: './src/index.ts',
-        spec: './src/spec-entry.ts',
+        effect: './src/effect-entry.ts',
         testing: './src/testing-entry.ts',
       },
       formats: ['es'],
     },
     rollupOptions: {
-      external: [/^@effect\//, /^effect(\/.*)?$/, /^node:/, 'vitest'],
+      external: [
+        /^@effect\//,
+        /^effect(\/.*)?$/,
+        /^@specter-ts\/spec$/,
+        /^node:/,
+        'vitest',
+      ],
     },
   },
 })

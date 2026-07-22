@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { prepareSpecterSqlite, runWithSqliteDb } from '../../db/specter-sqlite'
+import { prepareSpecterSqlite } from '../../db/specter-sqlite'
 import {
   createFileArtifactStore,
   listSessionArtifacts,
@@ -36,18 +36,16 @@ describe('file-backed Specter Code artifacts', () => {
       await prepareSpecterSqlite(db)
       await seedSession(db)
 
-      const result = await runWithSqliteDb(db, () =>
-        writeToolOutputArtifact(store, {
-          sessionId: 'session-1',
-          messageId: 'message-1',
-          toolName: 'shell',
-          title: 'shell stdout',
-          content: 'abcdef',
-          maxInlineBytes: 3,
-          createdAt: '2026-06-25T12:00:00.000Z',
-          eventOrder: 7,
-        }),
-      )
+      const result = await writeToolOutputArtifact(db, store, {
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        toolName: 'shell',
+        title: 'shell stdout',
+        content: 'abcdef',
+        maxInlineBytes: 3,
+        createdAt: '2026-06-25T12:00:00.000Z',
+        eventOrder: 7,
+      })
 
       expect(result.inlineContent).toBe('abc')
       expect(result.truncated).toBe(true)
@@ -73,8 +71,9 @@ describe('file-backed Specter Code artifacts', () => {
         readArtifactContent(store, result.artifact!.path),
       ).resolves.toBe('abcdef')
 
-      const artifacts = await runWithSqliteDb(db, () =>
-        listSessionArtifacts({ sessionId: 'session-1' }),
+      const artifacts = await listSessionArtifacts(
+        { sessionId: 'session-1' },
+        db,
       )
       expect(artifacts).toEqual([result.artifact])
     } finally {
@@ -90,18 +89,16 @@ describe('file-backed Specter Code artifacts', () => {
       await prepareSpecterSqlite(db)
       await seedSession(db)
 
-      const result = await runWithSqliteDb(db, () =>
-        writeToolOutputArtifact(store, {
-          sessionId: 'session-1',
-          messageId: 'message-1',
-          toolName: 'read',
-          title: 'read output',
-          content: 'ok',
-          maxInlineBytes: 10,
-          createdAt: '2026-06-25T12:05:00.000Z',
-          eventOrder: 8,
-        }),
-      )
+      const result = await writeToolOutputArtifact(db, store, {
+        sessionId: 'session-1',
+        messageId: 'message-1',
+        toolName: 'read',
+        title: 'read output',
+        content: 'ok',
+        maxInlineBytes: 10,
+        createdAt: '2026-06-25T12:05:00.000Z',
+        eventOrder: 8,
+      })
 
       expect(result).toEqual({
         inlineContent: 'ok',
@@ -109,8 +106,9 @@ describe('file-backed Specter Code artifacts', () => {
         artifact: undefined,
       })
 
-      const artifacts = await runWithSqliteDb(db, () =>
-        listSessionArtifacts({ sessionId: 'session-1' }),
+      const artifacts = await listSessionArtifacts(
+        { sessionId: 'session-1' },
+        db,
       )
       expect(artifacts).toEqual([])
     } finally {

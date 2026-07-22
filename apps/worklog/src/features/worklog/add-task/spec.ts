@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-18T15:00:00.000Z'
 
@@ -55,3 +55,5 @@ export const addTaskSpec = createCommandSlice('addTask')
       reject: { reason: 'Task already exists' },
     },
   )
+
+export default addTaskSpec

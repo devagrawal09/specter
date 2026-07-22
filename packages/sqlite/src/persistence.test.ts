@@ -1,18 +1,23 @@
 import { createClient } from '@libsql/client'
 import {
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
 } from '@specter-ts/core'
-import { afterEach, describe, expect, it } from 'vitest'
+import {
+  eventLogConformance,
+  sliceStoreConformance,
+} from '@specter-ts/core/testing'
+import { Effect, Fiber } from 'effect'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
 } from './persistence'
-import { createSqliteEventLog } from './event-log'
 
 const clients: ReturnType<typeof createClient>[] = []
 const tempDirectories: string[] = []
@@ -27,216 +32,250 @@ afterEach(() => {
 async function setup() {
   const directory = mkdtempSync(join(tmpdir(), 'specter-sqlite-'))
   tempDirectories.push(directory)
-  const url = `file:${join(directory, 'specter.db')}`
-  const client = createClient({ url })
+  const client = createClient({ url: `file:${join(directory, 'specter.db')}` })
   clients.push(client)
   await prepareSpecterSqlite(client)
-  return { client, url, ...createSpecterSqlitePersistence(client) }
+  return createSpecterSqlitePersistence(client)
 }
 
 describe('Specter SQLite persistence', () => {
-  it('commits independent Event and Slice cursor writes', async () => {
-    const { eventLog, createSliceStore } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
-
-    await eventLog.transaction(async (transaction) => {
-      await store.transaction('counter', async (slice) => {
-        slice.write.count += 1
-        await slice.setLastAppliedOrder(0)
-      })
-      await transaction.append(
-        [{ type: 'counter-incremented', payload: { amount: 1 } }],
-        { expectedVersion: 0 },
-      )
+  it('prepares the durable Reaction scheduler with the combined schema', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-sqlite-'))
+    tempDirectories.push(directory)
+    const client = createClient({
+      url: `file:${join(directory, 'specter.db')}`,
     })
+    clients.push(client)
 
-    expect(await eventLog.currentVersion()).toBe(1)
-    await store.transaction('counter', async (slice) => {
-      expect(slice.read).toEqual({ count: 1 })
-    })
+    await prepareSpecterSqlite(client)
+
+    const result = await client.execute(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name = 'specter_reaction_scheduler'`,
+    )
+    expect(result.rows.map((row) => row.name)).toEqual([
+      'specter_reaction_scheduler',
+    ])
   })
 
-  it('keeps published Slice State when a concurrent Event causes append conflict', async () => {
-    const { eventLog, createSliceStore, url } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
-    const competingClient = createClient({ url })
-    clients.push(competingClient)
-    const competingEventLog = createSqliteEventLog(competingClient)
+  it('passes native Event Log conformance', async () => {
+    const { eventLog } = await setup()
+    await Effect.runPromise(eventLogConformance(Effect.succeed(eventLog)))
+  })
 
-    await expect(
-      eventLog.transaction(async (transaction) => {
-        const slice = await store.get('counter')
-        slice.write.count = 9
-        await slice.setLastAppliedOrder(1)
-
-        await competingEventLog.append([
-          { type: 'competing-event', payload: { source: 'other-process' } },
-        ])
-
-        await transaction.append([
-          { type: 'counter-incremented', payload: { amount: 9 } },
-        ])
+  it('passes native Slice Store conformance', async () => {
+    const { createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+    await Effect.runPromise(
+      sliceStoreConformance({
+        createService: Effect.succeed(store),
+        write: async (state, value: number) => {
+          state.count = value
+        },
+        read: async (state) => state.count,
+        value: 7,
       }),
-    ).rejects.toBeInstanceOf(SpecterVersionConflictError)
-
-    expect(await eventLog.currentVersion()).toBe(1)
-    const slice = await store.get('counter')
-    expect(slice.read).toEqual({ count: 9 })
-    expect(await slice.lastAppliedOrder()).toBe(1)
+    )
   })
 
-  it('allows project-owned SQLite writes during a logical Event Log transaction', async () => {
-    const { eventLog, client, url } = await setup()
-    const projectClient = createClient({ url })
-    clients.push(projectClient)
-    await client.execute(
-      'CREATE TABLE project_state (id TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  it('rolls back state and cursor when projection transaction fails', async () => {
+    const { createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+    await Effect.runPromise(
+      store.transaction('counter', (write, _read, _cursor, publish) =>
+        Effect.gen(function* () {
+          write.count = 3
+          yield* publish(2)
+        }),
+      ),
+    )
+    await Effect.runPromise(
+      Effect.result(
+        store.transaction('counter', (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 9
+            yield* publish(4)
+            return yield* Effect.fail('rollback')
+          }),
+        ),
+      ),
     )
 
-    await eventLog.transaction(async (transaction) => {
-      await projectClient.execute({
-        sql: 'INSERT INTO project_state (id, value) VALUES (?, ?)',
-        args: ['state-1', 'published'],
-      })
-      await transaction.append([
-        { type: 'project-state-published', payload: { id: 'state-1' } },
-      ])
-    })
-
-    const state = await client.execute(
-      "SELECT id, value FROM project_state WHERE id = 'state-1'",
+    const visible = await Effect.runPromise(
+      store.read('counter', (read, cursor) =>
+        Effect.succeed({ count: read.count, cursor }),
+      ),
     )
-    expect(state.rows).toEqual([{ id: 'state-1', value: 'published' }])
-    expect(await eventLog.currentVersion()).toBe(1)
+    expect(visible).toEqual({ count: 3, cursor: 2 })
   })
 
-  it('supports reentrant logical Event Log transactions', async () => {
-    const { eventLog } = await setup()
+  it('joins nested Event Log appends to Slice Store transactions', async () => {
+    const { eventLog, createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
 
-    await eventLog.transaction(async (outer) => {
-      await eventLog.transaction(async (inner) => {
-        expect(await inner.currentVersion()).toBe(0)
-      })
-      await outer.append([{ type: 'nested-work-completed', payload: {} }])
-    })
+    await Effect.runPromise(
+      Effect.result(
+        store.transaction('reaction', (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 1
+            yield* eventLog.append([
+              { type: 'nested-command-recorded', payload: { value: 1 } },
+            ])
+            yield* publish(1)
+            return yield* Effect.fail('plugin-failed')
+          }),
+        ),
+      ),
+    )
 
-    expect(await eventLog.currentVersion()).toBe(1)
+    const events = await Effect.runPromise(
+      eventLog.query(0, ['nested-command-recorded']),
+    )
+    const state = await Effect.runPromise(
+      store.read('reaction', (read, cursor) =>
+        Effect.succeed({ count: read.count, cursor }),
+      ),
+    )
+    expect(events).toEqual([])
+    expect(state).toEqual({ count: 0, cursor: 0 })
   })
 
-  it('queues top-level appends behind an active command callback', async () => {
-    const { eventLog } = await setup()
-    let enterCommand = () => {}
-    const commandEntered = new Promise<void>((resolve) => {
-      enterCommand = resolve
-    })
-    let releaseCommand = () => {}
-    const commandGate = new Promise<void>((resolve) => {
-      releaseCommand = resolve
+  it('commits outbox enqueue with Slice State and cursor atomically', async () => {
+    const { createReactionOutboxStore, createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+    const outbox = createReactionOutboxStore<{ message: string }>()
+    const enqueue = outbox.enqueue({
+      id: 'notify:1',
+      idempotencyKey: 'notify:1',
+      payload: { message: 'hello' },
+      requestedAt: new Date(0),
+      availableAt: new Date(0),
     })
 
-    const command = eventLog.transaction(async (transaction) => {
-      enterCommand()
-      await commandGate
-      return transaction.append([{ type: 'command-event', payload: {} }])
-    })
-    await commandEntered
-    const directAppend = eventLog.append([
-      { type: 'direct-event', payload: {} },
-    ])
-    releaseCommand()
+    await Effect.runPromise(
+      Effect.result(
+        store.transaction('notification', (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 1
+            yield* enqueue
+            yield* publish(1)
+            return yield* Effect.fail('plugin-failed')
+          }),
+        ),
+      ),
+    )
 
-    const [commandCommit, directCommit] = await Promise.all([
-      command,
-      directAppend,
-    ])
-    expect(commandCommit.events[0]).toMatchObject({
-      order: 1,
-      type: 'command-event',
-    })
-    expect(directCommit.events[0]).toMatchObject({
-      order: 2,
-      type: 'direct-event',
-    })
+    expect(await Effect.runPromise(outbox.get('notify:1'))).toBeUndefined()
+    expect(
+      await Effect.runPromise(
+        store.read('notification', (read, cursor) =>
+          Effect.succeed({ count: read.count, cursor }),
+        ),
+      ),
+    ).toEqual({ count: 0, cursor: 0 })
+
+    await Effect.runPromise(
+      store.transaction('notification', (write, _read, _cursor, publish) =>
+        Effect.gen(function* () {
+          write.count = 1
+          yield* enqueue
+          yield* publish(1)
+        }),
+      ),
+    )
+    await Effect.runPromise(enqueue)
+
+    expect(await Effect.runPromise(outbox.list())).toHaveLength(1)
+    expect(
+      await Effect.runPromise(
+        store.read('notification', (read, cursor) =>
+          Effect.succeed({ count: read.count, cursor }),
+        ),
+      ),
+    ).toEqual({ count: 1, cursor: 1 })
   })
 
-  it('allows an Event append to reuse an existing physical transaction', async () => {
+  it('does not leak completed transaction into child fibers', async () => {
     const { context, eventLog } = await setup()
-
-    await context.transaction(() =>
-      eventLog.append([{ type: 'physically-nested-event', payload: {} }]),
+    const version = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const scope = yield* Effect.scope
+          const fiber = yield* context.transaction(() =>
+            Effect.gen(function* () {
+              yield* eventLog.append([
+                { type: 'nested-command-recorded', payload: { value: 1 } },
+              ])
+              return yield* Effect.forkIn(
+                Effect.sleep('5 millis').pipe(
+                  Effect.andThen(eventLog.currentVersion),
+                ),
+                scope,
+              )
+            }),
+          )
+          return yield* Fiber.join(fiber)
+        }),
+      ),
     )
-
-    expect(await eventLog.currentVersion()).toBe(1)
+    expect(version).toBe(1)
   })
 
-  it('persists get-based projection state and cursor in one write', async () => {
-    const { createSliceStore } = await setup()
-    const store = createSliceStore(() => ({ count: 0 }))
-    const abandoned = await store.get('counter')
-    abandoned.write.count = 9
-
-    expect((await store.get('counter')).read).toEqual({ count: 0 })
-
-    const completed = await store.get('counter')
-    completed.write.count = 3
-    await completed.setLastAppliedOrder(2)
-    const persisted = await store.get('counter')
-
-    expect(persisted.read).toEqual({ count: 3 })
-    expect(await persisted.lastAppliedOrder()).toBe(2)
-  })
-
-  it('enforces expected version and durable idempotency receipts', async () => {
+  it('returns typed failures for version and idempotency conflicts', async () => {
     const { eventLog } = await setup()
-    const first = await eventLog.append(
-      [{ type: 'todo-added', payload: { todoId: 'todo-1' } }],
-      {
+    const first = await Effect.runPromise(
+      eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
         expectedVersion: 0,
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
-      },
+      }),
     )
-    const duplicate = await eventLog.append(
-      [{ type: 'ignored', payload: {} }],
-      {
+    const duplicate = await Effect.runPromise(
+      eventLog.append([{ type: 'ignored', payload: {} }], {
         expectedVersion: 0,
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
-      },
+      }),
     )
-
-    expect(first.duplicate).toBe(false)
     expect(duplicate).toEqual({ ...first, duplicate: true })
-    await expect(
-      eventLog.append([{ type: 'other', payload: {} }], {
-        idempotencyKey: 'request-1',
-        fingerprint: 'fingerprint-2',
-      }),
-    ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
-    await expect(
-      eventLog.append([{ type: 'other', payload: {} }], {
-        expectedVersion: 0,
-      }),
-    ).rejects.toBeInstanceOf(SpecterVersionConflictError)
-    const { duplicate: _duplicate, ...commit } = first
-    expect(await eventLog.findCommit('request-1')).toEqual(commit)
+
+    const idempotency = await Effect.runPromise(
+      Effect.flip(
+        eventLog.append([{ type: 'other', payload: {} }], {
+          idempotencyKey: 'request-1',
+          fingerprint: 'fingerprint-2',
+        }),
+      ),
+    )
+    expect(idempotency).toBeInstanceOf(EventLogFailure)
+    expect(idempotency.cause).toBeInstanceOf(SpecterIdempotencyConflictError)
+
+    const version = await Effect.runPromise(
+      Effect.flip(
+        eventLog.append([{ type: 'other', payload: {} }], {
+          expectedVersion: 0,
+        }),
+      ),
+    )
+    expect(version.cause).toBeInstanceOf(SpecterVersionConflictError)
   })
 
-  it('serializes concurrent commands so only one matching expected version commits', async () => {
+  it('serializes concurrent compare-and-swap appends', async () => {
     const { eventLog } = await setup()
     const append = (id: string) =>
-      eventLog.append([{ type: 'created', payload: { id } }], {
-        expectedVersion: 0,
-      })
+      Effect.runPromise(
+        eventLog.append([{ type: 'created', payload: { id } }], {
+          expectedVersion: 0,
+        }),
+      )
 
     const results = await Promise.allSettled([append('one'), append('two')])
-
     expect(
       results.filter((result) => result.status === 'fulfilled'),
     ).toHaveLength(1)
     expect(
       results.filter((result) => result.status === 'rejected'),
     ).toHaveLength(1)
-    expect(await eventLog.currentVersion()).toBe(1)
+    expect(await Effect.runPromise(eventLog.currentVersion)).toBe(1)
   })
 })

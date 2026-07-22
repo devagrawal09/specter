@@ -1,13 +1,15 @@
 export {
   createSqliteDatabaseContext,
+  SqliteDatabaseFailure,
   type SqliteConnection,
   type SqliteDatabaseContext,
 } from './database'
 export {
-  createSqliteEventLog,
+  createSqliteEventLogLayer,
+  createSqliteEventLogService,
   prepareSqliteEventLog,
   type SqliteEventCodec,
-  type SqliteEventLog,
+  type SqliteEventLogService,
   type SqliteEventLogOptions,
 } from './event-log'
 export {
@@ -17,11 +19,20 @@ export {
 export {
   createSqliteReactionOutboxStore,
   prepareSqliteReactionOutbox,
+  type SqliteReactionOutboxCodec,
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
 export {
-  createSqliteSliceStore,
+  createSqliteReactionSchedulerLayer,
+  createSqliteReactionSchedulerService,
+  prepareSqliteReactionScheduler,
+  type SqliteReactionSchedulerOptions,
+} from './reaction-scheduler'
+export {
+  createSqliteSliceStoreLayer,
+  createSqliteSliceStoreService,
   prepareSqliteSliceStore,
   type SqliteSliceStateCodec,
+  SqliteSliceStoreFailure,
   type SqliteSliceStoreOptions,
 } from './slice-store'

@@ -34,9 +34,9 @@ This starter includes a Specter Agent Skill at `.agents/skills/specter/SKILL.md`
 Create each Slice specification in `spec.ts` with a stable API name, a human-readable description, and nonempty scenarios:
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-createCommandSlice('addTodo')
+export default createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios({
     description: 'Creates a todo with the provided title.',
@@ -48,20 +48,28 @@ createCommandSlice('addTodo')
 
 Every scenario object also needs a `description`. Scenario tests use Slice descriptions for suite names and scenario descriptions for test names.
 
-Keep `spec.ts` free of runtime schemas, Event Definitions, stores, and plugins. Add those dependencies in the adjacent `impl.ts`, using `inputSchema`/`outputSchema`, a store, repeated `apply(EventDefinition, handler)` calls, and `handle`. Apply handlers receive decoded payloads at `event.payload`.
+Keep `spec.ts` free of runtime schemas, Event Definitions, stores, and plugins.
+It must default-export exactly one specification. Project scripts run
+`specter-spec export` before development, typecheck, tests, and builds, writing
+ignored adjacent `spec.json`. Add implementation dependencies in `impl.ts`,
+load that JSON with `implementCommand`, `implementQuery`, or
+`implementReaction`, then supply `inputSchema`/`outputSchema`, a store, repeated
+`apply(EventDefinition, handler)` calls, and `handle`. Apply handlers receive
+decoded payloads at `event.payload`.
 
-Every Slice requires `spec.ts` and `impl.ts`, exported by the conventional
-`<sliceName>Spec` and `<sliceName>` names. Slice-owned Event catalogs,
-projection modules, registries, tests, schema re-exports, and migration notes
-are optional support files generated when useful; they do not replace the
-specification/implementation split.
+Every Slice requires `spec.ts` and `impl.ts`. A named `<sliceName>Spec` alias is
+optional, while the default specification export and named `<sliceName>`
+implementation export are the conventional generated shape. Slice-owned Event
+catalogs, projection modules, registries, tests, schema re-exports, and
+migration notes are optional support files generated when useful; they do not
+replace the `spec.ts` → `spec.json` → `impl.ts` boundary.
 
 Scenario Event payloads are compared exactly. Use kebab-case Event types and supply generated domain IDs or timestamps through command inputs or prior Events.
 
 ## Structure
 
 ```txt
-src/features/todos/   Todo vertical feature with two-file Slice directories
+src/features/todos/   Todo vertical feature with portable Slice directories
 src/todo-app.tsx      Solid UI that calls the project-owned envelope transport
 src/transport/        Typed JSON HTTP/SSE browser and server boundary
 src/db/schema.ts      App-owned Drizzle schema exports for migrations

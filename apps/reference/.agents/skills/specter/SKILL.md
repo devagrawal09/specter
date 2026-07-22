@@ -11,39 +11,48 @@ description: Teaches coding agents how to add and change Specter features in gen
 - Events are exact durable domain facts emitted by accepted Commands. Event Log IDs, global order, and recorded timestamps are metadata outside Event payloads.
 - A Slice Specification is the immutable structural "what": name, description, and executable Scenarios.
 - A Slice Implementation is the "how": schemas, Reaction Plugin, private Store, typed apply handlers, and handler.
-- One specification may have divergent implementations. A Specter App registers exactly one completed implementation per lower-camel-case Slice name.
+- One specification may have divergent implementations. A Specter App registers exactly one completed implementation per lower-camel-case registry key. That key owns the TypeScript operation name and must exactly match the loaded JSON specification name.
 - The Event Log is the durable source of truth. Slice State is a disposable event-derived projection.
 - Runtime seams and `createSpecterApp` are async.
 - Core is transport-agnostic. Remote UIs call a project-owned typed envelope transport; in-process apps may call the Specter App directly.
 
 ## Canonical Imports
 
-- Use `@specter-ts/core/spec` in `spec.ts` for Slice specification builders and `event(type, payload)`.
+- Use `@specter-ts/spec` in `spec.ts` for Slice specification builders, portable specification types, and `event(type, payload)`.
 - Use `@specter-ts/core` in implementations and runtime wiring for Event Definitions, app creation, envelope/reference types, adapters, and structured errors.
 - Use `@specter-ts/core/testing` for Scenario tests, focused Event catalogs, and replay helpers.
 - Use local `src/db/*` and `src/transport/*` modules for stores, persistence, Scenario database setup, HTTP/SSE transport, and schema exports.
-- Do not import `@specter-ts/core/client`; that subpath does not exist in Specter 0.3.
+- Do not import `@specter-ts/core/client`; that subpath does not exist in Specter 0.4.
 
 ## Slice Files
 
 Every Slice contract requires these two files:
 
-- `spec.ts` exports `<sliceName>Spec` and defines only `name → description → scenarios`.
-- `impl.ts` imports that specification and exports `<sliceName>` after completing the implementation stages.
+- `spec.ts` default-exports exactly one specification and defines only `name → description → scenarios`.
+- `impl.ts` imports adjacent generated `spec.json`, passes it to the kind-specific `implementCommand`, `implementQuery`, or `implementReaction` function, and exports `<sliceName>` after completing the implementation stages.
 
-Use named exports for both files. A generator may add adjacent Slice-owned
+The implementation never imports or executes `spec.ts`. Run `specter-spec export src/features` before TypeScript build, test, or typecheck so every `spec.ts` produces an adjacent ignored `spec.json`. A generator may add adjacent Slice-owned
 support files such as `events.ts`, `projection.ts`, `registry.ts`, a Scenario
 test, a database-schema re-export, or a migration checklist. Those files are
 optional support artifacts; they never replace the required `spec.ts` and
 `impl.ts` boundary.
 
-Specifications may import only `@specter-ts/core/spec` and implementation-independent domain constants. They must not import Event Definitions, schemas, stores, plugins, database/server modules, implementations, or sibling Slices.
+Specifications may import only `@specter-ts/spec` and implementation-independent domain constants. They must not import Event Definitions, schemas, stores, plugins, database/server modules, implementations, or sibling Slices. Their exported value must contain only strict portable JSON data.
+
+Start implementations with the matching kind-specific loader:
+
+```ts
+import { implementCommand } from '@specter-ts/core'
+import specification from './spec.json' with { type: 'json' }
+
+export const addTodo = implementCommand(specification)
+```
 
 Implementations follow these exact builder orders:
 
 - Command: `.inputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
 - Query: `.inputSchema(...) → .outputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
-- Reaction: `.outputSchema(...) → .plugin(...) → .store(...) → .apply(...)* → .handle(...)`
+- Reaction: `.outputSchema(...) → .plugin(...)? → .store(...) → .apply(...)* → .handle(...)`
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 
@@ -53,7 +62,7 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 - Use `event('todo-added', { todoId: 'todo-1', title: 'Ship it' })`; never call an Event Definition from `spec.ts`.
 - Event types use kebab-case; Slice names use lower camel case.
 - Scenario payloads are exact. Include every ID-shaped field and domain timestamp.
-- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and may state an exact rejection reason. Invalid schema input is not a Scenario.
+- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and must state the exact rejection reason. Invalid schema input is not a Scenario.
 - Across a Slice's Scenarios, the union of Given Event types exactly equals the implementation's apply Event types.
 - Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed.
 - Every registered Event Definition and Slice appears in executable Scenario coverage.
@@ -85,9 +94,10 @@ await execution.reactions
 
 - A Command resolves after its Events commit. `execution.reactions` separately reports aggregate Reaction completion or failure.
 - Subscriptions emit current state, fan out per subscriber, coalesce intermediate states for slow consumers, and retain the newest value.
-- Reaction effects are arbitrary plugin-defined values. Dispatching another Command is one explicit plugin pattern.
-- Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps; `context.attemptId` changes for each attempt.
+- A Reaction without an explicit Plugin must return a Command envelope; core dispatches it in the same app with `context.deliveryId` as the idempotency key. Explicit Plugins may define other effect values.
+- Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps. Retry-attempt identities belong to an optional outbox, not the core Reaction contract.
 - Same-app dispatch uses `dispatch(envelope, { idempotencyKey: context.deliveryId })`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
+- Keep Plugins Effect-native. Compose the supplied Command dispatcher directly; do not escape with `Effect.runPromise`, which loses active transaction context.
 
 ## Determinism And Transport
 
@@ -112,12 +122,23 @@ await execution.reactions
 
 1. Add or update kebab-case Event Definitions in the feature's `events.ts`.
 2. Write or update exact Scenarios in `spec.ts`.
-3. Complete the specification in `impl.ts`, keeping State private and applying each Given Event type.
-4. Register the implementation and Event Definitions.
-5. Await `createSpecterApp(config)` in runtime wiring.
-6. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
-7. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
-8. Run focused checks, then the complete project baseline.
+3. Export the specifications with `specter-spec export src/features`.
+4. Load adjacent `spec.json` with the kind-specific implementation function in `impl.ts`, keeping State private and applying each Given Event type.
+5. Register the implementation and Event Definitions.
+6. Await `createSpecterApp(config)` in runtime wiring.
+7. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
+8. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
+9. Run focused checks, then the complete project baseline.
+
+Register Slices as an object whose keys exactly match specification names:
+
+```ts
+export const registrations = { addTodo, todosQuery } as const
+```
+
+Registry keys preserve literal Command and Query envelope types even though runtime JSON loading produces a `string` name. Startup conformance rejects any key/document mismatch.
+
+The Event Log and each Reaction Slice cursor are durable truth. The scheduler is a rebuildable coordination adapter: it binds one executor per app, reconciles from durable truth, accepts commit boundaries, and lets callers await completion. The default in-memory scheduler is app-scoped. Stateless or distributed deployments provide a shared durable adapter.
 
 When an Event payload changes, run `analyzeEventPropagation(...)` from
 `@specter-ts/core/testing` and use `formatEventPropagation(...)` to enumerate

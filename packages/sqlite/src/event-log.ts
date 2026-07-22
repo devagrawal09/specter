@@ -2,16 +2,18 @@ import { randomUUID } from 'node:crypto'
 
 import type { Client } from '@libsql/client'
 import {
+  EventLog,
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
-  type EventLogAdapter,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
-  type EventLogTransaction,
+  type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createSqliteDatabaseContext,
@@ -33,7 +35,7 @@ export type SqliteEventLogOptions = {
   readonly codec?: SqliteEventCodec
 }
 
-export type SqliteEventLog = EventLogAdapter & {
+export type SqliteEventLogService = EventLogService & {
   readonly context: SqliteDatabaseContext
 }
 
@@ -61,7 +63,8 @@ export async function prepareSqliteEventLog(client: Client) {
       `CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
         ON specter_events(type, event_order)`,
       `CREATE TABLE IF NOT EXISTS specter_event_commits (
-        idempotency_key TEXT PRIMARY KEY,
+        commit_version INTEGER PRIMARY KEY,
+        idempotency_key TEXT UNIQUE,
         fingerprint TEXT,
         first_event_order INTEGER NOT NULL,
         last_event_order INTEGER NOT NULL,
@@ -72,10 +75,10 @@ export async function prepareSqliteEventLog(client: Client) {
   )
 }
 
-export function createSqliteEventLog(
+export function createSqliteEventLogService(
   client: Client,
   options: SqliteEventLogOptions = {},
-): SqliteEventLog {
+): SqliteEventLogService {
   const context = options.context ?? createSqliteDatabaseContext(client)
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
@@ -124,18 +127,30 @@ export function createSqliteEventLog(
     idempotencyKey: string,
   ): Promise<EventLogCommit | undefined> {
     const receipt = await connection.execute({
-      sql: `SELECT fingerprint, first_event_order, last_event_order
+      sql: `SELECT idempotency_key, fingerprint, first_event_order,
+          last_event_order, committed_at
         FROM specter_event_commits
         WHERE idempotency_key = ?`,
       args: [idempotencyKey],
     })
     const row = receipt.rows[0]
     if (!row) return undefined
+    return commitFromRow(connection, row as Record<string, unknown>)
+  }
+
+  async function commitFromRow(
+    connection: SqliteConnection,
+    row: Record<string, unknown>,
+  ): Promise<EventLogCommit> {
     const firstOrder = requireNumber(
       row.first_event_order,
       'first commit event order',
     )
     const version = requireNumber(row.last_event_order, 'commit version')
+    const committedAt = requireString(row.committed_at, 'commit time')
+    if (Number.isNaN(Date.parse(committedAt))) {
+      throw new Error('Expected SQLite commit time to be ISO-8601')
+    }
     const events = await connection.execute({
       sql: `SELECT id, event_order, type, payload, recorded_at
         FROM specter_events
@@ -148,12 +163,35 @@ export function createSqliteEventLog(
         fromRow(event as Record<string, unknown>),
       ),
       version,
-      idempotencyKey,
+      committedAt,
+      idempotencyKey:
+        row.idempotency_key === null
+          ? undefined
+          : requireString(row.idempotency_key, 'commit idempotency key'),
       fingerprint:
         row.fingerprint === null
           ? undefined
           : requireString(row.fingerprint, 'commit fingerprint'),
     }
+  }
+
+  async function commitsAfter(
+    connection: SqliteConnection,
+    afterVersion: number,
+  ): Promise<readonly EventLogCommit[]> {
+    const result = await connection.execute({
+      sql: `SELECT idempotency_key, fingerprint, first_event_order,
+          last_event_order, committed_at
+        FROM specter_event_commits
+        WHERE commit_version > ?
+        ORDER BY commit_version ASC`,
+      args: [afterVersion],
+    })
+    return Promise.all(
+      result.rows.map((row) =>
+        commitFromRow(connection, row as Record<string, unknown>),
+      ),
+    )
   }
 
   async function append(
@@ -208,69 +246,80 @@ export function createSqliteEventLog(
       })
     }
     const committedVersion = events.at(-1)?.order ?? version
-    if (appendOptions.idempotencyKey) {
-      await connection.execute({
-        sql: `INSERT INTO specter_event_commits (
-            idempotency_key,
-            fingerprint,
-            first_event_order,
-            last_event_order,
-            committed_at
-          ) VALUES (?, ?, ?, ?, ?)`,
-        args: [
-          appendOptions.idempotencyKey,
-          appendOptions.fingerprint ?? null,
-          events[0]?.order ?? version,
-          committedVersion,
-          now().toISOString(),
-        ],
-      })
-    }
+    const committedAt = now().toISOString()
+    await connection.execute({
+      sql: `INSERT INTO specter_event_commits (
+          commit_version,
+          idempotency_key,
+          fingerprint,
+          first_event_order,
+          last_event_order,
+          committed_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        committedVersion,
+        appendOptions.idempotencyKey ?? null,
+        appendOptions.fingerprint ?? null,
+        events[0]?.order ?? version,
+        committedVersion,
+        committedAt,
+      ],
+    })
     return {
       events,
       version: committedVersion,
+      committedAt,
       idempotencyKey: appendOptions.idempotencyKey,
       fingerprint: appendOptions.fingerprint,
       duplicate: false,
     }
   }
 
-  function appendAtomically(
-    drafts: readonly EventDraft[],
-    appendOptions?: EventLogAppendOptions,
+  function attempt<A>(
+    operation: EventLogFailure['operation'],
+    run: () => Promise<A>,
   ) {
-    return context.serialize(() =>
-      context.transaction((connection) =>
-        append(connection, drafts, appendOptions),
-      ),
-    )
-  }
-
-  function scoped(baseVersion: number): EventLogTransaction {
-    return {
-      query: (afterOrder, eventTypes) => query(client, afterOrder, eventTypes),
-      currentVersion: async () => baseVersion,
-      findCommit: (idempotencyKey) => findCommit(client, idempotencyKey),
-      append: (drafts, appendOptions) =>
-        appendAtomically(drafts, {
-          ...appendOptions,
-          expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
-        }),
-    }
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new EventLogFailure(operation, cause),
+    })
   }
 
   return {
     context,
     query: (afterOrder, eventTypes) =>
-      query(context.connection(), afterOrder, eventTypes),
-    currentVersion: () => currentVersion(context.connection()),
+      context.use((connection) =>
+        attempt('query', () => query(connection, afterOrder, eventTypes)),
+      ),
+    currentVersion: context.use((connection) =>
+      attempt('currentVersion', () => currentVersion(connection)),
+    ),
+    commitsAfter: (afterVersion) =>
+      context.use((connection) =>
+        attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),
+      ),
     findCommit: (idempotencyKey) =>
-      findCommit(context.connection(), idempotencyKey),
-    append: appendAtomically,
-    transaction: (run) =>
-      context.serialize(async () => {
-        const baseVersion = await currentVersion(client)
-        return run(scoped(baseVersion))
-      }),
+      context.use((connection) =>
+        attempt('findCommit', () => findCommit(connection, idempotencyKey)),
+      ),
+    append: (drafts, appendOptions) =>
+      context
+        .transaction((connection) =>
+          attempt('append', () => append(connection, drafts, appendOptions)),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof EventLogFailure
+              ? cause
+              : new EventLogFailure('append', cause),
+          ),
+        ),
   }
+}
+
+export function createSqliteEventLogLayer(
+  client: Client,
+  options: SqliteEventLogOptions = {},
+): Layer.Layer<EventLog> {
+  return Layer.succeed(EventLog, createSqliteEventLogService(client, options))
 }

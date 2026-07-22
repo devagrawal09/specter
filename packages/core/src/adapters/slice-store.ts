@@ -1,38 +1,65 @@
-export type SliceStore<
-  TWriteState = unknown,
-  TReadState = Readonly<TWriteState>,
-> = {
-  /** Mutable capability used only by Event apply handlers. */
-  readonly write: TWriteState
-  /** Read-only capability passed to Command, Query, and Reaction handlers. */
-  readonly read: TReadState
-  readonly lastAppliedOrder: () => Promise<number>
-  /**
-   * Atomically publishes the current staged write state with this cursor, or
-   * uses an adapter-specific idempotent recovery guarantee. A failed apply
-   * before this call must not expose partially advanced projection state.
-   */
-  readonly setLastAppliedOrder: (order: number) => Promise<void>
+import type { Context, Effect } from 'effect'
+
+/**
+ * Runtime service contract supplied for a Slice's `.store(Context.Tag)`.
+ *
+ * The adapter owns projection persistence and concurrency. Specter only
+ * requires that `transaction` publishes writes and its cursor atomically and
+ * that visible cursors never move backwards. The adapter acquires exclusion
+ * before invoking `run` and invokes it exactly once. Reaction Plugins may run
+ * inside this transaction, so optimistic callback replay is forbidden.
+ */
+export type SliceStoreService<TRead, TWrite, TError = never> = {
+  readonly read: <A, E, R>(
+    sliceName: string,
+    run: (state: TRead, cursor: number) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, TError | E, R>
+  readonly transaction: <A, E, R>(
+    sliceName: string,
+    run: (
+      write: TWrite,
+      read: () => TRead,
+      cursor: number,
+      publishCursor: (order: number) => Effect.Effect<void, TError>,
+    ) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, TError | E, R>
 }
 
-export type SliceStoreAdapter<
-  TWriteState = unknown,
-  TReadState = Readonly<TWriteState>,
-> = {
-  /** Returns an isolated staged projection view until its cursor is published. */
-  readonly get: (
-    sliceName: string,
-  ) => Promise<SliceStore<TWriteState, TReadState>>
-  /**
-   * Locally commits explicitly grouped projection work. This boundary does
-   * not make Slice State part of the authoritative Event Log transaction;
-   * failed projections remain disposable and replayable.
-   */
-  readonly transaction: <T>(
-    sliceName: string,
-    run: (store: SliceStore<TWriteState, TReadState>) => Promise<T>,
-  ) => Promise<T>
-}
+/** Minimal structural surface implemented by Effect `Context.Tag` values. */
+export type SliceStoreTag<
+  TIdentifier = unknown,
+  TService extends SliceStoreService<
+    unknown,
+    unknown,
+    unknown
+  > = SliceStoreService<unknown, unknown, unknown>,
+> = Context.Key<TIdentifier, TService>
 
-// Adapters may expose the same runtime object for `read` and `write`. Their
-// separation is a type-level capability contract, not an allocation mandate.
+export type SliceStoreRead<TStore> =
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer TRead, infer _TWrite, infer _TError>
+  >
+    ? TRead
+    : never
+
+export type SliceStoreWrite<TStore> =
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer _TRead, infer TWrite, infer _TError>
+  >
+    ? TWrite
+    : never
+
+export type SliceStoreError<TStore> =
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer _TRead, infer _TWrite, infer TError>
+  >
+    ? TError
+    : never
+
+export type SliceStoreRequirement<TStore> =
+  TStore extends SliceStoreTag<infer TIdentifier, infer _TService>
+    ? TIdentifier
+    : never

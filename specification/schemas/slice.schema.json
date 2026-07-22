@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/specification/v1/slice.schema.json",
+  "title": "Specter behavioral Slice specification v1",
+  "oneOf": [
+    { "$ref": "#/$defs/command" },
+    { "$ref": "#/$defs/query" },
+    { "$ref": "#/$defs/reaction" }
+  ],
+  "$defs": {
+    "jsonValue": {
+      "oneOf": [
+        { "type": "null" }, { "type": "boolean" }, { "type": "string" },
+        { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+        { "type": "number", "not": { "type": "integer" } },
+        { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } },
+        { "type": "object", "additionalProperties": { "$ref": "#/$defs/jsonValue" } }
+      ]
+    },
+    "event": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "eventType", "examplePayload"],
+      "properties": {
+        "kind": { "const": "scenario-event" },
+        "eventType": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+        "examplePayload": { "$ref": "#/$defs/jsonValue" }
+      }
+    },
+    "base": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "formatVersion", "kind", "name", "description", "scenarios"],
+      "properties": {
+        "$schema": { "const": "https://specter.dev/specification/v1/slice.schema.json" },
+        "formatVersion": { "const": 1 },
+        "kind": { "enum": ["command", "query", "reaction"] },
+        "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
+        "description": { "type": "string", "minLength": 1 },
+        "scenarios": { "type": "array", "minItems": 1 }
+      }
+    },
+    "commandScenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["description", "given", "when", "expect"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "given": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "when": { "$ref": "#/$defs/jsonValue" },
+        "expect": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "reject": { "type": "object", "additionalProperties": false, "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 1 } } }
+      },
+      "oneOf": [
+        { "type": "object", "properties": { "expect": { "type": "array", "minItems": 1 }, "reject": false } },
+        { "type": "object", "properties": { "expect": { "type": "array", "maxItems": 0 }, "reject": {} }, "required": ["reject"] }
+      ]
+    },
+    "queryScenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["description", "given", "when", "expect"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "given": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "when": { "$ref": "#/$defs/jsonValue" },
+        "expect": { "$ref": "#/$defs/jsonValue" }
+      }
+    },
+    "reactionScenario": {
+      "type": "object", "additionalProperties": false,
+      "required": ["description", "given", "expect"],
+      "properties": {
+        "description": { "type": "string", "minLength": 1 },
+        "given": { "type": "array", "items": { "$ref": "#/$defs/event" } },
+        "expect": { "type": "array", "items": { "$ref": "#/$defs/jsonValue" } }
+      }
+    },
+    "command": { "allOf": [{ "$ref": "#/$defs/base" }, { "type": "object", "properties": { "kind": { "const": "command" }, "scenarios": { "type": "array", "items": { "$ref": "#/$defs/commandScenario" } } } }] },
+    "query": { "allOf": [{ "$ref": "#/$defs/base" }, { "type": "object", "properties": { "kind": { "const": "query" }, "scenarios": { "type": "array", "items": { "$ref": "#/$defs/queryScenario" } } } }] },
+    "reaction": { "allOf": [{ "$ref": "#/$defs/base" }, { "type": "object", "properties": { "kind": { "const": "reaction" }, "scenarios": { "type": "array", "items": { "$ref": "#/$defs/reactionScenario" } } } }] }
+  }
+}

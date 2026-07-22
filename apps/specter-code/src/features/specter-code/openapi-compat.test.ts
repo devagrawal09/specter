@@ -1,6 +1,8 @@
 import path from 'node:path'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import {
   createOpenCodeCompatibilityReport,
@@ -8,9 +10,27 @@ import {
   type RouteSpec,
 } from './domain/openapi-compat'
 
-const openCodeOpenApiPath = path.resolve(
-  '/home/lucifer/work/active/harlan/.repos/opencode/packages/sdk/openapi.json',
-)
+let fixtureDirectory: string
+let openCodeOpenApiPath: string
+
+beforeAll(async () => {
+  fixtureDirectory = await mkdtemp(path.join(tmpdir(), 'opencode-openapi-'))
+  openCodeOpenApiPath = path.join(fixtureDirectory, 'openapi.json')
+  await writeFile(
+    openCodeOpenApiPath,
+    JSON.stringify({
+      paths: {
+        '/session': { get: {}, post: {} },
+        '/session/{sessionID}/prompt_async': { post: {} },
+        '/permission/{requestID}/reply': { post: {} },
+        '/file/content': { get: {} },
+        '/session/{sessionID}/message/{messageID}/part/{partID}': { patch: {} },
+      },
+    }),
+  )
+})
+
+afterAll(() => rm(fixtureDirectory, { recursive: true, force: true }))
 
 describe('OpenCode route compatibility inventory', () => {
   it('loads the local OpenCode OpenAPI document into normalized HTTP route specs', async () => {

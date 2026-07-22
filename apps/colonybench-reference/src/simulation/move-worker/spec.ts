@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const moveWorkerSpec = createCommandSlice('moveWorker')
   .description(
@@ -74,3 +74,5 @@ export const moveWorkerSpec = createCommandSlice('moveWorker')
       ],
     },
   )
+
+export default moveWorkerSpec

@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export const liveSimulationStatusSpec = createQuerySlice('liveSimulationStatus')
   .description('Returns the live in-memory simulation status for a run.')
@@ -16,3 +16,5 @@ export const liveSimulationStatusSpec = createQuerySlice('liveSimulationStatus')
       expect: { runId: 'run-1', initialized: true, status: 'initialized' },
     },
   )
+
+export default liveSimulationStatusSpec

@@ -41,31 +41,40 @@ export type EnqueueReactionResult<TPayload> = {
 export type ReactionOutboxStore<TPayload = unknown> = {
   enqueue(
     input: EnqueueReactionInput<TPayload>,
-  ): Promise<EnqueueReactionResult<TPayload>>
+  ): Effect.Effect<EnqueueReactionResult<TPayload>, unknown>
   claimNext(
     now: Date,
     leaseExpiresAt: Date,
-  ): Promise<ReactionOutboxClaim<TPayload> | undefined>
-  complete(jobId: string, attemptId: string, completedAt: Date): Promise<void>
+  ): Effect.Effect<ReactionOutboxClaim<TPayload> | undefined, unknown>
+  complete(
+    jobId: string,
+    attemptId: string,
+    completedAt: Date,
+  ): Effect.Effect<void, unknown>
   reschedule(
     jobId: string,
     attemptId: string,
     availableAt: Date,
     error: string,
-  ): Promise<void>
+  ): Effect.Effect<void, unknown>
   deadLetter(
     jobId: string,
     attemptId: string,
     failedAt: Date,
     error: string,
-  ): Promise<void>
-  requeueExpired(now: Date): Promise<number>
-  nextWorkAt(): Promise<Date | undefined>
-  get(jobId: string): Promise<ReactionOutboxJob<TPayload> | undefined>
+  ): Effect.Effect<void, unknown>
+  requeueExpired(now: Date): Effect.Effect<number, unknown>
+  nextWorkAt(): Effect.Effect<Date | undefined, unknown>
+  get(
+    jobId: string,
+  ): Effect.Effect<ReactionOutboxJob<TPayload> | undefined, unknown>
   list(
     status?: ReactionOutboxStatus,
-  ): Promise<readonly ReactionOutboxJob<TPayload>[]>
-  retryDeadLetter(jobId: string, availableAt: Date): Promise<void>
+  ): Effect.Effect<readonly ReactionOutboxJob<TPayload>[], unknown>
+  retryDeadLetter(
+    jobId: string,
+    availableAt: Date,
+  ): Effect.Effect<void, unknown>
 }
 
 export type ReactionOutboxAttemptContext = {
@@ -112,3 +121,4 @@ export type ReactionOutboxTransition<TPayload = unknown> =
 export type ReactionOutboxTransitionListener<TPayload = unknown> = (
   transition: ReactionOutboxTransition<TPayload>,
 ) => Promise<void> | void
+import type { Effect } from 'effect'

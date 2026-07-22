@@ -14,38 +14,45 @@ export const pipeline: PipelineStage[] = [
       'The immutable what: a named Slice, its description, and exact scenarios.',
   },
   {
-    id: 'implementation',
+    id: 'portable-contract',
     step: '02',
+    title: 'portable JSON',
+    summary:
+      'The language-neutral contract: strict JSON for every runtime and tool.',
+  },
+  {
+    id: 'implementation',
+    step: '03',
     title: 'implementation',
     summary:
       'The executable how: schemas, private state, apply handlers, and a handler.',
   },
   {
     id: 'scenario-tests',
-    step: '03',
+    step: '04',
     title: 'scenario tests',
     summary:
       'The selected implementation runs against every scenario in its specification.',
   },
   {
     id: 'event-log',
-    step: '04',
+    step: '05',
     title: 'event log',
     summary:
       "Accepted commands append domain facts to the app's ordered Event Log.",
   },
   {
-    id: 'typed-client',
-    step: '05',
-    title: 'typed client',
+    id: 'typed-envelope',
+    step: '06',
+    title: 'typed envelope',
     summary:
-      'Completed Command and Query Slices become flat, typed client methods.',
+      'Completed Slices expose typed command, query, and subscription envelopes.',
   },
 ]
 
-export const specSource = `import { createCommandSlice, event } from '@specter-ts/core/spec'
+export const specSource = `import { createCommandSlice, event } from '@specter-ts/spec'
 
-const addTodoSpec = createCommandSlice('addTodo')
+export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -67,13 +74,36 @@ const addTodoSpec = createCommandSlice('addTodo')
 
 export default addTodoSpec`
 
-export const implementationSource = `import { z } from 'zod'
+export const portableSpecSource = `{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "addTodo",
+  "description": "Adds a todo to the list.",
+  "scenarios": [
+    {
+      "description": "Creates a todo with the provided title.",
+      "given": [],
+      "when": { "todoId": "todo-1", "title": "Ship it" },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "todo-added",
+          "examplePayload": { "todoId": "todo-1", "title": "Ship it" }
+        }
+      ]
+    }
+  ]
+}`
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+export const implementationSource = `import { implementCommand } from '@specter-ts/core'
+import { z } from 'zod'
+
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { todoAddedEvent } from '../events'
-import addTodoSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
 
-const addTodo = addTodoSpec
+export const addTodo = implementCommand(specification)
   .inputSchema(
     z.object({ todoId: z.string().min(1), title: z.string() }),
   )
@@ -83,9 +113,7 @@ const addTodo = addTodoSpec
     if (!title) throw new Error('Todo title is required')
 
     return [todoAddedEvent.create({ todoId: command.todoId, title })]
-  })
-
-export default addTodo`
+  })`
 
 export const scenarioTestSource = `import { testSliceImplementations } from '@specter-ts/core/testing'
 
@@ -106,15 +134,15 @@ export const eventLog = `order  recorded              type                     p
 
 IDs, order, and recorded timestamps are Event Log metadata outside the payload.`
 
-export const reactionSource = `const todoCompletionCheer = todoCompletionCheerSpec
+export const reactionSource = `import { implementReaction } from '@specter-ts/core'
+import specification from './spec.json' with { type: 'json' }
+
+export const todoCompletionCheer = implementReaction(specification)
   .outputSchema(
     z.object({
       type: z.literal('createTodoCheer'),
       payload: z.object({ milestone: z.number().int().positive() }),
     }),
-  )
-  .plugin(async (dispatch) => async (output, context) =>
-    dispatch(output, { idempotencyKey: context.deliveryId }),
   )
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, recordTodo)
@@ -131,22 +159,31 @@ export const reactionSource = `const todoCompletionCheer = todoCompletionCheerSp
   })`
 
 export const externalApiSource = `import type { ReactionPlugin } from '@specter-ts/core'
+import { Effect } from 'effect'
 
 type WelcomeEmail = { to: string; template: 'welcome' }
 
 export const emailPlugin: ReactionPlugin<WelcomeEmail> =
-  async () => async (message, context) => {
-    const response = await fetch('https://email.example/v1/messages', {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'idempotency-key': context.deliveryId,
-      },
-      body: JSON.stringify(message),
-    })
+  () => Effect.succeed((message, context) =>
+    Effect.gen(function* () {
+      const response = yield* Effect.tryPromise(() =>
+        fetch('https://email.example/v1/messages', {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            'idempotency-key': context.deliveryId,
+          },
+          body: JSON.stringify(message),
+        }),
+      )
 
-    if (!response.ok) throw new Error('Email provider rejected the message')
-  }
+      if (!response.ok) {
+        return yield* Effect.fail(
+          new Error('Email provider rejected the message'),
+        )
+      }
+    }),
+  )
 
 // Complete a Reaction implementation with .plugin(emailPlugin).`
 
@@ -170,15 +207,27 @@ export const adapters: Adapter[] = [
   {
     slot: 'Client boundary',
     detail: 'How UI or server code reaches the completed app.',
-    swap: 'typed JSON-over-HTTP client · direct server calls',
+    swap: 'typed JSON-over-HTTP envelopes · direct in-process envelopes',
   },
   {
-    slot: 'Frontend',
+    slot: 'Reaction scheduler',
     detail:
-      'UI code depends on the client contract, not server or database modules.',
-    swap: 'Solid · React · headless',
+      'A rebuildable coordination index that wakes and serializes Reaction work.',
+    swap: 'process-local default · @specter-ts/sqlite · custom adapter',
   },
 ]
+
+export const observabilityOutput = `todo-reference / addTodo
+specification  sha256:4c6675c9d9e5…
+scenarios      2 exact Given / When / Then paths
+
+runtime
+  command.completed       12
+  reaction.run.completed   4
+  failures                 0
+
+dashboard
+  whole-Slice map · GWT lanes · activity · causal trace`
 
 export type AgentBenefit = {
   title: string
@@ -199,7 +248,7 @@ export const agentBenefits: AgentBenefit[] = [
     body: 'App construction validates registered Events, scenarios, and implementations before exposing the runtime.',
   },
   {
-    title: 'Typed client contract',
-    body: 'Command and Query Slice names become typed client methods instead of stringly typed dispatch calls.',
+    title: 'Typed envelope contract',
+    body: 'Command and Query names stay typed inside explicit envelopes across in-process and project-owned transport boundaries.',
   },
 ]

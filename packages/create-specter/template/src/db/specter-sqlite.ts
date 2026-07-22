@@ -1,77 +1,82 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
+import type { Client } from '@libsql/client/sqlite3'
+import type { SliceStoreService } from '@specter-ts/core'
+import type {
+  SqliteConnection,
+  SqliteDatabaseContext,
+} from '@specter-ts/sqlite'
 import { eq, sql } from 'drizzle-orm'
-import type { drizzle } from 'drizzle-orm/libsql/sqlite3'
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { drizzle } from 'drizzle-orm/libsql/sqlite3'
+import { Effect, Layer } from 'effect'
 
-import type * as schema from './schema'
+import * as schema from './schema'
 import { sliceCursors } from './specter-schema'
+import { sqliteSliceStore } from './specter-store'
+
+export { sqliteSliceStore } from './specter-store'
 
 export type SqliteDb = ReturnType<typeof drizzle<typeof schema>>
-type SqliteTransaction = Parameters<Parameters<SqliteDb['transaction']>[0]>[0]
-type ScopedSqliteDb = SqliteDb | SqliteTransaction
+type ScopedSqliteDb = SqliteDb
 
-const scopedSqliteDb = new AsyncLocalStorage<ScopedSqliteDb>()
-const scopedSliceSerialization = new AsyncLocalStorage<boolean>()
-let sliceSerializationTail = Promise.resolve()
+export function createSqliteSliceStoreLayer(context: SqliteDatabaseContext) {
+  const database = (client: SqliteConnection) =>
+    drizzle(client as Client, { schema })
 
-function getDb() {
-  const scopedDb = scopedSqliteDb.getStore()
-  if (!scopedDb) {
-    throw new Error('No SQLite database is bound to the current async context')
+  async function loadCursor(connection: ScopedSqliteDb, sliceName: string) {
+    const rows = await connection
+      .select()
+      .from(sliceCursors)
+      .where(eq(sliceCursors.sliceName, sliceName))
+      .all()
+    return rows[0]?.lastAppliedOrder ?? 0
   }
-  return scopedDb
-}
 
-export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
-  return scopedSqliteDb.run(db, run)
-}
-
-export const sqliteSliceStore: SliceStoreAdapter<ScopedSqliteDb> = {
-  get: async (sliceName) => createSliceStore(sliceName),
-  transaction: (sliceName, run) =>
-    serializeSliceOperation(() => run(createSliceStore(sliceName))),
-}
-
-async function serializeSliceOperation<T>(run: () => Promise<T>) {
-  if (scopedSliceSerialization.getStore()) return run()
-  const previous = sliceSerializationTail
-  let release = () => {}
-  const current = new Promise<void>((resolve) => {
-    release = resolve
-  })
-  sliceSerializationTail = previous.then(() => current)
-  await previous
-  try {
-    return await scopedSliceSerialization.run(true, run)
-  } finally {
-    release()
-  }
-}
-
-function createSliceStore(sliceName: string) {
-  return {
-    write: getDb(),
-    read: getDb(),
-    lastAppliedOrder: async () => {
-      const rows = await getDb()
-        .select()
-        .from(sliceCursors)
-        .where(eq(sliceCursors.sliceName, sliceName))
-        .all()
-
-      return rows[0]?.lastAppliedOrder ?? 0
-    },
-    setLastAppliedOrder: async (order: number) => {
-      await getDb()
-        .insert(sliceCursors)
-        .values({ sliceName, lastAppliedOrder: order })
-        .onConflictDoUpdate({
-          target: sliceCursors.sliceName,
-          set: {
-            lastAppliedOrder: sql`max(${sliceCursors.lastAppliedOrder}, ${order})`,
-          },
+  const service: SliceStoreService<ScopedSqliteDb, ScopedSqliteDb, unknown> = {
+    read: (sliceName, run) =>
+      context.use((connection) => {
+        const scoped = database(connection)
+        return Effect.gen(function* () {
+          const cursor = yield* Effect.tryPromise(() =>
+            loadCursor(scoped, sliceName),
+          )
+          return yield* run(scoped, cursor)
         })
-        .run()
-    },
+      }),
+    transaction: (sliceName, run) =>
+      context.transaction((connection) => {
+        const scoped = database(connection)
+        return Effect.gen(function* () {
+          const cursor = yield* Effect.tryPromise(() =>
+            loadCursor(scoped, sliceName),
+          )
+          return yield* run(
+            scoped,
+            () => scoped,
+            cursor,
+            (order) => {
+              if (!Number.isSafeInteger(order) || order < cursor) {
+                return Effect.fail(
+                  new Error(
+                    `Slice cursor must advance monotonically from ${cursor}, received ${order}`,
+                  ),
+                )
+              }
+              return Effect.tryPromise(() =>
+                scoped
+                  .insert(sliceCursors)
+                  .values({ sliceName, lastAppliedOrder: order })
+                  .onConflictDoUpdate({
+                    target: sliceCursors.sliceName,
+                    set: {
+                      lastAppliedOrder: sql`max(${sliceCursors.lastAppliedOrder}, ${order})`,
+                    },
+                  })
+                  .run(),
+              ).pipe(Effect.asVoid)
+            },
+          )
+        })
+      }),
   }
+
+  return Layer.succeed(sqliteSliceStore, service)
 }

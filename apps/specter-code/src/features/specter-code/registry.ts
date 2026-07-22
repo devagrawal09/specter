@@ -1,9 +1,3 @@
-import {
-  setSpecterSqliteEventProjector,
-  sqliteEventLog,
-} from '../../db/specter-sqlite'
-import type { ReactionScheduler } from '@specter-ts/core'
-import { immediateReactionScheduler } from '@specter-ts/memory'
 import agentRunTimeline from './agent-run-timeline/impl'
 import askQuestion from './ask-question/impl'
 import createPost from './create-post/impl'
@@ -56,13 +50,10 @@ import workspaceAgentRuns from './workspace-agent-runs/impl'
 import workspaceChat from './workspace-chat/impl'
 import workspaceList from './workspace-list/impl'
 import { specterCodeEventDefinitions } from './events'
-import { projectSpecterCodeEvent } from './adapters/read-models'
-
-setSpecterSqliteEventProjector(projectSpecterCodeEvent)
 
 export { specterCodeEventDefinitions }
 
-export const specterCodeScaffoldRegistrations = [
+export const specterCodeScaffoldRegistrations = {
   createWorkspace,
   workspaceList,
   createSession,
@@ -89,8 +80,8 @@ export const specterCodeScaffoldRegistrations = [
   recordFilesystemNodeDiscovered,
   recordFilesystemNodeChanged,
   recordFilesystemNodeDeleted,
-  filesystemStatus,
-  filesystemTree,
+  workspaceFilesystemStatus: filesystemStatus,
+  workspaceFilesystemTree: filesystemTree,
   requestAgentRun,
   recordAgentRunStarted,
   recordAgentRunStreamed,
@@ -114,20 +105,11 @@ export const specterCodeScaffoldRegistrations = [
   runRequestedFilesystemScan,
   runRequestedAgentRun,
   publishAgentRunReply,
-] as const
+} as const
 
 export const specterCodeSliceSkeletons = specterCodeScaffoldRegistrations
 
-export function createSpecterCodeReferenceSpecterAppConfig(
-  schedule: ReactionScheduler = immediateReactionScheduler,
-) {
-  return {
-    events: specterCodeEventDefinitions,
-    eventLog: sqliteEventLog,
-    schedule,
-    slices: specterCodeScaffoldRegistrations,
-  } as const
-}
-
-export const specterCodeReferenceSpecterAppConfig =
-  createSpecterCodeReferenceSpecterAppConfig()
+export const specterCodeReferenceSpecterAppConfig = {
+  events: specterCodeEventDefinitions,
+  slices: specterCodeScaffoldRegistrations,
+} as const

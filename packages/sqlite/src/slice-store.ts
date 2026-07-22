@@ -1,13 +1,27 @@
 import type { Client } from '@libsql/client'
-import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createSqliteDatabaseContext,
   requireNumber,
   requireString,
+  type SqliteDatabaseFailure,
   type SqliteConnection,
   type SqliteDatabaseContext,
 } from './database'
+
+export class SqliteSliceStoreFailure extends Error {
+  readonly _tag = 'SqliteSliceStoreFailure' as const
+
+  constructor(
+    readonly operation: 'read' | 'write' | 'publish-cursor',
+    readonly cause: unknown,
+  ) {
+    super(`SQLite Slice Store ${operation} failed.`, { cause })
+    this.name = 'SqliteSliceStoreFailure'
+  }
+}
 
 export type SqliteSliceStateCodec<TState> = {
   encode(state: TState): string
@@ -39,14 +53,18 @@ export async function prepareSqliteSliceStore(client: Client) {
   )`)
 }
 
-export function createSqliteSliceStore<
+export function createSqliteSliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
 >(
   client: Client,
   createState: () => TWriteState,
   options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreAdapter<TWriteState, TReadState> {
+): SliceStoreService<
+  TReadState,
+  TWriteState,
+  SqliteSliceStoreFailure | SqliteDatabaseFailure
+> {
   const context = options.context ?? createSqliteDatabaseContext(client)
   const codec = options.codec ?? jsonCodec<TWriteState>()
   const read =
@@ -60,17 +78,17 @@ export function createSqliteSliceStore<
       args: [sliceName],
     })
     const row = result.rows[0]
-    if (!row) return { state: createState(), order: 0 }
+    if (!row) return { state: createState(), cursor: 0 }
     return {
       state: codec.decode(requireString(row.state_json, 'Slice State')),
-      order: requireNumber(row.last_applied_order, 'Slice cursor'),
+      cursor: requireNumber(row.last_applied_order, 'Slice cursor'),
     }
   }
 
   async function save(
     connection: SqliteConnection,
     sliceName: string,
-    entry: { state: TWriteState; order: number },
+    entry: { state: TWriteState; cursor: number },
   ) {
     await connection.execute({
       sql: `INSERT INTO specter_slice_states (
@@ -80,49 +98,85 @@ export function createSqliteSliceStore<
         ) VALUES (?, ?, ?)
         ON CONFLICT(slice_name) DO UPDATE SET
           state_json = excluded.state_json,
-          last_applied_order = excluded.last_applied_order`,
-      args: [sliceName, codec.encode(entry.state), entry.order],
+          last_applied_order = excluded.last_applied_order
+        WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
+      args: [sliceName, codec.encode(entry.state), entry.cursor],
     })
   }
 
-  function toStore(
-    entry: {
-      state: TWriteState
-      order: number
-    },
-    commitAtCursor?: () => Promise<void>,
-  ): SliceStore<TWriteState, TReadState> {
-    return {
-      write: entry.state,
-      get read() {
-        return read(entry.state)
-      },
-      lastAppliedOrder: async () => entry.order,
-      setLastAppliedOrder: async (order) => {
-        if (!Number.isInteger(order) || order < entry.order) {
-          throw new Error(
-            `Slice cursor must advance monotonically from ${entry.order}, received ${order}`,
-          )
-        }
-        entry.order = order
-        await commitAtCursor?.()
-      },
-    }
+  function attempt<A>(
+    operation: SqliteSliceStoreFailure['operation'],
+    run: () => Promise<A>,
+  ) {
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new SqliteSliceStoreFailure(operation, cause),
+    })
   }
 
   return {
-    async get(sliceName) {
-      const connection = context.connection()
-      const entry = await load(connection, sliceName)
-      return toStore(entry, () => save(connection, sliceName, entry))
-    },
-    transaction(sliceName, run) {
-      return context.transaction(async (connection) => {
-        const entry = await load(connection, sliceName)
-        const result = await run(toStore(entry))
-        await save(connection, sliceName, entry)
-        return result
-      })
-    },
+    read: (sliceName, run) =>
+      context.use((connection) =>
+        Effect.gen(function* () {
+          const entry = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          return yield* run(read(entry.state), entry.cursor)
+        }),
+      ),
+    transaction: (sliceName, run) =>
+      context.transaction((connection) =>
+        Effect.gen(function* () {
+          const entry = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          let published = false
+          const result = yield* run(
+            entry.state,
+            () => read(entry.state),
+            entry.cursor,
+            (order) => {
+              if (!Number.isSafeInteger(order) || order < entry.cursor) {
+                return Effect.fail(
+                  new SqliteSliceStoreFailure(
+                    'publish-cursor',
+                    `Cursor must advance from ${entry.cursor}; received ${order}`,
+                  ),
+                )
+              }
+              entry.cursor = order
+              published = true
+              return Effect.void
+            },
+          )
+          if (published) {
+            yield* attempt('write', () => save(connection, sliceName, entry))
+          }
+          return result
+        }),
+      ),
   }
+}
+
+export function createSqliteSliceStoreLayer<
+  TIdentifier,
+  TWriteState,
+  TReadState,
+>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<
+      TReadState,
+      TWriteState,
+      SqliteSliceStoreFailure | SqliteDatabaseFailure
+    >
+  >,
+  client: Client,
+  createState: () => TWriteState,
+  options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
+): Layer.Layer<TIdentifier> {
+  return Layer.succeed(
+    tag,
+    createSqliteSliceStoreService(client, createState, options),
+  )
 }

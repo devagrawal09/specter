@@ -1,0 +1,25 @@
+schema_version: "1.0"
+
+name: "specter-json-specs"
+version: "0.1.0"
+description: "Migrate Specter Slice implementations from direct spec.ts imports to generated spec.json."
+author: ""
+license: "MIT"
+
+
+targets:
+  # Keep this aligned with the files matched in workflow.yaml.
+  languages: ["typescript"]
+
+keywords: ["specter", "specification", "json", "migration"]
+
+registry:
+  access: "public"
+  visibility: "public"
+
+capabilities: []
+
+workflows:
+  - name: main
+    default: true
+    path: workflow.yaml

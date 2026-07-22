@@ -1,7 +1,8 @@
-import workspaceFilesystemTreeSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   filesystemNodeChangedEvent,
   filesystemNodeDeletedEvent,
@@ -22,7 +23,7 @@ type WorkspaceFilesystemTreeState = {
   nodes: WorkspaceFilesystemNode[]
 }
 
-const workspaceFilesystemTree = workspaceFilesystemTreeSpec
+const workspaceFilesystemTree = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),
@@ -31,7 +32,7 @@ const workspaceFilesystemTree = workspaceFilesystemTreeSpec
   )
   .outputSchema<WorkspaceFilesystemNode[]>()
   .store(
-    createMemorySliceStore<WorkspaceFilesystemTreeState>(() => ({ nodes: [] })),
+    defineMemorySliceStore<WorkspaceFilesystemTreeState>(() => ({ nodes: [] })),
   )
   .apply(filesystemNodeDiscoveredEvent, async (event, state) => {
     const payload = event.payload

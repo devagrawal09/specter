@@ -1,7 +1,8 @@
-import workspaceAgentRunsSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunCompletedEvent,
   agentRunFailedEvent,
@@ -27,14 +28,14 @@ type WorkspaceAgentRunsState = {
   runs: WorkspaceAgentRun[]
 }
 
-const workspaceAgentRuns = workspaceAgentRunsSpec
+const workspaceAgentRuns = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),
     }),
   )
   .outputSchema<WorkspaceAgentRun[]>()
-  .store(createMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
+  .store(defineMemorySliceStore<WorkspaceAgentRunsState>(() => ({ runs: [] })))
   .apply(agentRunRequestedEvent, async (event, state) => {
     const payload = event.payload as Awaited<
       ReturnType<typeof agentRunRequestedEvent.decode>

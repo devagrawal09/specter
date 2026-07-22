@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const replyToPostSpec = createCommandSlice('replyToPost')
   .description('Replies to an existing post in a workspace chat.')

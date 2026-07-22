@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const workspaceFilesystemTreeSpec = createQuerySlice('workspaceFilesystemTree')
   .description('Lists normalized filesystem metadata nodes for a workspace.')

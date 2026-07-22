@@ -7,7 +7,7 @@ const client = createClient({ url: 'file:data/app.db' })
 await prepareSpecterSqlite(client)
 
 const persistence = createSpecterSqlitePersistence(client)
-const todosStore = persistence.createSliceStore(() => ({ todos: [] }))
+const todosStore = persistence.createSliceStoreService(() => ({ todos: [] }))
 const outboxStore = persistence.createReactionOutboxStore()
 ```
 

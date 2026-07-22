@@ -1,7 +1,4 @@
 #!/usr/bin/env node
-import { Args, Command, Options } from '@effect/cli'
-import { NodeContext, NodeRuntime } from '@effect/platform-node'
-import { Console, Effect } from 'effect'
 import { spawnSync } from 'node:child_process'
 import {
   cpSync,
@@ -28,50 +25,6 @@ type PackageJson = {
   version?: string
 }
 
-const projectDirectory = Args.text({ name: 'project-directory' }).pipe(
-  Args.withDescription('Directory to create the Specter project in'),
-  Args.withDefault('my-specter-app'),
-)
-
-const force = Options.boolean('force').pipe(
-  Options.withDescription('Overwrite the target directory if it exists'),
-)
-
-const install = Options.boolean('install').pipe(
-  Options.withDescription('Run npm install after creating the project'),
-)
-
-const command = Command.make(
-  'create-specter',
-  { projectDirectory, force, install },
-  ({ projectDirectory, force, install }) =>
-    Effect.gen(function* () {
-      const cwd = process.cwd()
-      const targetDirectory = resolve(cwd, projectDirectory)
-      const projectName = packageNameFromDirectory(targetDirectory)
-
-      yield* Effect.try({
-        try: () => prepareTargetDirectory(targetDirectory, force),
-        catch: (cause) => new Error(String(cause)),
-      })
-
-      yield* Effect.try({
-        try: () => copyTemplate(targetDirectory, projectName),
-        catch: (cause) => new Error(String(cause)),
-      })
-
-      if (install) {
-        yield* runNpmInstall(targetDirectory)
-      }
-
-      yield* Console.log(successMessage(projectDirectory, install))
-    }),
-).pipe(
-  Command.withDescription(
-    'Create a new Specter project from the todo reference app starter.',
-  ),
-)
-
 if (process.argv[2] === 'generate') {
   try {
     runGenerateCli(process.argv.slice(2))
@@ -80,15 +33,35 @@ if (process.argv[2] === 'generate') {
     process.exitCode = 1
   }
 } else {
-  const cli = Command.run(command, {
-    name: 'Create Specter',
-    version: packageVersion(),
-  })
+  try {
+    runCreateCli(process.argv.slice(2))
+  } catch (cause) {
+    console.error(cause instanceof Error ? cause.message : String(cause))
+    process.exitCode = 1
+  }
+}
 
-  cli(normalizeArgs(process.argv)).pipe(
-    Effect.provide(NodeContext.layer),
-    NodeRuntime.runMain,
-  )
+function runCreateCli(rawArgs: readonly string[]) {
+  const args = rawArgs.filter((arg) => arg !== '--yes' && arg !== '-y')
+  if (args.includes('--version') || args.includes('-v')) {
+    console.log(packageVersion())
+    return
+  }
+  if (args.includes('--help') || args.includes('-h')) {
+    console.log(
+      'Usage: create-specter [project-directory] [--force] [--install]',
+    )
+    return
+  }
+  const projectDirectory =
+    args.find((arg) => !arg.startsWith('-')) ?? 'my-specter-app'
+  const force = args.includes('--force')
+  const install = args.includes('--install')
+  const targetDirectory = resolve(process.cwd(), projectDirectory)
+  prepareTargetDirectory(targetDirectory, force)
+  copyTemplate(targetDirectory, packageNameFromDirectory(targetDirectory))
+  if (install) runNpmInstall(targetDirectory)
+  console.log(successMessage(projectDirectory, install))
 }
 
 function packageVersion() {
@@ -100,10 +73,6 @@ function packageVersion() {
   ) as PackageJson
 
   return packageJson.version ?? '0.0.0'
-}
-
-function normalizeArgs(args: readonly string[]) {
-  return args.filter((arg) => arg !== '--yes' && arg !== '-y')
 }
 
 function prepareTargetDirectory(targetDirectory: string, force: boolean) {
@@ -169,13 +138,23 @@ function patchPackageJson(targetDirectory: string, projectName: string) {
 
   packageJson.name = projectName
 
+  const specificationSpec = process.env.SPECTER_SPEC_SPEC
   const coreSpec = process.env.SPECTER_CORE_SPEC
   const memorySpec = process.env.SPECTER_MEMORY_SPEC
   const reactionOutboxSpec = process.env.SPECTER_REACTION_OUTBOX_SPEC
   const sqliteSpec = process.env.SPECTER_SQLITE_SPEC
 
-  if (coreSpec || memorySpec || reactionOutboxSpec || sqliteSpec) {
+  if (
+    specificationSpec ||
+    coreSpec ||
+    memorySpec ||
+    reactionOutboxSpec ||
+    sqliteSpec
+  ) {
     packageJson.dependencies = packageJson.dependencies ?? {}
+    if (specificationSpec) {
+      packageJson.dependencies['@specter-ts/spec'] = specificationSpec
+    }
     if (coreSpec) packageJson.dependencies['@specter-ts/core'] = coreSpec
     if (memorySpec) packageJson.dependencies['@specter-ts/memory'] = memorySpec
     if (reactionOutboxSpec) {
@@ -193,16 +172,12 @@ function patchPackageJson(targetDirectory: string, projectName: string) {
 }
 
 function runNpmInstall(targetDirectory: string) {
-  return Effect.sync(() => {
-    const result = spawnSync('npm', ['install'], {
-      cwd: targetDirectory,
-      stdio: 'inherit',
-    })
-
-    if (result.status !== 0) {
-      throw new Error('npm install failed')
-    }
+  const result = spawnSync('npm', ['install'], {
+    cwd: targetDirectory,
+    stdio: 'inherit',
   })
+
+  if (result.status !== 0) throw new Error('npm install failed')
 }
 
 function packageNameFromDirectory(targetDirectory: string) {

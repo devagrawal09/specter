@@ -1,6 +1,5 @@
 import { createTwilioDeliveryAttemptStore } from '../../db/twilio-delivery-attempts'
-import { getBoundSliceDb } from '../../db/specter-sqlite'
-import { runWithNarayanAiDb } from '../../db/client.server'
+import { db, runAfterNarayanReady } from '../../db/client.server'
 import { validateTwilioSignature } from './twilio-webhook.server'
 
 export async function handleTwilioStatusWebhook(request: Request) {
@@ -19,10 +18,8 @@ export async function handleTwilioStatusWebhook(request: Request) {
     return new Response('Missing Twilio status fields', { status: 400 })
   }
 
-  const attempt = await runWithNarayanAiDb(() =>
-    createTwilioDeliveryAttemptStore(getBoundSliceDb()).findByProviderSid(
-      messageSid,
-    ),
+  const attempt = await runAfterNarayanReady(() =>
+    createTwilioDeliveryAttemptStore(db).findByProviderSid(messageSid),
   )
   if (!attempt) return new Response('Unknown Twilio message', { status: 404 })
 

@@ -1,10 +1,4 @@
-import type {
-  CommandRef,
-  EventLogAdapter,
-  QueryRef,
-  ReactionScheduler,
-} from '@specter-ts/core'
-import { immediateReactionScheduler } from '@specter-ts/memory'
+import type { CommandRef, QueryRef } from '@specter-ts/core'
 
 import { addJournalEntry } from './add-journal-entry/impl'
 import { addTask } from './add-task/impl'
@@ -25,7 +19,7 @@ import { tasksQuery } from './tasks-query/impl'
 import { timelineQuery } from './timeline-query/impl'
 import { topicsQuery } from './topics-query/impl'
 
-export const worklogRegistrations = [
+export const worklogRegistrations = {
   addJournalEntry,
   editJournalEntry,
   changeJournalEntryArchived,
@@ -43,21 +37,14 @@ export const worklogRegistrations = [
   topicsQuery,
   connectionsQuery,
   scoreQuery,
-] as const
+} as const
 
-export function createWorklogAppConfig(
-  eventLog: EventLogAdapter,
-  schedule: ReactionScheduler = immediateReactionScheduler,
-) {
-  return {
-    events: worklogEventDefinitions,
-    eventLog,
-    schedule,
-    slices: worklogRegistrations,
-  } as const
-}
+export const worklogAppConfig = {
+  events: worklogEventDefinitions,
+  slices: worklogRegistrations,
+} as const
 
-export type WorklogAppConfig = ReturnType<typeof createWorklogAppConfig>
+export type WorklogAppConfig = typeof worklogAppConfig
 export type AddJournalEntryRef = CommandRef<typeof addJournalEntry>
 export type AddTaskRef = CommandRef<typeof addTask>
 export type AddTopicRef = CommandRef<typeof addTopic>

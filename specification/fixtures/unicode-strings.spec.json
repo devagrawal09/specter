@@ -1,0 +1,13 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "unicodeStrings",
+  "description": "Preserves line\u2028and paragraph\u2029separators.",
+  "scenarios": [{
+    "description": "Records Unicode separators.",
+    "given": [],
+    "when": { "value": "before\u2028middle\u2029after", "literalEscapes": "\\u2028 and \\u2029" },
+    "expect": [{ "kind": "scenario-event", "eventType": "unicode-recorded", "examplePayload": { "value": "before\u2028middle\u2029after", "literalEscapes": "\\u2028 and \\u2029" } }]
+  }]
+}

@@ -1,7 +1,8 @@
-import sessionTranscriptSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunRequestedEvent,
   postReplyCreatedEvent,
@@ -30,11 +31,11 @@ type SessionTranscriptState = {
   runMessageIds: Record<string, string>
 }
 
-const sessionTranscript = sessionTranscriptSpec
+const sessionTranscript = implementQuery(specification)
   .inputSchema(z.object({ sessionId: z.string() }))
   .outputSchema<TranscriptItem[]>()
   .store(
-    createMemorySliceStore<SessionTranscriptState>(() => ({
+    defineMemorySliceStore<SessionTranscriptState>(() => ({
       items: [],
       messageSessions: {},
       runMessageIds: {},

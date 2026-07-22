@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Readiness checklist for Specter's portable specification and runtime-observation protocol." />
+    <title>Specter Protocol — 0.4 Readiness</title>
+    <style>
+      :root { --ink:#18221f; --muted:#65716d; --paper:#f6f5f0; --card:#fff; --line:#d9dfdb; --green:#17694f; --soft:#e0eee7; }
+      * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+      main { width:min(1000px,calc(100% - 32px)); margin:auto; padding:54px 0 72px; }
+      h1 { margin:0; font-size:clamp(2.3rem,6vw,4.2rem); line-height:1.02; letter-spacing:-.04em; }
+      .lede { max-width:760px; color:var(--muted); font-size:1.18rem; }
+      section { margin-top:24px; padding:26px; border:1px solid var(--line); border-radius:20px; background:var(--card); }
+      .status { display:inline-block; padding:7px 12px; border-radius:999px; color:var(--green); background:var(--soft); font-weight:700; }
+      .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:14px; }
+      .item { padding:16px; border:1px solid var(--line); border-radius:14px; }
+      .item strong { color:var(--green); } code { background:#edf1ee; padding:.15em .35em; border-radius:6px; }
+      @media (max-width:680px) { .grid { grid-template-columns:1fr; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <span class="status">Current boundary</span>
+      <h1>Specifications and telemetry, together.</h1>
+      <p class="lede">0.4 readiness means proving that portable behavior and language-neutral telemetry correlate exactly while application APIs remain project-owned.</p>
+
+      <section>
+        <h2>Scope checks</h2>
+        <div class="grid">
+          <div class="item"><strong>Two ingestion lanes</strong><p><code>POST /specter/v1/observations</code> and <code>POST /specter/v1/specifications</code> accept independently acknowledged messages.</p></div>
+          <div class="item"><strong>No operational wire API</strong><p>No capability, Command, Query, subscription, or Reaction-ticket message family remains.</p></div>
+          <div class="item"><strong>Collector APIs are separate</strong><p>The browser and CLI use collector-owned catalog, overview, activity, trace, stream, and pruning routes.</p></div>
+          <div class="item"><strong>Native application APIs</strong><p>TypeScript and Go examples execute runtime envelopes through project-owned transports.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Correctness evidence required</h2>
+        <ul>
+          <li>Normative JSON Schemas cover observation batches, specification publications, and their acknowledgements.</li>
+          <li>Shared fixtures cover valid metadata and specifications, malformed input, version mismatch, causality, unknown optional fields, and Event ordering.</li>
+          <li>Retry tests prove an in-flight batch is immutable and deduplication uses observation identity.</li>
+          <li>Digest tests prove telemetry resolves to the exact immutable specification published by a runtime.</li>
+          <li>Queue overflow, collector outage, restart persistence, rotation, and metadata redaction remain covered.</li>
+          <li>TypeScript and Go producers both appear in the shared collector.</li>
+          <li>Repository TypeScript and Go baselines pass before the PR is marked ready.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Compatibility</h2>
+        <p>Protocol v1 keeps generic operational routes out of the collector while adding specification publication as an independent ingestion lane. Applications expose their own operational APIs; the collector owns immutable specification catalogs, metadata-only telemetry, correlation, and visualization.</p>
+      </section>
+    </main>
+  </body>
+</html>

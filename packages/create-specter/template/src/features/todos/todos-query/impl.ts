@@ -2,13 +2,14 @@ import { and, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   todoAddedEvent,
   todoCompletionChangedEvent,
   todoRemovedEvent,
 } from '../events'
-import { todosQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export const todoSqlListItems = sqliteTable('todo_sql_list_items', {
   id: text('id').primaryKey(),
@@ -28,7 +29,7 @@ const todoOutputSchema = z.array(
   }),
 )
 
-export const todosQuery = todosQuerySpec
+export const todosQuery = implementQuery(specification)
   .inputSchema(
     z.object({
       status: z.enum(['all', 'active', 'completed']).catch('all'),

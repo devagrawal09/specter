@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const agentRunTimelineSpec = createQuerySlice('agentRunTimeline')
   .description('Shows streamed text chunks and tool calls for one Agent Run.')

@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { parseSpecification, parseSpecificationJson } from '@specter-ts/spec'
 
 import type { EventDraft } from './events'
 import type {
@@ -11,13 +12,22 @@ import type {
 import type {
   ApplyEventDefinition,
   ApplyRegistration,
+  CommandEnvelope,
   CommandSlice,
   EventForDefinition,
   QuerySlice,
   ReactionPlugin,
   ReactionSlice,
-  SliceStoreAdapter,
+  SliceStoreOptions,
 } from './slices'
+import type {
+  SliceStoreRead,
+  SliceStoreService,
+  SliceStoreTag,
+  SliceStoreWrite,
+} from '../adapters/slice-store'
+
+type StoreBinding = SliceStoreTag<unknown, SliceStoreService<any, any, any>>
 
 type CommandDescriptionStep<TName extends string> = {
   description: (description: string) => CommandScenariosStep<TName>
@@ -61,15 +71,17 @@ type CommandStoreStep<
   TCommand,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
 > = {
-  store: <TWriteState, TReadState = Readonly<TWriteState>>(
-    store: SliceStoreAdapter<TWriteState, TReadState>,
+  store: <TStore extends StoreBinding>(
+    store: TStore,
+    options?: SliceStoreOptions,
   ) => CommandApplyStep<
     TName,
     TInput,
     TCommand,
-    TWriteState,
-    TReadState,
-    TScenarios
+    SliceStoreWrite<TStore>,
+    SliceStoreRead<TStore>,
+    TScenarios,
+    TStore
   >
 }
 
@@ -80,6 +92,7 @@ type CommandApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
+  TStore extends StoreBinding,
 > = {
   apply: <TDefinition extends ApplyEventDefinition>(
     definition: TDefinition,
@@ -93,7 +106,8 @@ type CommandApplyStep<
     TCommand,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
   handle: (
     handle: (
@@ -106,7 +120,8 @@ type CommandApplyStep<
     TCommand,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
 }
 
@@ -180,17 +195,19 @@ type QueryStoreStep<
   TOutput,
   TScenarios extends NonEmptyScenarios<QueryScenario>,
 > = {
-  store: <TWriteState, TReadState = Readonly<TWriteState>>(
-    store: SliceStoreAdapter<TWriteState, TReadState>,
+  store: <TStore extends StoreBinding>(
+    store: TStore,
+    options?: SliceStoreOptions,
   ) => QueryApplyStep<
     TName,
     TInput,
     TQuery,
     TResult,
     TOutput,
-    TWriteState,
-    TReadState,
-    TScenarios
+    SliceStoreWrite<TStore>,
+    SliceStoreRead<TStore>,
+    TScenarios,
+    TStore
   >
 }
 
@@ -203,6 +220,7 @@ type QueryApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<QueryScenario>,
+  TStore extends StoreBinding,
 > = {
   apply: <TDefinition extends ApplyEventDefinition>(
     definition: TDefinition,
@@ -218,7 +236,8 @@ type QueryApplyStep<
     TOutput,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
   handle: (
     handle: (query: TQuery, state: TReadState) => Promise<TResult>,
@@ -230,7 +249,8 @@ type QueryApplyStep<
     TOutput,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
 }
 
@@ -254,7 +274,7 @@ export type ReactionSliceSpec<
   readonly name: TName
   readonly description: string
   readonly scenarios: TScenarios
-  outputSchema<TResult = unknown>(): ReactionPluginStep<
+  outputSchema<TResult = CommandEnvelope>(): ReactionPluginStep<
     TName,
     TResult,
     TResult,
@@ -279,7 +299,9 @@ type ReactionPluginStep<
   plugin: (
     plugin: ReactionPlugin<TOutput>,
   ) => ReactionStoreStep<TName, TResult, TOutput, TScenarios>
-}
+} & (TOutput extends CommandEnvelope
+  ? ReactionStoreStep<TName, TResult, TOutput, TScenarios>
+  : {})
 
 type ReactionStoreStep<
   TName extends string,
@@ -287,15 +309,17 @@ type ReactionStoreStep<
   TOutput,
   TScenarios extends NonEmptyScenarios<ReactionScenario>,
 > = {
-  store: <TWriteState, TReadState = Readonly<TWriteState>>(
-    store: SliceStoreAdapter<TWriteState, TReadState>,
+  store: <TStore extends StoreBinding>(
+    store: TStore,
+    options?: SliceStoreOptions,
   ) => ReactionApplyStep<
     TName,
     TResult,
     TOutput,
-    TWriteState,
-    TReadState,
-    TScenarios
+    SliceStoreWrite<TStore>,
+    SliceStoreRead<TStore>,
+    TScenarios,
+    TStore
   >
 }
 
@@ -306,6 +330,7 @@ type ReactionApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<ReactionScenario>,
+  TStore extends StoreBinding,
 > = {
   apply: <TDefinition extends ApplyEventDefinition>(
     definition: TDefinition,
@@ -319,7 +344,8 @@ type ReactionApplyStep<
     TOutput,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
   handle: (
     handle: (state: TReadState) => Promise<TResult | undefined>,
@@ -329,7 +355,8 @@ type ReactionApplyStep<
     TOutput,
     TWriteState,
     TReadState,
-    TScenarios
+    TScenarios,
+    TStore
   >
 }
 
@@ -356,6 +383,19 @@ export function createCommandSlice<const TName extends string>(
   })
 }
 
+export function implementCommand(input: unknown): CommandSliceSpec<string> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'command')
+    throw new Error(
+      `implementCommand expected a command specification, received ${specification.kind}.`,
+    )
+  return createCommandSpec(
+    specification.name,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
+}
+
 function createCommandSpec<
   TName extends string,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
@@ -375,10 +415,17 @@ function createCommandSpec<
   return Object.freeze({
     ...specification,
     inputSchema: (schema?: StandardSchemaV1) => ({
-      store: <TWriteState, TReadState = Readonly<TWriteState>>(
-        store: SliceStoreAdapter<TWriteState, TReadState>,
+      store: <TStore extends StoreBinding>(
+        store: TStore,
+        options?: SliceStoreOptions,
       ) =>
-        createCommandApplyStep(specification, schema, store, Object.freeze([])),
+        createCommandApplyStep(
+          specification,
+          schema,
+          store,
+          options?.eager ?? false,
+          Object.freeze([]),
+        ),
     }),
   }) as CommandSliceSpec<TName, TScenarios>
 }
@@ -390,10 +437,12 @@ function createCommandApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<CommandScenario>,
+  TStore extends StoreBinding,
 >(
   specification: Specification<'command', TName, TScenarios>,
   inputSchema: StandardSchemaV1<TInput, TCommand> | undefined,
-  store: SliceStoreAdapter<TWriteState, TReadState>,
+  store: TStore,
+  eager: boolean,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): CommandApplyStep<
   TName,
@@ -401,7 +450,8 @@ function createCommandApplyStep<
   TCommand,
   TWriteState,
   TReadState,
-  TScenarios
+  TScenarios,
+  TStore
 > {
   return Object.freeze({
     apply: <TDefinition extends ApplyEventDefinition>(
@@ -411,7 +461,15 @@ function createCommandApplyStep<
         state: TWriteState,
       ) => Promise<void>,
     ) =>
-      createCommandApplyStep(specification, inputSchema, store, [
+      createCommandApplyStep<
+        TName,
+        TInput,
+        TCommand,
+        TWriteState,
+        TReadState,
+        TScenarios,
+        TStore
+      >(specification, inputSchema, store, eager, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -426,6 +484,7 @@ function createCommandApplyStep<
         stage: 'implementation' as const,
         inputSchema,
         store,
+        eager,
         apply: Object.freeze([...apply]),
         handle,
       }),
@@ -441,6 +500,19 @@ export function createQuerySlice<const TName extends string>(
         createQuerySpec(name, description, freezeScenarios(scenarios)),
     }),
   })
+}
+
+export function implementQuery(input: unknown): QuerySliceSpec<string> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'query')
+    throw new Error(
+      `implementQuery expected a query specification, received ${specification.kind}.`,
+    )
+  return createQuerySpec(
+    specification.name,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
 }
 
 function createQuerySpec<
@@ -463,14 +535,16 @@ function createQuerySpec<
     ...specification,
     inputSchema: (inputSchema?: StandardSchemaV1) => ({
       outputSchema: (outputSchema?: StandardSchemaV1) => ({
-        store: <TWriteState, TReadState = Readonly<TWriteState>>(
-          store: SliceStoreAdapter<TWriteState, TReadState>,
+        store: <TStore extends StoreBinding>(
+          store: TStore,
+          options?: SliceStoreOptions,
         ) =>
           createQueryApplyStep(
             specification,
             inputSchema,
             outputSchema,
             store,
+            options?.eager ?? false,
             Object.freeze([]),
           ),
       }),
@@ -487,11 +561,13 @@ function createQueryApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<QueryScenario>,
+  TStore extends StoreBinding,
 >(
   specification: Specification<'query', TName, TScenarios>,
   inputSchema: StandardSchemaV1<TInput, TQuery> | undefined,
   outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
-  store: SliceStoreAdapter<TWriteState, TReadState>,
+  store: TStore,
+  eager: boolean,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): QueryApplyStep<
   TName,
@@ -501,7 +577,8 @@ function createQueryApplyStep<
   TOutput,
   TWriteState,
   TReadState,
-  TScenarios
+  TScenarios,
+  TStore
 > {
   return Object.freeze({
     apply: <TDefinition extends ApplyEventDefinition>(
@@ -511,7 +588,17 @@ function createQueryApplyStep<
         state: TWriteState,
       ) => Promise<void>,
     ) =>
-      createQueryApplyStep(specification, inputSchema, outputSchema, store, [
+      createQueryApplyStep<
+        TName,
+        TInput,
+        TQuery,
+        TResult,
+        TOutput,
+        TWriteState,
+        TReadState,
+        TScenarios,
+        TStore
+      >(specification, inputSchema, outputSchema, store, eager, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -522,6 +609,7 @@ function createQueryApplyStep<
         inputSchema,
         outputSchema,
         store,
+        eager,
         apply: Object.freeze([...apply]),
         handle,
       }),
@@ -537,6 +625,26 @@ export function createReactionSlice<const TName extends string>(
         createReactionSpec(name, description, freezeScenarios(scenarios)),
     }),
   })
+}
+
+export function implementReaction(input: unknown): ReactionSliceSpec<string> {
+  const specification = loadSpecification(input)
+  if (specification.kind !== 'reaction')
+    throw new Error(
+      `implementReaction expected a reaction specification, received ${specification.kind}.`,
+    )
+  return createReactionSpec(
+    specification.name,
+    specification.description,
+    freezeScenarios(specification.scenarios),
+  )
+}
+
+function loadSpecification(input: unknown) {
+  if (typeof input === 'string') return parseSpecificationJson(input)
+  if (input instanceof Uint8Array)
+    return parseSpecificationJson(new TextDecoder().decode(input))
+  return parseSpecification(input)
 }
 
 function createReactionSpec<
@@ -557,20 +665,26 @@ function createReactionSpec<
 
   return Object.freeze({
     ...specification,
-    outputSchema: (outputSchema?: StandardSchemaV1) => ({
-      plugin: (plugin: ReactionPlugin) => ({
-        store: <TWriteState, TReadState = Readonly<TWriteState>>(
-          store: SliceStoreAdapter<TWriteState, TReadState>,
+    outputSchema: (outputSchema?: StandardSchemaV1) => {
+      const storeStep = (plugin?: ReactionPlugin) => ({
+        store: <TStore extends StoreBinding>(
+          store: TStore,
+          options?: SliceStoreOptions,
         ) =>
           createReactionApplyStep(
             specification,
             outputSchema,
             plugin,
             store,
+            options?.eager ?? false,
             Object.freeze([]),
           ),
-      }),
-    }),
+      })
+      return {
+        ...storeStep(),
+        plugin: (plugin: ReactionPlugin) => storeStep(plugin),
+      }
+    },
   }) as ReactionSliceSpec<TName, TScenarios>
 }
 
@@ -581,11 +695,13 @@ function createReactionApplyStep<
   TWriteState,
   TReadState,
   TScenarios extends NonEmptyScenarios<ReactionScenario>,
+  TStore extends StoreBinding,
 >(
   specification: Specification<'reaction', TName, TScenarios>,
   outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
-  plugin: ReactionPlugin<TOutput>,
-  store: SliceStoreAdapter<TWriteState, TReadState>,
+  plugin: ReactionPlugin<TOutput> | undefined,
+  store: TStore,
+  eager: boolean,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): ReactionApplyStep<
   TName,
@@ -593,7 +709,8 @@ function createReactionApplyStep<
   TOutput,
   TWriteState,
   TReadState,
-  TScenarios
+  TScenarios,
+  TStore
 > {
   return Object.freeze({
     apply: <TDefinition extends ApplyEventDefinition>(
@@ -603,7 +720,15 @@ function createReactionApplyStep<
         state: TWriteState,
       ) => Promise<void>,
     ) =>
-      createReactionApplyStep(specification, outputSchema, plugin, store, [
+      createReactionApplyStep<
+        TName,
+        TResult,
+        TOutput,
+        TWriteState,
+        TReadState,
+        TScenarios,
+        TStore
+      >(specification, outputSchema, plugin, store, eager, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -614,6 +739,7 @@ function createReactionApplyStep<
         outputSchema,
         plugin,
         store,
+        eager,
         apply: Object.freeze([...apply]),
         handle,
       }),

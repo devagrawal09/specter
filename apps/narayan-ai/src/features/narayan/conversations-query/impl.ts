@@ -2,8 +2,8 @@ import { desc, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import type { ScopedSqliteDb } from '../../../db/specter-sqlite'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import type { ScopedSqliteDb } from '../../../db/specter-store'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { eventSortOrder } from '../event-sort-order'
 import {
   assistantReplyGeneratedEvent,
@@ -11,7 +11,8 @@ import {
   twilioOutboundMessageFailedEvent,
   twilioOutboundMessageSentEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 export const narayanConversations = sqliteTable('narayan_conversations', {
   phoneNumber: text('phone_number').primaryKey(),
@@ -26,7 +27,7 @@ export const narayanConversations = sqliteTable('narayan_conversations', {
   sortOrder: integer('sort_order').notNull(),
 })
 
-const conversationsQuery = spec
+const conversationsQuery = implementQuery(specification)
   .inputSchema(z.object({}))
   .outputSchema(
     z.array(

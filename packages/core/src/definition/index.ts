@@ -26,6 +26,9 @@ export {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
+  implementCommand,
+  implementQuery,
+  implementReaction,
 } from './builders'
 export type {
   CommandSliceSpec,
@@ -57,8 +60,10 @@ export type {
   QueryOutputOf,
   QueryRef,
   QuerySlice,
+  ReactionDeliveryContext,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  SliceStoreOptions,
 } from './slices'

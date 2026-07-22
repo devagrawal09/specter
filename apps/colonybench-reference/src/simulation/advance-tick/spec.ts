@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const advanceTickSpec = createCommandSlice('advanceTick')
   .description('Advances a simulation world tick counter.')
@@ -79,3 +79,5 @@ export const advanceTickSpec = createCommandSlice('advanceTick')
       ],
     },
   )
+
+export default advanceTickSpec
