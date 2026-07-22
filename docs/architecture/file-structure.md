@@ -27,8 +27,9 @@ my-specter-app/
 │   │       ├── registry.ts         # selected Slice Implementations
 │   │       ├── scenarios.test.ts   # executable feature specifications
 │   │       ├── add-todo/
-│   │       │   ├── spec.ts         # required Slice Specification
-│   │       │   └── impl.ts         # required Slice Implementation
+│   │       │   ├── spec.ts         # required TS authoring source
+│   │       │   ├── spec.json       # generated portable contract; ignored
+│   │       │   └── impl.ts         # required TS implementation
 │   │       ├── todos-query/        # same required pair for a Query
 │   │       └── ...
 │   └── transport/
@@ -41,12 +42,20 @@ my-specter-app/
 └── vite.config.ts
 ```
 
-## Required and optional Slice artifacts
+## Slice source and generated contract
 
-Only two files define the Slice boundary:
+Two source files define the Slice boundary:
 
-- `spec.ts` is required and exports the named Slice Specification.
+- `spec.ts` is required and default-exports exactly one Slice Specification. It
+  may also expose a named alias for local authoring and tests.
 - `impl.ts` is required and exports its named Slice Implementation.
+
+Project scripts run `specter-spec export` before development, typecheck, tests,
+and builds. The exporter writes adjacent `spec.json`, which is ignored as a
+generated artifact but is the only specification input used by implementations
+and tooling. `impl.ts` must load that JSON with the matching
+`implementCommand`, `implementQuery`, or `implementReaction` entry point; it
+must not import `spec.ts`.
 
 The generator also creates Slice-owned support files when generating a new
 Slice bundle: `events.ts`, `projection.ts`, `registry.ts`,
@@ -102,10 +111,11 @@ database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 
 ## Import boundaries
 
-- `spec.ts` imports `@specter-ts/spec` and implementation-independent
-  domain constants only.
-- `impl.ts` may import core implementation types, local Event Definitions,
-  its private projection, Store adapters, and Reaction Plugins.
+- `spec.ts` imports `@specter-ts/spec` and implementation-independent domain
+  constants only, and default-exports exactly one specification.
+- `impl.ts` imports adjacent generated `spec.json`; it may also import core
+  implementation types, local Event Definitions, its private projection, Store
+  adapters, and Reaction Plugins.
 - Slices do not import sibling Slices or their state.
 - `registry.ts` is the explicit composition boundary for implementations and
   Event Definitions.

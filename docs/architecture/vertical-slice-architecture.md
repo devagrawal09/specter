@@ -6,12 +6,13 @@ an executable behavioral contract and one selected implementation.
 
 ## Mechanics
 
-Every Slice has two required files:
+Every Slice has two required source files:
 
 ```text
 src/features/todos/add-todo/
-├── spec.ts   # immutable Slice Specification: what
-└── impl.ts   # schemas, state, apply handlers, and handler: how
+├── spec.ts     # immutable TypeScript authoring source: what
+├── spec.json   # generated portable contract
+└── impl.ts     # schemas, state, apply handlers, and handler: how
 ```
 
 `spec.ts` default-exports `<sliceName>Spec`. It defines only the Slice name,
@@ -19,8 +20,9 @@ description, and Scenarios, and imports builders and `event(...)` from
 `@specter-ts/spec`.
 
 `specter-spec export` writes the portable contract to adjacent `spec.json`.
-`impl.ts` imports only that JSON, starts the matching kind-specific implementation
-builder, and exports the named `<sliceName>` Slice Implementation. It completes the staged builder with runtime schemas, a private
+`impl.ts` imports only that JSON, starts the matching kind-specific
+implementation builder, and exports the named `<sliceName>` Slice
+Implementation. It completes the staged builder with runtime schemas, a private
 Slice Store, zero or more typed Event apply handlers, and the final handler. A
 Reaction also supplies a Reaction Plugin.
 

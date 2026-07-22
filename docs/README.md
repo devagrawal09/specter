@@ -4,9 +4,10 @@
 > stable npm release is still 0.2.1. Start from the repository checkout when
 > following preview examples.
 
-Specter is an Effect-native TypeScript framework with a Promise facade for
-building vertically sliced, event-sourced applications. Choose a path based
-on what you need to do next.
+Specter is an Effect-native runtime with a Promise facade for building
+vertically sliced, event-sourced applications. TypeScript authors executable
+Slice specifications and exports strict JSON contracts consumed by TypeScript,
+Go, and tooling. Choose a path based on what you need to do next.
 
 ## New to Specter
 
@@ -29,6 +30,7 @@ on what you need to do next.
   - [Plugins](architecture/plugins.md)
 - Specifications
   - [Writing specifications](specifications/writing-specifications.md)
+  - [Portable specification format](../specification/README.md)
   - [Slice tests](specifications/slice-tests.md)
   - [Conformance](specifications/conformance.md)
 
@@ -42,7 +44,7 @@ on what you need to do next.
 - [Core adapters API](api-reference/core-adapters.md)
 - [Persistence APIs](api-reference/persistence.md)
 - [Reaction outbox API](api-reference/reaction-outbox.md)
-- [Observability API](api-reference/observability.md)
+- [Unified specification and telemetry dashboard](api-reference/observability.md)
 
 ## API reference
 

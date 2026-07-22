@@ -1,8 +1,9 @@
 # Writing executable specifications
 
-A Specter specification is executable domain structure, not prose beside the implementation. It names one Command, Query, or Reaction Slice, states its intent, and records concrete Scenarios before choosing schemas, storage, projections, or effect integrations. The implementation then completes that same value through a type-directed builder.
+A Specter specification is executable domain structure, not prose beside the implementation. It names one Command, Query, or Reaction Slice, states its intent, and records concrete Scenarios before choosing schemas, storage, projections, or effect integrations. The exporter turns that authoring value into strict portable JSON; each runtime loads the document and completes its own implementation stages.
 
-This keeps *what must happen* in `spec.ts` and *how it happens* in `impl.ts`.
+This keeps *what must happen* in `spec.ts`, the shared contract in `spec.json`,
+and *how it happens* in a language-native implementation.
 
 ## Specification first
 

@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="Merge-readiness checklist for Specter's observation-only runtime protocol." />
-    <title>Specter Observation Protocol — Merge Readiness</title>
+    <meta name="description" content="Readiness checklist for Specter's portable specification and runtime-observation protocol." />
+    <title>Specter Protocol — 0.4 Readiness</title>
     <style>
       :root { --ink:#18221f; --muted:#65716d; --paper:#f6f5f0; --card:#fff; --line:#d9dfdb; --green:#17694f; --soft:#e0eee7; }
       * { box-sizing:border-box; } body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif; }
@@ -21,16 +21,16 @@
   </head>
   <body>
     <main>
-      <span class="status">Target boundary</span>
-      <h1>Observation-only by design.</h1>
-      <p class="lede">Merge readiness now means proving that language-neutral telemetry is robust while application APIs remain project-owned.</p>
+      <span class="status">Current boundary</span>
+      <h1>Specifications and telemetry, together.</h1>
+      <p class="lede">0.4 readiness means proving that portable behavior and language-neutral telemetry correlate exactly while application APIs remain project-owned.</p>
 
       <section>
         <h2>Scope checks</h2>
         <div class="grid">
-          <div class="item"><strong>One protocol endpoint</strong><p><code>POST /specter/v1/observations</code> accepts batches and returns acknowledgements.</p></div>
+          <div class="item"><strong>Two ingestion lanes</strong><p><code>POST /specter/v1/observations</code> and <code>POST /specter/v1/specifications</code> accept independently acknowledged messages.</p></div>
           <div class="item"><strong>No operational wire API</strong><p>No capability, Command, Query, subscription, or Reaction-ticket message family remains.</p></div>
-          <div class="item"><strong>Collector reads are separate</strong><p>The browser and CLI use read-only collector routes without a protocol-version header.</p></div>
+          <div class="item"><strong>Collector APIs are separate</strong><p>The browser and CLI use collector-owned catalog, overview, activity, trace, stream, and pruning routes.</p></div>
           <div class="item"><strong>Native application APIs</strong><p>TypeScript and Go examples execute runtime envelopes through project-owned transports.</p></div>
         </div>
       </section>
@@ -38,9 +38,10 @@
       <section>
         <h2>Correctness evidence required</h2>
         <ul>
-          <li>Normative JSON Schema accepts only observation batches and acknowledgements.</li>
-          <li>Shared fixtures cover valid metadata, malformed input, version mismatch, causality, unknown optional fields, and Event ordering.</li>
+          <li>Normative JSON Schemas cover observation batches, specification publications, and their acknowledgements.</li>
+          <li>Shared fixtures cover valid metadata and specifications, malformed input, version mismatch, causality, unknown optional fields, and Event ordering.</li>
           <li>Retry tests prove an in-flight batch is immutable and deduplication uses observation identity.</li>
+          <li>Digest tests prove telemetry resolves to the exact immutable specification published by a runtime.</li>
           <li>Queue overflow, collector outage, restart persistence, rotation, and metadata redaction remain covered.</li>
           <li>TypeScript and Go producers both appear in the shared collector.</li>
           <li>Repository TypeScript and Go baselines pass before the PR is marked ready.</li>
@@ -49,7 +50,7 @@
 
       <section>
         <h2>Compatibility</h2>
-        <p>This is a breaking pre-release correction to protocol v1. Experimental users of the removed generic operational routes must expose an application-owned API. Collector observations and read models remain the supported observability path; no compatibility shim preserves the removed coupling.</p>
+        <p>Protocol v1 keeps generic operational routes out of the collector while adding specification publication as an independent ingestion lane. Applications expose their own operational APIs; the collector owns immutable specification catalogs, metadata-only telemetry, correlation, and visualization.</p>
       </section>
     </main>
   </body>

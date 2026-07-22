@@ -34,7 +34,7 @@ const source = {
   application: 'todo-reference',
   environment: 'development',
   runtimeLanguage: 'typescript',
-  runtimeVersion: '0.3.0',
+  runtimeVersion: '0.4.0',
   instanceId: `todo-${process.pid}`,
   eventLogId: './data/app.db',
 }
