@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Visual guide to Specter's language-neutral runtime-observability protocol." />
+    <title>Specter Runtime Observability Protocol</title>
+    <style>
+      :root { color-scheme: light; --ink:#17221e; --muted:#607069; --paper:#f5f3ec; --card:#fff; --line:#d8ded9; --accent:#17694f; --soft:#e1eee8; --blue:#e3edf7; }
+      * { box-sizing:border-box; }
+      body { margin:0; color:var(--ink); background:var(--paper); font:16px/1.55 ui-sans-serif,system-ui,-apple-system,sans-serif; }
+      main { width:min(1080px,calc(100% - 32px)); margin:auto; padding:56px 0 72px; }
+      h1 { max-width:850px; margin:0 0 12px; font-size:clamp(2.2rem,6vw,4.6rem); line-height:1; letter-spacing:-.05em; }
+      h2 { margin:0 0 18px; font-size:1.55rem; }
+      p { max-width:760px; }
+      .lede { color:var(--muted); font-size:1.2rem; }
+      section { margin-top:28px; padding:28px; border:1px solid var(--line); border-radius:22px; background:var(--card); }
+      .flow { display:grid; grid-template-columns:1fr auto 1fr; gap:18px; align-items:center; margin-top:24px; }
+      .node { min-height:150px; padding:22px; border-radius:18px; background:var(--soft); }
+      .node.collector { background:var(--blue); }
+      .arrow { text-align:center; color:var(--accent); font-weight:800; }
+      .grid { display:grid; grid-template-columns:repeat(3,1fr); gap:14px; }
+      .card { padding:18px; border:1px solid var(--line); border-radius:16px; }
+      code { padding:.15em .35em; border-radius:6px; background:#edf1ee; }
+      .boundary { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+      .yes { border-color:#9bc8b4; } .no { border-color:#e0aaa4; }
+      ul { padding-left:20px; }
+      @media (max-width:720px) { .flow,.grid,.boundary { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p>Protocol v1 · corrected pre-release boundary</p>
+      <h1>One shared wire format for runtime observations.</h1>
+      <p class="lede">Specter applications remain idiomatic in every language. They send metadata to one collector; the dashboard and CLI inspect that collector without controlling the applications.</p>
+
+      <section>
+        <h2>The complete protocol flow</h2>
+        <div class="flow">
+          <div class="node"><strong>TypeScript or Go runtime</strong><p>Records bounded, metadata-only observations without blocking application work.</p><code>observations.batch</code></div>
+          <div class="arrow">POST →<br />← ACK</div>
+          <div class="node collector"><strong>Specter collector</strong><p>Deduplicates, persists operational Events, and projects overview, activity, and causal traces.</p><code>/specter/v1/observations</code></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Two deliberately separate surfaces</h2>
+        <div class="boundary">
+          <div class="card yes"><strong>Language-neutral protocol</strong><ul><li>Runtime → collector observation batches</li><li>Collector → runtime acknowledgements</li><li>Versioned schemas and shared fixtures</li></ul></div>
+          <div class="card no"><strong>Collector read API</strong><ul><li>Dashboard overview and activity</li><li>CLI snapshot, watch, and trace</li><li>Read-only <code>/v1/*</code> routes owned by the collector</li></ul></div>
+        </div>
+        <p>The dashboard and CLI are collector clients, not protocol clients.</p>
+      </section>
+
+      <section>
+        <h2>What stays native</h2>
+        <div class="grid">
+          <div class="card"><strong>Application behavior</strong><p>Slices, Commands, Queries, Reactions, handlers, and schemas.</p></div>
+          <div class="card"><strong>Application transport</strong><p>Each project chooses and owns HTTP, SSE, WebSocket, queues, or in-process calls.</p></div>
+          <div class="card"><strong>Persistence</strong><p>Database schemas, locking, projections, and outboxes remain runtime-specific.</p></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>Why this is simpler</h2>
+        <ul>
+          <li>No generic remote Command or Query server in TypeScript or Go.</li>
+          <li>No capability negotiation for a single-purpose telemetry contract.</li>
+          <li>No TypeScript core dependency in the protocol types package.</li>
+          <li>No ambiguity about whether the dashboard can mutate an observed app.</li>
+          <li>One conformance target: safe, retryable, deduplicated observations.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

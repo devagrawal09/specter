@@ -17,7 +17,7 @@ Public package entrypoints are the source of truth. Import only the names docume
 | `@specter-ts/sqlite-node` | Native `node:sqlite` adapters and scoped Effect runtime bundle | [Persistence API](./persistence.md) |
 | `@specter-ts/postgres` | Postgres Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
 | `@specter-ts/reaction-outbox` | Durable Reaction Plugin, scheduler, worker, store contract, retries, and dead-letter handling | [Reaction outbox API](./reaction-outbox.md) |
-| `@specter-ts/observability` | Runtime and outbox signals, instrumentation, recorders, reporters, and development snapshots | [Observability API](./observability.md) |
+| `@specter-ts/observability` | Shared collector, dashboard, CLI, and non-blocking runtime producer | [Observability API](./observability.md) |
 | `create-specter` | CLI that creates the Todo reference project and generates Slices and Events | [Create Specter CLI](./create-specter.md) |
 
 There is no `@specter-ts/core/client` entrypoint. Browser transports are

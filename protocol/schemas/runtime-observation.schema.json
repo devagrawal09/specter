@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/protocol/v1/runtime-observation.schema.json",
+  "title": "Specter runtime observation",
+  "type": "object",
+  "required": ["observationId", "sequence", "observedAt", "source", "kind", "operationId"],
+  "properties": {
+    "observationId": { "type": "string", "minLength": 1 },
+    "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "observedAt": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
+    "kind": {
+      "enum": [
+        "command.started", "command.completed", "command.rejected", "command.failed",
+        "query.started", "query.completed", "query.rejected", "query.failed", "events.persisted",
+        "slice.catch-up.started", "slice.catch-up.completed", "slice.catch-up.failed",
+        "subscription.invalidated", "replay.started", "replay.completed", "replay.failed",
+        "reaction.pass.started", "reaction.pass.completed", "reaction.pass.failed", "reaction.run.started",
+        "reaction.run.completed", "reaction.run.failed", "outbox.enqueued",
+        "outbox.attempted", "outbox.retry-scheduled", "outbox.dead-lettered", "telemetry.dropped"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "required": ["application", "environment", "runtimeLanguage", "runtimeVersion", "instanceId", "eventLogId"],
+      "properties": {
+        "application": { "type": "string", "minLength": 1 },
+        "environment": { "type": "string", "minLength": 1 },
+        "runtimeLanguage": { "type": "string", "minLength": 1 },
+        "runtimeVersion": { "type": "string", "minLength": 1 },
+        "instanceId": { "type": "string", "minLength": 1 },
+        "eventLogId": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
+    },
+    "operationId": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 },
+    "parentOperationIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "triggeringEventIds": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true },
+    "triggeringEventOrder": {
+      "type": "object",
+      "required": ["from", "to"],
+      "properties": {
+        "from": { "$ref": "#/$defs/safeInteger" },
+        "to": { "$ref": "#/$defs/safeInteger" }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
+    },
+    "reactionPassId": { "type": "string", "minLength": 1 },
+    "deliveryId": { "type": "string", "minLength": 1 },
+    "attemptId": { "type": "string", "minLength": 1 },
+    "outcome": { "enum": ["succeeded", "rejected", "failed"] },
+    "commandType": { "type": "string", "minLength": 1 },
+    "queryType": { "type": "string", "minLength": 1 },
+    "slice": { "type": "string", "minLength": 1 },
+    "reaction": { "type": "string", "minLength": 1 },
+    "events": { "type": "array", "items": { "$ref": "#/$defs/eventReference" } },
+    "cursor": { "$ref": "#/$defs/safeInteger" },
+    "droppedCount": { "$ref": "#/$defs/safeInteger" },
+    "attributes": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } },
+    "error": { "$ref": "#/$defs/structuredError" }
+  },
+  "additionalProperties": { "$ref": "json-value.schema.json" },
+  "$defs": {
+    "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "eventReference": {
+      "type": "object",
+      "required": ["eventId", "type", "order", "recordedAt", "commitVersion"],
+      "properties": {
+        "eventId": { "type": "string", "minLength": 1 },
+        "type": { "type": "string", "minLength": 1 },
+        "order": { "$ref": "#/$defs/safeInteger" },
+        "recordedAt": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
+        "commitVersion": { "$ref": "#/$defs/safeInteger" },
+        "attributes": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
+    },
+    "structuredError": {
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "type": "string", "minLength": 1 },
+        "message": { "type": "string", "minLength": 1 },
+        "details": { "$ref": "json-value.schema.json" },
+        "retryable": { "type": "boolean" }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
+    }
+  }
+}

@@ -35,6 +35,7 @@
     "@solidjs/web": "2.0.0-beta.13",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
+    "@specter-ts/observability": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",

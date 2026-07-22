@@ -7,6 +7,7 @@ const releasePackages = [
   '@specter-ts/sqlite-node',
   '@specter-ts/postgres',
   '@specter-ts/reaction-outbox',
+  '@specter-ts/protocol',
   '@specter-ts/observability',
   'create-specter',
 ]

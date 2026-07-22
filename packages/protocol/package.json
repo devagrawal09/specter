@@ -1,0 +1,34 @@
+{
+  "name": "@specter-ts/protocol",
+  "version": "0.3.0",
+  "description": "Language-neutral Specter runtime-observation protocol types and validation.",
+  "type": "module",
+  "license": "MIT",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "main": "./dist/index.js",
+  "files": ["dist"],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

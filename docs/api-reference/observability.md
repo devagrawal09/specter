@@ -2,136 +2,87 @@
 
 **Import:** `@specter-ts/observability`
 
-**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
 
 ## Purpose
 
-Observability is deliberately best effort. A sink failure must not reject a
+`@specter-ts/observability` provides a standalone collector, read-only browser
+dashboard, CLI, and non-blocking TypeScript telemetry producer. The collector is
+implemented as a Specter app and persists operational Events in SQLite.
+
+Observability is deliberately best effort. A collector outage must not reject a
 successful Command, alter an Event commit, stop projection catch-up, or change
-Reaction semantics. Signals are operational metadata; do not put domain
-secrets in their fields.
+Reaction semantics. Signals are metadata; projects must sanitize attributes and
+must not send Command inputs, Query results, domain Event payloads, or private
+errors by default.
 
-## Values
+## Boundary
 
-| Export | Purpose |
-| --- | --- |
-| `noopSpecterObservability` | Sink that discards all signals. |
-| `createCompositeSpecterObservability(...sinks)` | Fans each signal out to several sinks. |
-| `createInMemorySpecterObservability(options?)` | Records sequenced, timestamped signals with snapshot/subscription controls. |
-| `instrumentEventLog(eventLog, sink)` | Decorates append operations to report newly persisted Events. |
-| `reportSliceCursor(sink, input)` | Reports a projector cursor and calculated Event Log lag. |
-| `reportSubscriptionInvalidated(sink, input)` | Reports one Query subscription invalidation. |
-| `reportReactionRun(sink, input)` | Reports named or aggregate Reaction lifecycle. |
-| `reportProjectionActivity(sink, input)` | Reports catch-up or replay start/completion/failure. |
-| `createOutboxObservabilityListener(sink)` | Maps durable outbox transitions to attempt signals. |
-| `createSpecterDevelopmentPanel(source, options?)` | Aggregates the in-memory collector into typed snapshots and JSON/text/HTML renderers. |
+Runtimes send `observations.batch` and receive `observations.ack` at
+`POST /specter/v1/observations`. This is the entire language-neutral protocol.
 
-## Sink and panel types
+The dashboard and CLI use collector-owned, read-only routes for overview,
+activity, traces, and streaming updates. They are not protocol clients and
+cannot execute Commands or Queries in observed applications.
+
+## Main exports
 
 | Export | Purpose |
 | --- | --- |
-| `SpecterObservabilitySink` | A `record(signal)` destination; may be synchronous or async. |
-| `SpecterObservabilityListener` | Callback for one recorded, sequenced signal. |
-| `InMemorySpecterObservability` | Sink with `snapshot`, `subscribe`, and `clear`. |
-| `SpecterDevelopmentPanelOptions` | Maximum retained Events and activity rows in rendered snapshots. |
-| `SpecterDevelopmentPanel` | `snapshot`, `subscribe`, `renderJson`, `renderText`, and `renderHtml`. |
-| `SpecterDevelopmentSnapshot` | Aggregated Events, version, cursors, subscriptions, Reactions, outbox attempts, and projections. |
-| `SpecterSubscriptionSummary` | Per-Query invalidation count and latest metadata. |
+| `createSpecterObservabilityCollector(options?)` | Creates the persistent Specter collector app and typed read methods. |
+| `createSpecterObservabilityHttpHandler(options)` | Serves observation ingestion, collector reads, the dashboard, and its SSE stream. |
+| `createRuntimeObservationProducer(options)` | Creates the bounded, retrying, non-blocking TypeScript producer. |
+| `createRuntimeObservationEmitter(options)` | Maps core runtime and outbox callbacks into protocol observations. |
+| `createSpecterProtocolObserver(options)` | Creates the core observation callback for a producer/source pair. |
+| `renderCollectorHtml()` | Renders the dependency-light dashboard document. |
+| `DEFAULT_OBSERVATION_RETRY_WINDOW_MS` | Default producer/collector deduplication retry horizon. |
 
-## Signal types
+The package also exports collector model types such as `RuntimeOverview`,
+`CollectedRuntimeObservation`, `RuntimeActivityFilter`, and `RuntimeTrace`.
 
-| Export | Purpose |
-| --- | --- |
-| `EventsPersistedSignal` | Newly persisted Events, Event Log version, and optional idempotency key. |
-| `CommandCommittedSignal` | Command name, version, Event count, and duplicate status. |
-| `SliceCursorSignal` | Slice cursor, Event Log version, and calculated lag. |
-| `SubscriptionInvalidatedSignal` | Query type plus optional subscriber and reason. |
-| `ReactionRunSignal` | Reaction name, lifecycle outcome, duration, and error summary. |
-| `OutboxAttemptSignal` | Job/attempt identity, attempt number, timing, outcome, and error. |
-| `ProjectionActivitySignal` | Catch-up/replay lifecycle and its order range, count, duration, and error. |
-| `SpecterOperationalSignal` | Union of every operational signal. |
-| `RecordedSpecterOperationalSignal` | Operational signal plus collector sequence and observed time. |
-| `ReactionRunOutcome` | `'started' | 'completed' | 'failed'`. |
-| `ProjectionActivity` | `'catch-up' | 'replay'`. |
-| `ProjectionOutcome` | `'started' | 'completed' | 'failed'`. |
-
-## Wire the automatic signals
+## Produce observations
 
 ```ts
-import { EventLog, createSpecterApp } from '@specter-ts/core'
-import {
-  createInMemorySpecterObservability,
-  createSpecterDevelopmentPanel,
-  instrumentEventLog,
-} from '@specter-ts/observability'
-import { Layer } from 'effect'
+const source = {
+  application: 'todo-reference',
+  environment: 'development',
+  runtimeLanguage: 'typescript',
+  runtimeVersion: '0.3.0',
+  instanceId: `todo-${process.pid}`,
+  eventLogId: './data/app.db',
+}
 
-const observability = createInMemorySpecterObservability()
-const panel = createSpecterDevelopmentPanel(observability)
-
-const dependencies = Layer.mergeAll(
-  Layer.succeed(
-    EventLog,
-    instrumentEventLog(persistence.eventLog, observability),
-  ),
-  ReactionSchedulerLive,
-  TodoStoreLayers,
-)
-
-const app = await createSpecterApp(
-  { events: todoEvents, slices: todoSlices },
-  dependencies,
-)
-
-console.log(panel.renderText())
-```
-
-`instrumentEventLog(...)` reports non-duplicate Event appends. Report command,
-cursor, subscription, projection, and Reaction activity at app-owned transport
-or adapter boundaries with typed reporter functions. Panel aggregates signals
-without becoming an authoritative store.
-
-## Report project-owned work
-
-Core cannot see replay jobs, external projectors, or transport-specific
-subscription IDs. Report those boundaries explicitly:
-
-```ts
-await reportProjectionActivity(observability, {
-  sliceName: 'todosQuery',
-  activity: 'replay',
-  outcome: 'started',
-  fromOrder: 0,
+const producer = createRuntimeObservationProducer({
+  collectorUrl: 'http://127.0.0.1:41736',
+  source,
 })
 
-await reportSliceCursor(observability, {
-  sliceName: 'searchIndex',
-  lastAppliedOrder: 41,
-  eventLogVersion: 43,
-})
+const telemetry = createRuntimeObservationEmitter({ producer, source })
+const config = { /* Events, Slices, adapters */ observe: telemetry.observe }
 ```
 
-Bracket project-owned replay with started and completed/failed
-`reportProjectionActivity(...)` calls. External projectors should report their
-cursor after durable progress. Pass `createOutboxObservabilityListener(sink)`
-as the Reaction outbox worker or scheduler transition listener to capture
-attempts, retries, and dead letters.
+`record` never awaits network I/O. The producer keeps an immutable in-flight
+batch, sends at most 100 observations per batch, retains at most 10,000 by
+default, retries within the deduplication horizon, and reports recovered loss
+with `telemetry.dropped`.
 
-## Constraints
+## Run and inspect the collector
 
-- Treat sinks as fallible and isolate them at custom integration boundaries.
-  Bundled Event Log instrumentation and reporter functions swallow sink failures.
-- Operational signals are not an Event Log, audit trail, or Command receipt.
-- The in-memory collector and development panel are process-local diagnostics,
-  not production retention.
-- Bound Event and activity counts with panel options and redact sensitive
-  payloads before they reach a sink.
-- Report replay and catch-up explicitly at owning integration boundary.
+```sh
+specter-observe serve
+specter-observe snapshot
+specter-observe snapshot --format text
+specter-observe watch --application todo-reference --kind reaction.run.failed
+specter-observe trace operation-id
+```
+
+The collector uses fixed strict port `41736` by default. It rotates its active
+SQLite segment after 24 hours or 64 MiB and retains a separate deduplication
+index for the retry window.
 
 ## Related documentation
 
 - [Runtime](../architecture/runtime.md)
+- [Runtime-observability protocol](../../protocol/README.md)
 - [Reaction outbox API](reaction-outbox.md)
-- [Core runtime API](core-runtime.md)
-- [Core adapters API](core-adapters.md)
 - [API reference](README.md)

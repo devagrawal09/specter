@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "kind": "observations.batch",
+  "requestId": "unsafe-error-request",
+  "observations": [{
+    "observationId": "unsafe-error-observation",
+    "sequence": 1,
+    "observedAt": "2026-07-18T12:00:00Z",
+    "source": { "application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+    "kind": "query.failed",
+    "operationId": "operation-1",
+    "error": { "code": "TEST", "message": "Safe failure.", "details": { "unsafe": -9007199254740992 } }
+  }]
+}

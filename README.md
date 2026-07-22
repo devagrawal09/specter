@@ -19,8 +19,11 @@ packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
 packages/sqlite-node/      scoped native node:sqlite runtime bundle
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
-packages/observability/    Event, projection, subscription, and Reaction signals
+packages/protocol/         language-neutral v1 observation types and validation
+packages/observability/    shared collector, dashboard, CLI, and telemetry producer
 packages/create-specter/   create-specter initializer CLI
+protocol/                  normative schemas, behavior, and golden fixtures
+runtimes/go/               independent Go 1.24 runtime and Todo reference app
 codemods/specter-envelope-api/ deterministic flat API to envelope migration
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
@@ -159,7 +162,8 @@ pnpm release:publish
 
 The unpublished `0.4.0` release set contains `@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
-`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/observability`, and
+`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/protocol`,
+`@specter-ts/observability`, and
 `create-specter`. Release verification builds every publishable package before
 workspace typechecks/tests, validates the envelope codemod package, packs and
 tests a generated starter, and runs that starter's Playwright workflow.

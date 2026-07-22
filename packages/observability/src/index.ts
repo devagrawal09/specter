@@ -1,37 +1,33 @@
-export { instrumentEventLog } from './specter-observer'
 export {
-  createSpecterDevelopmentPanel,
-  type SpecterDevelopmentPanel,
-  type SpecterDevelopmentPanelOptions,
-  type SpecterDevelopmentSnapshot,
-  type SpecterSubscriptionSummary,
-} from './development-panel'
-export {
-  createCompositeSpecterObservability,
-  createInMemorySpecterObservability,
-  noopSpecterObservability,
-  type InMemorySpecterObservability,
-  type SpecterObservabilityListener,
-  type SpecterObservabilitySink,
-} from './recorder'
-export {
-  createOutboxObservabilityListener,
-  reportProjectionActivity,
-  reportReactionRun,
-  reportSliceCursor,
-  reportSubscriptionInvalidated,
-} from './reporters'
+  createSpecterObservabilityCollector,
+  type SpecterObservabilityCollector,
+  type SpecterObservabilityCollectorOptions,
+} from './collector'
 export type {
-  EventsPersistedSignal,
-  CommandCommittedSignal,
-  OutboxAttemptSignal,
-  ProjectionActivity,
-  ProjectionActivitySignal,
-  ProjectionOutcome,
-  ReactionRunOutcome,
-  ReactionRunSignal,
-  RecordedSpecterOperationalSignal,
-  SliceCursorSignal,
-  SpecterOperationalSignal,
-  SubscriptionInvalidatedSignal,
-} from './signals'
+  CollectedRuntimeObservation,
+  CollectorState,
+  RuntimeActivityFilter,
+  RuntimeOverview,
+  RuntimeSourceSummary,
+  RuntimeTrace,
+  RuntimeTraceEdge,
+  RuntimeTraceFilter,
+} from './collector-model'
+export {
+  createSpecterObservabilityHttpHandler,
+  type SpecterObservabilityHttpHandlerOptions,
+} from './http-handler'
+export {
+  createRuntimeObservationProducer,
+  type RuntimeObservationProducer,
+  type RuntimeObservationProducerOptions,
+} from './producer'
+export { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
+export {
+  createRuntimeObservationEmitter,
+  createSpecterProtocolObserver,
+  type RuntimeObservationAdapterOptions,
+  type RuntimeObservationEmitter,
+} from './runtime-adapter'
+export { renderCollectorHtml } from './ui'
+export type { RuntimeSource } from '@specter-ts/protocol'

@@ -1,12 +1,15 @@
 {
   "name": "@specter-ts/observability",
   "version": "0.4.0",
-  "description": "Operational signals and in-memory diagnostics for Specter applications.",
+  "description": "Shared Specter runtime collector, dashboard, CLI, and telemetry producer.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
   "types": "./dist/index.d.ts",
   "main": "./dist/index.js",
+  "bin": {
+    "specter-observe": "./dist/cli.js"
+  },
   "files": ["dist"],
   "exports": {
     ".": {
@@ -21,8 +24,13 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@libsql/client": "^0.17.3",
     "@specter-ts/core": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*"
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/protocol": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
+    "@specter-ts/sqlite": "workspace:*",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "effect": "4.0.0-beta.78"
