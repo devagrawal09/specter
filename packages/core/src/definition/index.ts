@@ -57,6 +57,7 @@ export type {
   QueryOutputOf,
   QueryRef,
   QuerySlice,
+  ReactionDeliveryContext,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,

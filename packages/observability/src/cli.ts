@@ -269,7 +269,7 @@ async function openSegment(
   const persistence = createSpecterSqlitePersistence(client)
   const collector = await createSpecterObservabilityCollector({
     eventLog: persistence.eventLog,
-    store: persistence.createSliceStore(createCollectorState),
+    store: persistence.createSliceStoreService(createCollectorState),
   })
   const abort = new AbortController()
   return {

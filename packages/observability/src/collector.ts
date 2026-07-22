@@ -4,14 +4,16 @@ import type {
 } from '@specter-ts/protocol'
 import {
   createSpecterApp,
-  type EventLogAdapter,
-  type ReactionScheduler,
+  EventLog,
+  type EventLogService,
+  ReactionScheduler,
+  type ReactionSchedulerService,
+  type SliceStoreService,
   type SpecterApp,
   type SpecterAppConfig,
   SpecterCommandRejectedError,
-  type SliceStoreAdapter,
 } from '@specter-ts/core'
-import { immediateReactionScheduler } from '@specter-ts/memory'
+import { Layer } from 'effect'
 
 import type {
   CollectedRuntimeObservation,
@@ -21,33 +23,24 @@ import type {
   RuntimeTrace,
   RuntimeTraceFilter,
 } from './collector-model'
-import { createRuntimeActivity } from './features/runtime-activity/impl'
-import { createRecordRuntimeObservations } from './features/runtime-observations/impl'
+import { CollectorStore } from './collector-store'
+import { runtimeActivity } from './features/runtime-activity/impl'
+import { recordRuntimeObservations } from './features/runtime-observations/impl'
 import { observabilityEventDefinitions } from './features/runtime-observations/events'
-import { createRuntimeOverview } from './features/runtime-overview/impl'
-import { createRuntimeTrace } from './features/runtime-trace/impl'
+import { runtimeOverview } from './features/runtime-overview/impl'
+import { runtimeTrace } from './features/runtime-trace/impl'
 
 export type SpecterObservabilityCollectorOptions = {
-  readonly eventLog: EventLogAdapter
-  readonly store: SliceStoreAdapter<CollectorState>
-  readonly schedule?: ReactionScheduler
-  readonly now?: () => Date
+  readonly eventLog: EventLogService
+  readonly store: SliceStoreService<CollectorState, CollectorState, unknown>
+  readonly scheduler?: ReactionSchedulerService
 }
 
 export async function createSpecterObservabilityCollector(
   options: SpecterObservabilityCollectorOptions,
 ) {
-  const now = options.now ?? (() => new Date())
-  const recordRuntimeObservations = createRecordRuntimeObservations(
-    options.store,
-  )
-  const runtimeOverview = createRuntimeOverview(options.store, now)
-  const runtimeActivity = createRuntimeActivity(options.store)
-  const runtimeTrace = createRuntimeTrace(options.store)
   const config = {
     events: observabilityEventDefinitions,
-    eventLog: options.eventLog,
-    schedule: options.schedule ?? immediateReactionScheduler,
     slices: [
       recordRuntimeObservations,
       runtimeOverview,
@@ -55,7 +48,18 @@ export async function createSpecterObservabilityCollector(
       runtimeTrace,
     ],
   } as const
-  const app = (await createSpecterApp(config)) as SpecterApp<SpecterAppConfig>
+  const schedulerLayer = options.scheduler
+    ? Layer.succeed(ReactionScheduler, options.scheduler)
+    : Layer.empty
+  const dependencies = Layer.mergeAll(
+    Layer.succeed(EventLog, options.eventLog),
+    schedulerLayer,
+    Layer.succeed(CollectorStore, options.store),
+  )
+  const app = (await createSpecterApp(
+    config,
+    dependencies,
+  )) as SpecterApp<SpecterAppConfig>
 
   return {
     app,

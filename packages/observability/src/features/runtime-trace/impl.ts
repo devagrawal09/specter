@@ -1,13 +1,12 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
 import type {
-  CollectorState,
   RuntimeTrace,
   RuntimeTraceEdge,
   RuntimeTraceFilter,
 } from '../../collector-model'
+import { CollectorStore } from '../../collector-store'
 import {
   runtimeEventLogIdentity,
   runtimeObservationIdentity,
@@ -16,8 +15,7 @@ import {
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
 import { runtimeTraceSpec } from './spec'
 
-export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
-  return runtimeTraceSpec
+export const runtimeTrace = runtimeTraceSpec
     .inputSchema(
       z.object({
         operationId: z.string().min(1),
@@ -28,7 +26,7 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
       }),
     )
     .outputSchema<RuntimeTrace>()
-    .store(store)
+    .store(CollectorStore)
     .apply(runtimeObservationRecordedEvent, async (event, state) => {
       const observation = event.payload.observation as RuntimeObservation
       const identity = runtimeObservationIdentity(observation)
@@ -178,7 +176,6 @@ export function createRuntimeTrace(store: SliceStoreAdapter<CollectorState>) {
 
       return { operationId, observations, edges }
     })
-}
 
 type TraceIdentityRelation = 'reaction-pass' | 'delivery' | 'attempt'
 
@@ -210,9 +207,7 @@ function buildIdentityLinks(
   const links: TraceIdentityLink[] = []
   for (const observation of observations) {
     for (const [relation, identity] of [
-      ['reaction-pass', observation.reactionPassId],
       ['delivery', observation.deliveryId],
-      ['attempt', observation.attemptId],
     ] as const) {
       if (!identity) continue
       const groupKey = `${runtimeEventLogIdentity(observation.source)}\u0000${relation}\u0000${identity}`

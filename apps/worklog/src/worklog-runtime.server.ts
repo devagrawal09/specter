@@ -2,7 +2,6 @@ import { createClient } from '@libsql/client/sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createSpecterApp, EventLog } from '@specter-ts/core'
-import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
@@ -27,7 +26,6 @@ export async function createWorklogRuntime(
     worklogAppConfig,
     Layer.mergeAll(
       Layer.succeed(EventLog, persistence.eventLog),
-      createImmediateReactionSchedulerLayer(),
       worklogMemoryStoresLayer(),
     ),
   )

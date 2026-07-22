@@ -21,9 +21,16 @@ import {
   type PostgresPool,
 } from './database'
 
-export type PostgresReactionOutboxOptions = PostgresDatabaseOptions & {
-  readonly context?: PostgresDatabaseContext
+export type PostgresReactionOutboxCodec<TPayload> = {
+  readonly encode: (payload: TPayload) => unknown
+  readonly decode: (payload: unknown) => TPayload
 }
+
+export type PostgresReactionOutboxOptions<TPayload = unknown> =
+  PostgresDatabaseOptions & {
+    readonly context?: PostgresDatabaseContext
+    readonly codec?: PostgresReactionOutboxCodec<TPayload>
+  }
 
 export async function preparePostgresReactionOutbox(pool: PostgresPool) {
   await pool.query(`CREATE TABLE IF NOT EXISTS specter_reaction_outbox (
@@ -47,10 +54,14 @@ export async function preparePostgresReactionOutbox(pool: PostgresPool) {
 
 export function createPostgresReactionOutboxStore<TPayload>(
   pool: PostgresPool,
-  options: PostgresReactionOutboxOptions = {},
+  options: PostgresReactionOutboxOptions<TPayload> = {},
 ): ReactionOutboxStore<TPayload> {
   const context =
     options.context ?? createPostgresDatabaseContext(pool, options)
+  const codec: PostgresReactionOutboxCodec<TPayload> = options.codec ?? {
+    encode: (payload) => payload,
+    decode: (payload) => postgresJson<TPayload>(payload, 'outbox payload'),
+  }
 
   function optionalString(value: unknown, field: string) {
     return value === null || value === undefined
@@ -71,7 +82,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
         row.idempotency_key,
         'outbox idempotency key',
       ),
-      payload: postgresJson<TPayload>(row.payload, 'outbox payload'),
+      payload: codec.decode(row.payload),
       status: postgresString(
         row.status,
         'outbox status',
@@ -112,17 +123,18 @@ export function createPostgresReactionOutboxStore<TPayload>(
 
   function runTransaction<A>(
     run: (connection: PostgresConnection) => Promise<A>,
-  ): Promise<A> {
-    return Effect.runPromise(
-      context.transaction((connection) =>
-        Effect.promise(() => run(connection)),
-      ),
+  ): Effect.Effect<A, unknown> {
+    return context.transaction((connection) =>
+      Effect.tryPromise({
+        try: () => run(connection),
+        catch: (cause) => cause,
+      }),
     )
   }
 
   return {
     enqueue(input: EnqueueReactionInput<TPayload>) {
-      const payload = JSON.stringify(input.payload)
+      const payload = JSON.stringify(codec.encode(input.payload))
       if (payload === undefined) {
         throw new Error('Reaction outbox payload must be JSON-serializable')
       }
@@ -261,37 +273,56 @@ export function createPostgresReactionOutboxStore<TPayload>(
       })
     },
 
-    async nextWorkAt() {
-      const result = await context.pool.query<{ wake_at: unknown }>(
-        `SELECT MIN(wake_at) AS wake_at
-           FROM (
-             SELECT available_at AS wake_at
-             FROM specter_reaction_outbox
-             WHERE status = 'pending'
-             UNION ALL
-             SELECT lease_expires_at AS wake_at
-             FROM specter_reaction_outbox
-             WHERE status = 'running' AND lease_expires_at IS NOT NULL
-           ) AS wakeups`,
+    nextWorkAt() {
+      return context.use((connection) =>
+        Effect.tryPromise({
+          try: async () => {
+            const result = await connection.query<{ wake_at: unknown }>(
+              `SELECT MIN(wake_at) AS wake_at
+                 FROM (
+                   SELECT available_at AS wake_at
+                   FROM specter_reaction_outbox
+                   WHERE status = 'pending'
+                   UNION ALL
+                   SELECT lease_expires_at AS wake_at
+                   FROM specter_reaction_outbox
+                   WHERE status = 'running' AND lease_expires_at IS NOT NULL
+                 ) AS wakeups`,
+            )
+            const value = result.rows[0]?.wake_at
+            return value === null || value === undefined
+              ? undefined
+              : postgresDate(value, 'next outbox availability')
+          },
+          catch: (cause) => cause,
+        }),
       )
-      const value = result.rows[0]?.wake_at
-      return value === null || value === undefined
-        ? undefined
-        : postgresDate(value, 'next outbox availability')
     },
 
     get(jobId) {
-      return get(context.pool, jobId)
+      return context.use((connection) =>
+        Effect.tryPromise({
+          try: () => get(connection, jobId),
+          catch: (cause) => cause,
+        }),
+      )
     },
 
-    async list(status?: ReactionOutboxStatus) {
-      const result = await context.pool.query(
-        `SELECT * FROM specter_reaction_outbox
-         ${status ? 'WHERE status = $1' : ''}
-         ORDER BY requested_at ASC, id ASC`,
-        status ? [status] : [],
+    list(status?: ReactionOutboxStatus) {
+      return context.use((connection) =>
+        Effect.tryPromise({
+          try: async () => {
+            const result = await connection.query(
+              `SELECT * FROM specter_reaction_outbox
+               ${status ? 'WHERE status = $1' : ''}
+               ORDER BY requested_at ASC, id ASC`,
+              status ? [status] : [],
+            )
+            return result.rows.map(toJob)
+          },
+          catch: (cause) => cause,
+        }),
       )
-      return result.rows.map(toJob)
     },
 
     retryDeadLetter(jobId, availableAt) {

@@ -1,14 +1,13 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
 import {
   copyCollectorState,
   runtimeObservationIdentity,
-  type CollectorState,
   type RuntimeOverview,
   type RuntimeSourceSummary,
 } from '../../collector-model'
+import { CollectorStore } from '../../collector-store'
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
 import { runtimeOverviewSpec } from './spec'
 
@@ -28,14 +27,10 @@ const sourceKey = (source: RuntimeSourceSummary['source']) =>
     source.eventLogId,
   ].join('\u0000')
 
-export function createRuntimeOverview(
-  store: SliceStoreAdapter<CollectorState>,
-  now: () => Date,
-) {
-  return runtimeOverviewSpec
+export const runtimeOverview = runtimeOverviewSpec
     .inputSchema(z.object({}))
     .outputSchema<RuntimeOverview>()
-    .store(store)
+    .store(CollectorStore)
     .apply(runtimeObservationRecordedEvent, async (event, state) => {
       const observation = event.payload.observation as RuntimeObservation
       const identity = runtimeObservationIdentity(observation)
@@ -91,7 +86,9 @@ export function createRuntimeOverview(
 
       const copied = copyCollectorState(state)
       return {
-        generatedAt: now().toISOString(),
+        generatedAt:
+          copied.observations.at(-1)?.observedAt ??
+          new Date(0).toISOString(),
         collectorVersion: copied.observations.at(-1)?.collectorOrder ?? 0,
         observationCount: copied.observations.length,
         failureCount,
@@ -103,4 +100,3 @@ export function createRuntimeOverview(
         recent: copied.observations.slice(-100),
       }
     })
-}

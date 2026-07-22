@@ -1,19 +1,15 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
 import type { RuntimeObservation } from '@specter-ts/protocol'
 import { z } from 'zod'
 
 import type {
   CollectedRuntimeObservation,
-  CollectorState,
 } from '../../collector-model'
 import { runtimeObservationIdentity } from '../../collector-model'
+import { CollectorStore } from '../../collector-store'
 import { runtimeObservationRecordedEvent } from '../runtime-observations/events'
 import { runtimeActivitySpec } from './spec'
 
-export function createRuntimeActivity(
-  store: SliceStoreAdapter<CollectorState>,
-) {
-  return runtimeActivitySpec
+export const runtimeActivity = runtimeActivitySpec
     .inputSchema(
       z.object({
         application: z.string().min(1).optional(),
@@ -31,7 +27,7 @@ export function createRuntimeActivity(
       }),
     )
     .outputSchema<readonly CollectedRuntimeObservation[]>()
-    .store(store)
+    .store(CollectorStore)
     .apply(runtimeObservationRecordedEvent, async (event, state) => {
       const observation = event.payload.observation as RuntimeObservation
       const identity = runtimeObservationIdentity(observation)
@@ -68,4 +64,3 @@ export function createRuntimeActivity(
         .slice(-query.limit)
         .map((item) => structuredClone(item)),
     )
-}

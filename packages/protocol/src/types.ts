@@ -37,9 +37,7 @@ export type Causality = {
     readonly from: number
     readonly to: number
   }
-  readonly reactionPassId?: string
   readonly deliveryId?: string
-  readonly attemptId?: string
 }
 
 export type RuntimeSource = {
@@ -68,9 +66,6 @@ export const observationKinds = [
   'replay.started',
   'replay.completed',
   'replay.failed',
-  'reaction.pass.started',
-  'reaction.pass.completed',
-  'reaction.pass.failed',
   'reaction.run.started',
   'reaction.run.completed',
   'reaction.run.failed',

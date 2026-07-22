@@ -27,7 +27,8 @@ export function createMemoryEventLog(
   const recordedAt =
     options.recordedAt ?? ((order: number) => new Date(order - 1).toISOString())
   const events: PersistedEvent[] = []
-  const commits = new Map<string, EventLogCommit>()
+  const commits: EventLogCommit[] = []
+  const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
   const copyEvent = (event: PersistedEvent): PersistedEvent => ({ ...event })
   const copyCommit = (commit: EventLogCommit): EventLogCommit => ({
     ...commit,
@@ -45,16 +46,22 @@ export function createMemoryEventLog(
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.at(-1)?.order ?? 0),
+    commitsAfter: (afterVersion) =>
+      Effect.sync(() =>
+        commits
+          .filter((commit) => commit.version > afterVersion)
+          .map(copyCommit),
+      ),
     findCommit: (key) =>
       Effect.sync(() => {
-        const commit = commits.get(key)
+        const commit = commitsByIdempotencyKey.get(key)
         return commit ? copyCommit(commit) : undefined
       }),
     append: (drafts, appendOptions = {}) =>
       Effect.try({
         try: () => {
           const existing = appendOptions.idempotencyKey
-            ? commits.get(appendOptions.idempotencyKey)
+            ? commitsByIdempotencyKey.get(appendOptions.idempotencyKey)
             : undefined
           if (existing) {
             if (existing.fingerprint !== appendOptions.fingerprint) {
@@ -94,11 +101,14 @@ export function createMemoryEventLog(
           const commit: EventLogCommit = {
             events: persisted,
             version: persisted.at(-1)?.order ?? version,
+            committedAt:
+              persisted.at(-1)?.recordedAt ?? new Date().toISOString(),
             idempotencyKey: appendOptions.idempotencyKey,
             fingerprint: appendOptions.fingerprint,
           }
+          commits.push(commit)
           if (appendOptions.idempotencyKey) {
-            commits.set(appendOptions.idempotencyKey, commit)
+            commitsByIdempotencyKey.set(appendOptions.idempotencyKey, commit)
           }
           return { ...copyCommit(commit), duplicate: false }
         },
@@ -107,7 +117,8 @@ export function createMemoryEventLog(
     inspect: () => events.map(copyEvent),
     reset: () => {
       events.length = 0
-      commits.clear()
+      commits.length = 0
+      commitsByIdempotencyKey.clear()
     },
   }
 }

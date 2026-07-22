@@ -2,48 +2,33 @@
 
 **Import:** `@specter-ts/core`
 
-**Status:** `0.4.0` main-branch preview.
-
-Specter runtime dependencies are Effect `Context` services. Applications satisfy
-them with `Layer`; Slice code names its State capability with `.store(StoreTag)`.
+Runtime dependencies are Effect `Context` services supplied by `Layer`.
 
 ## Event Log
 
 | Export | Purpose |
 | --- | --- |
-| `EventLog` | Context service Tag required by runtime. |
-| `EventLogService` | Effect-native `query`, `currentVersion`, `findCommit`, and `append` operations. |
-| `EventLogFailure` | Typed persistence failure with failing operation and cause. |
-| `EventLogCommit` | Durable Event receipt and version. |
-| `EventLogAppendResult` | Commit receipt plus `duplicate`. |
-| `EventLogAppendOptions` | Optional `expectedVersion`, `idempotencyKey`, and fingerprint. |
+| `EventLog` | Runtime service Tag. |
+| `EventLogService` | `query`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
+| `EventLogCommit` | Durable Events, commit version/time, optional idempotency metadata. |
+| `EventLogAppendResult` | Commit plus `duplicate`. |
+| `EventLogFailure` | Typed operation failure. |
 
-`append` is atomic. It validates `expectedVersion`, reserves strictly increasing
-global orders, writes all Events, and persists any idempotency receipt together.
-Concurrent Command decisions may diverge; only matching expected version commits.
-Runtime catches a Slice up again before retrying conflicted work.
-
-`query(afterOrder, eventTypes)` returns matching Events with unique, strictly
-ascending orders greater than `afterOrder`. `findCommit(key)` returns durable
-receipt for earlier idempotent append.
+`append` atomically checks expected version, assigns Event orders, writes Events,
+and records commit boundary. Every append creates commit receipt, including
+commands without idempotency key. `findCommit(key)` resolves idempotency receipt.
+`commitsAfter(version)` returns complete commits ordered by commit version; core
+uses it as durable Reaction work stream.
 
 ## Slice Store
 
 | Export | Purpose |
 | --- | --- |
-| `SliceStoreService<TRead, TWrite, TError>` | Effect-native per-Slice `read` and `transaction` capability. |
-| `SliceStoreTag` | Structural Effect Context Tag accepted by `.store(...)`. |
-| `SliceStoreRead<TTag>` | Infers read State from Tag. |
-| `SliceStoreWrite<TTag>` | Infers write State from Tag. |
-| `SliceStoreError<TTag>` | Infers typed adapter error from Tag. |
-| `SliceStoreRequirement<TTag>` | Infers Effect environment requirement from Tag. |
-
-Applications define a typed Tag and provide its implementation at runtime:
+| `SliceStoreService<TRead, TWrite, TError>` | Per-Slice `read` and `transaction`. |
+| `SliceStoreTag` | Structural Effect Tag accepted by `.store`. |
+| `SliceStoreRead/Write/Error/Requirement` | Infer types from Store Tag. |
 
 ```ts
-import { SliceStoreService } from '@specter-ts/core'
-import { Context, Layer } from 'effect'
-
 class TodosStore extends Context.Service<
   TodosStore,
   SliceStoreService<Readonly<TodosState>, TodosState, TodosStoreFailure>
@@ -53,42 +38,39 @@ const todos = todosSpec
   .store(TodosStore, { eager: true })
   .apply(todoAdded, applyTodo)
   .handle(handleTodos)
-
-const TodosStoreLive = Layer.succeed(TodosStore, service)
 ```
 
-Store owns persistence and concurrency policy. `transaction` must publish State
-and cursor atomically. Visible cursor must not regress. Optimistic stores may
-discard stale commits or retry callback, so apply handlers must avoid external
-effects. `{ eager: true }` requests startup catch-up; default is lazy catch-up
-before each handle.
+Store owns State representation, ORM access, persistence, and concurrency.
+`transaction` must:
 
-## Reaction Scheduler
+- acquire adapter-owned exclusion before invoking callback;
+- invoke callback exactly once; optimistic callback replay is forbidden;
+- commit State and cursor atomically on success;
+- roll back State and cursor on failure;
+- prevent visible cursor regression.
 
-| Export | Purpose |
-| --- | --- |
-| `ReactionScheduler` | Context service Tag required by runtime. |
-| `ReactionSchedulerService` | Effect-native `schedule` and startup `recover`. |
-| `ReactionSchedulerFailure` | Typed schedule/recovery failure. |
-| `ReactionDeliveryContext` | Stable delivery metadata plus attempt metadata. |
+Reaction Plugin executes inside this callback. Adapter may use compare-and-swap
+or last-write-wins publication internally, but cannot rerun developer code.
 
-`schedule(throughOrder, execute)` must accept work before succeeding, then
-returns an Effect that waits for that delivery. `recover(execute)` drains work
-accepted by an earlier runtime. Immediate Layer gives process-local execution;
-durable scheduler Layer persists passes.
+`{ eager: true }` catches Slice up at startup. Default catches up before handle.
+
+## Reaction delivery context
+
+`ReactionDeliveryContext` contains stable `deliveryId`, commit `throughOrder`,
+and durable `scheduledAt`. Core scheduler adapter and core attempt IDs do not
+exist. Runtime runner reads Event Log commits and uses Reaction Slice cursor as
+completion checkpoint.
 
 ## Invariants
 
-- Event Log is authority. Slice Stores are rebuildable projections.
-- App wiring provides one `EventLog`, one `ReactionScheduler`, and every Slice
-  Store Tag through Effect Layers.
-- Store State and cursor publication are locally atomic.
-- Reaction Plugins use stable `deliveryId` for downstream idempotency.
-- Promise API exists only as transport edge; service failures remain typed in
-  native Effect runtime.
+- Event Log is authority; Slice Stores are rebuildable views/checkpoints.
+- App Layer provides one `EventLog` and every registered Store Tag.
+- Shared SQL database context lets nested Commands and outbox enqueue join active
+  Reaction transaction.
+- Promise API is transport edge; native Effect runtime keeps typed errors.
 
 ## Related documentation
 
+- [Runtime API](core-runtime.md)
 - [Persistence API](persistence.md)
 - [Reaction outbox API](reaction-outbox.md)
-- [Core runtime API](core-runtime.md)

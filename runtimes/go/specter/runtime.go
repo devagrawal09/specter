@@ -23,7 +23,6 @@ type Observation struct {
 	ParentOperationIDs   []string         `json:"parentOperationIds,omitempty"`
 	TriggeringEventIDs   []string         `json:"triggeringEventIds,omitempty"`
 	TriggeringEventOrder *EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string           `json:"reactionPassId,omitempty"`
 	CommandType          string           `json:"commandType,omitempty"`
 	QueryType            string           `json:"queryType,omitempty"`
 	ReactionName         string           `json:"reaction,omitempty"`
@@ -31,7 +30,6 @@ type Observation struct {
 	Cursor               int64            `json:"cursor,omitempty"`
 	ReactionTicketID     string           `json:"reactionTicketId,omitempty"`
 	DeliveryID           string           `json:"deliveryId,omitempty"`
-	AttemptID            string           `json:"attemptId,omitempty"`
 	Outcome              string           `json:"outcome,omitempty"`
 	Events               []EventReference `json:"events,omitempty"`
 	Version              int64            `json:"version,omitempty"`
@@ -176,9 +174,7 @@ type DispatchOptions struct {
 	ParentOperationIDs   []string
 	TriggeringEventIDs   []string
 	TriggeringEventOrder *EventOrderRange
-	ReactionPassID       string
 	DeliveryID           string
-	AttemptID            string
 	IdempotencyKey       string
 	ExpectedVersion      *int64
 }
@@ -196,7 +192,6 @@ type ReactionContext struct {
 	OperationID   string    `json:"operationId"`
 	CorrelationID string    `json:"correlationId,omitempty"`
 	DeliveryID    string    `json:"deliveryId"`
-	AttemptID     string    `json:"attemptId"`
 	ScheduledAt   time.Time `json:"scheduledAt"`
 }
 
@@ -330,11 +325,11 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	if operationID == "" {
 		operationID = newID("op")
 	}
-	a.emit(Observation{Kind: "command.started", OperationID: operationID, CorrelationID: options.CorrelationID, ParentOperationIDs: options.ParentOperationIDs, TriggeringEventIDs: options.TriggeringEventIDs, TriggeringEventOrder: options.TriggeringEventOrder, ReactionPassID: options.ReactionPassID, DeliveryID: options.DeliveryID, AttemptID: options.AttemptID, CommandType: name})
+	a.emit(Observation{Kind: "command.started", OperationID: operationID, CorrelationID: options.CorrelationID, ParentOperationIDs: options.ParentOperationIDs, TriggeringEventIDs: options.TriggeringEventIDs, TriggeringEventOrder: options.TriggeringEventOrder, DeliveryID: options.DeliveryID, CommandType: name})
 	command := a.commands[name]
 	if command == nil {
 		failure := unknownCommand(name)
-		a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Outcome: "rejected", Error: failure})
+		a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Outcome: "rejected", Error: failure})
 		return CommandExecution{}, failure
 	}
 	a.log.transactionMu.Lock()
@@ -342,7 +337,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	command.slice.mu.Lock()
 	defer command.slice.mu.Unlock()
 	if err := a.catchUp(ctx, &command.slice, name, operationID, options.CorrelationID); err != nil {
-		a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", err)
+		a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", err)
 		return CommandExecution{}, err
 	}
 	fingerprintBytes, fingerprintErr := commandFingerprint(name, payload)
@@ -353,7 +348,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	fingerprintString := hex.EncodeToString(fingerprint[:])
 	commit, duplicate, lookupErr := a.log.findCommit(options.IdempotencyKey, fingerprintString)
 	if lookupErr != nil {
-		a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", lookupErr)
+		a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", lookupErr)
 		return CommandExecution{}, lookupErr
 	}
 	if !duplicate {
@@ -362,36 +357,36 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 		if handleErr != nil {
 			var public *Error
 			if errors.As(handleErr, &public) && public.Code != ErrCommandRejected {
-				a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", public)
+				a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", public)
 				return CommandExecution{}, public
 			}
 			if !errors.As(handleErr, &public) {
 				public = newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: %s", name, handleErr), map[string]any{"commandType": name}, handleErr)
 			}
-			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Outcome: "rejected", Error: public})
+			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Outcome: "rejected", Error: public})
 			return CommandExecution{}, public
 		}
 		if len(drafts) == 0 {
 			failure := newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: Command emitted no Events.", name), map[string]any{"commandType": name}, nil)
-			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Outcome: "rejected", Error: failure})
+			a.emit(Observation{Kind: "command.rejected", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Outcome: "rejected", Error: failure})
 			return CommandExecution{}, failure
 		}
 		for _, draft := range drafts {
 			if _, ok := a.events[draft.Type]; !ok {
 				failure := newError(ErrUnknownEvent, fmt.Sprintf("Unknown Event type: %q.", draft.Type), map[string]any{"eventType": draft.Type}, nil)
-				a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", failure)
+				a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", failure)
 				return CommandExecution{}, failure
 			}
 			if _, ok := command.definition.allowed[draft.Type]; !ok {
 				failure := newError(ErrConformanceFailed, fmt.Sprintf("Command %q emitted Event %q absent from its Scenarios.", name, draft.Type), nil, nil)
-				a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", failure)
+				a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", failure)
 				return CommandExecution{}, failure
 			}
 		}
 		var appendErr error
 		commit, appendErr = a.log.append(ctx, drafts, options.ExpectedVersion, options.IdempotencyKey, fingerprintString, ticketID)
 		if appendErr != nil {
-			a.emitFailure("command.failed", operationID, options.CorrelationID, options.AttemptID, name, "", appendErr)
+			a.emitFailure("command.failed", operationID, options.CorrelationID, name, "", appendErr)
 			return CommandExecution{}, appendErr
 		}
 	}
@@ -409,7 +404,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 		for i := range commit.Events {
 			references[i] = eventReference(commit.Events[i])
 		}
-		a.emit(Observation{Kind: "events.persisted", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Events: references, Version: commit.Version})
+		a.emit(Observation{Kind: "events.persisted", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Events: references, Version: commit.Version})
 	}
 	ticketID := commit.ReactionTicketID
 	if ticketID == "" {
@@ -418,14 +413,14 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	if commit.Duplicate {
 		result := a.reactionResult(ticketID)
 		execution := CommandExecution{OperationID: operationID, Events: commit.Events, Version: commit.Version, Duplicate: true, ReactionTicketID: ticketID, Reactions: result}
-		a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Version: commit.Version, Duplicate: true, ReactionTicketID: ticketID, Outcome: "succeeded"})
+		a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Version: commit.Version, Duplicate: true, ReactionTicketID: ticketID, Outcome: "succeeded"})
 		return execution, nil
 	}
 	ticket := &reactionTicket{done: make(chan struct{})}
 	a.tickets.Store(ticketID, ticket)
 	reactionResult := make(chan error, 1)
 	execution := CommandExecution{OperationID: operationID, Events: commit.Events, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID, Reactions: reactionResult}
-	a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, CommandType: name, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID, Outcome: "succeeded"})
+	a.emit(Observation{Kind: "command.completed", OperationID: operationID, CorrelationID: options.CorrelationID, CommandType: name, Version: commit.Version, Duplicate: commit.Duplicate, ReactionTicketID: ticketID, Outcome: "succeeded"})
 	a.reactionQueue.enqueue(reactionPass{parent: operationID, correlation: options.CorrelationID, ticketID: ticketID, events: commit.Events, ticket: ticket, result: reactionResult})
 	return execution, nil
 }
@@ -452,30 +447,30 @@ func (a *App) QueryJSON(ctx context.Context, name string, payload json.RawMessag
 	if op == "" {
 		op = newID("op")
 	}
-	a.emit(Observation{Kind: "query.started", OperationID: op, CorrelationID: options.CorrelationID, ParentOperationIDs: options.ParentOperationIDs, TriggeringEventIDs: options.TriggeringEventIDs, TriggeringEventOrder: options.TriggeringEventOrder, ReactionPassID: options.ReactionPassID, DeliveryID: options.DeliveryID, AttemptID: options.AttemptID, QueryType: name})
+	a.emit(Observation{Kind: "query.started", OperationID: op, CorrelationID: options.CorrelationID, ParentOperationIDs: options.ParentOperationIDs, TriggeringEventIDs: options.TriggeringEventIDs, TriggeringEventOrder: options.TriggeringEventOrder, DeliveryID: options.DeliveryID, QueryType: name})
 	query := a.queries[name]
 	if query == nil {
 		failure := unknownQuery(name)
-		a.emit(Observation{Kind: "query.rejected", OperationID: op, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, QueryType: name, Outcome: "rejected", Error: failure})
+		a.emit(Observation{Kind: "query.rejected", OperationID: op, CorrelationID: options.CorrelationID, QueryType: name, Outcome: "rejected", Error: failure})
 		return nil, failure
 	}
 	query.slice.mu.Lock()
 	defer query.slice.mu.Unlock()
 	if err := a.catchUp(ctx, &query.slice, name, op, options.CorrelationID); err != nil {
-		a.emitFailure("query.failed", op, options.CorrelationID, options.AttemptID, "", name, err)
+		a.emitFailure("query.failed", op, options.CorrelationID, "", name, err)
 		return nil, err
 	}
 	result, err := query.definition.Handle(ctx, payload)
 	if err != nil {
-		a.emitFailure("query.failed", op, options.CorrelationID, options.AttemptID, "", name, err)
+		a.emitFailure("query.failed", op, options.CorrelationID, "", name, err)
 		return nil, err
 	}
 	if _, err := json.Marshal(result); err != nil {
 		failure := newError(ErrInvalidOutput, fmt.Sprintf("Invalid query output for %q.", name), nil, err)
-		a.emitFailure("query.failed", op, options.CorrelationID, options.AttemptID, "", name, failure)
+		a.emitFailure("query.failed", op, options.CorrelationID, "", name, failure)
 		return nil, failure
 	}
-	a.emit(Observation{Kind: "query.completed", OperationID: op, CorrelationID: options.CorrelationID, AttemptID: options.AttemptID, QueryType: name, Outcome: "succeeded"})
+	a.emit(Observation{Kind: "query.completed", OperationID: op, CorrelationID: options.CorrelationID, QueryType: name, Outcome: "succeeded"})
 	return result, nil
 }
 
@@ -538,33 +533,18 @@ func (a *App) applyEvents(ctx context.Context, slice *sliceRuntime, events []Per
 }
 
 func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID string, events []PersistedEvent, ticket *reactionTicket, result chan<- error) {
-	passOperation := newID("op")
 	var failures []error
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			failures = append(failures, reactionPanicError(recovered))
 		}
 		var err error
-		passKind := "reaction.pass.completed"
 		if len(failures) > 0 {
 			err = newError(ErrReactionFailure, "One or more Reactions failed.", map[string]any{"failureCount": len(failures)}, errors.Join(failures...))
-			passKind = "reaction.pass.failed"
 		}
 		ticket.mu.Lock()
 		ticket.err = err
 		ticket.mu.Unlock()
-		outcome := map[string]any{"failureCount": len(failures)}
-		observation := Observation{Kind: passKind, OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID, Attributes: outcome}
-		if err != nil {
-			observation.Outcome = "failed"
-			var public *Error
-			if errors.As(err, &public) {
-				observation.Error = public
-			}
-		} else {
-			observation.Outcome = "succeeded"
-		}
-		a.emit(observation)
 		result <- err
 		close(ticket.done)
 		close(result)
@@ -572,7 +552,6 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 			a.tickets.CompareAndDelete(ticketID, ticket)
 		})
 	}()
-	a.emit(Observation{Kind: "reaction.pass.started", OperationID: passOperation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(events), ReactionTicketID: ticketID})
 	for name, reaction := range a.reactions {
 		func() {
 			reaction.slice.mu.Lock()
@@ -587,7 +566,7 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 			if len(events) > 0 {
 				through = events[len(events)-1].GlobalOrder
 			}
-			if err := a.catchUpThrough(ctx, &reaction.slice, name, passOperation, correlation, through); err != nil {
+			if err := a.catchUpThrough(ctx, &reaction.slice, name, parent, correlation, through); err != nil {
 				failures = append(failures, err)
 				return
 			}
@@ -600,9 +579,10 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 				}
 			}
 			if len(relevant) > 0 {
-				deliveryID, attemptID, op := newID("delivery"), newID("attempt"), newID("op")
-				ctxValue := ReactionContext{OperationID: op, CorrelationID: correlation, DeliveryID: deliveryID, AttemptID: attemptID, ScheduledAt: time.Now().UTC()}
-				a.emit(Observation{Kind: "reaction.run.started", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID})
+				deliveryID := fmt.Sprintf("%s:%d", name, relevant[0].CommitVersion)
+				op := newID("op")
+				ctxValue := ReactionContext{OperationID: op, CorrelationID: correlation, DeliveryID: deliveryID, ScheduledAt: time.Now().UTC()}
+				a.emit(Observation{Kind: "reaction.run.started", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID})
 				effect, runErr := runReactionHandler(reaction.definition.Handle, ctx, ctxValue, relevant)
 				if runErr == nil {
 					if _, marshalErr := json.Marshal(effect); marshalErr != nil {
@@ -615,9 +595,9 @@ func (a *App) afterCommit(ctx context.Context, parent, correlation, ticketID str
 					if !errors.As(runErr, &public) {
 						public = newError(ErrInfrastructure, "Reaction run failed.", nil, runErr)
 					}
-					a.emit(Observation{Kind: "reaction.run.failed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "failed", Error: public})
+					a.emit(Observation{Kind: "reaction.run.failed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, Outcome: "failed", Error: public})
 				} else {
-					a.emit(Observation{Kind: "reaction.run.completed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{passOperation}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionPassID: passOperation, ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, AttemptID: attemptID, Outcome: "succeeded"})
+					a.emit(Observation{Kind: "reaction.run.completed", OperationID: op, CorrelationID: correlation, ParentOperationIDs: []string{parent}, TriggeringEventIDs: eventIDs(relevant), TriggeringEventOrder: eventOrder(relevant), ReactionName: name, ReactionTicketID: ticketID, DeliveryID: deliveryID, Outcome: "succeeded"})
 				}
 			}
 		}()
@@ -734,10 +714,10 @@ func (a *App) emit(observation Observation) {
 	observation.ObservedAt = time.Now().UTC()
 	func() { defer func() { _ = recover() }(); a.observe(observation) }()
 }
-func (a *App) emitFailure(kind, operation, correlation, attempt, command, query string, err error) {
+func (a *App) emitFailure(kind, operation, correlation, command, query string, err error) {
 	var public *Error
 	if !errors.As(err, &public) {
 		public = newError(ErrInfrastructure, "Runtime operation failed.", nil, err)
 	}
-	a.emit(Observation{Kind: kind, OperationID: operation, CorrelationID: correlation, AttemptID: attempt, CommandType: command, QueryType: query, Outcome: "failed", Error: public})
+	a.emit(Observation{Kind: kind, OperationID: operation, CorrelationID: correlation, CommandType: command, QueryType: query, Outcome: "failed", Error: public})
 }

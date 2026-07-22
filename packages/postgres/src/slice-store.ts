@@ -111,10 +111,14 @@ export function createPostgresSliceStoreService<
 
   return {
     read: (sliceName, run) =>
-      Effect.gen(function* () {
-        const current = yield* attempt('read', () => load(pool, sliceName))
-        return yield* run(read(current.state), current.cursor)
-      }),
+      context.use((connection) =>
+        Effect.gen(function* () {
+          const current = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          return yield* run(read(current.state), current.cursor)
+        }),
+      ),
     transaction: (sliceName, run) =>
       context.transaction((connection) =>
         Effect.gen(function* () {

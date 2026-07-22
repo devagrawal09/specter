@@ -1,6 +1,5 @@
 import {
   EventLog,
-  type ReactionScheduler,
   type SliceStoreService,
   type SliceStoreTag,
 } from '@specter-ts/core'
@@ -17,10 +16,6 @@ import {
   type NodeSqliteEventLogOptions,
 } from './event-log'
 import {
-  createNodeSqliteReactionSchedulerLayer,
-  prepareNodeSqliteReactionScheduler,
-} from './reaction-scheduler'
-import {
   createNodeSqliteSliceStoreLayer,
   prepareNodeSqliteSliceStore,
   type NodeSqliteSliceStoreOptions,
@@ -32,7 +27,7 @@ export type SpecterNodeSqliteOptions = NodeSqliteRuntimeOptions & {
 
 export type SpecterNodeSqliteRuntime = {
   readonly context: NodeSqliteContext
-  readonly infrastructureLayer: Layer.Layer<EventLog | ReactionScheduler>
+  readonly infrastructureLayer: Layer.Layer<EventLog>
   readonly sliceStoreLayer: <TIdentifier, TWrite, TRead = Readonly<TWrite>>(
     tag: SliceStoreTag<TIdentifier, SliceStoreService<TRead, TWrite, unknown>>,
     createState: () => TWrite,
@@ -55,15 +50,11 @@ export function createSpecterNodeSqliteLayer(
         const context = openNodeSqlite(options)
         prepareNodeSqliteEventLog(context)
         prepareNodeSqliteSliceStore(context)
-        prepareNodeSqliteReactionScheduler(context)
         return {
           context,
-          infrastructureLayer: Layer.merge(
-            Layer.succeed(
-              EventLog,
-              createNodeSqliteEventLogService(context, options.eventLog),
-            ),
-            createNodeSqliteReactionSchedulerLayer(context),
+          infrastructureLayer: Layer.succeed(
+            EventLog,
+            createNodeSqliteEventLogService(context, options.eventLog),
           ),
           sliceStoreLayer: (tag, createState, storeOptions) =>
             createNodeSqliteSliceStoreLayer(

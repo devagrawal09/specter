@@ -82,10 +82,10 @@ export function createNodeSqliteSliceStoreService<
         return run(read(current.state), current.cursor)
       }),
     transaction: (sliceName, run) =>
-      Effect.suspend(() => {
-        const working = context.run(() => load(sliceName))
-        let published = false
-        return Effect.gen(function* () {
+      context.transactionEffect(
+        Effect.gen(function* () {
+          const working = load(sliceName)
+          let published = false
           const result = yield* run(
             working.state,
             () => read(working.state),
@@ -101,10 +101,10 @@ export function createNodeSqliteSliceStoreService<
                 published = true
               }),
           )
-          if (published) context.transaction(() => save(sliceName, working))
+          if (published) save(sliceName, working)
           return result
-        })
-      }),
+        }),
+      ),
   }
 }
 

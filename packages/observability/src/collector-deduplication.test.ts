@@ -242,7 +242,7 @@ describe('collector cross-segment observation deduplication', () => {
     const persistence = createSpecterSqlitePersistence(segment)
     const collector = await createSpecterObservabilityCollector({
       eventLog: persistence.eventLog,
-      store: persistence.createSliceStore(createCollectorState),
+      store: persistence.createSliceStoreService(createCollectorState),
     })
     await collector.ingest(reserved.reservation.batch)
 
@@ -300,7 +300,7 @@ describe('collector cross-segment observation deduplication', () => {
     const persistence = createSpecterSqlitePersistence(committedSegment)
     const collector = await createSpecterObservabilityCollector({
       eventLog: persistence.eventLog,
-      store: persistence.createSliceStore(createCollectorState),
+      store: persistence.createSliceStoreService(createCollectorState),
     })
     await collector.ingest(reserved.reservation.batch)
     // Simulate losing the response and crashing before the control index can

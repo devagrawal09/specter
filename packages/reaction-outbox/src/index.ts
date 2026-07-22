@@ -1,8 +1,9 @@
 export { createMemoryReactionOutboxStore } from './memory-store'
 export { ReactionOutboxLeaseLostError } from './errors'
 export {
-  createOutboxReactionPlugin,
-  type OutboxReactionPluginOptions,
+  withReactionOutbox,
+  type OutboxedReaction,
+  type ReactionOutboxPluginOptions,
 } from './plugin'
 export type { MemoryReactionOutboxStore } from './memory-store'
 export {

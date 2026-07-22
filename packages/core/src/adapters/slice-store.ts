@@ -5,8 +5,9 @@ import type { Context, Effect } from 'effect'
  *
  * The adapter owns projection persistence and concurrency. Specter only
  * requires that `transaction` publishes writes and its cursor atomically and
- * that visible cursors never move backwards. `run` may be retried by an
- * optimistic adapter, so apply handlers must remain free of external effects.
+ * that visible cursors never move backwards. The adapter acquires exclusion
+ * before invoking `run` and invokes it exactly once. Reaction Plugins may run
+ * inside this transaction, so optimistic callback replay is forbidden.
  */
 export type SliceStoreService<TRead, TWrite, TError = never> = {
   readonly read: <A, E, R>(

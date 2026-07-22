@@ -137,7 +137,7 @@ export function createTwilioOutboundPlugin(
               to: effect.to,
               from: from ?? 'test-provider',
               body: effect.body,
-              attemptNumber: context.attemptNumber,
+              attemptNumber: (existing?.attemptNumber ?? 0) + 1,
               startedAt: attemptedAt,
             })
 

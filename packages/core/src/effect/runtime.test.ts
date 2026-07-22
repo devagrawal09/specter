@@ -1,14 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Context, Effect, Fiber, Layer, Semaphore, Stream } from 'effect'
+import { Context, Effect, Fiber, Layer, Stream } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
   EventLog,
+  type EventLogCommit,
   EventLogFailure,
-  ReactionScheduler,
-  ReactionSchedulerFailure,
   type EventLogService,
-  type ReactionSchedulerService,
   type SliceStoreService,
   SpecterIdempotencyConflictError,
   SpecterInvalidCommandOptionsError,
@@ -97,7 +95,6 @@ describe('Effect-native runtime', () => {
             },
           }),
           eventLogLayer([{ type: 'value-recorded', payload: 1 }]),
-          schedulerLayer(),
         ),
       ),
     )
@@ -129,7 +126,6 @@ describe('Effect-native runtime', () => {
         Layer.mergeAll(
           Layer.succeed(ValuesStore, {} as never),
           eventLogLayer(),
-          schedulerLayer(),
         ),
       ),
     )
@@ -178,7 +174,6 @@ describe('Effect-native runtime', () => {
     const dependencies = Layer.mergeAll(
       storeLayer({ onTransaction: (active) => (transactionActive = active) }),
       eventLogLayer(),
-      schedulerLayer(),
     )
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
@@ -194,10 +189,9 @@ describe('Effect-native runtime', () => {
     ).resolves.toEqual([3])
   })
 
-  it('enqueues Reactions before Command returns and runs effect after Store commit', async () => {
+  it('starts Reactions before Command returns and runs Plugin inside Store transaction', async () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
     let transactionActive = false
-    let scheduled = false
     let executed = false
     const recordValue = createCommandSlice('recordValue')
       .description('Records one value.')
@@ -221,7 +215,7 @@ describe('Effect-native runtime', () => {
       .plugin(() =>
         Effect.succeed((_value) =>
           Effect.sync(() => {
-            expect(transactionActive).toBe(false)
+            expect(transactionActive).toBe(true)
             executed = true
           }),
         ),
@@ -241,24 +235,24 @@ describe('Effect-native runtime', () => {
             onTransaction: (active) => (transactionActive = active),
           }),
           eventLogLayer(),
-          schedulerLayer(() => (scheduled = true)),
         ),
       ),
     )
     const program = Effect.gen(function* () {
       const app = yield* SpecterRuntime
       const execution = yield* app.command({ type: 'recordValue', payload: 5 })
-      expect(scheduled).toBe(true)
-      expect(executed).toBe(false)
       yield* execution.reactions
     })
     await Effect.runPromise(Effect.scoped(Effect.provide(program, layer)))
     expect(executed).toBe(true)
   })
 
-  it('keeps committed Events when scheduler acceptance fails', async () => {
+  it('rolls back Reaction state and cursor, then retries with stable delivery ID', async () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
-    let appendCount = 0
+    const store = makeStoreService()
+    const eventLog = makeEventLogService()
+    const deliveries: string[] = []
+    let fail = true
     const command = createCommandSlice('recordValue')
       .description('Records one value.')
       .scenarios({
@@ -271,59 +265,210 @@ describe('Effect-native runtime', () => {
       .store(ValuesStore)
       .handle(async (value) => [valueRecorded.create(value)])
     const reaction = createReactionSlice('publishValue')
-      .description('Publishes latest value.')
+      .description('Publishes every committed value.')
       .scenarios({
         description: 'Publishes one value.',
         given: [event('value-recorded', 1)],
         expect: 1,
       })
       .outputSchema<number>()
-      .plugin(() => Effect.succeed(() => Effect.void))
+      .plugin(() =>
+        Effect.succeed((_output, context) => {
+          deliveries.push(context.deliveryId)
+          return fail ? Effect.fail(new Error('provider down')) : Effect.void
+        }),
+      )
       .store(ValuesStore)
       .apply(valueRecorded, async (applied, state) => {
         state.values.push(applied.payload)
       })
       .handle(async (state) => state.values.at(-1))
-    const failingScheduler: ReactionSchedulerService = {
-      schedule: () =>
-        Effect.fail(
-          new ReactionSchedulerFailure('schedule', new Error('outbox down')),
-        ),
-      recover: () => Effect.void,
-    }
-    const layer = createSpecterAppLayer({
+    const config = {
       events: [valueRecorded],
       slices: [command, reaction],
-    } as const).pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          storeLayer(),
-          eventLogLayer([], () => {
-            appendCount += 1
-          }),
-          Layer.succeed(ReactionScheduler, failingScheduler),
+    } as const
+    const dependencies = Layer.merge(
+      Layer.succeed(EventLog, eventLog),
+      Layer.succeed(ValuesStore, store),
+    )
+
+    const first = await createSpecterApp(config, dependencies)
+    const firstExecution = await first.command({
+      type: 'recordValue',
+      payload: 1,
+    })
+    await expect(firstExecution.reactions).rejects.toThrow(
+      'Reaction run failed for: publishValue',
+    )
+    await expect(
+      Effect.runPromise(
+        store.read('publishValue', (state, cursor) =>
+          Effect.succeed({ state, cursor }),
         ),
       ),
-    )
-    const result = await Effect.runPromise(
-      Effect.result(
-        Effect.scoped(
-          Effect.provide(
-            Effect.flatMap(SpecterRuntime, (app) =>
-              app.command({ type: 'recordValue', payload: 1 }),
-            ),
-            layer,
-          ),
+    ).resolves.toEqual({ state: { values: [] }, cursor: 0 })
+    await first.close()
+
+    fail = false
+    const second = await createSpecterApp(config, dependencies)
+    const secondExecution = await second.command({
+      type: 'recordValue',
+      payload: 2,
+    })
+    await secondExecution.reactions
+    await expect(
+      Effect.runPromise(
+        store.read('publishValue', (state, cursor) =>
+          Effect.succeed({ state, cursor }),
         ),
       ),
-    )
-    expect(result._tag).toBe('Failure')
-    expect(appendCount).toBe(1)
+    ).resolves.toEqual({ state: { values: [1, 2] }, cursor: 2 })
+    expect(deliveries).toEqual([
+      'publishValue:1',
+      'publishValue:1',
+      'publishValue:2',
+    ])
+    await second.close()
   })
 
-  it('fails acquisition when scheduler recovery fails', async () => {
+  it('runs a Reaction once per commit, not once per Event', async () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
-    const command = createCommandSlice('recordValue')
+    const deliveries: Array<{ id: string; values: readonly number[] }> = []
+    const recordValues = createCommandSlice('recordValues')
+      .description('Records values in one commit.')
+      .scenarios({
+        description: 'Records two values.',
+        given: [],
+        when: [1, 2],
+        expect: [event('value-recorded', 1), event('value-recorded', 2)],
+      })
+      .inputSchema<readonly number[]>()
+      .store(ValuesStore)
+      .handle(async (values) =>
+        values.map((value) => valueRecorded.create(value)),
+      )
+    const reaction = createReactionSlice('publishValues')
+      .description('Publishes once after each commit.')
+      .scenarios({
+        description: 'Publishes two values together.',
+        given: [event('value-recorded', 1), event('value-recorded', 2)],
+        expect: [1, 2],
+      })
+      .outputSchema<readonly number[]>()
+      .plugin(() =>
+        Effect.succeed((values, context) =>
+          Effect.sync(() => {
+            deliveries.push({ id: context.deliveryId, values: [...values] })
+          }),
+        ),
+      )
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => [...state.values])
+    const app = await createSpecterApp(
+      {
+        events: [valueRecorded],
+        slices: [recordValues, reaction],
+      } as const,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService()),
+        Layer.succeed(ValuesStore, makeStoreService()),
+      ),
+    )
+
+    const first = await app.command({
+      type: 'recordValues',
+      payload: [1, 2],
+    })
+    await first.reactions
+    const second = await app.command({ type: 'recordValues', payload: [3] })
+    await second.reactions
+
+    expect(deliveries).toEqual([
+      { id: 'publishValues:2', values: [1, 2] },
+      { id: 'publishValues:3', values: [1, 2, 3] },
+    ])
+    await app.close()
+  })
+
+  it('advances past irrelevant commits without invoking the handler', async () => {
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const otherRecorded = createEventDefinition('other-recorded', numberSchema)
+    const store = makeStoreService()
+    let handles = 0
+    const recordOther = createCommandSlice('recordOther')
+      .description('Records an unrelated value.')
+      .scenarios({
+        description: 'Records an unrelated value.',
+        given: [],
+        when: 9,
+        expect: [event('other-recorded', 9)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [otherRecorded.create(value)])
+    const recordValue = createCommandSlice('recordValue')
+      .description('Records a relevant value.')
+      .scenarios({
+        description: 'Records a relevant value.',
+        given: [],
+        when: 7,
+        expect: [event('value-recorded', 7)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const reaction = createReactionSlice('publishRelevantValue')
+      .description('Publishes relevant values.')
+      .scenarios({
+        description: 'Publishes one relevant value.',
+        given: [event('value-recorded', 7)],
+        expect: 7,
+      })
+      .outputSchema<number>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => {
+        handles += 1
+        return state.values.at(-1)
+      })
+    const app = await createSpecterApp(
+      {
+        events: [valueRecorded, otherRecorded],
+        slices: [recordOther, recordValue, reaction],
+      } as const,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService()),
+        Layer.succeed(ValuesStore, store),
+      ),
+    )
+
+    const irrelevant = await app.command({ type: 'recordOther', payload: 9 })
+    await irrelevant.reactions
+    await expect(
+      Effect.runPromise(
+        store.read('publishRelevantValue', (_state, cursor) =>
+          Effect.succeed(cursor),
+        ),
+      ),
+    ).resolves.toBe(1)
+    expect(handles).toBe(0)
+
+    const relevant = await app.command({ type: 'recordValue', payload: 7 })
+    await relevant.reactions
+    expect(handles).toBe(1)
+    await app.close()
+  })
+
+  it('serializes overlapping local Reaction runners', async () => {
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const deliveries: string[] = []
+    const recordValue = createCommandSlice('recordValue')
       .description('Records one value.')
       .scenarios({
         description: 'Records one value.',
@@ -335,47 +480,43 @@ describe('Effect-native runtime', () => {
       .store(ValuesStore)
       .handle(async (value) => [valueRecorded.create(value)])
     const reaction = createReactionSlice('publishValue')
-      .description('Publishes latest value.')
+      .description('Publishes each commit once.')
       .scenarios({
         description: 'Publishes one value.',
         given: [event('value-recorded', 1)],
         expect: 1,
       })
       .outputSchema<number>()
-      .plugin(() => Effect.succeed(() => Effect.void))
+      .plugin(() =>
+        Effect.succeed((_output, context) =>
+          Effect.gen(function* () {
+            deliveries.push(context.deliveryId)
+            yield* Effect.sleep('5 millis')
+          }),
+        ),
+      )
       .store(ValuesStore)
       .apply(valueRecorded, async (applied, state) => {
         state.values.push(applied.payload)
       })
       .handle(async (state) => state.values.at(-1))
-    const failingScheduler: ReactionSchedulerService = {
-      schedule: () => Effect.succeed(Effect.void),
-      recover: () =>
-        Effect.fail(
-          new ReactionSchedulerFailure('recover', new Error('recovery down')),
-        ),
-    }
-    const layer = createSpecterAppLayer({
-      events: [valueRecorded],
-      slices: [command, reaction],
-    } as const).pipe(
-      Layer.provide(
-        Layer.mergeAll(
-          storeLayer(),
-          eventLogLayer(),
-          Layer.succeed(ReactionScheduler, failingScheduler),
-        ),
+    const app = await createSpecterApp(
+      {
+        events: [valueRecorded],
+        slices: [recordValue, reaction],
+      } as const,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService()),
+        Layer.succeed(ValuesStore, makeStoreService()),
       ),
     )
-    const result = await Effect.runPromise(
-      Effect.result(
-        Effect.scoped(Effect.provide(Effect.service(SpecterRuntime), layer)),
-      ),
-    )
-    expect(result._tag).toBe('Failure')
-    if (result._tag === 'Failure') {
-      expect(result.failure).toBeInstanceOf(ReactionSchedulerFailure)
-    }
+
+    const first = await app.command({ type: 'recordValue', payload: 1 })
+    const second = await app.command({ type: 'recordValue', payload: 2 })
+    await Promise.all([first.reactions, second.reactions])
+
+    expect(deliveries).toEqual(['publishValue:1', 'publishValue:2'])
+    await app.close()
   })
 
   it('does not deadlock when a Reaction dispatches a Command', async () => {
@@ -454,7 +595,6 @@ describe('Effect-native runtime', () => {
           eventLogLayer([], () => {
             appendCount += 1
           }),
-          serializedSchedulerLayer(),
         ),
       ),
     )
@@ -495,11 +635,7 @@ describe('Effect-native runtime', () => {
             ),
             createSpecterAppLayer(config).pipe(
               Layer.provide(
-                Layer.mergeAll(
-                  storeLayer(),
-                  Layer.succeed(EventLog, eventLog),
-                  schedulerLayer(),
-                ),
+                Layer.mergeAll(storeLayer(), Layer.succeed(EventLog, eventLog)),
               ),
             ),
           ),
@@ -562,7 +698,6 @@ describe('Effect-native runtime', () => {
             { type: 'first-recorded', payload: 1 },
             { type: 'second-recorded', payload: 2 },
           ]),
-          schedulerLayer(),
         ),
       ),
     )
@@ -620,9 +755,7 @@ describe('Effect-native runtime', () => {
       events: [valueRecorded],
       slices: [command, query],
     } as const).pipe(
-      Layer.provide(
-        Layer.mergeAll(storeLayer(), eventLogLayer(), schedulerLayer()),
-      ),
+      Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
     const program = Effect.gen(function* () {
       const app = yield* SpecterRuntime
@@ -668,9 +801,7 @@ describe('Effect-native runtime', () => {
       events: [valueRecorded],
       slices: [command, query],
     } as const).pipe(
-      Layer.provide(
-        Layer.mergeAll(storeLayer(), eventLogLayer(), schedulerLayer()),
-      ),
+      Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
     const values = await Effect.runPromise(
       Effect.scoped(
@@ -739,7 +870,6 @@ describe('Effect-native runtime', () => {
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
         Layer.succeed(ValuesStore, makeStoreService()),
-        schedulerLayer(),
       ),
     )
     const controller = new AbortController()
@@ -815,7 +945,6 @@ describe('Effect-native runtime', () => {
       Layer.mergeAll(
         Layer.succeed(EventLog, makeEventLogService()),
         Layer.succeed(ValuesStore, makeStoreService()),
-        schedulerLayer(),
       )
     const first = await createSpecterApp(config, dependencies())
     const second = await createSpecterApp(config, dependencies())
@@ -846,9 +975,7 @@ describe('Effect-native runtime', () => {
       events: [valueRecorded],
       slices: [command],
     } as const).pipe(
-      Layer.provide(
-        Layer.mergeAll(storeLayer(), eventLogLayer(), schedulerLayer()),
-      ),
+      Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
     const result = await Effect.runPromise(
       Effect.result(
@@ -943,15 +1070,17 @@ function makeEventLogService(
     order: index + 1,
     recordedAt: new Date(0).toISOString(),
   }))
-  const commits = new Map<
-    string,
-    {
-      events: typeof events
-      version: number
-      idempotencyKey: string
-      fingerprint?: string
-    }
-  >()
+  const commitList: EventLogCommit[] =
+    events.length > 0
+      ? [
+          {
+            events: [...events],
+            version: events.length,
+            committedAt: new Date(0).toISOString(),
+          },
+        ]
+      : []
+  const commits = new Map<string, EventLogCommit>()
   const service: EventLogService = {
     query: (after, types) =>
       Effect.succeed(
@@ -960,6 +1089,10 @@ function makeEventLogService(
         ),
       ),
     currentVersion: Effect.sync(() => events.length),
+    commitsAfter: (afterVersion) =>
+      Effect.sync(() =>
+        commitList.filter((commit) => commit.version > afterVersion),
+      ),
     findCommit: (key) => Effect.succeed(commits.get(key)),
     append: (drafts, options = {}) =>
       Effect.try({
@@ -992,9 +1125,11 @@ function makeEventLogService(
           const commit = {
             events: persisted,
             version: events.length,
-            idempotencyKey: options.idempotencyKey as string,
+            committedAt: new Date(0).toISOString(),
+            idempotencyKey: options.idempotencyKey,
             fingerprint: options.fingerprint,
-          }
+          } satisfies EventLogCommit
+          commitList.push(commit)
           if (options.idempotencyKey) {
             commits.set(options.idempotencyKey, commit)
           }
@@ -1004,58 +1139,4 @@ function makeEventLogService(
       }),
   }
   return service
-}
-
-function schedulerLayer(onSchedule?: () => void) {
-  const service: ReactionSchedulerService = {
-    schedule: (throughOrder, execute) =>
-      Effect.gen(function* () {
-        onSchedule?.()
-        const fiber = yield* Effect.forkDetach(
-          execute({
-            deliveryId: `delivery-${throughOrder}`,
-            throughOrder,
-            scheduledAt: new Date(0).toISOString(),
-            attemptId: `delivery-${throughOrder}:attempt:1`,
-            attemptNumber: 1,
-          }),
-          { startImmediately: true },
-        )
-        return Fiber.join(fiber)
-      }),
-    recover: () => Effect.void,
-  }
-  return Layer.succeed(ReactionScheduler, service)
-}
-
-function serializedSchedulerLayer() {
-  return Layer.effect(
-    ReactionScheduler,
-    Effect.gen(function* () {
-      const scope = yield* Effect.scope
-      const semaphore = Semaphore.makeUnsafe(1)
-      let sequence = 0
-      return {
-        schedule: (throughOrder, execute) =>
-          Effect.gen(function* () {
-            sequence += 1
-            const id = `serialized-${sequence}`
-            const fiber = yield* Effect.forkIn(
-              semaphore.withPermit(
-                execute({
-                  deliveryId: id,
-                  throughOrder,
-                  scheduledAt: new Date(0).toISOString(),
-                  attemptId: `${id}:attempt:1`,
-                  attemptNumber: 1,
-                }),
-              ),
-              scope,
-            )
-            return Fiber.join(fiber)
-          }),
-        recover: () => Effect.void,
-      } satisfies ReactionSchedulerService
-    }),
-  )
 }

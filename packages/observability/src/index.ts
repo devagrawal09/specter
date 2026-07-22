@@ -26,6 +26,7 @@ export { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 export {
   createRuntimeObservationEmitter,
   createSpecterProtocolObserver,
+  createSpecterProtocolObserverLayer,
   type RuntimeObservationAdapterOptions,
   type RuntimeObservationEmitter,
 } from './runtime-adapter'

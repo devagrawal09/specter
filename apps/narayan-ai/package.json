@@ -23,7 +23,6 @@
     "@openrouter/ai-sdk-provider": "^1.2.0",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@tailwindcss/vite": "^4.1.18",
     "@tanstack/router-core": "1.168.8",

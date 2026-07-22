@@ -116,10 +116,14 @@ export function createSqliteSliceStoreService<
 
   return {
     read: (sliceName, run) =>
-      Effect.gen(function* () {
-        const entry = yield* attempt('read', () => load(client, sliceName))
-        return yield* run(read(entry.state), entry.cursor)
-      }),
+      context.use((connection) =>
+        Effect.gen(function* () {
+          const entry = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          return yield* run(read(entry.state), entry.cursor)
+        }),
+      ),
     transaction: (sliceName, run) =>
       context.transaction((connection) =>
         Effect.gen(function* () {

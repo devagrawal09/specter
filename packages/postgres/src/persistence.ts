@@ -16,6 +16,7 @@ import {
 import {
   createPostgresReactionOutboxStore,
   preparePostgresReactionOutbox,
+  type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
 
 export async function prepareSpecterPostgres(pool: PostgresPool) {
@@ -34,8 +35,16 @@ export function createSpecterPostgresPersistence(
   return {
     context,
     eventLog,
-    createReactionOutboxStore<TPayload>() {
-      return createPostgresReactionOutboxStore<TPayload>(pool, { context })
+    createReactionOutboxStore<TPayload>(
+      outboxOptions: Omit<
+        PostgresReactionOutboxOptions<TPayload>,
+        'context' | keyof PostgresDatabaseOptions
+      > = {},
+    ) {
+      return createPostgresReactionOutboxStore<TPayload>(pool, {
+        ...outboxOptions,
+        context,
+      })
     },
     createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,

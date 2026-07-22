@@ -20,7 +20,6 @@ var observationKinds = map[string]struct{}{
 	"slice.catch-up.started": {}, "slice.catch-up.completed": {}, "slice.catch-up.failed": {},
 	"subscription.invalidated": {},
 	"replay.started":           {}, "replay.completed": {}, "replay.failed": {},
-	"reaction.pass.started": {}, "reaction.pass.completed": {}, "reaction.pass.failed": {},
 	"reaction.run.started": {}, "reaction.run.completed": {}, "reaction.run.failed": {},
 	"outbox.enqueued": {}, "outbox.attempted": {}, "outbox.retry-scheduled": {}, "outbox.dead-lettered": {},
 	"telemetry.dropped": {},

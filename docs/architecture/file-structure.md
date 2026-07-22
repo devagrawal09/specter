@@ -16,7 +16,6 @@ my-specter-app/
 │   ├── server.ts                   # adapters, async app creation, HTTP server
 │   ├── todo-app.tsx                # UI sends typed project envelopes
 │   ├── specter-transport.ts        # client-facing transport facade
-│   ├── reaction-scheduler.ts       # project Reaction scheduling boundary
 │   ├── db/
 │   │   ├── schema.ts               # explicit app schema re-exports
 │   │   ├── specter-schema.ts       # Specter persistence tables
@@ -65,7 +64,7 @@ adapters:
 ```ts
 const app = await createSpecterApp(
   { events: todoEventDefinitions, slices: todoRegistrations },
-  Layer.mergeAll(EventLogLive, ReactionSchedulerLive, TodoStoreLayers),
+  Layer.mergeAll(EventLogLive, TodoStoreLayers),
 )
 ```
 

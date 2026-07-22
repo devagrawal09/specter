@@ -5,7 +5,7 @@ import { promisify } from 'node:util'
 import { expect, it } from 'vitest'
 import {
   createMemoryEventLog,
-  createMemorySliceStore,
+  createMemorySliceStoreService,
 } from '@specter-ts/memory'
 
 import { copyCollectorState, createCollectorState } from './collector-model'
@@ -28,7 +28,7 @@ it.skipIf(!hasGo)(
   async () => {
     const collector = await createSpecterObservabilityCollector({
       eventLog: createMemoryEventLog(),
-      store: createMemorySliceStore(createCollectorState, {
+      store: createMemorySliceStoreService(createCollectorState, {
         clone: copyCollectorState,
       }),
     })

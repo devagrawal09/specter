@@ -95,6 +95,7 @@ export type SpecterQueryResult<
 export type CommandExecutionOptions = CommandDispatchOptions
 
 export type CommandExecution = {
+  readonly operationId?: string
   readonly events: readonly PersistedEvent[]
   readonly version: number
   readonly duplicate: boolean

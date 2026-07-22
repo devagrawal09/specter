@@ -5,9 +5,7 @@ import {
   createSpecterApp,
   EventLog,
   EventLogFailure,
-  ReactionScheduler,
   SpecterVersionConflictError,
-  type ReactionSchedulerService,
   type SliceStoreService,
 } from '@specter-ts/core'
 import { createCommandSlice, event } from '@specter-ts/core/spec'
@@ -220,10 +218,6 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
         )
         return [counterIncremented.create(input)]
       })
-    const scheduler = {
-      schedule: () => Effect.succeed(Effect.void),
-      recover: () => Effect.void,
-    } satisfies ReactionSchedulerService
     const app = await createSpecterApp(
       {
         events: [counterIncremented],
@@ -231,7 +225,6 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       },
       Layer.mergeAll(
         Layer.succeed(EventLog, commandLog),
-        Layer.succeed(ReactionScheduler, scheduler),
         Layer.succeed(CounterStore, store),
       ),
     )
@@ -289,14 +282,16 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     const outbox = createPostgresReactionOutboxStore<unknown>(pool)
     for (const [index, value] of values.entries()) {
       const id = `primitive-job-${index}`
-      await outbox.enqueue({
-        id,
-        idempotencyKey: `primitive-delivery-${index}`,
-        payload: value,
-        requestedAt: new Date(0),
-        availableAt: new Date(0),
-      })
-      expect((await outbox.get(id))?.payload).toBe(value)
+      await run(
+        outbox.enqueue({
+          id,
+          idempotencyKey: `primitive-delivery-${index}`,
+          payload: value,
+          requestedAt: new Date(0),
+          availableAt: new Date(0),
+        }),
+      )
+      expect((await run(outbox.get(id)))?.payload).toBe(value)
     }
   })
 
@@ -305,17 +300,19 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     const firstWorker = createPostgresReactionOutboxStore<Payload>(pool)
     const secondWorker = createPostgresReactionOutboxStore<Payload>(pool)
     const now = new Date('2026-07-16T12:00:00.000Z')
-    await firstWorker.enqueue({
-      id: 'job-1',
-      idempotencyKey: 'delivery-1',
-      payload: { message: 'hello', nested: { attempt: 0 } },
-      requestedAt: now,
-      availableAt: now,
-    })
+    await run(
+      firstWorker.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'delivery-1',
+        payload: { message: 'hello', nested: { attempt: 0 } },
+        requestedAt: now,
+        availableAt: now,
+      }),
+    )
 
     const claims = await Promise.all([
-      firstWorker.claimNext(now, new Date(now.getTime() + 10_000)),
-      secondWorker.claimNext(now, new Date(now.getTime() + 10_000)),
+      run(firstWorker.claimNext(now, new Date(now.getTime() + 10_000))),
+      run(secondWorker.claimNext(now, new Date(now.getTime() + 10_000))),
     ])
     expect(claims.filter(Boolean)).toHaveLength(1)
     const firstClaim = claims.find(
@@ -327,34 +324,36 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     })
     if (!firstClaim) throw new Error('expected a first outbox claim')
 
-    await firstWorker.reschedule(
-      firstClaim.id,
-      firstClaim.activeAttemptId,
-      now,
-      'temporary outage',
+    await run(
+      firstWorker.reschedule(
+        firstClaim.id,
+        firstClaim.activeAttemptId,
+        now,
+        'temporary outage',
+      ),
     )
-    const secondClaim = await secondWorker.claimNext(
-      now,
-      new Date(now.getTime() + 10_000),
+    const secondClaim = await run(
+      secondWorker.claimNext(now, new Date(now.getTime() + 10_000)),
     )
     expect(secondClaim).toMatchObject({ attemptCount: 2 })
     if (!secondClaim) throw new Error('expected a second outbox claim')
-    await secondWorker.deadLetter(
-      secondClaim.id,
-      secondClaim.activeAttemptId,
-      now,
-      'permanent outage',
+    await run(
+      secondWorker.deadLetter(
+        secondClaim.id,
+        secondClaim.activeAttemptId,
+        now,
+        'permanent outage',
+      ),
     )
-    await firstWorker.retryDeadLetter('job-1', now)
+    await run(firstWorker.retryDeadLetter('job-1', now))
 
-    const replay = await firstWorker.claimNext(
-      now,
-      new Date(now.getTime() + 10_000),
+    const replay = await run(
+      firstWorker.claimNext(now, new Date(now.getTime() + 10_000)),
     )
     expect(replay).toMatchObject({ attemptCount: 3 })
     if (!replay) throw new Error('expected a replayed outbox claim')
-    await firstWorker.complete(replay.id, replay.activeAttemptId, now)
-    expect(await firstWorker.get('job-1')).toMatchObject({
+    await run(firstWorker.complete(replay.id, replay.activeAttemptId, now))
+    expect(await run(firstWorker.get('job-1'))).toMatchObject({
       status: 'completed',
       attemptCount: 3,
       lastError: undefined,

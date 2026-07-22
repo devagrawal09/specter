@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/reaction-outbox",
   "version": "0.4.0",
-  "description": "Durable Reaction outbox worker and scheduler for Specter.",
+  "description": "Durable Reaction plugin wrapper and outbox worker for Specter.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,

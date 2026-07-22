@@ -1,51 +1,31 @@
 # Persistence API
 
-**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/sqlite-node`, `@specter-ts/postgres`
+**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`,
+`@specter-ts/sqlite-node`, `@specter-ts/postgres`
 
-Persistence packages expose Effect-native services and Layers. Event Log stays
-authoritative; Slice Stores remain app-defined, rebuildable projections.
+Event Log stores authoritative commits. Slice Stores own app-defined State,
+cursor, ORM access, and transaction policy.
 
 ## Memory
 
 | Export | Purpose |
 | --- | --- |
-| `createMemoryEventLog(options?)` | Event Log service with inspection/reset controls. |
-| `createMemoryEventLogLayer(options?)` | Fresh `EventLog` Layer. |
-| `createMemorySliceStoreService(createState, options?)` | Typed Store service with inspection/reset controls. |
-| `createMemorySliceStoreLayer(tag, createState, options?)` | Provides app Store Tag. |
-| `createImmediateReactionSchedulerService(scope, options?)` | Process-local scheduler service. |
-| `createImmediateReactionSchedulerLayer(options?)` | Scoped `ReactionScheduler` Layer. |
+| `createMemoryEventLog` / `createMemoryEventLogLayer` | In-memory Event Log. |
+| `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store. |
 
-```ts
-import {
-  createImmediateReactionSchedulerLayer,
-  createMemoryEventLogLayer,
-  createMemorySliceStoreLayer,
-} from '@specter-ts/memory'
-import { Layer } from 'effect'
+Memory Store clones staged State and rolls failure back. Data disappears with
+process.
 
-const dependencies = Layer.mergeAll(
-  createMemoryEventLogLayer(),
-  createImmediateReactionSchedulerLayer(),
-  createMemorySliceStoreLayer(TodosStore, () => ({ todos: [] })),
-)
-```
-
-Memory Store clones staged State and rolls failed transactions back. All data
-disappears with process. Immediate scheduler has no crash recovery.
-
-## SQLite (`@specter-ts/sqlite`)
+## SQLite
 
 | Export | Purpose |
 | --- | --- |
-| `prepareSpecterSqlite(client)` | Configures SQLite and creates bundled tables/indexes. |
-| `createSqliteDatabaseContext(client)` | Shared serialized connection/transaction context. |
-| `createSqliteEventLogService(client, options?)` | Effect-native Event Log service. |
-| `createSqliteEventLogLayer(client, options?)` | Provides `EventLog`. |
-| `createSqliteSliceStoreService(client, createState, options?)` | Typed Store service. |
-| `createSqliteSliceStoreLayer(tag, client, createState, options?)` | Provides app Store Tag. |
-| `createSqliteReactionOutboxStore(client, options?)` | Durable outbox store. |
-| `createSpecterSqlitePersistence(client, options?)` | Shared context, Event Log service, and Store/outbox factories. |
+| `prepareSpecterSqlite` | Configure DB and create tables/indexes. |
+| `createSqliteDatabaseContext` | Serialized, nestable Effect transaction context. |
+| `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log. |
+| `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store. |
+| `createSqliteReactionOutboxStore` | Durable outbox Store. |
+| `createSpecterSqlitePersistence` | Shared context and factories. |
 
 ```ts
 await prepareSpecterSqlite(client)
@@ -53,9 +33,6 @@ const persistence = createSpecterSqlitePersistence(client)
 
 const dependencies = Layer.mergeAll(
   Layer.succeed(EventLog, persistence.eventLog),
-  createDurableReactionSchedulerLayer(
-    persistence.createReactionOutboxStore(),
-  ),
   Layer.succeed(
     TodosStore,
     persistence.createSliceStoreService(() => ({ todos: [] })),
@@ -63,48 +40,48 @@ const dependencies = Layer.mergeAll(
 )
 ```
 
-## Native Node SQLite (`@specter-ts/sqlite-node`)
+`SqliteDatabaseContext.use` uses active transaction when present.
+`transaction` nests by joining active Effect context. This lets direct ORM Slice
+Stores, nested default-Plugin Commands, and outbox enqueue share one transaction
+without AsyncLocalStorage.
+
+## Native Node SQLite
 
 | Export | Purpose |
 | --- | --- |
-| `openNodeSqlite(options)` | Opens native database context. |
-| `createNodeSqliteEventLogLayer(context, options?)` | Event Log Layer. |
-| `createNodeSqliteSliceStoreLayer(tag, context, createState, options?)` | App Store Layer. |
-| `createNodeSqliteReactionSchedulerLayer(context)` | Durable scheduler Layer. |
-| `createSpecterNodeSqliteLayer(options)` | Scoped runtime factory owning database lifecycle. |
+| `openNodeSqlite` | Open `DatabaseSync` context. |
+| `createNodeSqliteEventLogLayer` | Event Log Layer. |
+| `createNodeSqliteSliceStoreLayer` | App Store Layer. |
+| `createSpecterNodeSqliteLayer` | Scoped DB lifecycle Layer. |
 
-Native database Layer owns open/close lifecycle. Add app Store Layers to runtime
-Layer before building Specter App Layer.
+Nested Effect transactions join active `BEGIN IMMEDIATE` transaction.
 
-## Postgres (`@specter-ts/postgres`)
+## Postgres
 
 | Export | Purpose |
 | --- | --- |
-| `prepareSpecterPostgres(pool)` | Creates bundled tables/indexes. |
-| `createPostgresDatabaseContext(pool, options?)` | Shared connection/transaction context. |
-| `createPostgresEventLogService(pool, options?)` | Effect-native Event Log service. |
-| `createPostgresEventLogLayer(pool, options?)` | Provides `EventLog`. |
-| `createPostgresSliceStoreService(pool, createState, options?)` | Typed JSONB Store service. |
-| `createPostgresSliceStoreLayer(tag, pool, createState, options?)` | Provides app Store Tag. |
-| `createPostgresReactionOutboxStore(pool, options?)` | Durable concurrent outbox store. |
-| `createSpecterPostgresPersistence(pool, options?)` | Shared context, Event Log service, and Store/outbox factories. |
+| `prepareSpecterPostgres` | Create tables/indexes. |
+| `createPostgresDatabaseContext` | Nestable Effect transaction context. |
+| `createPostgresEventLogService` / `createPostgresEventLogLayer` | Event Log. |
+| `createPostgresSliceStoreService` / `createPostgresSliceStoreLayer` | JSONB Store. |
+| `createPostgresReactionOutboxStore` | Concurrent durable outbox. |
+| `createSpecterPostgresPersistence` | Shared context and factories. |
 
-Postgres Event Log uses transaction-level advisory locking for atomic version,
-idempotency, and append decisions. Outbox claims use row locking suitable for
-multiple workers.
+Event Log append uses advisory lock. Slice transactions use per-Slice advisory
+lock. Outbox claims use row locking. Nested operations join active connection.
 
-## Rules
+## Adapter rules
 
-- Define Store Tag with Slice so State types and runtime requirement stay linked.
-- Provide Store implementation only in app wiring.
-- Prepare persistent schema before acquiring runtime.
-- Keep one shared database context when Event Log, stores, and outbox must share
-  underlying serialization/transaction resources.
-- Store adapter chooses optimistic compare-and-swap or last-write-wins policy,
-  but visible cursor must not regress.
+- Prepare schema before runtime acquisition.
+- Use one shared database context for atomic nested operations.
+- Lock before invoking Store transaction callback.
+- Invoke callback exactly once; never optimistic-replay developer code.
+- Commit State and cursor together; rollback both on failure.
+- Prevent visible cursor regression.
+- Persist every Event Log commit boundary for `commitsAfter`.
 
 ## Related documentation
 
-- [Core services API](core-adapters.md)
-- [Reaction outbox API](reaction-outbox.md)
-- [Core runtime API](core-runtime.md)
+- [Core services](core-adapters.md)
+- [Reaction outbox](reaction-outbox.md)
+- [Runtime](core-runtime.md)

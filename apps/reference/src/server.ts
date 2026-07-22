@@ -2,7 +2,6 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
 import { createSpecterApp, EventLog } from '@specter-ts/core'
 import {
@@ -25,7 +24,6 @@ import {
   createSqliteReactionTicketStore,
   prepareSqliteReactionTicketStore,
 } from './transport/specter-reaction-tickets-sqlite.server'
-import * as schema from './db/schema'
 import './styles.css?url'
 
 const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
@@ -38,9 +36,6 @@ await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
 await prepareSqliteReactionOutbox(operationalSqliteClient)
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
-const productionDb = drizzle(sqliteClient, {
-  schema,
-})
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
 const reactionSchedulerLayer = createDurableReactionSchedulerLayer(
@@ -53,7 +48,7 @@ const specterApp = await createSpecterApp(
   Layer.mergeAll(
     Layer.succeed(EventLog, persistence.eventLog),
     reactionSchedulerLayer,
-    createSqliteSliceStoreLayer(productionDb),
+    createSqliteSliceStoreLayer(persistence.context),
   ),
 )
 const handleSpecterRequest = createSpecterHttpHandler({

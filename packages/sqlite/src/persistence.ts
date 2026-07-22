@@ -14,6 +14,7 @@ import {
 import {
   createSqliteReactionOutboxStore,
   prepareSqliteReactionOutbox,
+  type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
 
 export async function prepareSpecterSqlite(client: Client) {
@@ -34,8 +35,16 @@ export function createSpecterSqlitePersistence(
   return {
     context,
     eventLog,
-    createReactionOutboxStore<TPayload>() {
-      return createSqliteReactionOutboxStore<TPayload>(client, { context })
+    createReactionOutboxStore<TPayload>(
+      outboxOptions: Omit<
+        SqliteReactionOutboxOptions<TPayload>,
+        'context'
+      > = {},
+    ) {
+      return createSqliteReactionOutboxStore<TPayload>(client, {
+        ...outboxOptions,
+        context,
+      })
     },
     createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,

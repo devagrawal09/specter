@@ -5,6 +5,7 @@ import type { EventDraft, PersistedEvent } from '../definition/events'
 export type EventLogCommit = {
   readonly events: readonly PersistedEvent[]
   readonly version: number
+  readonly committedAt: string
   readonly idempotencyKey?: string
   readonly fingerprint?: string
 }
@@ -23,7 +24,12 @@ export class EventLogFailure extends Error {
   readonly _tag = 'EventLogFailure' as const
 
   constructor(
-    readonly operation: 'query' | 'currentVersion' | 'findCommit' | 'append',
+    readonly operation:
+      | 'query'
+      | 'commitsAfter'
+      | 'currentVersion'
+      | 'findCommit'
+      | 'append',
     readonly cause: unknown,
   ) {
     super(`Event Log ${operation} failed.`, { cause })
@@ -38,6 +44,9 @@ export type EventLogService = {
     eventTypes: readonly string[],
   ) => Effect.Effect<readonly PersistedEvent[], EventLogFailure>
   readonly currentVersion: Effect.Effect<number, EventLogFailure>
+  readonly commitsAfter: (
+    afterVersion: number,
+  ) => Effect.Effect<readonly EventLogCommit[], EventLogFailure>
   readonly findCommit: (
     idempotencyKey: string,
   ) => Effect.Effect<EventLogCommit | undefined, EventLogFailure>

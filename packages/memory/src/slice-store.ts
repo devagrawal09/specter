@@ -62,7 +62,7 @@ export function createMemorySliceStoreService<
         semaphore(sliceName).withPermit(
           Effect.gen(function* () {
             const current = getEntry(sliceName)
-            const working = {
+            const working: SliceEntry<TWriteState> = {
               state: clone(current.state),
               cursor: current.cursor,
             }

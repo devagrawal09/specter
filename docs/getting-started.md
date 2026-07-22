@@ -58,13 +58,11 @@ creates the typed `todo-added` Event defined by the feature.
 
 [`registry.ts`](../apps/reference/src/features/todos/registry.ts) collects the
 Todo Event definitions and selected Slice Implementations into one typed config.
-[`server.ts`](../apps/reference/src/server.ts) creates the persistence adapters
-and Reaction scheduler, then awaits the Specter App:
+[`server.ts`](../apps/reference/src/server.ts) creates persistence adapters and
+Store Layers, then awaits Specter App:
 
 ```ts
-const specterApp = await createSpecterApp(
-  createTodoSpecterAppConfig(persistence.eventLog, schedule),
-)
+const specterApp = await createSpecterApp(todoSpecterAppConfig, dependencies)
 ```
 
 Construction checks conformance before the server starts accepting operations.

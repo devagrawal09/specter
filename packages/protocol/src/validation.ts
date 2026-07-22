@@ -169,9 +169,7 @@ function causality(input: Record<string, unknown>, path = '$') {
   optionalString(input.correlationId, `${path}.correlationId`)
   optionalUniqueStrings(input.parentOperationIds, `${path}.parentOperationIds`)
   optionalUniqueStrings(input.triggeringEventIds, `${path}.triggeringEventIds`)
-  optionalString(input.reactionPassId, `${path}.reactionPassId`)
   optionalString(input.deliveryId, `${path}.deliveryId`)
-  optionalString(input.attemptId, `${path}.attemptId`)
   if (input.triggeringEventOrder !== undefined) {
     const range = record(
       input.triggeringEventOrder,

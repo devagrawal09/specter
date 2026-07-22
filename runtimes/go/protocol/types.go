@@ -107,9 +107,7 @@ type RuntimeObservation struct {
 	ParentOperationIDs   []string         `json:"parentOperationIds,omitempty"`
 	TriggeringEventIDs   []string         `json:"triggeringEventIds,omitempty"`
 	TriggeringEventOrder *EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string           `json:"reactionPassId,omitempty"`
 	DeliveryID           string           `json:"deliveryId,omitempty"`
-	AttemptID            string           `json:"attemptId,omitempty"`
 	Outcome              string           `json:"outcome,omitempty"`
 	CommandType          string           `json:"commandType,omitempty"`
 	QueryType            string           `json:"queryType,omitempty"`
@@ -222,8 +220,8 @@ func ObservationFromRuntime(observation specter.Observation, source RuntimeSourc
 		ObservationID: observation.ObservationID, Sequence: SafeInteger(sequence), ObservedAt: observation.ObservedAt,
 		Source: source, Kind: observation.Kind, OperationID: observation.OperationID, CorrelationID: observation.CorrelationID,
 		ParentOperationIDs: append([]string(nil), observation.ParentOperationIDs...), TriggeringEventIDs: append([]string(nil), observation.TriggeringEventIDs...),
-		ReactionPassID: observation.ReactionPassID, DeliveryID: observation.DeliveryID, AttemptID: observation.AttemptID,
-		Outcome: observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
+		DeliveryID: observation.DeliveryID,
+		Outcome:    observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
 		Reaction: observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
 		Attributes: attributes,
 	}

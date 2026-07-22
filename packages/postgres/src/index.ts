@@ -22,6 +22,7 @@ export {
 export {
   createPostgresReactionOutboxStore,
   preparePostgresReactionOutbox,
+  type PostgresReactionOutboxCodec,
   type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
 export {

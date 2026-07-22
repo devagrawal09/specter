@@ -3,14 +3,11 @@ import { Context, type Effect } from 'effect'
 import type {
   EventLogService,
   EventLogFailure,
-  ReactionSchedulerService,
-  ReactionSchedulerFailure,
   SliceStoreService,
 } from '../adapters'
 import {
   type AdapterConformanceFailure,
   eventLogConformance,
-  reactionSchedulerConformance,
   sliceStoreConformance,
 } from './adapter-conformance'
 
@@ -76,21 +73,4 @@ export type SliceStoreConformanceErrors = Expect<
 >
 export type SliceStoreConformanceRequirements = Expect<
   Equal<Effect.Services<typeof storeProgram>, ConformanceDependency>
->
-
-declare const scheduler: Effect.Effect<
-  ReactionSchedulerService,
-  CreateFailure,
-  ConformanceDependency
->
-const schedulerProgram = reactionSchedulerConformance(scheduler)
-
-export type ReactionSchedulerConformanceErrors = Expect<
-  Equal<
-    Effect.Error<typeof schedulerProgram>,
-    AdapterConformanceFailure | CreateFailure | ReactionSchedulerFailure
-  >
->
-export type ReactionSchedulerConformanceRequirements = Expect<
-  Equal<Effect.Services<typeof schedulerProgram>, ConformanceDependency>
 >

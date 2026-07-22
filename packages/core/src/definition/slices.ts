@@ -1,7 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { Effect } from 'effect'
 
-import type { ReactionDeliveryContext } from '../adapters/reaction-scheduler'
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
 import type { Event, EventDefinition, EventDraft } from './events'
 import type {
@@ -169,10 +168,17 @@ export type CommandDispatch = (
   options?: CommandDispatchOptions,
 ) => Effect.Effect<void, unknown>
 
+export type ReactionDeliveryContext = {
+  /** Stable for one Reaction Slice processing one Event Log commit. */
+  readonly deliveryId: string
+  readonly throughOrder: number
+  readonly scheduledAt: string
+}
+
 /**
  * Executes a Reaction effect that may be retried. Plugins should use the stable
- * deliveryId from context as their downstream idempotency key. Durable delivery
- * across process restarts requires a durable scheduler or outbox.
+ * deliveryId from context as their downstream idempotency key. Reaction Slice
+ * cursor rollback retries failures. Slow external effects may use an outbox.
  */
 export type ReactionExec<TOutput = unknown> = (
   reaction: TOutput,

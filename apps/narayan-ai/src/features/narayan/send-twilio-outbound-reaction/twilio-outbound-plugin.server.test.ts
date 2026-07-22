@@ -21,8 +21,6 @@ const context = {
   deliveryId: 'delivery-1',
   throughOrder: 1,
   scheduledAt: '2026-07-16T12:00:00.000Z',
-  attemptId: 'delivery-1:attempt:2',
-  attemptNumber: 2,
 }
 
 const ambiguousAttempt: TwilioDeliveryAttempt = {

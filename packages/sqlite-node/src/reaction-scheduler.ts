@@ -1,7 +1,7 @@
 import {
   ReactionScheduler,
   ReactionSchedulerFailure,
-  type ReactionDeliveryContext,
+  type ReactionScheduleContext,
   type ReactionSchedulerService,
 } from '@specter-ts/core'
 import { Effect, Fiber, Layer, type Scope } from 'effect'
@@ -86,48 +86,50 @@ export function createNodeSqliteReactionSchedulerService(
 
   function runDelivery<E>(
     delivery: Delivery,
-    execute: (context: ReactionDeliveryContext) => Effect.Effect<void, E>,
+    execute: (context: ReactionScheduleContext) => Effect.Effect<void, E>,
   ) {
     return Effect.gen(function* () {
       if (delivery.status === 'completed') return
       const attemptNumber = delivery.attemptCount + 1
-      context.transaction(() => {
-        context.database
-          .prepare(
-            `UPDATE specter_reaction_deliveries
-             SET status = 'running', attempt_count = ? WHERE id = ?`,
-          )
-          .run(attemptNumber, delivery.id)
-      })
-      const attemptId = `${delivery.id}:attempt:${attemptNumber}`
+      yield* context.transactionEffect(
+        Effect.sync(() => {
+          context.database
+            .prepare(
+              `UPDATE specter_reaction_deliveries
+               SET status = 'running', attempt_count = ? WHERE id = ?`,
+            )
+            .run(attemptNumber, delivery.id)
+        }),
+      )
       const result = yield* Effect.result(
         execute({
-          deliveryId: delivery.id,
           throughOrder: delivery.throughOrder,
           scheduledAt: delivery.scheduledAt,
-          attemptId,
-          attemptNumber,
         }),
       )
       if (result._tag === 'Failure') {
-        context.transaction(() => {
+        yield* context.transactionEffect(
+          Effect.sync(() => {
+            context.database
+              .prepare(
+                `UPDATE specter_reaction_deliveries SET status = 'pending'
+                 WHERE id = ?`,
+              )
+              .run(delivery.id)
+          }),
+        )
+        return yield* Effect.fail(result.failure)
+      }
+      yield* context.transactionEffect(
+        Effect.sync(() => {
           context.database
             .prepare(
-              `UPDATE specter_reaction_deliveries SET status = 'pending'
+              `UPDATE specter_reaction_deliveries SET status = 'completed'
                WHERE id = ?`,
             )
             .run(delivery.id)
-        })
-        return yield* Effect.fail(result.failure)
-      }
-      context.transaction(() => {
-        context.database
-          .prepare(
-            `UPDATE specter_reaction_deliveries SET status = 'completed'
-             WHERE id = ?`,
-          )
-          .run(delivery.id)
-      })
+        }),
+      )
     })
   }
 
@@ -178,7 +180,7 @@ export function createNodeSqliteReactionSchedulerService(
 export function createNodeSqliteReactionSchedulerLayer(
   context: NodeSqliteContext,
   now?: () => Date,
-): Layer.Layer<ReactionScheduler> {
+): Layer.Layer<never> {
   return Layer.effect(
     ReactionScheduler,
     Effect.gen(function* () {

@@ -14,8 +14,7 @@
         "query.started", "query.completed", "query.rejected", "query.failed", "events.persisted",
         "slice.catch-up.started", "slice.catch-up.completed", "slice.catch-up.failed",
         "subscription.invalidated", "replay.started", "replay.completed", "replay.failed",
-        "reaction.pass.started", "reaction.pass.completed", "reaction.pass.failed", "reaction.run.started",
-        "reaction.run.completed", "reaction.run.failed", "outbox.enqueued",
+        "reaction.run.started", "reaction.run.completed", "reaction.run.failed", "outbox.enqueued",
         "outbox.attempted", "outbox.retry-scheduled", "outbox.dead-lettered", "telemetry.dropped"
       ]
     },
@@ -45,9 +44,7 @@
       },
       "additionalProperties": { "$ref": "json-value.schema.json" }
     },
-    "reactionPassId": { "type": "string", "minLength": 1 },
     "deliveryId": { "type": "string", "minLength": 1 },
-    "attemptId": { "type": "string", "minLength": 1 },
     "outcome": { "enum": ["succeeded", "rejected", "failed"] },
     "commandType": { "type": "string", "minLength": 1 },
     "queryType": { "type": "string", "minLength": 1 },

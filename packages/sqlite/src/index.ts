@@ -19,6 +19,7 @@ export {
 export {
   createSqliteReactionOutboxStore,
   prepareSqliteReactionOutbox,
+  type SqliteReactionOutboxCodec,
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
 export {

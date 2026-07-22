@@ -86,16 +86,15 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 ## Invariants and pitfalls
 
 - Never mutate or remove historical Events to repair a projection.
-- Never make Slice State authoritative or enlist it in the Event Log Command
-  transaction.
+- Never make Slice State authoritative. Shared SQL transaction may atomically
+  join Reaction cursor, nested Command append, or outbox enqueue for delivery.
 - Never generate domain identity or time inside a Command handler or Reaction
   retry.
 - Do not advance a cursor past partially applied State.
 - Keep payloads JSON-compatible when Events use the bundled persistent
   adapters or cross a JSON transport.
-- With a durable scheduler or outbox, Reaction delivery is at least once; use
-  its stable delivery ID as the downstream idempotency key. The immediate
-  scheduler is process-local and can lose pending work on a crash.
+- Reaction commit retry is at least once; use stable delivery ID downstream.
+  Use outbox wrapper for slow work, leases, dead-letter, and replay.
 
 ## Related documentation
 

@@ -5,6 +5,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Effect } from 'effect'
+import { createSqliteDatabaseContext } from '@specter-ts/sqlite'
 
 import { createSqliteSliceStoreLayer } from './specter-sqlite'
 import * as schema from './schema'
@@ -29,7 +30,9 @@ export function sqliteScenario(options: SqliteScenarioOptions) {
 
       return await Effect.runPromise(
         program.pipe(
-          Effect.provide(createSqliteSliceStoreLayer(db)),
+          Effect.provide(
+            createSqliteSliceStoreLayer(createSqliteDatabaseContext(sqlite)),
+          ),
         ) as Effect.Effect<T, unknown, never>,
       )
     } finally {

@@ -19,7 +19,6 @@
     "@libsql/client": "^0.17.3",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "@tanstack/router-core": "1.168.8",
     "@tanstack/router-plugin": "1.167.16",

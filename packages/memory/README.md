@@ -5,7 +5,6 @@ in-process applications.
 
 ```ts
 import {
-  createImmediateReactionSchedulerLayer,
   createMemoryEventLogLayer,
   createMemorySliceStoreLayer,
 } from '@specter-ts/memory'
@@ -13,13 +12,12 @@ import { Layer } from 'effect'
 
 const dependencies = Layer.mergeAll(
   createMemoryEventLogLayer(),
-  createImmediateReactionSchedulerLayer(),
   createMemorySliceStoreLayer(TodosStore, () => ({ todos: [] })),
 )
 ```
 
 The Event Log serializes transactions, atomically enforces expected versions,
-persists idempotency receipts, and assigns deterministic Event metadata. The
+persists every commit boundary and idempotency receipt, and assigns deterministic Event metadata. The
 Slice Store commits projection state and its cursor together and rolls both
 back when an apply transaction fails. Supply a custom `clone` function for
 Slice State that cannot be cloned with `structuredClone`.

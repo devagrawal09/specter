@@ -77,14 +77,22 @@ activation, every `next()`, cancellation, and cleanup.
 
 ## Reactions
 
-For each Reaction Slice, core catches projection up through requested order,
-runs handler, validates any output, and invokes Reaction Plugin. The
-plugin receives `deliveryId` and `scheduledAt`, which are stable across retries,
-plus attempt-specific `attemptId` and `attemptNumber`.
+For each Reaction Slice, core reads Event Log commits after its cursor. It runs
+projection, handler, and plugin once per commit inside the Slice Store
+transaction, then advances the cursor. Failure rolls back state and cursor, so
+restart retries the same commit with the same `deliveryId`, derived from
+Reaction name and commit version.
 
-The immediate memory scheduler is deterministic but not crash-safe. For
-persistent apps, connect a durable outbox scheduler and worker. A failed
-projection does not advance its cursor, so a later pass can replay safely.
+The scheduler coordinates wakeups; it does not own Reaction correctness.
+Single-process apps use the default in-memory scheduler. Stateless or
+distributed apps provide a durable scheduler adapter backed by Redis, SQLite,
+or another shared store. Scheduler state is rebuildable from Event Log commits
+and Reaction cursors during startup.
+
+Direct plugins hold the Slice Store transaction open. Wrap slow external
+effects with `withReactionOutbox`; enqueue then commits atomically, while the
+outbox worker owns leases, retries, dead-lettering, and replay outside the Slice
+transaction.
 
 ## In process and across a transport
 

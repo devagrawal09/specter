@@ -1,6 +1,6 @@
 import { Context, Layer } from 'effect'
 
-import { EventLog, ReactionScheduler, type SliceStoreService } from '..'
+import { EventLog, type SliceStoreService } from '..'
 import { createCommandSlice, event } from '../spec-entry'
 import { createSpecterAppLayer } from './runtime'
 
@@ -30,7 +30,6 @@ const command = createCommandSlice('recordValue')
 
 declare const storeService: RuntimeTypeStore['Service']
 declare const eventLogService: EventLog['Service']
-declare const schedulerService: ReactionScheduler['Service']
 
 const runtimeLayer = createSpecterAppLayer({
   events: [],
@@ -38,10 +37,7 @@ const runtimeLayer = createSpecterAppLayer({
 } as const)
 
 export type MissingRuntimeRequirements = Expect<
-  Equal<
-    Layer.Services<typeof runtimeLayer>,
-    RuntimeTypeStore | EventLog | ReactionScheduler
-  >
+  Equal<Layer.Services<typeof runtimeLayer>, RuntimeTypeStore | EventLog>
 >
 
 const provided = runtimeLayer.pipe(
@@ -49,7 +45,6 @@ const provided = runtimeLayer.pipe(
     Layer.mergeAll(
       Layer.succeed(RuntimeTypeStore, storeService),
       Layer.succeed(EventLog, eventLogService),
-      Layer.succeed(ReactionScheduler, schedulerService),
     ),
   ),
 )

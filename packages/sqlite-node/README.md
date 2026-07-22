@@ -19,7 +19,7 @@ const program = Effect.gen(function* () {
 }).pipe(Effect.provide(PersistenceLive), Effect.scoped)
 ```
 
-Bundle owns `DatabaseSync`, Event Log, durable Slice Stores, Reaction outbox,
-durable Reaction scheduler, schema preparation, WAL/busy timeout, and shutdown.
+Bundle owns `DatabaseSync`, Event Log, durable Slice Stores, schema preparation,
+WAL/busy timeout, and shutdown. Core runs Reactions from Event Log commits.
 Use `openSpecterNodeSqlite` for Promise-based applications and pass its
 `close` method as `SpecterAppConfig.dispose`.

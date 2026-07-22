@@ -47,7 +47,8 @@ export async function preparePostgresEventLog(pool: PostgresPool) {
   await pool.query(`CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
     ON specter_events(type, event_order)`)
   await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_commits (
-    idempotency_key TEXT PRIMARY KEY,
+    commit_version BIGINT PRIMARY KEY,
+    idempotency_key TEXT UNIQUE,
     fingerprint TEXT,
     first_event_order BIGINT NOT NULL,
     last_event_order BIGINT NOT NULL,
@@ -102,18 +103,22 @@ export function createPostgresEventLogService(
     connection: PostgresConnection,
     idempotencyKey: string,
   ): Promise<EventLogCommit | undefined> {
-    const receipt = await connection.query<{
-      fingerprint: unknown
-      first_event_order: unknown
-      last_event_order: unknown
-    }>(
-      `SELECT fingerprint, first_event_order, last_event_order
+    const receipt = await connection.query(
+      `SELECT idempotency_key, fingerprint, first_event_order,
+         last_event_order, committed_at
        FROM specter_event_commits
        WHERE idempotency_key = $1`,
       [idempotencyKey],
     )
     const row = receipt.rows[0]
     if (!row) return undefined
+    return commitFromRow(connection, row)
+  }
+
+  async function commitFromRow(
+    connection: PostgresConnection,
+    row: Record<string, unknown>,
+  ): Promise<EventLogCommit> {
     const firstOrder = postgresNumber(
       row.first_event_order,
       'first commit event order',
@@ -129,12 +134,31 @@ export function createPostgresEventLogService(
     return {
       events: eventRows.rows.map(toEvent),
       version,
-      idempotencyKey,
+      committedAt: postgresDate(row.committed_at, 'commit time').toISOString(),
+      idempotencyKey:
+        row.idempotency_key === null
+          ? undefined
+          : postgresString(row.idempotency_key, 'commit idempotency key'),
       fingerprint:
         row.fingerprint === null
           ? undefined
           : postgresString(row.fingerprint, 'commit fingerprint'),
     }
+  }
+
+  async function commitsAfter(
+    connection: PostgresConnection,
+    afterVersion: number,
+  ): Promise<readonly EventLogCommit[]> {
+    const result = await connection.query(
+      `SELECT idempotency_key, fingerprint, first_event_order,
+         last_event_order, committed_at
+       FROM specter_event_commits
+       WHERE commit_version > $1
+       ORDER BY commit_version ASC`,
+      [afterVersion],
+    )
+    return Promise.all(result.rows.map((row) => commitFromRow(connection, row)))
   }
 
   async function append(
@@ -193,27 +217,29 @@ export function createPostgresEventLogService(
       })
     }
     const committedVersion = events.at(-1)?.order ?? version
-    if (appendOptions.idempotencyKey) {
-      await connection.query(
-        `INSERT INTO specter_event_commits (
-          idempotency_key,
-          fingerprint,
-          first_event_order,
-          last_event_order,
-          committed_at
-        ) VALUES ($1, $2, $3, $4, $5)`,
-        [
-          appendOptions.idempotencyKey,
-          appendOptions.fingerprint ?? null,
-          events[0]?.order ?? version,
-          committedVersion,
-          now(),
-        ],
-      )
-    }
+    const committedAt = now()
+    await connection.query(
+      `INSERT INTO specter_event_commits (
+        commit_version,
+        idempotency_key,
+        fingerprint,
+        first_event_order,
+        last_event_order,
+        committed_at
+      ) VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        committedVersion,
+        appendOptions.idempotencyKey ?? null,
+        appendOptions.fingerprint ?? null,
+        events[0]?.order ?? version,
+        committedVersion,
+        committedAt,
+      ],
+    )
     return {
       events,
       version: committedVersion,
+      committedAt: committedAt.toISOString(),
       idempotencyKey: appendOptions.idempotencyKey,
       fingerprint: appendOptions.fingerprint,
       duplicate: false,
@@ -233,10 +259,20 @@ export function createPostgresEventLogService(
   return {
     context,
     query: (afterOrder, eventTypes) =>
-      attempt('query', () => query(pool, afterOrder, eventTypes)),
-    currentVersion: attempt('currentVersion', () => currentVersion(pool)),
+      context.use((connection) =>
+        attempt('query', () => query(connection, afterOrder, eventTypes)),
+      ),
+    currentVersion: context.use((connection) =>
+      attempt('currentVersion', () => currentVersion(connection)),
+    ),
+    commitsAfter: (afterVersion) =>
+      context.use((connection) =>
+        attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),
+      ),
     findCommit: (idempotencyKey) =>
-      attempt('findCommit', () => findCommit(pool, idempotencyKey)),
+      context.use((connection) =>
+        attempt('findCommit', () => findCommit(connection, idempotencyKey)),
+      ),
     append: (drafts, appendOptions) =>
       context
         .transaction((connection) =>

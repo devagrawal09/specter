@@ -1,17 +1,13 @@
 import { Effect } from 'effect'
-import { describe, expect, it } from 'vitest'
+import { describe, it } from 'vitest'
 
-import type {
-  EventLogService,
-  ReactionSchedulerService,
-  SliceStoreService,
-} from '../adapters'
+import type { EventLogService, SliceStoreService } from '../adapters'
 
 export class AdapterConformanceFailure extends Error {
   readonly _tag = 'AdapterConformanceFailure' as const
 
   constructor(
-    readonly adapter: 'event-log' | 'slice-store' | 'reaction-scheduler',
+    readonly adapter: 'event-log' | 'slice-store',
     readonly invariant: string,
     readonly actual: unknown,
   ) {
@@ -63,7 +59,9 @@ export function eventLogConformance<TCreateError, TRequirements>(
     yield* requireInvariant(
       'event-log',
       'durable idempotent receipt',
-      duplicate.duplicate && duplicate.version === first.version,
+      duplicate.duplicate &&
+        duplicate.version === first.version &&
+        duplicate.committedAt === first.committedAt,
       duplicate,
     )
     const queried = yield* service.query(1, ['second-recorded'])
@@ -72,6 +70,19 @@ export function eventLogConformance<TCreateError, TRequirements>(
       'ordered filtered query',
       queried.length === 1 && queried[0]?.order === 2,
       queried,
+    )
+    const second = yield* service.append([
+      { type: 'third-recorded', payload: { value: 3 } },
+    ])
+    const commits = yield* service.commitsAfter(0)
+    yield* requireInvariant(
+      'event-log',
+      'all commit boundaries survive without idempotency keys',
+      commits.length === 2 &&
+        commits[0]?.version === first.version &&
+        commits[1]?.version === second.version &&
+        Number.isFinite(Date.parse(commits[1]?.committedAt ?? '')),
+      commits,
     )
   })
 }
@@ -183,35 +194,34 @@ export function sliceStoreConformance<
       afterRollback.cursor === 7,
       afterRollback,
     )
-  })
-}
 
-export function reactionSchedulerConformance<TCreateError, TRequirements>(
-  createService: Effect.Effect<
-    ReactionSchedulerService,
-    TCreateError,
-    TRequirements
-  >,
-) {
-  return Effect.gen(function* () {
-    const service = yield* createService
-    const contexts: unknown[] = []
-    const completion = yield* service.schedule(11, (context) =>
-      Effect.sync(() => {
-        contexts.push(context)
-      }),
+    let callbacks = 0
+    const observedCursors: number[] = []
+    const concurrentTransaction = service.transaction(
+      'sharedTagFirstSlice',
+      (_write, _read, cursor, publishCursor) =>
+        Effect.gen(function* () {
+          callbacks += 1
+          observedCursors.push(cursor)
+          yield* Effect.sleep('1 millis')
+          yield* publishCursor(cursor + 1)
+        }),
     )
-    yield* completion
-    const context = contexts[0] as
-      | { throughOrder?: number; deliveryId?: string; scheduledAt?: string }
-      | undefined
+    yield* Effect.all([concurrentTransaction, concurrentTransaction], {
+      concurrency: 'unbounded',
+    })
+    const finalCursor = yield* service.read(
+      'sharedTagFirstSlice',
+      (_read, cursor) => Effect.succeed(cursor),
+    )
     yield* requireInvariant(
-      'reaction-scheduler',
-      'eager native delivery with stable metadata',
-      context?.throughOrder === 11 &&
-        typeof context.deliveryId === 'string' &&
-        typeof context.scheduledAt === 'string',
-      context,
+      'slice-store',
+      'adapter locks before one-shot transaction callbacks',
+      callbacks === 2 &&
+        observedCursors[0] === 7 &&
+        observedCursors[1] === 8 &&
+        finalCursor === 9,
+      { callbacks, observedCursors, finalCursor },
     )
   })
 }
@@ -253,24 +263,6 @@ export function testSliceStoreService<TWrite, TRead, TValue>(
           ),
         }),
       )
-    })
-  })
-}
-
-export function testReactionSchedulerService(
-  name: string,
-  createService: () =>
-    | ReactionSchedulerService
-    | Promise<ReactionSchedulerService>,
-) {
-  describe(`${name} Reaction scheduler`, () => {
-    it('conforms', async () => {
-      await Effect.runPromise(
-        reactionSchedulerConformance(
-          Effect.promise(() => Promise.resolve(createService())),
-        ),
-      )
-      expect(true).toBe(true)
     })
   })
 }

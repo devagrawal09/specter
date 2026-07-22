@@ -4,14 +4,8 @@ import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
 import { EventLog } from '@specter-ts/core'
 import {
-  createDurableReactionSchedulerLayer,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
-import {
   createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionOutbox,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
 import { Layer } from 'effect'
@@ -43,7 +37,6 @@ export async function prepareThreadplaneReferenceDb() {
     await prepareSpecterSqlite(sqlite)
     await operationalSqlite.execute('PRAGMA journal_mode = WAL')
     await operationalSqlite.execute('PRAGMA busy_timeout = 5000')
-    await prepareSqliteReactionOutbox(operationalSqlite)
     await prepareSqliteReactionTicketStore(operationalSqlite)
   })()
   await prepared
@@ -53,11 +46,6 @@ export function threadplaneDependenciesLayer() {
   const persistence = createSpecterSqlitePersistence(sqlite)
   return Layer.mergeAll(
     Layer.succeed(EventLog, persistence.eventLog),
-    createDurableReactionSchedulerLayer(
-      createSqliteReactionOutboxStore<ReactionPass>(operationalSqlite, {
-        context: operationalContext,
-      }),
-    ),
     threadplaneMemoryStoresLayer(),
   )
 }

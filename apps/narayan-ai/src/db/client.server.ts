@@ -6,14 +6,8 @@ import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { migrate } from 'drizzle-orm/libsql/migrator'
 import { EventLog } from '@specter-ts/core'
 import {
-  createDurableReactionSchedulerLayer,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
-import {
   createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionOutbox,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
 import { Layer } from 'effect'
@@ -47,7 +41,6 @@ export async function prepareNarayanAiDb() {
     await prepareSpecterSqlite(sqlite)
     await operationalSqlite.execute('PRAGMA journal_mode = WAL')
     await operationalSqlite.execute('PRAGMA busy_timeout = 5000')
-    await prepareSqliteReactionOutbox(operationalSqlite)
     await prepareSqliteReactionTicketStore(operationalSqlite)
   })()
   await prepared
@@ -62,12 +55,7 @@ export function narayanDependenciesLayer() {
   const persistence = createSpecterSqlitePersistence(sqlite)
   return Layer.mergeAll(
     Layer.succeed(EventLog, persistence.eventLog),
-    createDurableReactionSchedulerLayer(
-      createSqliteReactionOutboxStore<ReactionPass>(operationalSqlite, {
-        context: operationalContext,
-      }),
-    ),
-    createSqliteSliceStoreLayer(db),
+    createSqliteSliceStoreLayer(persistence.context),
     Layer.succeed(TwilioDeliveryAttempts, createTwilioDeliveryAttemptStore(db)),
   )
 }

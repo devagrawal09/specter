@@ -151,11 +151,6 @@ describe('observation protocol validation', () => {
     expect(() => assertRuntimeObservationBatch(batch())).not.toThrow()
     expect(() =>
       assertRuntimeObservationBatch(
-        batch([{ ...observation(), attemptId: '' }]),
-      ),
-    ).toThrowError(expect.objectContaining({ code: 'SPECTER_INVALID_MESSAGE' }))
-    expect(() =>
-      assertRuntimeObservationBatch(
         batch(
           Array.from({ length: 101 }, (_, index) => ({
             ...observation(`observation-${index}`),

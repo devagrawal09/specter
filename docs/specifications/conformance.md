@@ -18,7 +18,7 @@ import {
 try {
   const app = await createSpecterApp(
     { events: todoEventDefinitions, slices: todoRegistrations },
-    Layer.mergeAll(EventLogLive, ReactionSchedulerLive, TodoStoreLayers),
+    Layer.mergeAll(EventLogLive, TodoStoreLayers),
   )
 } catch (cause) {
   if (cause instanceof SpecterConformanceError) {
@@ -107,7 +107,7 @@ Adapter or handler failures that are not already public Specter errors are wrapp
 3. Fix the implementation when the specification is right: use the registered Event Definition instance, align apply handlers, or complete the builder chain.
 4. For a focused single-Slice test, derive its catalog with `eventsFor` instead of passing unrelated Event Definitions.
 5. Run the Slice tests to execute handler behavior after construction passes.
-6. Run a runtime test with the intended Event Log, Slice Store, and scheduler adapters to verify transaction, ordering, idempotency, and recovery guarantees.
+6. Run a runtime test with intended Event Log and Slice Store adapters to verify transaction, ordering, idempotency, and recovery guarantees.
 
 Do not suppress a diagnostic by duplicating definitions, weakening Event schemas, or adding unused apply handlers. Conformance is designed to keep the executable specification and runtime registry inspectably exact.
 

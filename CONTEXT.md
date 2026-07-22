@@ -93,27 +93,23 @@ A Slice that defines exactly one Command and decides which Events should be emit
 _Avoid_: Stateless command handler, query reader
 
 **Reaction Slice**:
-A Slice that asynchronously observes new Events after Command commit and may produce zero or one Reaction Effect per catch-up cycle. Every Reaction Slice declares an explicit Reaction Plugin. Catch-up uses staged or idempotent Slice State; the cursor publishes only after the Plugin succeeds, so a failed delivery can retry with the same logical context. Reaction Slice failures do not prevent unrelated Reaction Slices from running in the same Reaction Run.
+A Slice that processes Event Log commits after Command commit and may produce zero or one Reaction Effect per commit. State, handler, Plugin, and cursor share one Store transaction. Failure rolls State and cursor back; retry uses same commit and delivery identity. `.plugin` is optional for same-app Command output.
 _Avoid_: Batch effect emitter
 
 **Reaction Effect**:
-The ephemeral output of a Reaction Slice, interpreted by that slice's explicit Reaction Plugin. Reaction Effects are not automatically retried.
+Output of a Reaction Slice, interpreted by its Plugin. Failed direct Plugin work retries when same commit is replayed because cursor did not advance. Slow work can use maintained outbox wrapper.
 _Avoid_: Reaction command
 
 **Reaction Plugin**:
-The explicit interpreter for a Reaction Slice's Reaction Effect, selected when the Reaction Slice is defined. Same-app command dispatch and cross-app command dispatch are both modeled as explicit Reaction Plugins.
-_Avoid_: Hidden default reaction behavior, app registry import
+Interpreter for custom or external Reaction output. Without `.plugin`, output is dispatched as idempotent same-app Command. Direct Plugin runs inside Slice transaction; `withReactionOutbox` moves slow execution outside.
+_Avoid_: Second command handler, app registry import
 
 **Reaction Run**:
-A runtime pass where a Specter App lets registered Reaction Slices catch up to new Events and execute any resulting Reaction Effects. A Reaction Run may request another Reaction Run when a Reaction Effect dispatches a command that appends more Events.
+A runtime pass where app advances each Reaction Slice through requested Event Log commit. App-scoped semaphore prevents local overlap; Store transaction provides cross-process exclusion. Nested Command commit requests another run after active one.
 _Avoid_: Reaction queue, background job
 
-**Reaction Scheduler**:
-The app-level collaborator that owns pending and active Reaction Run state and decides when requested Reaction Runs execute. An immediate scheduler tracks run requests but not durable effects; a durable outbox scheduler persists attempts, retries, and dead letters.
-_Avoid_: Reaction Queue, effect queue
-
 **Reaction Delivery**:
-One at-least-once execution of a Reaction Effect. Its `deliveryId` and ISO `scheduledAt` remain stable across retries; its `attemptId` and `attemptNumber` identify a specific try. Plugins use the delivery ID for downstream idempotency and the scheduled time for retry-stable domain timestamps.
+One at-least-once execution for Reaction name plus Event Log commit version. `deliveryId`, `throughOrder`, and ISO `scheduledAt` remain stable across retries. Core has no attempt identity; optional outbox worker owns attempt ID and number.
 _Avoid_: Exactly-once side effect
 
 **Reaction Run Failure**:

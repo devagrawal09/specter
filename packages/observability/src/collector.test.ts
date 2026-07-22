@@ -7,12 +7,13 @@ import type {
 } from '@specter-ts/protocol'
 import {
   createMemoryEventLog,
-  createMemorySliceStore,
+  createMemorySliceStoreService,
 } from '@specter-ts/memory'
 import type {
   ReactionOutboxClaim,
   ReactionOutboxJob,
 } from '@specter-ts/reaction-outbox'
+import { Effect } from 'effect'
 
 import { copyCollectorState, createCollectorState } from './collector-model'
 import { createSpecterObservabilityCollector } from './collector'
@@ -79,7 +80,7 @@ function acknowledgement(
 
 async function setup() {
   const eventLog = createMemoryEventLog()
-  const store = createMemorySliceStore(createCollectorState, {
+  const store = createMemorySliceStoreService(createCollectorState, {
     clone: copyCollectorState,
   })
   const collector = await createSpecterObservabilityCollector({
@@ -1034,27 +1035,28 @@ describe('Specter observability collector', () => {
     expect(producer.inspect().queued).toBe(0)
   })
 
-  it('redacts unstructured runtime failures at the protocol boundary', () => {
+  it('redacts unstructured runtime failures at the protocol boundary', async () => {
     const recorded: RuntimeObservation[] = []
     const emitter = createRuntimeObservationEmitter({
       source,
       producer: { record: (item) => recorded.push(item) },
     })
 
-    emitter.observe({
-      type: 'reaction-run-failed',
-      observationId: 'core-observation',
-      observedAt: '2026-07-18T12:00:00.000Z',
-      operationId: 'reaction-operation',
-      parentOperationIds: [],
-      causedByEvents: [],
-      reactionName: 'todoCheer',
-      runId: 'run-1',
-      passId: 'pass-1',
-      attemptId: 'attempt-1',
-      durationMs: 2,
-      cause: new Error('private database connection string'),
-    })
+    await Effect.runPromise(
+      emitter.observer.observe({
+        type: 'reaction-run-failed',
+        observationId: 'core-observation',
+        observedAt: '2026-07-18T12:00:00.000Z',
+        operationId: 'reaction-operation',
+        parentOperationIds: [],
+        causedByEvents: [],
+        reactionName: 'todoCheer',
+        deliveryId: 'todoCheer:4',
+        commitVersion: 4,
+        durationMs: 2,
+        cause: new Error('private database connection string'),
+      }),
+    )
 
     expect(recorded[0]).toMatchObject({
       kind: 'reaction.run.failed',
@@ -1066,44 +1068,38 @@ describe('Specter observability collector', () => {
     expect(JSON.stringify(recorded)).not.toContain('private database')
   })
 
-  it('preserves inbound protocol causality alongside local Event metadata', () => {
+  it('preserves inbound protocol causality alongside local Event metadata', async () => {
     const recorded: RuntimeObservation[] = []
     const emitter = createRuntimeObservationEmitter({
       source,
       producer: { record: (item) => recorded.push(item) },
     })
 
-    emitter.observe({
-      type: 'command-started',
-      observationId: 'causal-observation',
-      observedAt: '2026-07-18T12:00:00.000Z',
-      operationId: 'causal-operation',
-      parentOperationIds: ['parent-operation'],
-      causedByEvents: [
-        {
-          id: 'local-event',
-          type: 'local-event',
-          order: 8,
-          recordedAt: '2026-07-18T12:00:00.000Z',
-          commitVersion: 4,
-        },
-      ],
-      protocolCausality: {
+    await Effect.runPromise(
+      emitter.observer.observe({
+        type: 'command-started',
+        observationId: 'causal-observation',
+        observedAt: '2026-07-18T12:00:00.000Z',
+        operationId: 'causal-operation',
+        parentOperationIds: ['parent-operation'],
+        causedByEvents: [
+          {
+            id: 'local-event',
+            type: 'local-event',
+            order: 8,
+            recordedAt: '2026-07-18T12:00:00.000Z',
+            commitVersion: 4,
+          },
+        ],
         triggeringEventIds: ['remote-event'],
         triggeringEventOrder: { from: 2, to: 6 },
-        reactionPassId: 'reaction-pass',
-        deliveryId: 'delivery',
-        attemptId: 'attempt',
-      },
-      commandType: 'followUp',
-    })
+        commandType: 'followUp',
+      }),
+    )
 
     expect(recorded[0]).toMatchObject({
       triggeringEventIds: ['remote-event', 'local-event'],
       triggeringEventOrder: { from: 2, to: 6 },
-      reactionPassId: 'reaction-pass',
-      deliveryId: 'delivery',
-      attemptId: 'attempt',
     })
   })
 
@@ -1157,12 +1153,12 @@ describe('Specter observability collector', () => {
     expect(recorded.map((item) => item.deliveryId)).toEqual(
       Array(5).fill('email-delivery'),
     )
-    expect(recorded.map((item) => item.attemptId)).toEqual([
+    expect(recorded.map((item) => item.attributes?.attemptNumber)).toEqual([
       undefined,
-      'email-delivery:attempt:1',
-      'email-delivery:attempt:1',
-      'email-delivery:attempt:2',
-      'email-delivery:attempt:2',
+      1,
+      1,
+      2,
+      2,
     ])
     for (let index = 1; index < recorded.length; index += 1) {
       expect(recorded[index]?.parentOperationIds).toEqual([
@@ -1205,7 +1201,7 @@ describe('Specter observability collector', () => {
         sequence: 1,
         kind: 'outbox.enqueued',
         operationId: 'enqueue-operation',
-        deliveryId: 'reaction-pass-delivery',
+        deliveryId: 'reaction-delivery',
       }),
       observation({
         source: restartedSource('outbox-attempt-1'),
@@ -1213,18 +1209,7 @@ describe('Specter observability collector', () => {
         sequence: 1,
         kind: 'outbox.attempted',
         operationId: 'attempt-1-operation',
-        deliveryId: 'reaction-pass-delivery',
-        attemptId: 'attempt-1',
-      }),
-      observation({
-        source: restartedSource('reaction-worker'),
-        observationId: 'reaction-pass-started',
-        sequence: 1,
-        kind: 'reaction.pass.started',
-        operationId: 'reaction-pass-operation',
-        reactionPassId: 'reaction-pass-delivery',
-        deliveryId: 'reaction-pass-delivery',
-        attemptId: 'attempt-1',
+        deliveryId: 'reaction-delivery',
       }),
       observation({
         source: restartedSource('reaction-worker'),
@@ -1232,9 +1217,7 @@ describe('Specter observability collector', () => {
         sequence: 2,
         kind: 'reaction.run.failed',
         operationId: 'reaction-run-operation',
-        reactionPassId: 'reaction-pass-delivery',
-        deliveryId: 'reaction-pass-delivery:send-email:1',
-        attemptId: 'attempt-1:send-email:1',
+        deliveryId: 'reaction-delivery',
       }),
       observation({
         source: restartedSource('outbox-retry'),
@@ -1242,8 +1225,7 @@ describe('Specter observability collector', () => {
         sequence: 1,
         kind: 'outbox.retry-scheduled',
         operationId: 'retry-operation',
-        deliveryId: 'reaction-pass-delivery',
-        attemptId: 'attempt-1',
+        deliveryId: 'reaction-delivery',
       }),
       observation({
         source: restartedSource('outbox-attempt-2'),
@@ -1251,8 +1233,7 @@ describe('Specter observability collector', () => {
         sequence: 1,
         kind: 'outbox.attempted',
         operationId: 'attempt-2-operation',
-        deliveryId: 'reaction-pass-delivery',
-        attemptId: 'attempt-2',
+        deliveryId: 'reaction-delivery',
       }),
       observation({
         source: restartedSource('outbox-dead-letter'),
@@ -1260,8 +1241,7 @@ describe('Specter observability collector', () => {
         sequence: 1,
         kind: 'outbox.dead-lettered',
         operationId: 'dead-letter-operation',
-        deliveryId: 'reaction-pass-delivery',
-        attemptId: 'attempt-2',
+        deliveryId: 'reaction-delivery',
       }),
     ]
     await collector.ingest(batch('restart-outbox-lifecycle', lifecycle))
@@ -1275,11 +1255,6 @@ describe('Specter observability collector', () => {
     expect(trace.edges).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          from: 'reaction-pass-operation',
-          to: 'reaction-run-operation',
-          relation: 'reaction-pass',
-        }),
-        expect.objectContaining({
           from: 'attempt-2-operation',
           to: 'dead-letter-operation',
           relation: 'delivery',
@@ -1288,7 +1263,7 @@ describe('Specter observability collector', () => {
     )
   })
 
-  it('redacts coded failures and preserves retry-stable Reaction identities', () => {
+  it('redacts coded failures and preserves stable Reaction delivery identity', async () => {
     const recorded: RuntimeObservation[] = []
     const emitter = createRuntimeObservationEmitter({
       source,
@@ -1299,71 +1274,29 @@ describe('Specter observability collector', () => {
     }
     credential.code = 'SPECTER_INFRASTRUCTURE_FAILURE'
 
-    for (const [attemptId, attemptNumber] of [
-      ['pass-attempt-1', 1],
-      ['pass-attempt-2', 2],
-    ] as const) {
-      emitter.observe({
-        type: 'reaction-pass-started',
-        observationId: `reaction-pass-started-${attemptNumber}`,
-        observedAt: '2026-07-18T12:00:00.000Z',
-        operationId: `pass-operation-${attemptNumber}`,
-        parentOperationIds: [],
-        causedByEvents: [],
-        passId: 'stable-pass',
-        attemptId,
-        attemptNumber,
-      })
-      emitter.observe({
-        type: 'reaction-pass-failed',
-        observationId: `reaction-pass-failed-${attemptNumber}`,
-        observedAt: '2026-07-18T12:00:00.000Z',
-        operationId: `pass-operation-${attemptNumber}`,
-        parentOperationIds: [],
-        causedByEvents: [],
-        passId: 'stable-pass',
-        attemptId,
-        attemptNumber,
-        eventRanges: [],
-        failureCount: 1,
-        durationMs: 2,
-        cause: credential,
-      })
-      emitter.observe({
-        type: 'reaction-run-failed',
-        observationId: `run-${attemptNumber}`,
-        observedAt: '2026-07-18T12:00:00.000Z',
-        operationId: `run-operation-${attemptNumber}`,
-        parentOperationIds: [],
-        causedByEvents: [],
-        reactionName: 'sendEmail',
-        runId: `run-attempt-${attemptNumber}`,
-        passId: 'stable-pass',
-        attemptId,
-        eventRange: { fromOrder: 2, toOrder: 4, eventCount: 3 },
-        durationMs: 2,
-        cause: credential,
-      })
+    for (const phase of ['started', 'failed'] as const) {
+      await Effect.runPromise(
+        emitter.observer.observe({
+          type: `reaction-run-${phase}`,
+          observationId: `run-${phase}`,
+          observedAt: '2026-07-18T12:00:00.000Z',
+          operationId: `run-operation-${phase}`,
+          parentOperationIds: [],
+          causedByEvents: [],
+          reactionName: 'sendEmail',
+          deliveryId: 'sendEmail:4',
+          commitVersion: 4,
+          ...(phase === 'failed' ? { durationMs: 2, cause: credential } : {}),
+        }),
+      )
     }
 
-    const passes = recorded.filter((item) =>
-      item.kind.startsWith('reaction.pass.'),
-    )
-    const runs = recorded.filter((item) => item.reaction === 'sendEmail')
-    expect(passes.map((item) => item.deliveryId)).toEqual(
-      Array(passes.length).fill('stable-pass'),
-    )
-    expect(new Set(passes.map((item) => item.attemptId))).toEqual(
-      new Set(['pass-attempt-1', 'pass-attempt-2']),
-    )
-    expect(runs.map((item) => item.deliveryId)).toEqual([
-      'stable-pass:sendEmail:4',
-      'stable-pass:sendEmail:4',
+    expect(recorded.map((item) => item.deliveryId)).toEqual([
+      'sendEmail:4',
+      'sendEmail:4',
     ])
-    expect(runs.map((item) => item.attemptId)).toEqual([
-      'pass-attempt-1:sendEmail:4',
-      'pass-attempt-2:sendEmail:4',
-    ])
+    expect(recorded.some((item) => 'reactionPassId' in item)).toBe(false)
+    expect(recorded.some((item) => 'attemptId' in item)).toBe(false)
     expect(JSON.stringify(recorded)).not.toContain('hunter2')
   })
 })

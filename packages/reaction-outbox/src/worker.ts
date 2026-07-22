@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { Effect } from 'effect'
 
 import type {
   ReactionOutboxAttemptContext,
@@ -32,6 +33,7 @@ export class ReactionOutboxDrainFailure extends AggregateError {
 export type EnqueueReactionOptions = {
   readonly jobId?: string
   readonly idempotencyKey?: string
+  readonly requestedAt?: Date
   readonly availableAt?: Date
 }
 
@@ -120,15 +122,17 @@ export function createReactionOutboxWorker<TPayload>(
     payload: TPayload,
     enqueueOptions: EnqueueReactionOptions = {},
   ) {
-    const requestedAt = now()
+    const requestedAt = enqueueOptions.requestedAt ?? now()
     const id = enqueueOptions.jobId ?? idFactory()
-    const result = await options.store.enqueue({
-      id,
-      idempotencyKey: enqueueOptions.idempotencyKey ?? id,
-      payload,
-      requestedAt,
-      availableAt: enqueueOptions.availableAt ?? requestedAt,
-    })
+    const result = await Effect.runPromise(
+      options.store.enqueue({
+        id,
+        idempotencyKey: enqueueOptions.idempotencyKey ?? id,
+        payload,
+        requestedAt,
+        availableAt: enqueueOptions.availableAt ?? requestedAt,
+      }),
+    )
     await notify({ type: 'enqueued', ...result })
     return { jobId: result.job.id, created: result.created }
   }
@@ -139,14 +143,16 @@ export function createReactionOutboxWorker<TPayload>(
     for (;;) {
       if (options.signal?.aborted) break
       const claimTime = now()
-      await options.store.requeueExpired(claimTime)
-      const claim = await options.store.claimNext(
-        claimTime,
-        new Date(claimTime.getTime() + leaseMs),
+      await Effect.runPromise(options.store.requeueExpired(claimTime))
+      const claim = await Effect.runPromise(
+        options.store.claimNext(
+          claimTime,
+          new Date(claimTime.getTime() + leaseMs),
+        ),
       )
 
       if (!claim) {
-        const nextWorkAt = await options.store.nextWorkAt()
+        const nextWorkAt = await Effect.runPromise(options.store.nextWorkAt())
         if (!nextWorkAt) break
         const delay = Math.max(0, nextWorkAt.getTime() - now().getTime())
         if (delay > 0) await sleep(delay)
@@ -166,10 +172,8 @@ export function createReactionOutboxWorker<TPayload>(
       try {
         await options.handle(claim.payload, context)
         const completedAt = now()
-        await options.store.complete(
-          claim.id,
-          claim.activeAttemptId,
-          completedAt,
+        await Effect.runPromise(
+          options.store.complete(claim.id, claim.activeAttemptId, completedAt),
         )
         await notify({
           type: 'attempt-completed',
@@ -182,11 +186,13 @@ export function createReactionOutboxWorker<TPayload>(
         if (claim.attemptCount >= maxAttempts) {
           const failedAt = now()
           try {
-            await options.store.deadLetter(
-              claim.id,
-              claim.activeAttemptId,
-              failedAt,
-              error,
+            await Effect.runPromise(
+              options.store.deadLetter(
+                claim.id,
+                claim.activeAttemptId,
+                failedAt,
+                error,
+              ),
             )
           } catch (deadLetterCause) {
             if (deadLetterCause instanceof ReactionOutboxLeaseLostError) {
@@ -214,11 +220,13 @@ export function createReactionOutboxWorker<TPayload>(
         }
         const availableAt = new Date(now().getTime() + delay)
         try {
-          await options.store.reschedule(
-            claim.id,
-            claim.activeAttemptId,
-            availableAt,
-            error,
+          await Effect.runPromise(
+            options.store.reschedule(
+              claim.id,
+              claim.activeAttemptId,
+              availableAt,
+              error,
+            ),
           )
         } catch (rescheduleCause) {
           if (rescheduleCause instanceof ReactionOutboxLeaseLostError) continue
@@ -264,7 +272,7 @@ export function createReactionOutboxWorker<TPayload>(
       return activeDrain
     },
     async retryDeadLetter(jobId, availableAt = now()) {
-      await options.store.retryDeadLetter(jobId, availableAt)
+      await Effect.runPromise(options.store.retryDeadLetter(jobId, availableAt))
       await notify({ type: 'dead-letter-retried', jobId, availableAt })
     },
   }

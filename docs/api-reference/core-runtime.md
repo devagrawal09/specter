@@ -32,7 +32,7 @@ network transport and no application database schema.
 | `SpecterIdempotencyConflictError` | An idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
-| `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or scheduler failure crossed the runtime boundary. |
+| `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
 | `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices. |
 
 `specterErrorCodes` contains:
@@ -76,7 +76,7 @@ network transport and no application database schema.
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
 | `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
 | `CommandDispatch` | Reaction Plugin callback for dispatching a Command. |
-| `ReactionExec` | Effect executor called with a result and retry-aware delivery context. |
+| `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
 | `ReactionPlugin` | Optional Effect factory for custom/external output; same-app `CommandEnvelope` output uses default dispatcher. |
 | `ConformanceDiagnostic` | Structured construction diagnostic with code, location, and remediation fields. |
 
@@ -103,20 +103,17 @@ network transport and no application database schema.
 
 `createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
 schemas, apply coverage, and selected implementations before exposing the app.
-`dependencies` is an Effect Layer providing `EventLog`, `ReactionScheduler`,
-and every Store Tag named by registered Slices.
+`dependencies` is an Effect Layer providing `EventLog` and every Store Tag
+named by registered Slices.
 
-When Reactions are registered, construction requests and awaits one startup
-Reaction pass. This recovers Events committed before a previous process died
-without requiring an unrelated Command. Startup scheduler or Reaction failure
-rejects construction. Command-only apps do not request a pass.
+When Reactions are registered, construction catches each Reaction cursor up
+through current Event Log version. This recovers commits left unfinished by a
+previous process without unrelated Command. Startup Reaction failure rejects
+construction.
 
 ```ts
 import { EventLog, createSpecterApp } from '@specter-ts/core'
-import {
-  createImmediateReactionSchedulerLayer,
-  createMemoryEventLogLayer,
-} from '@specter-ts/memory'
+import { createMemoryEventLogLayer } from '@specter-ts/memory'
 import { Layer } from 'effect'
 
 const config = {
@@ -126,7 +123,6 @@ const config = {
 
 const dependencies = Layer.mergeAll(
   createMemoryEventLogLayer(),
-  createImmediateReactionSchedulerLayer(),
   TodosStoreLive,
 )
 
@@ -169,7 +165,7 @@ const program = Effect.gen(function* () {
 ```
 
 `makeSpecterRuntime(config)` is native interpreter and exposes exact Store,
-Event Log, scheduler, Scope, and typed failure requirements. Slices keep plain
+Event Log, Scope, and typed failure requirements. Slices keep plain
 async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
 Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
 Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is

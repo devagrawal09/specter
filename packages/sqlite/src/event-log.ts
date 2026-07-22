@@ -63,7 +63,8 @@ export async function prepareSqliteEventLog(client: Client) {
       `CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
         ON specter_events(type, event_order)`,
       `CREATE TABLE IF NOT EXISTS specter_event_commits (
-        idempotency_key TEXT PRIMARY KEY,
+        commit_version INTEGER PRIMARY KEY,
+        idempotency_key TEXT UNIQUE,
         fingerprint TEXT,
         first_event_order INTEGER NOT NULL,
         last_event_order INTEGER NOT NULL,
@@ -126,18 +127,30 @@ export function createSqliteEventLogService(
     idempotencyKey: string,
   ): Promise<EventLogCommit | undefined> {
     const receipt = await connection.execute({
-      sql: `SELECT fingerprint, first_event_order, last_event_order
+      sql: `SELECT idempotency_key, fingerprint, first_event_order,
+          last_event_order, committed_at
         FROM specter_event_commits
         WHERE idempotency_key = ?`,
       args: [idempotencyKey],
     })
     const row = receipt.rows[0]
     if (!row) return undefined
+    return commitFromRow(connection, row as Record<string, unknown>)
+  }
+
+  async function commitFromRow(
+    connection: SqliteConnection,
+    row: Record<string, unknown>,
+  ): Promise<EventLogCommit> {
     const firstOrder = requireNumber(
       row.first_event_order,
       'first commit event order',
     )
     const version = requireNumber(row.last_event_order, 'commit version')
+    const committedAt = requireString(row.committed_at, 'commit time')
+    if (Number.isNaN(Date.parse(committedAt))) {
+      throw new Error('Expected SQLite commit time to be ISO-8601')
+    }
     const events = await connection.execute({
       sql: `SELECT id, event_order, type, payload, recorded_at
         FROM specter_events
@@ -150,12 +163,35 @@ export function createSqliteEventLogService(
         fromRow(event as Record<string, unknown>),
       ),
       version,
-      idempotencyKey,
+      committedAt,
+      idempotencyKey:
+        row.idempotency_key === null
+          ? undefined
+          : requireString(row.idempotency_key, 'commit idempotency key'),
       fingerprint:
         row.fingerprint === null
           ? undefined
           : requireString(row.fingerprint, 'commit fingerprint'),
     }
+  }
+
+  async function commitsAfter(
+    connection: SqliteConnection,
+    afterVersion: number,
+  ): Promise<readonly EventLogCommit[]> {
+    const result = await connection.execute({
+      sql: `SELECT idempotency_key, fingerprint, first_event_order,
+          last_event_order, committed_at
+        FROM specter_event_commits
+        WHERE commit_version > ?
+        ORDER BY commit_version ASC`,
+      args: [afterVersion],
+    })
+    return Promise.all(
+      result.rows.map((row) =>
+        commitFromRow(connection, row as Record<string, unknown>),
+      ),
+    )
   }
 
   async function append(
@@ -210,27 +246,29 @@ export function createSqliteEventLogService(
       })
     }
     const committedVersion = events.at(-1)?.order ?? version
-    if (appendOptions.idempotencyKey) {
-      await connection.execute({
-        sql: `INSERT INTO specter_event_commits (
-            idempotency_key,
-            fingerprint,
-            first_event_order,
-            last_event_order,
-            committed_at
-          ) VALUES (?, ?, ?, ?, ?)`,
-        args: [
-          appendOptions.idempotencyKey,
-          appendOptions.fingerprint ?? null,
-          events[0]?.order ?? version,
-          committedVersion,
-          now().toISOString(),
-        ],
-      })
-    }
+    const committedAt = now().toISOString()
+    await connection.execute({
+      sql: `INSERT INTO specter_event_commits (
+          commit_version,
+          idempotency_key,
+          fingerprint,
+          first_event_order,
+          last_event_order,
+          committed_at
+        ) VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        committedVersion,
+        appendOptions.idempotencyKey ?? null,
+        appendOptions.fingerprint ?? null,
+        events[0]?.order ?? version,
+        committedVersion,
+        committedAt,
+      ],
+    })
     return {
       events,
       version: committedVersion,
+      committedAt,
       idempotencyKey: appendOptions.idempotencyKey,
       fingerprint: appendOptions.fingerprint,
       duplicate: false,
@@ -250,10 +288,20 @@ export function createSqliteEventLogService(
   return {
     context,
     query: (afterOrder, eventTypes) =>
-      attempt('query', () => query(client, afterOrder, eventTypes)),
-    currentVersion: attempt('currentVersion', () => currentVersion(client)),
+      context.use((connection) =>
+        attempt('query', () => query(connection, afterOrder, eventTypes)),
+      ),
+    currentVersion: context.use((connection) =>
+      attempt('currentVersion', () => currentVersion(connection)),
+    ),
+    commitsAfter: (afterVersion) =>
+      context.use((connection) =>
+        attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),
+      ),
     findCommit: (idempotencyKey) =>
-      attempt('findCommit', () => findCommit(client, idempotencyKey)),
+      context.use((connection) =>
+        attempt('findCommit', () => findCommit(connection, idempotencyKey)),
+      ),
     append: (drafts, appendOptions) =>
       context
         .transaction((connection) =>

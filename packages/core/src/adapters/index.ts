@@ -6,8 +6,8 @@ export type {
 } from './event-log'
 export { EventLog, EventLogFailure } from './event-log'
 export type {
-  ReactionDeliveryContext,
   ReactionExecutor,
+  ReactionScheduleContext,
   ReactionSchedulerService,
 } from './reaction-scheduler'
 export {

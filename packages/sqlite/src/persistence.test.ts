@@ -8,7 +8,7 @@ import {
   eventLogConformance,
   sliceStoreConformance,
 } from '@specter-ts/core/testing'
-import { Effect } from 'effect'
+import { Effect, Fiber } from 'effect'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -88,6 +88,118 @@ describe('Specter SQLite persistence', () => {
       ),
     )
     expect(visible).toEqual({ count: 3, cursor: 2 })
+  })
+
+  it('joins nested Event Log appends to Slice Store transactions', async () => {
+    const { eventLog, createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+
+    await Effect.runPromise(
+      Effect.result(
+        store.transaction('reaction', (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 1
+            yield* eventLog.append([
+              { type: 'nested-command-recorded', payload: { value: 1 } },
+            ])
+            yield* publish(1)
+            return yield* Effect.fail('plugin-failed')
+          }),
+        ),
+      ),
+    )
+
+    const events = await Effect.runPromise(
+      eventLog.query(0, ['nested-command-recorded']),
+    )
+    const state = await Effect.runPromise(
+      store.read('reaction', (read, cursor) =>
+        Effect.succeed({ count: read.count, cursor }),
+      ),
+    )
+    expect(events).toEqual([])
+    expect(state).toEqual({ count: 0, cursor: 0 })
+  })
+
+  it('commits outbox enqueue with Slice State and cursor atomically', async () => {
+    const { createReactionOutboxStore, createSliceStoreService } = await setup()
+    const store = createSliceStoreService(() => ({ count: 0 }))
+    const outbox = createReactionOutboxStore<{ message: string }>()
+    const enqueue = outbox.enqueue({
+      id: 'notify:1',
+      idempotencyKey: 'notify:1',
+      payload: { message: 'hello' },
+      requestedAt: new Date(0),
+      availableAt: new Date(0),
+    })
+
+    await Effect.runPromise(
+      Effect.result(
+        store.transaction('notification', (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 1
+            yield* enqueue
+            yield* publish(1)
+            return yield* Effect.fail('plugin-failed')
+          }),
+        ),
+      ),
+    )
+
+    expect(await Effect.runPromise(outbox.get('notify:1'))).toBeUndefined()
+    expect(
+      await Effect.runPromise(
+        store.read('notification', (read, cursor) =>
+          Effect.succeed({ count: read.count, cursor }),
+        ),
+      ),
+    ).toEqual({ count: 0, cursor: 0 })
+
+    await Effect.runPromise(
+      store.transaction('notification', (write, _read, _cursor, publish) =>
+        Effect.gen(function* () {
+          write.count = 1
+          yield* enqueue
+          yield* publish(1)
+        }),
+      ),
+    )
+    await Effect.runPromise(enqueue)
+
+    expect(await Effect.runPromise(outbox.list())).toHaveLength(1)
+    expect(
+      await Effect.runPromise(
+        store.read('notification', (read, cursor) =>
+          Effect.succeed({ count: read.count, cursor }),
+        ),
+      ),
+    ).toEqual({ count: 1, cursor: 1 })
+  })
+
+  it('does not leak completed transaction into child fibers', async () => {
+    const { context, eventLog } = await setup()
+    const version = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const scope = yield* Effect.scope
+          const fiber = yield* context.transaction(() =>
+            Effect.gen(function* () {
+              yield* eventLog.append([
+                { type: 'nested-command-recorded', payload: { value: 1 } },
+              ])
+              return yield* Effect.forkIn(
+                Effect.sleep('5 millis').pipe(
+                  Effect.andThen(eventLog.currentVersion),
+                ),
+                scope,
+              )
+            }),
+          )
+          return yield* Fiber.join(fiber)
+        }),
+      ),
+    )
+    expect(version).toBe(1)
   })
 
   it('returns typed failures for version and idempotency conflicts', async () => {

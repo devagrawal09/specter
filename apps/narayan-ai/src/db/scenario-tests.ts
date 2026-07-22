@@ -5,7 +5,6 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { EventLog } from '@specter-ts/core'
-import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
@@ -37,11 +36,10 @@ export function sqliteScenario(options: SqliteScenarioOptions = {}) {
           options.migrationsFolder ?? join(process.cwd(), 'drizzle'),
       })
       await prepareSpecterSqlite(sqlite)
-      const storeLayer = createSqliteSliceStoreLayer(db)
       const persistence = createSpecterSqlitePersistence(sqlite)
+      const storeLayer = createSqliteSliceStoreLayer(persistence.context)
       const layer = Layer.mergeAll(
         Layer.succeed(EventLog, persistence.eventLog),
-        createImmediateReactionSchedulerLayer(),
         storeLayer,
         Layer.succeed(
           TwilioDeliveryAttempts,

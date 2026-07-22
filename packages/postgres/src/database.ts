@@ -1,4 +1,4 @@
-import { Effect, Exit } from 'effect'
+import { Context, Effect, Exit, Option } from 'effect'
 
 export type PostgresQueryResult<TRow extends object = Record<string, unknown>> =
   {
@@ -36,10 +36,23 @@ export class PostgresDatabaseFailure extends Error {
 export type PostgresDatabaseContext = {
   readonly pool: PostgresPool
   readonly advisoryLockKey: number
+  readonly use: <A, E, R>(
+    run: (connection: PostgresConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
   readonly transaction: <A, E, R>(
     run: (connection: PostgresConnection) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | PostgresDatabaseFailure, R>
 }
+
+type ActivePostgresTransaction = {
+  readonly owner: object
+  readonly connection: PostgresConnection
+  active: boolean
+}
+
+const ActivePostgresTransaction = Context.Service<ActivePostgresTransaction>(
+  '@specter-ts/postgres/ActiveTransaction',
+)
 
 export type PostgresDatabaseOptions = {
   readonly advisoryLockKey?: number
@@ -51,38 +64,75 @@ export function createPostgresDatabaseContext(
   pool: PostgresPool,
   options: PostgresDatabaseOptions = {},
 ): PostgresDatabaseContext {
+  const owner = {}
+  const activeConnection = Effect.contextWith<
+    never,
+    PostgresConnection,
+    never,
+    never
+  >((services) => {
+    const active = Context.getOption(services, ActivePostgresTransaction)
+    return Effect.succeed(
+      Option.isSome(active) &&
+        active.value.owner === owner &&
+        active.value.active
+        ? active.value.connection
+        : pool,
+    )
+  })
+
   return {
     pool,
     advisoryLockKey: options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY,
+    use: (run) => Effect.flatMap(activeConnection, run),
     transaction: (run) =>
-      Effect.acquireUseRelease(
-        Effect.tryPromise({
-          try: () => pool.connect(),
-          catch: (cause) => new PostgresDatabaseFailure('connect', cause),
-        }),
-        (client) =>
-          Effect.gen(function* () {
-            yield* Effect.tryPromise({
-              try: () => client.query('BEGIN'),
-              catch: (cause) => new PostgresDatabaseFailure('begin', cause),
-            })
-            return yield* run(client)
-          }),
-        (client, exit) =>
-          (Exit.isSuccess(exit)
-            ? Effect.tryPromise({
-                try: () => client.query('COMMIT'),
-                catch: (cause) => new PostgresDatabaseFailure('commit', cause),
-              })
-            : Effect.tryPromise({
-                try: () => client.query('ROLLBACK'),
-                catch: (cause) =>
-                  new PostgresDatabaseFailure('rollback', cause),
-              })
-          ).pipe(
-            Effect.asVoid,
-            Effect.ensuring(Effect.sync(() => client.release())),
-          ),
+      Effect.flatMap(activeConnection, (active) =>
+        active !== pool
+          ? run(active)
+          : Effect.acquireUseRelease(
+              Effect.tryPromise({
+                try: async () => {
+                  const connection = await pool.connect()
+                  return {
+                    connection,
+                    active: { owner, connection, active: true },
+                  }
+                },
+                catch: (cause) => new PostgresDatabaseFailure('connect', cause),
+              }),
+              ({ connection, active }) =>
+                Effect.gen(function* () {
+                  yield* Effect.tryPromise({
+                    try: () => connection.query('BEGIN'),
+                    catch: (cause) =>
+                      new PostgresDatabaseFailure('begin', cause),
+                  })
+                  return yield* run(connection).pipe(
+                    Effect.provideService(ActivePostgresTransaction, active),
+                  )
+                }),
+              ({ connection, active }, exit) =>
+                (Exit.isSuccess(exit)
+                  ? Effect.tryPromise({
+                      try: () => connection.query('COMMIT'),
+                      catch: (cause) =>
+                        new PostgresDatabaseFailure('commit', cause),
+                    })
+                  : Effect.tryPromise({
+                      try: () => connection.query('ROLLBACK'),
+                      catch: (cause) =>
+                        new PostgresDatabaseFailure('rollback', cause),
+                    })
+                ).pipe(
+                  Effect.asVoid,
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      active.active = false
+                      connection.release()
+                    }),
+                  ),
+                ),
+            ),
       ),
   }
 }

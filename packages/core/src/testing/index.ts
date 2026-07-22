@@ -2,10 +2,8 @@ export { eventsFor } from './events-for'
 export {
   AdapterConformanceFailure,
   eventLogConformance,
-  reactionSchedulerConformance,
   sliceStoreConformance,
   testEventLogService,
-  testReactionSchedulerService,
   testSliceStoreService,
 } from './adapter-conformance'
 export type { SliceStoreConformanceOptions } from './adapter-conformance'

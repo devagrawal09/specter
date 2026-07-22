@@ -29,6 +29,15 @@ type EventRow = {
   recorded_at: string
 }
 
+type CommitRow = {
+  commit_version: string
+  idempotency_key: string | null
+  fingerprint: string | null
+  first_event_order: string
+  last_event_order: string
+  committed_at: Date
+}
+
 type OutboxRow = {
   id: string
   idempotency_key: string
@@ -46,14 +55,7 @@ type OutboxRow = {
 class FakePostgresPool implements PostgresPool {
   readonly statements: string[] = []
   readonly events: EventRow[] = []
-  readonly commits = new Map<
-    string,
-    {
-      fingerprint: string | null
-      first_event_order: string
-      last_event_order: string
-    }
-  >()
+  readonly commits: CommitRow[] = []
   readonly sliceStates = new Map<
     string,
     { state_json: unknown; last_applied_order: string }
@@ -113,11 +115,26 @@ class FakePostgresPool implements PostgresPool {
     }
     if (
       normalized.startsWith(
-        'SELECT fingerprint, first_event_order, last_event_order',
-      )
+        'SELECT idempotency_key, fingerprint, first_event_order',
+      ) &&
+      normalized.includes('WHERE idempotency_key = $1')
     ) {
-      const commit = this.commits.get(String(parameters[0]))
+      const commit = this.commits.find(
+        (row) => row.idempotency_key === String(parameters[0]),
+      )
       return { rows: commit ? [commit] : [] }
+    }
+    if (
+      normalized.startsWith(
+        'SELECT idempotency_key, fingerprint, first_event_order',
+      ) &&
+      normalized.includes('WHERE commit_version > $1')
+    ) {
+      return {
+        rows: this.commits.filter(
+          (row) => Number(row.commit_version) > Number(parameters[0]),
+        ),
+      }
     }
     if (
       normalized.includes('FROM specter_events') &&
@@ -159,10 +176,13 @@ class FakePostgresPool implements PostgresPool {
       return { rows: [{ event_order: event.event_order }], rowCount: 1 }
     }
     if (normalized.startsWith('INSERT INTO specter_event_commits')) {
-      this.commits.set(String(parameters[0]), {
-        fingerprint: parameters[1] === null ? null : String(parameters[1]),
-        first_event_order: String(parameters[2]),
-        last_event_order: String(parameters[3]),
+      this.commits.push({
+        commit_version: String(parameters[0]),
+        idempotency_key: parameters[1] === null ? null : String(parameters[1]),
+        fingerprint: parameters[2] === null ? null : String(parameters[2]),
+        first_event_order: String(parameters[3]),
+        last_event_order: String(parameters[4]),
+        committed_at: parameters[5] as Date,
       })
       return { rows: [], rowCount: 1 }
     }
@@ -325,15 +345,38 @@ describe('Postgres Event Log adapter', () => {
     const outbox = createPostgresReactionOutboxStore<unknown>(pool)
     for (const [index, value] of values.entries()) {
       const id = `job-${index}`
-      await outbox.enqueue({
-        id,
-        idempotencyKey: `delivery-${index}`,
-        payload: value,
+      await Effect.runPromise(
+        outbox.enqueue({
+          id,
+          idempotencyKey: `delivery-${index}`,
+          payload: value,
+          requestedAt: new Date(0),
+          availableAt: new Date(0),
+        }),
+      )
+      expect((await Effect.runPromise(outbox.get(id)))?.payload).toBe(value)
+    }
+
+    const custom = createPostgresReactionOutboxStore<{ value: bigint }>(pool, {
+      codec: {
+        encode: (payload) => ({ value: payload.value.toString() }),
+        decode: (payload) => ({
+          value: BigInt((payload as { value: string }).value),
+        }),
+      },
+    })
+    await Effect.runPromise(
+      custom.enqueue({
+        id: 'custom-job',
+        idempotencyKey: 'custom-delivery',
+        payload: { value: 42n },
         requestedAt: new Date(0),
         availableAt: new Date(0),
-      })
-      expect((await outbox.get(id))?.payload).toBe(value)
-    }
+      }),
+    )
+    expect(await Effect.runPromise(custom.get('custom-job'))).toMatchObject({
+      payload: { value: 42n },
+    })
   })
 
   it('uses short transactions and an advisory lock for concurrent appends', async () => {
@@ -367,7 +410,9 @@ describe('Postgres Event Log adapter', () => {
     const pool = new FakePostgresPool()
     const store = createPostgresReactionOutboxStore(pool)
 
-    expect(await store.claimNext(new Date(0), new Date(10))).toBeUndefined()
+    expect(
+      await Effect.runPromise(store.claimNext(new Date(0), new Date(10))),
+    ).toBeUndefined()
     expect(
       pool.statements.some((sql) => sql.includes('FOR UPDATE SKIP LOCKED')),
     ).toBe(true)

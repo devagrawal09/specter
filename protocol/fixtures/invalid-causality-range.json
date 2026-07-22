@@ -11,8 +11,6 @@
     "operationId": "invalid-range-operation",
     "triggeringEventIds": ["event-5", "event-4"],
     "triggeringEventOrder": { "from": 5, "to": 4 },
-    "reactionPassId": "reaction-pass-1",
-    "deliveryId": "delivery-1",
-    "attemptId": "attempt-2"
+    "deliveryId": "notifyOwner:5"
   }]
 }

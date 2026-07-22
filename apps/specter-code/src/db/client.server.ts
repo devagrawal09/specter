@@ -3,15 +3,7 @@ import { dirname } from 'node:path'
 
 import { createClient } from '@libsql/client/sqlite3'
 import { EventLog } from '@specter-ts/core'
-import {
-  createDurableReactionSchedulerLayer,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
-import {
-  createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
-  prepareSqliteReactionOutbox,
-} from '@specter-ts/sqlite'
+import { createSqliteDatabaseContext } from '@specter-ts/sqlite'
 import { Layer } from 'effect'
 
 import { projectSpecterCodeEvent } from '../features/specter-code/adapters/read-models.ts'
@@ -48,7 +40,6 @@ export async function prepareSpecterCodeReferenceDb() {
     await prepareSpecterSqlite(specterCodeSqlite)
     await operationalSqlite.execute('PRAGMA journal_mode = WAL')
     await operationalSqlite.execute('PRAGMA busy_timeout = 5000')
-    await prepareSqliteReactionOutbox(operationalSqlite)
     await prepareSqliteReactionTicketStore(operationalSqlite)
   })()
   await prepared
@@ -62,11 +53,6 @@ export async function runAfterSpecterCodeReady<T>(run: () => Promise<T>) {
 export function specterCodeDependenciesLayer() {
   return Layer.mergeAll(
     Layer.succeed(EventLog, specterCodeEventLog),
-    createDurableReactionSchedulerLayer(
-      createSqliteReactionOutboxStore<ReactionPass>(operationalSqlite, {
-        context: operationalContext,
-      }),
-    ),
     specterCodeMemoryStoresLayer(),
   )
 }

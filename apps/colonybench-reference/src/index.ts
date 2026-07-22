@@ -1,6 +1,5 @@
 import { createSpecterApp, type SpecterApp } from '@specter-ts/core'
 import {
-  createImmediateReactionSchedulerLayer,
   createMemoryEventLogLayer,
   createMemorySliceStoreLayer,
 } from '@specter-ts/memory'
@@ -28,7 +27,6 @@ const simulationConfig = {
 export function createMemoryColonyBenchControlAdapters() {
   return Layer.mergeAll(
     createMemoryEventLogLayer(),
-    createImmediateReactionSchedulerLayer(),
     createMemorySliceStoreLayer(
       ColonyBenchControlStore,
       createColonyBenchControlState,
@@ -43,7 +41,6 @@ export type ColonyBenchControlAdapters = ReturnType<
 export function createMemoryColonyBenchSimulationAdapters() {
   return Layer.mergeAll(
     createMemoryEventLogLayer(),
-    createImmediateReactionSchedulerLayer(),
     createMemorySliceStoreLayer(
       ColonyBenchSimulationStore,
       createColonyBenchSimulationState,

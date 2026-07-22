@@ -1,4 +1,5 @@
 import {
+  Clock,
   Context,
   Effect,
   Layer,
@@ -11,10 +12,11 @@ import {
 import {
   EventLog,
   type EventLogAppendResult,
+  type EventLogCommit,
   EventLogFailure,
   ReactionScheduler,
   ReactionSchedulerFailure,
-  type ReactionDeliveryContext,
+  type ReactionScheduleContext,
   type SliceStoreService,
   type SliceStoreTag,
 } from '../adapters'
@@ -28,6 +30,7 @@ import {
   type EventDraft,
   type PersistedEvent,
   type QuerySlice,
+  type ReactionDeliveryContext,
   type ReactionExec,
   type ReactionPlugin,
   type SliceRegistration,
@@ -62,6 +65,12 @@ import {
   SpecterUnknownQueryError,
   SpecterVersionConflictError,
 } from '../runtime/errors'
+import {
+  SpecterIds,
+  type SpecterObservation,
+  type SpecterObservationDetails,
+  SpecterObserver,
+} from './observability'
 
 export type SpecterEffectError =
   | SpecterError
@@ -88,7 +97,6 @@ export type SpecterStoreRequirements<TConfig extends SpecterAppConfig> =
 export type SpecterRuntimeRequirements<TConfig extends SpecterAppConfig> =
   | SpecterStoreRequirements<TConfig>
   | EventLog
-  | ReactionScheduler
 
 export type SpecterEffectCommandExecution = Omit<
   CommandExecution,
@@ -160,6 +168,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
     const eventLog = yield* EventLog
     const scheduler = yield* ReactionScheduler
+    const observer = yield* SpecterObserver
+    const ids = yield* SpecterIds
+    const scope = yield* Effect.scope
     const services = yield* Effect.context<SpecterStoreRequirements<TConfig>>()
     const eventDefinitions = new Map<string, ApplyEventDefinition>()
     const commands = new Map<string, AnyCommand>()
@@ -208,8 +219,15 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       ),
     )
 
+    yield* Effect.forEach(reactions.values(), getReactionExec, {
+      discard: true,
+    })
+
     if (reactions.size > 0) {
       yield* scheduler.recover(runReactions)
+      const currentVersion = yield* eventLog.currentVersion
+      const completion = yield* scheduler.schedule(currentVersion, runReactions)
+      yield* Effect.forkIn(completion, scope)
     }
 
     for (const slice of config.slices) {
@@ -232,6 +250,12 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       return Effect.gen(function* () {
         const optionError = validateCommandOptions(options)
         if (optionError) return yield* Effect.fail(optionError)
+        const operationId = yield* ids.next
+        const startedAt = yield* Clock.currentTimeMillis
+        yield* observe(operationId, {
+          type: 'command-started',
+          commandType: envelope.type,
+        })
         const command = commands.get(envelope.type)
         if (!command) {
           return yield* Effect.fail(
@@ -266,7 +290,26 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             ? Effect.void
             : yield* scheduler.schedule(commit.version, runReactions)
 
+        for (const event of commit.events) {
+          yield* observe(operationId, {
+            type: 'event-persisted',
+            event: eventReference(event, commit.version),
+          })
+        }
+        const completedAt = yield* Clock.currentTimeMillis
+        yield* observe(operationId, {
+          type: 'command-completed',
+          commandType: command.name,
+          version: commit.version,
+          events: commit.events.map((event) =>
+            eventReference(event, commit.version),
+          ),
+          duplicate: commit.duplicate,
+          durationMs: completedAt - startedAt,
+        })
+
         return {
+          operationId,
           events: commit.events,
           version: commit.version,
           duplicate: commit.duplicate,
@@ -483,13 +526,13 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     }
 
     function runReactions(
-      context: ReactionDeliveryContext,
+      context: ReactionScheduleContext,
     ): Effect.Effect<void, ReactionRunFailure> {
       return Effect.gen(function* () {
         const failures = yield* Effect.forEach(
           [...reactions.values()],
           (reaction) =>
-            runReaction(reaction, context).pipe(
+            runReactionThrough(reaction, context.throughOrder).pipe(
               Effect.match({
                 onFailure: (cause) => ({ sliceName: reaction.name, cause }),
                 onSuccess: () => undefined,
@@ -506,45 +549,122 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       })
     }
 
-    function runReaction(
+    function runReactionThrough(
       reaction: AnyReaction,
-      context: ReactionDeliveryContext,
+      throughOrder: number,
     ): Effect.Effect<void, SpecterEffectError> {
       return Effect.gen(function* () {
-        // Projection and cursor commit first. External effect never runs inside
-        // retryable Store transaction.
-        yield* catchUpSlice(reaction, context.throughOrder)
-        const result = yield* readStore(reaction, (read) =>
-          fromPromise(
-            () => reaction.handle(read),
-            (cause) =>
-              new SpecterInfrastructureError(
-                `Reaction "${reaction.name}" handler failed.`,
-                cause,
-              ),
-          ),
+        const cursor = yield* readStore(reaction, (_read, current) =>
+          Effect.succeed(current),
         )
-        if (result === undefined) return
-        const output = yield* fromPromise(
-          () => decodeOptionalSchema(reaction.outputSchema, result),
-          (cause) =>
-            new SpecterInvalidOutputError('reaction', reaction.name, cause),
-        )
-        const execute = yield* getReactionExec(reaction)
-        yield* execute(output, {
-          ...context,
-          deliveryId: `${context.deliveryId}:${reaction.name}`,
-        }).pipe(
-          Effect.mapError((cause) =>
-            isPublicError(cause)
-              ? cause
-              : new SpecterInfrastructureError(
-                  `Reaction "${reaction.name}" effect failed.`,
-                  cause,
-                ),
-          ),
-        )
+        const commits = yield* eventLog.commitsAfter(cursor)
+        for (const commit of commits) {
+          if (commit.version > throughOrder) break
+          yield* runReactionCommit(reaction, commit)
+        }
       })
+    }
+
+    function runReactionCommit(
+      reaction: AnyReaction,
+      commit: EventLogCommit,
+    ): Effect.Effect<void, SpecterEffectError> {
+      const resolved = stores.get(reaction)
+      if (!resolved) {
+        return Effect.fail(
+          new SpecterStoreConfigurationError(
+            reaction.name,
+            `Slice "${reaction.name}" has no Store binding.`,
+          ),
+        )
+      }
+      return Effect.gen(function* () {
+        const execute = yield* getReactionExec(reaction)
+        const operationId = yield* ids.next
+        const deliveryId = `${reaction.name}:${commit.version}`
+        const startedAt = yield* Clock.currentTimeMillis
+        yield* observe(operationId, {
+          type: 'reaction-run-started',
+          reactionName: reaction.name,
+          deliveryId,
+          commitVersion: commit.version,
+        })
+        yield* resolved.service.transaction(
+          reaction.name,
+          (write, read, cursor, publishCursor) =>
+            Effect.gen(function* () {
+              if (cursor >= commit.version) return
+              const handlers = applyBySlice.get(reaction)
+              const relevant = commit.events.filter(
+                (event) => event.order > cursor && handlers?.has(event.type),
+              )
+              assertEventLogOrder(cursor, relevant)
+              for (const event of yield* Effect.forEach(
+                relevant,
+                decodePersistedEvent,
+              )) {
+                const apply = handlers?.get(event.type)
+                if (!apply) continue
+                yield* fromPromise(
+                  () => apply.handle(event, write),
+                  (cause) =>
+                    new SpecterProjectionFailedError(reaction.name, cause),
+                )
+              }
+              if (relevant.length > 0) {
+                const result = yield* fromPromise(
+                  () => reaction.handle(read()),
+                  (cause) =>
+                    new SpecterInfrastructureError(
+                      `Reaction "${reaction.name}" handler failed.`,
+                      cause,
+                    ),
+                )
+                if (result !== undefined) {
+                  const output = yield* fromPromise(
+                    () => decodeOptionalSchema(reaction.outputSchema, result),
+                    (cause) =>
+                      new SpecterInvalidOutputError(
+                        'reaction',
+                        reaction.name,
+                        cause,
+                      ),
+                  )
+                  const context: ReactionDeliveryContext = {
+                    deliveryId,
+                    throughOrder: commit.version,
+                    scheduledAt: commit.committedAt,
+                  }
+                  yield* execute(output, context).pipe(
+                    Effect.mapError((cause) =>
+                      isPublicError(cause)
+                        ? cause
+                        : new SpecterInfrastructureError(
+                            `Reaction "${reaction.name}" effect failed.`,
+                            cause,
+                          ),
+                    ),
+                  )
+                }
+              }
+              yield* publishCursor(commit.version)
+            }),
+        )
+        const completedAt = yield* Clock.currentTimeMillis
+        yield* observe(operationId, {
+          type: 'reaction-run-completed',
+          reactionName: reaction.name,
+          deliveryId,
+          commitVersion: commit.version,
+          durationMs: completedAt - startedAt,
+        })
+      }).pipe(
+        Effect.mapError((cause) =>
+          isPublicError(cause)
+            ? cause
+            : new SpecterStoreFailureError(reaction.name, 'transaction', cause),
+        ),
+      )
     }
 
     function getReactionExec(
@@ -604,6 +724,26 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             Queue.offerUnsafe(subscription.queue, undefined)
           }
         }
+      })
+    }
+
+    function observe(
+      operationId: string,
+      details: SpecterObservationDetails,
+    ): Effect.Effect<void> {
+      return Effect.gen(function* () {
+        const observationId = yield* ids.next
+        const observedAt = new Date(
+          yield* Clock.currentTimeMillis,
+        ).toISOString()
+        yield* observer.observe({
+          ...details,
+          observationId,
+          observedAt,
+          operationId,
+          parentOperationIds: [],
+          causedByEvents: [],
+        } as SpecterObservation)
       })
     }
 
@@ -792,6 +932,16 @@ function decodeInput(
     () => decodeOptionalSchema(schema, input),
     (cause) => new SpecterInvalidInputError(kind, name, cause),
   )
+}
+
+function eventReference(event: PersistedEvent, commitVersion: number) {
+  return {
+    id: event.id,
+    type: event.type,
+    order: event.order,
+    recordedAt: event.recordedAt,
+    commitVersion,
+  }
 }
 
 function fromPromise<A, E>(
