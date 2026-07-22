@@ -31,6 +31,7 @@
     "@tanstack/solid-router": "1.168.8",
     "@tanstack/solid-start": "1.167.14",
     "drizzle-orm": "^0.45.2",
+    "effect": "4.0.0-beta.78",
     "solid-js": "^1.9.12",
     "tailwindcss": "^4.1.18",
     "twilio": "^5.10.5",

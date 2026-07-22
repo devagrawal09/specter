@@ -2,16 +2,18 @@ import { randomUUID } from 'node:crypto'
 
 import type { Client } from '@libsql/client'
 import {
+  EventLog,
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
-  type EventLogAdapter,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
-  type EventLogTransaction,
+  type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createSqliteDatabaseContext,
@@ -33,7 +35,7 @@ export type SqliteEventLogOptions = {
   readonly codec?: SqliteEventCodec
 }
 
-export type SqliteEventLog = EventLogAdapter & {
+export type SqliteEventLogService = EventLogService & {
   readonly context: SqliteDatabaseContext
 }
 
@@ -72,10 +74,10 @@ export async function prepareSqliteEventLog(client: Client) {
   )
 }
 
-export function createSqliteEventLog(
+export function createSqliteEventLogService(
   client: Client,
   options: SqliteEventLogOptions = {},
-): SqliteEventLog {
+): SqliteEventLogService {
   const context = options.context ?? createSqliteDatabaseContext(client)
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
@@ -235,44 +237,41 @@ export function createSqliteEventLog(
     }
   }
 
-  function appendAtomically(
-    drafts: readonly EventDraft[],
-    appendOptions?: EventLogAppendOptions,
+  function attempt<A>(
+    operation: EventLogFailure['operation'],
+    run: () => Promise<A>,
   ) {
-    return context.serialize(() =>
-      context.transaction((connection) =>
-        append(connection, drafts, appendOptions),
-      ),
-    )
-  }
-
-  function scoped(baseVersion: number): EventLogTransaction {
-    return {
-      query: (afterOrder, eventTypes) => query(client, afterOrder, eventTypes),
-      currentVersion: async () => baseVersion,
-      findCommit: (idempotencyKey) => findCommit(client, idempotencyKey),
-      append: (drafts, appendOptions) =>
-        context.transaction((connection) =>
-          append(connection, drafts, {
-            ...appendOptions,
-            expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
-          }),
-        ),
-    }
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new EventLogFailure(operation, cause),
+    })
   }
 
   return {
     context,
     query: (afterOrder, eventTypes) =>
-      query(context.connection(), afterOrder, eventTypes),
-    currentVersion: () => currentVersion(context.connection()),
+      attempt('query', () => query(client, afterOrder, eventTypes)),
+    currentVersion: attempt('currentVersion', () => currentVersion(client)),
     findCommit: (idempotencyKey) =>
-      findCommit(context.connection(), idempotencyKey),
-    append: appendAtomically,
-    transaction: (run) =>
-      context.serialize(async () => {
-        const baseVersion = await currentVersion(client)
-        return run(scoped(baseVersion))
-      }),
+      attempt('findCommit', () => findCommit(client, idempotencyKey)),
+    append: (drafts, appendOptions) =>
+      context
+        .transaction((connection) =>
+          attempt('append', () => append(connection, drafts, appendOptions)),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof EventLogFailure
+              ? cause
+              : new EventLogFailure('append', cause),
+          ),
+        ),
   }
+}
+
+export function createSqliteEventLogLayer(
+  client: Client,
+  options: SqliteEventLogOptions = {},
+): Layer.Layer<EventLog> {
+  return Layer.succeed(EventLog, createSqliteEventLogService(client, options))
 }

@@ -77,38 +77,33 @@ export function createNodeSqliteSliceStoreService<
 
   return {
     read: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () =>
-          context.run(() => {
-            const current = load(sliceName)
-            return run(read(current.state), current.cursor)
-          }),
-        catch: (cause) => cause,
+      Effect.suspend(() => {
+        const current = context.run(() => load(sliceName))
+        return run(read(current.state), current.cursor)
       }),
     transaction: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () =>
-          context.transaction(async () => {
-            const working = load(sliceName)
-            let published = false
-            const result = await run(
-              working.state,
-              () => read(working.state),
-              working.cursor,
-              async (order) => {
-                if (!Number.isInteger(order) || order < working.cursor) {
+      Effect.suspend(() => {
+        const working = context.run(() => load(sliceName))
+        let published = false
+        return Effect.gen(function* () {
+          const result = yield* run(
+            working.state,
+            () => read(working.state),
+            working.cursor,
+            (order) =>
+              Effect.sync(() => {
+                if (!Number.isSafeInteger(order) || order < working.cursor) {
                   throw new Error(
                     `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
                   )
                 }
                 working.cursor = order
                 published = true
-              },
-            )
-            if (published) save(sliceName, working)
-            return result
-          }),
-        catch: (cause) => cause,
+              }),
+          )
+          if (published) context.transaction(() => save(sliceName, working))
+          return result
+        })
       }),
   }
 }

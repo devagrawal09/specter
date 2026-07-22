@@ -1,25 +1,49 @@
+import { Context, type Effect } from 'effect'
+
 export type ReactionDeliveryContext = {
-  /** Stable across every retry of the same scheduled delivery. */
+  /** Stable across every retry of one durable delivery. */
   readonly deliveryId: string
-  /** ISO-8601 time captured once when this delivery was first scheduled. */
+  readonly throughOrder: number
   readonly scheduledAt: string
-  /** Stable for this attempt and different for a later retry. */
   readonly attemptId: string
-  /** One-based attempt number for this delivery. */
   readonly attemptNumber: number
 }
 
-export type WaitForReactionsIdle = () => Promise<void>
-/** Requests a Reaction pass and returns a factory for awaiting its idle point. */
-export type RequestReactions = () => WaitForReactionsIdle
+export class ReactionSchedulerFailure extends Error {
+  readonly _tag = 'ReactionSchedulerFailure' as const
+
+  constructor(
+    readonly operation: 'schedule' | 'recover',
+    readonly cause: unknown,
+  ) {
+    super(`Reaction scheduler ${operation} failed.`, { cause })
+    this.name = 'ReactionSchedulerFailure'
+  }
+}
+
+export type ReactionExecutor<E> = (
+  context: ReactionDeliveryContext,
+) => Effect.Effect<void, E>
 
 /**
- * Schedulers serialize Reaction passes. They may coalesce or queue requests,
- * but a Reaction may request another pass while the current pass is active
- * without starting a nested pass or requiring that Reaction to await itself.
- * The delivery context must be stable across retries so core can derive stable
- * per-Reaction effect IDs.
+ * Native scheduler capability. `schedule` durably accepts work before it
+ * returns; returned Effect waits for that delivery. `recover` drains accepted
+ * work left incomplete by an earlier runtime.
  */
-export type ReactionScheduler = (
-  run: (context: ReactionDeliveryContext) => Promise<void>,
-) => RequestReactions
+export type ReactionSchedulerService = {
+  readonly schedule: <E>(
+    throughOrder: number,
+    execute: ReactionExecutor<E>,
+  ) => Effect.Effect<
+    Effect.Effect<void, E | ReactionSchedulerFailure>,
+    ReactionSchedulerFailure
+  >
+  readonly recover: <E>(
+    execute: ReactionExecutor<E>,
+  ) => Effect.Effect<void, E | ReactionSchedulerFailure>
+}
+
+export class ReactionScheduler extends Context.Service<
+  ReactionScheduler,
+  ReactionSchedulerService
+>()('@specter-ts/core/ReactionScheduler') {}

@@ -15,7 +15,9 @@ export type SqliteScenarioOptions = {
 export function sqliteScenario(options: SqliteScenarioOptions) {
   return async <T>(program: Effect.Effect<T, unknown, unknown>) => {
     const directory = mkdtempSync(join(tmpdir(), 'specter-app-'))
-    const sqlite = createClient({ url: `file:${join(directory, 'scenario.db')}` })
+    const sqlite = createClient({
+      url: `file:${join(directory, 'scenario.db')}`,
+    })
 
     try {
       const db = drizzle(sqlite, { schema })

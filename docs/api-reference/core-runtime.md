@@ -18,9 +18,7 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
-| `createSpecterApp(config)` | Asynchronously validates a complete app configuration and returns a typed `SpecterApp`. |
-| `defineSpecterFeature(factory)` | Defines one plain app-scoped feature factory while preserving inferred Event and Slice types. |
-| `createSpecterAppFromFeatures(config)` | Constructs every feature once for an app, then validates and creates it. |
+| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
 | `SpecterError` | Base class for structured runtime errors with a `code`. |
@@ -79,14 +77,14 @@ network transport and no application database schema.
 | `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
 | `CommandDispatch` | Reaction Plugin callback for dispatching a Command. |
 | `ReactionExec` | Effect executor called with a result and retry-aware delivery context. |
-| `ReactionPlugin` | Async factory that receives `CommandDispatch` and returns a `ReactionExec`. |
+| `ReactionPlugin` | Optional Effect factory for custom/external output; same-app `CommandEnvelope` output uses default dispatcher. |
 | `ConformanceDiagnostic` | Structured construction diagnostic with code, location, and remediation fields. |
 
 ## App and runtime types
 
 | Export | Purpose |
 | --- | --- |
-| `SpecterAppConfig` | Base configuration: Events, Event Log, scheduler, Slices, and optional observer. |
+| `SpecterAppConfig` | Pure configuration containing Events and Slices. |
 | `SpecterAppConfigOf<TApp>` | Infers the configuration carried by a typed app. |
 | `SpecterApp<TConfig>` | Typed `command`, `query`, `subscribe`, and idempotent `close` operations. |
 | `SpecterCommandEnvelope<TConfig>` | Union of all registered Command envelopes. |
@@ -97,17 +95,16 @@ network transport and no application database schema.
 | `CommandExecutionOptions` | Alias of `CommandDispatchOptions` for `app.command`. |
 | `CommandExecution` | Committed Events, resulting version, duplicate flag, and Reaction completion Promise. |
 | `QuerySubscriptionOptions` | Optional cancellation `AbortSignal`. |
-| `SpecterObservation` | Core observation union for projection, commit, subscription, and Reaction lifecycle. |
-| `SpecterObserver` | Best-effort callback receiving `SpecterObservation`. |
 | `SpecterOperationKind` | `'command' | 'query' | 'reaction'`. |
 | `SpecterErrorCode` | Union of values in `specterErrorCodes`. |
 | `ReactionRunFailureDetail` | Reaction Slice name and cause for one failed run. |
 
 ## Construction and operation order
 
-`createSpecterApp(...)` returns a Promise because it validates the Event
-catalog, Scenarios, schemas, apply coverage, and selected implementations before
-exposing the app. Await it exactly once during application wiring.
+`createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
+schemas, apply coverage, and selected implementations before exposing the app.
+`dependencies` is an Effect Layer providing `EventLog`, `ReactionScheduler`,
+and every Store Tag named by registered Slices.
 
 When Reactions are registered, construction requests and awaits one startup
 Reaction pass. This recovers Events committed before a previous process died
@@ -115,18 +112,25 @@ without requiring an unrelated Command. Startup scheduler or Reaction failure
 rejects construction. Command-only apps do not request a pass.
 
 ```ts
-import { createSpecterApp } from '@specter-ts/core'
+import { EventLog, createSpecterApp } from '@specter-ts/core'
 import {
-  createImmediateReactionScheduler,
-  createMemoryEventLog,
+  createImmediateReactionSchedulerLayer,
+  createMemoryEventLogLayer,
 } from '@specter-ts/memory'
+import { Layer } from 'effect'
 
-const app = await createSpecterApp({
+const config = {
   events: todoEvents,
-  eventLog: createMemoryEventLog(),
-  schedule: createImmediateReactionScheduler(),
   slices: todoSlices,
-})
+} as const
+
+const dependencies = Layer.mergeAll(
+  createMemoryEventLogLayer(),
+  createImmediateReactionSchedulerLayer(),
+  TodosStoreLive,
+)
+
+const app = await createSpecterApp(config, dependencies)
 
 const execution = await app.command(
   {
@@ -154,11 +158,8 @@ Effect-free.
 import { createSpecterAppLayer, SpecterRuntime } from '@specter-ts/core/effect'
 import { Effect } from 'effect'
 
-const SpecterLive = createSpecterAppLayer(
-  Effect.gen(function* () {
-    const persistence = yield* Persistence
-    return createTodoConfig(persistence)
-  }),
+const SpecterLive = createSpecterAppLayer(todoConfig).pipe(
+  Layer.provideMerge(TodoDependencies),
 )
 
 const program = Effect.gen(function* () {
@@ -167,16 +168,12 @@ const program = Effect.gen(function* () {
 })
 ```
 
-`createSpecterAppEffect(config)` retains exact envelope inference on a directly
-constructed Effect app. `createSpecterAppLayer(configEffect)` acquires it in a
-Scope, exposes `SpecterRuntime` through Context, and closes app resources on
-release. Query subscriptions are Effect `Stream` values.
-
-For Effect-based Slice implementations, construct one
-`createSpecterEffectAdapters(managedRuntime.runPromise)` bridge. Its `adapt`
-method converts handlers and apply functions; `reactionPlugin` gives Plugins an
-Effect Command dispatcher. Individual Slices keep service requirements and do
-not call `Effect.runPromise`.
+`makeSpecterRuntime(config)` is native interpreter and exposes exact Store,
+Event Log, scheduler, Scope, and typed failure requirements. Slices keep plain
+async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
+Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
+Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is
+explicit Promise boundary used by `createSpecterApp`.
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent

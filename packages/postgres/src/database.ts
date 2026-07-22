@@ -1,3 +1,5 @@
+import { Effect, Exit } from 'effect'
+
 export type PostgresQueryResult<TRow extends object = Record<string, unknown>> =
   {
     readonly rows: readonly TRow[]
@@ -19,13 +21,24 @@ export type PostgresPool = PostgresConnection & {
   connect(): Promise<PostgresPoolClient>
 }
 
+export class PostgresDatabaseFailure extends Error {
+  readonly _tag = 'PostgresDatabaseFailure' as const
+
+  constructor(
+    readonly operation: 'connect' | 'begin' | 'commit' | 'rollback',
+    readonly cause: unknown,
+  ) {
+    super(`Postgres ${operation} failed.`, { cause })
+    this.name = 'PostgresDatabaseFailure'
+  }
+}
+
 export type PostgresDatabaseContext = {
+  readonly pool: PostgresPool
   readonly advisoryLockKey: number
-  connection(): PostgresConnection
-  serialize<T>(run: () => Promise<T>): Promise<T>
-  transaction<T>(
-    run: (connection: PostgresConnection) => Promise<T>,
-  ): Promise<T>
+  readonly transaction: <A, E, R>(
+    run: (connection: PostgresConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | PostgresDatabaseFailure, R>
 }
 
 export type PostgresDatabaseOptions = {
@@ -38,49 +51,39 @@ export function createPostgresDatabaseContext(
   pool: PostgresPool,
   options: PostgresDatabaseOptions = {},
 ): PostgresDatabaseContext {
-  const advisoryLockKey = options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY
-  let serializationTail = Promise.resolve()
-
   return {
-    advisoryLockKey,
-    connection() {
-      return pool
-    },
-    async serialize(run) {
-      const previous = serializationTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      serializationTail = queued
-      await previous
-
-      try {
-        return await run()
-      } finally {
-        release()
-        if (serializationTail === queued) serializationTail = Promise.resolve()
-      }
-    },
-    async transaction(run) {
-      const client = await pool.connect()
-      try {
-        await client.query('BEGIN')
-        const result = await run(client)
-        await client.query('COMMIT')
-        return result
-      } catch (cause) {
-        try {
-          await client.query('ROLLBACK')
-        } catch {
-          // Preserve the domain/storage failure that caused the rollback.
-        }
-        throw cause
-      } finally {
-        client.release()
-      }
-    },
+    pool,
+    advisoryLockKey: options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY,
+    transaction: (run) =>
+      Effect.acquireUseRelease(
+        Effect.tryPromise({
+          try: () => pool.connect(),
+          catch: (cause) => new PostgresDatabaseFailure('connect', cause),
+        }),
+        (client) =>
+          Effect.gen(function* () {
+            yield* Effect.tryPromise({
+              try: () => client.query('BEGIN'),
+              catch: (cause) => new PostgresDatabaseFailure('begin', cause),
+            })
+            return yield* run(client)
+          }),
+        (client, exit) =>
+          (Exit.isSuccess(exit)
+            ? Effect.tryPromise({
+                try: () => client.query('COMMIT'),
+                catch: (cause) => new PostgresDatabaseFailure('commit', cause),
+              })
+            : Effect.tryPromise({
+                try: () => client.query('ROLLBACK'),
+                catch: (cause) =>
+                  new PostgresDatabaseFailure('rollback', cause),
+              })
+          ).pipe(
+            Effect.asVoid,
+            Effect.ensuring(Effect.sync(() => client.release())),
+          ),
+      ),
   }
 }
 
@@ -103,14 +106,6 @@ export function postgresString(value: unknown, field: string) {
   return value
 }
 
-/**
- * Reads a JSONB column from a structural Postgres driver.
- *
- * Postgres drivers such as `pg` decode JSONB before returning a row. In
- * particular, a JSON string is returned as a JavaScript string and must not be
- * parsed again: values such as `"null"`, `"123"`, and `"true"` are valid
- * strings, not encoded null/number/boolean values.
- */
 export function postgresJson<T>(value: unknown, field: string): T {
   if (value === undefined) {
     throw new Error(`Invalid Postgres ${field}: undefined`)

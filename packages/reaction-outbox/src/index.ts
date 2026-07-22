@@ -6,7 +6,8 @@ export {
 } from './plugin'
 export type { MemoryReactionOutboxStore } from './memory-store'
 export {
-  createDurableReactionScheduler,
+  createDurableReactionSchedulerLayer,
+  createDurableReactionSchedulerService,
   type DurableReactionSchedulerOptions,
   type ReactionPass,
 } from './scheduler'

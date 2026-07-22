@@ -9,6 +9,7 @@ import {
   createCommandSlice,
   createEventDefinition,
   createQuerySlice,
+  createReactionSlice,
   event,
   type SpecterConformanceError,
 } from './index'
@@ -104,7 +105,8 @@ describe('conformance diagnostics', () => {
 
     const result = await Effect.runPromise(Effect.result(assertConforms(input)))
     expect(result._tag).toBe('Failure')
-    if (result._tag === 'Success') throw new Error('conformance unexpectedly passed')
+    if (result._tag === 'Success')
+      throw new Error('conformance unexpectedly passed')
     const failure: SpecterConformanceError = result.failure
     expect(failure).toMatchObject({
       _tag: 'SpecterConformanceError',
@@ -190,6 +192,50 @@ describe('conformance diagnostics', () => {
     })
   })
 
+  test('accepts default same-app Command Reaction without explicit Plugin', async () => {
+    const valueRecorded = createEventDefinition(
+      'value-recorded',
+      schema<number, number>((value) => value),
+    )
+    const command = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(createTestSliceStore({}).tag)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const reaction = createReactionSlice('repeatValue')
+      .description('Repeats latest value through same-app Command.')
+      .scenarios({
+        description: 'Repeats one value.',
+        given: [event('value-recorded', 1)],
+        expect: [{ type: 'recordValue', payload: 1 }],
+      })
+      .outputSchema<{ type: 'recordValue'; payload: number }>()
+      .store(createTestSliceStore({ value: 0 }).tag)
+      .apply(valueRecorded, async (applied, state) => {
+        state.value = applied.payload
+      })
+      .handle(async (state) => ({
+        type: 'recordValue',
+        payload: state.value,
+      }))
+
+    expect(reaction.plugin).toBeUndefined()
+    await expect(
+      Effect.runPromise(
+        assertConforms({
+          events: [valueRecorded],
+          slices: [command, reaction],
+        }),
+      ),
+    ).resolves.toBeUndefined()
+  })
+
   test('requires lower camel case Slice names', async () => {
     const valueRecorded = createEventDefinition(
       'value-recorded',
@@ -256,5 +302,34 @@ describe('conformance diagnostics', () => {
         ),
       ),
     ).resolves.toBeUndefined()
+  })
+
+  test('reports invalid eager Store configuration as typed conformance data', async () => {
+    const query = createQuerySlice('readValue')
+      .description('Reads a value.')
+      .scenarios({
+        description: 'Reads empty state.',
+        given: [],
+        when: {},
+        expect: 0,
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<number>()
+      .store(createTestSliceStore({ value: 0 }).tag)
+      .handle(async (_input, state) => state.value)
+    const malformed = { ...query, eager: 'yes' }
+
+    const diagnostics = await Effect.runPromise(
+      collectConformanceDiagnostics(
+        { events: [], slices: [malformed as never] },
+        { requireCommandSlice: false },
+      ),
+    )
+    expect(diagnostics).toContainEqual(
+      expect.objectContaining({
+        code: 'invalid-store-eager',
+        sliceName: 'readValue',
+      }),
+    )
   })
 })

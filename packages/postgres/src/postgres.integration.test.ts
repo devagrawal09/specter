@@ -3,10 +3,15 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
   createEventDefinition,
   createSpecterApp,
+  EventLog,
+  EventLogFailure,
+  ReactionScheduler,
   SpecterVersionConflictError,
-  type ReactionScheduler,
+  type ReactionSchedulerService,
+  type SliceStoreService,
 } from '@specter-ts/core'
 import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { Context, Effect, Layer } from 'effect'
 
 import type {
   PostgresPool,
@@ -14,17 +19,22 @@ import type {
   PostgresQueryResult,
 } from './database'
 import { createPostgresDatabaseContext } from './database'
-import { createPostgresEventLog, preparePostgresEventLog } from './event-log'
+import {
+  createPostgresEventLogService,
+  preparePostgresEventLog,
+} from './event-log'
 import {
   createPostgresReactionOutboxStore,
   preparePostgresReactionOutbox,
 } from './reaction-outbox'
 import {
-  createPostgresSliceStore,
+  createPostgresSliceStoreService,
   preparePostgresSliceStore,
 } from './slice-store'
 
 const databaseUrl = process.env.SPECTER_POSTGRES_URL
+
+const run = Effect.runPromise
 
 function queryable(connection: Pool | PoolClient): Pick<PostgresPool, 'query'> {
   return {
@@ -86,16 +96,20 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       eventId: () => `event-${++eventNumber}`,
       now: () => new Date('2026-07-16T12:00:00.000Z'),
     }
-    const firstLog = createPostgresEventLog(pool, options)
-    const secondLog = createPostgresEventLog(pool, options)
+    const firstLog = createPostgresEventLogService(pool, options)
+    const secondLog = createPostgresEventLogService(pool, options)
 
     const results = await Promise.allSettled([
-      firstLog.append([{ type: 'created', payload: { writer: 'first' } }], {
-        expectedVersion: 0,
-      }),
-      secondLog.append([{ type: 'created', payload: { writer: 'second' } }], {
-        expectedVersion: 0,
-      }),
+      run(
+        firstLog.append([{ type: 'created', payload: { writer: 'first' } }], {
+          expectedVersion: 0,
+        }),
+      ),
+      run(
+        secondLog.append([{ type: 'created', payload: { writer: 'second' } }], {
+          expectedVersion: 0,
+        }),
+      ),
     ])
 
     expect(
@@ -106,50 +120,72 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     ).toHaveLength(1)
     const rejected = results.find((result) => result.status === 'rejected')
     expect(rejected).toMatchObject({
-      reason: expect.any(SpecterVersionConflictError),
+      reason: expect.objectContaining({
+        cause: expect.any(SpecterVersionConflictError),
+      }),
     })
-    expect(await firstLog.currentVersion()).toBe(1)
+    expect(await run(firstLog.currentVersion)).toBe(1)
 
     const idempotent = await Promise.all([
-      firstLog.append([{ type: 'requested', payload: { requestId: 'one' } }], {
-        expectedVersion: 1,
-        idempotencyKey: 'request-one',
-        fingerprint: 'same-command',
-      }),
-      secondLog.append([{ type: 'requested', payload: { requestId: 'one' } }], {
-        expectedVersion: 1,
-        idempotencyKey: 'request-one',
-        fingerprint: 'same-command',
-      }),
+      run(
+        firstLog.append(
+          [{ type: 'requested', payload: { requestId: 'one' } }],
+          {
+            expectedVersion: 1,
+            idempotencyKey: 'request-one',
+            fingerprint: 'same-command',
+          },
+        ),
+      ),
+      run(
+        secondLog.append(
+          [{ type: 'requested', payload: { requestId: 'one' } }],
+          {
+            expectedVersion: 1,
+            idempotencyKey: 'request-one',
+            fingerprint: 'same-command',
+          },
+        ),
+      ),
     ])
     expect(idempotent.map((commit) => commit.duplicate).sort()).toEqual([
       false,
       true,
     ])
-    expect(await firstLog.currentVersion()).toBe(2)
+    expect(await run(firstLog.currentVersion)).toBe(2)
 
     const context = createPostgresDatabaseContext(pool)
     await expect(
-      context.transaction(async (connection) => {
-        await connection.query(
-          'INSERT INTO specter_events (id, type, payload, recorded_at) VALUES ($1, $2, $3::jsonb, $4)',
-          ['rolled-back', 'rolled-back', '{}', new Date()],
-        )
-        throw new Error('rollback probe')
-      }),
+      run(
+        context.transaction((connection) =>
+          Effect.gen(function* () {
+            yield* Effect.promise(() =>
+              connection.query(
+                'INSERT INTO specter_events (id, type, payload, recorded_at) VALUES ($1, $2, $3::jsonb, $4)',
+                ['rolled-back', 'rolled-back', '{}', new Date()],
+              ),
+            )
+            return yield* Effect.fail(new Error('rollback probe'))
+          }),
+        ),
+      ),
     ).rejects.toThrow('rollback probe')
-    expect(await firstLog.currentVersion()).toBe(2)
+    expect(await run(firstLog.currentVersion)).toBe(2)
   })
 
   it('keeps staged Slice publication independent from a conflicting Event append', async () => {
     let eventNumber = 0
-    const commandLog = createPostgresEventLog(pool, {
+    const commandLog = createPostgresEventLogService(pool, {
       eventId: () => `command-event-${++eventNumber}`,
     })
-    const competingLog = createPostgresEventLog(pool, {
+    const competingLog = createPostgresEventLogService(pool, {
       eventId: () => 'competing-event',
     })
-    const store = createPostgresSliceStore(pool, () => ({ count: 0 }))
+    const store = createPostgresSliceStoreService(pool, () => ({ count: 0 }))
+    class CounterStore extends Context.Service<
+      CounterStore,
+      SliceStoreService<Readonly<{ count: number }>, { count: number }, unknown>
+    >()('postgres-integration/CounterStore') {}
     const counterIncremented = createEventDefinition('counter-incremented', {
       '~standard': {
         version: 1,
@@ -160,7 +196,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       },
     })
 
-    await commandLog.append([counterIncremented.create({ amount: 1 })])
+    await run(commandLog.append([counterIncremented.create({ amount: 1 })]))
 
     const incrementCounter = createCommandSlice('incrementCounter')
       .description('Increments a counter after reading its Event projection.')
@@ -171,60 +207,83 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
         expect: [event('counter-incremented', { amount: 9 })],
       })
       .inputSchema<{ amount: number }>()
-      .store(store)
+      .store(CounterStore)
       .apply(counterIncremented, async (persisted, state) => {
         state.count += persisted.payload.amount
       })
       .handle(async (input, state) => {
         expect(state.count).toBe(1)
-        await competingLog.append([
-          { type: 'competing-event', payload: { count: state.count } },
-        ])
+        await run(
+          competingLog.append([
+            { type: 'competing-event', payload: { count: state.count } },
+          ]),
+        )
         return [counterIncremented.create(input)]
       })
-    const schedule: ReactionScheduler = () => () => () => Promise.resolve()
-    const app = await createSpecterApp({
-      events: [counterIncremented],
-      eventLog: commandLog,
-      schedule,
-      slices: [incrementCounter],
-    })
+    const scheduler = {
+      schedule: () => Effect.succeed(Effect.void),
+      recover: () => Effect.void,
+    } satisfies ReactionSchedulerService
+    const app = await createSpecterApp(
+      {
+        events: [counterIncremented],
+        slices: [incrementCounter],
+      },
+      Layer.mergeAll(
+        Layer.succeed(EventLog, commandLog),
+        Layer.succeed(ReactionScheduler, scheduler),
+        Layer.succeed(CounterStore, store),
+      ),
+    )
 
     await expect(
       app.command({ type: 'incrementCounter', payload: { amount: 9 } }),
-    ).rejects.toBeInstanceOf(SpecterVersionConflictError)
+    ).rejects.toBeInstanceOf(EventLogFailure)
 
-    const published = await store.get('incrementCounter')
-    expect(published.read).toEqual({ count: 1 })
-    expect(await published.lastAppliedOrder()).toBe(1)
-    expect(await commandLog.currentVersion()).toBe(2)
+    const published = await run(
+      store.read('incrementCounter', (state, cursor) =>
+        Effect.succeed({ state, cursor }),
+      ),
+    )
+    expect(published.state).toEqual({ count: 1 })
+    expect(published.cursor).toBe(1)
+    expect(await run(commandLog.currentVersion)).toBe(2)
   })
 
   it('preserves top-level JSON-compatible values across real JSONB columns', async () => {
     const values = ['null', '123', 'true', null, 123, true] as const
     let eventNumber = 0
-    const eventLog = createPostgresEventLog(pool, {
+    const eventLog = createPostgresEventLogService(pool, {
       eventId: () => `primitive-event-${++eventNumber}`,
       now: () => new Date(0),
     })
 
-    await eventLog.append(
-      values.map((value) => ({ type: 'value-recorded', payload: value })),
+    await run(
+      eventLog.append(
+        values.map((value) => ({ type: 'value-recorded', payload: value })),
+      ),
     )
     expect(
-      (await eventLog.query(0, ['value-recorded'])).map(
+      (await run(eventLog.query(0, ['value-recorded']))).map(
         (persisted) => persisted.payload,
       ),
     ).toEqual(values)
 
     for (const [index, value] of values.entries()) {
-      const store = createPostgresSliceStore(pool, () => value)
+      const store = createPostgresSliceStoreService(pool, () => value)
       const sliceName = `primitive${index}`
-      const staged = await store.get(sliceName)
-      await staged.setLastAppliedOrder(index + 1)
-      const persisted = await store.get(sliceName)
-      expect(persisted.read).toBe(value)
-      expect(await persisted.lastAppliedOrder()).toBe(index + 1)
+      await run(
+        store.transaction(sliceName, (_write, _read, _cursor, publishCursor) =>
+          publishCursor(index + 1),
+        ),
+      )
+      const persisted = await run(
+        store.read(sliceName, (state, cursor) =>
+          Effect.succeed({ state, cursor }),
+        ),
+      )
+      expect(persisted.state).toBe(value)
+      expect(persisted.cursor).toBe(index + 1)
     }
 
     const outbox = createPostgresReactionOutboxStore<unknown>(pool)

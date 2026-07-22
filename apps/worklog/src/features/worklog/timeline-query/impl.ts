@@ -14,7 +14,7 @@ import {
   topicArchiveChangedEvent,
   topicEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { EntityRef } from '../model'
 import { timelineQuerySpec } from './spec'
 
@@ -30,7 +30,7 @@ type TimelineItem = {
   sequence: number
 }
 type State = { items: TimelineItem[]; sequence: number }
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   items: [],
   sequence: 0,
 }))

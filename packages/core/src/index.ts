@@ -24,6 +24,7 @@ export type {
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  SliceStoreOptions,
 } from './definition'
 export {
   createSpecterApp,
@@ -39,6 +40,7 @@ export {
   SpecterInvalidOutputError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
+  SpecterStoreFailureError,
   SpecterUnknownCommandError,
   SpecterUnknownEventError,
   SpecterUnknownQueryError,
@@ -55,27 +57,29 @@ export type {
   SpecterCommandEnvelope,
   SpecterCommandType,
   SpecterErrorCode,
-  SpecterObservation,
   SpecterOperationKind,
-  SpecterObserver,
   SpecterQueryEnvelope,
   SpecterQueryResult,
   SpecterQueryType,
 } from './runtime'
 export type {
-  EventLogAdapter,
   EventLogAppendOptions,
   EventLogAppendResult,
   EventLogCommit,
-  EventLogTransaction,
+  EventLogService,
   ReactionDeliveryContext,
-  ReactionScheduler,
-  RequestReactions,
+  ReactionExecutor,
+  ReactionSchedulerService,
   SliceStoreError,
   SliceStoreRead,
   SliceStoreRequirement,
   SliceStoreService,
   SliceStoreTag,
   SliceStoreWrite,
-  WaitForReactionsIdle,
+} from './adapters'
+export {
+  EventLog,
+  EventLogFailure,
+  ReactionScheduler,
+  ReactionSchedulerFailure,
 } from './adapters'

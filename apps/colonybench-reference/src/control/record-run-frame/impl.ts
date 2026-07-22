@@ -1,9 +1,8 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { controlStore } from '../store'
 import { z } from 'zod'
 
 import { applyRunCreated } from '../apply'
 import { runCreatedEvent, runFrameRecordedEvent } from '../events'
-import type { ColonyBenchControlState } from '../state'
 import { recordRunFrameSpec } from './spec'
 
 const frameSchema = z.object({
@@ -17,21 +16,17 @@ const frameSchema = z.object({
   eventTypes: z.array(z.string()),
 })
 
-export function createRecordRunFrame(
-  store: SliceStoreAdapter<ColonyBenchControlState>,
-) {
-  return recordRunFrameSpec
-    .inputSchema(frameSchema)
-    .store(store)
-    .apply(runCreatedEvent, applyRunCreated)
-    .handle(async (command, state) => {
-      if (!state.runs[command.runId])
-        throw new Error(`Run not found: ${command.runId}`)
-      return [
-        runFrameRecordedEvent.create({
-          ...command,
-          eventTypes: [...command.eventTypes],
-        }),
-      ]
-    })
-}
+export const createRecordRunFrame = recordRunFrameSpec
+  .inputSchema(frameSchema)
+  .store(controlStore)
+  .apply(runCreatedEvent, applyRunCreated)
+  .handle(async (command, state) => {
+    if (!state.runs[command.runId])
+      throw new Error(`Run not found: ${command.runId}`)
+    return [
+      runFrameRecordedEvent.create({
+        ...command,
+        eventTypes: [...command.eventTypes],
+      }),
+    ]
+  })

@@ -1,11 +1,13 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { runWithSpecterCodeReferenceDb } from '../../../db/client.server.ts'
 import {
-  querySpecterSqliteEvents,
-  sqliteEventLog,
-} from '../../../db/specter-sqlite.ts'
+  runAfterSpecterCodeReady,
+  specterCodeEventLog,
+  specterCodeSqlite,
+} from '../../../db/client.server.ts'
+import { querySpecterSqliteEvents } from '../../../db/specter-sqlite.ts'
+import { Effect } from 'effect'
 
 export const SPECTER_CODE_SESSION_EXPORT_FORMAT =
   'specter-code.session.v1' as const
@@ -104,7 +106,7 @@ export async function exportSpecterCodeSessionFile(input: {
   sessionId: string
   outputPath: string
 }) {
-  const events = await runWithSpecterCodeReferenceDb(async () =>
+  const events = await runAfterSpecterCodeReady(async () =>
     queryAllSpecterCodeEvents(),
   )
   const exported = buildSpecterCodeSessionExport({
@@ -130,12 +132,14 @@ export async function importSpecterCodeSessionFile(input: {
   const parsed = JSON.parse(await readFile(input.inputPath, 'utf8')) as unknown
   const exported = normalizeSpecterCodeSessionExport(parsed)
 
-  await runWithSpecterCodeReferenceDb(async () => {
-    await sqliteEventLog.append(
-      exported.events.map((event) => ({
-        type: event.type,
-        payload: event.payload,
-      })),
+  await runAfterSpecterCodeReady(async () => {
+    await Effect.runPromise(
+      specterCodeEventLog.append(
+        exported.events.map((event) => ({
+          type: event.type,
+          payload: event.payload,
+        })),
+      ),
     )
   })
 
@@ -150,7 +154,10 @@ async function queryAllSpecterCodeEvents() {
   let afterOrder = 0
 
   while (true) {
-    const page = await querySpecterSqliteEvents({ afterOrder, limit: 500 })
+    const page = await querySpecterSqliteEvents(specterCodeSqlite, {
+      afterOrder,
+      limit: 500,
+    })
     for (const event of page) {
       if (isRecord(event.payload))
         events.push({ type: event.type, payload: { ...event.payload } })

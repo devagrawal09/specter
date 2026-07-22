@@ -4,16 +4,29 @@ import { migrate } from 'drizzle-orm/libsql/migrator'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { EventLog } from '@specter-ts/core'
+import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
+import {
+  createSpecterSqlitePersistence,
+  prepareSpecterSqlite,
+} from '@specter-ts/sqlite'
+import { Effect, Layer } from 'effect'
 
 import * as schema from './schema'
-import { runWithSqliteDb } from './specter-sqlite'
+import { createSqliteSliceStoreLayer } from './specter-sqlite'
+import { createTwilioDeliveryAttemptStore } from './twilio-delivery-attempts'
+import { TwilioDeliveryAttempts } from '../features/narayan/send-twilio-outbound-reaction/twilio-outbound-plugin.server'
 
 export type SqliteScenarioOptions = {
   migrationsFolder?: string
 }
 
 export function sqliteScenario(options: SqliteScenarioOptions = {}) {
-  return async <T>(run: () => Promise<T>) => {
+  return async <T>(
+    programOrRun:
+      | Effect.Effect<T, unknown, unknown>
+      | ((layer: Layer.Layer<any>) => Promise<T>),
+  ) => {
     const dir = mkdtempSync(join(tmpdir(), 'narayan-ai-'))
     const sqlite = createClient({ url: `file:${join(dir, 'scenario.db')}` })
 
@@ -23,8 +36,27 @@ export function sqliteScenario(options: SqliteScenarioOptions = {}) {
         migrationsFolder:
           options.migrationsFolder ?? join(process.cwd(), 'drizzle'),
       })
-
-      return await runWithSqliteDb(db, run)
+      await prepareSpecterSqlite(sqlite)
+      const storeLayer = createSqliteSliceStoreLayer(db)
+      const persistence = createSpecterSqlitePersistence(sqlite)
+      const layer = Layer.mergeAll(
+        Layer.succeed(EventLog, persistence.eventLog),
+        createImmediateReactionSchedulerLayer(),
+        storeLayer,
+        Layer.succeed(
+          TwilioDeliveryAttempts,
+          createTwilioDeliveryAttemptStore(db),
+        ),
+      )
+      return await (typeof programOrRun === 'function'
+        ? programOrRun(layer)
+        : Effect.runPromise(
+            programOrRun.pipe(Effect.provide(storeLayer)) as Effect.Effect<
+              T,
+              unknown,
+              never
+            >,
+          ))
     } finally {
       sqlite.close()
       rmSync(dir, { recursive: true, force: true })

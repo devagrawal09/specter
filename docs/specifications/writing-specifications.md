@@ -122,7 +122,8 @@ The builders deliberately make infrastructure choices unavailable in `spec.ts`. 
 | --- | --- |
 | Command | `inputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 | Query | `inputSchema(...)` → `outputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
-| Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Same-app Command Reaction | `outputSchema(CommandEnvelopeSchema)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Custom/external Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 
 Call the schema steps even when relying on type parameters instead of a runtime schema. A type-only schema choice improves TypeScript inference but performs no runtime validation.
 

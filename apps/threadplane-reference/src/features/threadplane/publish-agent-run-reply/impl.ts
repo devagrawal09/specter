@@ -38,11 +38,6 @@ type PublishAgentRunReplyState = {
 
 const publishAgentRunReply = publishAgentRunReplySpec
   .outputSchema<RecordVisibleAgentReplyCommand>()
-  .plugin(async (dispatch) => async (payload, context) => {
-    await dispatch(payload as never, {
-      idempotencyKey: context.deliveryId,
-    })
-  })
   .store(
     defineMemorySliceStore<PublishAgentRunReplyState>(() => ({ runs: [] })),
   )

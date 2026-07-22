@@ -100,35 +100,38 @@ function testCommandScenario(
     const result = await runScenario(
       replay([implementation], eventDefinitions, scenario.given).pipe(
         Effect.andThen(
-          Effect.result(withStoreRead(implementation, async (state) => {
-            const command = await decodeOptionalSchema(
-              implementation.inputSchema,
-              scenario.when,
-            )
-
-            const events = await implementation.handle(command, state)
-
-            if (events.length === 0) {
-              throw new Error(
-                `Command emitted no events: ${implementation.name}`,
+          Effect.result(
+            withStoreRead(implementation, async (state) => {
+              const command = await decodeOptionalSchema(
+                implementation.inputSchema,
+                scenario.when,
               )
-            }
 
-            const allowedEventTypes = commandScenarioEventTypes(implementation)
-            const decodedEvents = await Promise.all(
-              events.map(async (draft, index) => {
-                if (!allowedEventTypes.has(draft.type)) {
-                  throw new Error(
-                    `Command "${implementation.name}" emitted unauthorized Event "${draft.type}" at index ${index}.`,
-                  )
-                }
+              const events = await implementation.handle(command, state)
 
-                return decodeEventDraft(eventDefinitions, draft)
-              }),
-            )
+              if (events.length === 0) {
+                throw new Error(
+                  `Command emitted no events: ${implementation.name}`,
+                )
+              }
 
-            return decodedEvents
-          })).pipe(
+              const allowedEventTypes =
+                commandScenarioEventTypes(implementation)
+              const decodedEvents = await Promise.all(
+                events.map(async (draft, index) => {
+                  if (!allowedEventTypes.has(draft.type)) {
+                    throw new Error(
+                      `Command "${implementation.name}" emitted unauthorized Event "${draft.type}" at index ${index}.`,
+                    )
+                  }
+
+                  return decodeEventDraft(eventDefinitions, draft)
+                }),
+              )
+
+              return decodedEvents
+            }),
+          ).pipe(
             Effect.map((result) =>
               result._tag === 'Failure'
                 ? { _tag: 'Left' as const, left: result.failure }
@@ -256,53 +259,61 @@ export function replay(
   events: readonly ScenarioEvent[],
 ) {
   return Effect.gen(function* () {
-  const definitionsByType = new Map(
-    eventDefinitions.map(
-      (definition) => [definition.type, definition] as const,
-    ),
-  )
-
-  for (const [index, scenarioEvent] of events.entries()) {
-    const definition = definitionsByType.get(scenarioEvent.eventType)
-    if (!definition) {
-      throw new Error(`Unknown Scenario Event type: ${scenarioEvent.eventType}`)
-    }
-
-    const id = `scenario-event-${index + 1}`
-    const order = index + 1
-    const recordedAt = '1970-01-01T00:00:00.000Z'
-    const payload = yield* Effect.promise(() =>
-      definition.decode(scenarioEvent.examplePayload),
+    const definitionsByType = new Map(
+      eventDefinitions.map(
+        (definition) => [definition.type, definition] as const,
+      ),
     )
-    if (!valuesEqual(payload, scenarioEvent.examplePayload)) {
-      throw new Error(
-        `Event schema transformed Scenario Event payload for "${scenarioEvent.eventType}".`,
-      )
-    }
 
-    for (const implementation of implementations) {
-      const apply = implementation.apply.find(
-        (candidate) => candidate.event.type === scenarioEvent.eventType,
-      )
-      if (!apply) continue
+    for (const [index, scenarioEvent] of events.entries()) {
+      const definition = definitionsByType.get(scenarioEvent.eventType)
+      if (!definition) {
+        throw new Error(
+          `Unknown Scenario Event type: ${scenarioEvent.eventType}`,
+        )
+      }
 
-      yield* withStoreTransaction(
-        implementation,
-        async (write, _read, _cursor, publishCursor) => {
-          await apply.handle(
-            {
-              type: scenarioEvent.eventType,
-              payload,
-              id,
-              recordedAt,
-            },
-            write,
-          )
-          await publishCursor(order)
-        },
-      )
+      const id = `scenario-event-${index + 1}`
+      const order = index + 1
+      const recordedAt = '1970-01-01T00:00:00.000Z'
+      const payload = yield* Effect.tryPromise({
+        try: () => definition.decode(scenarioEvent.examplePayload),
+        catch: (cause) => cause,
+      })
+      if (!valuesEqual(payload, scenarioEvent.examplePayload)) {
+        throw new Error(
+          `Event schema transformed Scenario Event payload for "${scenarioEvent.eventType}".`,
+        )
+      }
+
+      for (const implementation of implementations) {
+        const apply = implementation.apply.find(
+          (candidate) => candidate.event.type === scenarioEvent.eventType,
+        )
+        if (!apply) continue
+
+        yield* withStoreTransaction(
+          implementation,
+          (write, _read, _cursor, publishCursor) =>
+            Effect.gen(function* () {
+              yield* Effect.tryPromise({
+                try: () =>
+                  apply.handle(
+                    {
+                      type: scenarioEvent.eventType,
+                      payload,
+                      id,
+                      recordedAt,
+                    },
+                    write,
+                  ),
+                catch: (cause) => cause,
+              })
+              yield* publishCursor(order)
+            }),
+        )
+      }
     }
-  }
   })
 }
 
@@ -326,13 +337,22 @@ function withStoreRead<T>(
   run: (state: unknown, cursor: number) => Promise<T>,
 ) {
   return resolveStore(implementation).pipe(
-    Effect.flatMap((store) => store.read(implementation.name, run)),
+    Effect.flatMap((store) =>
+      store.read(implementation.name, (state, cursor) =>
+        Effect.tryPromise({
+          try: () => run(state, cursor),
+          catch: (cause) => cause,
+        }),
+      ),
+    ),
   )
 }
 
 function withStoreTransaction<T>(
   implementation: SliceRegistration,
-  run: Parameters<SliceStoreService<unknown, unknown, unknown>['transaction']>[1],
+  run: Parameters<
+    SliceStoreService<unknown, unknown, unknown>['transaction']
+  >[1],
 ) {
   return resolveStore(implementation).pipe(
     Effect.flatMap((store) => store.transaction(implementation.name, run)),

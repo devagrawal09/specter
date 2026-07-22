@@ -5,7 +5,11 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
-import { createSqliteEventLog, prepareSqliteEventLog } from '@specter-ts/sqlite'
+import {
+  createSqliteEventLogService,
+  prepareSqliteEventLog,
+} from '@specter-ts/sqlite'
+import { Effect } from 'effect'
 import * as schema from './schema'
 
 test('appends multiple events in input order', async () => {
@@ -13,9 +17,9 @@ test('appends multiple events in input order', async () => {
 
   try {
     await prepareSqliteEventLog(sqlite)
-    const eventLog = createSqliteEventLog(sqlite)
-    const appended = await eventLog.transaction((transaction) =>
-      transaction.append([
+    const eventLog = createSqliteEventLogService(sqlite)
+    const appended = await Effect.runPromise(
+      eventLog.append([
         { type: 'event.one', payload: { position: 1 } },
         { type: 'event.two', payload: { position: 2 } },
         { type: 'event.three', payload: { position: 3 } },

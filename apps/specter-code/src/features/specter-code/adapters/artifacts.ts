@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 
-import { getBoundSqliteDb } from '../../../db/specter-sqlite.ts'
+import type { SqliteDb } from '../../../db/specter-sqlite.ts'
 
 export type FileArtifactStore = {
   rootDir: string
@@ -53,6 +53,7 @@ export function createFileArtifactStore(input: {
 }
 
 export async function writeToolOutputArtifact(
+  db: SqliteDb,
   store: FileArtifactStore,
   input: ToolOutputArtifactInput,
 ): Promise<ToolOutputArtifactResult> {
@@ -101,7 +102,7 @@ export async function writeToolOutputArtifact(
     preview: artifact.preview,
   }
 
-  await getBoundSqliteDb().execute({
+  await db.execute({
     sql: `
       INSERT INTO specter_code_artifacts (
         id,
@@ -131,10 +132,13 @@ export async function writeToolOutputArtifact(
   return { inlineContent, truncated: true, artifact }
 }
 
-export async function listSessionArtifacts(input: {
-  sessionId: string
-}): Promise<SpecterCodeArtifact[]> {
-  const result = await getBoundSqliteDb().execute({
+export async function listSessionArtifacts(
+  input: {
+    sessionId: string
+  },
+  db: SqliteDb,
+): Promise<SpecterCodeArtifact[]> {
+  const result = await db.execute({
     sql: `
       SELECT
         id,

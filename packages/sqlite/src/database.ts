@@ -1,67 +1,66 @@
 import type { Client, Transaction } from '@libsql/client'
+import { Effect, Exit, Semaphore } from 'effect'
 
 export type SqliteConnection = Client | Transaction
 
+export class SqliteDatabaseFailure extends Error {
+  readonly _tag = 'SqliteDatabaseFailure' as const
+
+  constructor(
+    readonly operation: 'begin' | 'commit' | 'rollback',
+    readonly cause: unknown,
+  ) {
+    super(`SQLite ${operation} failed.`, { cause })
+    this.name = 'SqliteDatabaseFailure'
+  }
+}
+
 export type SqliteDatabaseContext = {
   readonly client: Client
-  connection(): SqliteConnection
-  serialize<T>(run: () => Promise<T>): Promise<T>
-  transaction<T>(run: (connection: SqliteConnection) => Promise<T>): Promise<T>
+  readonly serialize: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly transaction: <A, E, R>(
+    run: (connection: SqliteConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | SqliteDatabaseFailure, R>
 }
 
 export function createSqliteDatabaseContext(
   client: Client,
 ): SqliteDatabaseContext {
-  let transactionTail = Promise.resolve()
-  let serializationTail = Promise.resolve()
+  const semaphore = Semaphore.makeUnsafe(1)
 
   return {
     client,
-    connection() {
-      return client
-    },
-    async serialize(run) {
-      const previous = serializationTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      serializationTail = queued
-      await previous
-
-      try {
-        return await run()
-      } finally {
-        release()
-        if (serializationTail === queued) serializationTail = Promise.resolve()
-      }
-    },
-    async transaction(run) {
-      const previous = transactionTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      transactionTail = queued
-      await previous
-
-      let transaction: Transaction | undefined
-      try {
-        transaction = await client.transaction('write')
-        const result = await run(transaction)
-        await transaction.commit()
-        return result
-      } catch (cause) {
-        if (transaction && !transaction.closed) await transaction.rollback()
-        throw cause
-      } finally {
-        transaction?.close()
-        release()
-        if (transactionTail === queued) transactionTail = Promise.resolve()
-      }
-    },
+    serialize: semaphore.withPermit,
+    transaction: (run) =>
+      semaphore.withPermit(
+        Effect.acquireUseRelease(
+          Effect.tryPromise({
+            try: () => client.transaction('write'),
+            catch: (cause) => new SqliteDatabaseFailure('begin', cause),
+          }),
+          run,
+          (transaction, exit) =>
+            (Exit.isSuccess(exit)
+              ? Effect.tryPromise({
+                  try: () => transaction.commit(),
+                  catch: (cause) => new SqliteDatabaseFailure('commit', cause),
+                })
+              : Effect.tryPromise({
+                  try: () => transaction.rollback(),
+                  catch: (cause) =>
+                    new SqliteDatabaseFailure('rollback', cause),
+                })
+            ).pipe(
+              Effect.ensuring(
+                Effect.sync(() => {
+                  transaction.close()
+                }),
+              ),
+            ),
+        ),
+      ),
   }
 }
 

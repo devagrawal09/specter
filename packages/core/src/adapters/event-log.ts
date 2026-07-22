@@ -1,3 +1,5 @@
+import { Context, type Effect } from 'effect'
+
 import type { EventDraft, PersistedEvent } from '../definition/events'
 
 export type EventLogCommit = {
@@ -7,11 +9,6 @@ export type EventLogCommit = {
   readonly fingerprint?: string
 }
 
-/**
- * The result of one atomic append attempt. A duplicate result is the durable
- * receipt for an earlier append discovered while holding the append lock; no
- * new Events were written by this attempt.
- */
 export type EventLogAppendResult = EventLogCommit & {
   readonly duplicate: boolean
 }
@@ -22,25 +19,34 @@ export type EventLogAppendOptions = {
   readonly fingerprint?: string
 }
 
-export type EventLogTransaction = {
-  query: (
-    afterOrder: number,
-    eventTypes: readonly string[],
-  ) => Promise<PersistedEvent[]>
-  currentVersion: () => Promise<number>
-  findCommit: (idempotencyKey: string) => Promise<EventLogCommit | undefined>
-  append: (
-    events: readonly EventDraft[],
-    options?: EventLogAppendOptions,
-  ) => Promise<EventLogAppendResult>
+export class EventLogFailure extends Error {
+  readonly _tag = 'EventLogFailure' as const
+
+  constructor(
+    readonly operation: 'query' | 'currentVersion' | 'findCommit' | 'append',
+    readonly cause: unknown,
+  ) {
+    super(`Event Log ${operation} failed.`, { cause })
+    this.name = 'EventLogFailure'
+  }
 }
 
-export type EventLogAdapter = EventLogTransaction & {
-  /**
-   * Runs one callback in a serialized Event Log transaction. Command
-   * catch-up, decision, and append all execute inside this boundary.
-   */
-  transaction: <T>(
-    run: (eventLog: EventLogTransaction) => Promise<T>,
-  ) => Promise<T>
+/** Effect-native Event Log capability. Implementations own serialization. */
+export type EventLogService = {
+  readonly query: (
+    afterOrder: number,
+    eventTypes: readonly string[],
+  ) => Effect.Effect<readonly PersistedEvent[], EventLogFailure>
+  readonly currentVersion: Effect.Effect<number, EventLogFailure>
+  readonly findCommit: (
+    idempotencyKey: string,
+  ) => Effect.Effect<EventLogCommit | undefined, EventLogFailure>
+  readonly append: (
+    events: readonly EventDraft[],
+    options?: EventLogAppendOptions,
+  ) => Effect.Effect<EventLogAppendResult, EventLogFailure>
 }
+
+export class EventLog extends Context.Service<EventLog, EventLogService>()(
+  '@specter-ts/core/EventLog',
+) {}

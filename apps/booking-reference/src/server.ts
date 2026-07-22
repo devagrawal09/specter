@@ -4,9 +4,9 @@ import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
 import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, EventLog } from '@specter-ts/core'
 import {
-  createDurableReactionScheduler,
+  createDurableReactionSchedulerLayer,
   type ReactionPass,
 } from '@specter-ts/reaction-outbox'
 import {
@@ -16,9 +16,10 @@ import {
   prepareSqliteReactionOutbox,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
+import { Layer } from 'effect'
 
 import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
-import { createBookingSpecterAppConfig } from './features/bookings/registry'
+import { bookingSpecterAppConfig } from './features/bookings/registry'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
   createSqliteReactionTicketStore,
@@ -42,16 +43,18 @@ const productionDb = drizzle(sqliteClient, {
 })
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
-const durableSchedule = createDurableReactionScheduler(
+const reactionSchedulerLayer = createDurableReactionSchedulerLayer(
   createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
     context: operationalContext,
   }),
 )
 const specterApp = await createSpecterApp(
-  createBookingSpecterAppConfig(persistence.eventLog, (run) =>
-    durableSchedule((context) => run(context)),
+  bookingSpecterAppConfig,
+  Layer.mergeAll(
+    Layer.succeed(EventLog, persistence.eventLog),
+    reactionSchedulerLayer,
+    createSqliteSliceStoreLayer(productionDb),
   ),
-  createSqliteSliceStoreLayer(productionDb),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
   app: specterApp,

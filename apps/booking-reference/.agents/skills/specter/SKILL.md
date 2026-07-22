@@ -20,7 +20,9 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 - Use `@specter-ts/core/spec` in `spec.ts` for Slice specification builders and `event(type, payload)`.
 - Use `@specter-ts/core` in implementations and runtime wiring for Event Definitions, app creation, envelope/reference types, adapters, and structured errors.
-- Use `@specter-ts/core/effect` for Effect-native app operations, scoped Layers, Context access, Streams, and one shared Effect-to-Promise Slice adapter boundary.
+- Use `@specter-ts/core/effect` for native Effect app operations, scoped Layers,
+  Context access, and Streams. Keep Slice apply/handle callbacks as plain async
+  functions; only transport edge converts app operations to Promises.
 - Use `@specter-ts/core/testing` for Scenario tests, focused Event catalogs, and replay helpers.
 - Use local `src/db/*` and `src/transport/*` modules for stores, persistence, Scenario database setup, HTTP/SSE transport, and schema exports.
 - Do not import `@specter-ts/core/client`; that subpath does not exist in Specter 0.4.
@@ -44,7 +46,8 @@ Implementations follow these exact builder orders:
 
 - Command: `.inputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
 - Query: `.inputSchema(...) → .outputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
-- Reaction: `.outputSchema(...) → .plugin(...) → .store(...) → .apply(...)* → .handle(...)`
+- Same-app Command Reaction: `.outputSchema(CommandEnvelopeSchema) → .store(...) → .apply(...)* → .handle(...)`
+- Custom/external Reaction: `.outputSchema(...) → .plugin(...) → .store(...) → .apply(...)* → .handle(...)`
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 
@@ -87,7 +90,10 @@ await execution.reactions
 - A Command resolves after its Events commit. `execution.reactions` separately reports aggregate Reaction completion or failure.
 - App construction requests and awaits one startup Reaction recovery pass when Reactions exist. `app.close()` releases app-owned resources and active subscriptions.
 - Subscriptions emit current state, fan out per subscriber, coalesce intermediate states for slow consumers, and retain the newest value.
-- Reaction effects are arbitrary plugin-defined values. Dispatching another Command is one explicit plugin pattern.
+- Reaction output typed as `CommandEnvelope` uses default Plugin: dispatch same-app
+  Command with `context.deliveryId` as idempotency key. It awaits nested Command
+  commit, never nested Reaction drain. Arbitrary/external output requires explicit
+  Plugin.
 - Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps; `context.attemptId` changes for each attempt.
 - Same-app dispatch uses `dispatch(envelope, { idempotencyKey: context.deliveryId })`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
 
@@ -103,7 +109,7 @@ await execution.reactions
 ## State And Persistence
 
 - Apply handlers receive write-capable Slice State. Command, Query, and Reaction handlers receive read-only Slice State capabilities. Adapters may expose the same runtime object for both.
-- Event Log Command transactions cover catch-up, decision, and append and serialize conflicting decisions or enforce an expected version.
+- Runtime catches Command State up before decision. Event Log `append` atomically enforces expected version and idempotency; conflict may retry from fresh State.
 - Applying Events and advancing a Slice cursor is locally atomic or safely idempotent. Failed projections are repaired by replay.
 - Event Log queries return unique Events strictly ascending by global order and strictly after the requested cursor.
 - Do not let Query Slices drive Command decisions; Command Slices own their decision projections.
@@ -116,8 +122,9 @@ await execution.reactions
 2. Write or update exact Scenarios in `spec.ts`.
 3. Complete the specification in `impl.ts`, keeping State private and applying each Given Event type.
 4. Register the implementation and Event Definitions.
-5. Await `createSpecterApp(config)` in runtime wiring.
-   For app-owned stores, use `defineSpecterFeature(() => ...)` and `createSpecterAppFromFeatures(...)` so each app constructs fresh feature state. Effect applications may instead acquire `createSpecterAppLayer(configEffect)` in Scope.
+5. Define typed Effect `Context` Store Tags beside owning Slice and provide their
+   implementations through app Layers. Await `createSpecterApp(config, dependencies)`
+   at Promise transport edge, or acquire `createSpecterAppLayer(config)` in Scope.
 6. Test with an explicit or focused Event Definition catalog and an isolated Scenario runner.
 7. Wire remote UI through the project-owned envelope transport, or call envelopes directly for a documented in-process app.
 8. Run focused checks, then the complete project baseline.

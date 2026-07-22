@@ -13,7 +13,7 @@ import {
   topicAddedEvent,
   topicArchiveChangedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import {
   otherEnd,
   references,
@@ -32,7 +32,7 @@ type State = {
   awards: Set<string>
 }
 
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   journals: new Map(),
   tasks: new Map(),
   topics: new Map(),

@@ -1,4 +1,5 @@
 import {
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
 } from '@specter-ts/core'
@@ -10,7 +11,10 @@ import type {
   PostgresPoolClient,
   PostgresQueryResult,
 } from './database'
-import { createPostgresEventLog, preparePostgresEventLog } from './event-log'
+import {
+  createPostgresEventLogService,
+  preparePostgresEventLog,
+} from './event-log'
 import {
   createPostgresReactionOutboxStore,
   preparePostgresReactionOutbox,
@@ -241,55 +245,61 @@ describe('Postgres Event Log adapter', () => {
   it('persists and retrieves durable idempotency receipts', async () => {
     const pool = new FakePostgresPool()
     let nextId = 0
-    const eventLog = createPostgresEventLog(pool, {
+    const eventLog = createPostgresEventLogService(pool, {
       eventId: () => {
         nextId += 1
         return `event-${nextId}`
       },
       now: () => new Date(0),
     })
-    const first = await eventLog.append(
-      [{ type: 'todo-added', payload: { todoId: 'todo-1' } }],
-      {
+    const first = await Effect.runPromise(
+      eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
         expectedVersion: 0,
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
-      },
+      }),
     )
-    const duplicate = await eventLog.append(
-      [{ type: 'ignored', payload: {} }],
-      {
+    const duplicate = await Effect.runPromise(
+      eventLog.append([{ type: 'ignored', payload: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
-      },
+      }),
     )
 
     expect(first.duplicate).toBe(false)
     expect(duplicate).toEqual({ ...first, duplicate: true })
     expect(pool.events).toHaveLength(1)
     const { duplicate: _duplicate, ...commit } = first
-    expect(await eventLog.findCommit('request-1')).toEqual(commit)
-    await expect(
-      eventLog.append([{ type: 'changed', payload: {} }], {
-        idempotencyKey: 'request-1',
-        fingerprint: 'fingerprint-2',
-      }),
-    ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
+    expect(await Effect.runPromise(eventLog.findCommit('request-1'))).toEqual(
+      commit,
+    )
+    const conflict = await Effect.runPromise(
+      Effect.flip(
+        eventLog.append([{ type: 'changed', payload: {} }], {
+          idempotencyKey: 'request-1',
+          fingerprint: 'fingerprint-2',
+        }),
+      ),
+    )
+    expect(conflict).toBeInstanceOf(EventLogFailure)
+    expect(conflict.cause).toBeInstanceOf(SpecterIdempotencyConflictError)
   })
 
   it('preserves top-level JSON-compatible primitives returned by a structural driver', async () => {
     const pool = new FakePostgresPool()
     const values = ['null', '123', 'true', null, 123, true] as const
-    const eventLog = createPostgresEventLog(pool, {
+    const eventLog = createPostgresEventLogService(pool, {
       eventId: () => `event-${pool.events.length + 1}`,
       now: () => new Date(0),
     })
 
-    await eventLog.append(
-      values.map((value) => ({ type: 'value-recorded', payload: value })),
+    await Effect.runPromise(
+      eventLog.append(
+        values.map((value) => ({ type: 'value-recorded', payload: value })),
+      ),
     )
     expect(
-      (await eventLog.query(0, ['value-recorded'])).map(
+      (await Effect.runPromise(eventLog.query(0, ['value-recorded']))).map(
         (event) => event.payload,
       ),
     ).toEqual(values)
@@ -298,15 +308,17 @@ describe('Postgres Event Log adapter', () => {
       const store = createPostgresSliceStoreService(pool, () => value)
       const sliceName = `primitive${index}`
       await Effect.runPromise(
-        store.transaction(sliceName, async (_write, _read, _cursor, publish) => {
-          await publish(index + 1)
-        }),
+        store.transaction(sliceName, (_write, _read, _cursor, publish) =>
+          publish(index + 1),
+        ),
       )
       await Effect.runPromise(
-        store.read(sliceName, async (read, cursor) => {
-          expect(read).toBe(value)
-          expect(cursor).toBe(index + 1)
-        }),
+        store.read(sliceName, (read, cursor) =>
+          Effect.sync(() => {
+            expect(read).toBe(value)
+            expect(cursor).toBe(index + 1)
+          }),
+        ),
       )
     }
 
@@ -326,14 +338,16 @@ describe('Postgres Event Log adapter', () => {
 
   it('uses short transactions and an advisory lock for concurrent appends', async () => {
     const pool = new FakePostgresPool()
-    const eventLog = createPostgresEventLog(pool, {
+    const eventLog = createPostgresEventLogService(pool, {
       eventId: () => `event-${pool.events.length + 1}`,
       now: () => new Date(0),
     })
     const append = (id: string) =>
-      eventLog.append([{ type: 'created', payload: { id } }], {
-        expectedVersion: 0,
-      })
+      Effect.runPromise(
+        eventLog.append([{ type: 'created', payload: { id } }], {
+          expectedVersion: 0,
+        }),
+      )
 
     const results = await Promise.allSettled([append('one'), append('two')])
 
@@ -341,117 +355,12 @@ describe('Postgres Event Log adapter', () => {
       results.filter((result) => result.status === 'fulfilled'),
     ).toHaveLength(1)
     const rejected = results.find((result) => result.status === 'rejected')
-    expect(rejected).toMatchObject({
-      reason: expect.any(SpecterVersionConflictError),
-    })
+    expect(rejected?.reason).toBeInstanceOf(EventLogFailure)
+    expect(rejected?.reason.cause).toBeInstanceOf(SpecterVersionConflictError)
     expect(pool.statements).toContain('BEGIN')
     expect(
       pool.statements.filter((sql) => sql.includes('pg_advisory_xact_lock')),
     ).toHaveLength(2)
-  })
-
-  it('does not hold a Postgres transaction during command decision work', async () => {
-    const pool = new FakePostgresPool()
-    const eventLog = createPostgresEventLog(pool, {
-      eventId: () => 'event-1',
-      now: () => new Date(0),
-    })
-
-    await eventLog.transaction(async (transaction) => {
-      expect(pool.statements).not.toContain('BEGIN')
-      await pool.query('INSERT INTO project_state (id) VALUES ($1)', [
-        'state-1',
-      ])
-      await transaction.append([
-        { type: 'project-state-published', payload: { id: 'state-1' } },
-      ])
-    })
-
-    const stateWrite = pool.statements.findIndex((sql) =>
-      sql.includes('INSERT INTO project_state'),
-    )
-    const begin = pool.statements.indexOf('BEGIN')
-    expect(stateWrite).toBeGreaterThan(-1)
-    expect(begin).toBeGreaterThan(stateWrite)
-  })
-
-  it('keeps published Slice State when a concurrent Event causes append conflict', async () => {
-    const pool = new FakePostgresPool()
-    const eventLog = createPostgresEventLog(pool, {
-      eventId: () => `command-event-${pool.events.length + 1}`,
-      now: () => new Date(0),
-    })
-    const competingEventLog = createPostgresEventLog(pool, {
-      eventId: () => `competing-event-${pool.events.length + 1}`,
-      now: () => new Date(0),
-    })
-    const store = createPostgresSliceStoreService(pool, () => ({ count: 0 }))
-
-    await expect(
-      eventLog.transaction(async (transaction) => {
-        await Effect.runPromise(
-          store.transaction('counter', async (write, _read, _cursor, publish) => {
-            write.count = 9
-            await publish(1)
-          }),
-        )
-
-        await competingEventLog.append([
-          { type: 'competing-event', payload: {} },
-        ])
-        await transaction.append([
-          { type: 'counter-incremented', payload: { amount: 9 } },
-        ])
-      }),
-    ).rejects.toBeInstanceOf(SpecterVersionConflictError)
-
-    expect(await eventLog.currentVersion()).toBe(1)
-    await Effect.runPromise(
-      store.read('counter', async (read, cursor) => {
-        expect(read).toEqual({ count: 9 })
-        expect(cursor).toBe(1)
-      }),
-    )
-  })
-
-  it('queues top-level appends behind an active command callback', async () => {
-    const pool = new FakePostgresPool()
-    const eventLog = createPostgresEventLog(pool, {
-      eventId: () => `event-${pool.events.length + 1}`,
-      now: () => new Date(0),
-    })
-    let enterCommand = () => {}
-    const commandEntered = new Promise<void>((resolve) => {
-      enterCommand = resolve
-    })
-    let releaseCommand = () => {}
-    const commandGate = new Promise<void>((resolve) => {
-      releaseCommand = resolve
-    })
-
-    const command = eventLog.transaction(async (transaction) => {
-      enterCommand()
-      await commandGate
-      return transaction.append([{ type: 'command-event', payload: {} }])
-    })
-    await commandEntered
-    const directAppend = eventLog.append([
-      { type: 'direct-event', payload: {} },
-    ])
-    releaseCommand()
-
-    const [commandCommit, directCommit] = await Promise.all([
-      command,
-      directAppend,
-    ])
-    expect(commandCommit.events[0]).toMatchObject({
-      order: 1,
-      type: 'command-event',
-    })
-    expect(directCommit.events[0]).toMatchObject({
-      order: 2,
-      type: 'direct-event',
-    })
   })
 
   it('claims outbox work with Postgres row-lock skipping semantics', async () => {
@@ -468,27 +377,79 @@ describe('Postgres Event Log adapter', () => {
     const pool = new FakePostgresPool()
     const store = createPostgresSliceStoreService(pool, () => ({ count: 0 }))
     await Effect.runPromise(
-      store.transaction('counter', async (write) => {
-        write.count = 9
-      }),
+      store.transaction('counter', (write) =>
+        Effect.sync(() => {
+          write.count = 9
+        }),
+      ),
     )
     await Effect.runPromise(
-      store.read('counter', async (read) => {
-        expect(read).toEqual({ count: 0 })
-      }),
+      store.read('counter', (read) =>
+        Effect.sync(() => {
+          expect(read).toEqual({ count: 0 })
+        }),
+      ),
     )
 
     await Effect.runPromise(
-      store.transaction('counter', async (write, _read, _cursor, publish) => {
-        write.count = 3
-        await publish(2)
-      }),
+      store.transaction('counter', (write, _read, _cursor, publish) =>
+        Effect.gen(function* () {
+          write.count = 3
+          yield* publish(2)
+        }),
+      ),
     )
     await Effect.runPromise(
-      store.read('counter', async (read, cursor) => {
-        expect(read).toEqual({ count: 3 })
-        expect(cursor).toBe(2)
-      }),
+      store.read('counter', (read, cursor) =>
+        Effect.sync(() => {
+          expect(read).toEqual({ count: 3 })
+          expect(cursor).toBe(2)
+        }),
+      ),
     )
+  })
+
+  it('serializes competing Slice catchups at the shared database resource', async () => {
+    const pool = new FakePostgresPool()
+    const store = createPostgresSliceStoreService(pool, () => ({ count: 0 }))
+    let entered = () => {}
+    const firstEntered = new Promise<void>((resolve) => {
+      entered = resolve
+    })
+    let release = () => {}
+    const gate = new Promise<void>((resolve) => {
+      release = resolve
+    })
+
+    const first = Effect.runPromise(
+      store.transaction('counter', (write, _read, _cursor, publish) =>
+        Effect.gen(function* () {
+          entered()
+          yield* Effect.promise(() => gate)
+          write.count = 12
+          yield* publish(12)
+        }),
+      ),
+    )
+    await firstEntered
+    const second = Effect.runPromise(
+      store.transaction('counter', (write, _read, cursor, publish) =>
+        Effect.gen(function* () {
+          expect(cursor).toBe(12)
+          write.count = 13
+          yield* publish(13)
+        }),
+      ),
+    )
+    release()
+    await Promise.all([first, second])
+
+    expect(
+      await Effect.runPromise(
+        store.read('counter', (read, cursor) =>
+          Effect.succeed({ count: read.count, cursor }),
+        ),
+      ),
+    ).toEqual({ count: 13, cursor: 13 })
   })
 })

@@ -1,7 +1,4 @@
-export {
-  createSpecterObserver,
-  instrumentEventLog,
-} from './specter-observer'
+export { instrumentEventLog } from './specter-observer'
 export {
   createSpecterDevelopmentPanel,
   type SpecterDevelopmentPanel,

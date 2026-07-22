@@ -3,6 +3,7 @@ import { Effect, Layer } from 'effect'
 
 import {
   createPostgresDatabaseContext,
+  type PostgresDatabaseFailure,
   postgresJson,
   postgresNumber,
   type PostgresConnection,
@@ -10,6 +11,18 @@ import {
   type PostgresDatabaseOptions,
   type PostgresPool,
 } from './database'
+
+export class PostgresSliceStoreFailure extends Error {
+  readonly _tag = 'PostgresSliceStoreFailure' as const
+
+  constructor(
+    readonly operation: 'lock' | 'read' | 'write' | 'publish-cursor',
+    readonly cause: unknown,
+  ) {
+    super(`Postgres Slice Store ${operation} failed.`, { cause })
+    this.name = 'PostgresSliceStoreFailure'
+  }
+}
 
 export type PostgresSliceStoreOptions<TWriteState, TReadState> =
   PostgresDatabaseOptions & {
@@ -32,7 +45,11 @@ export function createPostgresSliceStoreService<
   pool: PostgresPool,
   createState: () => TWriteState,
   options: PostgresSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreService<TReadState, TWriteState, unknown> {
+): SliceStoreService<
+  TReadState,
+  TWriteState,
+  PostgresSliceStoreFailure | PostgresDatabaseFailure
+> {
   const context =
     options.context ?? createPostgresDatabaseContext(pool, options)
   const read =
@@ -65,7 +82,7 @@ export function createPostgresSliceStoreService<
     if (encoded === undefined) {
       throw new Error('Postgres Slice State must be JSON-serializable')
     }
-    await connection.query(
+    const result = await connection.query(
       `INSERT INTO specter_slice_states (
         slice_name,
         state_json,
@@ -77,42 +94,63 @@ export function createPostgresSliceStoreService<
       WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
       [sliceName, encoded, entry.cursor],
     )
+    if (result.rowCount !== 1) {
+      throw new Error(`Stale Slice cursor publication for ${sliceName}`)
+    }
+  }
+
+  function attempt<A>(
+    operation: PostgresSliceStoreFailure['operation'],
+    run: () => Promise<A>,
+  ) {
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new PostgresSliceStoreFailure(operation, cause),
+    })
   }
 
   return {
     read: (sliceName, run) =>
-      Effect.tryPromise({
-        try: async () => {
-          const current = await load(context.connection(), sliceName)
-          return run(read(current.state), current.cursor)
-        },
-        catch: (cause) => cause,
+      Effect.gen(function* () {
+        const current = yield* attempt('read', () => load(pool, sliceName))
+        return yield* run(read(current.state), current.cursor)
       }),
     transaction: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () =>
-          context.transaction(async (connection) => {
-            const working = await load(connection, sliceName)
-            let published = false
-            const result = await run(
-              working.state,
-              () => read(working.state),
-              working.cursor,
-              async (order) => {
-                if (!Number.isInteger(order) || order < working.cursor) {
-                  throw new Error(
-                    `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
-                  )
-                }
-                working.cursor = order
-                published = true
-              },
-            )
-            if (published) await save(connection, sliceName, working)
-            return result
-          }),
-        catch: (cause) => cause,
-      }),
+      context.transaction((connection) =>
+        Effect.gen(function* () {
+          yield* attempt('lock', () =>
+            connection.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
+              `specter-slice:${sliceName}`,
+            ]),
+          )
+          const working = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          let published = false
+          const result = yield* run(
+            working.state,
+            () => read(working.state),
+            working.cursor,
+            (order) => {
+              if (!Number.isSafeInteger(order) || order < working.cursor) {
+                return Effect.fail(
+                  new PostgresSliceStoreFailure(
+                    'publish-cursor',
+                    `Cursor must advance from ${working.cursor}; received ${order}`,
+                  ),
+                )
+              }
+              working.cursor = order
+              published = true
+              return Effect.void
+            },
+          )
+          if (published) {
+            yield* attempt('write', () => save(connection, sliceName, working))
+          }
+          return result
+        }),
+      ),
   }
 }
 
@@ -123,13 +161,18 @@ export function createPostgresSliceStoreLayer<
 >(
   tag: SliceStoreTag<
     TIdentifier,
-    SliceStoreService<TReadState, TWriteState, unknown>
+    SliceStoreService<
+      TReadState,
+      TWriteState,
+      PostgresSliceStoreFailure | PostgresDatabaseFailure
+    >
   >,
   pool: PostgresPool,
   createState: () => TWriteState,
   options: PostgresSliceStoreOptions<TWriteState, TReadState> = {},
 ): Layer.Layer<TIdentifier> {
-  return Layer.sync(tag as never, () =>
+  return Layer.succeed(
+    tag,
     createPostgresSliceStoreService(pool, createState, options),
-  ) as Layer.Layer<TIdentifier>
+  )
 }

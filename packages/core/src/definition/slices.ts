@@ -1,10 +1,8 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { Effect } from 'effect'
 
 import type { ReactionDeliveryContext } from '../adapters/reaction-scheduler'
-import type {
-  SliceStoreService,
-  SliceStoreTag,
-} from '../adapters/slice-store'
+import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
 import type { Event, EventDefinition, EventDraft } from './events'
 import type {
   CommandScenario,
@@ -14,8 +12,6 @@ import type {
 } from './scenario-types'
 
 export type {
-  EventLogAdapter,
-  ReactionScheduler,
   SliceStoreError,
   SliceStoreRead,
   SliceStoreRequirement,
@@ -74,6 +70,11 @@ type SliceBase<
   readonly name: TName
   readonly description: string
   readonly scenarios: TScenarios
+  readonly eager: boolean
+}
+
+export type SliceStoreOptions = {
+  readonly eager?: boolean
 }
 
 export type CommandSlice<
@@ -84,11 +85,10 @@ export type CommandSlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<CommandScenario> = NonEmptyScenarios<CommandScenario>,
-  TStore extends
-    SliceStoreTag<
-      unknown,
-      SliceStoreService<TReadState, TWriteState, unknown>
-    > = SliceStoreTag<
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  > = SliceStoreTag<
     unknown,
     SliceStoreService<TReadState, TWriteState, unknown>
   >,
@@ -113,11 +113,10 @@ export type QuerySlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<QueryScenario> = NonEmptyScenarios<QueryScenario>,
-  TStore extends
-    SliceStoreTag<
-      unknown,
-      SliceStoreService<TReadState, TWriteState, unknown>
-    > = SliceStoreTag<
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  > = SliceStoreTag<
     unknown,
     SliceStoreService<TReadState, TWriteState, unknown>
   >,
@@ -168,7 +167,7 @@ export type CommandDispatchOptions = {
 export type CommandDispatch = (
   command: CommandEnvelope,
   options?: CommandDispatchOptions,
-) => Promise<void>
+) => Effect.Effect<void, unknown>
 
 /**
  * Executes a Reaction effect that may be retried. Plugins should use the stable
@@ -178,11 +177,11 @@ export type CommandDispatch = (
 export type ReactionExec<TOutput = unknown> = (
   reaction: TOutput,
   context: ReactionDeliveryContext,
-) => Promise<unknown>
+) => Effect.Effect<void, unknown>
 
 export type ReactionPlugin<TOutput = unknown> = (
   command: CommandDispatch,
-) => Promise<ReactionExec<TOutput>>
+) => Effect.Effect<ReactionExec<TOutput>, unknown, unknown>
 
 export type ReactionSlice<
   TName extends string = string,
@@ -192,11 +191,10 @@ export type ReactionSlice<
   TReadState = Readonly<TWriteState>,
   TScenarios extends
     NonEmptyScenarios<ReactionScenario> = NonEmptyScenarios<ReactionScenario>,
-  TStore extends
-    SliceStoreTag<
-      unknown,
-      SliceStoreService<TReadState, TWriteState, unknown>
-    > = SliceStoreTag<
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  > = SliceStoreTag<
     unknown,
     SliceStoreService<TReadState, TWriteState, unknown>
   >,
@@ -205,7 +203,7 @@ export type ReactionSlice<
   readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
-  readonly plugin: ReactionPlugin<TOutput>
+  readonly plugin?: ReactionPlugin<TOutput>
   readonly handle: (state: TReadState) => Promise<TResult | undefined>
 }
 

@@ -34,10 +34,6 @@ export const todoCompletionCheer = todoCompletionCheerSpec
       payload: z.object({ milestone: z.number().int().positive() }),
     }),
   )
-  .plugin(
-    async (command) => async (output, context) =>
-      command(output, { idempotencyKey: context.deliveryId }),
-  )
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, async (event, db) => {
     await db

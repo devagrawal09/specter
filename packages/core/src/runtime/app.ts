@@ -1,6 +1,5 @@
 import type { Layer } from 'effect'
 
-import type { EventLogAdapter, ReactionScheduler } from '../adapters'
 import type {
   ApplyEventDefinition,
   CommandDispatchOptions,
@@ -11,59 +10,12 @@ import type {
 } from '../definition'
 import {
   createSpecterPromiseApp,
-  type SpecterStoreRequirements,
+  type SpecterRuntimeRequirements,
 } from '../effect/runtime'
-
-export type SpecterObservation =
-  | {
-      readonly type: 'slice-caught-up'
-      readonly sliceName: string
-      readonly fromOrder: number
-      readonly toOrder: number
-      readonly eventCount: number
-    }
-  | {
-      readonly type: 'command-committed'
-      readonly commandType: string
-      readonly version: number
-      readonly eventCount: number
-      readonly duplicate: boolean
-    }
-  | {
-      readonly type: 'subscriptions-invalidated'
-      readonly queryName: string
-      readonly subscriberCount: number
-    }
-  | {
-      readonly type: 'reaction-run-started'
-      readonly reactionName: string
-    }
-  | {
-      readonly type: 'reaction-run-completed'
-      readonly reactionName: string
-      readonly durationMs: number
-    }
-  | {
-      readonly type: 'reaction-run-failed'
-      readonly reactionName: string
-      readonly durationMs: number
-      readonly cause: unknown
-    }
-  | {
-      readonly type: 'reaction-pass-completed'
-      readonly failureCount: number
-    }
-
-export type SpecterObserver = (observation: SpecterObservation) => void
 
 export type SpecterAppConfig = {
   readonly events: readonly ApplyEventDefinition[]
-  readonly eventLog: EventLogAdapter
-  readonly schedule: ReactionScheduler
   readonly slices: readonly SliceRegistration[]
-  readonly warmupSlices?: readonly string[]
-  readonly observe?: SpecterObserver
-  readonly dispose?: () => Promise<void>
 }
 
 type CommandRegistration<TConfig extends SpecterAppConfig> = Extract<
@@ -177,7 +129,7 @@ export type SpecterAppConfigOf<TApp> =
 /** Promise transport edge. Runtime semantics remain in Effect interpreter. */
 export function createSpecterApp<const TConfig extends SpecterAppConfig>(
   config: TConfig,
-  stores: Layer.Layer<SpecterStoreRequirements<TConfig>>,
+  dependencies: Layer.Layer<SpecterRuntimeRequirements<TConfig>>,
 ): Promise<SpecterApp<TConfig>> {
-  return Promise.resolve(createSpecterPromiseApp(config, stores))
+  return Promise.resolve(createSpecterPromiseApp(config, dependencies))
 }

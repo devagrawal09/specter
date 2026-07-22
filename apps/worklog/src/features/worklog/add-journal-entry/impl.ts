@@ -1,10 +1,10 @@
 import { z } from 'zod'
 
 import { journalEntryAddedEvent, pointAwardedEvent } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import { addJournalEntrySpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({ ids: new Set<string>() }))
+const store = defineWorklogMemoryStore(() => ({ ids: new Set<string>() }))
 
 export const addJournalEntry = addJournalEntrySpec
   .inputSchema(

@@ -1,11 +1,11 @@
 import { z } from 'zod'
 
 import { connectionArchiveChangedEvent, recordsConnectedEvent } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { Connection } from '../model'
 import { connectionsQuerySpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({
+const store = defineWorklogMemoryStore(() => ({
   connections: new Map<string, Connection>(),
 }))
 const refSchema = z

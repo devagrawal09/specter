@@ -23,8 +23,12 @@
   "dependencies": {
     "@specter-ts/core": "workspace:*"
   },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.78"
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

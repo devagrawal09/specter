@@ -1,14 +1,23 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, EventLog } from '@specter-ts/core'
+import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
+import { Layer } from 'effect'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import { prepareSpecterSqlite, runWithSqliteDb } from '../../db/specter-sqlite'
 import {
+  createSpecterCodeEventLogService,
+  prepareSpecterSqlite,
+} from '../../db/specter-sqlite'
+
+const serverDbDir = mkdtempSync(join(tmpdir(), 'specter-code-server-'))
+process.env.SPECTER_CODE_DB_PATH = join(serverDbDir, 'app.db')
+
+const {
   askSpecterCodeQuestionOnServer,
   createSpecterCodePostOnServer,
   createSpecterCodeSessionOnServer,
@@ -30,9 +39,15 @@ import {
   requestSpecterCodeFilesystemScanOnServer,
   submitSpecterCodePromptOnServer,
   updateSpecterCodeTodoListOnServer,
-} from './server-runtime.server'
+} = await import('./server-runtime.server')
 import { specterCodeReferenceSpecterAppConfig } from './registry'
-import { specterCodeMemoryStoresLayer } from '../../testing/memory-slice-store'
+import {
+  resetMemorySliceStores,
+  specterCodeMemoryStoresLayer,
+} from '../../testing/memory-slice-store'
+import { projectSpecterCodeEvent } from './adapters/read-models'
+
+afterAll(() => rmSync(serverDbDir, { recursive: true, force: true }))
 
 test('specterCode server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'specter-code-workspaces-'))
@@ -398,37 +413,54 @@ test('specterCode server functions preserve database state across app reopen', a
 
     try {
       await prepareSpecterSqlite(firstSqlite)
-      await runWithSqliteDb(firstSqlite, async () => {
-        const app = await createSpecterApp(
-          specterCodeReferenceSpecterAppConfig,
+      const eventLog = createSpecterCodeEventLogService(
+        firstSqlite,
+        projectSpecterCodeEvent,
+      )
+      const app = await createSpecterApp(
+        specterCodeReferenceSpecterAppConfig,
+        Layer.mergeAll(
+          Layer.succeed(EventLog, eventLog),
+          createImmediateReactionSchedulerLayer(),
           specterCodeMemoryStoresLayer(),
-        )
-        const execution = await app.command({
-          type: 'createWorkspace',
-          payload: {
-            workspaceId: 'workspace-durable',
-            scanId: 'scan-durable',
-            name: 'Durable Lab',
-          },
-        })
-        await execution.reactions
-        await app.query({ type: 'workspaceList', payload: {} })
+        ),
+      )
+      const execution = await app.command({
+        type: 'createWorkspace',
+        payload: {
+          workspaceId: 'workspace-durable',
+          scanId: 'scan-durable',
+          name: 'Durable Lab',
+        },
       })
+      await execution.reactions
+      await app.query({ type: 'workspaceList', payload: {} })
     } finally {
       firstSqlite.close()
     }
 
+    resetMemorySliceStores()
     const secondSqlite = createClient({ url: `file:${sqlitePath}` })
 
     try {
       await prepareSpecterSqlite(secondSqlite)
-      await runWithSqliteDb(secondSqlite, async () => {
-        expect(await listSpecterCodeWorkspacesOnServer()).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ name: expect.any(String) }),
-          ]),
-        )
-      })
+      const eventLog = createSpecterCodeEventLogService(
+        secondSqlite,
+        projectSpecterCodeEvent,
+      )
+      const app = await createSpecterApp(
+        specterCodeReferenceSpecterAppConfig,
+        Layer.mergeAll(
+          Layer.succeed(EventLog, eventLog),
+          createImmediateReactionSchedulerLayer(),
+          specterCodeMemoryStoresLayer(),
+        ),
+      )
+      expect(await app.query({ type: 'workspaceList', payload: {} })).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: expect.any(String) }),
+        ]),
+      )
     } finally {
       secondSqlite.close()
     }

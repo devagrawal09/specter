@@ -1,16 +1,11 @@
 import { Context, Layer } from 'effect'
 
-import type {
-  EventLogAdapter,
-  ReactionScheduler,
-  SliceStoreService,
-} from '..'
+import { EventLog, ReactionScheduler, type SliceStoreService } from '..'
 import { createCommandSlice, event } from '../spec-entry'
 import { createSpecterAppLayer } from './runtime'
 
 type Equal<TLeft, TRight> =
-  (<T>() => T extends TLeft ? 1 : 2) extends <T>() =>
-    T extends TRight ? 1 : 2
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
     ? true
     : false
 type Expect<TValue extends true> = TValue
@@ -33,25 +28,32 @@ const command = createCommandSlice('recordValue')
   .store(RuntimeTypeStore)
   .handle(async () => [])
 
-declare const eventLog: EventLogAdapter
-declare const schedule: ReactionScheduler
-declare const service: RuntimeTypeStore['Service']
+declare const storeService: RuntimeTypeStore['Service']
+declare const eventLogService: EventLog['Service']
+declare const schedulerService: ReactionScheduler['Service']
 
 const runtimeLayer = createSpecterAppLayer({
   events: [],
-  eventLog,
-  schedule,
   slices: [command],
 } as const)
 
-export type MissingStoreRequirement = Expect<
-  Equal<Layer.Services<typeof runtimeLayer>, RuntimeTypeStore>
+export type MissingRuntimeRequirements = Expect<
+  Equal<
+    Layer.Services<typeof runtimeLayer>,
+    RuntimeTypeStore | EventLog | ReactionScheduler
+  >
 >
 
 const provided = runtimeLayer.pipe(
-  Layer.provide(Layer.succeed(RuntimeTypeStore, service)),
+  Layer.provide(
+    Layer.mergeAll(
+      Layer.succeed(RuntimeTypeStore, storeService),
+      Layer.succeed(EventLog, eventLogService),
+      Layer.succeed(ReactionScheduler, schedulerService),
+    ),
+  ),
 )
 
-export type ProvidedStoreRequirement = Expect<
+export type ProvidedRuntimeRequirement = Expect<
   Equal<Layer.Services<typeof provided>, never>
 >

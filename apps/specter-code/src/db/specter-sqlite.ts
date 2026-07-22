@@ -1,15 +1,16 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 import type { Client, Transaction } from '@libsql/client/sqlite3'
 import {
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
-  type EventLogAdapter,
   type EventLogAppendOptions,
   type EventLogCommit,
+  type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
+import { createSqliteDatabaseContext } from '@specter-ts/sqlite'
+import { Effect } from 'effect'
 
 export type SqliteDb = Client | Transaction
 
@@ -24,15 +25,6 @@ export type SpecterSqliteEventRecord = {
   type: string
   payload: unknown
   recordedAt: string
-}
-
-const scopedSqliteDb = new AsyncLocalStorage<SqliteDb>()
-let specterSqliteEventProjector: SpecterSqliteEventProjector | undefined
-
-export function setSpecterSqliteEventProjector(
-  projector: SpecterSqliteEventProjector | undefined,
-) {
-  specterSqliteEventProjector = projector
 }
 
 export async function prepareSpecterSqlite(db: Client) {
@@ -199,15 +191,8 @@ export async function prepareSpecterSqlite(db: Client) {
   )
 }
 
-export function runWithSqliteDb<T>(db: SqliteDb, run: () => Promise<T>) {
-  return scopedSqliteDb.run(db, run)
-}
-
-export function hasSqliteDbBinding() {
-  return scopedSqliteDb.getStore() !== undefined
-}
-
 export async function querySpecterSqliteEvents(
+  db: SqliteDb,
   input: {
     afterOrder?: number
     limit?: number
@@ -230,7 +215,7 @@ export async function querySpecterSqliteEvents(
   if (input.eventTypes?.length) args.push(...input.eventTypes)
   args.push(limit)
 
-  const result = await getDb().execute({
+  const result = await db.execute({
     sql: `
       SELECT id, event_order, type, payload, recorded_at
       FROM specter_events
@@ -250,131 +235,136 @@ export async function querySpecterSqliteEvents(
   }))
 }
 
-export const sqliteEventLog: EventLogAdapter = {
-  query: async (order, eventTypes) => {
-    if (!eventTypes.length) return []
-
-    const placeholders = eventTypes.map(() => '?').join(', ')
-    const result = await getDb().execute({
-      sql: `
-        SELECT id, event_order, type, payload, recorded_at
-        FROM specter_events
-        WHERE event_order > ? AND type IN (${placeholders})
-        ORDER BY event_order ASC
-      `,
-      args: [order, ...eventTypes],
+export function createSpecterCodeEventLogService(
+  client: Client,
+  projector?: SpecterSqliteEventProjector,
+): EventLogService {
+  const context = createSqliteDatabaseContext(client)
+  const attempt = <A>(
+    operation: EventLogFailure['operation'],
+    run: () => Promise<A>,
+  ) =>
+    Effect.tryPromise({
+      try: run,
+      catch: (cause) => new EventLogFailure(operation, cause),
     })
 
-    return result.rows.map((row) => ({
-      id: toStringValue(row.id),
-      order: toNumber(row.event_order),
-      type: toStringValue(row.type),
-      payload: JSON.parse(toStringValue(row.payload)) as unknown,
-      recordedAt: toStringValue(row.recorded_at),
-    }))
-  },
-  currentVersion: async () => currentEventLogVersion(),
-  findCommit: async (idempotencyKey) => findEventLogCommit(idempotencyKey),
-  append: async (
-    eventDrafts: readonly EventDraft[],
-    options: EventLogAppendOptions = {},
-  ) => {
-    const existing = options.idempotencyKey
-      ? await findEventLogCommit(options.idempotencyKey)
-      : undefined
-    if (existing) {
-      if (existing.fingerprint !== options.fingerprint) {
-        throw new SpecterIdempotencyConflictError(options.idempotencyKey ?? '')
-      }
-      return { ...existing, duplicate: true }
-    }
-
-    const version = await currentEventLogVersion()
-    if (
-      options.expectedVersion !== undefined &&
-      options.expectedVersion !== version
-    ) {
-      throw new SpecterVersionConflictError(options.expectedVersion, version)
-    }
-
-    const persistedEvents: PersistedEvent[] = []
-
-    for (const eventDraft of eventDrafts) {
-      const id = crypto.randomUUID()
-      const recordedAt = new Date()
-
-      await getDb().execute({
-        sql: `
-          INSERT INTO specter_events (id, type, payload, recorded_at)
-          VALUES (?, ?, ?, ?)
-        `,
-        args: [
-          id,
-          eventDraft.type,
-          JSON.stringify(eventDraft.payload),
-          recordedAt.toISOString(),
-        ],
-      })
-
-      const result = await getDb().execute({
-        sql: 'SELECT event_order FROM specter_events WHERE id = ?',
-        args: [id],
-      })
-      const order = toNumber(result.rows[0]?.event_order)
-
-      if (specterSqliteEventProjector) {
-        await specterSqliteEventProjector(getDb(), {
-          id,
-          order,
-          type: eventDraft.type,
-          payload: eventDraft.payload,
-          recordedAt: recordedAt.toISOString(),
+  return {
+    query: (order, eventTypes) =>
+      attempt('query', async () => {
+        if (!eventTypes.length) return []
+        const placeholders = eventTypes.map(() => '?').join(', ')
+        const result = await client.execute({
+          sql: `SELECT id, event_order, type, payload, recorded_at
+            FROM specter_events
+            WHERE event_order > ? AND type IN (${placeholders})
+            ORDER BY event_order ASC`,
+          args: [order, ...eventTypes],
         })
-      }
-
-      persistedEvents.push({
-        ...eventDraft,
-        id,
-        order,
-        recordedAt: recordedAt.toISOString(),
-      })
-    }
-
-    const committedVersion = persistedEvents.at(-1)?.order ?? version
-    if (options.idempotencyKey) {
-      await getDb().execute({
-        sql: `
-          INSERT INTO specter_event_commits (
-            idempotency_key,
-            fingerprint,
-            first_event_order,
-            last_event_order,
-            committed_at
-          ) VALUES (?, ?, ?, ?, ?)
-        `,
-        args: [
-          options.idempotencyKey,
-          options.fingerprint ?? null,
-          persistedEvents[0]?.order ?? version,
-          committedVersion,
-          new Date().toISOString(),
-        ],
-      })
-    }
-
-    return {
-      events: persistedEvents,
-      version: committedVersion,
-      idempotencyKey: options.idempotencyKey,
-      fingerprint: options.fingerprint,
-      duplicate: false,
-    }
-  },
-  transaction: (run) => runInTransaction(() => run(sqliteEventLog)),
+        return result.rows.map(toEvent)
+      }),
+    currentVersion: attempt('currentVersion', () =>
+      currentEventLogVersion(client),
+    ),
+    findCommit: (idempotencyKey) =>
+      attempt('findCommit', () => findEventLogCommit(client, idempotencyKey)),
+    append: (eventDrafts, options = {}) =>
+      context
+        .transaction((transaction) =>
+          attempt('append', () =>
+            appendEvents(transaction, eventDrafts, options, projector),
+          ),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof EventLogFailure
+              ? cause
+              : new EventLogFailure('append', cause),
+          ),
+        ),
+  }
 }
 
-async function currentEventLogVersion() {
-  const result = await getDb().execute(`
+async function appendEvents(
+  db: SqliteDb,
+  eventDrafts: readonly EventDraft[],
+  options: EventLogAppendOptions,
+  projector?: SpecterSqliteEventProjector,
+) {
+  const existing = options.idempotencyKey
+    ? await findEventLogCommit(db, options.idempotencyKey)
+    : undefined
+  if (existing) {
+    if (existing.fingerprint !== options.fingerprint) {
+      throw new SpecterIdempotencyConflictError(options.idempotencyKey ?? '')
+    }
+    return { ...existing, duplicate: true }
+  }
+
+  const version = await currentEventLogVersion(db)
+  if (
+    options.expectedVersion !== undefined &&
+    options.expectedVersion !== version
+  ) {
+    throw new SpecterVersionConflictError(options.expectedVersion, version)
+  }
+
+  const persistedEvents: PersistedEvent[] = []
+  for (const eventDraft of eventDrafts) {
+    const id = crypto.randomUUID()
+    const recordedAt = new Date().toISOString()
+    await db.execute({
+      sql: `INSERT INTO specter_events (id, type, payload, recorded_at)
+        VALUES (?, ?, ?, ?)`,
+      args: [
+        id,
+        eventDraft.type,
+        JSON.stringify(eventDraft.payload),
+        recordedAt,
+      ],
+    })
+    const result = await db.execute({
+      sql: 'SELECT event_order FROM specter_events WHERE id = ?',
+      args: [id],
+    })
+    const order = toNumber(result.rows[0]?.event_order)
+    await projector?.(db, {
+      id,
+      order,
+      type: eventDraft.type,
+      payload: eventDraft.payload,
+      recordedAt,
+    })
+    persistedEvents.push({ ...eventDraft, id, order, recordedAt })
+  }
+
+  const committedVersion = persistedEvents.at(-1)?.order ?? version
+  if (options.idempotencyKey) {
+    await db.execute({
+      sql: `INSERT INTO specter_event_commits (
+        idempotency_key, fingerprint, first_event_order,
+        last_event_order, committed_at
+      ) VALUES (?, ?, ?, ?, ?)`,
+      args: [
+        options.idempotencyKey,
+        options.fingerprint ?? null,
+        persistedEvents[0]?.order ?? version,
+        committedVersion,
+        new Date().toISOString(),
+      ],
+    })
+  }
+  return {
+    events: persistedEvents,
+    version: committedVersion,
+    idempotencyKey: options.idempotencyKey,
+    fingerprint: options.fingerprint,
+    duplicate: false,
+  }
+}
+
+async function currentEventLogVersion(db: SqliteDb) {
+  const result = await db.execute(`
     SELECT COALESCE(MAX(event_order), 0) AS version
     FROM specter_events
   `)
@@ -382,9 +372,10 @@ async function currentEventLogVersion() {
 }
 
 async function findEventLogCommit(
+  db: SqliteDb,
   idempotencyKey: string,
 ): Promise<EventLogCommit | undefined> {
-  const receipt = await getDb().execute({
+  const receipt = await db.execute({
     sql: `
       SELECT fingerprint, first_event_order, last_event_order
       FROM specter_event_commits
@@ -397,7 +388,7 @@ async function findEventLogCommit(
 
   const firstOrder = toNumber(row.first_event_order)
   const version = toNumber(row.last_event_order)
-  const result = await getDb().execute({
+  const result = await db.execute({
     sql: `
       SELECT id, event_order, type, payload, recorded_at
       FROM specter_events
@@ -408,13 +399,7 @@ async function findEventLogCommit(
   })
 
   return {
-    events: result.rows.map((event) => ({
-      id: toStringValue(event.id),
-      order: toNumber(event.event_order),
-      type: toStringValue(event.type),
-      payload: JSON.parse(toStringValue(event.payload)) as unknown,
-      recordedAt: toStringValue(event.recorded_at),
-    })),
+    events: result.rows.map(toEvent),
     version,
     idempotencyKey,
     fingerprint:
@@ -422,43 +407,14 @@ async function findEventLogCommit(
   }
 }
 
-export function getBoundSqliteDb() {
-  return getDb()
-}
-
-function getDb() {
-  const db = scopedSqliteDb.getStore()
-
-  if (!db) {
-    throw new Error('No SQLite database is bound to the current async context')
+function toEvent(row: Record<string, unknown>): PersistedEvent {
+  return {
+    id: toStringValue(row.id),
+    order: toNumber(row.event_order),
+    type: toStringValue(row.type),
+    payload: JSON.parse(toStringValue(row.payload)) as unknown,
+    recordedAt: toStringValue(row.recorded_at),
   }
-
-  return db
-}
-
-async function runInTransaction<T>(run: () => Promise<T>) {
-  const db = getDb()
-
-  if (isTransaction(db)) return run()
-
-  const transaction = await db.transaction('write')
-
-  try {
-    return await scopedSqliteDb.run(transaction, async () => {
-      const result = await run()
-      await transaction.commit()
-      return result
-    })
-  } catch (cause) {
-    if (!transaction.closed) await transaction.rollback()
-    throw cause
-  } finally {
-    transaction.close()
-  }
-}
-
-function isTransaction(db: SqliteDb): db is Transaction {
-  return !('transaction' in db)
 }
 
 function toStringValue(value: unknown) {

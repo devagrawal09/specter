@@ -1,4 +1,6 @@
 import { testSliceImplementations } from '@specter-ts/core/testing'
+import { createMemorySliceStoreService } from '@specter-ts/memory'
+import { Effect, Layer } from 'effect'
 
 import {
   runCompletedEvent,
@@ -6,8 +8,9 @@ import {
   runFrameRecordedEvent,
   runStartedEvent,
 } from './control/events'
-import { createControlSlices } from './control/slices'
+import { controlSlices } from './control/slices'
 import { createColonyBenchControlState } from './control/state'
+import { ColonyBenchControlStore } from './control/store'
 import {
   baseUpgradedEvent,
   commandRejectedEvent,
@@ -21,27 +24,35 @@ import {
   workerMovedEvent,
   workerSpawnedEvent,
 } from './simulation/events'
-import { createSimulationSlices } from './simulation/slices'
+import { simulationSlices } from './simulation/slices'
 import { createColonyBenchSimulationState } from './simulation/state'
-import { createMemorySliceStore } from './testing/memory-slice-store'
+import { ColonyBenchSimulationStore } from './simulation/store'
 
-const controlStore = createMemorySliceStore(createColonyBenchControlState)
-const simulationStore = createMemorySliceStore(createColonyBenchSimulationState)
+const controlStore = createMemorySliceStoreService(
+  createColonyBenchControlState,
+)
+const simulationStore = createMemorySliceStoreService(
+  createColonyBenchSimulationState,
+)
 
-testSliceImplementations(createControlSlices(controlStore), {
+testSliceImplementations(controlSlices, {
   events: [
     runCreatedEvent,
     runStartedEvent,
     runCompletedEvent,
     runFrameRecordedEvent,
   ],
-  runScenario: async (run) => {
+  runScenario: async <T>(program: Effect.Effect<T, unknown, unknown>) => {
     controlStore.reset()
-    return await run()
+    return Effect.runPromise(
+      program.pipe(
+        Effect.provide(Layer.succeed(ColonyBenchControlStore, controlStore)),
+      ) as Effect.Effect<T, unknown, never>,
+    )
   },
 })
 
-testSliceImplementations(createSimulationSlices(simulationStore), {
+testSliceImplementations(simulationSlices, {
   events: [
     simulationInitializedEvent,
     workerMovedEvent,
@@ -55,8 +66,14 @@ testSliceImplementations(createSimulationSlices(simulationStore), {
     commandRejectedEvent,
     tickAdvancedEvent,
   ],
-  runScenario: async (run) => {
+  runScenario: async <T>(program: Effect.Effect<T, unknown, unknown>) => {
     simulationStore.reset()
-    return await run()
+    return Effect.runPromise(
+      program.pipe(
+        Effect.provide(
+          Layer.succeed(ColonyBenchSimulationStore, simulationStore),
+        ),
+      ) as Effect.Effect<T, unknown, never>,
+    )
   },
 })

@@ -8,12 +8,12 @@ import {
   taskCompletionChangedEvent,
   taskEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import { references, type Connection, type Task } from '../model'
 import { tasksQuerySpec } from './spec'
 
 type State = { tasks: Map<string, Task>; connections: Map<string, Connection> }
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   tasks: new Map(),
   connections: new Map(),
 }))

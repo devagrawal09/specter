@@ -4,7 +4,7 @@ import {
   type PostgresPool,
 } from './database'
 import {
-  createPostgresEventLog,
+  createPostgresEventLogService,
   preparePostgresEventLog,
   type PostgresEventLogOptions,
 } from './event-log'
@@ -29,7 +29,7 @@ export function createSpecterPostgresPersistence(
   options: Omit<PostgresEventLogOptions, 'context'> = {},
 ) {
   const context = createPostgresDatabaseContext(pool, options)
-  const eventLog = createPostgresEventLog(pool, { ...options, context })
+  const eventLog = createPostgresEventLogService(pool, { ...options, context })
 
   return {
     context,

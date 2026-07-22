@@ -12,13 +12,16 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | --- | --- | --- |
 | `testSliceImplementation` | `(implementation, options) => void` | Defines Vitest tests for one completed Slice implementation. |
 | `testSliceImplementations` | `(implementations, options) => void` | Defines Vitest tests for a registry of completed Slice implementations. |
-| `replay` | `(implementations, eventDefinitions, events) => Promise<void>` | Validates and applies Scenario Events in order, then publishes each affected Slice cursor. |
+| `replay` | `(implementations, eventDefinitions, events) => Effect<void, ...>` | Validates and applies Scenario Events in order, then publishes each affected Slice cursor. |
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
-| `testEventLogAdapter` | `(name, factory) => void` | Runs shared ordering, transaction, and idempotency receipt tests. |
-| `testSliceStoreAdapter` | `(name, options) => void` | Runs shared State publication, cursor, and transaction tests. |
-| `testReactionScheduler` | `(name, factory) => void` | Runs shared request, delivery-context, and idle-settlement tests. |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, idempotency, and filtered queries. |
+| `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks publication, isolation, and rollback. |
+| `reactionSchedulerConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks delivery metadata and completion. |
+| `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
+| `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |
+| `testReactionSchedulerService` | `(name, factory) => void` | Thin Vitest runner over scheduler conformance. |
 
 ## Public types
 
@@ -44,7 +47,10 @@ Both test runners first call the same conformance check used to construct an app
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.
 5. The runner compares exact values with `expect(...).toEqual(...)`.
 
-`runScenario` wraps the whole replay-and-execute operation. Use it to create a transaction, reset an in-memory adapter, or otherwise isolate state between Scenarios. The runner does not reset a supplied store automatically.
+`runScenario` receives Effect program and wraps whole replay-and-execute
+operation. Use it to provide Store Layers, create a transaction, reset memory
+service, or otherwise isolate State between Scenarios. Runner does not reset
+supplied Store automatically.
 
 ## Minimal Todo test
 

@@ -140,7 +140,7 @@ const reactionSpec = createReactionSlice('announceRecord')
   })
 const reaction = reactionSpec
   .outputSchema<CommandEnvelope>()
-  .plugin(async () => async () => undefined)
+  .plugin(() => Effect.succeed(() => Effect.void))
   .store(reactionStore.tag)
   .apply(recordCreated, async (applied, state) => {
     Object.assign(state, applied.payload)
@@ -198,7 +198,7 @@ const transformedReaction = createReactionSlice('recordNotice')
       message: `Record ${value}`,
     })),
   )
-  .plugin(async () => async () => undefined)
+  .plugin(() => Effect.succeed(() => Effect.void))
   .store(transformedReactionStore.tag)
   .apply(recordCreated, async (applied, state) => {
     state.value = applied.payload.value

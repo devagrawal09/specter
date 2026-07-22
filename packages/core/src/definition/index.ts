@@ -61,4 +61,5 @@ export type {
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  SliceStoreOptions,
 } from './slices'

@@ -59,7 +59,8 @@ Slice Implementation stages:
 ```text
 Command:  inputSchema -> store -> apply* -> handle
 Query:    inputSchema -> outputSchema -> store -> apply* -> handle
-Reaction: outputSchema -> plugin -> store -> apply* -> handle
+Same-app Command Reaction: outputSchema -> store -> apply* -> handle
+Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle
 ```
 
 An omitted schema argument or a type argument such as

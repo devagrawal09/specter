@@ -5,14 +5,17 @@ in-process applications.
 
 ```ts
 import {
-  createImmediateReactionScheduler,
-  createMemoryEventLog,
-  createMemorySliceStore,
+  createImmediateReactionSchedulerLayer,
+  createMemoryEventLogLayer,
+  createMemorySliceStoreLayer,
 } from '@specter-ts/memory'
+import { Layer } from 'effect'
 
-const eventLog = createMemoryEventLog()
-const store = createMemorySliceStore(() => ({ todos: [] }))
-const schedule = createImmediateReactionScheduler()
+const dependencies = Layer.mergeAll(
+  createMemoryEventLogLayer(),
+  createImmediateReactionSchedulerLayer(),
+  createMemorySliceStoreLayer(TodosStore, () => ({ todos: [] })),
+)
 ```
 
 The Event Log serializes transactions, atomically enforces expected versions,

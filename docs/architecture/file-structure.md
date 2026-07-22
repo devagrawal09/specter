@@ -63,17 +63,15 @@ completed Slice Implementations. App wiring combines that registry with
 adapters:
 
 ```ts
-const app = await createSpecterApp({
-  events: todoEventDefinitions,
-  eventLog: persistence.eventLog,
-  schedule,
-  slices: todoRegistrations,
-})
+const app = await createSpecterApp(
+  { events: todoEventDefinitions, slices: todoRegistrations },
+  Layer.mergeAll(EventLogLive, ReactionSchedulerLive, TodoStoreLayers),
+)
 ```
 
-Keep `createSpecterApp(...)` in server or in-process runtime wiring and await it.
-Construction validates the complete registration before returning the Specter
-App.
+Keep `createSpecterApp(config, dependencies)` in server or in-process runtime
+wiring and await it. Construction validates registration and Layer-provided
+services before returning Specter App.
 
 ## Database ownership and migrations
 

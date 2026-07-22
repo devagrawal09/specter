@@ -10,6 +10,7 @@ export const specterErrorCodes = {
   projectionFailed: 'SPECTER_PROJECTION_FAILED',
   reactionFailure: 'SPECTER_REACTION_FAILURE',
   storeConfiguration: 'SPECTER_STORE_CONFIGURATION',
+  storeFailure: 'SPECTER_STORE_FAILURE',
   unknownCommand: 'SPECTER_UNKNOWN_COMMAND',
   unknownEvent: 'SPECTER_UNKNOWN_EVENT',
   unknownQuery: 'SPECTER_UNKNOWN_QUERY',
@@ -146,6 +147,23 @@ export class SpecterStoreConfigurationError extends SpecterError {
     this.name = 'SpecterStoreConfigurationError'
     this.sliceName = sliceName
     this.storeKey = storeKey
+  }
+}
+
+export class SpecterStoreFailureError extends SpecterError {
+  readonly _tag = 'SpecterStoreFailureError' as const
+
+  constructor(
+    readonly sliceName: string,
+    readonly operation: 'read' | 'transaction',
+    cause: unknown,
+  ) {
+    super(
+      specterErrorCodes.storeFailure,
+      `Store ${operation} failed for Slice "${sliceName}".`,
+      { cause },
+    )
+    this.name = 'SpecterStoreFailureError'
   }
 }
 

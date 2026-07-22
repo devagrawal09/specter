@@ -7,9 +7,11 @@ import {
   createCommandSlice,
   createEventDefinition,
   createQuerySlice,
+  createReactionSlice,
   event,
   type QueryInputOf,
   type QueryOutputOf,
+  type ReactionPlugin,
 } from './index'
 
 type Equal<TLeft, TRight> =
@@ -68,6 +70,8 @@ const commandStoreStep = commandSpec.inputSchema(
 )
 // @ts-expect-error A store is required before apply or handle.
 commandStoreStep.handle
+// @ts-expect-error eager must be boolean.
+commandStoreStep.store(AmountStore, { eager: 'yes' })
 const commandApplyStep = commandStoreStep.store(AmountStore)
 const commandImplementation = commandApplyStep
   .apply(amountRecorded, async (applied, state) => {
@@ -141,3 +145,46 @@ export type QueryPublicInputCheck = Expect<
 export type QueryPublicOutputCheck = Expect<
   Equal<QueryOutputOf<typeof queryImplementation>, { label: string }>
 >
+
+const defaultCommandReaction = createReactionSlice('repeatAmount')
+  .description('Dispatches one same-app Command.')
+  .scenarios({
+    description: 'Repeats one amount.',
+    given: [event('amount-recorded', { amount: 41 })],
+    expect: [{ type: 'recordAmount', payload: { text: '41' } }],
+  })
+  .outputSchema<{
+    type: 'recordAmount'
+    payload: { text: string }
+  }>()
+  .store(QueryStore)
+  .apply(amountRecorded, async (applied, state) => {
+    state.amount = applied.payload.amount
+  })
+  .handle(async (state) => ({
+    type: 'recordAmount',
+    payload: { text: String(state.amount) },
+  }))
+
+export type DefaultReactionPluginCheck = Expect<
+  Equal<
+    typeof defaultCommandReaction.plugin,
+    | ReactionPlugin<{
+        type: 'recordAmount'
+        payload: { text: string }
+      }>
+    | undefined
+  >
+>
+
+const externalReactionStep = createReactionSlice('notifyAmount')
+  .description('Produces one external effect.')
+  .scenarios({
+    description: 'Produces one notification.',
+    given: [event('amount-recorded', { amount: 41 })],
+    expect: ['Amount: 41'],
+  })
+  .outputSchema<string>()
+
+// @ts-expect-error Non-Command output requires an explicit Plugin.
+externalReactionStep.store

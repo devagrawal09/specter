@@ -1,5 +1,6 @@
 export {
   createPostgresDatabaseContext,
+  PostgresDatabaseFailure,
   type PostgresConnection,
   type PostgresDatabaseContext,
   type PostgresDatabaseOptions,
@@ -8,9 +9,10 @@ export {
   type PostgresQueryResult,
 } from './database'
 export {
-  createPostgresEventLog,
+  createPostgresEventLogLayer,
+  createPostgresEventLogService,
   preparePostgresEventLog,
-  type PostgresEventLog,
+  type PostgresEventLogService,
   type PostgresEventLogOptions,
 } from './event-log'
 export {
@@ -26,5 +28,6 @@ export {
   createPostgresSliceStoreLayer,
   createPostgresSliceStoreService,
   preparePostgresSliceStore,
+  PostgresSliceStoreFailure,
   type PostgresSliceStoreOptions,
 } from './slice-store'

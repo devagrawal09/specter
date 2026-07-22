@@ -4,17 +4,18 @@ export {
   type NodeSqliteRuntimeOptions,
 } from './database'
 export {
-  createNodeSqliteEventLog,
+  createNodeSqliteEventLogLayer,
+  createNodeSqliteEventLogService,
   prepareNodeSqliteEventLog,
   type NodeSqliteEventLogOptions,
 } from './event-log'
 export {
-  createNodeSqliteReactionOutboxStore,
-  prepareNodeSqliteReactionOutbox,
-} from './reaction-outbox'
+  createNodeSqliteReactionSchedulerLayer,
+  createNodeSqliteReactionSchedulerService,
+  prepareNodeSqliteReactionScheduler,
+} from './reaction-scheduler'
 export {
   createSpecterNodeSqliteLayer,
-  openSpecterNodeSqlite,
   SpecterNodeSqlite,
   type SpecterNodeSqliteOptions,
   type SpecterNodeSqliteRuntime,

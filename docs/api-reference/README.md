@@ -8,8 +8,8 @@ Public package entrypoints are the source of truth. Import only the names docume
 
 | Package or import | Purpose | Reference |
 | --- | --- | --- |
-| `@specter-ts/core` | Event definitions, completed Slice types, runtime, adapters, envelopes, observations, and public errors | [Core runtime API](./core-runtime.md) and [core adapter contracts](./core-adapters.md) |
-| `@specter-ts/core/effect` | Effect-native app operations, scoped Layer construction, Context service, and shared Slice adapter bridge | [Core runtime API](./core-runtime.md) |
+| `@specter-ts/core` | Event definitions, completed Slice types, Promise app edge, service Tags, envelopes, and public errors | [Core runtime API](./core-runtime.md) and [core service contracts](./core-adapters.md) |
+| `@specter-ts/core/effect` | Native Effect interpreter, scoped Layer construction, Context service, and Streams | [Core runtime API](./core-runtime.md) |
 | `@specter-ts/core/spec` | Specification builders, Scenario Event helper, and specification types | [Core specification API](./core-spec.md) |
 | `@specter-ts/core/testing` | Scenario runners, replay, focused Event catalogs, and Event propagation analysis | [Core testing API](./core-testing.md) |
 | `@specter-ts/memory` | In-memory Event Log, Slice Store, and immediate Reaction scheduler | [Persistence API](./persistence.md) |

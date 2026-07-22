@@ -42,7 +42,7 @@ describe('Slice specifications', () => {
       .handle(async (command) => [countChanged.create(command)])
     const second = specification
       .inputSchema(identitySchema<{ amount: number }>())
-      .store(secondStore.tag)
+      .store(secondStore.tag, { eager: true })
       .apply(countChanged, async (applied, state) => {
         state.count -= applied.payload.amount
       })
@@ -62,6 +62,8 @@ describe('Slice specifications', () => {
     expect(first.scenarios).toBe(specification.scenarios)
     expect(second.scenarios).toBe(specification.scenarios)
     expect(first.apply).not.toBe(second.apply)
+    expect(first.eager).toBe(false)
+    expect(second.eager).toBe(true)
 
     await first.apply[0].handle(
       {

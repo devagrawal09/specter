@@ -1,5 +1,6 @@
 import type { ReactionPlugin } from '@specter-ts/core'
 import type { CoreMessageV4 } from '@mastra/core/agent/message-list'
+import { Effect } from 'effect'
 
 import type { GenerateAssistantReplyEffect } from './impl'
 
@@ -8,26 +9,27 @@ const fallbackPrefix = 'Namaste from Narayan AI.'
 export const mastraOpenRouterPlugin: ReactionPlugin<{
   type: 'generateAssistantReply'
   payload: GenerateAssistantReplyEffect
-}> = async (command) => {
-  return async (output, context) => {
-    const effect = output.payload
-    const body = await generateReply(effect)
+}> = (command) =>
+  Effect.succeed((output, context) =>
+    Effect.gen(function* () {
+      const effect = output.payload
+      const body = yield* Effect.tryPromise(() => generateReply(effect))
 
-    await command(
-      {
-        type: 'recordAssistantReply',
-        payload: {
-          inboundMessageId: effect.inboundMessageId,
-          outboundMessageId: context.deliveryId,
-          to: effect.from,
-          body,
-          generatedAt: context.scheduledAt,
+      yield* command(
+        {
+          type: 'recordAssistantReply',
+          payload: {
+            inboundMessageId: effect.inboundMessageId,
+            outboundMessageId: context.deliveryId,
+            to: effect.from,
+            body,
+            generatedAt: context.scheduledAt,
+          },
         },
-      },
-      { idempotencyKey: context.deliveryId },
-    )
-  }
-}
+        { idempotencyKey: context.deliveryId },
+      )
+    }),
+  )
 
 async function generateReply(effect: GenerateAssistantReplyEffect) {
   if (!process.env.OPENROUTER_API_KEY) {

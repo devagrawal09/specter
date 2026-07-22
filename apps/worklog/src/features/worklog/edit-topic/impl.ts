@@ -5,11 +5,11 @@ import {
   topicArchiveChangedEvent,
   topicEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { Topic } from '../model'
 import { editTopicSpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({
+const store = defineWorklogMemoryStore(() => ({
   topics: new Map<string, Topic>(),
 }))
 

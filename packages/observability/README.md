@@ -6,20 +6,23 @@ Operational signals and development diagnostics for Specter.
 const diagnostics = createInMemorySpecterObservability()
 const observeOutbox = createOutboxObservabilityListener(diagnostics)
 
-const config = {
-  // ...
-  eventLog: instrumentEventLog(eventLog, diagnostics),
-  observe: createSpecterObserver(diagnostics),
-  schedule: createDurableReactionScheduler(outboxStore, {
-    onTransition: observeOutbox,
-  }),
-}
+const dependencies = Layer.mergeAll(
+  Layer.succeed(EventLog, instrumentEventLog(eventLog, diagnostics)),
+  createDurableReactionSchedulerLayer(outboxStore),
+  StoreLayers,
+)
+
+const worker = createReactionOutboxWorker({
+  store: outboxStore,
+  onTransition: observeOutbox,
+  handle,
+})
 ```
 
-The instrumented Event Log and app observer automatically cover persisted
-Events, command commits, catch-up-derived Slice cursor lag, subscription
-invalidations, and named Reaction start/completion/failure. Durable outbox
-attempts are automatic after its `onTransition` listener is wired as above.
+Instrumented Event Log covers persisted Events. App integrations report Slice
+cursor, subscription, projection, and Reaction signals through explicit reporter
+functions. Durable outbox attempts are automatic after worker transition
+listener is wired as above.
 
 Replay is project-owned orchestration rather than a core runtime operation.
 Wrap that orchestration with `reportProjectionActivity(...)` using `started`,

@@ -18,7 +18,6 @@ secrets in their fields.
 | `noopSpecterObservability` | Sink that discards all signals. |
 | `createCompositeSpecterObservability(...sinks)` | Fans each signal out to several sinks. |
 | `createInMemorySpecterObservability(options?)` | Records sequenced, timestamped signals with snapshot/subscription controls. |
-| `createSpecterObserver(sink)` | Maps core `SpecterObservation` callbacks to operational signals. |
 | `instrumentEventLog(eventLog, sink)` | Decorates append operations to report newly persisted Events. |
 | `reportSliceCursor(sink, input)` | Reports a projector cursor and calculated Event Log lag. |
 | `reportSubscriptionInvalidated(sink, input)` | Reports one Query subscription invalidation. |
@@ -59,32 +58,38 @@ secrets in their fields.
 ## Wire the automatic signals
 
 ```ts
-import { createSpecterApp } from '@specter-ts/core'
+import { EventLog, createSpecterApp } from '@specter-ts/core'
 import {
   createInMemorySpecterObservability,
   createSpecterDevelopmentPanel,
-  createSpecterObserver,
   instrumentEventLog,
 } from '@specter-ts/observability'
+import { Layer } from 'effect'
 
 const observability = createInMemorySpecterObservability()
 const panel = createSpecterDevelopmentPanel(observability)
 
-const app = await createSpecterApp({
-  events: todoEvents,
-  eventLog: instrumentEventLog(persistence.eventLog, observability),
-  schedule,
-  slices: todoSlices,
-  observe: createSpecterObserver(observability),
-})
+const dependencies = Layer.mergeAll(
+  Layer.succeed(
+    EventLog,
+    instrumentEventLog(persistence.eventLog, observability),
+  ),
+  ReactionSchedulerLive,
+  TodoStoreLayers,
+)
+
+const app = await createSpecterApp(
+  { events: todoEvents, slices: todoSlices },
+  dependencies,
+)
 
 console.log(panel.renderText())
 ```
 
-`instrumentEventLog(...)` reports non-duplicate Event appends.
-`createSpecterObserver(...)` reports Command commits, core catch-up completion,
-subscription invalidation, and named Reaction lifecycle. The panel aggregates
-those signals without becoming an authoritative store.
+`instrumentEventLog(...)` reports non-duplicate Event appends. Report command,
+cursor, subscription, projection, and Reaction activity at app-owned transport
+or adapter boundaries with typed reporter functions. Panel aggregates signals
+without becoming an authoritative store.
 
 ## Report project-owned work
 
@@ -115,14 +120,13 @@ attempts, retries, and dead letters.
 ## Constraints
 
 - Treat sinks as fallible and isolate them at custom integration boundaries.
-  The bundled core observer and Event Log instrumentation already swallow sink
-  failures.
+  Bundled Event Log instrumentation and reporter functions swallow sink failures.
 - Operational signals are not an Event Log, audit trail, or Command receipt.
 - The in-memory collector and development panel are process-local diagnostics,
   not production retention.
 - Bound Event and activity counts with panel options and redact sensitive
   payloads before they reach a sink.
-- Report replay explicitly; normal core catch-up is reported automatically.
+- Report replay and catch-up explicitly at owning integration boundary.
 
 ## Related documentation
 

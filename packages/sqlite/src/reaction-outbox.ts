@@ -8,6 +8,7 @@ import type {
   ReactionOutboxStore,
 } from '@specter-ts/reaction-outbox'
 import { ReactionOutboxLeaseLostError } from '@specter-ts/reaction-outbox'
+import { Effect } from 'effect'
 
 import {
   createSqliteDatabaseContext,
@@ -121,9 +122,19 @@ export function createSqliteReactionOutboxStore<TPayload>(
     if (result.rowsAffected !== 1) throw cause
   }
 
+  function runTransaction<A>(
+    run: (connection: SqliteConnection) => Promise<A>,
+  ): Promise<A> {
+    return Effect.runPromise(
+      context.transaction((connection) =>
+        Effect.promise(() => run(connection)),
+      ),
+    )
+  }
+
   return {
     enqueue(input: EnqueueReactionInput<TPayload>) {
-      return context.transaction(
+      return runTransaction(
         async (connection): Promise<EnqueueReactionResult<TPayload>> => {
           const existing = await connection.execute({
             sql: `SELECT * FROM specter_reaction_outbox
@@ -167,7 +178,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     claimNext(now, leaseExpiresAt) {
-      return context.transaction(async (connection) => {
+      return runTransaction(async (connection) => {
         const result = await connection.execute({
           sql: `SELECT * FROM specter_reaction_outbox
             WHERE status = 'pending' AND available_at <= ?
@@ -204,7 +215,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     complete(jobId, attemptId, completedAt) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -221,7 +232,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     reschedule(jobId, attemptId, availableAt, error) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -238,7 +249,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     deadLetter(jobId, attemptId, failedAt, error) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -255,7 +266,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     requeueExpired(now) {
-      return context.transaction(async (connection) => {
+      return runTransaction(async (connection) => {
         const result = await connection.execute({
           sql: `UPDATE specter_reaction_outbox
             SET status = 'pending',
@@ -273,7 +284,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     async nextWorkAt() {
-      const result = await context.connection().execute(
+      const result = await context.client.execute(
         `SELECT MIN(wake_at) AS wake_at
           FROM (
             SELECT available_at AS wake_at
@@ -292,11 +303,11 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     get(jobId) {
-      return get(context.connection(), jobId)
+      return get(context.client, jobId)
     },
 
     async list(status?: ReactionOutboxStatus) {
-      const result = await context.connection().execute({
+      const result = await context.client.execute({
         sql: `SELECT * FROM specter_reaction_outbox
           ${status ? 'WHERE status = ?' : ''}
           ORDER BY requested_at ASC, id ASC`,
@@ -306,7 +317,7 @@ export function createSqliteReactionOutboxStore<TPayload>(
     },
 
     retryDeadLetter(jobId, availableAt) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox

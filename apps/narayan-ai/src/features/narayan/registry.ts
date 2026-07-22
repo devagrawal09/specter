@@ -1,6 +1,3 @@
-import { sqliteEventLog } from '../../db/specter-sqlite'
-import { memoryReactionScheduler } from '../../testing/memory-reaction-scheduler'
-import type { ReactionScheduler } from '@specter-ts/core'
 import conversationMessagesQuery from './conversation-messages-query/impl'
 import conversationsQuery from './conversations-query/impl'
 import generateAssistantReplyReaction from './generate-assistant-reply-reaction/impl'
@@ -22,15 +19,7 @@ export const narayanRegistrations = [
   conversationMessagesQuery,
 ] as const
 
-export function createNarayanSpecterAppConfig(
-  schedule: ReactionScheduler = memoryReactionScheduler,
-) {
-  return {
-    events: narayanEventDefinitions,
-    eventLog: sqliteEventLog,
-    schedule,
-    slices: narayanRegistrations,
-  } as const
-}
-
-export const narayanSpecterAppConfig = createNarayanSpecterAppConfig()
+export const narayanSpecterAppConfig = {
+  events: narayanEventDefinitions,
+  slices: narayanRegistrations,
+} as const

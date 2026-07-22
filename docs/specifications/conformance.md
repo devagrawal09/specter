@@ -6,7 +6,8 @@ Construction conformance answers “can this registry be executed safely?” Sli
 
 ## When construction conformance runs
 
-`createSpecterApp(config)` is asynchronous because it validates the complete config before returning an app:
+`assertConforms(config)` is native Effect check. `createSpecterApp(config,
+dependencies)` runs it while acquiring Promise-edge app:
 
 ```ts
 import {
@@ -15,12 +16,10 @@ import {
 } from '@specter-ts/core'
 
 try {
-  const app = await createSpecterApp({
-    events: todoEventDefinitions,
-    eventLog,
-    schedule: reactionScheduler,
-    slices: todoRegistrations,
-  })
+  const app = await createSpecterApp(
+    { events: todoEventDefinitions, slices: todoRegistrations },
+    Layer.mergeAll(EventLogLive, ReactionSchedulerLive, TodoStoreLayers),
+  )
 } catch (cause) {
   if (cause instanceof SpecterConformanceError) {
     for (const diagnostic of cause.diagnostics) {

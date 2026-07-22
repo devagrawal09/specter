@@ -7,42 +7,24 @@ export type NodeSqliteRuntimeOptions = {
 
 export class NodeSqliteContext {
   readonly database: DatabaseSync
-  private tail: Promise<void> = Promise.resolve()
 
   constructor(database: DatabaseSync) {
     this.database = database
   }
 
-  run<T>(operation: () => T | Promise<T>): Promise<T> {
-    return this.serialize(operation)
+  run<T>(operation: () => T): T {
+    return operation()
   }
 
-  transaction<T>(operation: () => T | Promise<T>): Promise<T> {
-    return this.serialize(async () => {
-      this.database.exec('BEGIN IMMEDIATE')
-      try {
-        const result = await operation()
-        this.database.exec('COMMIT')
-        return result
-      } catch (cause) {
-        this.database.exec('ROLLBACK')
-        throw cause
-      }
-    })
-  }
-
-  private async serialize<T>(operation: () => T | Promise<T>) {
-    const previous = this.tail
-    let release = () => {}
-    const current = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    this.tail = previous.then(() => current)
-    await previous
+  transaction<T>(operation: () => T): T {
+    this.database.exec('BEGIN IMMEDIATE')
     try {
-      return await operation()
-    } finally {
-      release()
+      const result = operation()
+      this.database.exec('COMMIT')
+      return result
+    } catch (cause) {
+      this.database.exec('ROLLBACK')
+      throw cause
     }
   }
 }

@@ -1,16 +1,18 @@
 import { randomUUID } from 'node:crypto'
 
 import {
+  EventLog,
+  EventLogFailure,
   SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
-  type EventLogAdapter,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
-  type EventLogTransaction,
+  type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
+import { Effect, Layer } from 'effect'
 
 import {
   createPostgresDatabaseContext,
@@ -30,7 +32,7 @@ export type PostgresEventLogOptions = PostgresDatabaseOptions & {
   readonly now?: () => Date
 }
 
-export type PostgresEventLog = EventLogAdapter & {
+export type PostgresEventLogService = EventLogService & {
   readonly context: PostgresDatabaseContext
 }
 
@@ -53,10 +55,10 @@ export async function preparePostgresEventLog(pool: PostgresPool) {
   )`)
 }
 
-export function createPostgresEventLog(
+export function createPostgresEventLogService(
   pool: PostgresPool,
   options: PostgresEventLogOptions = {},
-): PostgresEventLog {
+): PostgresEventLogService {
   const context =
     options.context ?? createPostgresDatabaseContext(pool, options)
   const advisoryLockKey = options.advisoryLockKey ?? context.advisoryLockKey
@@ -218,50 +220,50 @@ export function createPostgresEventLog(
     }
   }
 
-  function appendAtomically(
-    drafts: readonly EventDraft[],
-    appendOptions?: EventLogAppendOptions,
+  function attempt<A>(
+    operation: EventLogFailure['operation'],
+    run: () => Promise<A>,
   ) {
-    return context.serialize(() =>
-      context.transaction(async (connection) => {
-        await connection.query('SELECT pg_advisory_xact_lock($1)', [
-          advisoryLockKey,
-        ])
-        return append(connection, drafts, appendOptions)
-      }),
-    )
-  }
-
-  function scoped(baseVersion: number): EventLogTransaction {
-    return {
-      query: (afterOrder, eventTypes) => query(pool, afterOrder, eventTypes),
-      currentVersion: async () => baseVersion,
-      findCommit: (idempotencyKey) => findCommit(pool, idempotencyKey),
-      append: (drafts, appendOptions) =>
-        context.transaction(async (connection) => {
-          await connection.query('SELECT pg_advisory_xact_lock($1)', [
-            advisoryLockKey,
-          ])
-          return append(connection, drafts, {
-            ...appendOptions,
-            expectedVersion: appendOptions?.expectedVersion ?? baseVersion,
-          })
-        }),
-    }
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new EventLogFailure(operation, cause),
+    })
   }
 
   return {
     context,
     query: (afterOrder, eventTypes) =>
-      query(context.connection(), afterOrder, eventTypes),
-    currentVersion: () => currentVersion(context.connection()),
+      attempt('query', () => query(pool, afterOrder, eventTypes)),
+    currentVersion: attempt('currentVersion', () => currentVersion(pool)),
     findCommit: (idempotencyKey) =>
-      findCommit(context.connection(), idempotencyKey),
-    append: appendAtomically,
-    transaction: (run) =>
-      context.serialize(async () => {
-        const baseVersion = await currentVersion(pool)
-        return run(scoped(baseVersion))
-      }),
+      attempt('findCommit', () => findCommit(pool, idempotencyKey)),
+    append: (drafts, appendOptions) =>
+      context
+        .transaction((connection) =>
+          Effect.gen(function* () {
+            yield* attempt('append', () =>
+              connection.query('SELECT pg_advisory_xact_lock($1)', [
+                advisoryLockKey,
+              ]),
+            )
+            return yield* attempt('append', () =>
+              append(connection, drafts, appendOptions),
+            )
+          }),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof EventLogFailure
+              ? cause
+              : new EventLogFailure('append', cause),
+          ),
+        ),
   }
+}
+
+export function createPostgresEventLogLayer(
+  pool: PostgresPool,
+  options: PostgresEventLogOptions = {},
+): Layer.Layer<EventLog> {
+  return Layer.succeed(EventLog, createPostgresEventLogService(pool, options))
 }

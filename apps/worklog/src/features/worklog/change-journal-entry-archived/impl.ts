@@ -12,7 +12,7 @@ import {
   taskArchiveChangedEvent,
   taskCompletionChangedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import {
   otherEnd,
   references,
@@ -29,7 +29,7 @@ type State = {
   awards: Set<string>
 }
 
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   journals: new Map<string, JournalEntry>(),
   tasks: new Map<string, Task>(),
   connections: new Map<string, Connection>(),

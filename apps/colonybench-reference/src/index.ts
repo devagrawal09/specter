@@ -1,66 +1,66 @@
+import { createSpecterApp, type SpecterApp } from '@specter-ts/core'
 import {
-  createSpecterApp,
-  type EventLogAdapter,
-  type ReactionScheduler,
-  type SliceStoreAdapter,
-  type SpecterApp,
-} from '@specter-ts/core'
+  createImmediateReactionSchedulerLayer,
+  createMemoryEventLogLayer,
+  createMemorySliceStoreLayer,
+} from '@specter-ts/memory'
+import { Layer } from 'effect'
 
 import { controlEventDefinitions } from './control/events'
-import { createControlSlices } from './control/slices'
-import {
-  createColonyBenchControlState,
-  type ColonyBenchControlState,
-} from './control/state'
+import { controlSlices } from './control/slices'
+import { createColonyBenchControlState } from './control/state'
+import { ColonyBenchControlStore } from './control/store'
 import { simulationEventDefinitions } from './simulation/events'
-import { createSimulationSlices } from './simulation/slices'
-import {
-  createColonyBenchSimulationState,
-  type ColonyBenchSimulationState,
-} from './simulation/state'
-import { createMemoryEventLog } from './testing/memory-event-log'
-import { memoryReactionScheduler } from './testing/memory-reaction-scheduler'
-import { createMemorySliceStore } from './testing/memory-slice-store'
+import { simulationSlices } from './simulation/slices'
+import { createColonyBenchSimulationState } from './simulation/state'
+import { ColonyBenchSimulationStore } from './simulation/store'
 
-export type ColonyBenchControlAdapters = {
-  eventLog: EventLogAdapter
-  store: SliceStoreAdapter<ColonyBenchControlState>
-  schedule: ReactionScheduler
+const controlConfig = {
+  events: controlEventDefinitions,
+  slices: controlSlices,
+} as const
+
+const simulationConfig = {
+  events: simulationEventDefinitions,
+  slices: simulationSlices,
+} as const
+
+export function createMemoryColonyBenchControlAdapters() {
+  return Layer.mergeAll(
+    createMemoryEventLogLayer(),
+    createImmediateReactionSchedulerLayer(),
+    createMemorySliceStoreLayer(
+      ColonyBenchControlStore,
+      createColonyBenchControlState,
+    ),
+  )
 }
 
-export type ColonyBenchSimulationAdapters = {
-  eventLog: EventLogAdapter
-  store: SliceStoreAdapter<ColonyBenchSimulationState>
-  schedule: ReactionScheduler
+export type ColonyBenchControlAdapters = ReturnType<
+  typeof createMemoryColonyBenchControlAdapters
+>
+
+export function createMemoryColonyBenchSimulationAdapters() {
+  return Layer.mergeAll(
+    createMemoryEventLogLayer(),
+    createImmediateReactionSchedulerLayer(),
+    createMemorySliceStoreLayer(
+      ColonyBenchSimulationStore,
+      createColonyBenchSimulationState,
+    ),
+  )
 }
 
-export function createMemoryColonyBenchControlAdapters(): ColonyBenchControlAdapters {
-  return {
-    eventLog: createMemoryEventLog(),
-    store: createMemorySliceStore(createColonyBenchControlState),
-    schedule: memoryReactionScheduler,
-  }
-}
-
-export function createMemoryColonyBenchSimulationAdapters(): ColonyBenchSimulationAdapters {
-  return {
-    eventLog: createMemoryEventLog(),
-    store: createMemorySliceStore(createColonyBenchSimulationState),
-    schedule: memoryReactionScheduler,
-  }
-}
+export type ColonyBenchSimulationAdapters = ReturnType<
+  typeof createMemoryColonyBenchSimulationAdapters
+>
 
 export async function createColonyBenchSimulationApp({
   adapters,
 }: {
   adapters: ColonyBenchSimulationAdapters
 }) {
-  return await createSpecterApp({
-    events: simulationEventDefinitions,
-    eventLog: adapters.eventLog,
-    schedule: adapters.schedule,
-    slices: createSimulationSlices(adapters.store),
-  })
+  return createSpecterApp(simulationConfig, adapters)
 }
 
 export type ColonyBenchSimulationApp = Awaited<
@@ -92,13 +92,7 @@ export async function createColonyBenchControlApp({
   adapters: ColonyBenchControlAdapters
   bridge?: ColonyBenchControlBridge
 }) {
-  const app = await createSpecterApp({
-    events: controlEventDefinitions,
-    eventLog: adapters.eventLog,
-    schedule: adapters.schedule,
-    slices: createControlSlices(adapters.store),
-  })
-
+  const app = await createSpecterApp(controlConfig, adapters)
   if (!bridge) return app
 
   const command: typeof app.command = async (envelope, options) => {
@@ -117,9 +111,4 @@ export async function createColonyBenchControlApp({
   return Object.freeze({ ...app, command })
 }
 
-export type ColonyBenchControlApp = SpecterApp<{
-  events: typeof controlEventDefinitions
-  eventLog: EventLogAdapter
-  schedule: ReactionScheduler
-  slices: ReturnType<typeof createControlSlices>
-}>
+export type ColonyBenchControlApp = SpecterApp<typeof controlConfig>

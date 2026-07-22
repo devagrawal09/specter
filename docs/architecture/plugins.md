@@ -1,6 +1,9 @@
 # Plugins
 
-In Specter, a Plugin is the effect interpreter for one Reaction Slice. It is not a generic application extension system: it does not discover modules, add lifecycle hooks, or modify the runtime. A Reaction handler decides *what* effect should happen from its Slice State; its Plugin decides *how* to execute that effect at an infrastructure boundary.
+In Specter, Plugin is effect interpreter for one Reaction Slice. Same-app
+Command output needs no explicit Plugin: Specter dispatches output as Command,
+using stable delivery ID for idempotency. Arbitrary output or external boundary
+requires explicit Plugin. Plugin is not generic application extension system.
 
 ## From Event to effect
 
@@ -17,39 +20,39 @@ The Plugin interface captures that split:
 ```ts
 type ReactionPlugin<TOutput> = (
   command: CommandDispatch,
-) => Promise<ReactionExec<TOutput>>
+) => Effect<ReactionExec<TOutput>, unknown, unknown>
 
 type ReactionExec<TOutput> = (
   effect: TOutput,
   context: ReactionDeliveryContext,
-) => Promise<unknown>
+) => Effect<void, unknown>
 ```
 
 Core creates and caches one executor per Reaction name. The outer function can initialize a client or bind configuration once. The returned executor performs each delivery.
 
-## Todo example: dispatch a same-app Command
+## Todo example: default same-app Command
 
 The Todo Reference app reacts at each five-completion milestone. Its handler
 queries the Reaction Slice's private projection and returns a `createTodoCheer`
-Command envelope when a new milestone is due. The implementation supplies this
-inline Plugin:
+Command envelope when new milestone is due. Output type extends
+`CommandEnvelope`, so implementation goes directly from schema to Store:
 
 ```ts
-.plugin(
-  async (command) => async (output, context) =>
-    command(output, { idempotencyKey: context.deliveryId }),
-)
+.outputSchema(todoCheerCommandSchema)
+.store(TodoCheerStore)
 ```
 
 The complete implementation, including the output schema, apply handlers, and
 Drizzle projection query, lives in
 [`todo-completion-cheer-reaction/impl.ts`](../../apps/reference/src/features/todos/todo-completion-cheer-reaction/impl.ts).
 
-The `command` capability is provided by the current Specter App. Dispatch still
-passes through the target Command's schema, optimistic Event Log transaction,
-allowed-Event check, and idempotency handling. The Plugin uses `deliveryId` as
+Default dispatch still
+passes through target Command schema, expected-version Event append,
+allowed-Event check, and idempotency handling. Default dispatcher uses `deliveryId` as
 the idempotency key so retrying the same Reaction delivery resolves to the
-original Command commit instead of creating a second cheer.
+original Command commit instead of creating a second cheer. It waits for nested
+Command commit only; nested Reaction drain remains separate, avoiding scheduler
+self-deadlock.
 
 ## Delivery identity
 
@@ -77,11 +80,11 @@ The Reaction scheduler is a separate concern from the Plugin:
 - The Plugin interprets that effect.
 - The optional outbox worker delivers queued external work.
 
-`immediateReactionScheduler` serializes queued passes in process and executes
-every request separately. `createDurableReactionScheduler` stores Reaction-pass
-jobs and recovers pending or expired passes after a restart. Either scheduler
-can be paired with an immediate or outbox-backed Plugin depending on the effect
-boundary.
+`createImmediateReactionSchedulerLayer` serializes queued passes in process and
+executes every request separately. `createDurableReactionSchedulerLayer` stores
+Reaction-pass jobs and recovers pending or expired passes after restart. Either
+scheduler can be paired with immediate or outbox-backed Plugin depending on
+effect boundary.
 
 ## Invariants and pitfalls
 

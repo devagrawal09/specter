@@ -28,9 +28,9 @@ await worker.enqueue(effect, {
 await worker.drain()
 ```
 
-`createDurableReactionScheduler` integrates the worker with Specter's Reaction
-pass contract. It resumes pending and expired passes when the application is
-constructed. Specter commits each successful Reaction projection only after
+`createDurableReactionSchedulerLayer` provides Specter's Effect-native Reaction
+scheduler from an outbox store. It resumes pending and expired passes when app
+is constructed. Specter commits each successful Reaction projection only after
 its plugin completes, so retrying a pass re-executes failed Reactions while
 skipping successful independent Reactions.
 

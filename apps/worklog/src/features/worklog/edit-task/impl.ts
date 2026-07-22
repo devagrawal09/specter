@@ -5,11 +5,11 @@ import {
   taskArchiveChangedEvent,
   taskEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { Task } from '../model'
 import { editTaskSpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({
+const store = defineWorklogMemoryStore(() => ({
   tasks: new Map<string, Task>(),
 }))
 

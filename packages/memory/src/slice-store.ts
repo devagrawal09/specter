@@ -1,5 +1,5 @@
 import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
-import { Effect, Layer } from 'effect'
+import { Effect, Layer, Semaphore } from 'effect'
 
 type SliceEntry<TState> = {
   state: TState
@@ -33,7 +33,7 @@ export function createMemorySliceStoreService<
   const read =
     options.read ?? ((state: TWriteState) => state as unknown as TReadState)
   const entries = new Map<string, SliceEntry<TWriteState>>()
-  const transactionTails = new Map<string, Promise<void>>()
+  const semaphores = new Map<string, Semaphore.Semaphore>()
 
   function getEntry(sliceName: string) {
     const current = entries.get(sliceName)
@@ -43,64 +43,52 @@ export function createMemorySliceStoreService<
     return created
   }
 
-  async function serialize<A>(sliceName: string, run: () => Promise<A>) {
-    const previous = transactionTails.get(sliceName) ?? Promise.resolve()
-    let release = () => {}
-    const tail = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const queued = previous.then(() => tail)
-    transactionTails.set(sliceName, queued)
-    await previous
-    try {
-      return await run()
-    } finally {
-      release()
-      if (transactionTails.get(sliceName) === queued) {
-        transactionTails.delete(sliceName)
-      }
-    }
+  function semaphore(sliceName: string) {
+    const existing = semaphores.get(sliceName)
+    if (existing) return existing
+    const created = Semaphore.makeUnsafe(1)
+    semaphores.set(sliceName, created)
+    return created
   }
 
   return {
     read: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () => {
-          const current = getEntry(sliceName)
-          return run(read(current.state), current.cursor)
-        },
-        catch: (cause) => cause,
+      Effect.suspend(() => {
+        const current = getEntry(sliceName)
+        return run(read(current.state), current.cursor)
       }),
     transaction: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () => serialize(sliceName, async () => {
-          const current = getEntry(sliceName)
-          const working = {
-            state: clone(current.state),
-            cursor: current.cursor,
-          }
-          let published = false
-          const result = await run(
-            working.state,
-            () => read(working.state),
-            working.cursor,
-            async (order) => {
-              if (!Number.isInteger(order) || order < working.cursor) {
-                throw new Error(
-                  `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
-                )
-              }
-              working.cursor = order
-              published = true
-            },
-          )
-          if (published && working.cursor >= current.cursor) {
-            entries.set(sliceName, working)
-          }
-          return result
-        }),
-        catch: (cause) => cause,
-      }),
+      Effect.suspend(() =>
+        semaphore(sliceName).withPermit(
+          Effect.gen(function* () {
+            const current = getEntry(sliceName)
+            const working = {
+              state: clone(current.state),
+              cursor: current.cursor,
+            }
+            let published = false
+            const result = yield* run(
+              working.state,
+              () => read(working.state),
+              working.cursor,
+              (order) =>
+                Effect.sync(() => {
+                  if (!Number.isSafeInteger(order) || order < working.cursor) {
+                    throw new Error(
+                      `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
+                    )
+                  }
+                  working.cursor = order
+                  published = true
+                }),
+            )
+            if (published && working.cursor >= current.cursor) {
+              entries.set(sliceName, working)
+            }
+            return result
+          }),
+        ),
+      ),
     inspect(sliceName) {
       const current = entries.get(sliceName)
       return current

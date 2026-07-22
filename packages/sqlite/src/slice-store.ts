@@ -6,9 +6,22 @@ import {
   createSqliteDatabaseContext,
   requireNumber,
   requireString,
+  type SqliteDatabaseFailure,
   type SqliteConnection,
   type SqliteDatabaseContext,
 } from './database'
+
+export class SqliteSliceStoreFailure extends Error {
+  readonly _tag = 'SqliteSliceStoreFailure' as const
+
+  constructor(
+    readonly operation: 'read' | 'write' | 'publish-cursor',
+    readonly cause: unknown,
+  ) {
+    super(`SQLite Slice Store ${operation} failed.`, { cause })
+    this.name = 'SqliteSliceStoreFailure'
+  }
+}
 
 export type SqliteSliceStateCodec<TState> = {
   encode(state: TState): string
@@ -47,7 +60,11 @@ export function createSqliteSliceStoreService<
   client: Client,
   createState: () => TWriteState,
   options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
-): SliceStoreService<TReadState, TWriteState, unknown> {
+): SliceStoreService<
+  TReadState,
+  TWriteState,
+  SqliteSliceStoreFailure | SqliteDatabaseFailure
+> {
   const context = options.context ?? createSqliteDatabaseContext(client)
   const codec = options.codec ?? jsonCodec<TWriteState>()
   const read =
@@ -87,40 +104,53 @@ export function createSqliteSliceStoreService<
     })
   }
 
+  function attempt<A>(
+    operation: SqliteSliceStoreFailure['operation'],
+    run: () => Promise<A>,
+  ) {
+    return Effect.tryPromise({
+      try: run,
+      catch: (cause) => new SqliteSliceStoreFailure(operation, cause),
+    })
+  }
+
   return {
     read: (sliceName, run) =>
-      Effect.tryPromise({
-        try: async () => {
-          const entry = await load(context.connection(), sliceName)
-          return run(read(entry.state), entry.cursor)
-        },
-        catch: (cause) => cause,
+      Effect.gen(function* () {
+        const entry = yield* attempt('read', () => load(client, sliceName))
+        return yield* run(read(entry.state), entry.cursor)
       }),
     transaction: (sliceName, run) =>
-      Effect.tryPromise({
-        try: () =>
-          context.transaction(async (connection) => {
-            const entry = await load(connection, sliceName)
-            let published = false
-            const result = await run(
-              entry.state,
-              () => read(entry.state),
-              entry.cursor,
-              async (order) => {
-                if (!Number.isInteger(order) || order < entry.cursor) {
-                  throw new Error(
-                    `Slice cursor must advance monotonically from ${entry.cursor}, received ${order}`,
-                  )
-                }
-                entry.cursor = order
-                published = true
-              },
-            )
-            if (published) await save(connection, sliceName, entry)
-            return result
-          }),
-        catch: (cause) => cause,
-      }),
+      context.transaction((connection) =>
+        Effect.gen(function* () {
+          const entry = yield* attempt('read', () =>
+            load(connection, sliceName),
+          )
+          let published = false
+          const result = yield* run(
+            entry.state,
+            () => read(entry.state),
+            entry.cursor,
+            (order) => {
+              if (!Number.isSafeInteger(order) || order < entry.cursor) {
+                return Effect.fail(
+                  new SqliteSliceStoreFailure(
+                    'publish-cursor',
+                    `Cursor must advance from ${entry.cursor}; received ${order}`,
+                  ),
+                )
+              }
+              entry.cursor = order
+              published = true
+              return Effect.void
+            },
+          )
+          if (published) {
+            yield* attempt('write', () => save(connection, sliceName, entry))
+          }
+          return result
+        }),
+      ),
   }
 }
 
@@ -131,13 +161,18 @@ export function createSqliteSliceStoreLayer<
 >(
   tag: SliceStoreTag<
     TIdentifier,
-    SliceStoreService<TReadState, TWriteState, unknown>
+    SliceStoreService<
+      TReadState,
+      TWriteState,
+      SqliteSliceStoreFailure | SqliteDatabaseFailure
+    >
   >,
   client: Client,
   createState: () => TWriteState,
   options: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
 ): Layer.Layer<TIdentifier> {
-  return Layer.sync(tag as never, () =>
+  return Layer.succeed(
+    tag,
     createSqliteSliceStoreService(client, createState, options),
-  ) as Layer.Layer<TIdentifier>
+  )
 }

@@ -1,14 +1,22 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, EventLog } from '@specter-ts/core'
+import {
+  createSpecterSqlitePersistence,
+  prepareSpecterSqlite,
+} from '@specter-ts/sqlite'
+import { createImmediateReactionSchedulerLayer } from '@specter-ts/memory'
+import { Layer } from 'effect'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { expect, test } from 'vitest'
+import { afterAll, expect, test } from 'vitest'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import { prepareSpecterSqlite, runWithSqliteDb } from '../../db/specter-sqlite'
-import {
+const serverDbDir = mkdtempSync(join(tmpdir(), 'threadplane-server-'))
+process.env.THREADPLANE_REFERENCE_DB_PATH = join(serverDbDir, 'app.db')
+
+const {
   createThreadplanePostOnServer,
   createThreadplaneWorkspaceOnServer,
   getThreadplaneFilesystemStatusOnServer,
@@ -21,9 +29,12 @@ import {
   replyToThreadplanePostOnServer,
   requestThreadplaneAgentRunOnServer,
   requestThreadplaneFilesystemScanOnServer,
-} from './server-runtime.server'
+} = await import('./server-runtime.server')
 import { threadplaneReferenceSpecterAppConfig } from './registry'
 import { threadplaneMemoryStoresLayer } from '../../testing/memory-slice-store'
+import { resetMemorySliceStores } from '../../testing/memory-slice-store'
+
+afterAll(() => rmSync(serverDbDir, { recursive: true, force: true }))
 
 test('threadplane server functions wrap workspace, chat, scan, and run slices', async () => {
   const tempDir = mkdtempSync(join(tmpdir(), 'threadplane-workspaces-'))
@@ -235,37 +246,48 @@ test('threadplane server functions preserve database state across app reopen', a
 
     try {
       await prepareSpecterSqlite(firstSqlite)
-      await runWithSqliteDb(firstSqlite, async () => {
-        const app = await createSpecterApp(
-          threadplaneReferenceSpecterAppConfig,
+      const persistence = createSpecterSqlitePersistence(firstSqlite)
+      const app = await createSpecterApp(
+        threadplaneReferenceSpecterAppConfig,
+        Layer.mergeAll(
+          Layer.succeed(EventLog, persistence.eventLog),
+          createImmediateReactionSchedulerLayer(),
           threadplaneMemoryStoresLayer(),
-        )
-        const execution = await app.command({
-          type: 'createWorkspace',
-          payload: {
-            workspaceId: 'workspace-durable',
-            scanId: 'scan-durable',
-            name: 'Durable Lab',
-          },
-        })
-        await execution.reactions
-        await app.query({ type: 'workspaceList', payload: {} })
+        ),
+      )
+      const execution = await app.command({
+        type: 'createWorkspace',
+        payload: {
+          workspaceId: 'workspace-durable',
+          scanId: 'scan-durable',
+          name: 'Durable Lab',
+        },
       })
+      await execution.reactions
+      await app.query({ type: 'workspaceList', payload: {} })
     } finally {
       firstSqlite.close()
     }
 
+    resetMemorySliceStores()
     const secondSqlite = createClient({ url: `file:${sqlitePath}` })
 
     try {
       await prepareSpecterSqlite(secondSqlite)
-      await runWithSqliteDb(secondSqlite, async () => {
-        expect(await listThreadplaneWorkspacesOnServer()).toEqual(
-          expect.arrayContaining([
-            expect.objectContaining({ name: expect.any(String) }),
-          ]),
-        )
-      })
+      const persistence = createSpecterSqlitePersistence(secondSqlite)
+      const app = await createSpecterApp(
+        threadplaneReferenceSpecterAppConfig,
+        Layer.mergeAll(
+          Layer.succeed(EventLog, persistence.eventLog),
+          createImmediateReactionSchedulerLayer(),
+          threadplaneMemoryStoresLayer(),
+        ),
+      )
+      expect(await app.query({ type: 'workspaceList', payload: {} })).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ name: expect.any(String) }),
+        ]),
+      )
     } finally {
       secondSqlite.close()
     }

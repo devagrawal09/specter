@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
+import type { ReactionExec } from '@specter-ts/core'
 
 import type { TwilioDeliveryAttempt } from '../../../db/twilio-delivery-attempts'
 import {
@@ -17,6 +19,7 @@ const effect = {
 
 const context = {
   deliveryId: 'delivery-1',
+  throughOrder: 1,
   scheduledAt: '2026-07-16T12:00:00.000Z',
   attemptId: 'delivery-1:attempt:2',
   attemptNumber: 2,
@@ -57,15 +60,17 @@ describe('Twilio outbound delivery reconciliation', () => {
         sentAt: '2026-07-16T11:59:50.500Z',
       })),
     }
-    const command = vi.fn(async () => {})
+    const command = vi.fn(() => Effect.void)
     const plugin = createTwilioOutboundPlugin({
       provider,
       store: () => store as never,
       now: () => new Date('2026-07-16T12:00:00.000Z'),
     })
-    const execute = await plugin(command)
+    const execute = await Effect.runPromise(
+      plugin(command) as Effect.Effect<ReactionExec<typeof effect>, unknown>,
+    )
 
-    await execute(effect, context)
+    await Effect.runPromise(execute(effect, context))
 
     expect(provider.send).not.toHaveBeenCalled()
     expect(store.markSent).toHaveBeenCalledWith(
@@ -97,11 +102,16 @@ describe('Twilio outbound delivery reconciliation', () => {
       now: () => new Date('2026-07-16T12:00:00.000Z'),
       reconciliationGraceMs: 60_000,
     })
-    const execute = await plugin(vi.fn(async () => {}))
-
-    await expect(execute(effect, context)).rejects.toBeInstanceOf(
-      TwilioDeliveryReconciliationPendingError,
+    const execute = await Effect.runPromise(
+      plugin(vi.fn(() => Effect.void)) as Effect.Effect<
+        ReactionExec<typeof effect>,
+        unknown
+      >,
     )
+
+    await expect(
+      Effect.runPromise(execute(effect, context)),
+    ).rejects.toBeInstanceOf(TwilioDeliveryReconciliationPendingError)
     expect(provider.send).not.toHaveBeenCalled()
   })
 })

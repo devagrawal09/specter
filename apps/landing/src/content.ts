@@ -109,9 +109,6 @@ export const reactionSource = `const todoCompletionCheer = todoCompletionCheerSp
       payload: z.object({ milestone: z.number().int().positive() }),
     }),
   )
-  .plugin(async (dispatch) => async (output, context) =>
-    dispatch(output, { idempotencyKey: context.deliveryId }),
-  )
   .store(sqliteSliceStore)
   .apply(todoAddedEvent, recordTodo)
   .apply(todoCompletionChangedEvent, async (event, db) => {

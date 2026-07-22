@@ -1,8 +1,9 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { createMemoryReactionOutboxStore } from './memory-store'
 import { createOutboxReactionPlugin } from './plugin'
-import { createDurableReactionScheduler } from './scheduler'
+import { createDurableReactionSchedulerService } from './scheduler'
 import {
   createReactionOutboxWorker,
   ReactionOutboxDrainFailure,
@@ -256,90 +257,126 @@ describe('Reaction outbox worker', () => {
   })
 })
 
-describe('durable Reaction scheduler compatibility', () => {
+describe('durable Reaction scheduler', () => {
   it('waits for core to request startup recovery', async () => {
-    const store = createMemoryReactionOutboxStore<{
-      kind: 'reaction-pass'
-    }>()
+    const store = createMemoryReactionOutboxStore<{ throughOrder: number }>()
     await store.enqueue({
       id: 'pending-pass',
       idempotencyKey: 'pending-pass',
-      payload: { kind: 'reaction-pass' },
+      payload: { throughOrder: 7 },
       requestedAt: new Date(0),
       availableAt: new Date(0),
     })
-    const run = vi.fn(async () => undefined)
-    const request = createDurableReactionScheduler(store, {
-      idFactory: () => 'startup-pass',
-      now: () => new Date(1),
-    })(run)
+    const contexts: unknown[] = []
 
     await Promise.resolve()
-    expect(run).not.toHaveBeenCalled()
+    expect(contexts).toEqual([])
 
-    await request()()
-    expect(run).toHaveBeenCalledTimes(2)
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const service = createDurableReactionSchedulerService(
+            store,
+            yield* Effect.scope,
+            { now: () => new Date(1) },
+          )
+          yield* service.recover((context) =>
+            Effect.sync(() => contexts.push(context)),
+          )
+        }),
+      ),
+    )
+    expect(contexts).toMatchObject([
+      { deliveryId: 'pending-pass', throughOrder: 7 },
+    ])
   })
 
-  it('settles the idle promise only after a queued pass succeeds', async () => {
-    const store = createMemoryReactionOutboxStore<{
-      kind: 'reaction-pass'
-    }>()
-    const run = vi.fn(async () => {})
-    const request = createDurableReactionScheduler(store, {
-      idFactory: () => 'pass-1',
-      now: () => new Date(0),
-    })(run)
+  it('durably accepts before returning a completion Effect', async () => {
+    const store = createMemoryReactionOutboxStore<{ throughOrder: number }>()
+    const contexts: unknown[] = []
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const service = createDurableReactionSchedulerService(
+            store,
+            yield* Effect.scope,
+            { now: () => new Date(0) },
+          )
+          const completion = yield* service.schedule(1, (context) =>
+            Effect.sync(() => contexts.push(context)),
+          )
+          const accepted = yield* Effect.promise(() =>
+            store.get('reaction-through-1'),
+          )
+          expect(accepted).toMatchObject({
+            id: 'reaction-through-1',
+            payload: { throughOrder: 1 },
+          })
+          yield* completion
+        }),
+      ),
+    )
 
-    await request()()
-
-    expect(run).toHaveBeenCalledTimes(1)
-    expect(run).toHaveBeenCalledWith({
-      deliveryId: 'pass-1',
-      scheduledAt: new Date(0).toISOString(),
-      attemptId: 'pass-1:attempt:1',
-      attemptNumber: 1,
+    expect(contexts).toEqual([
+      {
+        deliveryId: 'reaction-through-1',
+        throughOrder: 1,
+        scheduledAt: new Date(0).toISOString(),
+        attemptId: 'reaction-through-1:attempt:1',
+        attemptNumber: 1,
+      },
+    ])
+    expect(await store.get('reaction-through-1')).toMatchObject({
+      status: 'completed',
     })
-    expect(await store.get('pass-1')).toMatchObject({ status: 'completed' })
   })
 
   it('keeps the delivery ID stable while changing attempt metadata on retry', async () => {
-    const store = createMemoryReactionOutboxStore<{
-      kind: 'reaction-pass'
-    }>()
+    const store = createMemoryReactionOutboxStore<{ throughOrder: number }>()
     const contexts: Array<{
       deliveryId: string
+      throughOrder: number
       scheduledAt: string
       attemptId: string
       attemptNumber: number
     }> = []
-    const request = createDurableReactionScheduler(store, {
-      idFactory: () => 'pass-1',
-      maxAttempts: 2,
-      backoffMs: () => 0,
-      now: () => new Date(0),
-    })(async (context) => {
-      contexts.push(context)
-      if (context.attemptNumber === 1) throw new Error('temporary failure')
-    })
-
-    await request()()
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const service = createDurableReactionSchedulerService(
+            store,
+            yield* Effect.scope,
+            { now: () => new Date(0) },
+          )
+          const first = yield* service.schedule(1, (context) => {
+            contexts.push(context)
+            return Effect.fail('temporary failure')
+          })
+          yield* Effect.result(first)
+          yield* service.recover((context) =>
+            Effect.sync(() => contexts.push(context)),
+          )
+        }),
+      ),
+    )
 
     expect(contexts).toEqual([
       {
-        deliveryId: 'pass-1',
+        deliveryId: 'reaction-through-1',
+        throughOrder: 1,
         scheduledAt: new Date(0).toISOString(),
-        attemptId: 'pass-1:attempt:1',
+        attemptId: 'reaction-through-1:attempt:1',
         attemptNumber: 1,
       },
       {
-        deliveryId: 'pass-1',
+        deliveryId: 'reaction-through-1',
+        throughOrder: 1,
         scheduledAt: new Date(0).toISOString(),
-        attemptId: 'pass-1:attempt:2',
+        attemptId: 'reaction-through-1:attempt:2',
         attemptNumber: 2,
       },
     ])
-    expect(await store.get('pass-1')).toMatchObject({
+    expect(await store.get('reaction-through-1')).toMatchObject({
       status: 'completed',
       attemptCount: 2,
     })
@@ -350,20 +387,18 @@ describe('outbox Reaction Plugin', () => {
   it('deduplicates a retried Reaction by its stable delivery ID', async () => {
     const store = createMemoryReactionOutboxStore<{ message: string }>()
     const plugin = createOutboxReactionPlugin({ store })
-    const exec = await plugin(async () => {})
+    const exec = await Effect.runPromise(plugin(() => Effect.void))
     const context = {
       deliveryId: 'sendEmail:order-1:7',
+      throughOrder: 7,
       scheduledAt: '2026-07-16T00:00:00.000Z',
       attemptId: 'pass-1:attempt:1:sendEmail:7',
       attemptNumber: 1,
     }
 
-    expect(await exec({ message: 'hello' }, context)).toEqual({
-      jobId: context.deliveryId,
-      created: true,
-    })
-    expect(
-      await exec(
+    await Effect.runPromise(exec({ message: 'hello' }, context))
+    await Effect.runPromise(
+      exec(
         { message: 'hello' },
         {
           ...context,
@@ -371,7 +406,7 @@ describe('outbox Reaction Plugin', () => {
           attemptNumber: 2,
         },
       ),
-    ).toEqual({ jobId: context.deliveryId, created: false })
+    )
     expect(await store.list()).toMatchObject([
       {
         id: context.deliveryId,

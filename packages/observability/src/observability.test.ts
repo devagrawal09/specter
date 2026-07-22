@@ -1,13 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import type { EventLogAdapter, EventLogTransaction } from '@specter-ts/core'
-import {
-  createDurableReactionScheduler,
-  createMemoryReactionOutboxStore,
-} from '@specter-ts/reaction-outbox'
+import type { EventLogService } from '@specter-ts/core'
+import { Effect } from 'effect'
 
 import {
   createSpecterDevelopmentPanel,
-  createSpecterObserver,
   createInMemorySpecterObservability,
   createOutboxObservabilityListener,
   reportProjectionActivity,
@@ -105,65 +101,6 @@ describe('Specter operational observability', () => {
     })
   })
 
-  it('populates outbox panel detail through the documented scheduler wiring', async () => {
-    const recorder = createInMemorySpecterObservability()
-    const store = createMemoryReactionOutboxStore<{ kind: 'reaction-pass' }>()
-    const schedule = createDurableReactionScheduler(store, {
-      now: () => new Date(0),
-      idFactory: () => 'reaction-pass-1',
-      onTransition: createOutboxObservabilityListener(recorder),
-    })
-    const request = schedule(async () => undefined)
-
-    await request()()
-
-    expect(
-      createSpecterDevelopmentPanel(recorder).snapshot().outbox,
-    ).toMatchObject([
-      { jobId: 'reaction-pass-1', outcome: 'started' },
-      { jobId: 'reaction-pass-1', outcome: 'completed' },
-    ])
-  })
-
-  it('maps core runtime observations without allowing telemetry to affect execution', () => {
-    const recorder = createInMemorySpecterObservability()
-    const observe = createSpecterObserver(recorder)
-
-    observe({
-      type: 'command-committed',
-      commandType: 'addTodo',
-      version: 4,
-      eventCount: 1,
-      duplicate: false,
-    })
-    observe({
-      type: 'reaction-run-started',
-      reactionName: 'sendEmail',
-    })
-    observe({
-      type: 'reaction-run-failed',
-      reactionName: 'sendEmail',
-      durationMs: 12,
-      cause: new Error('SMTP unavailable'),
-    })
-    observe({ type: 'reaction-pass-completed', failureCount: 1 })
-
-    expect(recorder.snapshot()).toMatchObject([
-      { type: 'command.committed', commandType: 'addTodo', version: 4 },
-      {
-        type: 'reaction.run',
-        reactionName: 'sendEmail',
-        outcome: 'started',
-      },
-      {
-        type: 'reaction.run',
-        reactionName: 'sendEmail',
-        outcome: 'failed',
-        error: 'SMTP unavailable',
-      },
-    ])
-  })
-
   it('captures persisted Events through the Event Log wrapper once per commit', async () => {
     const recorder = createInMemorySpecterObservability()
     const commit = {
@@ -181,20 +118,16 @@ describe('Specter operational observability', () => {
       idempotencyKey: 'request-1',
       fingerprint: 'fingerprint-1',
     }
-    const transaction: EventLogTransaction = {
-      query: async () => [],
-      currentVersion: async () => 0,
-      findCommit: async () => undefined,
-      append: async () => commit,
-    }
-    const eventLog: EventLogAdapter = {
-      ...transaction,
-      transaction: (run) => run(transaction),
+    const eventLog: EventLogService = {
+      query: () => Effect.succeed([]),
+      currentVersion: Effect.succeed(0),
+      findCommit: () => Effect.succeed(undefined),
+      append: () => Effect.succeed(commit),
     }
 
     const observed = instrumentEventLog(eventLog, recorder)
-    await observed.transaction((scoped) =>
-      scoped.append(commit.events, {
+    await Effect.runPromise(
+      observed.append(commit.events, {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
       }),
@@ -208,43 +141,6 @@ describe('Specter operational observability', () => {
         events: [{ id: 'event-1', type: 'todo-added' }],
       },
     ])
-  })
-
-  it('derives panel cursor lag from the documented Event Log and app observers', async () => {
-    const recorder = createInMemorySpecterObservability()
-    const observe = createSpecterObserver(recorder)
-    await recorder.record({
-      type: 'events.persisted',
-      version: 4,
-      events: [
-        {
-          id: 'event-4',
-          order: 4,
-          type: 'unrelated-recorded',
-          payload: {},
-          recordedAt: new Date(0).toISOString(),
-        },
-      ],
-    })
-    observe({
-      type: 'slice-caught-up',
-      sliceName: 'todosQuery',
-      fromOrder: 0,
-      toOrder: 2,
-      eventCount: 2,
-    })
-
-    expect(createSpecterDevelopmentPanel(recorder).snapshot()).toMatchObject({
-      eventLogVersion: 4,
-      sliceCursors: [
-        {
-          sliceName: 'todosQuery',
-          lastAppliedOrder: 2,
-          eventLogVersion: 4,
-          lag: 2,
-        },
-      ],
-    })
   })
 
   it('renders a development panel for Events, cursor lag, subscriptions, Reactions, projections, and outbox attempts', async () => {

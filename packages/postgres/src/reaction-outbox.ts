@@ -7,6 +7,7 @@ import type {
   ReactionOutboxStore,
 } from '@specter-ts/reaction-outbox'
 import { ReactionOutboxLeaseLostError } from '@specter-ts/reaction-outbox'
+import { Effect } from 'effect'
 
 import {
   createPostgresDatabaseContext,
@@ -109,13 +110,23 @@ export function createPostgresReactionOutboxStore<TPayload>(
     if (result.rowCount !== 1) throw cause
   }
 
+  function runTransaction<A>(
+    run: (connection: PostgresConnection) => Promise<A>,
+  ): Promise<A> {
+    return Effect.runPromise(
+      context.transaction((connection) =>
+        Effect.promise(() => run(connection)),
+      ),
+    )
+  }
+
   return {
     enqueue(input: EnqueueReactionInput<TPayload>) {
       const payload = JSON.stringify(input.payload)
       if (payload === undefined) {
         throw new Error('Reaction outbox payload must be JSON-serializable')
       }
-      return context.transaction(
+      return runTransaction(
         async (connection): Promise<EnqueueReactionResult<TPayload>> => {
           const result = await connection.query(
             `INSERT INTO specter_reaction_outbox (
@@ -155,7 +166,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     claimNext(now, leaseExpiresAt) {
-      return context.transaction(async (connection) => {
+      return runTransaction(async (connection) => {
         const result = await connection.query(
           `SELECT * FROM specter_reaction_outbox
            WHERE status = 'pending' AND available_at <= $1
@@ -193,7 +204,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     complete(jobId, attemptId, completedAt) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -207,7 +218,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     reschedule(jobId, attemptId, availableAt, error) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -221,7 +232,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     deadLetter(jobId, attemptId, failedAt, error) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox
@@ -235,7 +246,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     requeueExpired(now) {
-      return context.transaction(async (connection) => {
+      return runTransaction(async (connection) => {
         const result = await connection.query(
           `UPDATE specter_reaction_outbox
            SET status = 'pending', available_at = $1,
@@ -251,7 +262,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     async nextWorkAt() {
-      const result = await context.connection().query<{ wake_at: unknown }>(
+      const result = await context.pool.query<{ wake_at: unknown }>(
         `SELECT MIN(wake_at) AS wake_at
            FROM (
              SELECT available_at AS wake_at
@@ -270,11 +281,11 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     get(jobId) {
-      return get(context.connection(), jobId)
+      return get(context.pool, jobId)
     },
 
     async list(status?: ReactionOutboxStatus) {
-      const result = await context.connection().query(
+      const result = await context.pool.query(
         `SELECT * FROM specter_reaction_outbox
          ${status ? 'WHERE status = $1' : ''}
          ORDER BY requested_at ASC, id ASC`,
@@ -284,7 +295,7 @@ export function createPostgresReactionOutboxStore<TPayload>(
     },
 
     retryDeadLetter(jobId, availableAt) {
-      return context.transaction((connection) =>
+      return runTransaction((connection) =>
         requireChanged(
           connection,
           `UPDATE specter_reaction_outbox

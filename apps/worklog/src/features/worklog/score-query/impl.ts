@@ -1,11 +1,11 @@
 import { z } from 'zod'
 
 import { pointAwardedEvent } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { PointAward } from '../model'
 import { scoreQuerySpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({ awards: [] as PointAward[] }))
+const store = defineWorklogMemoryStore(() => ({ awards: [] as PointAward[] }))
 const refSchema = z
   .object({ kind: z.enum(['journal', 'task', 'topic']), id: z.string() })
   .strict()

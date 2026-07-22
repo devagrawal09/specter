@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { simulationStore } from '../store'
 import { z } from 'zod'
 
 import {
@@ -28,51 +28,39 @@ import {
   workerSpawnedEvent,
 } from '../events'
 import { rejectCommand, runIdSchema } from '../shared'
-import {
-  clonePosition,
-  SPAWN_WORKER_COST,
-  type ColonyBenchSimulationState,
-} from '../state'
+import { clonePosition, SPAWN_WORKER_COST } from '../state'
 import { spawnWorkerSpec } from './spec'
 
-export function createSpawnWorker(
-  store: SliceStoreAdapter<ColonyBenchSimulationState>,
-) {
-  return spawnWorkerSpec
-    .inputSchema(runIdSchema.extend({ workerId: z.string() }))
-    .store(store)
-    .apply(simulationInitializedEvent, applySimulationInitialized)
-    .apply(workerMovedEvent, applyWorkerMoved)
-    .apply(workerHarvestedEvent, applyWorkerHarvested)
-    .apply(workerDepositedEvent, applyWorkerDeposited)
-    .apply(baseUpgradedEvent, applyBaseUpgraded)
-    .apply(workerSpawnedEvent, applyWorkerSpawned)
-    .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
-    .apply(roadCompletedEvent, applyRoadCompleted)
-    .apply(roadRepairedEvent, applyRoadRepaired)
-    .apply(commandRejectedEvent, applyCommandRejected)
-    .apply(tickAdvancedEvent, applyTickAdvanced)
-    .handle(async (command, state) => {
-      const world = state.worlds[command.runId]
-      if (!world)
-        return rejectCommand(command.runId, 'spawnWorker', 'world_missing')
-      if (world.base.energy < SPAWN_WORKER_COST) {
-        return rejectCommand(
-          command.runId,
-          'spawnWorker',
-          'base_energy_too_low',
-        )
-      }
-      if (world.workers[command.workerId]) {
-        return rejectCommand(command.runId, 'spawnWorker', 'worker_exists')
-      }
-      return [
-        workerSpawnedEvent.create({
-          runId: command.runId,
-          workerId: command.workerId,
-          cost: SPAWN_WORKER_COST,
-          position: clonePosition(world.base.position),
-        }),
-      ]
-    })
-}
+export const createSpawnWorker = spawnWorkerSpec
+  .inputSchema(runIdSchema.extend({ workerId: z.string() }))
+  .store(simulationStore)
+  .apply(simulationInitializedEvent, applySimulationInitialized)
+  .apply(workerMovedEvent, applyWorkerMoved)
+  .apply(workerHarvestedEvent, applyWorkerHarvested)
+  .apply(workerDepositedEvent, applyWorkerDeposited)
+  .apply(baseUpgradedEvent, applyBaseUpgraded)
+  .apply(workerSpawnedEvent, applyWorkerSpawned)
+  .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
+  .apply(roadCompletedEvent, applyRoadCompleted)
+  .apply(roadRepairedEvent, applyRoadRepaired)
+  .apply(commandRejectedEvent, applyCommandRejected)
+  .apply(tickAdvancedEvent, applyTickAdvanced)
+  .handle(async (command, state) => {
+    const world = state.worlds[command.runId]
+    if (!world)
+      return rejectCommand(command.runId, 'spawnWorker', 'world_missing')
+    if (world.base.energy < SPAWN_WORKER_COST) {
+      return rejectCommand(command.runId, 'spawnWorker', 'base_energy_too_low')
+    }
+    if (world.workers[command.workerId]) {
+      return rejectCommand(command.runId, 'spawnWorker', 'worker_exists')
+    }
+    return [
+      workerSpawnedEvent.create({
+        runId: command.runId,
+        workerId: command.workerId,
+        cost: SPAWN_WORKER_COST,
+        position: clonePosition(world.base.position),
+      }),
+    ]
+  })

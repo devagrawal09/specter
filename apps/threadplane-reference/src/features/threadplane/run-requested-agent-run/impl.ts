@@ -229,11 +229,6 @@ export function nextRunRequestedAgentRunCommand(
 
 const runRequestedAgentRun = runRequestedAgentRunSpec
   .outputSchema<RunRequestedAgentRunCommand>()
-  .plugin(async (dispatch) => async (payload, context) => {
-    await dispatch(payload as never, {
-      idempotencyKey: context.deliveryId,
-    })
-  })
   .store(
     defineMemorySliceStore<RunRequestedAgentRunState>(
       createRunRequestedAgentRunState,

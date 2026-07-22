@@ -21,8 +21,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@specter-ts/core": "workspace:*",
-    "@specter-ts/reaction-outbox": "workspace:*"
+    "@specter-ts/core": "workspace:*"
   },
   "peerDependencies": {
     "effect": "4.0.0-beta.78"

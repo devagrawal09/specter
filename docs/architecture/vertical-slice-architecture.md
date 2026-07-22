@@ -74,7 +74,8 @@ The Slice kind determines the completion stages:
 ```text
 Command:  inputSchema -> store -> apply* -> handle
 Query:    inputSchema -> outputSchema -> store -> apply* -> handle
-Reaction: outputSchema -> plugin -> store -> apply* -> handle
+Same-app Command Reaction: outputSchema -> store -> apply* -> handle
+Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle
 ```
 
 Calling `inputSchema<Type>()` or `outputSchema<Type>()` provides static typing

@@ -5,11 +5,11 @@ import {
   journalEntryArchiveChangedEvent,
   journalEntryEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { JournalEntry } from '../model'
 import { editJournalEntrySpec } from './spec'
 
-const store = createWorklogMemoryStore(() => ({
+const store = defineWorklogMemoryStore(() => ({
   journals: new Map<string, JournalEntry>(),
 }))
 

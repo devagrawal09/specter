@@ -2,7 +2,7 @@ import type { Client } from '@libsql/client'
 
 import { createSqliteDatabaseContext } from './database'
 import {
-  createSqliteEventLog,
+  createSqliteEventLogService,
   prepareSqliteEventLog,
   type SqliteEventLogOptions,
 } from './event-log'
@@ -29,7 +29,7 @@ export function createSpecterSqlitePersistence(
   options: Omit<SqliteEventLogOptions, 'context'> = {},
 ) {
   const context = createSqliteDatabaseContext(client)
-  const eventLog = createSqliteEventLog(client, { ...options, context })
+  const eventLog = createSqliteEventLogService(client, { ...options, context })
 
   return {
     context,

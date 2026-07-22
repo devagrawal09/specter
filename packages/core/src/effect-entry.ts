@@ -9,5 +9,6 @@ export type {
   SpecterEffectCommandExecution,
   SpecterEffectError,
   SpecterRuntimeService,
+  SpecterRuntimeRequirements,
   SpecterStoreRequirements,
 } from './effect/runtime'

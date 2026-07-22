@@ -1,4 +1,4 @@
-import type { Effect } from 'effect'
+import type { Context, Effect } from 'effect'
 
 /**
  * Runtime service contract supplied for a Slice's `.store(Context.Tag)`.
@@ -8,52 +8,57 @@ import type { Effect } from 'effect'
  * that visible cursors never move backwards. `run` may be retried by an
  * optimistic adapter, so apply handlers must remain free of external effects.
  */
-export type SliceStoreService<
-  TRead,
-  TWrite,
-  TError = never,
-> = {
-  readonly read: <A>(
+export type SliceStoreService<TRead, TWrite, TError = never> = {
+  readonly read: <A, E, R>(
     sliceName: string,
-    run: (state: TRead, cursor: number) => Promise<A>,
-  ) => Effect.Effect<A, TError>
-  readonly transaction: <A>(
+    run: (state: TRead, cursor: number) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, TError | E, R>
+  readonly transaction: <A, E, R>(
     sliceName: string,
     run: (
       write: TWrite,
       read: () => TRead,
       cursor: number,
-      publishCursor: (order: number) => Promise<void>,
-    ) => Promise<A>,
-  ) => Effect.Effect<A, TError>
+      publishCursor: (order: number) => Effect.Effect<void, TError>,
+    ) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, TError | E, R>
 }
 
 /** Minimal structural surface implemented by Effect `Context.Tag` values. */
 export type SliceStoreTag<
   TIdentifier = unknown,
-  TService extends SliceStoreService<unknown, unknown, unknown> =
-    SliceStoreService<unknown, unknown, unknown>,
-> = {
-  readonly Service: TService
-  readonly Identifier: TIdentifier
-  readonly key: string
-  readonly '~effect/Context/Service': '~effect/Context/Service'
-}
+  TService extends SliceStoreService<
+    unknown,
+    unknown,
+    unknown
+  > = SliceStoreService<unknown, unknown, unknown>,
+> = Context.Key<TIdentifier, TService>
 
 export type SliceStoreRead<TStore> =
-  TStore extends SliceStoreTag<unknown, SliceStoreService<infer TRead, any, any>>
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer TRead, infer _TWrite, infer _TError>
+  >
     ? TRead
     : never
 
 export type SliceStoreWrite<TStore> =
-  TStore extends SliceStoreTag<unknown, SliceStoreService<any, infer TWrite, any>>
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer _TRead, infer TWrite, infer _TError>
+  >
     ? TWrite
     : never
 
 export type SliceStoreError<TStore> =
-  TStore extends SliceStoreTag<unknown, SliceStoreService<any, any, infer TError>>
+  TStore extends SliceStoreTag<
+    unknown,
+    SliceStoreService<infer _TRead, infer _TWrite, infer TError>
+  >
     ? TError
     : never
 
 export type SliceStoreRequirement<TStore> =
-  TStore extends SliceStoreTag<infer TIdentifier, any> ? TIdentifier : never
+  TStore extends SliceStoreTag<infer TIdentifier, infer _TService>
+    ? TIdentifier
+    : never

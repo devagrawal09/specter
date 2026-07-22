@@ -2,27 +2,25 @@ import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { createClient } from '@libsql/client/sqlite3'
-import type { ReactionScheduler } from '@specter-ts/core'
+import { EventLog } from '@specter-ts/core'
 import {
-  createDurableReactionScheduler,
+  createDurableReactionSchedulerLayer,
   type ReactionPass,
 } from '@specter-ts/reaction-outbox'
 import {
   createSqliteDatabaseContext,
   createSqliteReactionOutboxStore,
+  createSpecterSqlitePersistence,
   prepareSqliteReactionOutbox,
+  prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
+import { Layer } from 'effect'
 
+import { threadplaneMemoryStoresLayer } from '../testing/memory-slice-store'
 import {
   createSqliteReactionTicketStore,
   prepareSqliteReactionTicketStore,
 } from '../transport/specter-reaction-tickets-sqlite.server.ts'
-
-import {
-  hasSqliteDbBinding,
-  prepareSpecterSqlite,
-  runWithSqliteDb,
-} from './specter-sqlite'
 
 const sqlitePath =
   process.env.THREADPLANE_REFERENCE_DB_PATH ?? './data/threadplane-reference.db'
@@ -32,27 +30,13 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 
 const sqlite = createClient({ url: sqliteUrl })
 const operationalSqlite = createClient({ url: sqliteUrl })
-let prepared: Promise<void> | undefined
 const operationalContext = createSqliteDatabaseContext(operationalSqlite)
-const reactionOutbox = createSqliteReactionOutboxStore<ReactionPass>(
-  operationalSqlite,
-  { context: operationalContext },
-)
-const durableReactionScheduler = createDurableReactionScheduler(reactionOutbox)
+let prepared: Promise<void> | undefined
 
 export const threadplaneReactionTickets = createSqliteReactionTicketStore(
   operationalSqlite,
-  {
-    context: operationalContext,
-  },
+  { context: operationalContext },
 )
-
-export const threadplaneProductionReactionScheduler: ReactionScheduler = (
-  run,
-) =>
-  durableReactionScheduler((context) =>
-    runWithThreadplaneReferenceDb(() => run(context)),
-  )
 
 export async function prepareThreadplaneReferenceDb() {
   prepared ??= (async () => {
@@ -65,10 +49,15 @@ export async function prepareThreadplaneReferenceDb() {
   await prepared
 }
 
-export async function runWithThreadplaneReferenceDb<T>(run: () => Promise<T>) {
-  if (hasSqliteDbBinding()) return run()
-
-  await prepareThreadplaneReferenceDb()
-
-  return runWithSqliteDb(sqlite, run)
+export function threadplaneDependenciesLayer() {
+  const persistence = createSpecterSqlitePersistence(sqlite)
+  return Layer.mergeAll(
+    Layer.succeed(EventLog, persistence.eventLog),
+    createDurableReactionSchedulerLayer(
+      createSqliteReactionOutboxStore<ReactionPass>(operationalSqlite, {
+        context: operationalContext,
+      }),
+    ),
+    threadplaneMemoryStoresLayer(),
+  )
 }
