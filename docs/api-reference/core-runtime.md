@@ -2,10 +2,10 @@
 
 **Import:** `@specter-ts/core`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 Slice specification builders live in
-`@specter-ts/core/spec`; test helpers live in `@specter-ts/core/testing`.
+`@specter-ts/spec`; test helpers live in `@specter-ts/core/testing`.
 
 ## Purpose
 
@@ -18,7 +18,7 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
-| `createSpecterApp(config)` | Asynchronously validates a complete app configuration and returns a typed `SpecterApp`. |
+| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
 | `SpecterError` | Base class for structured runtime errors with a `code`. |
@@ -32,7 +32,7 @@ network transport and no application database schema.
 | `SpecterIdempotencyConflictError` | An idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
-| `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or scheduler failure crossed the runtime boundary. |
+| `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
 | `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices. |
 
 `specterErrorCodes` contains:
@@ -76,17 +76,17 @@ network transport and no application database schema.
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
 | `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
 | `CommandDispatch` | Reaction Plugin callback for dispatching a Command. |
-| `ReactionExec` | Effect executor called with a result and retry-aware delivery context. |
-| `ReactionPlugin` | Async factory that receives `CommandDispatch` and returns a `ReactionExec`. |
+| `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
+| `ReactionPlugin` | Optional Effect factory for custom/external output; same-app `CommandEnvelope` output uses default dispatcher. |
 | `ConformanceDiagnostic` | Structured construction diagnostic with code, location, and remediation fields. |
 
 ## App and runtime types
 
 | Export | Purpose |
 | --- | --- |
-| `SpecterAppConfig` | Base configuration: Events, Event Log, scheduler, Slices, and optional observer. |
+| `SpecterAppConfig` | Pure configuration containing Events and Slices. |
 | `SpecterAppConfigOf<TApp>` | Infers the configuration carried by a typed app. |
-| `SpecterApp<TConfig>` | Typed `command`, `query`, and `subscribe` operations. |
+| `SpecterApp<TConfig>` | Typed `command`, `query`, `subscribe`, and idempotent `close` operations. |
 | `SpecterCommandEnvelope<TConfig>` | Union of all registered Command envelopes. |
 | `SpecterQueryEnvelope<TConfig>` | Union of all registered Query envelopes. |
 | `SpecterCommandType<TConfig>` | Union of registered Command names. |
@@ -95,31 +95,38 @@ network transport and no application database schema.
 | `CommandExecutionOptions` | Alias of `CommandDispatchOptions` for `app.command`. |
 | `CommandExecution` | Committed Events, resulting version, duplicate flag, and Reaction completion Promise. |
 | `QuerySubscriptionOptions` | Optional cancellation `AbortSignal`. |
-| `SpecterObservation` | Core observation union for projection, commit, subscription, and Reaction lifecycle. |
-| `SpecterObserver` | Best-effort callback receiving `SpecterObservation`. |
 | `SpecterOperationKind` | `'command' | 'query' | 'reaction'`. |
 | `SpecterErrorCode` | Union of values in `specterErrorCodes`. |
 | `ReactionRunFailureDetail` | Reaction Slice name and cause for one failed run. |
 
 ## Construction and operation order
 
-`createSpecterApp(...)` returns a Promise because it validates the Event
-catalog, Scenarios, schemas, apply coverage, and selected implementations before
-exposing the app. Await it exactly once during application wiring.
+`createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
+schemas, apply coverage, and selected implementations before exposing the app.
+`dependencies` is an Effect Layer providing `EventLog` and every Store Tag
+named by registered Slices.
+
+When Reactions are registered, construction catches each Reaction cursor up
+through current Event Log version. This recovers commits left unfinished by a
+previous process without unrelated Command. Startup Reaction failure rejects
+construction.
 
 ```ts
-import { createSpecterApp } from '@specter-ts/core'
-import {
-  createImmediateReactionScheduler,
-  createMemoryEventLog,
-} from '@specter-ts/memory'
+import { EventLog, createSpecterApp } from '@specter-ts/core'
+import { createMemoryEventLogLayer } from '@specter-ts/memory'
+import { Layer } from 'effect'
 
-const app = await createSpecterApp({
+const config = {
   events: todoEvents,
-  eventLog: createMemoryEventLog(),
-  schedule: createImmediateReactionScheduler(),
   slices: todoSlices,
-})
+} as const
+
+const dependencies = Layer.mergeAll(
+  createMemoryEventLogLayer(),
+  TodosStoreLive,
+)
+
+const app = await createSpecterApp(config, dependencies)
 
 const execution = await app.command(
   {
@@ -131,7 +138,38 @@ const execution = await app.command(
 
 // The Event commit happened before app.command resolved.
 await execution.reactions
+await app.close()
 ```
+
+Command input schemas run before idempotency fingerprinting. Specter stores a
+versioned `v2:` fingerprint of the canonical decoded payload and passes that
+same decoded value to the handler.
+
+## Effect runtime
+
+Import Effect integration from `@specter-ts/core/effect`. Specifications remain
+Effect-free.
+
+```ts
+import { createSpecterAppLayer, SpecterRuntime } from '@specter-ts/core/effect'
+import { Effect } from 'effect'
+
+const SpecterLive = createSpecterAppLayer(todoConfig).pipe(
+  Layer.provideMerge(TodoDependencies),
+)
+
+const program = Effect.gen(function* () {
+  const app = yield* SpecterRuntime
+  return yield* app.command({ type: 'addTodo', payload })
+})
+```
+
+`makeSpecterRuntime(config)` is native interpreter and exposes exact Store,
+Event Log, Scope, and typed failure requirements. Slices keep plain
+async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
+Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
+Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is
+explicit Promise boundary used by `createSpecterApp`.
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent

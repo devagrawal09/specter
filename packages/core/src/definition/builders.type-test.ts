@@ -1,14 +1,17 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import { Context } from 'effect'
 
-import type { SliceStoreAdapter } from '../adapters'
+import type { SliceStoreService } from '../adapters'
 import {
   type CommandInputOf,
   createCommandSlice,
   createEventDefinition,
   createQuerySlice,
+  createReactionSlice,
   event,
   type QueryInputOf,
   type QueryOutputOf,
+  type ReactionPlugin,
 } from './index'
 
 type Equal<TLeft, TRight> =
@@ -29,9 +32,17 @@ function schema<TInput, TOutput>(
   }
 }
 
-function store<TState>(): SliceStoreAdapter<TState> {
-  throw new Error('type test only')
-}
+type AmountState = { total: number }
+class AmountStore extends Context.Service<
+  AmountStore,
+  SliceStoreService<Readonly<AmountState>, AmountState>
+>()('type-test/AmountStore') {}
+
+type QueryState = { amount: number }
+class QueryStore extends Context.Service<
+  QueryStore,
+  SliceStoreService<Readonly<QueryState>, QueryState>
+>()('type-test/QueryStore') {}
 
 const commandStart = createCommandSlice('recordAmount')
 // @ts-expect-error A description is required before scenarios.
@@ -59,7 +70,9 @@ const commandStoreStep = commandSpec.inputSchema(
 )
 // @ts-expect-error A store is required before apply or handle.
 commandStoreStep.handle
-const commandApplyStep = commandStoreStep.store(store<{ total: number }>())
+// @ts-expect-error eager must be boolean.
+commandStoreStep.store(AmountStore, { eager: 'yes' })
+const commandApplyStep = commandStoreStep.store(AmountStore)
 const commandImplementation = commandApplyStep
   .apply(amountRecorded, async (applied, state) => {
     type _EventType = Expect<Equal<typeof applied.type, 'amount-recorded'>>
@@ -106,7 +119,7 @@ const queryImplementation = queryOutputStep
       label: `Amount: ${result.amount}`,
     })),
   )
-  .store(store<{ amount: number }>())
+  .store(QueryStore)
   .apply(amountRecorded, async (applied, state) => {
     state.amount = applied.payload.amount
   })
@@ -132,3 +145,46 @@ export type QueryPublicInputCheck = Expect<
 export type QueryPublicOutputCheck = Expect<
   Equal<QueryOutputOf<typeof queryImplementation>, { label: string }>
 >
+
+const defaultCommandReaction = createReactionSlice('repeatAmount')
+  .description('Dispatches one same-app Command.')
+  .scenarios({
+    description: 'Repeats one amount.',
+    given: [event('amount-recorded', { amount: 41 })],
+    expect: [{ type: 'recordAmount', payload: { text: '41' } }],
+  })
+  .outputSchema<{
+    type: 'recordAmount'
+    payload: { text: string }
+  }>()
+  .store(QueryStore)
+  .apply(amountRecorded, async (applied, state) => {
+    state.amount = applied.payload.amount
+  })
+  .handle(async (state) => ({
+    type: 'recordAmount',
+    payload: { text: String(state.amount) },
+  }))
+
+export type DefaultReactionPluginCheck = Expect<
+  Equal<
+    typeof defaultCommandReaction.plugin,
+    | ReactionPlugin<{
+        type: 'recordAmount'
+        payload: { text: string }
+      }>
+    | undefined
+  >
+>
+
+const externalReactionStep = createReactionSlice('notifyAmount')
+  .description('Produces one external effect.')
+  .scenarios({
+    description: 'Produces one notification.',
+    given: [event('amount-recorded', { amount: 41 })],
+    expect: ['Amount: 41'],
+  })
+  .outputSchema<string>()
+
+// @ts-expect-error Non-Command output requires an explicit Plugin.
+externalReactionStep.store

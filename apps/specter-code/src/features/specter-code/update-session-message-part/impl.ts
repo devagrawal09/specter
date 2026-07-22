@@ -1,10 +1,11 @@
-import updateSessionMessagePartSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionMessagePartUpdatedEvent } from '../events'
 
-const updateSessionMessagePart = updateSessionMessagePartSpec
+const updateSessionMessagePart = implementCommand(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),
@@ -13,7 +14,7 @@ const updateSessionMessagePart = updateSessionMessagePartSpec
       text: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const content = command.text.trim()

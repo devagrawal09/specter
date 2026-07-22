@@ -107,13 +107,12 @@ type RuntimeObservation struct {
 	ParentOperationIDs   []string         `json:"parentOperationIds,omitempty"`
 	TriggeringEventIDs   []string         `json:"triggeringEventIds,omitempty"`
 	TriggeringEventOrder *EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string           `json:"reactionPassId,omitempty"`
 	DeliveryID           string           `json:"deliveryId,omitempty"`
-	AttemptID            string           `json:"attemptId,omitempty"`
 	Outcome              string           `json:"outcome,omitempty"`
 	CommandType          string           `json:"commandType,omitempty"`
 	QueryType            string           `json:"queryType,omitempty"`
 	Slice                string           `json:"slice,omitempty"`
+	SpecificationDigest  string           `json:"specificationDigest,omitempty"`
 	Reaction             string           `json:"reaction,omitempty"`
 	Events               []EventReference `json:"events,omitempty"`
 	Cursor               SafeInteger      `json:"cursor,omitempty"`
@@ -200,6 +199,23 @@ type ObservationAcknowledgement struct {
 	RejectedObservationIDs []string    `json:"rejectedObservationIds,omitempty"`
 }
 
+type PublishedSpecification struct {
+	Digest   string          `json:"digest"`
+	Document json.RawMessage `json:"document"`
+}
+
+type SpecificationPublication struct {
+	Envelope
+	Source         RuntimeSource            `json:"source"`
+	Specifications []PublishedSpecification `json:"specifications"`
+}
+
+type SpecificationAcknowledgement struct {
+	Envelope
+	AcceptedDigests []string `json:"acceptedDigests"`
+	RejectedDigests []string `json:"rejectedDigests,omitempty"`
+}
+
 // ObservationFromRuntime is the single explicit adapter from Go runtime facts
 // to the language-neutral wire DTO. Caller-owned metadata is snapshotted here.
 func ObservationFromRuntime(observation specter.Observation, source RuntimeSource, sequence int64) RuntimeObservation {
@@ -222,9 +238,10 @@ func ObservationFromRuntime(observation specter.Observation, source RuntimeSourc
 		ObservationID: observation.ObservationID, Sequence: SafeInteger(sequence), ObservedAt: observation.ObservedAt,
 		Source: source, Kind: observation.Kind, OperationID: observation.OperationID, CorrelationID: observation.CorrelationID,
 		ParentOperationIDs: append([]string(nil), observation.ParentOperationIDs...), TriggeringEventIDs: append([]string(nil), observation.TriggeringEventIDs...),
-		ReactionPassID: observation.ReactionPassID, DeliveryID: observation.DeliveryID, AttemptID: observation.AttemptID,
-		Outcome: observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
-		Reaction: observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
+		DeliveryID: observation.DeliveryID,
+		Outcome:    observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
+		SpecificationDigest: observation.SpecificationDigest,
+		Reaction:            observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
 		Attributes: attributes,
 	}
 	if observation.TriggeringEventOrder != nil {

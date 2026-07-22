@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const observation = {
   kind: 'query.failed',
@@ -29,3 +29,5 @@ export const runtimeActivitySpec = createQuerySlice('runtimeActivity')
     },
     expect: [{ ...observation, collectorOrder: 1 }],
   })
+
+export default runtimeActivitySpec

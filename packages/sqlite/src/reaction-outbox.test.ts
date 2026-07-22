@@ -6,6 +6,7 @@ import {
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
@@ -45,32 +46,61 @@ describe('SQLite Reaction outbox', () => {
       requestedAt: new Date(0),
       availableAt: new Date(0),
     }
-    await store.enqueue(input)
+    await Effect.runPromise(store.enqueue(input))
     const restarted = createSqliteReactionOutboxStore<{ task: string }>(client)
-    const duplicate = await restarted.enqueue({ ...input, id: 'job-2' })
+    const duplicate = await Effect.runPromise(
+      restarted.enqueue({ ...input, id: 'job-2' }),
+    )
 
     expect(duplicate.created).toBe(false)
     expect(duplicate.job).toMatchObject({ id: 'job-1', status: 'pending' })
   })
 
+  it('supports custom payload codecs', async () => {
+    const { client } = await setup()
+    const store = createSqliteReactionOutboxStore<{ value: bigint }>(client, {
+      codec: {
+        encode: (payload) => payload.value.toString(),
+        decode: (payload) => ({ value: BigInt(payload) }),
+      },
+    })
+    await Effect.runPromise(
+      store.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'job-1',
+        payload: { value: 42n },
+        requestedAt: new Date(0),
+        availableAt: new Date(0),
+      }),
+    )
+
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
+      payload: { value: 42n },
+    })
+  })
+
   it('atomically claims one job and requeues expired attempt leases', async () => {
     const { store } = await setup()
-    await store.enqueue({
-      id: 'job-1',
-      idempotencyKey: 'job-1',
-      payload: { task: 'work' },
-      requestedAt: new Date(0),
-      availableAt: new Date(0),
-    })
+    await Effect.runPromise(
+      store.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'job-1',
+        payload: { task: 'work' },
+        requestedAt: new Date(0),
+        availableAt: new Date(0),
+      }),
+    )
 
     const [first, second] = await Promise.all([
-      store.claimNext(new Date(0), new Date(10)),
-      store.claimNext(new Date(0), new Date(10)),
+      Effect.runPromise(store.claimNext(new Date(0), new Date(10))),
+      Effect.runPromise(store.claimNext(new Date(0), new Date(10))),
     ])
 
     expect([first, second].filter(Boolean)).toHaveLength(1)
-    expect(await store.requeueExpired(new Date(10))).toBe(1)
-    expect(await store.claimNext(new Date(10), new Date(20))).toMatchObject({
+    expect(await Effect.runPromise(store.requeueExpired(new Date(10)))).toBe(1)
+    expect(
+      await Effect.runPromise(store.claimNext(new Date(10), new Date(20))),
+    ).toMatchObject({
       id: 'job-1',
       activeAttemptId: 'job-1:attempt:2',
     })
@@ -92,13 +122,13 @@ describe('SQLite Reaction outbox', () => {
     await expect(worker.drain()).rejects.toBeInstanceOf(
       ReactionOutboxDrainFailure,
     )
-    expect(await store.list('dead-letter')).toHaveLength(1)
+    expect(await Effect.runPromise(store.list('dead-letter'))).toHaveLength(1)
 
     succeeds = true
     await worker.retryDeadLetter('job-1', new Date(0))
     await worker.drain()
 
-    expect(await store.get('job-1')).toMatchObject({
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
       status: 'completed',
       attemptCount: 2,
     })

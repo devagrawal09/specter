@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "TypeScript framework for vertically sliced event-sourced applications.",
   "type": "module",
   "license": "MIT",
@@ -21,10 +21,10 @@
       "import": "./dist/testing.js",
       "default": "./dist/testing.js"
     },
-    "./spec": {
-      "types": "./dist/spec-entry.d.ts",
-      "import": "./dist/spec.js",
-      "default": "./dist/spec.js"
+    "./effect": {
+      "types": "./dist/effect-entry.d.ts",
+      "import": "./dist/effect.js",
+      "default": "./dist/effect.js"
     }
   },
   "scripts": {
@@ -33,9 +33,11 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@specter-ts/spec": "workspace:*",
     "@standard-schema/spec": "^1.1.0"
   },
   "peerDependencies": {
+    "effect": "4.0.0-beta.78",
     "vitest": "^4.1.5"
   },
   "peerDependenciesMeta": {
@@ -45,6 +47,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

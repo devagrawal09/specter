@@ -1,4 +1,4 @@
-import type { SliceStoreAdapter } from '@specter-ts/core'
+import { simulationStore } from '../store'
 
 import {
   applyBaseUpgraded,
@@ -32,46 +32,42 @@ import {
   rejectCommand,
   stepToward,
 } from '../shared'
-import { clonePosition, type ColonyBenchSimulationState } from '../state'
-import { moveWorkerSpec } from './spec'
-
-export function createMoveWorker(
-  store: SliceStoreAdapter<ColonyBenchSimulationState>,
-) {
-  return moveWorkerSpec
-    .inputSchema(moveWorkerSchema)
-    .store(store)
-    .apply(simulationInitializedEvent, applySimulationInitialized)
-    .apply(workerMovedEvent, applyWorkerMoved)
-    .apply(workerHarvestedEvent, applyWorkerHarvested)
-    .apply(workerDepositedEvent, applyWorkerDeposited)
-    .apply(baseUpgradedEvent, applyBaseUpgraded)
-    .apply(workerSpawnedEvent, applyWorkerSpawned)
-    .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
-    .apply(roadCompletedEvent, applyRoadCompleted)
-    .apply(roadRepairedEvent, applyRoadRepaired)
-    .apply(commandRejectedEvent, applyCommandRejected)
-    .apply(tickAdvancedEvent, applyTickAdvanced)
-    .handle(async (command, state) => {
-      const world = state.worlds[command.runId]
-      if (!world)
-        return rejectCommand(command.runId, 'moveWorker', 'world_missing')
-      const worker = world.workers[command.workerId]
-      if (!worker)
-        return rejectCommand(command.runId, 'moveWorker', 'worker_missing')
-      const from = clonePosition(worker.position)
-      const to = stepToward(from, command.target)
-      if (isWallTerrain(world.terrain, to)) {
-        return rejectCommand(command.runId, 'moveWorker', 'terrain_wall')
-      }
-      return [
-        workerMovedEvent.create({
-          runId: command.runId,
-          workerId: command.workerId,
-          from,
-          to,
-          target: command.target,
-        }),
-      ]
-    })
-}
+import { clonePosition } from '../state'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+export const createMoveWorker = implementCommand(specification)
+  .inputSchema(moveWorkerSchema)
+  .store(simulationStore)
+  .apply(simulationInitializedEvent, applySimulationInitialized)
+  .apply(workerMovedEvent, applyWorkerMoved)
+  .apply(workerHarvestedEvent, applyWorkerHarvested)
+  .apply(workerDepositedEvent, applyWorkerDeposited)
+  .apply(baseUpgradedEvent, applyBaseUpgraded)
+  .apply(workerSpawnedEvent, applyWorkerSpawned)
+  .apply(constructionSiteBuiltEvent, applyConstructionSiteBuilt)
+  .apply(roadCompletedEvent, applyRoadCompleted)
+  .apply(roadRepairedEvent, applyRoadRepaired)
+  .apply(commandRejectedEvent, applyCommandRejected)
+  .apply(tickAdvancedEvent, applyTickAdvanced)
+  .handle(async (command, state) => {
+    const world = state.worlds[command.runId]
+    if (!world)
+      return rejectCommand(command.runId, 'moveWorker', 'world_missing')
+    const worker = world.workers[command.workerId]
+    if (!worker)
+      return rejectCommand(command.runId, 'moveWorker', 'worker_missing')
+    const from = clonePosition(worker.position)
+    const to = stepToward(from, command.target)
+    if (isWallTerrain(world.terrain, to)) {
+      return rejectCommand(command.runId, 'moveWorker', 'terrain_wall')
+    }
+    return [
+      workerMovedEvent.create({
+        runId: command.runId,
+        workerId: command.workerId,
+        from,
+        to,
+        target: command.target,
+      }),
+    ]
+  })

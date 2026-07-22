@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const frame = {
   runId: 'run-1',
@@ -30,3 +30,5 @@ export const recordRunFrameSpec = createCommandSlice('recordRunFrame')
       reject: { reason: 'Run not found: missing-run' },
     },
   )
+
+export default recordRunFrameSpec

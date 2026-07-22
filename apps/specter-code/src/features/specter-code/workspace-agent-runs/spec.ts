@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const workspaceAgentRunsSpec = createQuerySlice('workspaceAgentRuns')
   .description('Lists Agent Runs for a workspace with their latest status.')

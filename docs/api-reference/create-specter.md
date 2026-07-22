@@ -1,6 +1,6 @@
 # `create-specter`
 
-**Status:** The commands and generated files below describe the Specter 0.3
+**Status:** The commands and generated files below describe the Specter 0.4
 main-branch preview. npm currently serves stable 0.2.1, whose generated project
 and API differ from this preview.
 
@@ -16,7 +16,7 @@ The stable npm 0.2.1 initializer is available as:
 npm create specter@latest my-app -- --install
 ```
 
-Use the [main-branch preview setup](../getting-started.md) to explore the 0.3
+Use the [main-branch preview setup](../getting-started.md) to explore the 0.4
 API today. After building the repository, its preview CLI executable is
 `packages/create-specter/dist/index.js`.
 
@@ -90,45 +90,10 @@ Generated templates contain tracer names and `TODO` markers. Replace them with
 domain Events, exact Scenarios, runtime schemas, projection logic, and handlers
 before treating the Slice as implemented.
 
-## Generate a persistent recovery harness
-
-```sh
-SPECTER_CHECKOUT=/absolute/path/to/specter
-node "$SPECTER_CHECKOUT/packages/create-specter/dist/index.js" \
-  generate persistent-harness --dry-run
-node "$SPECTER_CHECKOUT/packages/create-specter/dist/index.js" \
-  generate persistent-harness
-```
-
-```text
-create-specter generate persistent-harness
-  [--directory <directory>]
-  [--dry-run]
-  [--force]
-```
-
-| Option | Default | Behavior |
-| --- | --- | --- |
-| `--directory` | `src/testing/persistence` | Relative output directory. Absolute and parent-traversing paths are rejected. |
-| `--dry-run` | off | Prints the four planned files without writing. |
-| `--force` | off | Replaces existing generated harness files. |
-
-The generated harness contains:
-
-- `persistent-harness.server.ts` with `restart()`, `replay()`, `reset()`,
-  Reaction drain/retry operations, and a project `createApp(runtime)` seam;
-- `failure-injection.ts` with wired Event append, projection, cursor, and
-  Reaction-attempt failure points;
-- `persistent-harness.test.ts` with executable restart and recovery coverage;
-- `README.md` with project integration guidance.
-
-Use an on-disk temporary SQLite database and the real app registry. Supply a
-project projection reset callback when replay must clear app-owned tables.
-
 ## Generator behavior and constraints
 
-- `generate --help`, `generate slice --help`, and
-  `generate persistent-harness --help` print generator usage without writing.
+- `generate --help` and `generate slice --help` print generator usage without
+  writing.
 - Unknown options, duplicate options, missing option values, extra positional
   arguments, invalid names, and unsafe paths fail explicitly.
 - Slice names must be lower camel case; feature names must be kebab-case.

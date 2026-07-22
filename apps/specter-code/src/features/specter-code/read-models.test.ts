@@ -5,11 +5,11 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import {
+  createSpecterCodeEventLogService,
   prepareSpecterSqlite,
-  runWithSqliteDb,
-  setSpecterSqliteEventProjector,
-  sqliteEventLog,
 } from '../../db/specter-sqlite'
+import type { EventLogService } from '@specter-ts/core'
+import { Effect } from 'effect'
 import { projectSpecterCodeEvent } from './adapters/read-models'
 import {
   sessionCreatedEvent,
@@ -22,24 +22,24 @@ import {
 
 let tempDir: string
 let db: Client
+let eventLog: EventLogService
 
 beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), 'specter-code-read-models-'))
   db = createClient({ url: `file:${join(tempDir, 'specter-code.db')}` })
   await prepareSpecterSqlite(db)
-  setSpecterSqliteEventProjector(projectSpecterCodeEvent)
+  eventLog = createSpecterCodeEventLogService(db, projectSpecterCodeEvent)
 })
 
 afterEach(async () => {
-  setSpecterSqliteEventProjector(undefined)
   db.close()
   await rm(tempDir, { recursive: true, force: true })
 })
 
 describe('Specter Code table-backed read model projection', () => {
   it('projects durable sessions, user messages, and approval decisions from appended events', async () => {
-    await runWithSqliteDb(db, async () => {
-      await sqliteEventLog.append([
+    await Effect.runPromise(
+      eventLog.append([
         sessionCreatedEvent.create({
           sessionId: 'session-read-model-1',
           workspaceId: 'workspace-read-model-1',
@@ -84,8 +84,8 @@ describe('Specter Code table-backed read model projection', () => {
           action: 'allow',
           repliedBy: { userId: 'user-1', displayName: 'Ada Lovelace' },
         }),
-      ])
-    })
+      ]),
+    )
 
     const sessionRows = await db.execute({
       sql: 'SELECT id, workspace_id, title, agent_id, provider_id, model_id, status FROM specter_code_sessions',

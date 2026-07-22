@@ -14,12 +14,13 @@ src/features/todos/add-todo/
 └── impl.ts   # schemas, state, apply handlers, and handler: how
 ```
 
-`spec.ts` exports a named `<sliceName>Spec`. It defines only the Slice name,
+`spec.ts` default-exports `<sliceName>Spec`. It defines only the Slice name,
 description, and Scenarios, and imports builders and `event(...)` from
-`@specter-ts/core/spec`.
+`@specter-ts/spec`.
 
-`impl.ts` imports that specification and exports the named `<sliceName>` Slice
-Implementation. It completes the staged builder with runtime schemas, a private
+`specter-spec export` writes the portable contract to adjacent `spec.json`.
+`impl.ts` imports only that JSON, starts the matching kind-specific implementation
+builder, and exports the named `<sliceName>` Slice Implementation. It completes the staged builder with runtime schemas, a private
 Slice Store, zero or more typed Event apply handlers, and the final handler. A
 Reaction also supplies a Reaction Plugin.
 
@@ -74,7 +75,8 @@ The Slice kind determines the completion stages:
 ```text
 Command:  inputSchema -> store -> apply* -> handle
 Query:    inputSchema -> outputSchema -> store -> apply* -> handle
-Reaction: outputSchema -> plugin -> store -> apply* -> handle
+Same-app Command Reaction: outputSchema -> store -> apply* -> handle
+Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle
 ```
 
 Calling `inputSchema<Type>()` or `outputSchema<Type>()` provides static typing
@@ -101,4 +103,4 @@ transformation. Use runtime schemas at untrusted transport boundaries.
 - [CQRS](cqrs.md)
 - [Event sourcing](event-sourcing.md)
 - [Writing specifications](../specifications/writing-specifications.md)
-- [`@specter-ts/core/spec` API](../api-reference/core-spec.md)
+- [`@specter-ts/spec` API](../api-reference/spec.md)

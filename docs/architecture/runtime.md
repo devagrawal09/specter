@@ -1,9 +1,9 @@
 # Specter Runtime
 
-The Specter runtime assembles Event Definitions, one completed implementation
-per Slice, an Event Log, and a Reaction scheduler into a typed Specter App. It
-is asynchronous because construction runs executable conformance checks before
-returning the app.
+Specter runtime assembles Event Definitions and one completed implementation
+per Slice into typed app. Effect Layer supplies Event Log, Reaction scheduler,
+and every Slice Store at runtime. Construction runs executable conformance
+checks before exposing app.
 
 ## Construct the app
 
@@ -13,30 +13,33 @@ parts explicitly:
 ```ts
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 
-const app = await createSpecterApp({
-  events: todoEvents,
-  eventLog: persistence.eventLog,
-  schedule: durableSchedule,
-  slices: todoSlices,
-  observe,
-})
+const dependencies = Layer.mergeAll(
+  Layer.succeed(EventLog, persistence.eventLog),
+  durableSchedulerLayer,
+  todoStoreLayers,
+)
+
+const app = await createSpecterApp(
+  { events: todoEvents, slices: todoSlices },
+  dependencies,
+)
 ```
 
 The `events` catalog must contain the Event Definitions used by Scenarios and
 apply handlers. `slices` contains completed Command, Query, and Reaction Slice
-implementations, not specifications. `observe` is optional and deliberately
-best effort.
+implementations, not specifications. Infrastructure lives in supplied Layer,
+not registry.
 
 ## Command timeline
 
 For `app.command(envelope, options)`, core:
 
 1. finds the registered Command and validates its options and input;
-2. starts the Event Log transaction;
-3. resolves an idempotent duplicate or reads the current Event Log version;
-4. catches the Command Slice State up inside that transaction;
-5. runs the handler and validates its Event types and payloads;
-6. appends with compare-and-swap and commits;
+2. resolves an idempotent duplicate or reads current Event Log version;
+3. catches Command Slice State up in Store transaction;
+4. runs handler against committed read State outside Store transaction;
+5. validates emitted Event types and payloads;
+6. atomically appends with expected-version compare-and-swap;
 7. starts affected subscription invalidation and requests a Reaction pass.
 
 The outer Promise resolves with a durable commit receipt after the Reaction pass
@@ -74,14 +77,26 @@ activation, every `next()`, cancellation, and cleanup.
 
 ## Reactions
 
-For each Reaction Slice with unread Events, core applies them to staged State,
-runs the handler, validates any output, and invokes the Reaction Plugin. The
-plugin receives `deliveryId` and `scheduledAt`, which are stable across retries,
-plus attempt-specific `attemptId` and `attemptNumber`.
+For each Reaction Slice, core reads Event Log commits after its cursor. It runs
+projection, handler, and plugin once per commit inside the Slice Store
+transaction, then advances the cursor. Failure rolls back state and cursor, so
+restart retries the same commit with the same `deliveryId`, derived from
+Reaction name and commit version.
 
-The immediate memory scheduler is deterministic but not crash-safe. For
-persistent apps, connect a durable outbox scheduler and worker. A failed
-projection does not advance its cursor, so a later pass can replay safely.
+The scheduler coordinates wakeups; it does not own Reaction correctness.
+Single-process apps use the default in-memory scheduler. Stateless or
+distributed apps provide a durable scheduler adapter backed by Redis, SQLite,
+or another shared store. Scheduler state is rebuildable from Event Log commits
+and Reaction cursors during startup. Every bound durable worker independently
+discovers pending and expired shared work, so failover does not need another
+Command.
+Scheduling acknowledges adapter acceptance before Command completion and
+returns a separate Effect used by `execution.reactions` to await processing.
+
+Direct plugins hold the Slice Store transaction open. Wrap slow external
+effects with `withReactionOutbox`; enqueue then commits atomically, while the
+outbox worker owns leases, retries, dead-lettering, and replay outside the Slice
+transaction.
 
 ## In process and across a transport
 

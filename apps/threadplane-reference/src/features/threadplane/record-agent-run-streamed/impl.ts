@@ -1,10 +1,11 @@
-import recordAgentRunStreamedSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { agentRunStreamedEvent } from '../events'
 
-const recordAgentRunStreamed = recordAgentRunStreamedSpec
+const recordAgentRunStreamed = implementCommand(specification)
   .inputSchema(
     z.object({
       runId: z.string(),
@@ -15,7 +16,7 @@ const recordAgentRunStreamed = recordAgentRunStreamedSpec
       delta: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const delta = command.delta
 

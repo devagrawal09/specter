@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const workspaceListSpec = createQuerySlice('workspaceList')
   .description('Lists workspaces available to the current user.')

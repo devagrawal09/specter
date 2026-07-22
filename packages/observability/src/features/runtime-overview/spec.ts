@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const observation = {
   kind: 'command.completed',
@@ -42,3 +42,5 @@ export const runtimeOverviewSpec = createQuerySlice('runtimeOverview')
       recent: [{ ...observation, collectorOrder: 1 }],
     },
   })
+
+export default runtimeOverviewSpec

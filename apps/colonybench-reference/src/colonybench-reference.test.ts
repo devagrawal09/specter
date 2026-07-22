@@ -48,7 +48,11 @@ test('startRun bridge initializes the separate in-memory simulation app', async 
     type: 'createRun',
     payload: { runId: 'run-2', name: 'Bridge run' },
   })
-  await controlApp.command({ type: 'startRun', payload: { runId: 'run-2' } })
+  const start = await controlApp.command({
+    type: 'startRun',
+    payload: { runId: 'run-2' },
+  })
+  await start.reactions
 
   await expect(
     controlApp.query({ type: 'runDetail', payload: { runId: 'run-2' } }),
@@ -78,11 +82,13 @@ test('control and simulation apps expose separate command/query surfaces', async
   })
 
   expect(Object.keys(controlApp).sort()).toEqual([
+    'close',
     'command',
     'query',
     'subscribe',
   ])
   expect(Object.keys(simulationApp).sort()).toEqual([
+    'close',
     'command',
     'query',
     'subscribe',

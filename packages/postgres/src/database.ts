@@ -1,4 +1,4 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
+import { Context, Effect, Exit, Option } from 'effect'
 
 export type PostgresQueryResult<TRow extends object = Record<string, unknown>> =
   {
@@ -21,14 +21,38 @@ export type PostgresPool = PostgresConnection & {
   connect(): Promise<PostgresPoolClient>
 }
 
-export type PostgresDatabaseContext = {
-  readonly advisoryLockKey: number
-  connection(): PostgresConnection
-  serialize<T>(run: () => Promise<T>): Promise<T>
-  transaction<T>(
-    run: (connection: PostgresConnection) => Promise<T>,
-  ): Promise<T>
+export class PostgresDatabaseFailure extends Error {
+  readonly _tag = 'PostgresDatabaseFailure' as const
+
+  constructor(
+    readonly operation: 'connect' | 'begin' | 'commit' | 'rollback',
+    readonly cause: unknown,
+  ) {
+    super(`Postgres ${operation} failed.`, { cause })
+    this.name = 'PostgresDatabaseFailure'
+  }
 }
+
+export type PostgresDatabaseContext = {
+  readonly pool: PostgresPool
+  readonly advisoryLockKey: number
+  readonly use: <A, E, R>(
+    run: (connection: PostgresConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly transaction: <A, E, R>(
+    run: (connection: PostgresConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | PostgresDatabaseFailure, R>
+}
+
+type ActivePostgresTransaction = {
+  readonly owner: object
+  readonly connection: PostgresConnection
+  active: boolean
+}
+
+const ActivePostgresTransaction = Context.Service<ActivePostgresTransaction>(
+  '@specter-ts/postgres/ActiveTransaction',
+)
 
 export type PostgresDatabaseOptions = {
   readonly advisoryLockKey?: number
@@ -40,59 +64,76 @@ export function createPostgresDatabaseContext(
   pool: PostgresPool,
   options: PostgresDatabaseOptions = {},
 ): PostgresDatabaseContext {
-  const scopedConnection = new AsyncLocalStorage<PostgresConnection>()
-  const scopedSerialization = new AsyncLocalStorage<boolean>()
-  const advisoryLockKey = options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY
-  let serializationTail = Promise.resolve()
+  const owner = {}
+  const activeConnection = Effect.contextWith<
+    never,
+    PostgresConnection,
+    never,
+    never
+  >((services) => {
+    const active = Context.getOption(services, ActivePostgresTransaction)
+    return Effect.succeed(
+      Option.isSome(active) &&
+        active.value.owner === owner &&
+        active.value.active
+        ? active.value.connection
+        : pool,
+    )
+  })
 
   return {
-    advisoryLockKey,
-    connection() {
-      const connection = scopedConnection.getStore()
-      return connection ?? pool
-    },
-    async serialize(run) {
-      if (scopedSerialization.getStore() || scopedConnection.getStore()) {
-        return run()
-      }
-
-      const previous = serializationTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      serializationTail = queued
-      await previous
-
-      try {
-        return await scopedSerialization.run(true, run)
-      } finally {
-        release()
-        if (serializationTail === queued) serializationTail = Promise.resolve()
-      }
-    },
-    async transaction(run) {
-      const active = scopedConnection.getStore()
-      if (active) return run(active)
-
-      const client = await pool.connect()
-      try {
-        await client.query('BEGIN')
-        const result = await scopedConnection.run(client, () => run(client))
-        await client.query('COMMIT')
-        return result
-      } catch (cause) {
-        try {
-          await client.query('ROLLBACK')
-        } catch {
-          // Preserve the domain/storage failure that caused the rollback.
-        }
-        throw cause
-      } finally {
-        client.release()
-      }
-    },
+    pool,
+    advisoryLockKey: options.advisoryLockKey ?? DEFAULT_ADVISORY_LOCK_KEY,
+    use: (run) => Effect.flatMap(activeConnection, run),
+    transaction: (run) =>
+      Effect.flatMap(activeConnection, (active) =>
+        active !== pool
+          ? run(active)
+          : Effect.acquireUseRelease(
+              Effect.tryPromise({
+                try: async () => {
+                  const connection = await pool.connect()
+                  return {
+                    connection,
+                    active: { owner, connection, active: true },
+                  }
+                },
+                catch: (cause) => new PostgresDatabaseFailure('connect', cause),
+              }),
+              ({ connection, active }) =>
+                Effect.gen(function* () {
+                  yield* Effect.tryPromise({
+                    try: () => connection.query('BEGIN'),
+                    catch: (cause) =>
+                      new PostgresDatabaseFailure('begin', cause),
+                  })
+                  return yield* run(connection).pipe(
+                    Effect.provideService(ActivePostgresTransaction, active),
+                  )
+                }),
+              ({ connection, active }, exit) =>
+                (Exit.isSuccess(exit)
+                  ? Effect.tryPromise({
+                      try: () => connection.query('COMMIT'),
+                      catch: (cause) =>
+                        new PostgresDatabaseFailure('commit', cause),
+                    })
+                  : Effect.tryPromise({
+                      try: () => connection.query('ROLLBACK'),
+                      catch: (cause) =>
+                        new PostgresDatabaseFailure('rollback', cause),
+                    })
+                ).pipe(
+                  Effect.asVoid,
+                  Effect.ensuring(
+                    Effect.sync(() => {
+                      active.active = false
+                      connection.release()
+                    }),
+                  ),
+                ),
+            ),
+      ),
   }
 }
 
@@ -115,14 +156,6 @@ export function postgresString(value: unknown, field: string) {
   return value
 }
 
-/**
- * Reads a JSONB column from a structural Postgres driver.
- *
- * Postgres drivers such as `pg` decode JSONB before returning a row. In
- * particular, a JSON string is returned as a JavaScript string and must not be
- * parsed again: values such as `"null"`, `"123"`, and `"true"` are valid
- * strings, not encoded null/number/boolean values.
- */
 export function postgresJson<T>(value: unknown, field: string): T {
   if (value === undefined) {
     throw new Error(`Invalid Postgres ${field}: undefined`)

@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-18T15:00:00.000Z'
 
@@ -30,3 +30,5 @@ export const connectionsQuerySpec = createQuerySlice('connectionsQuery')
       },
     ],
   })
+
+export default connectionsQuerySpec

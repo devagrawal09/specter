@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const revertSessionSpec = createCommandSlice('revertSession')
   .description('Requests a session file revert from captured tool snapshots.')

@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const initializeSimulationSpec = createCommandSlice(
   'initializeSimulation',
@@ -10,3 +10,5 @@ export const initializeSimulationSpec = createCommandSlice(
     when: { runId: 'run-1' },
     expect: [event('colonybench-simulation-initialized', { runId: 'run-1' })],
   })
+
+export default initializeSimulationSpec

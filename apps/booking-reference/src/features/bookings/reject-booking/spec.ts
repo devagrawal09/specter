@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 export default createCommandSlice('rejectBooking')
   .description('Rejects pending booking requests.')
   .scenarios(

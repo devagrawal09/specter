@@ -42,7 +42,7 @@ var apiOperationCounter atomic.Uint64
 func main() {
 	collectorURL := os.Getenv("SPECTER_COLLECTOR_URL")
 	if collectorURL == "" {
-		collectorURL = "http://127.0.0.1:41736"
+		collectorURL = "http://127.0.0.1:41739"
 	}
 	producer := telemetry.NewProducer(&protocol.ObservationClient{CollectorURL: collectorURL}, protocol.RuntimeSource{Application: "go-todo-reference", Environment: environment(), RuntimeLanguage: "go", RuntimeVersion: "0.1.0", InstanceID: fmt.Sprintf("go-todo-%d", time.Now().UnixNano()), EventLogID: "go-todo-memory"}, telemetry.DefaultQueueCapacity)
 	defer func() {

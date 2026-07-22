@@ -19,13 +19,6 @@ export type GenerateSliceOptions = {
   readonly dryRun?: boolean
 }
 
-export type GeneratePersistentHarnessOptions = {
-  readonly cwd: string
-  readonly directory?: string
-  readonly dryRun?: boolean
-  readonly force?: boolean
-}
-
 export type GenerationResult = {
   readonly files: readonly string[]
   readonly dryRun: boolean
@@ -87,54 +80,6 @@ export function generateSlice(options: GenerateSliceOptions): GenerationResult {
   }
 }
 
-export function generatePersistentHarness(
-  options: GeneratePersistentHarnessOptions,
-): GenerationResult {
-  const directory = safeRelativeDirectory(
-    options.directory ?? 'src/testing/persistence',
-    'harness directory',
-  )
-  const targetDirectory = resolve(options.cwd, directory)
-  const dbModule = relativeModuleSpecifier(
-    targetDirectory,
-    resolve(options.cwd, 'src/db'),
-  )
-  const files: PlannedFile[] = [
-    {
-      path: join(targetDirectory, 'persistent-harness.server.ts'),
-      content: persistentHarnessTemplate(dbModule),
-    },
-    {
-      path: join(targetDirectory, 'failure-injection.ts'),
-      content: failureInjectionTemplate(),
-    },
-    {
-      path: join(targetDirectory, 'persistent-harness.test.ts'),
-      content: persistentHarnessTestTemplate(),
-    },
-    {
-      path: join(targetDirectory, 'README.md'),
-      content: persistentHarnessReadme(),
-    },
-  ]
-
-  writePlannedFiles(files, {
-    cwd: options.cwd,
-    dryRun: options.dryRun ?? false,
-    force: options.force ?? false,
-  })
-
-  return {
-    files: files.map((file) => relative(options.cwd, file.path)),
-    dryRun: options.dryRun ?? false,
-    nextSteps: [
-      'Run the generated executable recovery tests against a temporary on-disk SQLite database.',
-      'Pass createApp(runtime) into the harness from project-specific tests to exercise the real app registry.',
-      'Add resetProjectProjections when app-owned projection rows must be cleared before replay.',
-    ],
-  }
-}
-
 export function runGenerateCli(
   args: readonly string[],
   options: {
@@ -186,25 +131,6 @@ export function runGenerateCli(
     return true
   }
 
-  if (subject === 'persistent-harness') {
-    if (args[2] === '--help') {
-      write(generateHelp())
-      return true
-    }
-    if (parsed.positionals.length > 0) {
-      throw new Error(`Unexpected argument: ${parsed.positionals[0]}`)
-    }
-    assertKnownFlags(parsed, ['directory', 'dry-run', 'force'])
-    const result = generatePersistentHarness({
-      cwd,
-      directory: parsed.values.directory,
-      dryRun: parsed.booleans.has('dry-run'),
-      force: parsed.booleans.has('force'),
-    })
-    printResult(write, result)
-    return true
-  }
-
   throw new Error(`Unknown generator: ${subject}`)
 }
 
@@ -213,12 +139,10 @@ export function generateHelp() {
 
 Usage:
   create-specter generate slice <lowerCamelName> --kind <command|query|reaction> --feature <kebab-name> [--root <directory>] [--dry-run] [--force]
-  create-specter generate persistent-harness [--directory <directory>] [--dry-run] [--force]
 
 Examples:
   create-specter generate slice requestInvite --kind command --feature invitations --dry-run
   create-specter generate slice invitationList --kind query --feature invitations
-  create-specter generate persistent-harness --directory src/testing/persistence
 `
 }
 
@@ -351,7 +275,7 @@ function specTemplate(
   return `import {
   ${factory.slice(1)} as ${factory},
   event as _event,
-} from '@specter-ts/core/spec'
+} from '@specter-ts/spec'
 
 ${declaration}
 ${description}
@@ -360,6 +284,8 @@ ${description}
     given: ${given},${when}
     expect: ${expectation},
   })
+
+export default ${names.sliceName}Spec
 `
 }
 
@@ -397,14 +323,15 @@ function implementationTemplate(
   const store = '_sqliteSliceStore'
 
   if (kind === 'command') {
-    return `import { z as _schema } from 'zod'
+    return `import { implementCommand as _implementCommand } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementCommand(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .store(${store})
   .apply(_recordedEvent, async (event, db) => {
@@ -446,15 +373,16 @@ export const ${names.sliceName} = _spec
     return rows`
 
   if (kind === 'query') {
-    return `import { eq as _equals } from 'drizzle-orm'
+    return `import { implementQuery as _implementQuery } from '@specter-ts/core'
+import { eq as _equals } from 'drizzle-orm'
 import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementQuery(_specification)
   .inputSchema(_schema.object({ requestId: _schema.string().min(1) }))
   .outputSchema(
     _schema.array(
@@ -483,25 +411,18 @@ export const ${names.sliceName} = _spec
   const reactionBody = `${reactionQuery}
     return rows[0]`
 
-  return `import { z as _schema } from 'zod'
+  return `import { implementReaction as _implementReaction } from '@specter-ts/core'
+import { z as _schema } from 'zod'
 
 ${storeImport}
 import { ${names.eventName} as _recordedEvent } from './events'
 import { ${names.projectionName} as _projection } from './projection'
-import { ${names.sliceName}Spec as _spec } from './spec'
+import _specification from './spec.json'
 
-export const ${names.sliceName} = _spec
+export const ${names.sliceName} = _implementReaction(_specification)
   .outputSchema(
     _schema.object({ requestId: _schema.string(), value: _schema.string() }),
   )
-  .plugin(async (_dispatch) => async (_effect, context) => {
-    void context
-    // TODO: invoke the external adapter. Reaction Plugins may return any effect type.
-    // Same-app follow-ups must call _dispatch(effect, {
-    //   idempotencyKey: context.deliveryId,
-    // }) so an at-least-once retry cannot duplicate follow-up Events.
-    // Use context.scheduledAt for retry-stable domain time; never new Date().
-  })
   .store(${store})
   .apply(_recordedEvent, async (event, db) => {
     ${applyBody}
@@ -579,539 +500,6 @@ function migrationTemplate(
 
 The projection is private to this Slice. Add another Event consumer instead of
 querying this table from a different Slice.
-`
-}
-
-function persistentHarnessTemplate(dbModule: string) {
-  return `import type {
-  EventLogAdapter,
-  EventLogAppendOptions,
-  EventLogTransaction,
-  ReactionScheduler,
-  SliceStore,
-  SliceStoreAdapter,
-} from '@specter-ts/core'
-import {
-  createReactionOutboxWorker,
-  type ReactionOutboxJob,
-  type ReactionOutboxStatus,
-  type ReactionOutboxWorker,
-} from '@specter-ts/reaction-outbox'
-import {
-  createSpecterSqlitePersistence,
-  prepareSpecterSqlite,
-} from '@specter-ts/sqlite'
-import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql/sqlite3'
-import { migrate } from 'drizzle-orm/libsql/migrator'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-
-import * as schema from '${dbModule}/schema'
-import { runWithSqliteDb } from '${dbModule}/specter-sqlite'
-import {
-  createFailureInjector,
-  type FailureInjector,
-} from './failure-injection'
-
-type ReactionPass = { readonly kind: 'reaction-pass' }
-
-export type PersistentHarnessRuntime = {
-  readonly eventLog: EventLogAdapter
-  readonly failure: FailureInjector
-  readonly schedule: ReactionScheduler
-  createSliceStore<TWriteState, TReadState = Readonly<TWriteState>>(
-    createState: () => TWriteState,
-  ): SliceStoreAdapter<TWriteState, TReadState>
-}
-
-export type PersistentHarnessOptions<TApp> = {
-  readonly createApp: (runtime: PersistentHarnessRuntime) => Promise<TApp>
-  readonly failure?: FailureInjector
-  readonly maxReactionAttempts?: number
-  readonly migrationsFolder?: string
-  readonly resetProjectProjections?: () => Promise<void>
-}
-
-export async function createPersistentHarness<TApp>(
-  options: PersistentHarnessOptions<TApp>,
-) {
-  const directory = mkdtempSync(join(tmpdir(), 'specter-persistence-'))
-  const databasePath = join(directory, 'app.db')
-  const failure = options.failure ?? createFailureInjector()
-  const backgroundErrors: unknown[] = []
-
-  async function open() {
-    const client = createClient({ url: \`file:\${databasePath}\` })
-    await prepareSpecterSqlite(client)
-    const db = drizzle(client, { schema })
-    await migrate(db, {
-      migrationsFolder:
-        options.migrationsFolder ?? join(process.cwd(), 'drizzle'),
-    })
-    const persistence = createSpecterSqlitePersistence(client)
-    const reactionStore = persistence.createReactionOutboxStore<ReactionPass>()
-    let worker: ReactionOutboxWorker<ReactionPass> | undefined
-
-    const schedule: ReactionScheduler = (run) => {
-      worker = createReactionOutboxWorker({
-        store: reactionStore,
-        maxAttempts: options.maxReactionAttempts ?? 3,
-        backoffMs: () => 0,
-        handle: async (_pass, context) => {
-          await run({
-            deliveryId: context.jobId,
-            scheduledAt: context.requestedAt.toISOString(),
-            attemptId: context.attemptId,
-            attemptNumber: context.attemptNumber,
-          })
-          failure.hit('after-reaction-attempt')
-        },
-      })
-
-      void worker.drain().catch((cause) => backgroundErrors.push(cause))
-
-      return () => {
-        const completion = worker
-          ?.enqueue({ kind: 'reaction-pass' })
-          .then(() => worker?.drain())
-        return () => completion ?? Promise.resolve()
-      }
-    }
-
-    const eventLog = withInjectedEventLog(persistence.eventLog, failure)
-    const runtime: PersistentHarnessRuntime = {
-      eventLog,
-      failure,
-      schedule,
-      createSliceStore: <TWriteState, TReadState = Readonly<TWriteState>>(
-        createState: () => TWriteState,
-      ) =>
-        withInjectedSliceStore(
-          persistence.createSliceStore<TWriteState, TReadState>(createState),
-          failure,
-        ),
-    }
-    const app = await runWithSqliteDb(db, () => options.createApp(runtime))
-    return {
-      app,
-      client,
-      db,
-      eventLog,
-      reactionStore,
-      get worker() {
-        return worker
-      },
-    }
-  }
-
-  let active = await open()
-
-  async function restart() {
-    active.client.close()
-    active = await open()
-    return active.app
-  }
-
-  async function clearProjectionState() {
-    await deleteTableRowsIfPresent(active.client, 'specter_slice_states')
-    await deleteTableRowsIfPresent(active.client, 'slice_cursors')
-    if (options.resetProjectProjections) {
-      await runWithSqliteDb(active.db, options.resetProjectProjections)
-    }
-  }
-
-  return {
-    get app() {
-      return active.app
-    },
-    get backgroundErrors() {
-      return [...backgroundErrors]
-    },
-    databasePath,
-    failure,
-    eventLogVersion: () => active.eventLog.currentVersion(),
-    run: <T>(effect: () => Promise<T>) => runWithSqliteDb(active.db, effect),
-    restart,
-    replay: async () => {
-      await clearProjectionState()
-      return restart()
-    },
-    reset: async () => {
-      active.client.close()
-      for (const suffix of ['', '-shm', '-wal']) {
-        rmSync(\`\${databasePath}\${suffix}\`, { force: true })
-      }
-      active = await open()
-      return active.app
-    },
-    drainReactions: () => active.worker?.drain() ?? Promise.resolve(),
-    reactionJobs: (status?: ReactionOutboxStatus) =>
-      active.reactionStore.list(status) as Promise<
-        readonly ReactionOutboxJob<ReactionPass>[]
-      >,
-    retryReaction: async (jobId: string) => {
-      const worker = active.worker
-      if (!worker)
-        throw new Error('The app did not install the harness scheduler')
-      await worker.retryDeadLetter(jobId)
-      await worker.drain()
-    },
-    close: () => {
-      active.client.close()
-      rmSync(directory, { recursive: true, force: true })
-    },
-  }
-}
-
-function withInjectedEventLog(
-  eventLog: EventLogAdapter,
-  failure: FailureInjector,
-): EventLogAdapter {
-  const wrap = (target: EventLogTransaction): EventLogTransaction => ({
-    query: (afterOrder, eventTypes) => target.query(afterOrder, eventTypes),
-    currentVersion: () => target.currentVersion(),
-    findCommit: (idempotencyKey) => target.findCommit(idempotencyKey),
-    append: async (events, appendOptions?: EventLogAppendOptions) => {
-      failure.hit('before-event-append')
-      const commit = await target.append(events, appendOptions)
-      failure.hit('after-event-append')
-      return commit
-    },
-  })
-
-  return {
-    ...wrap(eventLog),
-    transaction: <T>(run: (transaction: EventLogTransaction) => Promise<T>) =>
-      eventLog.transaction((transaction) => run(wrap(transaction))),
-  }
-}
-
-function withInjectedSliceStore<TWriteState, TReadState>(
-  store: SliceStoreAdapter<TWriteState, TReadState>,
-  failure: FailureInjector,
-): SliceStoreAdapter<TWriteState, TReadState> {
-  const wrap = (
-    entry: SliceStore<TWriteState, TReadState>,
-  ): SliceStore<TWriteState, TReadState> => {
-    let projectionStarted = false
-    return {
-      get write() {
-        if (!projectionStarted) {
-          failure.hit('before-projection-apply')
-          projectionStarted = true
-        }
-        return entry.write
-      },
-      get read() {
-        return entry.read
-      },
-      lastAppliedOrder: () => entry.lastAppliedOrder(),
-      setLastAppliedOrder: async (order) => {
-        if (projectionStarted) failure.hit('after-projection-apply')
-        failure.hit('before-cursor-advance')
-        await entry.setLastAppliedOrder(order)
-        failure.hit('after-cursor-advance')
-      },
-    }
-  }
-
-  return {
-    get: async (sliceName) => wrap(await store.get(sliceName)),
-    transaction: (sliceName, run) =>
-      store.transaction(sliceName, (entry) => run(wrap(entry))),
-  }
-}
-
-async function deleteTableRowsIfPresent(
-  client: ReturnType<typeof createClient>,
-  table: 'slice_cursors' | 'specter_slice_states',
-) {
-  const tableResult = await client.execute({
-    sql: "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
-    args: [table],
-  })
-  if (tableResult.rows.length > 0) await client.execute(\`DELETE FROM \${table}\`)
-}
-`
-}
-
-function failureInjectionTemplate() {
-  return `export type PersistenceCrashPoint =
-  | 'before-event-append'
-  | 'after-event-append'
-  | 'before-projection-apply'
-  | 'after-projection-apply'
-  | 'before-cursor-advance'
-  | 'after-cursor-advance'
-  | 'after-reaction-attempt'
-
-export type FailureInjector = {
-  readonly armedPoint: () => PersistenceCrashPoint | undefined
-  readonly arm: (point: PersistenceCrashPoint) => void
-  readonly clear: () => void
-  readonly hit: (point: PersistenceCrashPoint) => void
-}
-
-export function createFailureInjector(): FailureInjector {
-  let armed: PersistenceCrashPoint | undefined
-
-  return {
-    armedPoint: () => armed,
-    arm: (point) => {
-      armed = point
-    },
-    clear: () => {
-      armed = undefined
-    },
-    hit: (point) => {
-      if (point !== armed) return
-      armed = undefined
-      throw new Error(\`Injected persistence failure at \${point}\`)
-    },
-  }
-}
-
-export function failOnceAt(expected: PersistenceCrashPoint) {
-  const failure = createFailureInjector()
-  failure.arm(expected)
-
-  return (actual: PersistenceCrashPoint) => failure.hit(actual)
-}
-`
-}
-
-function persistentHarnessTestTemplate() {
-  return `import { createEventDefinition, createSpecterApp } from '@specter-ts/core'
-import {
-  createCommandSlice,
-  createQuerySlice,
-  createReactionSlice,
-  event,
-} from '@specter-ts/core/spec'
-import { z } from 'zod'
-import { afterEach, describe, expect, it } from 'vitest'
-
-import {
-  createPersistentHarness,
-  type PersistentHarnessRuntime,
-} from './persistent-harness.server'
-
-const counterIncremented = createEventDefinition(
-  'recovery-counter-incremented',
-  z.object({ commandId: z.string(), amount: z.number().int().positive() }),
-)
-
-const incrementRecoveryCounterSpec = createCommandSlice(
-  'incrementRecoveryCounter',
-)
-  .description('Increments the persistent recovery-test counter.')
-  .scenarios({
-    description: 'Records a deterministic increment.',
-    given: [
-      event('recovery-counter-incremented', {
-        commandId: 'command-0',
-        amount: 1,
-      }),
-    ],
-    when: { commandId: 'command-1', amount: 2 },
-    expect: [
-      event('recovery-counter-incremented', {
-        commandId: 'command-1',
-        amount: 2,
-      }),
-    ],
-  })
-
-const recoveryCounterSpec = createQuerySlice('recoveryCounter')
-  .description('Reads the persistent recovery-test counter.')
-  .scenarios({
-    description: 'Sums committed increments.',
-    given: [
-      event('recovery-counter-incremented', {
-        commandId: 'command-1',
-        amount: 2,
-      }),
-    ],
-    when: {},
-    expect: 2,
-  })
-
-const recordRecoveryAuditSpec = createReactionSlice('recordRecoveryAudit')
-  .description('Records one effect for each committed recovery increment.')
-  .scenarios({
-    description: 'Returns an audit effect for the latest increment.',
-    given: [
-      event('recovery-counter-incremented', {
-        commandId: 'command-1',
-        amount: 2,
-      }),
-    ],
-    expect: [{ commandId: 'command-1' }],
-  })
-
-const openHarnesses: Array<{ close(): void }> = []
-
-afterEach(() => {
-  for (const harness of openHarnesses.splice(0)) harness.close()
-})
-
-describe('persistent Specter recovery', () => {
-  it('survives restart and rebuilds disposable projections by replay', async () => {
-    const { harness } = await setup()
-    const execution = await harness.run(() =>
-      harness.app.command({
-        type: 'incrementRecoveryCounter',
-        payload: { commandId: 'command-1', amount: 2 },
-      }),
-    )
-    await execution.reactions
-
-    await harness.restart()
-    await expect(readCounter(harness)).resolves.toBe(2)
-
-    await harness.replay()
-    await expect(readCounter(harness)).resolves.toBe(2)
-  })
-
-  it('recovers a durable Event whose caller crashed after append', async () => {
-    const { harness } = await setup()
-    harness.failure.arm('after-event-append')
-
-    await expect(
-      harness.run(() =>
-        harness.app.command({
-          type: 'incrementRecoveryCounter',
-          payload: { commandId: 'command-crash', amount: 3 },
-        }),
-      ),
-    ).rejects.toThrow('failed in its Event Log transaction')
-
-    expect(await harness.eventLogVersion()).toBe(1)
-    await harness.restart()
-    await expect(readCounter(harness)).resolves.toBe(3)
-  })
-
-  it('does not publish a projection cursor after an injected apply failure', async () => {
-    const { harness } = await setup()
-    const execution = await harness.run(() =>
-      harness.app.command({
-        type: 'incrementRecoveryCounter',
-        payload: { commandId: 'command-projection', amount: 4 },
-      }),
-    )
-    await execution.reactions
-    harness.failure.arm('before-cursor-advance')
-
-    await expect(readCounter(harness)).rejects.toThrow(
-      'failed while reading its Slice State',
-    )
-    await expect(readCounter(harness)).resolves.toBe(4)
-  })
-
-  it('retries a durable Reaction pass without duplicating its effect', async () => {
-    const { effects, harness } = await setup()
-    harness.failure.arm('after-reaction-attempt')
-    const execution = await harness.run(() =>
-      harness.app.command({
-        type: 'incrementRecoveryCounter',
-        payload: { commandId: 'command-retry', amount: 5 },
-      }),
-    )
-    await execution.reactions
-
-    expect(effects).toEqual(['command-retry'])
-    await expect(harness.reactionJobs('completed')).resolves.toMatchObject([
-      { status: 'completed', attemptCount: 2 },
-    ])
-  })
-})
-
-async function setup() {
-  const effects: string[] = []
-  const harness = await createPersistentHarness({
-    createApp: (runtime) => createRecoveryApp(runtime, effects),
-  })
-  openHarnesses.push(harness)
-  return { effects, harness }
-}
-
-function createRecoveryApp(
-  runtime: PersistentHarnessRuntime,
-  effects: string[],
-) {
-  const incrementRecoveryCounter = incrementRecoveryCounterSpec
-    .inputSchema(
-      z.object({ commandId: z.string(), amount: z.number().int().positive() }),
-    )
-    .store(runtime.createSliceStore(() => ({ count: 0 })))
-    .apply(counterIncremented, async (applied, state) => {
-      state.count += applied.payload.amount
-    })
-    .handle(async (command) => [counterIncremented.create(command)])
-
-  const recoveryCounter = recoveryCounterSpec
-    .inputSchema(z.object({}))
-    .outputSchema(z.number().int().nonnegative())
-    .store(runtime.createSliceStore(() => ({ count: 0 })))
-    .apply(counterIncremented, async (applied, state) => {
-      state.count += applied.payload.amount
-    })
-    .handle(async (_query, state) => state.count)
-
-  const recordRecoveryAudit = recordRecoveryAuditSpec
-    .outputSchema(z.object({ commandId: z.string() }))
-    .plugin(async (_dispatch) => async (effect) => {
-      effects.push(effect.commandId)
-    })
-    .store(runtime.createSliceStore(() => ({ latestCommandId: '' })))
-    .apply(counterIncremented, async (applied, state) => {
-      state.latestCommandId = applied.payload.commandId
-    })
-    .handle(async (state) =>
-      state.latestCommandId ? { commandId: state.latestCommandId } : undefined,
-    )
-
-  return createSpecterApp({
-    events: [counterIncremented],
-    eventLog: runtime.eventLog,
-    schedule: runtime.schedule,
-    slices: [incrementRecoveryCounter, recoveryCounter, recordRecoveryAudit],
-  })
-}
-
-function readCounter(harness: Awaited<ReturnType<typeof setup>>['harness']) {
-  return harness.run(() =>
-    harness.app.query({ type: 'recoveryCounter', payload: {} }),
-  )
-}
-`
-}
-
-function persistentHarnessReadme() {
-  return `# Persistent Specter harness
-
-This executable harness keeps a temporary SQLite database across app restarts.
-It uses the first-party SQLite Event Log/Slice Store and durable Reaction
-outbox, and includes one-shot failure injection at real adapter boundaries.
-Its tests prove behavior that the in-memory Scenario runner cannot:
-
-- an Event Log append survives process restart;
-- disposable Slice projections catch up from the Event Log;
-- a projection crash cannot advance its cursor past unapplied Events;
-- Reaction attempts are idempotent across scheduler restarts.
-
-Run the generated test unchanged first. For application-specific recovery
-coverage, create a second harness with \`createApp(runtime)\` returning the real
-registry. Use \`runtime.eventLog\`, \`runtime.schedule\`, and (for JSON-backed
-test projections) \`runtime.createSliceStore\`. Calls into app-owned Drizzle
-Slice Stores must run through \`harness.run(...)\`.
-
-\`restart()\` reopens the same database. \`replay()\` clears Specter cursors and
-JSON Slice State before reopening so idempotent app-owned projections catch up
-from the Event Log. Supply \`resetProjectProjections\` when projection rows must
-also be deleted. \`reset()\` removes the complete database and starts empty.
 `
 }
 

@@ -1,7 +1,8 @@
-import pendingPermissionsSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolApprovalRepliedEvent, toolApprovalRequestedEvent } from '../events'
 
 type PendingPermission = {
@@ -21,7 +22,7 @@ type PendingPermissionsState = {
   pending: Record<string, PendingPermission>
 }
 
-const pendingPermissions = pendingPermissionsSpec
+const pendingPermissions = implementQuery(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),
@@ -29,7 +30,7 @@ const pendingPermissions = pendingPermissionsSpec
   )
   .outputSchema<PendingPermission[]>()
   .store(
-    createMemorySliceStore<PendingPermissionsState>(() => ({ pending: {} })),
+    defineMemorySliceStore<PendingPermissionsState>(() => ({ pending: {} })),
   )
   .apply(toolApprovalRequestedEvent, async (event, state) => {
     const payload = event.payload

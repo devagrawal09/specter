@@ -1,7 +1,8 @@
-import askQuestionSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { questionAskedEvent } from '../events'
 
 const questionOptionSchema = z.object({
@@ -9,7 +10,7 @@ const questionOptionSchema = z.object({
   label: z.string(),
 })
 
-const askQuestion = askQuestionSpec
+const askQuestion = implementCommand(specification)
   .inputSchema(
     z.object({
       questionId: z.string(),
@@ -20,7 +21,7 @@ const askQuestion = askQuestionSpec
       allowFreeform: z.boolean().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => {
     const prompt = command.prompt.trim()

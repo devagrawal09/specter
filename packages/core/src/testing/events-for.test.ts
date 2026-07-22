@@ -1,10 +1,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, test } from 'vitest'
 
-import type { SliceStoreAdapter } from '../adapters'
 import { createEventDefinition } from '../definition'
-import { createCommandSlice, event } from '../spec-entry'
+import { createCommandSlice, event } from '../definition'
 import { eventsFor } from './events-for'
+import { createTestSliceStore } from './test-slice-store'
 
 const schema = {
   '~standard': {
@@ -14,23 +14,7 @@ const schema = {
   },
 } as StandardSchemaV1
 
-function store(): SliceStoreAdapter<Record<string, never>> {
-  const state = {}
-  const adapter: SliceStoreAdapter<Record<string, never>> = {
-    async get() {
-      return {
-        write: state,
-        read: state,
-        lastAppliedOrder: async () => 0,
-        setLastAppliedOrder: async () => undefined,
-      }
-    },
-    async transaction(sliceName, run) {
-      return run(await adapter.get(sliceName))
-    },
-  }
-  return adapter
-}
+const store = createTestSliceStore<Record<string, never>>({})
 
 describe('eventsFor', () => {
   test('selects focused Given/apply and Command outcome definitions', () => {
@@ -46,7 +30,7 @@ describe('eventsFor', () => {
         expect: [event('value-recorded', 2)],
       })
       .inputSchema<number>()
-      .store(store())
+      .store(store.tag)
       .apply(priorRecorded, async () => undefined)
       .handle(async (value) => [valueRecorded.create(value)])
 
@@ -66,7 +50,7 @@ describe('eventsFor', () => {
         expect: [event('value-recorded', 1)],
       })
       .inputSchema<number>()
-      .store(store())
+      .store(store.tag)
       .handle(async (value) => [valueRecorded.create(value)])
 
     expect(() => eventsFor(command, [])).toThrow(

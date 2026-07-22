@@ -37,9 +37,7 @@ export type Causality = {
     readonly from: number
     readonly to: number
   }
-  readonly reactionPassId?: string
   readonly deliveryId?: string
-  readonly attemptId?: string
 }
 
 export type RuntimeSource = {
@@ -68,9 +66,6 @@ export const observationKinds = [
   'replay.started',
   'replay.completed',
   'replay.failed',
-  'reaction.pass.started',
-  'reaction.pass.completed',
-  'reaction.pass.failed',
   'reaction.run.started',
   'reaction.run.completed',
   'reaction.run.failed',
@@ -93,6 +88,7 @@ export type RuntimeObservation = Causality & {
   readonly commandType?: string
   readonly queryType?: string
   readonly slice?: string
+  readonly specificationDigest?: `sha256:${string}`
   readonly reaction?: string
   readonly events?: readonly EventReference[]
   readonly cursor?: number
@@ -112,6 +108,25 @@ export type RuntimeObservationAcknowledgement =
     readonly rejectedObservationIds?: readonly string[]
   }
 
+export type PublishedSpecification = {
+  readonly digest: `sha256:${string}`
+  readonly document: import('@specter-ts/spec').SliceSpecification
+}
+
+export type SpecificationPublication =
+  ProtocolEnvelope<'specifications.publish'> & {
+    readonly source: RuntimeSource
+    readonly specifications: readonly PublishedSpecification[]
+  }
+
+export type SpecificationAcknowledgement =
+  ProtocolEnvelope<'specifications.ack'> & {
+    readonly acceptedDigests: readonly `sha256:${string}`[]
+    readonly rejectedDigests?: readonly `sha256:${string}`[]
+  }
+
 export type ProtocolMessage =
   | RuntimeObservationBatch
   | RuntimeObservationAcknowledgement
+  | SpecificationPublication
+  | SpecificationAcknowledgement

@@ -10,7 +10,7 @@ import {
   topicArchiveChangedEvent,
   topicEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import {
   otherEnd,
   references,
@@ -18,20 +18,21 @@ import {
   type Task,
   type Topic,
 } from '../model'
-import { topicsQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
 type State = {
   topics: Map<string, Topic>
   tasks: Map<string, Task>
   connections: Map<string, Connection>
 }
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   topics: new Map(),
   tasks: new Map(),
   connections: new Map(),
 }))
 
-export const topicsQuery = topicsQuerySpec
+export const topicsQuery = implementQuery(specification)
   .inputSchema(z.object({ includeArchived: z.boolean() }).strict())
   .outputSchema(
     z.array(

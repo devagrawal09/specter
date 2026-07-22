@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const initialized = { runId: 'run-1' }
 const moved = {
@@ -150,3 +150,5 @@ export const liveWorldSnapshotSpec = createQuerySlice('liveWorldSnapshot')
       },
     },
   )
+
+export default liveWorldSnapshotSpec

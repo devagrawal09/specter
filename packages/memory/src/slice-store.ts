@@ -1,8 +1,9 @@
-import type { SliceStore, SliceStoreAdapter } from '@specter-ts/core'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import { Effect, Layer, Semaphore } from 'effect'
 
 type SliceEntry<TState> = {
   state: TState
-  order: number
+  cursor: number
 }
 
 export type MemorySliceStoreOptions<TWriteState, TReadState> = {
@@ -10,113 +11,114 @@ export type MemorySliceStoreOptions<TWriteState, TReadState> = {
   readonly read?: (state: TWriteState) => TReadState
 }
 
-export type MemorySliceStoreAdapter<TWriteState, TReadState> =
-  SliceStoreAdapter<TWriteState, TReadState> & {
-    inspect(
+export type MemorySliceStoreService<TWriteState, TReadState> =
+  SliceStoreService<TReadState, TWriteState, unknown> & {
+    readonly inspect: (
       sliceName: string,
-    ):
+    ) =>
       | { readonly state: TWriteState; readonly lastAppliedOrder: number }
       | undefined
-    reset(sliceName?: string): void
+    readonly reset: (sliceName?: string) => void
   }
 
-export function createMemorySliceStore<
+/** Creates one app-scoped in-memory Store service. */
+export function createMemorySliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
 >(
   createState: () => TWriteState,
   options: MemorySliceStoreOptions<TWriteState, TReadState> = {},
-): MemorySliceStoreAdapter<TWriteState, TReadState> {
+): MemorySliceStoreService<TWriteState, TReadState> {
   const clone = options.clone ?? structuredClone
   const read =
     options.read ?? ((state: TWriteState) => state as unknown as TReadState)
   const entries = new Map<string, SliceEntry<TWriteState>>()
-  const transactionTails = new Map<string, Promise<void>>()
+  const semaphores = new Map<string, Semaphore.Semaphore>()
 
   function getEntry(sliceName: string) {
-    let entry = entries.get(sliceName)
-    if (!entry) {
-      entry = { state: createState(), order: 0 }
-      entries.set(sliceName, entry)
-    }
-    return entry
+    const current = entries.get(sliceName)
+    if (current) return current
+    const created = { state: createState(), cursor: 0 }
+    entries.set(sliceName, created)
+    return created
   }
 
-  function toStore(
-    entry: SliceEntry<TWriteState>,
-    commitAtCursor?: () => Promise<void>,
-  ): SliceStore<TWriteState, TReadState> {
-    return {
-      write: entry.state,
-      get read() {
-        return read(entry.state)
-      },
-      lastAppliedOrder: async () => entry.order,
-      setLastAppliedOrder: async (order) => {
-        if (!Number.isInteger(order) || order < entry.order) {
-          throw new Error(
-            `Slice cursor must advance monotonically from ${entry.order}, received ${order}`,
-          )
-        }
-        entry.order = order
-        await commitAtCursor?.()
-      },
-    }
-  }
-
-  async function serialize<T>(sliceName: string, run: () => Promise<T>) {
-    const previous = transactionTails.get(sliceName) ?? Promise.resolve()
-    let release = () => {}
-    const tail = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    const queued = previous.then(() => tail)
-    transactionTails.set(sliceName, queued)
-    await previous
-    try {
-      return await run()
-    } finally {
-      release()
-      if (transactionTails.get(sliceName) === queued) {
-        transactionTails.delete(sliceName)
-      }
-    }
+  function semaphore(sliceName: string) {
+    const existing = semaphores.get(sliceName)
+    if (existing) return existing
+    const created = Semaphore.makeUnsafe(1)
+    semaphores.set(sliceName, created)
+    return created
   }
 
   return {
-    async get(sliceName) {
-      const current = getEntry(sliceName)
-      const working: SliceEntry<TWriteState> = {
-        state: clone(current.state),
-        order: current.order,
-      }
-      return toStore(working, async () => {
-        entries.set(sliceName, working)
-      })
-    },
-    transaction(sliceName, run) {
-      return serialize(sliceName, async () => {
+    read: (sliceName, run) =>
+      Effect.suspend(() => {
         const current = getEntry(sliceName)
-        const working: SliceEntry<TWriteState> = {
-          state: clone(current.state),
-          order: current.order,
-        }
-        const result = await run(toStore(working))
-        entries.set(sliceName, working)
-        return result
-      })
-    },
+        return run(read(current.state), current.cursor)
+      }),
+    transaction: (sliceName, run) =>
+      Effect.suspend(() =>
+        semaphore(sliceName).withPermit(
+          Effect.gen(function* () {
+            const current = getEntry(sliceName)
+            const working: SliceEntry<TWriteState> = {
+              state: clone(current.state),
+              cursor: current.cursor,
+            }
+            let published = false
+            const result = yield* run(
+              working.state,
+              () => read(working.state),
+              working.cursor,
+              (order) =>
+                Effect.sync(() => {
+                  if (!Number.isSafeInteger(order) || order < working.cursor) {
+                    throw new Error(
+                      `Slice cursor must advance monotonically from ${working.cursor}, received ${order}`,
+                    )
+                  }
+                  working.cursor = order
+                  published = true
+                }),
+            )
+            if (published && working.cursor >= current.cursor) {
+              entries.set(sliceName, working)
+            }
+            return result
+          }),
+        ),
+      ),
     inspect(sliceName) {
-      const entry = entries.get(sliceName)
-      if (!entry) return undefined
-      return {
-        state: clone(entry.state),
-        lastAppliedOrder: entry.order,
-      }
+      const current = entries.get(sliceName)
+      return current
+        ? {
+            state: clone(current.state),
+            lastAppliedOrder: current.cursor,
+          }
+        : undefined
     },
     reset(sliceName) {
       if (sliceName) entries.delete(sliceName)
       else entries.clear()
     },
   }
+}
+
+/** Provides a Store Tag with fresh state for each Layer scope. */
+export function createMemorySliceStoreLayer<
+  TIdentifier,
+  TWriteState,
+  TReadState,
+>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
+  createState: () => TWriteState,
+  options: MemorySliceStoreOptions<TWriteState, TReadState> = {},
+): Layer.Layer<TIdentifier> {
+  return Layer.sync(tag as never, () =>
+    createMemorySliceStoreService(createState, options),
+  ) as Layer.Layer<TIdentifier>
 }

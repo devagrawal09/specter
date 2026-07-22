@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const exampleObservation = {
   kind: 'command.completed',
@@ -42,3 +42,5 @@ export const recordRuntimeObservationsSpec = createCommandSlice(
       }),
     ],
   })
+
+export default recordRuntimeObservationsSpec

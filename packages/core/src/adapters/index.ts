@@ -1,14 +1,24 @@
 export type {
-  EventLogAdapter,
   EventLogAppendOptions,
   EventLogAppendResult,
   EventLogCommit,
-  EventLogTransaction,
+  EventLogService,
 } from './event-log'
+export { EventLog, EventLogFailure } from './event-log'
 export type {
-  ReactionDeliveryContext,
-  ReactionScheduler,
-  RequestReactions,
-  WaitForReactionsIdle,
+  ReactionExecutor,
+  ReactionScheduleContext,
+  ReactionSchedulerService,
 } from './reaction-scheduler'
-export type { SliceStore, SliceStoreAdapter } from './slice-store'
+export {
+  ReactionScheduler,
+  ReactionSchedulerFailure,
+} from './reaction-scheduler'
+export type {
+  SliceStoreError,
+  SliceStoreRead,
+  SliceStoreRequirement,
+  SliceStoreService,
+  SliceStoreTag,
+  SliceStoreWrite,
+} from './slice-store'

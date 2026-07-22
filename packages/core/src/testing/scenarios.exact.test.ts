@@ -1,15 +1,17 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 
-import type { CommandEnvelope, SliceStoreAdapter } from '..'
+import type { CommandEnvelope } from '..'
 import { createEventDefinition } from '..'
+import { Effect, Layer } from 'effect'
 import {
   createCommandSlice,
   createQuerySlice,
   createReactionSlice,
   event,
-} from '../spec-entry'
+} from '../definition'
 import { eventsFor } from './events-for'
 import { testSliceImplementations } from './scenarios'
+import { createTestSliceStore } from './test-slice-store'
 
 function identitySchema<T>(): StandardSchemaV1<T, T> {
   return {
@@ -33,35 +35,6 @@ function transformSchema<TInput, TOutput>(
   }
 }
 
-function memoryStore<TState extends object>(
-  initialState: TState,
-): SliceStoreAdapter<TState> {
-  let state = structuredClone(initialState)
-  let lastAppliedOrder = 0
-  const adapter: SliceStoreAdapter<TState> = {
-    async get() {
-      return {
-        write: state,
-        read: state,
-        lastAppliedOrder: async () => lastAppliedOrder,
-        setLastAppliedOrder: async (order) => {
-          lastAppliedOrder = order
-        },
-      }
-    },
-    async transaction(sliceName, run) {
-      return run(await adapter.get(sliceName))
-    },
-  }
-
-  return Object.assign(adapter, {
-    reset() {
-      state = structuredClone(initialState)
-      lastAppliedOrder = 0
-    },
-  })
-}
-
 type RecordPayload = {
   id: string
   value: number
@@ -72,6 +45,27 @@ const recordCreated = createEventDefinition(
   'record-created',
   identitySchema<RecordPayload>(),
 )
+const commandStore = createTestSliceStore({})
+const queryStore = createTestSliceStore<RecordPayload>({
+  id: '',
+  value: 0,
+  occurredAt: '',
+})
+const reactionStore = createTestSliceStore<RecordPayload>({
+  id: '',
+  value: 0,
+  occurredAt: '',
+})
+const transformedQueryStore = createTestSliceStore({ value: 0 })
+const transformedReactionStore = createTestSliceStore({ value: 0 })
+const stores = [
+  commandStore,
+  queryStore,
+  reactionStore,
+  transformedQueryStore,
+  transformedReactionStore,
+] as const
+const storesLayer = Layer.mergeAll(...stores.map((store) => store.layer))
 const commandSpec = createCommandSlice('createRecord')
   .description('Creates a record with caller-supplied identity and time.')
   .scenarios({
@@ -92,7 +86,7 @@ const commandSpec = createCommandSlice('createRecord')
   })
 const command = commandSpec
   .inputSchema(identitySchema<RecordPayload>())
-  .store(memoryStore({}))
+  .store(commandStore.tag)
   .handle(async (input) => [recordCreated.create(input)])
 
 const querySpec = createQuerySlice('recordDetails')
@@ -116,13 +110,7 @@ const querySpec = createQuerySlice('recordDetails')
 const query = querySpec
   .inputSchema(identitySchema<{ id: string }>())
   .outputSchema(identitySchema<RecordPayload>())
-  .store(
-    memoryStore<RecordPayload>({
-      id: '',
-      value: 0,
-      occurredAt: '',
-    }),
-  )
+  .store(queryStore.tag)
   .apply(recordCreated, async (applied, state) => {
     Object.assign(state, applied.payload)
   })
@@ -152,14 +140,8 @@ const reactionSpec = createReactionSlice('announceRecord')
   })
 const reaction = reactionSpec
   .outputSchema<CommandEnvelope>()
-  .plugin(async () => async () => undefined)
-  .store(
-    memoryStore<RecordPayload>({
-      id: '',
-      value: 0,
-      occurredAt: '',
-    }),
-  )
+  .plugin(() => Effect.succeed(() => Effect.void))
+  .store(reactionStore.tag)
   .apply(recordCreated, async (applied, state) => {
     Object.assign(state, applied.payload)
   })
@@ -192,7 +174,7 @@ const transformedQuery = createQuerySlice('recordLabel')
       ({ value }) => `Record ${value}`,
     ),
   )
-  .store(memoryStore({ value: 0 }))
+  .store(transformedQueryStore.tag)
   .apply(recordCreated, async (applied, state) => {
     state.value = applied.payload.value
   })
@@ -216,8 +198,8 @@ const transformedReaction = createReactionSlice('recordNotice')
       message: `Record ${value}`,
     })),
   )
-  .plugin(async () => async () => undefined)
-  .store(memoryStore({ value: 0 }))
+  .plugin(() => Effect.succeed(() => Effect.void))
+  .store(transformedReactionStore.tag)
   .apply(recordCreated, async (applied, state) => {
     state.value = applied.payload.value
   })
@@ -227,6 +209,9 @@ testSliceImplementations(
   [command, query, reaction, transformedQuery, transformedReaction],
   {
     events: eventsFor(command, [recordCreated]),
-    runScenario: async (run) => run(),
+    runScenario: async (program) => {
+      for (const store of stores) store.reset()
+      return Effect.runPromise(program.pipe(Effect.provide(storesLayer)))
+    },
   },
 )

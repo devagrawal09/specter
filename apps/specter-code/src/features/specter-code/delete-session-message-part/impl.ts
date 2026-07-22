@@ -1,10 +1,11 @@
-import deleteSessionMessagePartSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { sessionMessagePartDeletedEvent } from '../events'
 
-const deleteSessionMessagePart = deleteSessionMessagePartSpec
+const deleteSessionMessagePart = implementCommand(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),
@@ -12,7 +13,7 @@ const deleteSessionMessagePart = deleteSessionMessagePartSpec
       partId: z.string(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
 
   .handle(async (command) => [
     sessionMessagePartDeletedEvent.create({

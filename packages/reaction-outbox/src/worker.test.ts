@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
+import { Effect } from 'effect'
 
 import { createMemoryReactionOutboxStore } from './memory-store'
-import { createOutboxReactionPlugin } from './plugin'
-import { createDurableReactionScheduler } from './scheduler'
+import { withReactionOutbox, type OutboxedReaction } from './plugin'
 import {
   createReactionOutboxWorker,
   ReactionOutboxDrainFailure,
@@ -25,7 +25,7 @@ describe('Reaction outbox worker', () => {
     await worker.enqueue(effect)
     await worker.drain()
 
-    expect((await store.get('job-1'))?.payload).toBe(effect)
+    expect((await Effect.runPromise(store.get('job-1')))?.payload).toBe(effect)
   })
 
   it('deduplicates enqueue requests and uses deterministic attempt IDs', async () => {
@@ -51,7 +51,7 @@ describe('Reaction outbox worker', () => {
 
     expect(duplicate).toEqual({ jobId: 'job-1', created: false })
     expect(attempts).toEqual(['job-1:attempt:1'])
-    expect(await store.get('job-1')).toMatchObject({
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
       status: 'completed',
       attemptCount: 1,
       payload: { message: 'hello' },
@@ -85,7 +85,7 @@ describe('Reaction outbox worker', () => {
     )
     expect(handle).toHaveBeenCalledTimes(3)
     expect(sleeps).toEqual([10, 20])
-    expect(await store.get('job-1')).toMatchObject({
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
       status: 'dead-letter',
       attemptCount: 3,
       lastError: 'mail provider unavailable',
@@ -120,7 +120,7 @@ describe('Reaction outbox worker', () => {
     await second.drain()
 
     expect(handled).toEqual(['hello'])
-    expect(await store.get('job-1')).toMatchObject({
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
       status: 'completed',
       attemptCount: 2,
     })
@@ -144,18 +144,22 @@ describe('Reaction outbox worker', () => {
     await worker.drain()
 
     expect(handled).toEqual(['hello'])
-    expect(await store.get('job-1')).toMatchObject({ status: 'completed' })
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
+      status: 'completed',
+    })
   })
 
   it('stops cleanly without claiming work when its lifecycle is aborted', async () => {
     const store = createMemoryReactionOutboxStore<{ message: string }>()
-    await store.enqueue({
-      id: 'job-1',
-      idempotencyKey: 'job-1',
-      payload: { message: 'leave pending' },
-      requestedAt: new Date(0),
-      availableAt: new Date(0),
-    })
+    await Effect.runPromise(
+      store.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'job-1',
+        payload: { message: 'leave pending' },
+        requestedAt: new Date(0),
+        availableAt: new Date(0),
+      }),
+    )
     const controller = new AbortController()
     controller.abort()
     const worker = createReactionOutboxWorker({
@@ -168,19 +172,23 @@ describe('Reaction outbox worker', () => {
 
     await worker.drain()
 
-    expect(await store.get('job-1')).toMatchObject({ status: 'pending' })
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
+      status: 'pending',
+    })
   })
 
   it('waits for and reclaims a running job after its crash lease expires', async () => {
     const store = createMemoryReactionOutboxStore<{ message: string }>()
-    await store.enqueue({
-      id: 'job-1',
-      idempotencyKey: 'job-1',
-      payload: { message: 'recover me' },
-      requestedAt: new Date(0),
-      availableAt: new Date(0),
-    })
-    await store.claimNext(new Date(0), new Date(25))
+    await Effect.runPromise(
+      store.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'job-1',
+        payload: { message: 'recover me' },
+        requestedAt: new Date(0),
+        availableAt: new Date(0),
+      }),
+    )
+    await Effect.runPromise(store.claimNext(new Date(0), new Date(25)))
     let currentTime = 0
     const handled: string[] = []
     const worker = createReactionOutboxWorker({
@@ -198,7 +206,7 @@ describe('Reaction outbox worker', () => {
 
     expect(currentTime).toBe(25)
     expect(handled).toEqual(['recover me'])
-    expect(await store.get('job-1')).toMatchObject({
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
       status: 'completed',
       attemptCount: 2,
     })
@@ -206,30 +214,42 @@ describe('Reaction outbox worker', () => {
 
   it('rejects completion from a worker that lost its attempt lease', async () => {
     const store = createMemoryReactionOutboxStore<{ message: string }>()
-    await store.enqueue({
-      id: 'job-1',
-      idempotencyKey: 'job-1',
-      payload: { message: 'work' },
-      requestedAt: new Date(0),
-      availableAt: new Date(0),
-    })
-    const first = await store.claimNext(new Date(0), new Date(10))
-    await store.requeueExpired(new Date(10))
-    const second = await store.claimNext(new Date(10), new Date(20))
+    await Effect.runPromise(
+      store.enqueue({
+        id: 'job-1',
+        idempotencyKey: 'job-1',
+        payload: { message: 'work' },
+        requestedAt: new Date(0),
+        availableAt: new Date(0),
+      }),
+    )
+    const first = await Effect.runPromise(
+      store.claimNext(new Date(0), new Date(10)),
+    )
+    await Effect.runPromise(store.requeueExpired(new Date(10)))
+    const second = await Effect.runPromise(
+      store.claimNext(new Date(10), new Date(20)),
+    )
 
     await expect(
-      store.complete(
-        'job-1',
-        first?.activeAttemptId ?? 'missing',
-        new Date(11),
+      Effect.runPromise(
+        store.complete(
+          'job-1',
+          first?.activeAttemptId ?? 'missing',
+          new Date(11),
+        ),
       ),
     ).rejects.toBeInstanceOf(ReactionOutboxLeaseLostError)
-    await store.complete(
-      'job-1',
-      second?.activeAttemptId ?? 'missing',
-      new Date(12),
+    await Effect.runPromise(
+      store.complete(
+        'job-1',
+        second?.activeAttemptId ?? 'missing',
+        new Date(12),
+      ),
     )
-    expect(await store.get('job-1')).toMatchObject({ status: 'completed' })
+    expect(await Effect.runPromise(store.get('job-1'))).toMatchObject({
+      status: 'completed',
+    })
   })
 
   it('runs as a polling service until its lifecycle is aborted', async () => {
@@ -256,101 +276,41 @@ describe('Reaction outbox worker', () => {
   })
 })
 
-describe('durable Reaction scheduler compatibility', () => {
-  it('settles the idle promise only after a queued pass succeeds', async () => {
-    const store = createMemoryReactionOutboxStore<{
-      kind: 'reaction-pass'
-    }>()
-    const run = vi.fn(async () => {})
-    const request = createDurableReactionScheduler(store, {
-      idFactory: () => 'pass-1',
-      now: () => new Date(0),
-    })(run)
-
-    await request()()
-
-    expect(run).toHaveBeenCalledTimes(1)
-    expect(run).toHaveBeenCalledWith({
-      deliveryId: 'pass-1',
-      scheduledAt: new Date(0).toISOString(),
-      attemptId: 'pass-1:attempt:1',
-      attemptNumber: 1,
-    })
-    expect(await store.get('pass-1')).toMatchObject({ status: 'completed' })
-  })
-
-  it('keeps the delivery ID stable while changing attempt metadata on retry', async () => {
-    const store = createMemoryReactionOutboxStore<{
-      kind: 'reaction-pass'
-    }>()
-    const contexts: Array<{
-      deliveryId: string
-      scheduledAt: string
-      attemptId: string
-      attemptNumber: number
-    }> = []
-    const request = createDurableReactionScheduler(store, {
-      idFactory: () => 'pass-1',
-      maxAttempts: 2,
-      backoffMs: () => 0,
-      now: () => new Date(0),
-    })(async (context) => {
-      contexts.push(context)
-      if (context.attemptNumber === 1) throw new Error('temporary failure')
-    })
-
-    await request()()
-
-    expect(contexts).toEqual([
-      {
-        deliveryId: 'pass-1',
-        scheduledAt: new Date(0).toISOString(),
-        attemptId: 'pass-1:attempt:1',
-        attemptNumber: 1,
-      },
-      {
-        deliveryId: 'pass-1',
-        scheduledAt: new Date(0).toISOString(),
-        attemptId: 'pass-1:attempt:2',
-        attemptNumber: 2,
-      },
-    ])
-    expect(await store.get('pass-1')).toMatchObject({
-      status: 'completed',
-      attemptCount: 2,
-    })
-  })
-})
-
 describe('outbox Reaction Plugin', () => {
-  it('deduplicates a retried Reaction by its stable delivery ID', async () => {
-    const store = createMemoryReactionOutboxStore<{ message: string }>()
-    const plugin = createOutboxReactionPlugin({ store })
-    const exec = await plugin(async () => {})
+  it('deduplicates enqueue and runs wrapped Plugin outside caller Effect', async () => {
+    const store =
+      createMemoryReactionOutboxStore<OutboxedReaction<{ message: string }>>()
+    const handled: string[] = []
+    const plugin = withReactionOutbox(
+      () =>
+        Effect.succeed((output: { message: string }) =>
+          Effect.sync(() => {
+            handled.push(output.message)
+          }),
+        ),
+      { store, pollIntervalMs: 1 },
+    )
     const context = {
-      deliveryId: 'sendEmail:order-1:7',
+      deliveryId: 'sendEmail:7',
+      throughOrder: 7,
       scheduledAt: '2026-07-16T00:00:00.000Z',
-      attemptId: 'pass-1:attempt:1:sendEmail:7',
-      attemptNumber: 1,
     }
 
-    expect(await exec({ message: 'hello' }, context)).toEqual({
-      jobId: context.deliveryId,
-      created: true,
-    })
-    expect(
-      await exec(
-        { message: 'hello' },
-        {
-          ...context,
-          attemptId: 'pass-1:attempt:2:sendEmail:7',
-          attemptNumber: 2,
-        },
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(() => Effect.void)
+          yield* exec({ message: 'hello' }, context)
+          yield* exec({ message: 'hello' }, context)
+          yield* Effect.sleep('20 millis')
+        }),
       ),
-    ).toEqual({ jobId: context.deliveryId, created: false })
-    expect(await store.list()).toMatchObject([
+    )
+    expect(handled).toEqual(['hello'])
+    expect(await Effect.runPromise(store.list())).toMatchObject([
       {
         id: context.deliveryId,
+        status: 'completed',
         requestedAt: new Date(context.scheduledAt),
       },
     ])

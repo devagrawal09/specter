@@ -1,11 +1,11 @@
 # Specter documentation
 
-> **0.3 main-branch preview:** These docs describe the API on `main`. The
+> **0.4 main-branch preview:** These docs describe the API on `main`. The
 > stable npm release is still 0.2.1. Start from the repository checkout when
 > following preview examples.
 
-Specter is a Promise-based TypeScript framework for building vertically sliced,
-event-sourced applications from executable specifications. Choose a path based
+Specter is an Effect-native TypeScript framework with a Promise facade for
+building vertically sliced, event-sourced applications. Choose a path based
 on what you need to do next.
 
 ## New to Specter
@@ -47,7 +47,7 @@ on what you need to do next.
 ## API reference
 
 - [API reference index](api-reference/README.md)
-- [`@specter-ts/core/spec`](api-reference/core-spec.md)
+- [`@specter-ts/spec`](api-reference/spec.md)
 - [`@specter-ts/core`](api-reference/core-runtime.md)
 - [Core adapter contracts](api-reference/core-adapters.md)
 - [`@specter-ts/core/testing`](api-reference/core-testing.md)

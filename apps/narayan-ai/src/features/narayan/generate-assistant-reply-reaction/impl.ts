@@ -2,14 +2,15 @@ import { asc, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import { eventSortOrder } from '../event-sort-order'
 import {
   assistantReplyGeneratedEvent,
   twilioInboundMessageRecordedEvent,
 } from '../events'
 import { mastraOpenRouterPlugin } from './mastra-openrouter-plugin.server'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 
 export type ConversationHistoryMessage = {
   role: 'user' | 'assistant'
@@ -47,7 +48,7 @@ export const narayanAssistantReplyReactionMessages = sqliteTable(
   },
 )
 
-const generateAssistantReplyReaction = spec
+const generateAssistantReplyReaction = implementReaction(specification)
   .outputSchema(
     z.object({
       type: z.literal('generateAssistantReply'),

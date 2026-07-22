@@ -1,14 +1,15 @@
-import createWorkspaceSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   workspaceCreatedEvent,
   workspaceFilesystemInitializedEvent,
   workspaceFilesystemScanRequestedEvent,
 } from '../events'
 
-const createWorkspace = createWorkspaceSpec
+const createWorkspace = implementCommand(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),
@@ -22,7 +23,7 @@ const createWorkspace = createWorkspaceSpec
         .optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     const name = command.name.trim()
     const workspaceId = command.workspaceId

@@ -1,10 +1,11 @@
-import requestWorkspaceFilesystemScanSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { workspaceFilesystemScanRequestedEvent } from '../events'
 
-const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
+const requestWorkspaceFilesystemScan = implementCommand(specification)
   .inputSchema(
     z.object({
       scanId: z.string(),
@@ -27,7 +28,7 @@ const requestWorkspaceFilesystemScan = requestWorkspaceFilesystemScanSpec
       ]),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .handle(async (command) => {
     return [
       workspaceFilesystemScanRequestedEvent.create({

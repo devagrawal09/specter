@@ -5,15 +5,16 @@ import {
   taskArchiveChangedEvent,
   taskEditedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { Task } from '../model'
-import { editTaskSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
-const store = createWorklogMemoryStore(() => ({
+const store = defineWorklogMemoryStore(() => ({
   tasks: new Map<string, Task>(),
 }))
 
-export const editTask = editTaskSpec
+export const editTask = implementCommand(specification)
   .inputSchema(
     z
       .object({

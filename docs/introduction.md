@@ -6,7 +6,7 @@ Specification: a name, a description, and concrete Scenarios. A coding agent or
 human can read those examples before navigating persistence, transport, or
 framework wiring.
 
-This documentation describes the **0.3 main-branch preview**. The stable npm
+This documentation describes the **0.4 main-branch preview**. The stable npm
 release remains 0.2.1.
 
 ## Agent-ready specifications
@@ -18,7 +18,7 @@ can be reviewed, tested, and checked for conformance without importing runtime
 details.
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
@@ -38,7 +38,7 @@ a database, transport, schema library, or server framework.
 Every Slice has two required files:
 
 - `spec.ts` exports the immutable Slice Specification. It imports from
-  `@specter-ts/core/spec` and contains only descriptions and Scenarios.
+  `@specter-ts/spec` and contains only descriptions and Scenarios.
 - `impl.ts` exports the completed Slice Implementation. It supplies runtime
   schemas, a private Slice Store, Event apply handlers, a Reaction Plugin when
   needed, and the final handler.

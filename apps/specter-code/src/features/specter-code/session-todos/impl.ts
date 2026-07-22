@@ -1,7 +1,8 @@
-import sessionTodosSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { todoListUpdatedEvent } from '../events'
 
 type TodoStatus = 'pending' | 'in_progress' | 'completed'
@@ -18,14 +19,14 @@ type SessionTodosState = {
   bySession: Record<string, SessionTodo[]>
 }
 
-const sessionTodos = sessionTodosSpec
+const sessionTodos = implementQuery(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),
     }),
   )
   .outputSchema<SessionTodo[]>()
-  .store(createMemorySliceStore<SessionTodosState>(() => ({ bySession: {} })))
+  .store(defineMemorySliceStore<SessionTodosState>(() => ({ bySession: {} })))
   .apply(todoListUpdatedEvent, async (event, state) => {
     const payload = event.payload
     state.bySession[payload.sessionId] = payload.items.map((item) => ({

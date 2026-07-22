@@ -4,6 +4,7 @@ import {
   type SqliteConnection,
   type SqliteDatabaseContext,
 } from '@specter-ts/sqlite'
+import { Effect } from 'effect'
 
 import type {
   SettledReaction,
@@ -58,9 +59,19 @@ export function createSqliteReactionTicketStore(
     })
   }
 
+  function runTransaction<A>(
+    run: (connection: SqliteConnection) => Promise<A>,
+  ): Promise<A> {
+    return Effect.runPromise(
+      context.transaction((connection) =>
+        Effect.promise(() => run(connection)),
+      ),
+    )
+  }
+
   return {
     async create(reactionId, expiresAt, recovery) {
-      await context.transaction(async (connection) => {
+      await runTransaction(async (connection) => {
         await prune(connection)
         await connection.execute({
           sql: `INSERT INTO specter_reaction_tickets (
@@ -82,7 +93,7 @@ export function createSqliteReactionTicketStore(
     },
 
     async settle(reactionId, result) {
-      await context.transaction(async (connection) => {
+      await runTransaction(async (connection) => {
         await connection.execute({
           sql: `UPDATE specter_reaction_tickets
             SET status = ?, error_json = ?
@@ -97,7 +108,7 @@ export function createSqliteReactionTicketStore(
     },
 
     async get(reactionId) {
-      const result = await context.transaction((connection) =>
+      const result = await runTransaction((connection) =>
         connection.execute({
           sql: `SELECT status, envelope_json, options_json, error_json
             FROM specter_reaction_tickets

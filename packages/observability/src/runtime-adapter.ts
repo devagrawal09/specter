@@ -1,7 +1,8 @@
-import type {
-  SpecterEventReference,
-  SpecterObservation,
+import {
   SpecterObserver,
+  type SpecterEventReference,
+  type SpecterObservation,
+  type SpecterObserverService,
 } from '@specter-ts/core'
 import type {
   EventReference,
@@ -13,6 +14,7 @@ import type {
 } from '@specter-ts/protocol'
 import { structuredProtocolError } from '@specter-ts/protocol'
 import type { ReactionOutboxTransitionListener } from '@specter-ts/reaction-outbox'
+import { Effect, Layer } from 'effect'
 
 import type { RuntimeObservationProducer } from './producer'
 
@@ -21,10 +23,11 @@ export type RuntimeObservationAdapterOptions = {
   readonly source: RuntimeSource
   readonly idFactory?: () => string
   readonly now?: () => Date
+  readonly specificationDigests?: Readonly<Record<string, `sha256:${string}`>>
 }
 
 export type RuntimeObservationEmitter = {
-  readonly observe: SpecterObserver
+  readonly observer: SpecterObserverService
   readonly outbox: ReactionOutboxTransitionListener
   emit(
     input: Omit<
@@ -61,14 +64,32 @@ export function createRuntimeObservationEmitter(
     }
   }
 
-  const observe: SpecterObserver = (observation) => {
-    try {
-      options.producer.record(
-        fromSpecterObservation(observation, options.source, ++sequence),
-      )
-    } catch {
-      // Telemetry must never delay or change application execution.
-    }
+  const observer: SpecterObserverService = {
+    observe: (observation) =>
+      Effect.sync(() => {
+        try {
+          const protocol = fromSpecterObservation(
+            observation,
+            options.source,
+            ++sequence,
+          )
+          const slice =
+            protocol.slice ??
+            protocol.commandType ??
+            protocol.queryType ??
+            protocol.reaction
+          const specificationDigest = slice
+            ? options.specificationDigests?.[slice]
+            : undefined
+          options.producer.record({
+            ...protocol,
+            ...(slice ? { slice } : {}),
+            ...(specificationDigest ? { specificationDigest } : {}),
+          })
+        } catch {
+          // Telemetry must never delay or change application execution.
+        }
+      }),
   }
 
   const outbox: ReactionOutboxTransitionListener = (transition) => {
@@ -99,7 +120,6 @@ export function createRuntimeObservationEmitter(
           kind: 'outbox.attempted',
           operationId,
           deliveryId: transition.claim.id,
-          attemptId: transition.claim.activeAttemptId,
           parentOperationIds: outboxParents(
             transition.claim.id,
             lastOutboxOperation,
@@ -123,7 +143,6 @@ export function createRuntimeObservationEmitter(
           kind: 'outbox.retry-scheduled',
           operationId,
           deliveryId: transition.claim.id,
-          attemptId: transition.claim.activeAttemptId,
           parentOperationIds: outboxParents(
             transition.claim.id,
             lastOutboxOperation,
@@ -151,7 +170,6 @@ export function createRuntimeObservationEmitter(
           kind: 'outbox.dead-lettered',
           operationId,
           deliveryId: transition.claim.id,
-          attemptId: transition.claim.activeAttemptId,
           parentOperationIds: outboxParents(
             transition.claim.id,
             lastOutboxOperation,
@@ -189,13 +207,19 @@ export function createRuntimeObservationEmitter(
     }
   }
 
-  return { emit, observe, outbox }
+  return { emit, observer, outbox }
 }
 
 export function createSpecterProtocolObserver(
   options: RuntimeObservationAdapterOptions,
-): SpecterObserver {
-  return createRuntimeObservationEmitter(options).observe
+): SpecterObserverService {
+  return createRuntimeObservationEmitter(options).observer
+}
+
+export function createSpecterProtocolObserverLayer(
+  options: RuntimeObservationAdapterOptions,
+) {
+  return Layer.succeed(SpecterObserver, createSpecterProtocolObserver(options))
 }
 
 function fromSpecterObservation(
@@ -203,7 +227,6 @@ function fromSpecterObservation(
   source: RuntimeSource,
   sequence: number,
 ): RuntimeObservation {
-  const protocolCausality = observation.protocolCausality ?? {}
   const base = {
     observationId: observation.observationId,
     sequence,
@@ -216,16 +239,7 @@ function fromSpecterObservation(
     ...(observation.parentOperationIds.length
       ? { parentOperationIds: observation.parentOperationIds }
       : {}),
-    ...causalityMetadata(observation, protocolCausality),
-    ...(protocolCausality.reactionPassId
-      ? { reactionPassId: protocolCausality.reactionPassId }
-      : {}),
-    ...(protocolCausality.deliveryId
-      ? { deliveryId: protocolCausality.deliveryId }
-      : {}),
-    ...(protocolCausality.attemptId
-      ? { attemptId: protocolCausality.attemptId }
-      : {}),
+    ...causalityMetadata(observation),
   }
 
   switch (observation.type) {
@@ -326,40 +340,6 @@ function fromSpecterObservation(
           changedEventTypes: observation.changedEventTypes,
         },
       }
-    case 'reaction-pass-started':
-      return {
-        ...base,
-        kind: 'reaction.pass.started',
-        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
-        deliveryId: protocolCausality.deliveryId ?? observation.passId,
-        attemptId: observation.attemptId,
-        attributes: { attemptNumber: observation.attemptNumber },
-      }
-    case 'reaction-pass-completed':
-    case 'reaction-pass-failed':
-      return {
-        ...base,
-        kind:
-          observation.type === 'reaction-pass-completed'
-            ? 'reaction.pass.completed'
-            : 'reaction.pass.failed',
-        outcome:
-          observation.type === 'reaction-pass-completed'
-            ? 'succeeded'
-            : 'failed',
-        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
-        deliveryId: protocolCausality.deliveryId ?? observation.passId,
-        attemptId: observation.attemptId,
-        ...(observation.type === 'reaction-pass-failed'
-          ? { error: publicError(observation.cause) }
-          : {}),
-        attributes: {
-          attemptNumber: observation.attemptNumber,
-          failureCount: observation.failureCount,
-          durationMs: observation.durationMs,
-          eventRanges: observation.eventRanges,
-        },
-      }
     case 'reaction-run-started':
     case 'reaction-run-completed':
     case 'reaction-run-failed': {
@@ -373,10 +353,7 @@ function fromSpecterObservation(
         ...base,
         kind,
         reaction: observation.reactionName,
-        reactionPassId: protocolCausality.reactionPassId ?? observation.passId,
-        deliveryId:
-          protocolCausality.deliveryId ?? reactionDeliveryId(observation),
-        attemptId: reactionAttemptId(observation),
+        deliveryId: observation.deliveryId,
         ...(observation.type === 'reaction-run-completed'
           ? { outcome: 'succeeded' as const }
           : {}),
@@ -386,16 +363,8 @@ function fromSpecterObservation(
               error: publicError(observation.cause),
             }
           : {}),
-        ...(observation.eventRange && !protocolCausality.triggeringEventOrder
-          ? {
-              triggeringEventOrder: {
-                from: observation.eventRange.fromOrder,
-                to: observation.eventRange.toOrder,
-              },
-            }
-          : {}),
         attributes: {
-          runId: observation.runId,
+          commitVersion: observation.commitVersion,
           ...(observation.type === 'reaction-run-started'
             ? {}
             : { durationMs: observation.durationMs }),
@@ -423,17 +392,14 @@ function protocolEvents(
   )
 }
 
-function causalityMetadata(
-  observation: SpecterObservation,
-  protocolCausality: NonNullable<SpecterObservation['protocolCausality']>,
-) {
+function causalityMetadata(observation: SpecterObservation) {
   const eventIds = [
-    ...(protocolCausality.triggeringEventIds ?? []),
+    ...(observation.triggeringEventIds ?? []),
     ...observation.causedByEvents.map((event) => event.id),
   ]
   const orders = observation.causedByEvents.map((event) => event.order)
   const triggeringEventOrder =
-    protocolCausality.triggeringEventOrder ??
+    observation.triggeringEventOrder ??
     (orders.length
       ? { from: Math.min(...orders), to: Math.max(...orders) }
       : undefined)
@@ -459,24 +425,6 @@ function outboxParents(
 
 function publicError(cause: unknown): StructuredError {
   return structuredProtocolError(cause)
-}
-
-type ReactionRunObservation = Extract<
-  SpecterObservation,
-  {
-    readonly type:
-      | 'reaction-run-started'
-      | 'reaction-run-completed'
-      | 'reaction-run-failed'
-  }
->
-
-function reactionDeliveryId(observation: ReactionRunObservation) {
-  return `${observation.passId}:${observation.reactionName}:${observation.eventRange?.toOrder ?? 'pending'}`
-}
-
-function reactionAttemptId(observation: ReactionRunObservation) {
-  return `${observation.attemptId}:${observation.reactionName}:${observation.eventRange?.toOrder ?? 'pending'}`
 }
 
 const _jsonValueCheck: JsonValue = null

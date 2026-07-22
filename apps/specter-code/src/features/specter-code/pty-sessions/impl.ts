@@ -1,7 +1,8 @@
-import ptySessionsSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   ptySessionEndedEvent,
   ptySessionOutputEvent,
@@ -33,14 +34,14 @@ const appendPreview = (current: string, data: string) => {
   return next.slice(next.length - MAX_OUTPUT_PREVIEW_LENGTH)
 }
 
-const ptySessions = ptySessionsSpec
+const ptySessions = implementQuery(specification)
   .inputSchema(
     z.object({
       sessionId: z.string(),
     }),
   )
   .outputSchema<PtySessionProjection[]>()
-  .store(createMemorySliceStore<PtySessionsState>(() => ({ sessions: {} })))
+  .store(defineMemorySliceStore<PtySessionsState>(() => ({ sessions: {} })))
   .apply(ptySessionStartedEvent, async (event, state) => {
     const payload = event.payload
     state.sessions[payload.ptySessionId] = {

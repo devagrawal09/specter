@@ -1,25 +1,75 @@
-export type ReactionDeliveryContext = {
-  /** Stable across every retry of the same scheduled delivery. */
-  readonly deliveryId: string
-  /** ISO-8601 time captured once when this delivery was first scheduled. */
+import { Clock, Context, Effect, Semaphore, type Scope } from 'effect'
+
+export type ReactionScheduleContext = {
+  readonly throughOrder: number
   readonly scheduledAt: string
-  /** Stable for this attempt and different for a later retry. */
-  readonly attemptId: string
-  /** One-based attempt number for this delivery. */
-  readonly attemptNumber: number
 }
 
-export type WaitForReactionsIdle = () => Promise<void>
-/** Requests a Reaction pass and returns a factory for awaiting its idle point. */
-export type RequestReactions = () => WaitForReactionsIdle
+export class ReactionSchedulerFailure extends Error {
+  readonly _tag = 'ReactionSchedulerFailure' as const
+
+  constructor(
+    readonly operation: 'bind' | 'schedule' | 'run',
+    readonly cause: unknown,
+  ) {
+    super(`Reaction scheduler ${operation} failed.`, { cause })
+    this.name = 'ReactionSchedulerFailure'
+  }
+}
+
+export type ReactionExecutor<E> = (
+  context: ReactionScheduleContext,
+) => Effect.Effect<void, E>
+
+export type ReactionSchedulerBinding<E> = {
+  readonly execute: ReactionExecutor<E>
+}
+
+export type BoundReactionScheduler<E> = {
+  readonly schedule: (
+    throughOrder: number,
+  ) => Effect.Effect<
+    Effect.Effect<void, E | ReactionSchedulerFailure>,
+    ReactionSchedulerFailure
+  >
+}
 
 /**
- * Schedulers serialize Reaction passes. They may coalesce or queue requests,
- * but a Reaction may request another pass while the current pass is active
- * without starting a nested pass or requiring that Reaction to await itself.
- * The delivery context must be stable across retries so core can derive stable
- * per-Reaction effect IDs.
+ * Event Log commits and Reaction Slice cursors remain canonical. Scheduler
+ * state is a rebuildable coordination index. `bind` attaches one executor for
+ * the application lifetime. `schedule` acknowledges adapter acceptance before
+ * returning a separate completion Effect. Core routes startup reconciliation
+ * and new commit boundaries through that path, owns the scoped completion
+ * fiber, and exposes completion separately from Command commit.
  */
-export type ReactionScheduler = (
-  run: (context: ReactionDeliveryContext) => Promise<void>,
-) => RequestReactions
+export type ReactionSchedulerService = {
+  readonly bind: <E>(
+    binding: ReactionSchedulerBinding<E>,
+  ) => Effect.Effect<
+    BoundReactionScheduler<E>,
+    E | ReactionSchedulerFailure,
+    Scope.Scope
+  >
+}
+
+export const ReactionScheduler = Context.Reference<ReactionSchedulerService>(
+  '@specter-ts/core/ReactionScheduler',
+  {
+    defaultValue: () => ({
+      bind: ({ execute }) => {
+        const semaphore = Semaphore.makeUnsafe(1)
+        return Effect.succeed({
+          schedule: (throughOrder: number) =>
+            Effect.gen(function* () {
+              const scheduledAt = new Date(
+                yield* Clock.currentTimeMillis,
+              ).toISOString()
+              return semaphore.withPermit(
+                execute({ throughOrder, scheduledAt }),
+              )
+            }),
+        })
+      },
+    }),
+  },
+)

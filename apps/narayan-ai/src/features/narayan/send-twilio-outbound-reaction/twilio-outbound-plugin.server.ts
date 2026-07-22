@@ -1,10 +1,10 @@
 import type { CommandDispatch, ReactionPlugin } from '@specter-ts/core'
+import { Context, Effect } from 'effect'
 
-import {
+import type {
   createTwilioDeliveryAttemptStore,
-  type TwilioDeliveryAttempt,
+  TwilioDeliveryAttempt,
 } from '../../../db/twilio-delivery-attempts'
-import { getBoundSliceDb } from '../../../db/specter-sqlite'
 import type { SendTwilioOutboundEffect } from './impl'
 
 type TwilioMessage = {
@@ -19,6 +19,11 @@ export type TwilioOutboundProvider = {
 }
 
 type AttemptStore = ReturnType<typeof createTwilioDeliveryAttemptStore>
+
+export class TwilioDeliveryAttempts extends Context.Service<
+  TwilioDeliveryAttempts,
+  AttemptStore
+>()('@specter/narayan/TwilioDeliveryAttempts') {}
 
 export type TwilioOutboundPluginOptions = {
   provider?: TwilioOutboundProvider
@@ -45,111 +50,148 @@ export function createTwilioOutboundPlugin(
   const now = options.now ?? (() => new Date())
   const reconciliationGraceMs = options.reconciliationGraceMs ?? 60_000
 
-  return async (command) => async (output, context) => {
-    const effect = output.payload
-    const accountSid = process.env.TWILIO_ACCOUNT_SID
-    const authToken = process.env.TWILIO_AUTH_TOKEN
-    const from = process.env.TWILIO_WHATSAPP_FROM
+  return (command) =>
+    Effect.gen(function* () {
+      const configuredStore = options.store?.()
+      const contextStore = configuredStore ?? (yield* TwilioDeliveryAttempts)
+      return (output, context) =>
+        Effect.gen(function* () {
+          const effect = output.payload
+          const accountSid = process.env.TWILIO_ACCOUNT_SID
+          const authToken = process.env.TWILIO_AUTH_TOKEN
+          const from = process.env.TWILIO_WHATSAPP_FROM
 
-    if (!options.provider && (!accountSid || !authToken || !from)) {
-      await command(
-        {
-          type: 'recordTwilioMessageFailed',
-          payload: {
-            outboundMessageId: effect.outboundMessageId,
-            error:
-              'Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_WHATSAPP_FROM',
-            failedAt: context.scheduledAt,
-          },
-        },
-        { idempotencyKey: `${context.deliveryId}:failed` },
-      )
-      return
-    }
+          if (!options.provider && (!accountSid || !authToken || !from)) {
+            yield* command(
+              {
+                type: 'recordTwilioMessageFailed',
+                payload: {
+                  outboundMessageId: effect.outboundMessageId,
+                  error:
+                    'Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, or TWILIO_WHATSAPP_FROM',
+                  failedAt: context.scheduledAt,
+                },
+              },
+              { idempotencyKey: `${context.deliveryId}:failed` },
+            )
+            return
+          }
 
-    const provider =
-      options.provider ??
-      (await createLiveTwilioProvider({
-        accountSid: accountSid ?? '',
-        authToken: authToken ?? '',
-        from: from ?? '',
-      }))
-    const store =
-      options.store?.() ?? createTwilioDeliveryAttemptStore(getBoundSliceDb())
-    const existing = await store.get(context.deliveryId)
+          const provider =
+            options.provider ??
+            (yield* Effect.tryPromise(() =>
+              createLiveTwilioProvider({
+                accountSid: accountSid ?? '',
+                authToken: authToken ?? '',
+                from: from ?? '',
+              }),
+            ))
+          const store = contextStore
+          const existing = yield* Effect.tryPromise(() =>
+            store.get(context.deliveryId),
+          )
 
-    if (existing?.status === 'sent' && existing.providerMessageSid) {
-      await recordSent(command, context.deliveryId, effect.outboundMessageId, {
-        sid: existing.providerMessageSid,
-        status: existing.providerStatus,
-        sentAt: existing.updatedAt,
-      })
-      return
-    }
+          if (existing?.status === 'sent' && existing.providerMessageSid) {
+            yield* recordSent(
+              command,
+              context.deliveryId,
+              effect.outboundMessageId,
+              {
+                sid: existing.providerMessageSid,
+                status: existing.providerStatus,
+                sentAt: existing.updatedAt,
+              },
+            )
+            return
+          }
 
-    if (existing) {
-      const reconciled = await provider.reconcile(existing)
-      if (reconciled) {
-        const reconciledAt = reconciled.sentAt ?? now().toISOString()
-        await store.markSent(context.deliveryId, reconciled, reconciledAt)
-        await recordSent(
-          command,
-          context.deliveryId,
-          effect.outboundMessageId,
-          { ...reconciled, sentAt: reconciledAt },
-        )
-        return
-      }
+          if (existing) {
+            const reconciled = yield* Effect.tryPromise(() =>
+              provider.reconcile(existing),
+            )
+            if (reconciled) {
+              const reconciledAt = reconciled.sentAt ?? now().toISOString()
+              yield* Effect.tryPromise(() =>
+                store.markSent(context.deliveryId, reconciled, reconciledAt),
+              )
+              yield* recordSent(
+                command,
+                context.deliveryId,
+                effect.outboundMessageId,
+                {
+                  ...reconciled,
+                  sentAt: reconciledAt,
+                },
+              )
+              return
+            }
 
-      const startedAt = new Date(existing.startedAt).getTime()
-      if (now().getTime() - startedAt < reconciliationGraceMs) {
-        throw new TwilioDeliveryReconciliationPendingError(context.deliveryId)
-      }
-    }
+            const startedAt = new Date(existing.startedAt).getTime()
+            if (now().getTime() - startedAt < reconciliationGraceMs) {
+              return yield* Effect.fail(
+                new TwilioDeliveryReconciliationPendingError(
+                  context.deliveryId,
+                ),
+              )
+            }
+          }
 
-    const attemptedAt = now().toISOString()
-    await store.begin({
-      deliveryId: context.deliveryId,
-      outboundMessageId: effect.outboundMessageId,
-      to: effect.to,
-      from: from ?? 'test-provider',
-      body: effect.body,
-      attemptNumber: context.attemptNumber,
-      startedAt: attemptedAt,
+          const attemptedAt = now().toISOString()
+          yield* Effect.tryPromise(() =>
+            store.begin({
+              deliveryId: context.deliveryId,
+              outboundMessageId: effect.outboundMessageId,
+              to: effect.to,
+              from: from ?? 'test-provider',
+              body: effect.body,
+              attemptNumber: (existing?.attemptNumber ?? 0) + 1,
+              startedAt: attemptedAt,
+            }),
+          )
+
+          // Twilio Programmable Messaging has no create-message idempotency key.
+          // Persist-before-send plus SID/body reconciliation narrows the crash
+          // window, but a provider response lost before it becomes list-visible
+          // can still produce at-least-once delivery after the grace period.
+          const message = yield* Effect.tryPromise(() =>
+            provider.send(effect),
+          ).pipe(
+            Effect.tapError((cause) =>
+              Effect.tryPromise(() =>
+                store.markAmbiguous(
+                  context.deliveryId,
+                  cause instanceof Error ? cause.message : String(cause),
+                  now().toISOString(),
+                ),
+              ),
+            ),
+          )
+          const sentAt = message.sentAt ?? now().toISOString()
+          yield* Effect.tryPromise(() =>
+            store.markSent(context.deliveryId, message, sentAt),
+          )
+          yield* recordSent(
+            command,
+            context.deliveryId,
+            effect.outboundMessageId,
+            {
+              ...message,
+              sentAt,
+            },
+          )
+        })
     })
-
-    try {
-      // Twilio Programmable Messaging has no create-message idempotency key.
-      // Persist-before-send plus SID/body reconciliation narrows the crash
-      // window, but a provider response lost before it becomes list-visible
-      // can still produce at-least-once delivery after the grace period.
-      const message = await provider.send(effect)
-      const sentAt = message.sentAt ?? now().toISOString()
-      await store.markSent(context.deliveryId, message, sentAt)
-      await recordSent(command, context.deliveryId, effect.outboundMessageId, {
-        ...message,
-        sentAt,
-      })
-    } catch (cause) {
-      await store.markAmbiguous(
-        context.deliveryId,
-        cause instanceof Error ? cause.message : String(cause),
-        now().toISOString(),
-      )
-      throw cause
-    }
-  }
 }
 
 export const twilioOutboundPlugin = createTwilioOutboundPlugin()
 
-async function recordSent(
+function recordSent(
   command: CommandDispatch,
   deliveryId: string,
   outboundMessageId: string,
   message: TwilioMessage & { sentAt?: string },
 ) {
-  await command(
+  return command(
     {
       type: 'recordTwilioMessageSent',
       payload: {

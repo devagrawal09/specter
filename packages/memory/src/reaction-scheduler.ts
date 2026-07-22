@@ -1,55 +1,40 @@
-import type {
-  ReactionDeliveryContext,
+import {
   ReactionScheduler,
+  type ReactionSchedulerService,
 } from '@specter-ts/core'
+import { Effect, Layer, Semaphore } from 'effect'
 
 export type ImmediateReactionSchedulerOptions = {
-  readonly deliveryId?: (sequence: number) => string
   readonly now?: () => Date
 }
 
-export function createImmediateReactionScheduler(
+export function createImmediateReactionSchedulerService(
   options: ImmediateReactionSchedulerOptions = {},
-): ReactionScheduler {
-  const deliveryId =
-    options.deliveryId ?? ((sequence) => `memory-reaction-pass-${sequence}`)
+): ReactionSchedulerService {
   const now = options.now ?? (() => new Date())
+  const semaphore = Semaphore.makeUnsafe(1)
 
-  return (run) => {
-    const requestedRuns: ReactionDeliveryContext[] = []
-    let activeRun: Promise<void> | undefined
-    let sequence = 0
-
-    async function drain() {
-      while (requestedRuns.length > 0) {
-        const context = requestedRuns.shift()
-        if (context) await run(context)
-      }
-    }
-
-    return () => {
-      sequence += 1
-      const id = deliveryId(sequence)
-      requestedRuns.push({
-        deliveryId: id,
-        scheduledAt: now().toISOString(),
-        attemptId: `${id}:attempt:1`,
-        attemptNumber: 1,
-      })
-      if (!activeRun) {
-        activeRun = drain()
-          .catch((cause) => {
-            requestedRuns.length = 0
-            throw cause
-          })
-          .finally(() => {
-            activeRun = undefined
-          })
-      }
-      const completion = activeRun
-      return () => completion
-    }
+  return {
+    bind: ({ execute }) =>
+      Effect.succeed({
+        schedule: (throughOrder: number) =>
+          Effect.succeed(
+            semaphore.withPermit(
+              execute({
+                throughOrder,
+                scheduledAt: now().toISOString(),
+              }),
+            ),
+          ),
+      }),
   }
 }
 
-export const immediateReactionScheduler = createImmediateReactionScheduler()
+export function createImmediateReactionSchedulerLayer(
+  options: ImmediateReactionSchedulerOptions = {},
+): Layer.Layer<never> {
+  return Layer.effect(
+    ReactionScheduler,
+    Effect.succeed(createImmediateReactionSchedulerService(options)),
+  )
+}

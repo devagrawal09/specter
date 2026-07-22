@@ -1,10 +1,11 @@
-import recordToolCallCompletedSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { toolCallCompletedEvent, toolCallStartedEvent } from '../events'
 
-const recordToolCallCompleted = recordToolCallCompletedSpec
+const recordToolCallCompleted = implementCommand(specification)
   .inputSchema(
     z.object({
       toolCallId: z.string(),
@@ -15,7 +16,7 @@ const recordToolCallCompleted = recordToolCallCompletedSpec
       outputSummary: z.string().optional(),
     }),
   )
-  .store(createMemorySliceStore(() => ({})))
+  .store(defineMemorySliceStore(() => ({})))
   .apply(toolCallStartedEvent, async () => {})
   .handle(async (command) => {
     return [

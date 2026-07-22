@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const createPostSpec = createCommandSlice('createPost')
   .description('Creates a top-level post in a workspace chat.')

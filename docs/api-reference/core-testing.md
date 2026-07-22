@@ -2,7 +2,7 @@
 
 **Import:** `@specter-ts/core/testing`
 
-**Status:** `0.3.0` main-branch preview; the published npm release remains `0.2.1`.
+**Status:** `0.4.0` main-branch preview; the published npm release remains `0.2.1`.
 
 The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, replays Scenario Events into isolated Slice State, derives focused Event catalogs, and reports where an Event contract propagates. It is intended for tests and development tooling, not application runtime code.
 
@@ -12,10 +12,14 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | --- | --- | --- |
 | `testSliceImplementation` | `(implementation, options) => void` | Defines Vitest tests for one completed Slice implementation. |
 | `testSliceImplementations` | `(implementations, options) => void` | Defines Vitest tests for a registry of completed Slice implementations. |
-| `replay` | `(implementations, eventDefinitions, events) => Promise<void>` | Validates and applies Scenario Events in order, then publishes each affected Slice cursor. |
+| `replay` | `(implementations, eventDefinitions, events) => Effect<void, ...>` | Validates and applies Scenario Events in order, then publishes each affected Slice cursor. |
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, idempotency, and filtered queries. |
+| `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, and one-shot callbacks. |
+| `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
+| `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |
 
 ## Public types
 
@@ -41,7 +45,10 @@ Both test runners first call the same conformance check used to construct an app
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.
 5. The runner compares exact values with `expect(...).toEqual(...)`.
 
-`runScenario` wraps the whole replay-and-execute operation. Use it to create a transaction, reset an in-memory adapter, or otherwise isolate state between Scenarios. The runner does not reset a supplied store automatically.
+`runScenario` receives Effect program and wraps whole replay-and-execute
+operation. Use it to provide Store Layers, create a transaction, reset memory
+service, or otherwise isolate State between Scenarios. Runner does not reset
+supplied Store automatically.
 
 ## Minimal Todo test
 
@@ -110,5 +117,5 @@ The report is static: it reads the supplied executable registry and does not dis
 - [Writing executable specifications](../specifications/writing-specifications.md)
 - [Testing Slice implementations](../specifications/slice-tests.md)
 - [Conformance](../specifications/conformance.md)
-- [Core specification API](./core-spec.md)
+- [Core specification API](./spec.md)
 - [Core runtime API](./core-runtime.md)

@@ -1,0 +1,13 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "addTodo",
+  "description": "Adds a todo.",
+  "scenarios": [{
+    "description": "Adds one.",
+    "given": [],
+    "when": { "todoId": "todo-1", "title": "Ship it" },
+    "expect": [{ "kind": "scenario-event", "eventType": "todo-added", "examplePayload": { "todoId": "todo-1", "title": "Ship it" } }]
+  }]
+}

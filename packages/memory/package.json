@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/memory",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Deterministic in-memory Event Log, Slice Store, and Reaction scheduler for Specter.",
   "type": "module",
   "license": "MIT",
@@ -23,7 +23,11 @@
   "dependencies": {
     "@specter-ts/core": "workspace:*"
   },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.78"
+  },
   "devDependencies": {
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

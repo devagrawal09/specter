@@ -1,82 +1,118 @@
-import { AsyncLocalStorage } from 'node:async_hooks'
-
 import type { Client, Transaction } from '@libsql/client'
+import { Context, Effect, Exit, Option, Semaphore } from 'effect'
 
 export type SqliteConnection = Client | Transaction
 
+export class SqliteDatabaseFailure extends Error {
+  readonly _tag = 'SqliteDatabaseFailure' as const
+
+  constructor(
+    readonly operation: 'begin' | 'commit' | 'rollback',
+    readonly cause: unknown,
+  ) {
+    super(`SQLite ${operation} failed.`, { cause })
+    this.name = 'SqliteDatabaseFailure'
+  }
+}
+
 export type SqliteDatabaseContext = {
   readonly client: Client
-  connection(): SqliteConnection
-  serialize<T>(run: () => Promise<T>): Promise<T>
-  transaction<T>(run: (connection: SqliteConnection) => Promise<T>): Promise<T>
+  readonly use: <A, E, R>(
+    run: (connection: SqliteConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly serialize: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E, R>
+  readonly transaction: <A, E, R>(
+    run: (connection: SqliteConnection) => Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | SqliteDatabaseFailure, R>
 }
+
+type ActiveSqliteTransaction = {
+  readonly owner: object
+  readonly connection: SqliteConnection
+  active: boolean
+}
+
+const ActiveSqliteTransaction = Context.Service<ActiveSqliteTransaction>(
+  '@specter-ts/sqlite/ActiveTransaction',
+)
 
 export function createSqliteDatabaseContext(
   client: Client,
 ): SqliteDatabaseContext {
-  const scopedConnection = new AsyncLocalStorage<SqliteConnection>()
-  const scopedSerialization = new AsyncLocalStorage<boolean>()
-  let transactionTail = Promise.resolve()
-  let serializationTail = Promise.resolve()
+  const semaphore = Semaphore.makeUnsafe(1)
+  const owner = {}
 
-  return {
+  const activeConnection = Effect.contextWith<
+    never,
+    SqliteConnection,
+    never,
+    never
+  >((services) => {
+    const active = Context.getOption(services, ActiveSqliteTransaction)
+    return Effect.succeed(
+      Option.isSome(active) &&
+        active.value.owner === owner &&
+        active.value.active
+        ? active.value.connection
+        : client,
+    )
+  })
+
+  const context: SqliteDatabaseContext = {
     client,
-    connection() {
-      return scopedConnection.getStore() ?? client
-    },
-    async serialize(run) {
-      if (scopedSerialization.getStore() || scopedConnection.getStore()) {
-        return run()
-      }
-
-      const previous = serializationTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      serializationTail = queued
-      await previous
-
-      try {
-        return await scopedSerialization.run(true, run)
-      } finally {
-        release()
-        if (serializationTail === queued) serializationTail = Promise.resolve()
-      }
-    },
-    async transaction(run) {
-      const active = scopedConnection.getStore()
-      if (active) return run(active)
-
-      const previous = transactionTail
-      let release = () => {}
-      const current = new Promise<void>((resolve) => {
-        release = resolve
-      })
-      const queued = previous.then(() => current)
-      transactionTail = queued
-      await previous
-
-      let transaction: Transaction | undefined
-      try {
-        transaction = await client.transaction('write')
-        const activeTransaction = transaction
-        const result = await scopedConnection.run(activeTransaction, () =>
-          run(activeTransaction),
-        )
-        await transaction.commit()
-        return result
-      } catch (cause) {
-        if (transaction && !transaction.closed) await transaction.rollback()
-        throw cause
-      } finally {
-        transaction?.close()
-        release()
-        if (transactionTail === queued) transactionTail = Promise.resolve()
-      }
-    },
+    use: (run) => Effect.flatMap(activeConnection, run),
+    serialize: (effect) =>
+      Effect.flatMap(activeConnection, (active) =>
+        active !== client ? effect : semaphore.withPermit(effect),
+      ),
+    transaction: (run) =>
+      Effect.flatMap(activeConnection, (active) =>
+        active !== client
+          ? run(active)
+          : semaphore.withPermit(
+              Effect.acquireUseRelease(
+                Effect.tryPromise({
+                  try: async () => {
+                    const connection = await client.transaction('write')
+                    return {
+                      connection,
+                      active: { owner, connection, active: true },
+                    }
+                  },
+                  catch: (cause) => new SqliteDatabaseFailure('begin', cause),
+                }),
+                ({ connection, active }) =>
+                  run(connection).pipe(
+                    Effect.provideService(ActiveSqliteTransaction, active),
+                  ),
+                ({ connection, active }, exit) =>
+                  (Exit.isSuccess(exit)
+                    ? Effect.tryPromise({
+                        try: () => connection.commit(),
+                        catch: (cause) =>
+                          new SqliteDatabaseFailure('commit', cause),
+                      })
+                    : Effect.tryPromise({
+                        try: () => connection.rollback(),
+                        catch: (cause) =>
+                          new SqliteDatabaseFailure('rollback', cause),
+                      })
+                  ).pipe(
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        active.active = false
+                        connection.close()
+                      }),
+                    ),
+                  ),
+              ),
+            ),
+      ),
   }
+
+  return context
 }
 
 export function requireString(value: unknown, field: string) {

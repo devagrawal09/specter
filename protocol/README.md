@@ -2,8 +2,9 @@
 
 This directory is the language-neutral telemetry contract between Specter
 runtimes and an observability collector. It carries runtime-observation batches
-to the collector and acknowledgements back to the producer. It is not an API
-for executing application Commands or Queries.
+and immutable portable Slice specifications to the collector, with independent
+acknowledgements for each ingestion lane. It is not an API for executing
+application Commands or Queries.
 
 Implementations conform by producing the same observable results for the
 fixtures in `fixtures/`; application Slices, handlers, schemas, transports, and

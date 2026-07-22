@@ -12,7 +12,7 @@ import {
   topicAddedEvent,
   topicArchiveChangedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import {
   connectionPairKey,
   otherEnd,
@@ -22,7 +22,8 @@ import {
   type Task,
   type Topic,
 } from '../model'
-import { connectRecordsSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type EntityState = { archived: boolean }
 type State = {
@@ -34,7 +35,7 @@ type State = {
   awards: Set<string>
 }
 
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   journals: new Map(),
   tasks: new Map(),
   topics: new Map(),
@@ -47,7 +48,7 @@ const refSchema = z
   .object({ kind: z.enum(['journal', 'task', 'topic']), id: z.string().min(1) })
   .strict()
 
-export const connectRecords = connectRecordsSpec
+export const connectRecords = implementCommand(specification)
   .inputSchema(
     z
       .object({

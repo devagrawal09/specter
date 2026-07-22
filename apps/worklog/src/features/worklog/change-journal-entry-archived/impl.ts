@@ -12,7 +12,7 @@ import {
   taskArchiveChangedEvent,
   taskCompletionChangedEvent,
 } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import {
   otherEnd,
   references,
@@ -20,7 +20,8 @@ import {
   type JournalEntry,
   type Task,
 } from '../model'
-import { changeJournalEntryArchivedSpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
 
 type State = {
   journals: Map<string, JournalEntry>
@@ -29,14 +30,14 @@ type State = {
   awards: Set<string>
 }
 
-const store = createWorklogMemoryStore<State>(() => ({
+const store = defineWorklogMemoryStore<State>(() => ({
   journals: new Map<string, JournalEntry>(),
   tasks: new Map<string, Task>(),
   connections: new Map<string, Connection>(),
   awards: new Set<string>(),
 }))
 
-export const changeJournalEntryArchived = changeJournalEntryArchivedSpec
+export const changeJournalEntryArchived = implementCommand(specification)
   .inputSchema(
     z
       .object({

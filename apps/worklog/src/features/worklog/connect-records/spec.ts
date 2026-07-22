@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const at = '2026-07-18T15:00:00.000Z'
 const task = (id: string) =>
@@ -239,3 +239,5 @@ export const connectRecordsSpec = createCommandSlice('connectRecords')
       reject: { reason: 'Connection endpoint not found' },
     },
   )
+
+export default connectRecordsSpec

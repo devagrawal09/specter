@@ -2,34 +2,33 @@ import { serveStatic } from '@hono/node-server/serve-static'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { createClient } from '@libsql/client/sqlite3'
-import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import { Hono } from 'hono'
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, EventLog, SpecterObserver } from '@specter-ts/core'
 import {
   createRuntimeObservationEmitter,
   createRuntimeObservationProducer,
   type RuntimeSource,
 } from '@specter-ts/observability'
 import {
-  createDurableReactionScheduler,
-  type ReactionPass,
-} from '@specter-ts/reaction-outbox'
-import {
   createSqliteDatabaseContext,
-  createSqliteReactionOutboxStore,
+  createSqliteReactionSchedulerLayer,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionOutbox,
+  prepareSqliteReactionScheduler,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
+import { Layer } from 'effect'
 
-import { runWithSqliteDb } from './db/specter-sqlite'
-import { createTodoSpecterAppConfig } from './features/todos/registry'
+import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
+import { todoSpecterAppConfig } from './features/todos/registry'
+import {
+  todoSpecificationDigests,
+  todoSpecifications,
+} from './features/todos/specifications'
 import { createSpecterHttpHandler } from './transport/specter-http.server'
 import {
   createSqliteReactionTicketStore,
   prepareSqliteReactionTicketStore,
 } from './transport/specter-reaction-tickets-sqlite.server'
-import * as schema from './db/schema'
 import './styles.css?url'
 
 const sqlitePath = process.env.SPECTER_SQLITE_PATH ?? './data/app.db'
@@ -40,11 +39,8 @@ const operationalSqliteClient = createClient({ url: sqliteUrl })
 await prepareSpecterSqlite(sqliteClient)
 await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
-await prepareSqliteReactionOutbox(operationalSqliteClient)
+await prepareSqliteReactionScheduler(operationalSqliteClient)
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
-const productionDb = drizzle(sqliteClient, {
-  schema,
-})
 const persistence = createSpecterSqlitePersistence(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
 const runtimeSource: RuntimeSource = {
@@ -59,37 +55,32 @@ const runtimeSource: RuntimeSource = {
 }
 const observationProducer = createRuntimeObservationProducer({
   collectorUrl:
-    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41736',
+    process.env.SPECTER_OBSERVABILITY_URL ?? 'http://127.0.0.1:41739',
   source: runtimeSource,
+  specifications: todoSpecifications,
 })
 const runtimeObservability = createRuntimeObservationEmitter({
   producer: observationProducer,
   source: runtimeSource,
+  specificationDigests: todoSpecificationDigests,
 })
-const durableSchedule = createDurableReactionScheduler(
-  createSqliteReactionOutboxStore<ReactionPass>(operationalSqliteClient, {
-    context: operationalContext,
-  }),
-  {
-    onTransition: runtimeObservability.outbox,
-    onBackgroundError: (cause) =>
-      console.error('Specter Reaction worker failed', cause),
-  },
+const reactionSchedulerLayer = createSqliteReactionSchedulerLayer(
+  operationalSqliteClient,
+  { context: operationalContext },
 )
 const specterApp = await createSpecterApp(
-  createTodoSpecterAppConfig(
-    persistence.eventLog,
-    (run) =>
-      durableSchedule((context) =>
-        runWithSqliteDb(productionDb, () => run(context)),
-      ),
-    { observe: runtimeObservability.observe },
+  todoSpecterAppConfig,
+  Layer.mergeAll(
+    Layer.succeed(EventLog, persistence.eventLog),
+    reactionSchedulerLayer,
+    createSqliteSliceStoreLayer(persistence.context),
+    Layer.succeed(SpecterObserver, runtimeObservability.observer),
   ),
 )
 const handleSpecterRequest = createSpecterHttpHandler({
   app: specterApp,
   basePath: '/api',
-  run: (operation) => runWithSqliteDb(productionDb, operation),
+  run: (operation) => operation(),
   reactionTickets: createSqliteReactionTicketStore(operationalSqliteClient, {
     context: operationalContext,
   }),

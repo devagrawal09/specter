@@ -1,16 +1,41 @@
 # `@specter-ts/reaction-outbox`
 
-A storage-independent, at-least-once Reaction delivery worker for Specter.
+Optional durable delivery for slow or remote Reaction Plugins.
 
-The worker provides durable enqueue idempotency, deterministic attempt IDs,
-leases for crash recovery, configurable retry/backoff, dead-letter storage,
-and explicit dead-letter replay. Effects receive a stable delivery ID, a stable
-scheduled time, and an attempt ID so plugins can make external side effects
-idempotent and deterministic.
+Core already retries a Reaction commit until its Slice cursor advances. Wrap a
+Plugin when its external work should leave the Slice transaction quickly:
 
-Pass the same `AbortSignal` to the worker and `runReactionOutboxWorker` to stop
-cleanly during application shutdown. The polling service also discovers
-effects enqueued by other application processes.
+```ts
+import { withReactionOutbox } from '@specter-ts/reaction-outbox'
+
+const durableEmailPlugin = withReactionOutbox(emailPlugin, {
+  store: persistence.createReactionOutboxStore(),
+  worker: {
+    maxAttempts: 5,
+    leaseMs: 60_000,
+  },
+})
+```
+
+`withReactionOutbox` enqueues `{ output, context }` under core's stable
+per-Reaction `deliveryId`. Slice state and cursor commit after enqueue. A scoped
+worker runs wrapped Plugin outside Slice transaction, resumes pending or expired
+jobs after restart, retries with backoff, and moves exhausted jobs to
+dead-letter. `retryDeadLetter` replays one failed job.
+
+Use Store from same SQLite or Postgres persistence context as Slice Store when
+enqueue and cursor must share transaction. Payload uses Store codec; bundled SQL
+stores require JSON-compatible output and context. Custom Store codecs may
+support another representation.
+
+Store methods return Effects so enqueue can join active Slice Store transaction.
+Low-level worker methods remain Promise-based at background-service boundary.
+
+Worker delivery remains at least once. Provider may succeed before worker can
+commit completion. Wrapped Plugin should use `delivery.context.deliveryId` or
+worker `context.jobId` as provider idempotency key when provider supports it.
+
+Low-level `createReactionOutboxWorker` remains available for non-Specter jobs:
 
 ```ts
 const worker = createReactionOutboxWorker({
@@ -23,23 +48,7 @@ const worker = createReactionOutboxWorker({
 
 await worker.enqueue(effect, {
   jobId: 'delivery-123',
-  idempotencyKey: 'order-123:confirmation-email',
+  idempotencyKey: 'delivery-123',
 })
 await worker.drain()
 ```
-
-`createDurableReactionScheduler` integrates the worker with Specter's Reaction
-pass contract. It resumes pending and expired passes when the application is
-constructed. Specter commits each successful Reaction projection only after
-its plugin completes, so retrying a pass re-executes failed Reactions while
-skipping successful independent Reactions.
-
-Delivery is at least once: a process can crash after an external effect
-succeeds but before its Slice cursor commits. Reaction Plugins must use the
-provided stable delivery ID for provider-side idempotency.
-
-For production external effects, use `createOutboxReactionPlugin`. It writes
-the effect to the durable store under core's stable per-Reaction delivery ID
-and returns quickly. If the process fails before the Slice cursor publishes,
-the retried Reaction deduplicates the same outbox delivery. Run a separate
-worker to call the external provider outside Slice catch-up and command paths.

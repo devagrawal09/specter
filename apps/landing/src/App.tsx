@@ -200,8 +200,7 @@ export function App(): JSX.Element {
               <ul class="ticks">
                 <li>Scenario Events use exact example payloads.</li>
                 <li>
-                  Specifications import only from{' '}
-                  <code>@specter-ts/core/spec</code>
+                  Specifications import only from <code>@specter-ts/spec</code>
                   and implementation-independent constants.
                 </li>
                 <li>
@@ -229,7 +228,7 @@ export function App(): JSX.Element {
               <span class="stage__step">02 · implementation</span>
               <h2>Runtime details complete the specification</h2>
               <p>
-                The implementation imports its specification, supplies the
+                The implementation loads generated portable JSON, supplies the
                 schema stages required by that Slice kind, selects a private
                 Slice Store, applies relevant Events, and finishes with a
                 handler.

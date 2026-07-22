@@ -6,12 +6,12 @@ This keeps *what must happen* in `spec.ts` and *how it happens* in `impl.ts`.
 
 ## Specification first
 
-Import the specification surface from `@specter-ts/core/spec`:
+Import the specification surface from `@specter-ts/spec`:
 
 ```ts
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-export const addTodoSpec = createCommandSlice('addTodo')
+export default createCommandSlice('addTodo')
   .description('Adds a todo to the list.')
   .scenarios(
     {
@@ -32,10 +32,10 @@ export const addTodoSpec = createCommandSlice('addTodo')
   )
 ```
 
-The resulting value has `stage: 'specification'`. It cannot be registered in an
-app until an implementation supplies its required schema, store, and handler
-stages. Apply registrations are optional and driven by Given Events; only a
-Reaction supplies a Plugin.
+The result is portable JSON data. `specter-spec export` executes the default
+export in an isolated TypeScript process and writes an adjacent `spec.json`.
+Implementations consume that generated document, never the TypeScript builder
+object directly.
 
 ## Scenario shapes
 
@@ -57,11 +57,11 @@ type CommandScenario =
       given: readonly ScenarioEvent[]
       when: unknown
       expect: readonly []
-      reject?: { reason: string }
+      reject: { reason: string }
     }
 ```
 
-An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and may state the exact thrown error message as `reject.reason`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification.
+An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and must state the exact thrown error message as `reject.reason`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification.
 
 ### Query Scenarios
 
@@ -116,13 +116,28 @@ to the Event's one-based position.
 
 ## Complete the implementation in order
 
-The builders deliberately make infrastructure choices unavailable in `spec.ts`. Complete each kind in its required order:
+Import the generated document and start the kind-specific implementation
+builder. This keeps infrastructure choices unavailable in `spec.ts` while
+dogfooding the same contract that Go, Rust, and tooling consume:
+
+```ts
+import { implementCommand } from '@specter-ts/core'
+import specification from './spec.json' with { type: 'json' }
+
+export const addTodo = implementCommand(specification)
+  .inputSchema<AddTodoInput>()
+  .store(TodosStore)
+  .handle(handleAddTodo)
+```
+
+Complete each kind in its required order:
 
 | Slice kind | Required implementation order |
 | --- | --- |
 | Command | `inputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 | Query | `inputSchema(...)` → `outputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
-| Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Same-app Command Reaction | `outputSchema(CommandEnvelopeSchema)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Custom/external Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 
 Call the schema steps even when relying on type parameters instead of a runtime schema. A type-only schema choice improves TypeScript inference but performs no runtime validation.
 
@@ -162,7 +177,7 @@ Update the Event Definition, all reported Scenario examples, every producer, and
 
 ## Related documentation
 
-- [Core specification API](../api-reference/core-spec.md)
+- [Core specification API](../api-reference/spec.md)
 - [Testing Slice implementations](./slice-tests.md)
 - [Conformance](./conformance.md)
 - [Vertical Slice Architecture](../architecture/vertical-slice-architecture.md)

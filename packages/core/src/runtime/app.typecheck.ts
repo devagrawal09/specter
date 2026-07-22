@@ -7,7 +7,6 @@ import type {
   SpecterAppConfigOf,
   SpecterCommandEnvelope,
   SpecterQueryEnvelope,
-  SliceStoreAdapter,
 } from '..'
 import * as core from '..'
 
@@ -28,15 +27,14 @@ declare const todoCount: QuerySlice<
 declare const notifyTodo: ReactionSlice<'notifyTodo', string>
 
 type Config = Omit<SpecterAppConfig, 'slices'> & {
-  readonly slices: readonly [
-    typeof addTodo,
-    typeof todoCount,
-    typeof notifyTodo,
-  ]
+  readonly slices: {
+    readonly addTodo: typeof addTodo
+    readonly todoCount: typeof todoCount
+    readonly notifyTodo: typeof notifyTodo
+  }
 }
 
 declare const app: SpecterApp<Config>
-declare const store: SliceStoreAdapter<{ count: number }>
 
 const execution = app.command({
   type: 'addTodo',
@@ -58,16 +56,9 @@ app.query({ type: 'todoCount', payload: { title: 'wrong' } })
 // @ts-expect-error Reaction names are not remotely dispatchable Queries.
 app.query({ type: 'notifyTodo', payload: undefined })
 
-async function readCapabilityIsReadonly() {
-  const state = (await store.get('counter')).read
-  // @ts-expect-error Handler read capabilities are immutable by default.
-  state.count += 1
-}
-void readCapabilityIsReadonly
-
-// @ts-expect-error Specification builders are available only from /spec.
+// @ts-expect-error Specification builders are available only from @specter-ts/spec.
 core.createCommandSlice
-// @ts-expect-error Scenario event helpers are available only from /spec.
+// @ts-expect-error Scenario event helpers are available only from @specter-ts/spec.
 core.event
 // @ts-expect-error Core no longer owns a browser/client transport.
 core.defineSpecterClient

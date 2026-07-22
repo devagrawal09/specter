@@ -1,11 +1,12 @@
 import { z } from 'zod'
 
 import { pointAwardedEvent } from '../events'
-import { createWorklogMemoryStore } from '../memory-store'
+import { defineWorklogMemoryStore } from '../memory-store'
 import type { PointAward } from '../model'
-import { scoreQuerySpec } from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 
-const store = createWorklogMemoryStore(() => ({ awards: [] as PointAward[] }))
+const store = defineWorklogMemoryStore(() => ({ awards: [] as PointAward[] }))
 const refSchema = z
   .object({ kind: z.enum(['journal', 'task', 'topic']), id: z.string() })
   .strict()
@@ -33,7 +34,7 @@ const awardSchema = z
   })
   .strict()
 
-export const scoreQuery = scoreQuerySpec
+export const scoreQuery = implementQuery(specification)
   .inputSchema(z.object({ limit: z.number().int().min(1).max(200) }).strict())
   .outputSchema(
     z

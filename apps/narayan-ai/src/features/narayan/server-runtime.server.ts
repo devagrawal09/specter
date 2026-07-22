@@ -5,19 +5,19 @@ import {
 } from '@specter-ts/core'
 
 import {
-  narayanProductionReactionScheduler,
+  narayanDependenciesLayer,
   narayanReactionTickets,
   prepareNarayanAiDb,
-  runWithNarayanAiDb,
+  runAfterNarayanReady,
 } from '../../db/client.server'
 import { createSpecterHttpHandler } from '../../transport/specter-http.server'
-import { createNarayanSpecterAppConfig } from './registry'
+import { narayanSpecterAppConfig } from './registry'
 
 await prepareNarayanAiDb()
-const narayanSpecterAppConfig = createNarayanSpecterAppConfig(
-  narayanProductionReactionScheduler,
+const app = await createSpecterApp(
+  narayanSpecterAppConfig,
+  narayanDependenciesLayer(),
 )
-const app = await createSpecterApp(narayanSpecterAppConfig)
 
 async function runSpecterCommand(
   envelope: SpecterCommandEnvelope<typeof narayanSpecterAppConfig>,
@@ -36,7 +36,7 @@ export async function recordTwilioMessageSentOnServer(
   },
   idempotencyKey: string,
 ) {
-  return runWithNarayanAiDb(() =>
+  return runAfterNarayanReady(() =>
     runSpecterCommand(
       { type: 'recordTwilioMessageSent', payload: data },
       { idempotencyKey },
@@ -47,7 +47,7 @@ export async function recordTwilioMessageSentOnServer(
 export const handleNarayanSpecterRequest = createSpecterHttpHandler({
   app,
   basePath: '/api/specter',
-  run: runWithNarayanAiDb,
+  run: runAfterNarayanReady,
   reactionTickets: narayanReactionTickets,
 })
 
@@ -59,13 +59,13 @@ export async function recordIncomingTwilioMessageOnServer(data: {
   body: string
   receivedAt: string
 }) {
-  return runWithNarayanAiDb(() =>
+  return runAfterNarayanReady(() =>
     runSpecterCommand({ type: 'recordIncomingTwilioMessage', payload: data }),
   )
 }
 
 export async function listNarayanConversationsOnServer() {
-  return runWithNarayanAiDb(() =>
+  return runAfterNarayanReady(() =>
     app.query({ type: 'conversationsQuery', payload: {} }),
   )
 }
@@ -73,13 +73,13 @@ export async function listNarayanConversationsOnServer() {
 export async function listNarayanConversationMessagesOnServer(data: {
   phoneNumber: string
 }) {
-  return runWithNarayanAiDb(() =>
+  return runAfterNarayanReady(() =>
     app.query({ type: 'conversationMessagesQuery', payload: data }),
   )
 }
 
 export async function getNarayanHomeDataOnServer() {
-  return runWithNarayanAiDb(async () => {
+  return runAfterNarayanReady(async () => {
     const conversations = await app.query({
       type: 'conversationsQuery',
       payload: {},
@@ -100,7 +100,7 @@ export async function createNarayanTestInboundMessageOnServer(data: {
   from: string
   body: string
 }) {
-  return runWithNarayanAiDb(async () => {
+  return runAfterNarayanReady(async () => {
     await runSpecterCommand({
       type: 'recordIncomingTwilioMessage',
       payload: {

@@ -26,8 +26,16 @@ export { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 export {
   createRuntimeObservationEmitter,
   createSpecterProtocolObserver,
+  createSpecterProtocolObserverLayer,
   type RuntimeObservationAdapterOptions,
   type RuntimeObservationEmitter,
 } from './runtime-adapter'
 export { renderCollectorHtml } from './ui'
+export {
+  createMemorySpecificationCatalog,
+  createSqliteSpecificationCatalog,
+  type CollectedSpecification,
+  type SpecificationCatalog,
+  type SpecificationFilter,
+} from './specification-catalog'
 export type { RuntimeSource } from '@specter-ts/protocol'

@@ -4,7 +4,13 @@ export type {
   EventDraft,
   PersistedEvent,
 } from './definition'
-export { createEventDefinition, SpecterConformanceError } from './definition'
+export {
+  createEventDefinition,
+  implementCommand,
+  implementQuery,
+  implementReaction,
+  SpecterConformanceError,
+} from './definition'
 export type {
   ApplyEventDefinition,
   ApplyRegistration,
@@ -20,10 +26,12 @@ export type {
   QueryOutputOf,
   QueryRef,
   QuerySlice,
+  ReactionDeliveryContext,
   ReactionExec,
   ReactionPlugin,
   ReactionSlice,
   SliceRegistration,
+  SliceStoreOptions,
 } from './definition'
 export {
   createSpecterApp,
@@ -37,6 +45,9 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterProjectionFailedError,
+  SpecterStoreConfigurationError,
+  SpecterStoreFailureError,
   SpecterUnknownCommandError,
   SpecterUnknownEventError,
   SpecterUnknownQueryError,
@@ -47,35 +58,48 @@ export type {
   CommandExecutionOptions,
   QuerySubscriptionOptions,
   ReactionRunFailureDetail,
-  SpecterCausality,
   SpecterApp,
   SpecterAppConfig,
   SpecterAppConfigOf,
   SpecterCommandEnvelope,
   SpecterCommandType,
   SpecterErrorCode,
-  SpecterEventOrderRange,
-  SpecterEventReference,
-  SpecterObservation,
-  SpecterOperationOptions,
-  SpecterProtocolCausality,
   SpecterOperationKind,
-  SpecterObserver,
   SpecterQueryEnvelope,
   SpecterQueryResult,
   SpecterQueryType,
-  SpecterRuntimeOptions,
 } from './runtime'
 export type {
-  EventLogAdapter,
   EventLogAppendOptions,
   EventLogAppendResult,
   EventLogCommit,
-  EventLogTransaction,
-  ReactionDeliveryContext,
-  ReactionScheduler,
-  RequestReactions,
-  SliceStore,
-  SliceStoreAdapter,
-  WaitForReactionsIdle,
+  EventLogService,
+  ReactionExecutor,
+  ReactionScheduleContext,
+  ReactionSchedulerService,
+  SliceStoreError,
+  SliceStoreRead,
+  SliceStoreRequirement,
+  SliceStoreService,
+  SliceStoreTag,
+  SliceStoreWrite,
 } from './adapters'
+export {
+  EventLog,
+  EventLogFailure,
+  ReactionScheduler,
+  ReactionSchedulerFailure,
+} from './adapters'
+export {
+  createPrettyConsoleSpecterObserver,
+  SpecterIds,
+  SpecterObserver,
+} from './effect/observability'
+export type {
+  SpecterCausality,
+  SpecterEventReference,
+  SpecterIdService,
+  SpecterObservation,
+  SpecterObservationDetails,
+  SpecterObserverService,
+} from './effect/observability'

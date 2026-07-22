@@ -1,0 +1,13 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "invalidUnicode",
+  "description": "Rejects a lone \ud800 surrogate.",
+  "scenarios": [{
+    "description": "Rejects invalid Unicode.",
+    "given": [],
+    "when": {},
+    "expect": [{ "kind": "scenario-event", "eventType": "unicode-recorded", "examplePayload": {} }]
+  }]
+}

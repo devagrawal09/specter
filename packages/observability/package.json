@@ -1,6 +1,6 @@
 {
   "name": "@specter-ts/observability",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Shared Specter runtime collector, dashboard, CLI, and telemetry producer.",
   "type": "module",
   "license": "MIT",
@@ -19,9 +19,10 @@
     }
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "build": "pnpm spec:build && vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
+    "test": "pnpm spec:build && vite build && vitest run && node --test test/packaged-dashboard.node.mjs",
+    "typecheck": "pnpm spec:build && tsc -p tsconfig.json --noEmit",
+    "spec:build": "node ../spec/dist/cli.js export src/features"
   },
   "dependencies": {
     "@libsql/client": "^0.17.3",
@@ -29,11 +30,17 @@
     "@specter-ts/memory": "workspace:*",
     "@specter-ts/protocol": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
+    "solid-js": "^1.9.13",
     "zod": "^4.4.3"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.78"
   },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

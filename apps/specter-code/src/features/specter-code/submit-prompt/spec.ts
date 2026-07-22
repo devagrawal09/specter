@@ -1,4 +1,4 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
 const submitPromptSpec = createCommandSlice('submitPrompt')
   .description('Records a user prompt and requests a coding-agent turn.')

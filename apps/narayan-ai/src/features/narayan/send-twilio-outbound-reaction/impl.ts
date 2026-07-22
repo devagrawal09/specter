@@ -2,13 +2,14 @@ import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
 
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   twilioOutboundMessageFailedEvent,
   twilioOutboundMessageRequestedEvent,
   twilioOutboundMessageSentEvent,
 } from '../events'
-import spec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementReaction } from '@specter-ts/core'
 import { twilioOutboundPlugin } from './twilio-outbound-plugin.server'
 
 export type SendTwilioOutboundEffect = {
@@ -27,7 +28,7 @@ export const narayanTwilioOutboundReactionMessages = sqliteTable(
   },
 )
 
-const sendTwilioOutboundReaction = spec
+const sendTwilioOutboundReaction = implementReaction(specification)
   .outputSchema(
     z.object({
       type: z.literal('sendTwilioOutbound'),

@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const frame = {
   runId: 'run-1',
@@ -22,3 +22,5 @@ export const runTimelineSpec = createQuerySlice('runTimeline')
     when: { runId: 'run-1' },
     expect: [frame],
   })
+
+export default runTimelineSpec

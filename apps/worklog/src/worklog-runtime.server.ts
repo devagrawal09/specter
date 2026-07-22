@@ -1,14 +1,18 @@
 import { createClient } from '@libsql/client/sqlite3'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { createSpecterApp } from '@specter-ts/core'
+import { createSpecterApp, EventLog } from '@specter-ts/core'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
+import { Layer } from 'effect'
 
-import { resetWorklogMemoryStores } from './features/worklog/memory-store'
-import { createWorklogAppConfig } from './features/worklog/registry'
+import {
+  resetWorklogMemoryStores,
+  worklogMemoryStoresLayer,
+} from './features/worklog/memory-store'
+import { worklogAppConfig } from './features/worklog/registry'
 
 export async function createWorklogRuntime(
   sqlitePath = process.env.WORKLOG_SQLITE_PATH ?? './data/worklog.db',
@@ -19,7 +23,18 @@ export async function createWorklogRuntime(
   resetWorklogMemoryStores()
   const persistence = createSpecterSqlitePersistence(sqlite)
   const app = await createSpecterApp(
-    createWorklogAppConfig(persistence.eventLog),
+    worklogAppConfig,
+    Layer.mergeAll(
+      Layer.succeed(EventLog, persistence.eventLog),
+      worklogMemoryStoresLayer(),
+    ),
   )
-  return { app, sqlitePath, close: async () => sqlite.close() }
+  return {
+    app,
+    sqlitePath,
+    close: async () => {
+      await app.close()
+      sqlite.close()
+    },
+  }
 }

@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/reaction-outbox",
-  "version": "0.3.0",
-  "description": "Durable Reaction outbox worker and scheduler for Specter.",
+  "version": "0.4.0",
+  "description": "Durable Reaction plugin wrapper and outbox worker for Specter.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -23,8 +23,12 @@
   "dependencies": {
     "@specter-ts/core": "workspace:*"
   },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.78"
+  },
   "devDependencies": {
     "@types/node": "^24.10.1",
+    "effect": "4.0.0-beta.78",
     "typescript": "^6.0.2",
     "vite": "^8.0.0",
     "vitest": "^4.1.5"

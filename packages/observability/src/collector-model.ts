@@ -47,12 +47,7 @@ export type RuntimeOverview = {
 export type RuntimeTraceEdge = {
   readonly from: string
   readonly to: string
-  readonly relation:
-    | 'parent-operation'
-    | 'caused-by-event'
-    | 'reaction-pass'
-    | 'delivery'
-    | 'attempt'
+  readonly relation: 'parent-operation' | 'caused-by-event' | 'delivery'
 }
 
 export type RuntimeTrace = {

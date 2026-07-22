@@ -1,4 +1,5 @@
 import { protocolErrorCodes, SpecterProtocolError } from './errors'
+import { digestSpecification, parseSpecification } from '@specter-ts/spec'
 import {
   observationKinds,
   SPECTER_PROTOCOL_VERSION,
@@ -6,6 +7,7 @@ import {
   type ProtocolMessage,
   type RuntimeObservationBatch,
   type RuntimeObservation,
+  type SpecificationPublication,
 } from './types'
 
 export function assertJsonValue(
@@ -80,6 +82,43 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
         '$.rejectedObservationIds',
       )
       break
+    case 'specifications.publish': {
+      runtimeSource(message.source, '$.source')
+      const specifications = array(message.specifications, '$.specifications')
+      if (specifications.length > 100)
+        fail('$.specifications must contain at most 100 items')
+      specifications.forEach((value, index) => {
+        const path = `$.specifications[${index}]`
+        const published = record(value, path)
+        const digest = specificationDigest(published.digest, `${path}.digest`)
+        let canonicalDigest: string
+        try {
+          canonicalDigest = digestSpecification(
+            parseSpecification(published.document),
+          )
+        } catch (cause) {
+          throw new SpecterProtocolError({
+            code: protocolErrorCodes.invalidMessage,
+            message: `${path}.document is not a valid Slice specification.`,
+            details: {
+              path: `${path}.document`,
+              reason: cause instanceof Error ? cause.message : String(cause),
+            },
+            cause,
+          })
+        }
+        if (canonicalDigest !== digest)
+          fail(
+            `${path}.digest does not match the canonical specification document`,
+          )
+      })
+      break
+    }
+    case 'specifications.ack':
+      specificationDigests(message.acceptedDigests, '$.acceptedDigests')
+      if (message.rejectedDigests !== undefined)
+        specificationDigests(message.rejectedDigests, '$.rejectedDigests')
+      break
     default:
       fail(`$.kind has unknown message kind ${kind}`)
   }
@@ -128,6 +167,21 @@ export function assertRuntimeObservationBatch(
   }
 }
 
+export function parseSpecificationPublication(
+  value: unknown,
+): SpecificationPublication {
+  assertSpecificationPublication(value)
+  return value
+}
+
+export function assertSpecificationPublication(
+  value: unknown,
+): asserts value is SpecificationPublication {
+  const parsed = parseProtocolMessage(value)
+  if (parsed.kind !== 'specifications.publish')
+    fail('$.kind must be specifications.publish')
+}
+
 function runtimeObservation(value: unknown, path: string) {
   const input = record(value, path)
   causality(input, path)
@@ -135,22 +189,17 @@ function runtimeObservation(value: unknown, path: string) {
   integer(input.sequence, `${path}.sequence`)
   timestamp(input.observedAt, `${path}.observedAt`)
   enumeration(input.kind, observationKinds, `${path}.kind`)
-  const source = record(input.source, `${path}.source`)
-  for (const key of [
-    'application',
-    'environment',
-    'runtimeLanguage',
-    'runtimeVersion',
-    'instanceId',
-    'eventLogId',
-  ]) {
-    string(source[key], `${path}.source.${key}`)
-  }
+  runtimeSource(input.source, `${path}.source`)
   if (input.events !== undefined) events(input.events, `${path}.events`)
   if (input.error !== undefined) structuredError(input.error, `${path}.error`)
   optionalString(input.commandType, `${path}.commandType`)
   optionalString(input.queryType, `${path}.queryType`)
   optionalString(input.slice, `${path}.slice`)
+  if (input.specificationDigest !== undefined)
+    specificationDigest(
+      input.specificationDigest,
+      `${path}.specificationDigest`,
+    )
   optionalString(input.reaction, `${path}.reaction`)
   if (input.outcome !== undefined)
     enumeration(
@@ -164,14 +213,26 @@ function runtimeObservation(value: unknown, path: string) {
   optionalInteger(input.droppedCount, `${path}.droppedCount`)
 }
 
+function runtimeSource(value: unknown, path: string) {
+  const source = record(value, path)
+  for (const key of [
+    'application',
+    'environment',
+    'runtimeLanguage',
+    'runtimeVersion',
+    'instanceId',
+    'eventLogId',
+  ]) {
+    string(source[key], `${path}.${key}`)
+  }
+}
+
 function causality(input: Record<string, unknown>, path = '$') {
   string(input.operationId, `${path}.operationId`)
   optionalString(input.correlationId, `${path}.correlationId`)
   optionalUniqueStrings(input.parentOperationIds, `${path}.parentOperationIds`)
   optionalUniqueStrings(input.triggeringEventIds, `${path}.triggeringEventIds`)
-  optionalString(input.reactionPassId, `${path}.reactionPassId`)
   optionalString(input.deliveryId, `${path}.deliveryId`)
-  optionalString(input.attemptId, `${path}.attemptId`)
   if (input.triggeringEventOrder !== undefined) {
     const range = record(
       input.triggeringEventOrder,
@@ -236,6 +297,21 @@ function optionalUniqueStrings(value: unknown, path: string) {
     const parsed = string(item, `${path}[${index}]`)
     if (unique.has(parsed)) fail(`${path} must contain unique strings`)
     unique.add(parsed)
+  })
+}
+function specificationDigest(value: unknown, path: string): `sha256:${string}` {
+  const digest = string(value, path)
+  if (!/^sha256:[a-f0-9]{64}$/.test(digest))
+    fail(`${path} must be a canonical sha256 digest`)
+  return digest as `sha256:${string}`
+}
+function specificationDigests(value: unknown, path: string) {
+  const digests = array(value, path)
+  const unique = new Set<string>()
+  digests.forEach((value, index) => {
+    const digest = specificationDigest(value, `${path}[${index}]`)
+    if (unique.has(digest)) fail(`${path} must contain unique digests`)
+    unique.add(digest)
   })
 }
 function integer(value: unknown, path: string) {

@@ -16,7 +16,6 @@ my-specter-app/
 │   ├── server.ts                   # adapters, async app creation, HTTP server
 │   ├── todo-app.tsx                # UI sends typed project envelopes
 │   ├── specter-transport.ts        # client-facing transport facade
-│   ├── reaction-scheduler.ts       # project Reaction scheduling boundary
 │   ├── db/
 │   │   ├── schema.ts               # explicit app schema re-exports
 │   │   ├── specter-schema.ts       # Specter persistence tables
@@ -63,17 +62,15 @@ completed Slice Implementations. App wiring combines that registry with
 adapters:
 
 ```ts
-const app = await createSpecterApp({
-  events: todoEventDefinitions,
-  eventLog: persistence.eventLog,
-  schedule,
-  slices: todoRegistrations,
-})
+const app = await createSpecterApp(
+  { events: todoEventDefinitions, slices: todoRegistrations },
+  Layer.mergeAll(EventLogLive, TodoStoreLayers),
+)
 ```
 
-Keep `createSpecterApp(...)` in server or in-process runtime wiring and await it.
-Construction validates the complete registration before returning the Specter
-App.
+Keep `createSpecterApp(config, dependencies)` in server or in-process runtime
+wiring and await it. Construction validates registration and Layer-provided
+services before returning Specter App.
 
 ## Database ownership and migrations
 
@@ -90,11 +87,6 @@ After adding a generated projection:
 3. inspect the generated SQL migration;
 4. run the focused Scenario test against an isolated database.
 
-For durability work, `create-specter generate persistent-harness` creates an
-on-disk test harness under `src/testing/persistence` by default. It exercises
-restart, replay, cursor failure, and Reaction retry behavior without becoming
-production app wiring.
-
 ## Transport ownership
 
 Core exposes typed envelope operations but deliberately does not ship an HTTP,
@@ -110,7 +102,7 @@ database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 
 ## Import boundaries
 
-- `spec.ts` imports `@specter-ts/core/spec` and implementation-independent
+- `spec.ts` imports `@specter-ts/spec` and implementation-independent
   domain constants only.
 - `impl.ts` may import core implementation types, local Event Definitions,
   its private projection, Store adapters, and Reaction Plugins.

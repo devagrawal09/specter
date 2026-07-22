@@ -1,8 +1,9 @@
 import { eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { z } from 'zod'
-import spec from './spec'
-import { sqliteSliceStore } from '../../../db/specter-sqlite'
+import specification from './spec.json' with { type: 'json' }
+import { implementCommand } from '@specter-ts/core'
+import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   approvalNotificationRecordedEvent,
   bookingApprovedEvent,
@@ -23,7 +24,7 @@ export const recordApprovalNotificationSqlBookings = sqliteTable(
   },
 )
 
-const recordApprovalNotification = spec
+const recordApprovalNotification = implementCommand(specification)
   .inputSchema(z.object({ bookingId: z.string().min(1) }))
   .store(sqliteSliceStore)
   .apply(bookingRequestedEvent, async (event, db) => {

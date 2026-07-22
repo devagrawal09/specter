@@ -1,6 +1,6 @@
-import { createCommandSlice, event } from '@specter-ts/core/spec'
+import { createCommandSlice, event } from '@specter-ts/spec'
 
-import { lifecyclePayloads as lifecycle } from '../scenario-payloads'
+import { lifecyclePayloads as lifecycle } from '../scenario-payloads.ts'
 
 export const repairRoadSpec = createCommandSlice('repairRoad')
   .description('Repairs an adjacent damaged road with carried worker energy.')
@@ -117,3 +117,5 @@ export const repairRoadSpec = createCommandSlice('repairRoad')
       ],
     },
   )
+
+export default repairRoadSpec

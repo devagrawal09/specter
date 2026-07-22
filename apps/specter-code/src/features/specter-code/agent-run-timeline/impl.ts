@@ -1,7 +1,8 @@
-import agentRunTimelineSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import {
   agentRunStreamedEvent,
   toolCallCompletedEvent,
@@ -55,7 +56,7 @@ const getTimeline = (
   return timeline
 }
 
-const agentRunTimeline = agentRunTimelineSpec
+const agentRunTimeline = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),
@@ -64,7 +65,7 @@ const agentRunTimeline = agentRunTimelineSpec
   )
   .outputSchema<AgentRunTimeline>()
   .store(
-    createMemorySliceStore<AgentRunTimelineState>(() => ({ timelines: {} })),
+    defineMemorySliceStore<AgentRunTimelineState>(() => ({ timelines: {} })),
   )
   .apply(agentRunStreamedEvent, async (event, state) => {
     const payload = event.payload

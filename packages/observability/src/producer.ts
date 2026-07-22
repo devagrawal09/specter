@@ -3,8 +3,15 @@ import type {
   RuntimeObservationAcknowledgement,
   RuntimeObservationBatch,
   RuntimeSource,
+  SpecificationAcknowledgement,
+  SpecificationPublication,
 } from '@specter-ts/protocol'
 import { parseProtocolMessage } from '@specter-ts/protocol'
+import {
+  digestSpecification,
+  parseSpecification,
+  type SliceSpecification,
+} from '@specter-ts/spec'
 
 import { DEFAULT_OBSERVATION_RETRY_WINDOW_MS } from './retry-window'
 
@@ -20,6 +27,8 @@ export type RuntimeObservationProducerOptions = {
   readonly maxRetryDelayMs?: number
   readonly retryWindowMs?: number
   readonly closeTimeoutMs?: number
+  /** Explicit opt-in: publishes full synthetic specification examples. */
+  readonly specifications?: readonly SliceSpecification[]
 }
 
 export type RuntimeObservationProducer = {
@@ -66,6 +75,77 @@ export function createRuntimeObservationProducer(
         readonly createdAt: number
       }
     | undefined
+  let specificationTimer: ReturnType<typeof setTimeout> | undefined
+  let specificationAbort: AbortController | undefined
+
+  if (options.specifications?.length)
+    queueMicrotask(() => void publishSpecifications())
+
+  async function publishSpecifications() {
+    const startedAt = now().getTime()
+    let delay = initialRetryDelay
+    let remaining =
+      options.specifications?.map((document) => {
+        const parsed = parseSpecification(document)
+        return { digest: digestSpecification(parsed), document: parsed }
+      }) ?? []
+    while (
+      !closed &&
+      remaining.length &&
+      now().getTime() - startedAt < retryWindow
+    ) {
+      try {
+        const candidates = remaining.slice(0, 100)
+        const batch: SpecificationPublication = {
+          protocolVersion: 1,
+          kind: 'specifications.publish',
+          requestId: idFactory(),
+          source: options.source,
+          specifications: candidates,
+        }
+        specificationAbort = new AbortController()
+        const response = await fetchImplementation(
+          `${options.collectorUrl.replace(/\/$/, '')}/specter/v1/specifications`,
+          {
+            method: 'POST',
+            headers: {
+              accept: 'application/json',
+              'content-type': 'application/json',
+            },
+            body: JSON.stringify(batch),
+            signal: specificationAbort.signal,
+          },
+        )
+        if (!response.ok)
+          throw new Error(`Collector returned HTTP ${response.status}`)
+        const acknowledgement = parseProtocolMessage(await response.json())
+        assertSpecificationAcknowledgement(batch, acknowledgement)
+        const accepted = new Set(acknowledgement.acceptedDigests)
+        const rejected = new Set(acknowledgement.rejectedDigests ?? [])
+        remaining = remaining.filter(
+          (item) => !accepted.has(item.digest) && !rejected.has(item.digest),
+        )
+        if (accepted.size > 0) delay = initialRetryDelay
+        else {
+          await waitForSpecificationRetry(delay)
+          delay = Math.min(maxRetryDelay, delay * 2)
+        }
+      } catch {
+        await waitForSpecificationRetry(delay)
+        delay = Math.min(maxRetryDelay, delay * 2)
+      } finally {
+        specificationAbort = undefined
+      }
+    }
+  }
+
+  async function waitForSpecificationRetry(delay: number) {
+    await new Promise<void>((resolve) => {
+      specificationTimer = setTimeout(resolve, delay)
+      unrefTimer(specificationTimer)
+    })
+    specificationTimer = undefined
+  }
 
   function record(observation: RuntimeObservation) {
     if (closed) return
@@ -195,6 +275,8 @@ export function createRuntimeObservationProducer(
       clearTimeout(retryTimer)
       retryTimer = undefined
     }
+    if (specificationTimer) clearTimeout(specificationTimer)
+    specificationAbort?.abort()
     if (!activeFlush && hasWork()) activeFlush = drain()
     const currentFlush = activeFlush
     await currentFlush
@@ -237,6 +319,32 @@ export function createRuntimeObservationProducer(
       closed,
     }),
   }
+}
+
+function assertSpecificationAcknowledgement(
+  publication: SpecificationPublication,
+  message: ReturnType<typeof parseProtocolMessage>,
+): asserts message is SpecificationAcknowledgement {
+  if (
+    message.kind !== 'specifications.ack' ||
+    message.requestId !== publication.requestId
+  )
+    throw new Error(
+      'Collector returned an invalid specification acknowledgement.',
+    )
+  const published = new Set(
+    publication.specifications.map((item) => item.digest),
+  )
+  const acknowledged = [
+    ...message.acceptedDigests,
+    ...(message.rejectedDigests ?? []),
+  ]
+  if (acknowledged.some((digest) => !published.has(digest)))
+    throw new Error('Collector acknowledged an unknown specification digest.')
+  if (new Set(acknowledged).size !== acknowledged.length)
+    throw new Error(
+      'Collector acknowledged a specification digest more than once.',
+    )
 }
 
 function unrefTimer(timer: ReturnType<typeof setTimeout>) {

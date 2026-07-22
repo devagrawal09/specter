@@ -5,16 +5,10 @@ import { removeTodo } from './remove-todo/impl'
 import { todoCheers } from './todo-cheers/impl'
 import { todoCompletionCheer } from './todo-completion-cheer-reaction/impl'
 import { todosQuery } from './todos-query/impl'
-import type {
-  CommandRef,
-  EventLogAdapter,
-  QueryRef,
-  ReactionScheduler,
-} from '@specter-ts/core'
-import { reactionScheduler } from '../../reaction-scheduler'
+import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { todoEventDefinitions } from './events'
 
-export const todoRegistrations = [
+export const todoRegistrations = {
   addTodo,
   changeTodoCompletion,
   removeTodo,
@@ -22,21 +16,14 @@ export const todoRegistrations = [
   todoCompletionCheer,
   todosQuery,
   todoCheers,
-] as const
+} as const
 
-export function createTodoSpecterAppConfig(
-  eventLog: EventLogAdapter,
-  schedule: ReactionScheduler = reactionScheduler,
-) {
-  return {
-    events: todoEventDefinitions,
-    eventLog,
-    schedule,
-    slices: todoRegistrations,
-  } as const
-}
+export const todoSpecterAppConfig = {
+  events: todoEventDefinitions,
+  slices: todoRegistrations,
+} as const
 
-export type TodoSpecterAppConfig = ReturnType<typeof createTodoSpecterAppConfig>
+export type TodoSpecterAppConfig = typeof todoSpecterAppConfig
 
 export type TodosQueryRef = QueryRef<typeof todosQuery>
 export type TodoCheersRef = QueryRef<typeof todoCheers>

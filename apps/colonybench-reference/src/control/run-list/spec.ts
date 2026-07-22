@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 export const runListSpec = createQuerySlice('runList')
   .description('Lists ColonyBench runs.')
@@ -16,3 +16,5 @@ export const runListSpec = createQuerySlice('runList')
       { runId: 'run-2', name: 'Second', status: 'created' },
     ],
   })
+
+export default runListSpec

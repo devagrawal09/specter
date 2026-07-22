@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const sessionChildrenSpec = createQuerySlice('sessionChildren')
   .description('Lists child sessions forked from a parent session.')

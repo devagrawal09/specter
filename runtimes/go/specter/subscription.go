@@ -130,9 +130,7 @@ func (a *App) invalidateSubscriptions(parent, correlation string) {
 		options.ParentOperationIDs = []string{operation}
 		options.TriggeringEventIDs = nil
 		options.TriggeringEventOrder = nil
-		options.ReactionPassID = ""
 		options.DeliveryID = ""
-		options.AttemptID = ""
 		_ = sub.refresh(generation, options)
 	}
 }

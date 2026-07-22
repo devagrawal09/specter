@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { afterEach, describe, it } from 'node:test'
 
 import {
-  generatePersistentHarness,
   generateSlice,
   runGenerateCli,
 } from '../src/generate.ts'
@@ -44,8 +43,16 @@ describe('Slice generator', () => {
       /export const invitationListSpec = _createQuerySlice\('invitationList'\)/,
     )
     assert.match(
+      readFileSync(join(base, 'spec.ts'), 'utf8'),
+      /export default invitationListSpec/,
+    )
+    assert.match(
       readFileSync(join(base, 'impl.ts'), 'utf8'),
-      /export const invitationList = _spec/,
+      /export const invitationList = _implementQuery\(_specification\)/,
+    )
+    assert.match(
+      readFileSync(join(base, 'impl.ts'), 'utf8'),
+      /from '\.\/spec\.json'/,
     )
     assert.match(
       readFileSync(join(base, 'scenarios.test.ts'), 'utf8'),
@@ -95,7 +102,7 @@ describe('Slice generator', () => {
     )
   })
 
-  it('creates a Reaction with an arbitrary plugin effect boundary', () => {
+  it('creates a Reaction with default same-app Command dispatch', () => {
     const cwd = projectDirectory()
     generateSlice({
       cwd,
@@ -108,13 +115,9 @@ describe('Slice generator', () => {
       join(cwd, 'src/features/invitations/send-invitation/impl.ts'),
       'utf8',
     )
-    assert.match(
-      implementation,
-      /\.plugin\(async \(_dispatch\) => async \(_effect, context\)/,
-    )
-    assert.match(implementation, /Reaction Plugins may return any effect type/)
-    assert.match(implementation, /idempotencyKey: context.deliveryId/)
-    assert.match(implementation, /context.scheduledAt/)
+    assert.doesNotMatch(implementation, /\.plugin\(/)
+    assert.match(implementation, /_implementReaction\(_specification\)/)
+    assert.match(implementation, /\.handle\(async \(db\)/)
   })
 
   it('computes database imports for a custom Slice root', () => {
@@ -219,55 +222,7 @@ describe('Slice generator', () => {
       }),
       true,
     )
-    assert.match(output.join('\n'), /generate persistent-harness/)
+    assert.match(output.join('\n'), /generate slice/)
     assert.equal(existsSync(join(cwd, 'src')), false)
-  })
-})
-
-describe('persistent harness generator', () => {
-  it('creates an executable restart, replay, reset, and failure harness', () => {
-    const cwd = projectDirectory()
-    const result = generatePersistentHarness({ cwd })
-
-    assert.equal(result.files.length, 4)
-    assert.match(
-      readFileSync(
-        join(
-          cwd,
-          'src/testing/persistence/persistent-harness.server.ts',
-        ),
-        'utf8',
-      ),
-      /async function restart/,
-    )
-    assert.match(
-      readFileSync(
-        join(cwd, 'src/testing/persistence/failure-injection.ts'),
-        'utf8',
-      ),
-      /after-event-append/,
-    )
-    const recoveryTest = readFileSync(
-      join(
-        cwd,
-        'src/testing/persistence/persistent-harness.test.ts',
-      ),
-      'utf8',
-    )
-    assert.match(recoveryTest, /describe\('persistent Specter recovery'/)
-    assert.match(recoveryTest, /harness\.replay\(\)/)
-    assert.match(recoveryTest, /after-reaction-attempt/)
-    assert.doesNotMatch(recoveryTest, /describe\.skip|TODO/)
-  })
-
-  it('computes database imports for a custom harness directory', () => {
-    const cwd = projectDirectory()
-    generatePersistentHarness({ cwd, directory: 'tools/persistence' })
-
-    const harness = readFileSync(
-      join(cwd, 'tools/persistence/persistent-harness.server.ts'),
-      'utf8',
-    )
-    assert.match(harness, /from '\.\.\/\.\.\/src\/db\/specter-sqlite'/)
   })
 })

@@ -2,11 +2,12 @@
 
 ## Decision
 
-Specter's language-neutral protocol is a one-way runtime-observability boundary:
+Specter's language-neutral protocol has two write-only ingestion lanes:
 
 ```text
-Specter runtime ── observation batch ──> collector
-Specter runtime <─ acknowledgement ───── collector
+Specter runtime ── observation batch ─────────> collector
+Specter runtime ── specification publication ─> collector
+Specter runtime <─ acknowledgements ─────────── collector
 ```
 
 It is not a remote application API. Commands, Queries, subscriptions, and
@@ -40,12 +41,12 @@ collector.
 
 - Retain the versioned JSON envelope, runtime source identity, causality,
   Event references, structured errors, runtime observations, observation
-  batches, and acknowledgements.
+  batches, specification publications, and acknowledgements.
 - Remove capability negotiation and the Command, Query, subscription, and
   Reaction-ticket message families from schemas, fixtures, public types, and
   behavioral documentation.
-- Keep `/specter/v1/observations` as the sole reference HTTP protocol endpoint.
-- Validate the protocol major version on every batch and acknowledgement,
+- Keep `/specter/v1/observations` and `/specter/v1/specifications` as the only reference HTTP protocol endpoints.
+- Validate the protocol major version on every publication, batch, and acknowledgement,
   ignore unknown optional fields, reject malformed input, and preserve
   observation-ID deduplication.
 
@@ -53,7 +54,7 @@ collector.
 
 - Remove the generic protocol client, server adapter, and Specter-runtime HTTP
   adapter.
-- Make `@specter-ts/protocol` an observation-only types and validation package
+- Make `@specter-ts/protocol` an ingestion-only types and validation package
   with no dependency on `@specter-ts/core`.
 - Keep telemetry production in `@specter-ts/observability` non-blocking and
   independent of application execution.
@@ -62,11 +63,11 @@ collector.
 
 ### 3. Separate collector ingestion from collector reads
 
-- Keep only `POST /specter/v1/observations` on the collector's protocol surface.
+- Keep only `POST /specter/v1/observations` and `POST /specter/v1/specifications` on the collector's protocol surface.
 - Retain `/v1/overview`, `/v1/activity`, `/v1/traces/:operationId`, and
   `/v1/stream` as a collector-specific, read-only API for the dashboard and CLI.
 - Remove capability discovery from the collector.
-- Send protocol-version headers only on the observation endpoint, not on the
+- Send protocol-version headers only on ingestion endpoints, not on the
   dashboard, static assets, or collector read API.
 - Keep collector Commands, Events, and Queries as its internal Specter app
   implementation; they are not exposed as a generic runtime protocol.
@@ -108,7 +109,7 @@ collector.
 
 ## Acceptance Criteria
 
-- `/specter/v1/observations` is the only language-neutral HTTP endpoint.
+- `/specter/v1/observations` and `/specter/v1/specifications` are the only language-neutral HTTP endpoints.
 - No public protocol export or normative schema defines Command, Query,
   subscription, capability, or Reaction-ticket request/response messages.
 - `@specter-ts/protocol` has no dependency on `@specter-ts/core`.

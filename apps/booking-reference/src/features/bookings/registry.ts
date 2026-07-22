@@ -1,10 +1,4 @@
-import type {
-  CommandRef,
-  EventLogAdapter,
-  QueryRef,
-  ReactionScheduler,
-} from '@specter-ts/core'
-import { reactionScheduler } from '../../reaction-scheduler'
+import type { CommandRef, QueryRef } from '@specter-ts/core'
 import approveBooking from './approve-booking/impl'
 import approvalNotificationReaction from './approval-notification-reaction/impl'
 import bookingActivityQuery from './booking-activity-query/impl'
@@ -21,7 +15,7 @@ import rescheduleBooking from './reschedule-booking/impl'
 import retireRoom from './retire-room/impl'
 import roomScheduleQuery from './room-schedule-query/impl'
 
-export const bookingRegistrations = [
+export const bookingRegistrations = {
   createRoom,
   retireRoom,
   requestBooking,
@@ -36,23 +30,14 @@ export const bookingRegistrations = [
   roomScheduleQuery,
   pendingApprovalsQuery,
   bookingActivityQuery,
-] as const
+} as const
 
-export function createBookingSpecterAppConfig(
-  eventLog: EventLogAdapter,
-  schedule: ReactionScheduler = reactionScheduler,
-) {
-  return {
-    events: bookingEventDefinitions,
-    eventLog,
-    schedule,
-    slices: bookingRegistrations,
-  } as const
-}
+export const bookingSpecterAppConfig = {
+  events: bookingEventDefinitions,
+  slices: bookingRegistrations,
+} as const
 
-export type BookingSpecterAppConfig = ReturnType<
-  typeof createBookingSpecterAppConfig
->
+export type BookingSpecterAppConfig = typeof bookingSpecterAppConfig
 
 export type RoomScheduleQueryRef = QueryRef<typeof roomScheduleQuery>
 export type PendingApprovalsQueryRef = QueryRef<typeof pendingApprovalsQuery>

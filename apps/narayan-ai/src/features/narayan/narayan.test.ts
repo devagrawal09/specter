@@ -1,18 +1,24 @@
 import twilio from 'twilio'
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
 import { createSpecterApp } from '@specter-ts/core'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 import { sqliteScenario } from '../../db/scenario-tests'
-import { sqliteEventLog } from '../../db/specter-sqlite'
 import { narayanSpecterAppConfig } from './registry'
 import { handleTwilioIncomingWebhook } from './twilio-webhook.server'
 
 const scenario = sqliteScenario()
+const serverDbDir = mkdtempSync(join(tmpdir(), 'narayan-server-'))
+process.env.NARAYAN_AI_DB_PATH = join(serverDbDir, 'app.db')
+
+afterAll(() => rmSync(serverDbDir, { recursive: true, force: true }))
 
 describe('Narayan AI Specter lifecycle', () => {
   it('records an inbound command and returns it from message queries', async () => {
-    await scenario(async () => {
-      const app = await createSpecterApp(narayanSpecterAppConfig)
+    await scenario(async (layer) => {
+      const app = await createSpecterApp(narayanSpecterAppConfig, layer)
 
       const execution = await app.command({
         type: 'recordIncomingTwilioMessage',
@@ -46,8 +52,8 @@ describe('Narayan AI Specter lifecycle', () => {
   })
 
   it('emits duplicate ignored events without duplicating inbound message rows', async () => {
-    await scenario(async () => {
-      const app = await createSpecterApp(narayanSpecterAppConfig)
+    await scenario(async (layer) => {
+      const app = await createSpecterApp(narayanSpecterAppConfig, layer)
       const command = {
         inboundMessageId: 'inbound-duplicate-1',
         twilioMessageSid: 'SM-duplicate-1',
@@ -78,9 +84,9 @@ describe('Narayan AI Specter lifecycle', () => {
       const inboundMessages = messages.filter(
         (message) => message.direction === 'inbound',
       )
-      const duplicateEvents = await sqliteEventLog.query(0, [
-        'twilio-inbound-duplicate-ignored',
-      ])
+      const duplicateEvents = secondExecution.events.filter(
+        (event) => event.type === 'twilio-inbound-duplicate-ignored',
+      )
 
       expect(inboundMessages).toHaveLength(1)
       expect(duplicateEvents).toHaveLength(1)
@@ -88,8 +94,8 @@ describe('Narayan AI Specter lifecycle', () => {
   })
 
   it('assistant reply command creates an outbound requested message row', async () => {
-    await scenario(async () => {
-      const app = await createSpecterApp(narayanSpecterAppConfig)
+    await scenario(async (layer) => {
+      const app = await createSpecterApp(narayanSpecterAppConfig, layer)
 
       const execution = await app.command({
         type: 'recordAssistantReply',
@@ -140,12 +146,11 @@ describe('Narayan AI Specter lifecycle', () => {
           }),
         )
 
-        const app = await createSpecterApp(narayanSpecterAppConfig)
-        const messages = await app.query({
-          type: 'conversationMessagesQuery',
-          payload: {
-            phoneNumber: 'whatsapp:+155****0004',
-          },
+        const { listNarayanConversationMessagesOnServer } = await import(
+          './server-runtime.server'
+        )
+        const messages = await listNarayanConversationMessagesOnServer({
+          phoneNumber: 'whatsapp:+155****0004',
         })
 
         expect(response.status).toBe(200)

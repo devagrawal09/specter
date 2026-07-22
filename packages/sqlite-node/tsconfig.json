@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "dist"],
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node", "vitest"],
+    "paths": {
+      "@specter-ts/core": ["../core/src/index.ts"],
+      "@specter-ts/core/testing": ["../core/src/testing-entry.ts"],
+      "@specter-ts/reaction-outbox": ["../reaction-outbox/src/index.ts"]
+    }
+  }
+}

@@ -1,7 +1,8 @@
-import workspaceChatSpec from './spec'
+import specification from './spec.json' with { type: 'json' }
+import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
-import { createMemorySliceStore } from '../../../testing/memory-slice-store'
+import { defineMemorySliceStore } from '../../../testing/memory-slice-store'
 import { postCreatedEvent, postReplyCreatedEvent } from '../events'
 
 type WorkspaceChatItem = {
@@ -27,14 +28,14 @@ type WorkspaceChatState = {
   posts: WorkspaceChatItem[]
 }
 
-const workspaceChat = workspaceChatSpec
+const workspaceChat = implementQuery(specification)
   .inputSchema(
     z.object({
       workspaceId: z.string(),
     }),
   )
   .outputSchema<WorkspaceChatItem[]>()
-  .store(createMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
+  .store(defineMemorySliceStore<WorkspaceChatState>(() => ({ posts: [] })))
   .apply(postCreatedEvent, async (event, state) => {
     const payload = event.payload
 

@@ -628,3 +628,60 @@ func TestConformanceRequiresExactGivenApplySet(t *testing.T) {
 		t.Fatalf("expected conformance failure, got %v", err)
 	}
 }
+
+func TestConfiguredSpecificationDigestCorrelatesSliceObservations(t *testing.T) {
+	const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	var observations []specter.Observation
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	app, err := specter.NewApp(specter.Config{
+		Events:               []string{"added"},
+		Commands:             []specter.CommandDefinition{command},
+		SpecificationDigests: map[string]string{"add": digest},
+		Observe: func(observation specter.Observation) {
+			observations = append(observations, observation)
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execution, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-execution.Reactions; err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, observation := range observations {
+		if observation.CommandType != "add" {
+			continue
+		}
+		found = true
+		if observation.SpecificationDigest != digest {
+			t.Fatalf("observation lost specification digest: %#v", observation)
+		}
+	}
+	if !found {
+		t.Fatal("missing Command observations")
+	}
+}
+
+func TestSpecificationDigestsRejectUnknownSlicesAndNonCanonicalValues(t *testing.T) {
+	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
+	})}
+	for name, digests := range map[string]map[string]string{
+		"unknown Slice":  {"missing": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+		"invalid digest": {"add": "sha256:ABC"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, SpecificationDigests: digests})
+			var public *specter.Error
+			if !errors.As(err, &public) || public.Code != specter.ErrConformanceFailed {
+				t.Fatalf("expected conformance failure, got %v", err)
+			}
+		})
+	}
+}

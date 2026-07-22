@@ -1,4 +1,4 @@
-import { createQuerySlice, event } from '@specter-ts/core/spec'
+import { createQuerySlice, event } from '@specter-ts/spec'
 
 const frame = {
   runId: 'run-1',
@@ -30,3 +30,5 @@ export const runOverviewSpec = createQuerySlice('runOverview')
       latestFrame: frame,
     },
   })
+
+export default runOverviewSpec

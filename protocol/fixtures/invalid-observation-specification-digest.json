@@ -1,0 +1,22 @@
+{
+  "protocolVersion": 1,
+  "kind": "observations.batch",
+  "requestId": "request-1",
+  "observations": [{
+    "observationId": "observation-1",
+    "sequence": 1,
+    "observedAt": "2026-07-18T12:00:00Z",
+    "kind": "command.completed",
+    "operationId": "operation-1",
+    "slice": "addTodo",
+    "specificationDigest": "not-a-digest",
+    "source": {
+      "application": "todo",
+      "environment": "test",
+      "runtimeLanguage": "go",
+      "runtimeVersion": "0.4.0",
+      "instanceId": "instance-1",
+      "eventLogId": "log-1"
+    }
+  }]
+}
