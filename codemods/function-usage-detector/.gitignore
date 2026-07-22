@@ -13,6 +13,7 @@ build/
 *.tmp
 *.temp
 .cache/
+.codemod-reports/
 
 # Environment files
 .env

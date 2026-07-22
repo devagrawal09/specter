@@ -9,9 +9,36 @@ By default, it reports a function when either condition is true:
 - its body has fewer than 3 non-blank, non-comment code lines; or
 - workspace semantic analysis resolves fewer than 3 direct call sites.
 
-Each finding is printed as a warning and recorded in the
-`function-usage-findings` metric with its file, line, function name, function
-kind, line count, call-site count, and match reason.
+Each finding is printed as a warning, recorded in the
+`function-usage-findings` metric, and returned in two report artifacts:
+
+- `.codemod-reports/function-usage/function-usage-report.json` is the canonical,
+  versioned machine-readable report.
+- `.codemod-reports/function-usage/function-usage-report.html` is a
+  self-contained interactive report with summary cards, search, reason filters,
+  sorting, and expandable direct-call evidence.
+
+The workflow only writes those report artifacts. It never edits analyzed source
+files.
+
+## JSON report
+
+The JSON document includes:
+
+- the schema version, generation time, thresholds, target, detector semantics,
+  and explicit limitations;
+- aggregate counts for findings, affected files, reasons, and function kinds;
+- stable finding ids and exact definition locations;
+- body code-line counts;
+- resolved-reference, non-call-reference, direct-call-site, and distinct
+  direct-caller counts; and
+- every resolved direct call site with its file, line, column, and enclosing
+  caller context.
+
+The report's `usageMetric` is `resolved-direct-call-sites`. The detector still
+applies its threshold to call sites rather than unique callers; the distinct
+caller count is supporting evidence so downstream tools can evaluate either
+interpretation.
 
 ## Supported functions
 
@@ -34,6 +61,13 @@ From this package directory:
 pnpm dlx codemod@1.12.13 workflow run -w workflow.yaml -t /path/to/project
 ```
 
+Choose a different target-relative output directory with:
+
+```bash
+pnpm dlx codemod@1.12.13 workflow run -w workflow.yaml -t /path/to/project \
+  --param report_directory=.reports/function-usage
+```
+
 Override either threshold when needed:
 
 ```bash
@@ -46,6 +80,12 @@ The workflow scans JavaScript, JSX, TypeScript, and TSX source files. It exclude
 dependencies, generated output, coverage, declaration files, and codemod
 packages by default.
 
+Codemod dry-run mode performs the analysis and emits warnings/metrics, but the
+runtime does not persist cross-step state or filesystem artifacts in dry-runs.
+The report step therefore prints an explicit skip message. Run without
+`--dry-run` to write the JSON and HTML files; analyzed source files still remain
+unchanged.
+
 ## Development
 
 ```bash
@@ -55,8 +95,10 @@ pnpm validate
 pnpm validate-package
 ```
 
-`pnpm test` proves that report-only analysis leaves every fixture unchanged and
-checks the emitted metrics snapshots.
+`pnpm test` proves that report-only analysis leaves every fixture unchanged,
+checks emitted metrics snapshots, validates the JSON summary, tests output-path
+containment and HTML escaping, verifies the self-contained report shell, and
+runs a cross-file workflow smoke test over the generated artifacts.
 
 ## License
 
