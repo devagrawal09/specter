@@ -272,14 +272,20 @@ async function refreshRules() {
   if (!target) return
   target.replaceChildren()
   for (const rule of rules) {
-    const item = element('div', 'rule')
+    const item = element('div', `rule ${rule.enabled ? '' : 'disabled'}`)
+    const control = button(rule.enabled ? 'Disable' : 'Enable', 'quiet')
+    control.addEventListener(
+      'click',
+      () => void changeRuleEnabled(rule, control),
+    )
     item.append(
       element('strong', '', rule.name),
       element(
         'small',
         '',
-        `${rule.action} · ${rule.senderContains || 'any sender'} · ${rule.subjectContains || 'any subject'}`,
+        `${rule.enabled ? 'Enabled' : 'Disabled'} · ${rule.action} · ${rule.senderContains || 'any sender'} · ${rule.subjectContains || 'any subject'}`,
       ),
+      control,
     )
     target.append(item)
   }
@@ -373,6 +379,25 @@ async function createRule(event: SubmitEvent, form: HTMLFormElement) {
     form.reset()
     notify('Automation authority granted and evaluated against the inbox.')
     await Promise.all([refreshRules(), refreshActivity()])
+  })
+}
+
+async function changeRuleEnabled(rule: Rule, control: HTMLButtonElement) {
+  const enabled = !rule.enabled
+  await withBusy(control, enabled ? 'Enabling…' : 'Disabling…', async () => {
+    const result = await api<{ scheduled: number }>(
+      `/api/rules/${encodeURIComponent(rule.ruleId)}/enabled`,
+      {
+        method: 'PATCH',
+        body: JSON.stringify({ enabled }),
+      },
+    )
+    notify(
+      enabled
+        ? `Automation authority restored; scheduled ${result.scheduled} matching actions.`
+        : 'Automation authority revoked for this rule.',
+    )
+    await refreshRules()
   })
 }
 

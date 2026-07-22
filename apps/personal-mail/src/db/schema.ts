@@ -6,6 +6,7 @@ export {
 } from './adapter-schema'
 export { events, sliceCursors } from './specter-schema'
 export { analysisRequestStates } from '../features/mail/request-thread-analysis/impl'
+export { ruleEnablementStates } from '../features/mail/change-automation-rule-enabled/impl'
 export {
   actionRequestRules,
   actionRequestStates,

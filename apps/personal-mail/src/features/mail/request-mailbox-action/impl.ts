@@ -7,6 +7,7 @@ import type { SqliteDb } from '../../../db/specter-sqlite'
 import { sqliteSliceStore } from '../../../db/specter-store'
 import {
   automationRuleCreatedEvent,
+  automationRuleEnabledChangedEvent,
   gmailThreadRecordedEvent,
   mailboxActionAppliedEvent,
   mailboxActionFailedEvent,
@@ -75,6 +76,13 @@ export const requestMailboxAction = implementCommand(specification)
           enabled: event.payload.enabled,
         },
       })
+      .run()
+  })
+  .apply(automationRuleEnabledChangedEvent, async (event, db) => {
+    await db
+      .update(actionRequestRules)
+      .set({ enabled: event.payload.enabled })
+      .where(eq(actionRequestRules.ruleId, event.payload.ruleId))
       .run()
   })
   .apply(mailboxActionRequestedEvent, async (event, db) => {

@@ -89,6 +89,23 @@ export default createCommandSlice('requestMailboxAction')
       },
     },
     {
+      description: 'Rejects an automatic action after its rule is disabled.',
+      given: [
+        thread,
+        rule,
+        event('automation-rule-enabled-changed', {
+          ruleId: 'rule-1',
+          enabled: false,
+          changedAt: '2026-07-22T12:02:30.000Z',
+        }),
+      ],
+      when: command,
+      expect: [],
+      reject: {
+        reason: 'Automation rule does not authorize this thread and action',
+      },
+    },
+    {
       description: 'Rejects a duplicate action identity while it is pending.',
       given: [thread, rule, requested],
       when: command,

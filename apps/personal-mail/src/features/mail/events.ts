@@ -64,6 +64,15 @@ export const automationRuleCreatedEvent = createEventDefinition(
   }),
 )
 
+export const automationRuleEnabledChangedEvent = createEventDefinition(
+  'automation-rule-enabled-changed',
+  z.object({
+    ruleId: z.string().min(1),
+    enabled: z.boolean(),
+    changedAt: z.string().min(1),
+  }),
+)
+
 export const mailboxActionRequestedEvent = createEventDefinition(
   'mailbox-action-requested',
   z.object({
@@ -115,6 +124,7 @@ export const mailEventDefinitions = [
   threadAnalysisRequestedEvent,
   threadAnalyzedEvent,
   automationRuleCreatedEvent,
+  automationRuleEnabledChangedEvent,
   mailboxActionRequestedEvent,
   mailboxActionAppliedEvent,
   mailboxActionFailedEvent,

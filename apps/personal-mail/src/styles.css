@@ -59,6 +59,8 @@ input:focus, select:focus { border-color: #4f806e; box-shadow: 0 0 0 3px rgba(79
 .rule-list, .activity-list { display: grid; gap: 8px; }
 .rule { display: grid; gap: 3px; padding: 11px; border-radius: 10px; background: #f2f6f3; }
 .rule small { color: #687970; }
+.rule.disabled { opacity: 0.68; }
+.rule .quiet { justify-self: start; margin-top: 5px; }
 .activity { display: grid; grid-template-columns: auto 1fr; gap: 3px 9px; align-items: center; padding: 9px 0; border-bottom: 1px solid #e4eae7; font-size: .83rem; }
 .activity time { grid-column: 2; color: #7a8982; font-size: .72rem; }
 .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #d9a932; }

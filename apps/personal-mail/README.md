@@ -26,6 +26,8 @@ explicit automation authority, and mailbox-action outcomes.
 - Local OpenAI-compatible inference defaults to
   `http://127.0.0.1:11434/v1`. Cloud inference is disabled unless configured,
   and each cloud request must explicitly opt in. There is no global cloud mode.
+- Automation rules are explicit grants. Disable a rule in the app to revoke its
+  authority; disabled rules cannot authorize new mailbox actions.
 
 ## Google setup
 

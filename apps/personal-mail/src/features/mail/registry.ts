@@ -3,6 +3,7 @@ import type { CommandRef, QueryRef } from '@specter-ts/core'
 import { activityQuery } from './activity-query/impl'
 import { analyzeThreadReaction } from './analyze-thread-reaction/impl'
 import { applyMailboxActionReaction } from './apply-mailbox-action-reaction/impl'
+import { changeAutomationRuleEnabled } from './change-automation-rule-enabled/impl'
 import { createAutomationRule } from './create-automation-rule/impl'
 import { mailEventDefinitions } from './events'
 import { inboxQuery } from './inbox-query/impl'
@@ -20,6 +21,7 @@ export const mailRegistrations = {
   requestThreadAnalysis,
   recordThreadAnalysis,
   createAutomationRule,
+  changeAutomationRuleEnabled,
   requestMailboxAction,
   recordMailboxActionResult,
   analyzeThreadReaction,

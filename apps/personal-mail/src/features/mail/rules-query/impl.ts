@@ -1,10 +1,14 @@
-import { asc } from 'drizzle-orm'
+import { asc, eq } from 'drizzle-orm'
 import { integer, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { implementQuery } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-store'
-import { automationRuleCreatedEvent, mailboxActionSchema } from '../events'
+import {
+  automationRuleCreatedEvent,
+  automationRuleEnabledChangedEvent,
+  mailboxActionSchema,
+} from '../events'
 import specification from './spec.json' with { type: 'json' }
 
 export const ruleProjection = sqliteTable('mail_rule_projection', {
@@ -38,6 +42,13 @@ export const rulesQuery = implementQuery(specification)
       .insert(ruleProjection)
       .values(event.payload)
       .onConflictDoUpdate({ target: ruleProjection.ruleId, set: event.payload })
+      .run()
+  })
+  .apply(automationRuleEnabledChangedEvent, async (event, db) => {
+    await db
+      .update(ruleProjection)
+      .set({ enabled: event.payload.enabled })
+      .where(eq(ruleProjection.ruleId, event.payload.ruleId))
       .run()
   })
   .handle(async (_query, db) => {

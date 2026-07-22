@@ -70,6 +70,7 @@ const ruleRequestSchema = z.object({
   subjectContains: z.string().default(''),
   action: z.enum(['archive', 'markRead', 'star']),
 })
+const ruleEnabledRequestSchema = z.object({ enabled: z.boolean() })
 
 const app = new Hono()
 
@@ -200,6 +201,25 @@ app.post('/api/rules', async (c) => {
   trackReactions(execution.reactions)
   const scheduled = await evaluateAutomations(specterApp)
   return c.json({ ruleId, scheduled }, 201)
+})
+
+app.patch('/api/rules/:ruleId/enabled', async (c) => {
+  const { enabled } = ruleEnabledRequestSchema.parse(await c.req.json())
+  const changeId = crypto.randomUUID()
+  const execution = await specterApp.command(
+    {
+      type: 'changeAutomationRuleEnabled',
+      payload: {
+        ruleId: c.req.param('ruleId'),
+        enabled,
+        changedAt: new Date().toISOString(),
+      },
+    },
+    { idempotencyKey: changeId },
+  )
+  trackReactions(execution.reactions)
+  const scheduled = enabled ? await evaluateAutomations(specterApp) : 0
+  return c.json({ enabled, scheduled })
 })
 
 app.use('/static/*', serveStatic({ root: './dist' }))

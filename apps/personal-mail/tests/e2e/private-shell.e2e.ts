@@ -14,10 +14,20 @@ test('renders the private inbox and protects state-changing routes', async ({
   await expect(page.getByRole('button', { name: 'Connect Gmail' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Sync now' })).toBeDisabled()
 
-  await page.getByPlaceholder('Rule name').fill('Archive review fixture')
+  const ruleName = `Archive review fixture ${Date.now()}`
+  await page.getByPlaceholder('Rule name').fill(ruleName)
   await page.getByPlaceholder('Sender contains').fill('fixture@example.com')
   await page.getByRole('button', { name: 'Grant rule' }).click()
   await expect(
     page.getByText('Automation authority granted and evaluated against the inbox.'),
   ).toBeVisible()
+
+  const rule = page.locator('.rule').filter({ hasText: ruleName })
+  await expect(rule.getByText('Enabled · archive')).toBeVisible()
+  await rule.getByRole('button', { name: 'Disable' }).click()
+  await expect(
+    page.getByText('Automation authority revoked for this rule.'),
+  ).toBeVisible()
+  await expect(rule.getByText('Disabled · archive')).toBeVisible()
+  await expect(rule.getByRole('button', { name: 'Enable' })).toBeVisible()
 })
