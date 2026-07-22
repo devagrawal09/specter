@@ -180,6 +180,7 @@ main,
   background: var(--accent);
   padding: 8px 14px;
   border-radius: 8px;
+  white-space: nowrap;
 }
 
 .topbar__cta:hover {
@@ -763,6 +764,22 @@ h3 {
 }
 
 /* ---------- responsive ---------- */
+@media (max-width: 1240px) {
+  .topbar {
+    gap: 16px;
+    padding-inline: 24px;
+  }
+
+  .brand__tag {
+    display: none;
+  }
+
+  .topnav__link {
+    padding-inline: 6px;
+    font-size: 12px;
+  }
+}
+
 @media (max-width: 900px) {
   .stage__grid {
     grid-template-columns: 1fr;
