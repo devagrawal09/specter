@@ -1,8 +1,0 @@
-{
-  "protocolVersion": 1,
-  "kind": "subscription.error",
-  "requestId": "subscription-response",
-  "operationId": "subscription-1",
-  "result": [],
-  "error": { "code": "SPECTER_INTERNAL_ERROR", "message": "Failed." }
-}

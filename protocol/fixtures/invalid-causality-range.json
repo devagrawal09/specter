@@ -1,12 +1,18 @@
 {
   "protocolVersion": 1,
-  "kind": "command.request",
+  "kind": "observations.batch",
   "requestId": "invalid-range-request",
-  "operationId": "invalid-range-operation",
-  "triggeringEventIds": ["event-5", "event-4"],
-  "triggeringEventOrder": { "from": 5, "to": 4 },
-  "reactionPassId": "reaction-pass-1",
-  "deliveryId": "delivery-1",
-  "attemptId": "attempt-2",
-  "command": { "type": "continueWorkflow", "payload": {} }
+  "observations": [{
+    "observationId": "invalid-range-observation",
+    "sequence": 6,
+    "observedAt": "2026-07-18T12:00:00.000Z",
+    "source": { "application": "workflow", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "workflow-log" },
+    "kind": "reaction.run.started",
+    "operationId": "invalid-range-operation",
+    "triggeringEventIds": ["event-5", "event-4"],
+    "triggeringEventOrder": { "from": 5, "to": 4 },
+    "reactionPassId": "reaction-pass-1",
+    "deliveryId": "delivery-1",
+    "attemptId": "attempt-2"
+  }]
 }

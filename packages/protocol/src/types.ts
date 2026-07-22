@@ -6,16 +6,6 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue }
 
-export const protocolCapabilities = [
-  'commands',
-  'queries',
-  'query-subscriptions',
-  'reaction-tickets',
-  'runtime-observations',
-] as const
-
-export type ProtocolCapability = (typeof protocolCapabilities)[number] | string
-
 export type ProtocolEnvelope<TKind extends string> = {
   readonly protocolVersion: typeof SPECTER_PROTOCOL_VERSION
   readonly kind: TKind
@@ -27,20 +17,6 @@ export type StructuredError = {
   readonly message: string
   readonly details?: JsonValue
   readonly retryable?: boolean
-}
-
-export type CapabilitiesRequest = ProtocolEnvelope<'capabilities.request'> & {
-  readonly required?: readonly ProtocolCapability[]
-  readonly optional?: readonly ProtocolCapability[]
-}
-
-export type CapabilitiesResponse = ProtocolEnvelope<'capabilities.response'> & {
-  readonly runtime: {
-    readonly language: string
-    readonly version: string
-  }
-  readonly supported: readonly ProtocolCapability[]
-  readonly negotiated: readonly ProtocolCapability[]
 }
 
 export type EventReference = {
@@ -65,85 +41,6 @@ export type Causality = {
   readonly deliveryId?: string
   readonly attemptId?: string
 }
-
-export type CommandRequest = ProtocolEnvelope<'command.request'> &
-  Causality & {
-    readonly command: { readonly type: string; readonly payload: JsonValue }
-    readonly idempotencyKey?: string
-    readonly expectedVersion?: number
-  }
-
-type CommandResponseBase = {
-  readonly operationId: string
-  readonly version: number
-  readonly events: readonly EventReference[]
-  readonly reactionTicketId?: string
-}
-
-export type CommandResponseResult = CommandResponseBase &
-  (
-    | {
-        readonly status: 'committed' | 'duplicate'
-        readonly error?: never
-      }
-    | { readonly status: 'rejected'; readonly error: StructuredError }
-  )
-
-export type CommandResponse = ProtocolEnvelope<'command.response'> &
-  CommandResponseResult
-
-export type QueryRequest = ProtocolEnvelope<'query.request'> &
-  Causality & {
-    readonly query: { readonly type: string; readonly payload: JsonValue }
-  }
-
-export type QueryResponseResult = { readonly operationId: string } & (
-  | { readonly result: JsonValue; readonly error?: never }
-  | { readonly result?: never; readonly error: StructuredError }
-)
-
-export type QueryResponse = ProtocolEnvelope<'query.response'> &
-  QueryResponseResult
-
-export type SubscriptionRequest = ProtocolEnvelope<'subscription.request'> &
-  Causality & {
-    readonly query: { readonly type: string; readonly payload: JsonValue }
-    readonly afterSequence?: number
-  }
-
-export type SubscriptionValue = ProtocolEnvelope<'subscription.value'> & {
-  readonly operationId: string
-  readonly sequence: number
-  readonly result: JsonValue
-}
-
-export type SubscriptionError = ProtocolEnvelope<'subscription.error'> & {
-  readonly operationId: string
-  readonly error: StructuredError
-}
-
-export type SubscriptionComplete = ProtocolEnvelope<'subscription.complete'> & {
-  readonly operationId: string
-}
-
-export type SubscriptionMessage =
-  | SubscriptionValue
-  | SubscriptionError
-  | SubscriptionComplete
-
-export type ReactionTicketRequest =
-  ProtocolEnvelope<'reaction-ticket.request'> & {
-    readonly reactionTicketId: string
-  }
-
-export type ReactionTicketResult =
-  | { readonly status: 'pending' | 'completed'; readonly error?: never }
-  | { readonly status: 'failed'; readonly error: StructuredError }
-
-export type ReactionTicketResponse =
-  ProtocolEnvelope<'reaction-ticket.response'> & {
-    readonly reactionTicketId: string
-  } & ReactionTicketResult
 
 export type RuntimeSource = {
   readonly application: string
@@ -216,15 +113,5 @@ export type RuntimeObservationAcknowledgement =
   }
 
 export type ProtocolMessage =
-  | CapabilitiesRequest
-  | CapabilitiesResponse
-  | CommandRequest
-  | CommandResponse
-  | QueryRequest
-  | QueryResponse
-  | SubscriptionRequest
-  | SubscriptionMessage
-  | ReactionTicketRequest
-  | ReactionTicketResponse
   | RuntimeObservationBatch
   | RuntimeObservationAcknowledgement

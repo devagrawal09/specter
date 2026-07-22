@@ -1,317 +1,40 @@
-// Package protocol implements the Specter protocol v1 JSON binding.
+// Package protocol implements Specter's one-way runtime-observability protocol.
 package protocol
 
 import (
+	"bytes"
 	"encoding/json"
+	"math/big"
+	"reflect"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/devagrawal09/specter/runtimes/go/specter"
 )
 
-const Version = 1
+const Version SafeInteger = 1
 
-const (
-	CapabilityCommands        = "commands"
-	CapabilityQueries         = "queries"
-	CapabilitySubscriptions   = "query-subscriptions"
-	CapabilityReactionTickets = "reaction-tickets"
-	CapabilityObservations    = "runtime-observations"
-)
+var safeIntegerType = reflect.TypeOf(SafeInteger(0))
 
-var GoCapabilities = []string{CapabilityCommands, CapabilityQueries, CapabilitySubscriptions, CapabilityReactionTickets}
+// SafeInteger is an unsigned integer that can be represented exactly by every
+// conforming JSON implementation. Decimal JSON spellings such as 1.0 are
+// accepted and encoded canonically as 1.
+type SafeInteger int64
+
+func (value *SafeInteger) UnmarshalJSON(data []byte) error {
+	parsed, ok := parseSafeInteger(data)
+	if !ok {
+		return &json.UnmarshalTypeError{Value: string(data), Type: safeIntegerType}
+	}
+	*value = SafeInteger(parsed)
+	return nil
+}
 
 type Envelope struct {
-	ProtocolVersion int    `json:"protocolVersion"`
-	Kind            string `json:"kind"`
-	RequestID       string `json:"requestId"`
-}
-
-type CapabilitiesRequest struct {
-	Envelope
-	Required []string `json:"required,omitempty"`
-	Optional []string `json:"optional,omitempty"`
-
-	fieldsValid bool
-}
-type CapabilitiesResponse struct {
-	Envelope
-	Runtime    RuntimeDescriptor `json:"runtime"`
-	Supported  []string          `json:"supported"`
-	Negotiated []string          `json:"negotiated"`
-	Error      *specter.Error    `json:"error,omitempty"`
-}
-type RuntimeDescriptor struct {
-	Language string `json:"language"`
-	Version  string `json:"version"`
-}
-
-type CommandRequest struct {
-	Envelope
-	OperationID          string                   `json:"operationId"`
-	CorrelationID        string                   `json:"correlationId,omitempty"`
-	ParentOperationIDs   []string                 `json:"parentOperationIds,omitempty"`
-	TriggeringEventIDs   []string                 `json:"triggeringEventIds,omitempty"`
-	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
-	DeliveryID           string                   `json:"deliveryId,omitempty"`
-	AttemptID            string                   `json:"attemptId,omitempty"`
-	Command              OperationEnvelope        `json:"command"`
-	IdempotencyKey       string                   `json:"idempotencyKey,omitempty"`
-	ExpectedVersion      *int64                   `json:"expectedVersion,omitempty"`
-
-	fieldsValid bool
-}
-type OperationEnvelope struct {
-	Type    string          `json:"type"`
-	Payload json.RawMessage `json:"payload"`
-}
-type EventReference struct {
-	EventID       string         `json:"eventId"`
-	Type          string         `json:"type"`
-	Order         int64          `json:"order"`
-	CommitVersion int64          `json:"commitVersion"`
-	RecordedAt    time.Time      `json:"recordedAt"`
-	Attributes    map[string]any `json:"attributes,omitempty"`
-}
-type CommandResponse struct {
-	Envelope
-	OperationID      string           `json:"operationId"`
-	Status           string           `json:"status"`
-	Version          int64            `json:"version"`
-	Events           []EventReference `json:"events"`
-	ReactionTicketID string           `json:"reactionTicketId,omitempty"`
-	Error            *specter.Error   `json:"error,omitempty"`
-}
-
-type QueryRequest struct {
-	Envelope
-	OperationID          string                   `json:"operationId"`
-	CorrelationID        string                   `json:"correlationId,omitempty"`
-	ParentOperationIDs   []string                 `json:"parentOperationIds,omitempty"`
-	TriggeringEventIDs   []string                 `json:"triggeringEventIds,omitempty"`
-	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
-	DeliveryID           string                   `json:"deliveryId,omitempty"`
-	AttemptID            string                   `json:"attemptId,omitempty"`
-	Query                OperationEnvelope        `json:"query"`
-
-	fieldsValid bool
-}
-type QueryResponse struct {
-	Envelope
-	OperationID string         `json:"operationId"`
-	Result      any            `json:"result,omitempty"`
-	Error       *specter.Error `json:"error,omitempty"`
-}
-
-// MarshalJSON preserves a legitimate JSON null Query result while keeping failed
-// responses exclusive: a success always contains result, and a failure never does.
-func (response QueryResponse) MarshalJSON() ([]byte, error) {
-	type success struct {
-		Envelope
-		OperationID string `json:"operationId"`
-		Result      any    `json:"result"`
-	}
-	if response.Error == nil {
-		return json.Marshal(success{Envelope: response.Envelope, OperationID: response.OperationID, Result: response.Result})
-	}
-	type failure struct {
-		Envelope
-		OperationID string         `json:"operationId"`
-		Error       *specter.Error `json:"error"`
-	}
-	return json.Marshal(failure{Envelope: response.Envelope, OperationID: response.OperationID, Error: response.Error})
-}
-
-type SubscriptionRequest struct {
-	Envelope
-	OperationID          string                   `json:"operationId"`
-	CorrelationID        string                   `json:"correlationId,omitempty"`
-	ParentOperationIDs   []string                 `json:"parentOperationIds,omitempty"`
-	TriggeringEventIDs   []string                 `json:"triggeringEventIds,omitempty"`
-	TriggeringEventOrder *specter.EventOrderRange `json:"triggeringEventOrder,omitempty"`
-	ReactionPassID       string                   `json:"reactionPassId,omitempty"`
-	DeliveryID           string                   `json:"deliveryId,omitempty"`
-	AttemptID            string                   `json:"attemptId,omitempty"`
-	Query                OperationEnvelope        `json:"query"`
-	AfterSequence        *int64                   `json:"afterSequence,omitempty"`
-
-	fieldsValid bool
-}
-
-// UnmarshalJSON retains whether optional request fields were present with their
-// protocol-defined JSON types. Go's ordinary value decoding otherwise makes an
-// omitted field indistinguishable from an explicit null for pointers, slices,
-// and strings.
-func (request *CommandRequest) UnmarshalJSON(data []byte) error {
-	type alias CommandRequest
-	var decoded alias
-	valid, sanitized, err := validateRequestFields(data, []string{
-		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
-		"reactionPassId", "deliveryId", "attemptId", "idempotencyKey", "expectedVersion",
-	}, func(fields map[string]json.RawMessage) bool {
-		return validCausalityFields(fields) && optionalNonemptyString(fields, "idempotencyKey") && optionalSafeInteger(fields, "expectedVersion")
-	})
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(sanitized, &decoded); err != nil {
-		return err
-	}
-	*request = CommandRequest(decoded)
-	request.fieldsValid = valid
-	return nil
-}
-
-func (request *QueryRequest) UnmarshalJSON(data []byte) error {
-	type alias QueryRequest
-	var decoded alias
-	valid, sanitized, err := validateRequestFields(data, []string{
-		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
-		"reactionPassId", "deliveryId", "attemptId",
-	}, validCausalityFields)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(sanitized, &decoded); err != nil {
-		return err
-	}
-	*request = QueryRequest(decoded)
-	request.fieldsValid = valid
-	return nil
-}
-
-func (request *SubscriptionRequest) UnmarshalJSON(data []byte) error {
-	type alias SubscriptionRequest
-	var decoded alias
-	valid, sanitized, err := validateRequestFields(data, []string{
-		"correlationId", "parentOperationIds", "triggeringEventIds", "triggeringEventOrder",
-		"reactionPassId", "deliveryId", "attemptId", "afterSequence",
-	}, func(fields map[string]json.RawMessage) bool {
-		return validCausalityFields(fields) && optionalSafeInteger(fields, "afterSequence")
-	})
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(sanitized, &decoded); err != nil {
-		return err
-	}
-	*request = SubscriptionRequest(decoded)
-	request.fieldsValid = valid
-	return nil
-}
-
-func validateRequestFields(data []byte, optionalNames []string, validate func(map[string]json.RawMessage) bool) (bool, []byte, error) {
-	var fields map[string]json.RawMessage
-	if err := json.Unmarshal(data, &fields); err != nil {
-		return false, nil, err
-	}
-	if validate(fields) {
-		return true, data, nil
-	}
-	// Remove malformed optional fields so the typed decode can retain the
-	// envelope and operation identity used by a correlated structured error.
-	for _, name := range optionalNames {
-		delete(fields, name)
-	}
-	sanitized, err := json.Marshal(fields)
-	return false, sanitized, err
-}
-
-func validCausalityFields(fields map[string]json.RawMessage) bool {
-	for _, name := range []string{"correlationId", "reactionPassId", "deliveryId", "attemptId"} {
-		if !optionalNonemptyString(fields, name) {
-			return false
-		}
-	}
-	for _, name := range []string{"parentOperationIds", "triggeringEventIds"} {
-		raw, present := fields[name]
-		if !present {
-			continue
-		}
-		var values []string
-		if strings.TrimSpace(string(raw)) == "null" || json.Unmarshal(raw, &values) != nil {
-			return false
-		}
-		seen := make(map[string]struct{}, len(values))
-		for _, value := range values {
-			if value == "" {
-				return false
-			}
-			if _, duplicate := seen[value]; duplicate {
-				return false
-			}
-			seen[value] = struct{}{}
-		}
-	}
-	raw, present := fields["triggeringEventOrder"]
-	if !present {
-		return true
-	}
-	var order map[string]json.RawMessage
-	if !rawObject(raw) || json.Unmarshal(raw, &order) != nil || !rawInteger(order, "from", true) || !rawInteger(order, "to", true) {
-		return false
-	}
-	var from, to int64
-	return json.Unmarshal(order["from"], &from) == nil && json.Unmarshal(order["to"], &to) == nil && safeIntegerValue(from) && safeIntegerValue(to) && to >= from
-}
-
-func optionalNonemptyString(fields map[string]json.RawMessage, name string) bool {
-	raw, present := fields[name]
-	if !present {
-		return true
-	}
-	var value string
-	return json.Unmarshal(raw, &value) == nil && value != ""
-}
-
-func optionalSafeInteger(fields map[string]json.RawMessage, name string) bool {
-	raw, present := fields[name]
-	if !present {
-		return true
-	}
-	var value int64
-	return strings.TrimSpace(string(raw)) != "null" && json.Unmarshal(raw, &value) == nil && safeIntegerValue(value)
-}
-
-func safeIntegerValue(value int64) bool {
-	return value >= 0 && value <= 9_007_199_254_740_991
-}
-
-type SubscriptionMessage struct {
-	Envelope
-	OperationID string         `json:"operationId"`
-	Sequence    int64          `json:"sequence,omitempty"`
-	Result      any            `json:"result,omitempty"`
-	Error       *specter.Error `json:"error,omitempty"`
-}
-
-// MarshalJSON makes result presence depend on the message kind rather than the
-// Go value. This distinguishes a successful JSON null from an absent result.
-func (message SubscriptionMessage) MarshalJSON() ([]byte, error) {
-	type value struct {
-		Envelope
-		OperationID string `json:"operationId"`
-		Sequence    int64  `json:"sequence"`
-		Result      any    `json:"result"`
-	}
-	if message.Kind == "subscription.value" {
-		return json.Marshal(value{Envelope: message.Envelope, OperationID: message.OperationID, Sequence: message.Sequence, Result: message.Result})
-	}
-	type terminal struct {
-		Envelope
-		OperationID string         `json:"operationId"`
-		Error       *specter.Error `json:"error,omitempty"`
-	}
-	return json.Marshal(terminal{Envelope: message.Envelope, OperationID: message.OperationID, Error: message.Error})
-}
-
-type ReactionTicketResponse struct {
-	Envelope
-	ReactionTicketID string         `json:"reactionTicketId"`
-	Status           string         `json:"status"`
-	Error            *specter.Error `json:"error,omitempty"`
+	ProtocolVersion SafeInteger `json:"protocolVersion"`
+	Kind            string      `json:"kind"`
+	RequestID       string      `json:"requestId"`
 }
 
 type RuntimeSource struct {
@@ -322,14 +45,87 @@ type RuntimeSource struct {
 	InstanceID      string `json:"instanceId"`
 	EventLogID      string `json:"eventLogId"`
 }
-type RuntimeObservation struct {
-	specter.Observation
-	Sequence int64         `json:"sequence"`
-	Source   RuntimeSource `json:"source"`
 
-	timestampsValid bool
-	causalityValid  bool
-	typesValid      bool
+type EventOrderRange struct {
+	From SafeInteger `json:"from"`
+	To   SafeInteger `json:"to"`
+}
+
+type StructuredError struct {
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Details   any    `json:"details,omitempty"`
+	Retryable *bool  `json:"retryable,omitempty"`
+}
+
+type EventReference struct {
+	EventID       string         `json:"eventId"`
+	Type          string         `json:"type"`
+	Order         SafeInteger    `json:"order"`
+	RecordedAt    time.Time      `json:"recordedAt"`
+	CommitVersion SafeInteger    `json:"commitVersion"`
+	Attributes    map[string]any `json:"attributes,omitempty"`
+
+	decoded         bool
+	fieldsValid     bool
+	timestampValid  bool
+	attributesValid bool
+}
+
+func (event *EventReference) UnmarshalJSON(data []byte) error {
+	type alias EventReference
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
+		return err
+	}
+	attributesValid := true
+	if attributes, present := fields["attributes"]; present {
+		attributesValid = isJSONObject(attributes)
+	}
+	*event = EventReference(decoded)
+	event.decoded = true
+	event.fieldsValid = rawInteger(fields, "order", true) && rawInteger(fields, "commitVersion", true)
+	event.timestampValid = isUTCDateTime(fields["recordedAt"])
+	event.attributesValid = attributesValid
+	return nil
+}
+
+// RuntimeObservation is the language-neutral wire DTO. It deliberately does
+// not embed the Go runtime's internal Observation shape.
+type RuntimeObservation struct {
+	ObservationID        string           `json:"observationId"`
+	Sequence             SafeInteger      `json:"sequence"`
+	ObservedAt           time.Time        `json:"observedAt"`
+	Source               RuntimeSource    `json:"source"`
+	Kind                 string           `json:"kind"`
+	OperationID          string           `json:"operationId"`
+	CorrelationID        string           `json:"correlationId,omitempty"`
+	ParentOperationIDs   []string         `json:"parentOperationIds,omitempty"`
+	TriggeringEventIDs   []string         `json:"triggeringEventIds,omitempty"`
+	TriggeringEventOrder *EventOrderRange `json:"triggeringEventOrder,omitempty"`
+	ReactionPassID       string           `json:"reactionPassId,omitempty"`
+	DeliveryID           string           `json:"deliveryId,omitempty"`
+	AttemptID            string           `json:"attemptId,omitempty"`
+	Outcome              string           `json:"outcome,omitempty"`
+	CommandType          string           `json:"commandType,omitempty"`
+	QueryType            string           `json:"queryType,omitempty"`
+	Slice                string           `json:"slice,omitempty"`
+	Reaction             string           `json:"reaction,omitempty"`
+	Events               []EventReference `json:"events,omitempty"`
+	Cursor               SafeInteger      `json:"cursor,omitempty"`
+	Error                *StructuredError `json:"error,omitempty"`
+	DroppedCount         SafeInteger      `json:"droppedCount,omitempty"`
+	Attributes           map[string]any   `json:"attributes,omitempty"`
+
+	decoded         bool
+	fieldsValid     bool
+	timestampValid  bool
+	attributesValid bool
+	errorValid      bool
 }
 
 func (observation *RuntimeObservation) UnmarshalJSON(data []byte) error {
@@ -338,69 +134,129 @@ func (observation *RuntimeObservation) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		return err
 	}
-	var raw struct {
-		ObservedAt json.RawMessage              `json:"observedAt"`
-		Events     []map[string]json.RawMessage `json:"events"`
-	}
-	if err := json.Unmarshal(data, &raw); err != nil {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	timestampsValid := isUTCDateTime(raw.ObservedAt)
-	typesValid := true
-	for _, event := range raw.Events {
-		timestampsValid = timestampsValid && isUTCDateTime(event["recordedAt"])
-		typesValid = typesValid && rawInteger(event, "order", true) && rawInteger(event, "commitVersion", true)
-		if attributes, present := event["attributes"]; present {
-			typesValid = typesValid && rawObject(attributes)
+	fieldsValid := rawInteger(fields, "sequence", true) && rawObject(fields["source"])
+	for _, name := range []string{"cursor", "droppedCount"} {
+		fieldsValid = fieldsValid && rawInteger(fields, name, false)
+	}
+	for _, name := range []string{"parentOperationIds", "triggeringEventIds", "events"} {
+		if value, present := fields[name]; present {
+			fieldsValid = fieldsValid && rawArray(value)
 		}
+	}
+	if value, present := fields["triggeringEventOrder"]; present {
+		var order map[string]json.RawMessage
+		fieldsValid = fieldsValid && rawObject(value) && json.Unmarshal(value, &order) == nil && rawInteger(order, "from", true) && rawInteger(order, "to", true)
+	}
+	attributesValid := true
+	if attributes, present := fields["attributes"]; present {
+		attributesValid = isJSONObject(attributes)
+	}
+	errorValid := true
+	if value, present := fields["error"]; present {
+		errorValid = isStructuredError(value)
+	}
+	*observation = RuntimeObservation(decoded)
+	observation.decoded = true
+	observation.fieldsValid = fieldsValid
+	observation.timestampValid = isUTCDateTime(fields["observedAt"])
+	observation.attributesValid = attributesValid
+	observation.errorValid = errorValid
+	return nil
+}
+
+type RuntimeObservationBatch struct {
+	Envelope
+	Observations []RuntimeObservation `json:"observations"`
+
+	decoded     bool
+	fieldsValid bool
+}
+
+func (batch *RuntimeObservationBatch) UnmarshalJSON(data []byte) error {
+	type alias RuntimeObservationBatch
+	var decoded alias
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
 	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(data, &fields); err != nil {
 		return err
 	}
-	typesValid = typesValid && rawInteger(fields, "sequence", true) && rawObject(fields["source"])
-	for _, name := range []string{"cursor", "droppedCount", "version"} {
-		typesValid = typesValid && rawInteger(fields, name, false)
-	}
-	for _, name := range []string{"parentOperationIds", "triggeringEventIds", "events"} {
-		if value, present := fields[name]; present {
-			typesValid = typesValid && rawArray(value)
-		}
-	}
-	for _, name := range []string{"attributes", "error"} {
-		if value, present := fields[name]; present {
-			typesValid = typesValid && rawObject(value)
-		}
-	}
-	if value, present := fields["duplicate"]; present {
-		var boolean bool
-		typesValid = typesValid && string(value) != "null" && json.Unmarshal(value, &boolean) == nil
-	}
-	if value, present := fields["triggeringEventOrder"]; present {
-		var order map[string]json.RawMessage
-		if !rawObject(value) || json.Unmarshal(value, &order) != nil {
-			typesValid = false
-		} else {
-			typesValid = typesValid && rawInteger(order, "from", true) && rawInteger(order, "to", true)
-		}
-	}
-	causalityValid := true
-	for _, name := range []string{
-		"correlationId", "reactionPassId", "deliveryId", "attemptId",
-		"commandType", "queryType", "reaction", "slice", "reactionTicketId", "outcome",
-	} {
-		if value, present := fields[name]; present {
-			var id string
-			if err := json.Unmarshal(value, &id); err != nil || id == "" {
-				causalityValid = false
-			}
-		}
-	}
-	*observation = RuntimeObservation(decoded)
-	observation.timestampsValid = timestampsValid
-	observation.causalityValid = causalityValid
-	observation.typesValid = typesValid
+	observations, present := fields["observations"]
+	*batch = RuntimeObservationBatch(decoded)
+	batch.decoded = true
+	batch.fieldsValid = present && rawArray(observations)
 	return nil
+}
+
+type ObservationAcknowledgement struct {
+	Envelope
+	Accepted               SafeInteger `json:"accepted"`
+	Duplicates             SafeInteger `json:"duplicates"`
+	RejectedObservationIDs []string    `json:"rejectedObservationIds,omitempty"`
+}
+
+// ObservationFromRuntime is the single explicit adapter from Go runtime facts
+// to the language-neutral wire DTO. Caller-owned metadata is snapshotted here.
+func ObservationFromRuntime(observation specter.Observation, source RuntimeSource, sequence int64) RuntimeObservation {
+	attributes := snapshotJSONObject(observation.Attributes)
+	if observation.Version != 0 || observation.Duplicate || observation.ReactionTicketID != "" {
+		if attributes == nil {
+			attributes = make(map[string]any)
+		}
+		if observation.Version != 0 {
+			attributes["version"] = observation.Version
+		}
+		if observation.Duplicate {
+			attributes["duplicate"] = true
+		}
+		if observation.ReactionTicketID != "" {
+			attributes["reactionTicketId"] = observation.ReactionTicketID
+		}
+	}
+	result := RuntimeObservation{
+		ObservationID: observation.ObservationID, Sequence: SafeInteger(sequence), ObservedAt: observation.ObservedAt,
+		Source: source, Kind: observation.Kind, OperationID: observation.OperationID, CorrelationID: observation.CorrelationID,
+		ParentOperationIDs: append([]string(nil), observation.ParentOperationIDs...), TriggeringEventIDs: append([]string(nil), observation.TriggeringEventIDs...),
+		ReactionPassID: observation.ReactionPassID, DeliveryID: observation.DeliveryID, AttemptID: observation.AttemptID,
+		Outcome: observation.Outcome, CommandType: observation.CommandType, QueryType: observation.QueryType, Slice: observation.Slice,
+		Reaction: observation.ReactionName, Cursor: SafeInteger(observation.Cursor), DroppedCount: SafeInteger(observation.DroppedCount),
+		Attributes: attributes,
+	}
+	if observation.TriggeringEventOrder != nil {
+		result.TriggeringEventOrder = &EventOrderRange{From: SafeInteger(observation.TriggeringEventOrder.From), To: SafeInteger(observation.TriggeringEventOrder.To)}
+	}
+	if observation.Error != nil {
+		result.Error = SanitizeObservationError(observation.Error)
+	}
+	if len(observation.Events) > 0 {
+		result.Events = make([]EventReference, len(observation.Events))
+		for index, event := range observation.Events {
+			result.Events[index] = EventReference{EventID: event.EventID, Type: event.Type, Order: SafeInteger(event.Order), RecordedAt: event.RecordedAt, CommitVersion: SafeInteger(event.CommitVersion), Attributes: snapshotJSONObject(event.Attributes)}
+		}
+	}
+	return result
+}
+
+func snapshotJSONObject(value map[string]any) map[string]any {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.UseNumber()
+	var result map[string]any
+	if decoder.Decode(&result) != nil {
+		return nil
+	}
+	return result
 }
 
 func rawInteger(fields map[string]json.RawMessage, name string, required bool) bool {
@@ -408,11 +264,17 @@ func rawInteger(fields map[string]json.RawMessage, name string, required bool) b
 	if !present {
 		return !required
 	}
-	if strings.TrimSpace(string(raw)) == "null" {
-		return false
+	_, ok := parseSafeInteger(raw)
+	return ok
+}
+
+func parseSafeInteger(raw []byte) (int64, bool) {
+	value := strings.TrimSpace(string(raw))
+	parsed, ok := new(big.Rat).SetString(value)
+	if !ok || !parsed.IsInt() || parsed.Sign() < 0 || parsed.Cmp(big.NewRat(maxSafeInteger, 1)) > 0 {
+		return 0, false
 	}
-	var value int64
-	return json.Unmarshal(raw, &value) == nil
+	return parsed.Num().Int64(), true
 }
 
 func rawArray(raw json.RawMessage) bool {
@@ -427,82 +289,50 @@ func rawObject(raw json.RawMessage) bool {
 
 func isUTCDateTime(raw json.RawMessage) bool {
 	var value string
-	if err := json.Unmarshal(raw, &value); err != nil || !strings.HasSuffix(value, "Z") {
+	if err := json.Unmarshal(raw, &value); err != nil || !canonicalTimestamp.MatchString(value) {
 		return false
 	}
 	_, err := time.Parse(time.RFC3339Nano, value)
 	return err == nil
 }
 
-type RuntimeObservationBatch struct {
-	Envelope
-	Observations []RuntimeObservation `json:"observations"`
+var canonicalTimestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$`)
 
-	fieldsValid bool
-}
-type ObservationAcknowledgement struct {
-	Envelope
-	Accepted               int            `json:"accepted"`
-	Duplicates             int            `json:"duplicates"`
-	RejectedObservationIDs []string       `json:"rejectedObservationIds,omitempty"`
-	Error                  *specter.Error `json:"error,omitempty"`
+func isJSONObject(raw json.RawMessage) bool {
+	if !rawObject(raw) {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	var value map[string]any
+	return decoder.Decode(&value) == nil && validateJSONValue(value)
 }
 
-func (request *CapabilitiesRequest) UnmarshalJSON(data []byte) error {
-	type alias CapabilitiesRequest
-	var decoded alias
-	valid, sanitized, err := validateRequestFields(data, []string{"required", "optional"}, func(fields map[string]json.RawMessage) bool {
-		for _, name := range []string{"required", "optional"} {
-			raw, present := fields[name]
-			if !present {
-				continue
-			}
-			var capabilities []string
-			if !rawArray(raw) || json.Unmarshal(raw, &capabilities) != nil || !validCapabilityList(capabilities) {
-				return false
-			}
-		}
-		return true
-	})
-	if err != nil {
-		return err
+func isStructuredError(raw json.RawMessage) bool {
+	if !rawObject(raw) {
+		return false
 	}
-	if err := json.Unmarshal(sanitized, &decoded); err != nil {
-		return err
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(raw, &fields) != nil {
+		return false
 	}
-	*request = CapabilitiesRequest(decoded)
-	request.fieldsValid = valid
-	return nil
-}
-
-func (batch *RuntimeObservationBatch) UnmarshalJSON(data []byte) error {
-	type alias RuntimeObservationBatch
-	var decoded alias
-	valid, sanitized, err := validateRequestFields(data, []string{"observations"}, func(fields map[string]json.RawMessage) bool {
-		raw, present := fields["observations"]
-		return present && rawArray(raw)
-	})
-	if err != nil {
-		return err
+	var code, message string
+	if json.Unmarshal(fields["code"], &code) != nil || code == "" || json.Unmarshal(fields["message"], &message) != nil || message == "" {
+		return false
 	}
-	if err := json.Unmarshal(sanitized, &decoded); err != nil {
-		return err
-	}
-	*batch = RuntimeObservationBatch(decoded)
-	batch.fieldsValid = valid
-	return nil
-}
-
-func validCapabilityList(capabilities []string) bool {
-	seen := make(map[string]struct{}, len(capabilities))
-	for _, capability := range capabilities {
-		if capability == "" {
+	if details, present := fields["details"]; present {
+		decoder := json.NewDecoder(bytes.NewReader(details))
+		decoder.UseNumber()
+		var value any
+		if decoder.Decode(&value) != nil || !validateJSONValue(value) {
 			return false
 		}
-		if _, duplicate := seen[capability]; duplicate {
+	}
+	if retryable, present := fields["retryable"]; present {
+		var value bool
+		if json.Unmarshal(retryable, &value) != nil || strings.TrimSpace(string(retryable)) == "null" {
 			return false
 		}
-		seen[capability] = struct{}{}
 	}
 	return true
 }

@@ -1,1 +1,0 @@
-{ "protocolVersion": 1, "kind": "query.response", "requestId": "response-2", "operationId": "operation-2", "result": null, "error": { "code": "SPECTER_INTERNAL_ERROR", "message": "Failed." } }

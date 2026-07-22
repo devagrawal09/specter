@@ -7,7 +7,7 @@
   "properties": {
     "observationId": { "type": "string", "minLength": 1 },
     "sequence": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
-    "observedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+    "observedAt": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
     "kind": {
       "enum": [
         "command.started", "command.completed", "command.rejected", "command.failed",
@@ -29,7 +29,8 @@
         "runtimeVersion": { "type": "string", "minLength": 1 },
         "instanceId": { "type": "string", "minLength": 1 },
         "eventLogId": { "type": "string", "minLength": 1 }
-      }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
     },
     "operationId": { "type": "string", "minLength": 1 },
     "correlationId": { "type": "string", "minLength": 1 },
@@ -41,7 +42,8 @@
       "properties": {
         "from": { "$ref": "#/$defs/safeInteger" },
         "to": { "$ref": "#/$defs/safeInteger" }
-      }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
     },
     "reactionPassId": { "type": "string", "minLength": 1 },
     "deliveryId": { "type": "string", "minLength": 1 },
@@ -54,9 +56,10 @@
     "events": { "type": "array", "items": { "$ref": "#/$defs/eventReference" } },
     "cursor": { "$ref": "#/$defs/safeInteger" },
     "droppedCount": { "$ref": "#/$defs/safeInteger" },
-    "attributes": { "type": "object" },
+    "attributes": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } },
     "error": { "$ref": "#/$defs/structuredError" }
   },
+  "additionalProperties": { "$ref": "json-value.schema.json" },
   "$defs": {
     "safeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
     "eventReference": {
@@ -66,10 +69,11 @@
         "eventId": { "type": "string", "minLength": 1 },
         "type": { "type": "string", "minLength": 1 },
         "order": { "$ref": "#/$defs/safeInteger" },
-        "recordedAt": { "type": "string", "format": "date-time", "pattern": "Z$" },
+        "recordedAt": { "type": "string", "format": "date-time", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$" },
         "commitVersion": { "$ref": "#/$defs/safeInteger" },
-        "attributes": { "type": "object" }
-      }
+        "attributes": { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
     },
     "structuredError": {
       "type": "object",
@@ -77,9 +81,10 @@
       "properties": {
         "code": { "type": "string", "minLength": 1 },
         "message": { "type": "string", "minLength": 1 },
-        "details": {},
+        "details": { "$ref": "json-value.schema.json" },
         "retryable": { "type": "boolean" }
-      }
+      },
+      "additionalProperties": { "$ref": "json-value.schema.json" }
     }
   }
 }

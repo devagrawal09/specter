@@ -35,7 +35,7 @@ on what you need to do next.
 ## Operate and integrate
 
 - [Runtime architecture](architecture/runtime.md)
-- [Language-neutral runtime protocol](../protocol/README.md)
+- [Language-neutral runtime-observability protocol](../protocol/README.md)
 - [Event sourcing](architecture/event-sourcing.md)
 - [Plugins](architecture/plugins.md)
 - [Core runtime API](api-reference/core-runtime.md)

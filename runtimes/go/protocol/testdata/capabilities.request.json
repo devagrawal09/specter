@@ -1,6 +1,0 @@
-{
-  "protocolVersion": 1,
-  "kind": "capabilities.request",
-  "requestId": "fixture-capabilities-1",
-  "requiredCapabilities": ["commands", "queries"]
-}

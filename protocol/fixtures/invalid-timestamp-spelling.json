@@ -1,0 +1,13 @@
+{
+  "protocolVersion": 1,
+  "kind": "observations.batch",
+  "requestId": "timestamp-spelling-request",
+  "observations": [{
+    "observationId": "timestamp-spelling-observation",
+    "sequence": 1,
+    "observedAt": "2026-07-18t12:00:00Z",
+    "source": { "application": "todo", "environment": "test", "runtimeLanguage": "go", "runtimeVersion": "0.3.0", "instanceId": "process-1", "eventLogId": "todo-log" },
+    "kind": "query.started",
+    "operationId": "operation-1"
+  }]
+}

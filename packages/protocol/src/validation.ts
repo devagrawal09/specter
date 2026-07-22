@@ -63,103 +63,6 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
   string(message.requestId, '$.requestId')
 
   switch (kind) {
-    case 'capabilities.request':
-      optionalUniqueStrings(message.required, '$.required')
-      optionalUniqueStrings(message.optional, '$.optional')
-      break
-    case 'capabilities.response': {
-      const runtime = record(message.runtime, '$.runtime')
-      string(runtime.language, '$.runtime.language')
-      string(runtime.version, '$.runtime.version')
-      uniqueStrings(message.supported, '$.supported')
-      uniqueStrings(message.negotiated, '$.negotiated')
-      break
-    }
-    case 'command.request':
-      causality(message)
-      namedPayload(message.command, '$.command')
-      optionalString(message.idempotencyKey, '$.idempotencyKey')
-      optionalInteger(message.expectedVersion, '$.expectedVersion')
-      break
-    case 'command.response':
-      string(message.operationId, '$.operationId')
-      enumeration(
-        message.status,
-        ['committed', 'duplicate', 'rejected'],
-        '$.status',
-      )
-      integer(message.version, '$.version')
-      events(message.events, '$.events')
-      optionalString(message.reactionTicketId, '$.reactionTicketId')
-      if (message.error !== undefined) structuredError(message.error, '$.error')
-      if (message.status === 'rejected') {
-        if (message.error === undefined)
-          fail('$.error is required for a rejected command')
-        if ((message.events as readonly unknown[]).length > 0)
-          fail('$.events must be empty for a rejected command')
-        if (message.reactionTicketId !== undefined)
-          fail('$.reactionTicketId is not allowed for a rejected command')
-      } else if (message.error !== undefined) {
-        fail('$.error is only allowed for a rejected command')
-      } else if (message.reactionTicketId === undefined) {
-        fail('$.reactionTicketId is required for a committed command')
-      }
-      break
-    case 'query.request':
-    case 'subscription.request':
-      causality(message)
-      namedPayload(message.query, '$.query')
-      if (kind === 'subscription.request')
-        optionalInteger(message.afterSequence, '$.afterSequence')
-      break
-    case 'query.response':
-      string(message.operationId, '$.operationId')
-      if (message.result !== undefined)
-        assertJsonValue(message.result, '$.result')
-      if (message.error !== undefined) structuredError(message.error, '$.error')
-      if (message.result === undefined && message.error === undefined)
-        fail('$.result or $.error is required')
-      if (message.result !== undefined && message.error !== undefined)
-        fail('$.result and $.error are mutually exclusive')
-      break
-    case 'subscription.value':
-      string(message.operationId, '$.operationId')
-      integer(message.sequence, '$.sequence')
-      assertJsonValue(message.result, '$.result')
-      if (message.error !== undefined)
-        fail('$.error is not allowed for a subscription value')
-      break
-    case 'subscription.error':
-      string(message.operationId, '$.operationId')
-      structuredError(message.error, '$.error')
-      if (message.result !== undefined)
-        fail('$.result is not allowed for a subscription error')
-      if (message.sequence !== undefined)
-        fail('$.sequence is not allowed for a subscription error')
-      break
-    case 'subscription.complete':
-      string(message.operationId, '$.operationId')
-      if (message.result !== undefined || message.error !== undefined)
-        fail('$.result and $.error are not allowed for subscription completion')
-      if (message.sequence !== undefined)
-        fail('$.sequence is not allowed for subscription completion')
-      break
-    case 'reaction-ticket.request':
-      string(message.reactionTicketId, '$.reactionTicketId')
-      break
-    case 'reaction-ticket.response':
-      string(message.reactionTicketId, '$.reactionTicketId')
-      enumeration(
-        message.status,
-        ['pending', 'completed', 'failed'],
-        '$.status',
-      )
-      if (message.error !== undefined) structuredError(message.error, '$.error')
-      if (message.status === 'failed' && message.error === undefined)
-        fail('$.error is required for a failed reaction ticket')
-      if (message.status !== 'failed' && message.error !== undefined)
-        fail('$.error is only allowed for a failed reaction ticket')
-      break
     case 'observations.batch': {
       const observations = array(message.observations, '$.observations')
       if (observations.length > 100)
@@ -172,7 +75,7 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
     case 'observations.ack':
       integer(message.accepted, '$.accepted')
       integer(message.duplicates, '$.duplicates')
-      optionalStrings(
+      optionalUniqueStrings(
         message.rejectedObservationIds,
         '$.rejectedObservationIds',
       )
@@ -181,6 +84,20 @@ export function parseProtocolMessage(value: unknown): ProtocolMessage {
       fail(`$.kind has unknown message kind ${kind}`)
   }
   return value as ProtocolMessage
+}
+
+export function parseProtocolJson(input: string): ProtocolMessage {
+  let value: unknown
+  try {
+    value = JSON.parse(input)
+  } catch (cause) {
+    throw new SpecterProtocolError({
+      code: protocolErrorCodes.invalidJson,
+      message: 'Malformed JSON message.',
+      cause,
+    })
+  }
+  return parseProtocolMessage(value)
 }
 
 export function parseRuntimeObservation(value: unknown): RuntimeObservation {
@@ -284,12 +201,6 @@ function events(value: unknown, path: string) {
   })
 }
 
-function namedPayload(value: unknown, path: string) {
-  const input = record(value, path)
-  string(input.type, `${path}.type`)
-  assertJsonValue(input.payload, `${path}.payload`)
-}
-
 function structuredError(value: unknown, path: string) {
   const error = record(value, path)
   string(error.code, `${path}.code`)
@@ -314,22 +225,11 @@ function string(value: unknown, path: string): string {
     fail(`${path} must be a non-empty string`)
   return value
 }
-function strings(value: unknown, path: string) {
-  array(value, path).forEach((item, index) => {
-    string(item, `${path}[${index}]`)
-  })
-}
 function optionalString(value: unknown, path: string) {
   if (value !== undefined) string(value, path)
 }
-function optionalStrings(value: unknown, path: string) {
-  if (value !== undefined) strings(value, path)
-}
 function optionalUniqueStrings(value: unknown, path: string) {
   if (value === undefined) return
-  uniqueStrings(value, path)
-}
-function uniqueStrings(value: unknown, path: string) {
   const items = array(value, path)
   const unique = new Set<string>()
   items.forEach((item, index) => {
@@ -347,9 +247,46 @@ function optionalInteger(value: unknown, path: string) {
 }
 function timestamp(value: unknown, path: string) {
   const input = string(value, path)
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?Z$/.exec(input)
+  if (!match) fail(`${path} must be an RFC 3339 UTC timestamp`)
+  const [
+    ,
+    yearInput,
+    monthInput,
+    dayInput,
+    hourInput,
+    minuteInput,
+    secondInput,
+  ] = match
+  const year = Number(yearInput)
+  const month = Number(monthInput)
+  const day = Number(dayInput)
+  const hour = Number(hourInput)
+  const minute = Number(minuteInput)
+  const second = Number(secondInput)
+  const daysInMonth = [
+    31,
+    year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ]
   if (
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/.test(input) ||
-    Number.isNaN(Date.parse(input))
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > (daysInMonth[month - 1] ?? 0) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59
   ) {
     fail(`${path} must be an RFC 3339 UTC timestamp`)
   }

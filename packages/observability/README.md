@@ -2,9 +2,13 @@
 
 A standalone Specter runtime-observation collector, browser dashboard, CLI,
 and non-blocking TypeScript producer. The collector is itself a Specter app:
-protocol batches enter through the `recordRuntimeObservations` Command and are
-persisted as explicit operational Events before overview, activity, and causal
-trace Queries expose them.
+protocol batches enter through the internal `recordRuntimeObservations` Command
+and are persisted as explicit operational Events before internal overview,
+activity, and causal-trace Queries expose them.
+
+Only `POST /specter/v1/observations` is language-neutral protocol. The dashboard
+and CLI use the collector-owned, read-only `/v1/*` API; they cannot execute
+Commands or Queries in an observed application.
 
 Run the collector on its fixed, strict default port:
 
@@ -34,7 +38,7 @@ const source = {
   eventLogId: './data/app.db',
 }
 const producer = createRuntimeObservationProducer({
-  endpoint: 'http://127.0.0.1:41736',
+  collectorUrl: 'http://127.0.0.1:41736',
   source,
 })
 const telemetry = createRuntimeObservationEmitter({ producer, source })

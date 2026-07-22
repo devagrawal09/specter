@@ -1,1 +1,6 @@
-{ "protocolVersion": 2, "kind": "capabilities.request", "requestId": "request-4" }
+{
+  "protocolVersion": 2.0,
+  "kind": "observations.batch",
+  "requestId": "version-mismatch-request",
+  "observations": []
+}

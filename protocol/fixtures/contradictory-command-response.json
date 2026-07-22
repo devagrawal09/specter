@@ -1,1 +1,0 @@
-{ "protocolVersion": 1, "kind": "command.response", "requestId": "response-1", "operationId": "operation-1", "status": "committed", "version": 1, "events": [], "error": { "code": "SPECTER_INTERNAL_ERROR", "message": "Failed." } }

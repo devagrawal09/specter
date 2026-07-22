@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://specter.dev/protocol/v1/json-value.schema.json",
+  "title": "Specter protocol JSON value",
+  "oneOf": [
+    { "type": "null" },
+    { "type": "boolean" },
+    { "type": "string" },
+    { "type": "integer", "minimum": -9007199254740991, "maximum": 9007199254740991 },
+    { "type": "number", "not": { "type": "integer" } },
+    { "type": "array", "items": { "$ref": "json-value.schema.json" } },
+    { "type": "object", "additionalProperties": { "$ref": "json-value.schema.json" } }
+  ]
+}

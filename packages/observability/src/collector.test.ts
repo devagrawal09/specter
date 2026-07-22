@@ -215,6 +215,7 @@ describe('Specter observability collector', () => {
     const otherSource: RuntimeSource = {
       ...source,
       application: 'booking-reference',
+      runtimeLanguage: 'go',
       instanceId: 'booking-instance',
       eventLogId: 'booking-log',
     }
@@ -261,6 +262,11 @@ describe('Specter observability collector', () => {
         ]),
       ),
     ).resolves.toMatchObject({ accepted: 4, duplicates: 0 })
+
+    const overview = await collector.overview()
+    expect(
+      overview.sources.map((item) => item.source.runtimeLanguage).sort(),
+    ).toEqual(['go', 'typescript'])
 
     const trace = await collector.trace('shared-reaction', {
       application: source.application,
@@ -484,10 +490,10 @@ describe('Specter observability collector', () => {
     expect(ingestion.status).toBe(202)
     expect(ingestion.headers.get('Specter-Protocol-Version')).toBe('1')
     const overview = await handler(new Request('http://collector/v1/overview'))
-    expect(overview.headers.get('Specter-Protocol-Version')).toBe('1')
+    expect(overview.headers.get('Specter-Protocol-Version')).toBeNull()
     await expect(overview.json()).resolves.toMatchObject({ failureCount: 1 })
     const dashboard = await handler(new Request('http://collector/'))
-    expect(dashboard.headers.get('Specter-Protocol-Version')).toBe('1')
+    expect(dashboard.headers.get('Specter-Protocol-Version')).toBeNull()
     const html = await dashboard.text()
     expect(html).toContain('Specter runtime observability')
     expect(html).not.toContain('<private>')
@@ -515,6 +521,7 @@ describe('Specter observability collector', () => {
       }),
     )
     expect(wrongContentType.status).toBe(415)
+    expect(wrongContentType.headers.get('Specter-Protocol-Version')).toBe('1')
     await expect(wrongContentType.json()).resolves.toEqual({
       error: {
         code: 'SPECTER_INVALID_MESSAGE',
@@ -522,7 +529,19 @@ describe('Specter observability collector', () => {
       },
     })
 
-    const wrongCapabilityMessage = await handler(
+    const wrongMethod = await handler(
+      new Request('http://collector/specter/v1/observations'),
+    )
+    expect(wrongMethod.status).toBe(404)
+    expect(wrongMethod.headers.get('Specter-Protocol-Version')).toBe('1')
+    await expect(wrongMethod.json()).resolves.toEqual({
+      error: {
+        code: 'SPECTER_OBSERVABILITY_ROUTE_NOT_FOUND',
+        message: 'Route not found.',
+      },
+    })
+
+    const removedCapabilityRoute = await handler(
       new Request('http://collector/specter/v1/capabilities', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -535,11 +554,14 @@ describe('Specter observability collector', () => {
         }),
       }),
     )
-    expect(wrongCapabilityMessage.status).toBe(400)
-    await expect(wrongCapabilityMessage.json()).resolves.toEqual({
+    expect(removedCapabilityRoute.status).toBe(404)
+    expect(
+      removedCapabilityRoute.headers.get('Specter-Protocol-Version'),
+    ).toBeNull()
+    await expect(removedCapabilityRoute.json()).resolves.toEqual({
       error: {
-        code: 'SPECTER_INVALID_MESSAGE',
-        message: 'Protocol message is invalid.',
+        code: 'SPECTER_OBSERVABILITY_ROUTE_NOT_FOUND',
+        message: 'Route not found.',
       },
     })
 
@@ -599,7 +621,7 @@ describe('Specter observability collector', () => {
   it('drops oldest queued telemetry without backpressuring the caller', async () => {
     const bodies: RuntimeObservationBatch[] = []
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 2,
       fetch: async (_input, init) => {
@@ -655,7 +677,7 @@ describe('Specter observability collector', () => {
   it('reports dropped telemetry after earlier sequences across batch boundaries', async () => {
     const bodies: RuntimeObservationBatch[] = []
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 1,
       maxBatchSize: 1,
@@ -701,7 +723,7 @@ describe('Specter observability collector', () => {
     const requestIds: string[] = []
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryDelayMs: 60_000,
       fetch: async (_input, init) => {
@@ -743,7 +765,7 @@ describe('Specter observability collector', () => {
     let currentTime = new Date('2026-07-18T12:00:00.000Z')
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryWindowMs: 1_000,
       retryDelayMs: 60_000,
@@ -787,7 +809,7 @@ describe('Specter observability collector', () => {
     const bodies: RuntimeObservationBatch[] = []
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 4,
       retryDelayMs: 60_000,
@@ -857,7 +879,7 @@ describe('Specter observability collector', () => {
     const started = Promise.withResolvers<void>()
     const responseGate = Promise.withResolvers<void>()
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 2,
       fetch: async (_input, init) => {
@@ -930,6 +952,17 @@ describe('Specter observability collector', () => {
       (input: RuntimeObservationBatch) =>
         acknowledgement(input, { accepted: 0 }),
     ],
+    [
+      'duplicate rejected IDs',
+      (input: RuntimeObservationBatch) =>
+        acknowledgement(input, {
+          accepted: 0,
+          rejectedObservationIds: [
+            input.observations[0]?.observationId ?? 'missing',
+            input.observations[0]?.observationId ?? 'missing',
+          ],
+        }),
+    ],
     ['empty', () => new Response(null, { status: 202 })],
     [
       'non-success HTTP',
@@ -943,7 +976,7 @@ describe('Specter observability collector', () => {
     const bodies: RuntimeObservationBatch[] = []
     let attempt = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       retryDelayMs: 60_000,
       fetch: async (_input, init) => {
@@ -973,7 +1006,7 @@ describe('Specter observability collector', () => {
 
   it('accepts an acknowledgement that explicitly rejects the complete batch', async () => {
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector',
+      collectorUrl: 'http://collector',
       source,
       maxQueuedObservations: 0,
       maxBatchSize: 0,

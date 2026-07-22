@@ -18,7 +18,7 @@ packages/memory/           deterministic test adapters and immediate scheduler
 packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
-packages/protocol/         language-neutral v1 schemas and TypeScript HTTP/SSE binding
+packages/protocol/         language-neutral v1 observation types and validation
 packages/observability/    shared collector, dashboard, CLI, and telemetry producer
 packages/create-specter/   create-specter initializer CLI
 protocol/                  normative schemas, behavior, and golden fixtures
@@ -115,10 +115,12 @@ allowlists registered envelope types, maps stable structured errors, and
 supports reconnectable latest-state query subscriptions. In-process programs
 can use the same app API directly.
 
-For cross-language boundaries, `@specter-ts/protocol` and `protocol/` define a
-versioned JSON protocol and reference HTTP/SSE binding. The TypeScript Todo app
-and Go Todo app expose the same `/specter/v1` surface and can send runtime
-observations to one collector and dashboard.
+For cross-language observability, `@specter-ts/protocol` and `protocol/` define
+a versioned JSON observation protocol. TypeScript and Go runtimes send metadata
+batches to the same collector at `POST /specter/v1/observations`; the collector
+acknowledges accepted and duplicate observations. The protocol does not execute
+application Commands or Queries. Each application owns any remote API it needs,
+while the dashboard and CLI read the collector's separate, read-only API.
 
 See [Specter runtime](docs/architecture/runtime.md) for
 transaction, subscription, schema-mode, idempotency, adapter, and operational

@@ -110,6 +110,10 @@ async function serve(commandArgs: readonly string[]) {
   const liveReservationIds = new Set<string>()
 
   const server = createServer(async (request, response) => {
+    const isObservationProtocolRequest =
+      request.method === 'POST' &&
+      new URL(request.url ?? '/', `http://${host}:${port}`).pathname ===
+        '/specter/v1/observations'
     let releaseSegment: (() => void) | undefined
     let reservation: ObservationReservation | undefined
     let reservationCompleted = false
@@ -205,10 +209,12 @@ async function serve(commandArgs: readonly string[]) {
       await sendWebResponse(response, webResponse)
     } catch (cause) {
       const error = structuredProtocolError(cause)
-      response.writeHead(500, {
+      const headers: Record<string, string> = {
         'content-type': 'application/json',
-        'Specter-Protocol-Version': '1',
-      })
+      }
+      if (isObservationProtocolRequest)
+        headers['Specter-Protocol-Version'] = '1'
+      response.writeHead(500, headers)
       response.end(
         JSON.stringify({
           error: {

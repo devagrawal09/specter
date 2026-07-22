@@ -21,9 +21,6 @@ const (
 	ErrProtocolVersionMismatch ErrorCode = "SPECTER_PROTOCOL_VERSION_MISMATCH"
 	ErrInvalidMessage          ErrorCode = "SPECTER_INVALID_MESSAGE"
 	ErrInvalidJSON             ErrorCode = "SPECTER_INVALID_JSON"
-	ErrUnsupportedCapability   ErrorCode = "SPECTER_UNSUPPORTED_CAPABILITY"
-	ErrRouteNotFound           ErrorCode = "SPECTER_ROUTE_NOT_FOUND"
-	ErrTransportFailure        ErrorCode = "SPECTER_TRANSPORT_FAILURE"
 )
 
 // Error is the public failure shape shared by the in-process and HTTP APIs.

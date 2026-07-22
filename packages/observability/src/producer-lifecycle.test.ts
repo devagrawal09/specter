@@ -19,7 +19,7 @@ describe('runtime observation producer lifecycle', () => {
     vi.useFakeTimers()
     let attempts = 0
     const producer = createRuntimeObservationProducer({
-      endpoint: 'http://collector.invalid',
+      collectorUrl: 'http://collector.invalid',
       source,
       retryDelayMs: 1_000,
       maxRetryDelayMs: 1_000,

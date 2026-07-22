@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 const protocolRoot = new URL('../../../protocol/', import.meta.url)
 const schemaNames = [
+  'json-value.schema.json',
   'envelope.schema.json',
   'messages.schema.json',
   'runtime-observation.schema.json',
@@ -50,9 +51,17 @@ describe('normative Draft 2020-12 schemas', () => {
     ])
 
     for (const fixture of manifest.cases) {
-      const value = JSON.parse(
-        readFileSync(new URL(`fixtures/${fixture.file}`, protocolRoot), 'utf8'),
+      const input = readFileSync(
+        new URL(`fixtures/${fixture.file}`, protocolRoot),
+        'utf8',
       )
+      let value: unknown
+      try {
+        value = JSON.parse(input)
+      } catch {
+        expect(fixture.valid, fixture.name).toBe(false)
+        continue
+      }
       // Draft 2020-12 cannot compare sibling numeric values. The runtime
       // validator separately enforces triggeringEventOrder.to >= from.
       const schemaValid = fixture.valid || behaviorOnlyInvalid.has(fixture.file)
