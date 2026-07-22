@@ -26,7 +26,6 @@ export type SpecterHttpHandlerOptions<TConfig extends SpecterAppConfig> = {
   readonly run?: RunInContext
   readonly reactionRetentionMs?: number
   readonly reactionTickets?: SpecterReactionTicketStore
-  readonly allowedOrigins?: readonly string[]
 }
 
 export type SpecterHttpHandler = {
@@ -116,7 +115,6 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
   const reactionRetentionMs = options.reactionRetentionMs ?? 5 * 60_000
   const reactionTickets =
     options.reactionTickets ?? createMemoryReactionTicketStore()
-  const allowedOrigins = new Set(options.allowedOrigins ?? [])
   const activeSubscriptions = new Set<(reason?: unknown) => Promise<void>>()
   const pendingSubscriptionSetups = new Set<{
     readonly settled: Promise<void>
@@ -139,7 +137,7 @@ export function createSpecterHttpHandler<TConfig extends SpecterAppConfig>(
     }
 
     try {
-      validateLocalRequest(request, allowedOrigins)
+      validateRequest(request)
 
       if (request.method === 'POST' && route === '/command') {
         return await handleCommand(request)
@@ -513,52 +511,13 @@ class SpecterTransportClosingError extends Error {
   }
 }
 
-function validateLocalRequest(
-  request: Request,
-  allowedOrigins: ReadonlySet<string>,
-) {
-  const url = new URL(request.url)
-  if (!isLoopbackHostname(url.hostname)) {
-    throw new SpecterTransportAccessError(
-      'SPECTER_TRANSPORT_UNTRUSTED_HOST',
-      'Specter transport only accepts loopback hosts.',
-    )
-  }
-
-  const origin = request.headers.get('origin')
-  if (origin) {
-    let normalizedOrigin: string
-    try {
-      normalizedOrigin = new URL(origin).origin
-    } catch {
-      throw new SpecterTransportAccessError(
-        'SPECTER_TRANSPORT_UNTRUSTED_ORIGIN',
-        'Specter transport rejected an invalid request origin.',
-      )
-    }
-    if (
-      normalizedOrigin !== url.origin &&
-      !allowedOrigins.has(normalizedOrigin)
-    ) {
-      throw new SpecterTransportAccessError(
-        'SPECTER_TRANSPORT_UNTRUSTED_ORIGIN',
-        'Specter transport rejected a cross-origin request.',
-      )
-    }
-  }
-
+function validateRequest(request: Request) {
   if (request.headers.get(specterClientHeader) !== specterClientHeaderValue) {
     throw new SpecterTransportAccessError(
       'SPECTER_TRANSPORT_CLIENT_HEADER_REQUIRED',
       'Specter transport client header is missing or invalid.',
     )
   }
-}
-
-function isLoopbackHostname(hostname: string) {
-  return (
-    hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]'
-  )
 }
 
 function serializeError(cause: unknown): SerializedError {
