@@ -13,6 +13,13 @@ import type {
 import type { SpecterObservabilityCollector } from './collector'
 import { renderCollectorHtml } from './ui'
 import { readFile } from 'node:fs/promises'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const dashboardAssetPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  'dashboard.js',
+)
 
 export type SpecterObservabilityHttpHandlerOptions = {
   readonly collector: SpecterObservabilityCollector
@@ -51,10 +58,7 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'GET' && route === '/dashboard.js') {
-        const source = await readFile(
-          new URL('./dashboard.js', import.meta.url),
-          'utf8',
-        )
+        const source = await readFile(dashboardAssetPath, 'utf8')
         return new Response(source, {
           headers: {
             'content-type': 'text/javascript; charset=utf-8',

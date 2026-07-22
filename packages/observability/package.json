@@ -20,7 +20,7 @@
   },
   "scripts": {
     "build": "pnpm spec:build && vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
-    "test": "pnpm spec:build && vitest run",
+    "test": "pnpm spec:build && vite build && vitest run && node --test test/packaged-dashboard.node.mjs",
     "typecheck": "pnpm spec:build && tsc -p tsconfig.json --noEmit",
     "spec:build": "specter-spec export src/features"
   },

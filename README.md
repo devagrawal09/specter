@@ -76,7 +76,7 @@ pnpm dev:threadplane
 ```
 
 The Todo and Booking Reference applications use fixed port `41731`; the
-Threadplane Reference uses `41732`, the observability collector uses `41736`,
+Threadplane Reference uses `41732`, the observability collector uses `41739`,
 and the Go Todo reference uses `41737`.
 
 Workspace apps resolve `@specter-ts/core` and `@specter-ts/core/testing` to

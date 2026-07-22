@@ -53,7 +53,7 @@ const source = {
 }
 
 const producer = createRuntimeObservationProducer({
-  collectorUrl: 'http://127.0.0.1:41736',
+  collectorUrl: 'http://127.0.0.1:41739',
   source,
 })
 
@@ -76,7 +76,7 @@ specter-observe watch --application todo-reference --kind reaction.run.failed
 specter-observe trace operation-id
 ```
 
-The collector uses fixed strict port `41736` by default. It rotates its active
+The collector uses fixed strict port `41739` by default. It rotates its active
 SQLite segment after 24 hours or 64 MiB and retains a separate deduplication
 index for the retry window.
 

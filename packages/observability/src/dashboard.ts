@@ -171,4 +171,5 @@ function App() {
 
 const root = document.getElementById('app')
 if (!root) throw new Error('Specter dashboard root is missing.')
+root.replaceChildren()
 render(App, root)
