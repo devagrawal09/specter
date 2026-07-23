@@ -3,6 +3,7 @@ import { CodeBlock } from './CodeBlock'
 import {
   adapters,
   agentBenefits,
+  codeConcerns,
   eventLog,
   externalApiSource,
   implementationSource,
@@ -104,43 +105,176 @@ export function App(): JSX.Element {
         <section class="hero">
           <p class="preview-badge">Specter 0.4 · source preview</p>
           <p class="eyebrow">
-            Executable specifications · portable JSON · TypeScript + Go
+            Deterministic verification around agent-written code
           </p>
           <h1 class="hero__title">
-            Give your coding agent a better architecture
+            <a class="hero__compile-link" href="#can-agents-compile">
+              “Compile”
+            </a>{' '}
+            JSON specs into complete applications.
           </h1>
           <p class="hero__lede">
-            Specter turns each vertical Slice into an exact, portable behavior
-            contract. Coding agents work inside a small feature boundary;
-            TypeScript and Go runtimes execute the same scenarios, and the
-            dashboard shows intended behavior beside real execution.
+            Start from a proven app stack. Give one Slice at a time to a coding
+            agent. In CI, Specter turns every specified scenario into an exact
+            pass/fail condition.
           </p>
+
+          <div class="comparison">
+            <article class="comparison__column">
+              <div class="comparison__head">
+                <span class="comparison__index">01</span>
+                <h2>Agentic coding</h2>
+              </div>
+              <ul class="comparison__list">
+                <For each={codeConcerns}>
+                  {(concern) => (
+                    <li
+                      aria-label={`${concern.label}: implemented from scratch`}
+                    >
+                      <span
+                        class="comparison__status"
+                        data-active="false"
+                        aria-hidden="true"
+                      />
+                      <span>{concern.label}</span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </article>
+
+            <article class="comparison__column comparison__column--specter">
+              <div class="comparison__head">
+                <span class="comparison__index">02</span>
+                <h2>Agentic coding with Specter</h2>
+              </div>
+              <ul class="comparison__list">
+                <For each={codeConcerns}>
+                  {(concern) => (
+                    <li
+                      aria-label={`${concern.label}: ${
+                        concern.structuredBySpecter
+                          ? 'structured by Specter'
+                          : 'implemented by the agent'
+                      }`}
+                    >
+                      <span
+                        class="comparison__status"
+                        data-active={concern.structuredBySpecter}
+                        aria-hidden="true"
+                      />
+                      <span>{concern.label}</span>
+                    </li>
+                  )}
+                </For>
+              </ul>
+            </article>
+          </div>
+          <p class="comparison__legend">
+            <span>
+              <i
+                class="comparison__status"
+                data-active="true"
+                aria-hidden="true"
+              />
+              structured by Specter
+            </span>
+            <span>
+              <i
+                class="comparison__status"
+                data-active="false"
+                aria-hidden="true"
+              />
+              implemented by the agent
+            </span>
+          </p>
+
           <div class="hero__actions">
             <AgentPrompt />
-            <a class="btn btn--ghost" href="#pipeline">
-              See the pipeline
+            <a class="btn btn--ghost" href="#can-agents-compile">
+              Why “compile”?
             </a>
             <a class="btn btn--text" href={REPOSITORY_URL}>
               View on GitHub ↗
             </a>
           </div>
-
-          <div class="hero__pipeline" aria-hidden="true">
-            <For each={pipeline}>
-              {(stage, i) => (
-                <>
-                  <span class="chip">
-                    <b>{stage.step}</b>
-                    {stage.title}
-                  </span>
-                  {i() < pipeline.length - 1 ? (
-                    <span class="chip__arrow">→</span>
-                  ) : null}
-                </>
-              )}
-            </For>
-          </div>
         </section>
+
+        <article class="compiler-article" id="can-agents-compile">
+          <header class="compiler-article__head">
+            <p class="eyebrow">The compiler angle</p>
+            <h2>Can agents really compile specs into code?</h2>
+            <p>
+              Not like a conventional compiler. Specter uses deterministic
+              machinery around a nondeterministic implementation step, with a
+              deliberately narrow acceptance boundary. Today, that compiler is a
+              workflow made from Specter, a coding agent, and required CI—not a
+              single command.
+            </p>
+          </header>
+
+          <div class="compiler-article__flow">
+            <span>frozen JSON specs</span>
+            <b aria-hidden="true">→</b>
+            <span>agent-written Slices</span>
+            <b aria-hidden="true">→</b>
+            <span>deterministic CI</span>
+            <b aria-hidden="true">→</b>
+            <span>deployable application</span>
+          </div>
+
+          <div class="compiler-article__grid">
+            <section>
+              <span class="stage__step">01 · source</span>
+              <h3>Compilation starts from frozen JSON</h3>
+              <p>
+                The accepted JSON specifications are the source program. Each
+                one names a Slice and records exact scenarios. An implementation
+                agent receives one small contract instead of the entire
+                application.
+              </p>
+            </section>
+            <section>
+              <span class="stage__step">02 · foundation</span>
+              <h3>The repeatable parts are already in place</h3>
+              <p>
+                The starter supplies the runtime, selected persistence and
+                transport adapters, feature conventions, and scenario harness.
+                Procedural tooling exports and validates the portable contracts.
+              </p>
+            </section>
+            <section>
+              <span class="stage__step">03 · synthesis</span>
+              <h3>The implementation remains agentic</h3>
+              <p>
+                Agents write schemas, state transitions, handlers, business
+                rules, and UI. Two runs may produce different code. Specter does
+                not pretend that this generation step is deterministic.
+              </p>
+            </section>
+            <section>
+              <span class="stage__step">04 · acceptance</span>
+              <h3>CI is the deterministic judge</h3>
+              <p>
+                Specter exposes the scenario runner. To use CI as the
+                compilation boundary, projects make it required alongside
+                typechecking and the production build. A candidate fails when
+                any specified scenario does not match exactly.
+              </p>
+            </section>
+          </div>
+
+          <aside class="compiler-article__boundary">
+            <strong>The boundary is exact.</strong>
+            <p>
+              An accepted candidate has satisfied every frozen scenario that CI
+              executed. Behavior the JSON did not specify is not guaranteed.
+              “Complete” describes the output of the full agent-and-tool
+              workflow—not deterministic implementation generation from JSON
+              alone.
+            </p>
+          </aside>
+        </article>
 
         <section class="band" id="how">
           <div class="band__head">

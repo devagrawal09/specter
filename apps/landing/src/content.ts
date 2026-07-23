@@ -50,6 +50,22 @@ export const pipeline: PipelineStage[] = [
   },
 ]
 
+export type CodeConcern = {
+  label: string
+  structuredBySpecter: boolean
+}
+
+export const codeConcerns: CodeConcern[] = [
+  { label: 'Feature folder structure', structuredBySpecter: true },
+  { label: 'Executable behavior scenarios', structuredBySpecter: true },
+  { label: 'Typed backend operations', structuredBySpecter: true },
+  { label: 'Application state updates', structuredBySpecter: true },
+  { label: 'Background jobs and follow-ups', structuredBySpecter: true },
+  { label: 'Feature-level tests', structuredBySpecter: true },
+  { label: 'Business rules', structuredBySpecter: false },
+  { label: 'UI components', structuredBySpecter: false },
+]
+
 export const specSource = `import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const addTodoSpec = createCommandSlice('addTodo')

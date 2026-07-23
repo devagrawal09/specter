@@ -1,12 +1,21 @@
 # Specter Landing — Compiler Console
 
 A single-page marketing site for Specter, built with Vite, Solid, and
-TypeScript. The **Compiler Console** variation presents Specter's explicit
-application pipeline:
+TypeScript. The **Compiler Console** variation presents Specter as a hybrid
+compiler: frozen JSON specifications enter a workflow that surrounds
+agent-written Slice implementations with deterministic infrastructure and
+verification.
 
 ```text
 specification → portable JSON → implementation → scenario tests → event log → typed envelope
 ```
+
+The quoted “Compile” headline links to an on-page explanation of the claim.
+Compilation begins from frozen JSON; the implementation itself is agentic and
+may vary between runs. Projects can make scenario tests, typechecking, and the
+production build required CI acceptance stages. Those checks only verify the
+exact scenarios they execute. Behavior outside the specification remains
+unspecified.
 
 The examples follow the Specter 0.4 API. A Slice Specification in `spec.ts`
 imports from `@specter-ts/spec` and contains only its name, description, and
