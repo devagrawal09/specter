@@ -3,7 +3,6 @@ import { CodeBlock } from './CodeBlock'
 import {
   adapters,
   agentBenefits,
-  codeConcerns,
   eventLog,
   externalApiSource,
   implementationSource,
@@ -117,76 +116,6 @@ export function App(): JSX.Element {
             Start from a proven app stack. Give one Slice at a time to a coding
             agent. In CI, Specter turns every specified scenario into an exact
             pass/fail condition.
-          </p>
-
-          <div class="comparison">
-            <article class="comparison__column">
-              <div class="comparison__head">
-                <span class="comparison__index">01</span>
-                <h2>Agentic coding</h2>
-              </div>
-              <ul class="comparison__list">
-                <For each={codeConcerns}>
-                  {(concern) => (
-                    <li
-                      aria-label={`${concern.label}: implemented from scratch`}
-                    >
-                      <span
-                        class="comparison__status"
-                        data-active="false"
-                        aria-hidden="true"
-                      />
-                      <span>{concern.label}</span>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </article>
-
-            <article class="comparison__column comparison__column--specter">
-              <div class="comparison__head">
-                <span class="comparison__index">02</span>
-                <h2>Agentic coding with Specter</h2>
-              </div>
-              <ul class="comparison__list">
-                <For each={codeConcerns}>
-                  {(concern) => (
-                    <li
-                      aria-label={`${concern.label}: ${
-                        concern.structuredBySpecter
-                          ? 'structured by Specter'
-                          : 'implemented by the agent'
-                      }`}
-                    >
-                      <span
-                        class="comparison__status"
-                        data-active={concern.structuredBySpecter}
-                        aria-hidden="true"
-                      />
-                      <span>{concern.label}</span>
-                    </li>
-                  )}
-                </For>
-              </ul>
-            </article>
-          </div>
-          <p class="comparison__legend">
-            <span>
-              <i
-                class="comparison__status"
-                data-active="true"
-                aria-hidden="true"
-              />
-              structured by Specter
-            </span>
-            <span>
-              <i
-                class="comparison__status"
-                data-active="false"
-                aria-hidden="true"
-              />
-              implemented by the agent
-            </span>
           </p>
 
           <div class="hero__actions">
