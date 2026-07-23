@@ -337,34 +337,10 @@ h3 {
   font-size: 17px;
 }
 
-.compiler-article__flow {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 10px;
-  margin: 38px 0;
-  padding: 16px 18px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--panel);
-  font-family: var(--mono);
-  font-size: 12px;
-}
-
-.compiler-article__flow span {
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--bg-raise);
-}
-
-.compiler-article__flow b {
-  color: var(--accent);
-}
-
 .compiler-article__grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 38px;
   border-top: 1px solid var(--line);
   border-left: 1px solid var(--line);
 }
@@ -384,6 +360,16 @@ h3 {
   margin: 0;
   color: var(--ink-dim);
   font-size: 14.5px;
+}
+
+.compiler-article__label {
+  display: block;
+  margin-bottom: 9px;
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
 }
 
 .compiler-article__boundary {
@@ -570,7 +556,7 @@ h3 {
   padding-top: 12px;
 }
 
-/* ---------- stage (spec pipeline) ---------- */
+/* ---------- stage (Specter concepts) ---------- */
 .stage__grid {
   display: grid;
   grid-template-columns: 0.9fr 1.1fr;

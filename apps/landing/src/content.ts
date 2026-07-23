@@ -1,11 +1,11 @@
-export type PipelineStage = {
+export type StageLink = {
   id: string
   step: string
   title: string
   summary: string
 }
 
-export const pipeline: PipelineStage[] = [
+export const stages: StageLink[] = [
   {
     id: 'specification',
     step: '01',

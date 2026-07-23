@@ -7,11 +7,11 @@ import {
   externalApiSource,
   implementationSource,
   observabilityOutput,
-  pipeline,
   portableSpecSource,
   reactionSource,
   scenarioTestSource,
   specSource,
+  stages,
 } from './content'
 
 const REPOSITORY_URL = 'https://github.com/devagrawal09/specter'
@@ -83,8 +83,8 @@ export function App(): JSX.Element {
           <span class="brand__name">Specter</span>
           <span class="brand__tag">0.4 · main</span>
         </a>
-        <nav class="topnav" aria-label="Pipeline">
-          <For each={pipeline}>
+        <nav class="topnav" aria-label="Specter concepts">
+          <For each={stages}>
             {(stage) => (
               <a class="topnav__link" href={`#${stage.id}`}>
                 {stage.title}
@@ -103,9 +103,7 @@ export function App(): JSX.Element {
       <main id="main-content" tabIndex={-1}>
         <section class="hero">
           <p class="preview-badge">Specter 0.4 · source preview</p>
-          <p class="eyebrow">
-            Deterministic verification around agent-written code
-          </p>
+          <p class="eyebrow">Executable contracts for agent-written code</p>
           <h1 class="hero__title">
             <a class="hero__compile-link" href="#can-agents-compile">
               “Compile”
@@ -113,9 +111,9 @@ export function App(): JSX.Element {
             JSON specs into complete applications.
           </h1>
           <p class="hero__lede">
-            Start from a proven app stack. Give one Slice at a time to a coding
-            agent. In CI, Specter turns every specified scenario into an exact
-            pass/fail condition.
+            Different agents can produce different implementations. Specter
+            gives them the same portable behavior contract and checks each
+            implementation against it exactly.
           </p>
 
           <div class="hero__actions">
@@ -134,73 +132,64 @@ export function App(): JSX.Element {
             <p class="eyebrow">The compiler angle</p>
             <h2>Can agents really compile specs into code?</h2>
             <p>
-              Not like a conventional compiler. Specter uses deterministic
-              machinery around a nondeterministic implementation step, with a
-              deliberately narrow acceptance boundary. Today, that compiler is a
-              workflow made from Specter, a coding agent, and required CI—not a
-              single command.
+              “Compilation” names a capability, not a command or prescribed
+              process. Specter gives nondeterministic code generation the parts
+              that make compilation trustworthy: a stable source contract,
+              constrained implementation boundaries, and deterministic
+              acceptance.
             </p>
           </header>
 
-          <div class="compiler-article__flow">
-            <span>frozen JSON specs</span>
-            <b aria-hidden="true">→</b>
-            <span>agent-written Slices</span>
-            <b aria-hidden="true">→</b>
-            <span>deterministic CI</span>
-            <b aria-hidden="true">→</b>
-            <span>deployable application</span>
-          </div>
-
           <div class="compiler-article__grid">
             <section>
-              <span class="stage__step">01 · source</span>
-              <h3>Compilation starts from frozen JSON</h3>
+              <span class="compiler-article__label">source contract</span>
+              <h3>Executable specs define the target behavior</h3>
               <p>
-                The accepted JSON specifications are the source program. Each
-                one names a Slice and records exact scenarios. An implementation
-                agent receives one small contract instead of the entire
-                application.
+                Portable JSON records the exact scenarios an implementation must
+                satisfy. The same contract can guide different agents,
+                languages, and implementations.
               </p>
             </section>
             <section>
-              <span class="stage__step">02 · foundation</span>
-              <h3>The repeatable parts are already in place</h3>
+              <span class="compiler-article__label">bounded synthesis</span>
+              <h3>Agents implement one small Slice</h3>
               <p>
-                The starter supplies the runtime, selected persistence and
-                transport adapters, feature conventions, and scenario harness.
-                Procedural tooling exports and validates the portable contracts.
+                The model writes schemas, state transitions, handlers, and
+                business rules inside an explicit feature boundary. It does not
+                need the entire application in context.
               </p>
             </section>
             <section>
-              <span class="stage__step">03 · synthesis</span>
-              <h3>The implementation remains agentic</h3>
+              <span class="compiler-article__label">
+                deterministic acceptance
+              </span>
+              <h3>The contract judges the candidate</h3>
               <p>
-                Agents write schemas, state transitions, handlers, business
-                rules, and UI. Two runs may produce different code. Specter does
-                not pretend that this generation step is deterministic.
+                Specter reconstructs the scenario state, executes the candidate,
+                and compares its Events, rejections, or outputs exactly. A
+                different implementation must pass the same cases.
               </p>
             </section>
             <section>
-              <span class="stage__step">04 · acceptance</span>
-              <h3>CI is the deterministic judge</h3>
+              <span class="compiler-article__label">
+                capability, not automation
+              </span>
+              <h3>The implementation can remain nondeterministic</h3>
               <p>
-                Specter exposes the scenario runner. To use CI as the
-                compilation boundary, projects make it required alongside
-                typechecking and the production build. A candidate fails when
-                any specified scenario does not match exactly.
+                Specter does not need to generate the whole application or
+                orchestrate a particular agent. It makes agent-written code
+                subject to stable, executable constraints.
               </p>
             </section>
           </div>
 
           <aside class="compiler-article__boundary">
-            <strong>The boundary is exact.</strong>
+            <strong>What the metaphor promises.</strong>
             <p>
-              An accepted candidate has satisfied every frozen scenario that CI
-              executed. Behavior the JSON did not specify is not guaranteed.
-              “Complete” describes the output of the full agent-and-tool
-              workflow—not deterministic implementation generation from JSON
-              alone.
+              The generated code may vary; the specified examples it must
+              satisfy do not. Behavior absent from the specification remains
+              unspecified, just as source code cannot determine behavior it
+              never defines.
             </p>
           </aside>
         </article>
@@ -240,12 +229,12 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        <section class="stage" id="pipeline">
+        <section class="stage" id="architecture">
           <div class="band__head">
-            <h2>The pipeline</h2>
+            <h2>Six explicit boundaries</h2>
             <p>
-              specification → portable JSON → implementation → scenario tests →
-              event log → typed envelope. Each boundary has one explicit job.
+              Specifications, implementations, tests, runtime state, and typed
+              operations each have one explicit job.
             </p>
           </div>
         </section>
