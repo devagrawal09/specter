@@ -9,6 +9,29 @@
       content="Specter surrounds agent-written Slice implementations with portable JSON specifications, deterministic scenario tests, and a starter application runtime."
     />
     <meta name="theme-color" content="#0a0d11" />
+    <script>
+      ;(() => {
+        const storageKey = 'specter-theme'
+        let theme
+
+        try {
+          const storedTheme = localStorage.getItem(storageKey)
+          if (storedTheme === 'light' || storedTheme === 'dark') {
+            theme = storedTheme
+          }
+        } catch {}
+
+        theme ??= matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark'
+
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', theme === 'light' ? '#f5f7f3' : '#0a0d11')
+      })()
+    </script>
     <link rel="canonical" href="https://devagrawal09.github.io/specter/" />
     <link rel="icon" href="%BASE_URL%favicon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />

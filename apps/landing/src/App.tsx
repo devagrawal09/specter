@@ -1,4 +1,4 @@
-import { createSignal, For, type JSX } from 'solid-js'
+import { createSignal, For, onCleanup, type JSX } from 'solid-js'
 import { CodeBlock } from './CodeBlock'
 import {
   adapters,
@@ -18,6 +18,77 @@ const REPOSITORY_URL = 'https://github.com/devagrawal09/specter'
 const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`
 const AGENT_PROMPT = `Summarize \`${CLONE_COMMAND}\``
 const GETTING_STARTED_URL = `${REPOSITORY_URL}/blob/main/docs/getting-started.md`
+const THEME_STORAGE_KEY = 'specter-theme'
+
+type Theme = 'light' | 'dark'
+
+function applyTheme(theme: Theme): void {
+  document.documentElement.dataset.theme = theme
+  document.documentElement.style.colorScheme = theme
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'light' ? '#f5f7f3' : '#0a0d11')
+}
+
+function ThemeToggle(): JSX.Element {
+  const initialTheme: Theme =
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+  const [theme, setTheme] = createSignal<Theme>(initialTheme)
+  const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+  let followsSystem = true
+
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+    followsSystem = storedTheme !== 'light' && storedTheme !== 'dark'
+  } catch {
+    // Without storage, keep following the system until this page's toggle is used.
+  }
+
+  const followSystemTheme = (event: MediaQueryListEvent) => {
+    if (!followsSystem) return
+
+    const systemTheme: Theme = event.matches ? 'light' : 'dark'
+    applyTheme(systemTheme)
+    setTheme(systemTheme)
+  }
+
+  colorSchemeQuery.addEventListener('change', followSystemTheme)
+  onCleanup(() =>
+    colorSchemeQuery.removeEventListener('change', followSystemTheme),
+  )
+
+  const toggleTheme = () => {
+    const nextTheme: Theme = theme() === 'light' ? 'dark' : 'light'
+    followsSystem = false
+    applyTheme(nextTheme)
+    setTheme(nextTheme)
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme)
+    } catch {
+      // The selected theme still applies when storage is unavailable.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      class="theme-toggle"
+      role="switch"
+      aria-checked={theme() === 'light'}
+      aria-label="Light mode"
+      title={`Switch to ${theme() === 'light' ? 'dark' : 'light'} mode`}
+      onClick={toggleTheme}
+    >
+      <span class="theme-toggle__glyph" aria-hidden="true">
+        {theme() === 'light' ? '☼' : '◐'}
+      </span>
+      <span class="theme-toggle__label" aria-hidden="true">
+        light
+      </span>
+    </button>
+  )
+}
 
 function AgentPrompt(): JSX.Element {
   const [copyStatus, setCopyStatus] = createSignal<
@@ -95,8 +166,10 @@ export function App(): JSX.Element {
         <a class="topbar__link" href={GETTING_STARTED_URL}>
           Docs
         </a>
+        <ThemeToggle />
         <a class="topbar__cta" href="#start">
-          Give it to your agent
+          <span class="topbar__cta-full">Give it to your agent</span>
+          <span class="topbar__cta-short">Give to agent</span>
         </a>
       </header>
 
