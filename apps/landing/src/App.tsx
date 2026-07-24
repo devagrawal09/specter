@@ -1,4 +1,24 @@
 import { createSignal, onCleanup, type JSX } from 'solid-js'
+import {
+  siAngular,
+  siDotnet,
+  siGo,
+  siMongodb,
+  siMysql,
+  siOpenjdk,
+  siPhp,
+  siPostgresql,
+  siReact,
+  siRedis,
+  siRuby,
+  siRust,
+  siSolid,
+  siSqlite,
+  siSvelte,
+  siTypescript,
+  siVuedotjs,
+  type SimpleIcon,
+} from 'simple-icons'
 
 const REPOSITORY_URL = 'https://github.com/devagrawal09/specter'
 const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`
@@ -126,30 +146,94 @@ function AgentPrompt(): JSX.Element {
   )
 }
 
-const stack = [
+type StackTechnology = {
+  label: string
+  icon?: SimpleIcon
+  status?: 'official' | 'WIP'
+}
+
+type StackGroup = {
+  category: string
+  technologies: StackTechnology[]
+}
+
+function StackLogo(props: StackTechnology): JSX.Element {
+  const tooltip = props.status
+    ? `${props.label} — ${props.status}`
+    : props.label
+
+  return (
+    <li>
+      <span
+        class="stack-logo"
+        classList={{ 'stack-logo--more': !props.icon }}
+        data-tooltip={tooltip}
+        title={tooltip}
+        role="img"
+        aria-label={tooltip}
+        style={props.icon ? `--brand: #${props.icon.hex}` : undefined}
+      >
+        {props.icon ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={props.icon.path} />
+          </svg>
+        ) : (
+          <span class="stack-logo__more" aria-hidden="true">
+            +…
+          </span>
+        )}
+        {props.status ? (
+          <span
+            class="stack-logo__status"
+            data-status={props.status.toLowerCase()}
+            aria-hidden="true"
+          >
+            {props.status === 'official' ? '✓' : 'WIP'}
+          </span>
+        ) : null}
+      </span>
+    </li>
+  )
+}
+
+const stack: StackGroup[] = [
   {
     category: 'Languages',
     technologies: [
-      'TypeScript (official)',
-      'Go (WIP)',
-      'Rust (WIP)',
-      'Java',
-      'Ruby',
-      'PHP',
-      '.NET',
+      { label: 'TypeScript', icon: siTypescript, status: 'official' },
+      { label: 'Go', icon: siGo, status: 'WIP' },
+      { label: 'Rust', icon: siRust, status: 'WIP' },
+      { label: 'Java', icon: siOpenjdk },
+      { label: 'Ruby', icon: siRuby },
+      { label: 'PHP', icon: siPhp },
+      { label: '.NET', icon: siDotnet },
+      { label: 'And more' },
     ],
   },
   {
     category: 'Database',
-    technologies: ['Postgres', 'SQLite', 'MySQL', 'Mongo', 'and more'],
+    technologies: [
+      { label: 'Postgres', icon: siPostgresql },
+      { label: 'SQLite', icon: siSqlite },
+      { label: 'MySQL', icon: siMysql },
+      { label: 'MongoDB', icon: siMongodb },
+      { label: 'And more' },
+    ],
   },
   {
     category: 'Frontend',
-    technologies: ['React', 'Solid', 'Vue', 'Svelte', 'Angular', 'and more'],
+    technologies: [
+      { label: 'React', icon: siReact },
+      { label: 'Solid', icon: siSolid },
+      { label: 'Vue', icon: siVuedotjs },
+      { label: 'Svelte', icon: siSvelte },
+      { label: 'Angular', icon: siAngular },
+      { label: 'And more' },
+    ],
   },
   {
     category: 'Realtime',
-    technologies: ['Redis', 'and more'],
+    technologies: [{ label: 'Redis', icon: siRedis }, { label: 'And more' }],
   },
 ]
 
@@ -188,7 +272,6 @@ export function App(): JSX.Element {
 
       <main id="main-content" tabIndex={-1}>
         <section class="hero">
-          <p class="preview-badge">Specter 0.4 · source preview</p>
           <h1 class="hero__title">Compile JSON Specs into Complete Apps</h1>
           <p class="hero__lede">
             Specter is a framework for authoring specifications that can be
@@ -206,7 +289,6 @@ export function App(): JSX.Element {
 
         <section class="band" id="stack">
           <div class="band__head">
-            <p class="eyebrow">Bring your architecture</p>
             <h2>Works With Your Stack</h2>
           </div>
           <div class="grid grid--4 stack-grid">
@@ -215,7 +297,7 @@ export function App(): JSX.Element {
                 <h3>{group.category}</h3>
                 <ul class="stack-list">
                   {group.technologies.map((technology) => (
-                    <li>{technology}</li>
+                    <StackLogo {...technology} />
                   ))}
                 </ul>
               </article>
@@ -225,9 +307,41 @@ export function App(): JSX.Element {
 
         <article class="compiler-article compiler-argument" id="why">
           <header class="compiler-article__head">
-            <p class="eyebrow">The trust gap</p>
             <h2>LLMs can’t compile!</h2>
           </header>
+
+          <div
+            class="compiler-visual"
+            role="img"
+            aria-label="A compiler deterministically maps source to one output. An LLM can produce many implementations from one specification. Specter constrains those implementations with generated scaffolds and tests."
+          >
+            <div class="compiler-visual__lane">
+              <span class="compiler-visual__node">source</span>
+              <span class="compiler-visual__arrow" aria-hidden="true">
+                →
+              </span>
+              <strong class="compiler-visual__processor">compiler</strong>
+              <span class="compiler-visual__arrow" aria-hidden="true">
+                →
+              </span>
+              <span class="compiler-visual__result">one output</span>
+            </div>
+            <div class="compiler-visual__lane compiler-visual__lane--llm">
+              <span class="compiler-visual__node">spec</span>
+              <span class="compiler-visual__arrow" aria-hidden="true">
+                →
+              </span>
+              <strong class="compiler-visual__processor">LLM</strong>
+              <span class="compiler-visual__branches" aria-hidden="true">
+                ↗ → ↘
+              </span>
+              <span class="compiler-visual__result">many outputs</span>
+            </div>
+            <div class="compiler-visual__guard">
+              <strong>Specter</strong>
+              <span>scaffolds + tests constrain the result</span>
+            </div>
+          </div>
 
           <div class="compiler-argument__body">
             <p>
