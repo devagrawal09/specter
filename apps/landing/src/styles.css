@@ -372,6 +372,23 @@ h3 {
   margin-top: 32px;
 }
 
+.hero__agent-cta {
+  margin-top: 34px;
+}
+
+.hero__agent-cta > p {
+  margin: 0 0 10px;
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+}
+
+.hero__agent-cta strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -644,6 +661,67 @@ h3 {
   padding-top: 12px;
 }
 
+/* ---------- stack support ---------- */
+.stack-card {
+  min-height: 196px;
+}
+
+.stack-card h3 {
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stack-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stack-list li {
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  color: var(--ink-dim);
+  background: var(--bg-raise);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.35;
+}
+
+/* ---------- compiler argument ---------- */
+.compiler-argument {
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.compiler-argument__body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 36px;
+}
+
+.compiler-argument__body > p {
+  margin: 0;
+  padding: 24px;
+  border: 1px solid var(--line);
+  color: var(--ink-dim);
+  background: var(--panel);
+  font-size: 16px;
+}
+
+.compiler-argument__answer {
+  grid-column: 1 / -1;
+  border-left: 3px solid var(--amber) !important;
+  color: var(--ink) !important;
+  background: var(--amber-wash-soft) !important;
+}
+
 /* ---------- stage (Specter concepts) ---------- */
 .stage__grid {
   display: grid;
@@ -910,6 +988,16 @@ h3 {
   font-size: 12px;
 }
 
+.foot a {
+  color: var(--ink-dim);
+  font-family: var(--mono);
+  text-decoration: none;
+}
+
+.foot a:hover {
+  color: var(--accent);
+}
+
 /* ---------- animation ---------- */
 @keyframes blink {
   0%,
@@ -1054,6 +1142,18 @@ h3 {
 
   .compiler-article__grid section {
     padding: 22px;
+  }
+
+  .compiler-argument__body {
+    grid-template-columns: 1fr;
+  }
+
+  .compiler-argument__answer {
+    grid-column: auto;
+  }
+
+  .stack-card {
+    min-height: 0;
   }
 
   .brand__tag {
