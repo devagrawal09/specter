@@ -60,12 +60,20 @@ export async function createLastLanternRuntime(
       Layer.succeed(SpecterObserver, runtimeObservability.observer),
     ),
   )
+  await app.query({ type: 'lanternTableQuery', payload: {} })
   return {
     app,
     sqlitePath,
     close: async () => {
-      await observationProducer.close()
-      sqlite.close()
+      try {
+        await app.close()
+      } finally {
+        try {
+          await observationProducer.close()
+        } finally {
+          sqlite.close()
+        }
+      }
     },
   }
 }

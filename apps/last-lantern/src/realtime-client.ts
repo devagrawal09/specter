@@ -16,6 +16,8 @@ export class LanternRealtimeClient {
   private onStatus: (status: Status, detail?: string) => void
   private onState: (state: LanternState) => void
   private onRollCandidate: (faces: number[]) => void
+  private talking = false
+  private commandTimes = new Map<string, string>()
 
   constructor(callbacks: {
     onStatus(status: Status, detail?: string): void
@@ -28,83 +30,97 @@ export class LanternRealtimeClient {
   }
 
   async connect(state: LanternState) {
+    this.close()
     this.onStatus('connecting')
     const peer = new RTCPeerConnection()
     const audio = document.createElement('audio')
     audio.autoplay = true
+    this.peer = peer
+    this.remoteAudio = audio
     peer.ontrack = (event) => {
       audio.srcObject = event.streams[0]
       this.onStatus('speaking')
     }
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    })
-    const track = stream.getAudioTracks()[0]
-    track.enabled = false
-    peer.addTrack(track, stream)
-    const channel = peer.createDataChannel('oai-events')
-    channel.addEventListener(
-      'message',
-      (event) => void this.handleEvent(JSON.parse(event.data) as RealtimeEvent),
-    )
-    channel.addEventListener('open', () => {
-      this.onStatus('ready')
-      this.sendText(
-        `Begin The Last Lantern now. Current durable state: ${JSON.stringify(state)}. Continue from exactly this state.`,
-      )
-    })
-    channel.addEventListener('close', () => this.onStatus('offline'))
-    peer.addEventListener('connectionstatechange', () => {
-      if (
-        peer.connectionState === 'failed' ||
-        peer.connectionState === 'disconnected'
-      ) {
-        this.onStatus(
-          'error',
-          'Realtime connection lost. Your story progress is safe.',
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      })
+      const track = stream.getAudioTracks()[0]
+      if (!track) throw new Error('No microphone audio track is available.')
+      track.enabled = false
+      this.microphone = track
+      peer.addTrack(track, stream)
+      const channel = peer.createDataChannel('oai-events')
+      this.channel = channel
+      channel.addEventListener('message', (event) => {
+        void this.receiveEvent(event.data)
+      })
+      channel.addEventListener('open', () => {
+        this.onStatus('ready')
+        this.sendText(
+          `Begin The Last Lantern now. Current durable state: ${JSON.stringify(state)}. Continue from exactly this state.`,
         )
-      }
-    })
+      })
+      channel.addEventListener('close', () => {
+        this.releaseMicrophone()
+        this.talking = false
+        this.onStatus('offline')
+      })
+      peer.addEventListener('connectionstatechange', () => {
+        if (
+          peer.connectionState === 'failed' ||
+          peer.connectionState === 'disconnected'
+        ) {
+          this.releaseMicrophone()
+          this.talking = false
+          this.onStatus(
+            'error',
+            'Realtime connection lost. Your story progress is safe.',
+          )
+        }
+      })
 
-    const offer = await peer.createOffer()
-    await peer.setLocalDescription(offer)
-    const response = await fetch('/api/realtime/session', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/sdp' },
-      body: offer.sdp,
-    })
-    if (!response.ok) {
-      const payload = (await response.json()) as { error?: string }
-      throw new Error(
-        payload.error ?? 'Could not create the live voice session.',
-      )
+      const offer = await peer.createOffer()
+      await peer.setLocalDescription(offer)
+      const response = await fetch('/api/realtime/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/sdp' },
+        body: offer.sdp,
+      })
+      if (!response.ok) {
+        const detail = await readError(response)
+        throw new Error(detail ?? 'Could not create the live voice session.')
+      }
+      await peer.setRemoteDescription({
+        type: 'answer',
+        sdp: await response.text(),
+      })
+    } catch (cause) {
+      this.close()
+      throw cause
     }
-    await peer.setRemoteDescription({
-      type: 'answer',
-      sdp: await response.text(),
-    })
-    this.peer = peer
-    this.channel = channel
-    this.microphone = track
-    this.remoteAudio = audio
   }
 
   pushToTalk(active: boolean) {
+    if (!active) this.releaseMicrophone()
     if (!this.channel || this.channel.readyState !== 'open' || !this.microphone)
       return
     if (active) {
+      if (this.talking) return
       this.send({ type: 'response.cancel' })
       this.send({ type: 'output_audio_buffer.clear' })
       this.send({ type: 'input_audio_buffer.clear' })
       this.microphone.enabled = true
+      this.talking = true
       this.onStatus('listening')
       return
     }
-    this.microphone.enabled = false
+    if (!this.talking) return
+    this.talking = false
     this.send({ type: 'input_audio_buffer.commit' })
     this.send({ type: 'response.create' })
     this.onStatus('ready')
@@ -115,10 +131,17 @@ export class LanternRealtimeClient {
   }
 
   close() {
+    this.releaseMicrophone()
+    this.talking = false
     this.microphone?.stop()
     this.channel?.close()
     this.peer?.close()
     this.remoteAudio?.remove()
+    this.microphone = undefined
+    this.channel = undefined
+    this.peer = undefined
+    this.remoteAudio = undefined
+    this.commandTimes.clear()
   }
 
   private sendText(text: string) {
@@ -136,6 +159,27 @@ export class LanternRealtimeClient {
   private send(event: unknown) {
     if (this.channel?.readyState === 'open')
       this.channel.send(JSON.stringify(event))
+  }
+
+  private releaseMicrophone() {
+    if (this.microphone) this.microphone.enabled = false
+  }
+
+  private async receiveEvent(raw: unknown) {
+    try {
+      if (typeof raw !== 'string') throw new Error('Unexpected Realtime event.')
+      await this.handleEvent(JSON.parse(raw) as RealtimeEvent)
+    } catch (cause) {
+      this.onStatus('error', message(cause))
+    }
+  }
+
+  private commandAt(id: string) {
+    const existing = this.commandTimes.get(id)
+    if (existing) return existing
+    const initiatedAt = new Date().toISOString()
+    this.commandTimes.set(id, initiatedAt)
+    return initiatedAt
   }
 
   private async handleEvent(event: RealtimeEvent) {
@@ -173,16 +217,13 @@ export class LanternRealtimeClient {
     role: 'player' | 'dungeon-master',
     text: string,
   ) {
-    try {
-      const state = await lanternCommand(
-        '/api/lantern/speech',
-        { utteranceId: id, role, text },
-        id,
-      )
-      this.onState(state)
-    } catch {
-      // Duplicate completed transcript events are intentionally harmless.
-    }
+    const state = await lanternCommand(
+      '/api/lantern/speech',
+      { utteranceId: id, role, text },
+      id,
+      this.commandAt(id),
+    )
+    this.onState(state)
   }
 
   private async handleToolCall(call: FunctionCall) {
@@ -205,7 +246,12 @@ export class LanternRealtimeClient {
                 ? '/api/lantern/fate'
                 : null
         if (!path) throw new Error(`Unknown Last Lantern tool: ${call.name}`)
-        const state = await lanternCommand(path, args, call.call_id)
+        const state = await lanternCommand(
+          path,
+          args,
+          call.call_id,
+          this.commandAt(call.call_id),
+        )
         this.onState(state)
         output = { ok: true, durable_state: state }
       }
@@ -250,4 +296,17 @@ type RealtimeEvent = {
   transcript?: string
   error?: { message?: string }
   response?: { output?: Array<FunctionCall | { type: string }> }
+}
+
+async function readError(response: Response) {
+  try {
+    const payload = (await response.json()) as { error?: string }
+    return payload.error
+  } catch {
+    return undefined
+  }
+}
+
+function message(cause: unknown) {
+  return cause instanceof Error ? cause.message : String(cause)
 }

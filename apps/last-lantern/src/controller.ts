@@ -17,9 +17,17 @@ export function watchController(input: {
   let previousTrigger = false
   let lastLabel = ''
 
+  const releasePushToTalk = () => {
+    if (previousTrigger) input.onPushToTalk(false)
+    previousTrigger = false
+    previousButtons = []
+    previousAxis = 0
+  }
+
   const tick = () => {
     const gamepad = [...(navigator.getGamepads?.() ?? [])].find(Boolean)
     if (!gamepad) {
+      releasePushToTalk()
       if (lastLabel) {
         lastLabel = ''
         input.onChange({
@@ -65,11 +73,21 @@ export function watchController(input: {
   const connected = () => {
     if (!frame) frame = requestAnimationFrame(tick)
   }
+  const pageHidden = () => {
+    if (document.visibilityState === 'hidden') releasePushToTalk()
+  }
   window.addEventListener('gamepadconnected', connected)
+  window.addEventListener('blur', releasePushToTalk)
+  window.addEventListener('pagehide', releasePushToTalk)
+  document.addEventListener('visibilitychange', pageHidden)
   frame = requestAnimationFrame(tick)
   return () => {
+    releasePushToTalk()
     cancelAnimationFrame(frame)
     window.removeEventListener('gamepadconnected', connected)
+    window.removeEventListener('blur', releasePushToTalk)
+    window.removeEventListener('pagehide', releasePushToTalk)
+    document.removeEventListener('visibilitychange', pageHidden)
   }
 }
 

@@ -60,6 +60,7 @@ export function LastLanternApp() {
     realtime?.pushToTalk(active)
     if (mode() === 'demo') setVoiceStatus(active ? 'listening' : 'ready')
   }
+  const releasePushToTalk = () => pushToTalk(false)
 
   queueMicrotask(async () => {
     try {
@@ -103,13 +104,23 @@ export function LastLanternApp() {
     const keyUp = (event: KeyboardEvent) => {
       if (event.code === 'Space' && !isTyping()) pushToTalk(false)
     }
+    const pageHidden = () => {
+      if (document.visibilityState === 'hidden') releasePushToTalk()
+    }
     window.addEventListener('keydown', keyDown)
     window.addEventListener('keyup', keyUp)
+    window.addEventListener('blur', releasePushToTalk)
+    window.addEventListener('pagehide', releasePushToTalk)
+    document.addEventListener('visibilitychange', pageHidden)
     cleanup = () => {
+      releasePushToTalk()
       stopController()
       realtime?.close()
       window.removeEventListener('keydown', keyDown)
       window.removeEventListener('keyup', keyUp)
+      window.removeEventListener('blur', releasePushToTalk)
+      window.removeEventListener('pagehide', releasePushToTalk)
+      document.removeEventListener('visibilitychange', pageHidden)
     }
   })
 
@@ -142,7 +153,12 @@ export function LastLanternApp() {
       void pulseController(180, 0.25)
     } catch (cause) {
       setError(message(cause))
-      setMode(null)
+      if (selectedMode === 'live') {
+        setVoiceStatus('error')
+        setVoiceDetail(
+          'Live voice did not connect. Retry it or continue in Demo Mode.',
+        )
+      }
     }
   }
 
@@ -160,6 +176,31 @@ export function LastLanternApp() {
       },
     })
     await realtime.connect(current)
+  }
+
+  async function retryVoice() {
+    setError(null)
+    setVoiceDetail(null)
+    try {
+      await connectVoice()
+    } catch (cause) {
+      setVoiceStatus('error')
+      setVoiceDetail(
+        `${message(cause)} Your story progress is safe. Retry or use Demo Mode.`,
+      )
+    }
+  }
+
+  function switchToDemo() {
+    releasePushToTalk()
+    realtime?.close()
+    realtime = undefined
+    localStorage.setItem('last-lantern-mode', 'demo')
+    setMode('demo')
+    setVoiceStatus('ready')
+    setVoiceDetail(null)
+    setError(null)
+    speakDemo(stageNarration(state()))
   }
 
   async function command(path: string, body: unknown = {}) {
@@ -196,6 +237,7 @@ export function LastLanternApp() {
     setCandidate(null)
     await command('/api/lantern/roll/confirm', {
       rollId: pending.rollId,
+      challenge: pending.challenge,
       faces,
     })
   }
@@ -537,15 +579,30 @@ export function LastLanternApp() {
         <span>
           <kbd>LT</kbd> Hold to speak
         </span>
-        <Show when={mode() === 'live' && voiceStatus() === 'offline'}>
-          <button
-            data-controller
-            class="text-button"
-            type="button"
-            onClick={() => void connectVoice()}
-          >
-            Reconnect voice
-          </button>
+        <Show
+          when={
+            mode() === 'live' &&
+            (voiceStatus() === 'offline' || voiceStatus() === 'error')
+          }
+        >
+          <span class="voice-recovery">
+            <button
+              data-controller
+              class="text-button"
+              type="button"
+              onClick={() => void retryVoice()}
+            >
+              Retry live voice
+            </button>
+            <button
+              data-controller
+              class="text-button"
+              type="button"
+              onClick={switchToDemo}
+            >
+              Switch to Demo Mode
+            </button>
+          </span>
         </Show>
       </footer>
     </main>

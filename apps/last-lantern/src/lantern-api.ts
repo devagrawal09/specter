@@ -38,12 +38,14 @@ export async function lanternCommand(
   path: string,
   body: unknown = {},
   idempotencyKey: string = crypto.randomUUID(),
+  initiatedAt: string = new Date().toISOString(),
 ): Promise<LanternState> {
   const result = await request<{ state: LanternState }>(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-idempotency-key': idempotencyKey,
+      'x-command-at': initiatedAt,
     },
     body: JSON.stringify(body),
   })
