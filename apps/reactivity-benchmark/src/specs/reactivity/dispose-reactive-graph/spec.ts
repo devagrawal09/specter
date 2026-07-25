@@ -4,7 +4,7 @@ export const disposeReactiveGraphSpec = createCommandSlice(
   'disposeReactiveGraph',
 )
   .description(
-    'Disposes a reactive graph so its nodes and runtime-owned callbacks can be released.',
+    'Permanently discards one benchmark graph, any open batch, its nodes, and its ephemeral callback registry.',
   )
   .scenarios(
     {
@@ -15,6 +15,32 @@ export const disposeReactiveGraphSpec = createCommandSlice(
           batchId: 'build-1',
           nodeId: 'signal-1',
           value: 1,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+      },
+      expect: [
+        event('reactive-graph-disposed', {
+          graphId: 'graph-1',
+        }),
+      ],
+    },
+    {
+      description:
+        'Disposes only the selected graph when identifiers are reused.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+        event('reactive-signal-created', {
+          graphId: 'graph-2',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 2,
         }),
       ],
       when: {

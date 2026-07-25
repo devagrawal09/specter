@@ -2,7 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
   .description(
-    'Synchronously settles one build or update batch with push-based, glitch-free computation and effect execution.',
+    'Atomically settles one open batch in a synchronous, non-persistent benchmark trace.',
   )
   .scenarios(
     {
@@ -130,8 +130,7 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
       ],
     },
     {
-      description:
-        'Settles a diamond in topological order and executes its effect once.',
+      description: 'Settles a diamond in topological and node-creation order.',
       given: [
         event('reactive-signal-created', {
           graphId: 'graph-1',
@@ -142,14 +141,14 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
         event('reactive-computation-created', {
           graphId: 'graph-1',
           batchId: 'build-1',
-          nodeId: 'left',
-          callbackId: 'head-plus-one',
+          nodeId: 'right',
+          callbackId: 'head-times-two',
         }),
         event('reactive-computation-created', {
           graphId: 'graph-1',
           batchId: 'build-1',
-          nodeId: 'right',
-          callbackId: 'head-times-two',
+          nodeId: 'left',
+          callbackId: 'head-plus-one',
         }),
         event('reactive-computation-created', {
           graphId: 'graph-1',
@@ -166,7 +165,7 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
         event('reactive-computation-evaluated', {
           graphId: 'graph-1',
           batchId: 'build-1',
-          nodeId: 'left',
+          nodeId: 'right',
           value: 2,
           dependencyNodeIds: ['head'],
           changed: true,
@@ -174,7 +173,7 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
         event('reactive-computation-evaluated', {
           graphId: 'graph-1',
           batchId: 'build-1',
-          nodeId: 'right',
+          nodeId: 'left',
           value: 2,
           dependencyNodeIds: ['head'],
           changed: true,
@@ -216,16 +215,16 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
         event('reactive-computation-evaluated', {
           graphId: 'graph-1',
           batchId: 'update-1',
-          nodeId: 'left',
-          value: 3,
+          nodeId: 'right',
+          value: 4,
           dependencyNodeIds: ['head'],
           changed: true,
         }),
         event('reactive-computation-evaluated', {
           graphId: 'graph-1',
           batchId: 'update-1',
-          nodeId: 'right',
-          value: 4,
+          nodeId: 'left',
+          value: 3,
           dependencyNodeIds: ['head'],
           changed: true,
         }),
@@ -424,6 +423,205 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
       ],
     },
     {
+      description: 'Reevaluates from the newly selected dynamic dependency.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'selector',
+          value: true,
+        }),
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'right',
+          value: 20,
+        }),
+        event('reactive-computation-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'selected',
+          callbackId: 'select-left-or-right',
+        }),
+        event('reactive-computation-evaluated', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'selected',
+          value: 20,
+          dependencyNodeIds: ['selector', 'right'],
+          changed: true,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 1,
+          executedEffectCount: 0,
+        }),
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'right',
+          previousValue: 20,
+          value: 21,
+          changed: true,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-1',
+      },
+      expect: [
+        event('reactive-computation-evaluated', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'selected',
+          value: 21,
+          dependencyNodeIds: ['selector', 'right'],
+          changed: true,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          evaluatedComputationCount: 1,
+          executedEffectCount: 0,
+        }),
+      ],
+    },
+    {
+      description:
+        'Executes a multi-input effect once when both dependencies change.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'left',
+          value: 1,
+        }),
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'right',
+          value: 2,
+        }),
+        event('reactive-effect-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'effect-1',
+          callbackId: 'observe-left-right',
+        }),
+        event('reactive-effect-executed', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'effect-1',
+          dependencyNodeIds: ['left', 'right'],
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 1,
+        }),
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'left',
+          previousValue: 1,
+          value: 3,
+          changed: true,
+        }),
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'right',
+          previousValue: 2,
+          value: 4,
+          changed: true,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-1',
+      },
+      expect: [
+        event('reactive-effect-executed', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'effect-1',
+          dependencyNodeIds: ['left', 'right'],
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 1,
+        }),
+      ],
+    },
+    {
+      description:
+        'Treats a fresh equal-shaped computation result as changed identity.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'head',
+          value: 1,
+        }),
+        event('reactive-computation-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'record',
+          callbackId: 'fresh-parity-record',
+        }),
+        event('reactive-computation-evaluated', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'record',
+          value: {
+            parity: 1,
+          },
+          dependencyNodeIds: ['head'],
+          changed: true,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 1,
+          executedEffectCount: 0,
+        }),
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'head',
+          previousValue: 1,
+          value: 3,
+          changed: true,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-1',
+      },
+      expect: [
+        event('reactive-computation-evaluated', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'record',
+          value: {
+            parity: 1,
+          },
+          dependencyNodeIds: ['head'],
+          changed: true,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          evaluatedComputationCount: 1,
+          executedEffectCount: 0,
+        }),
+      ],
+    },
+    {
       description: 'Deduplicates repeated reads of the same dependency.',
       given: [
         event('reactive-signal-created', {
@@ -518,6 +716,88 @@ export const settleReactiveBatchSpec = createCommandSlice('settleReactiveBatch')
           executedEffectCount: 0,
         }),
       ],
+    },
+    {
+      description: 'Rejects settlement when a registered callback throws.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+        event('reactive-computation-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'computed-1',
+          callbackId: 'throws-on-evaluation',
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'build-1',
+      },
+      expect: [],
+      reject: {
+        reason:
+          'Reactive callback throws-on-evaluation failed in graph graph-1',
+      },
+    },
+    {
+      description: 'Rejects settlement of a batch other than the open batch.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'build-2',
+      },
+      expect: [],
+      reject: {
+        reason: 'Reactive batch build-2 is not the open batch in graph graph-1',
+      },
+    },
+    {
+      description: 'Rejects a batch with no pending creation or write.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-1',
+      },
+      expect: [],
+      reject: {
+        reason: 'Reactive batch update-1 has no pending work in graph graph-1',
+      },
+    },
+    {
+      description: 'Rejects settlement in an unknown graph.',
+      given: [],
+      when: {
+        graphId: 'missing',
+        batchId: 'update-1',
+      },
+      expect: [],
+      reject: {
+        reason: 'Reactive graph missing was not found',
+      },
     },
     {
       description: 'Rejects a batch that has already settled.',
