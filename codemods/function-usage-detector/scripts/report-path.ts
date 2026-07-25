@@ -1,11 +1,9 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  unlinkSync,
-  writeFileSync,
-} from 'fs'
+import * as fs from 'fs'
 import { basename, isAbsolute, relative, resolve, sep } from 'path'
+
+const runtimeFs = fs as typeof fs & {
+  unlinkSync(path: string): void
+}
 
 export function reportDirectory(targetDirectory: string, configuredPath: string) {
   const trimmedPath = configuredPath.trim()
@@ -38,7 +36,7 @@ export function prepareReportDirectory(
   const output = reportDirectory(targetDirectory, configuredPath)
 
   assertNoSymlinkComponents(target, output)
-  mkdirSync(output, { recursive: true })
+  fs.mkdirSync(output, { recursive: true })
   assertNoSymlinkComponents(target, output)
   return output
 }
@@ -58,13 +56,12 @@ export function writeReportArtifact(
   }
 
   const destination = resolve(outputDirectory, filename)
-
   try {
-    unlinkSync(destination)
+    runtimeFs.unlinkSync(destination)
   } catch (error) {
     if (!isMissingFile(error)) throw error
   }
-  writeFileSync(destination, contents, { flag: 'wx' })
+  fs.writeFileSync(destination, contents)
 }
 
 function assertNoSymlinkComponents(target: string, output: string) {
@@ -72,9 +69,9 @@ function assertNoSymlinkComponents(target: string, output: string) {
   let current = target
 
   for (const segment of segments) {
-    if (!existsSync(current)) return
+    if (!pathExists(current)) return
 
-    const entry = readdirSync(current, { withFileTypes: true }).find(
+    const entry = fs.readdirSync(current, { withFileTypes: true }).find(
       (candidate) => candidate.name === segment,
     )
     if (!entry) return
@@ -82,6 +79,23 @@ function assertNoSymlinkComponents(target: string, output: string) {
       throw new Error('report_directory must not traverse a symbolic link')
     }
     current = resolve(current, segment)
+  }
+}
+
+function pathExists(path: string) {
+  try {
+    fs.accessSync(path)
+    return true
+  } catch (error) {
+    if (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'ENOENT'
+    ) {
+      return false
+    }
+    throw error
   }
 }
 
