@@ -13,6 +13,8 @@ export const runtimeActivity = implementQuery(specification)
     z.object({
       application: z.string().min(1).optional(),
       environment: z.string().min(1).optional(),
+      runtimeLanguage: z.string().min(1).optional(),
+      runtimeVersion: z.string().min(1).optional(),
       instanceId: z.string().min(1).optional(),
       eventLogId: z.string().min(1).optional(),
       kind: z.string().min(1).optional(),
@@ -47,6 +49,10 @@ export const runtimeActivity = implementQuery(specification)
             item.source.application === query.application) &&
           (!query.environment ||
             item.source.environment === query.environment) &&
+          (!query.runtimeLanguage ||
+            item.source.runtimeLanguage === query.runtimeLanguage) &&
+          (!query.runtimeVersion ||
+            item.source.runtimeVersion === query.runtimeVersion) &&
           (!query.instanceId || item.source.instanceId === query.instanceId) &&
           (!query.eventLogId || item.source.eventLogId === query.eventLogId) &&
           (!query.kind || item.kind === query.kind) &&

@@ -364,11 +364,13 @@ async function snapshot(commandArgs: readonly string[]) {
     const overview = value as {
       observationCount: number
       failureCount: number
+      rejectionCount: number
       droppedObservationCount: number
       sources: readonly unknown[]
     }
     console.log(`Observations: ${overview.observationCount}`)
     console.log(`Failures: ${overview.failureCount}`)
+    console.log(`Rejections: ${overview.rejectionCount}`)
     console.log(`Dropped: ${overview.droppedObservationCount}`)
     console.log(`Sources: ${overview.sources.length}`)
     return
