@@ -1,0 +1,142 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "requestDeployment",
+  "description": "Requests deployment of the exact tested artifact and its sidecar compilation receipt.",
+  "scenarios": [
+    {
+      "description": "Requests deployment of the built artifact to the frozen target.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": {
+              "adapter": "container",
+              "target": "production"
+            }
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-built",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "profileDigest": "sha256:profile-001",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-001",
+            "artifactKind": "container",
+            "artifactDigest": "sha256:artifact-001",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+            "finalArtifactChecks": [],
+            "finalArtifactEvidenceDigest": "sha256:artifact-evidence-001",
+            "receiptDigest": "sha256:receipt-001",
+            "receiptUri": "artifact://receipts/compile-001.json",
+            "completedAt": "2026-07-22T10:11:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "deploymentId": "deployment-001",
+        "artifactDigest": "sha256:artifact-001",
+        "receiptDigest": "sha256:receipt-001",
+        "adapter": "container",
+        "target": "production",
+        "requestedAt": "2026-07-22T10:12:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-001",
+            "deploymentId": "deployment-001",
+            "artifactDigest": "sha256:artifact-001",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+            "receiptDigest": "sha256:receipt-001",
+            "receiptUri": "artifact://receipts/compile-001.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T10:12:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects deployment of an artifact digest other than the built artifact.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "requestedAt": "2026-07-22T11:00:00.000Z",
+            "sourceRevision": "git:source-002",
+            "sourceTreeDigest": "sha256:source-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-002"
+            },
+            "deployment": {
+              "adapter": "container",
+              "target": "production"
+            }
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-built",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-002",
+            "sourceTreeDigest": "sha256:assembled-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "profileDigest": "sha256:profile-002",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-002",
+            "artifactKind": "container",
+            "artifactDigest": "sha256:artifact-002",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-002",
+            "finalArtifactChecks": [],
+            "finalArtifactEvidenceDigest": "sha256:artifact-evidence-002",
+            "receiptDigest": "sha256:receipt-002",
+            "receiptUri": "artifact://receipts/compile-002.json",
+            "completedAt": "2026-07-22T11:11:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "deploymentId": "deployment-002",
+        "artifactDigest": "sha256:other-artifact",
+        "receiptDigest": "sha256:receipt-002",
+        "adapter": "container",
+        "target": "production",
+        "requestedAt": "2026-07-22T11:12:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Deployment artifact does not match the built artifact"
+      }
+    }
+  ]
+}
