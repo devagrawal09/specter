@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/codemod/codemod/refs/heads/main/schemas/workflow.json
+
+version: "1"
+
+params:
+  schema:
+    minimum_lines:
+      name: Minimum function lines
+      description: Report functions with fewer non-blank, non-comment body lines
+      type: string
+      default: "3"
+    minimum_call_sites:
+      name: Minimum direct call sites
+      description: Report functions with fewer resolved direct call sites
+      type: string
+      default: "3"
+    report_directory:
+      name: Report directory
+      description: Target-relative directory for JSON and HTML report artifacts
+      type: string
+      default: ".codemod-reports/function-usage"
+
+nodes:
+  - id: report-small-or-rarely-called-functions
+    name: Report small or rarely called functions
+    type: automatic
+    steps:
+      - name: Analyze named functions without changing source files
+        js-ast-grep:
+          js_file: scripts/codemod.ts
+          base_path: "."
+          language: "tsx"
+          semantic_analysis: workspace
+          include:
+            - "**/*.js"
+            - "**/*.jsx"
+            - "**/*.ts"
+            - "**/*.tsx"
+            - "**/*.mjs"
+            - "**/*.mts"
+            - "**/*.cjs"
+            - "**/*.cts"
+          exclude:
+            - "**/codemods/**"
+            - "**/.codemod-reports/**"
+            - "**/.next/**"
+            - "**/.nuxt/**"
+            - "**/.svelte-kit/**"
+            - "**/.turbo/**"
+            - "**/node_modules/**"
+            - "**/dist/**"
+            - "**/build/**"
+            - "**/coverage/**"
+            - "**/generated/**"
+            - "**/__generated__/**"
+            - "**/out/**"
+            - "**/target/**"
+            - "**/*.d.ts"
+      - name: Write JSON and HTML reports without changing source files
+        js-ast-grep:
+          js_file: scripts/write-report.ts
+          base_path: "."
+          language: "tsx"
+          max_threads: 1
+          include:
+            - "**/*.js"
+            - "**/*.jsx"
+            - "**/*.ts"
+            - "**/*.tsx"
+            - "**/*.mjs"
+            - "**/*.mts"
+            - "**/*.cjs"
+            - "**/*.cts"
+          exclude:
+            - "**/codemods/**"
+            - "**/.codemod-reports/**"
+            - "**/.next/**"
+            - "**/.nuxt/**"
+            - "**/.svelte-kit/**"
+            - "**/.turbo/**"
+            - "**/node_modules/**"
+            - "**/dist/**"
+            - "**/build/**"
+            - "**/coverage/**"
+            - "**/generated/**"
+            - "**/__generated__/**"
+            - "**/out/**"
+            - "**/target/**"
+            - "**/*.d.ts"

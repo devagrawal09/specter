@@ -1,0 +1,21 @@
+{
+  "name": "function-usage-detector",
+  "version": "0.1.0",
+  "description": "Generate JSON and HTML reports for short or rarely called functions",
+  "packageManager": "pnpm@11.1.3",
+  "type": "module",
+  "scripts": {
+    "test": "pnpm test:fixtures && pnpm test:report && pnpm test:workflow",
+    "test:fixtures": "pnpm dlx codemod@1.12.13 jssg test -l tsx ./scripts/codemod.ts",
+    "test:report": "node --experimental-strip-types --test ./scripts/report.test.ts",
+    "test:workflow": "pnpm dlx codemod@1.12.13 workflow run -w workflow.yaml -t tests/workspace-smoke --allow-dirty --no-interactive --param report_directory=.codemod-reports/workflow-test && node scripts/verify-workflow-report.mjs",
+    "check-types": "tsc --noEmit",
+    "validate": "pnpm dlx codemod@1.12.13 workflow validate -w workflow.yaml",
+    "validate-package:ai": "pnpm dlx codemod@1.12.13 ai call validate_codemod_package --input '{\"package_path\":\".\"}'",
+    "verify": "pnpm test && pnpm check-types && pnpm validate"
+  },
+  "devDependencies": {
+    "@codemod.com/jssg-types": "1.6.2",
+    "typescript": "6.0.2"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "function-usage-findings": [
+    {
+      "cardinality": {
+        "callSites": "3",
+        "file": "input.ts",
+        "function": "multilineCommentShort",
+        "kind": "declaration",
+        "line": "1",
+        "lines": "2",
+        "reason": "short"
+      },
+      "count": 1
+    }
+  ]
+}

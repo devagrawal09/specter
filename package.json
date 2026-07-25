@@ -29,7 +29,7 @@
     "check": "biome check && node scripts/sync-specter-skill.mjs --check && node scripts/sync-specter-transport.mjs --check",
     "release:auth": "node scripts/verify-release-auth.mjs",
     "verify:starter": "node scripts/verify-generated-project.mjs",
-    "verify:codemod": "pnpm --dir codemods/specter-json-specs verify",
+    "verify:codemod": "pnpm --dir codemods/specter-json-specs verify && pnpm --dir codemods/function-usage-detector verify",
     "release:verify": "pnpm check && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm verify:starter",
     "release:pack": "pnpm -r --filter @specter-ts/spec --filter @specter-ts/core --filter @specter-ts/memory --filter @specter-ts/sqlite --filter @specter-ts/sqlite-node --filter @specter-ts/postgres --filter @specter-ts/reaction-outbox --filter @specter-ts/protocol --filter @specter-ts/observability --filter create-specter pack --pack-destination /tmp/specter",
     "release:dry-run": "pnpm release:auth && pnpm release:verify && pnpm -r --filter @specter-ts/spec --filter @specter-ts/core --filter @specter-ts/memory --filter @specter-ts/sqlite --filter @specter-ts/sqlite-node --filter @specter-ts/postgres --filter @specter-ts/reaction-outbox --filter @specter-ts/protocol --filter @specter-ts/observability --filter create-specter publish --dry-run --access public",
