@@ -1,0 +1,28 @@
+{
+  "function-usage-findings": [
+    {
+      "cardinality": {
+        "callSites": "1",
+        "file": "input.ts",
+        "function": "verboseExpression",
+        "kind": "variable",
+        "line": "7",
+        "lines": "3",
+        "reason": "few-call-sites"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "callSites": "3",
+        "file": "input.ts",
+        "function": "conciseArrow",
+        "kind": "variable",
+        "line": "1",
+        "lines": "1",
+        "reason": "short"
+      },
+      "count": 1
+    }
+  ]
+}

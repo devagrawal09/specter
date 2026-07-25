@@ -22,6 +22,8 @@ export const runtimeTrace = implementQuery(specification)
       operationId: z.string().min(1),
       application: z.string().min(1).optional(),
       environment: z.string().min(1).optional(),
+      runtimeLanguage: z.string().min(1).optional(),
+      runtimeVersion: z.string().min(1).optional(),
       instanceId: z.string().min(1).optional(),
       eventLogId: z.string().min(1).optional(),
     }),
@@ -265,6 +267,10 @@ function matchesSource(
   return (
     (!filter.application || source.application === filter.application) &&
     (!filter.environment || source.environment === filter.environment) &&
+    (!filter.runtimeLanguage ||
+      source.runtimeLanguage === filter.runtimeLanguage) &&
+    (!filter.runtimeVersion ||
+      source.runtimeVersion === filter.runtimeVersion) &&
     (!filter.instanceId || source.instanceId === filter.instanceId) &&
     (!filter.eventLogId || source.eventLogId === filter.eventLogId)
   )
