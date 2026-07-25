@@ -6,6 +6,7 @@ import {
   focusedContractGraph,
   sliceNodeId,
 } from './dashboard-relationships'
+import { runtimeSourceIdentity } from './dashboard-model'
 import type { CollectedSpecification } from './specification-catalog'
 
 const source = {
@@ -20,12 +21,13 @@ const source = {
 function collected(
   digest: `sha256:${string}`,
   document: SliceSpecification,
+  sources = [source],
 ): CollectedSpecification {
   return {
     digest,
     document,
     firstPublishedAt: '2026-07-22T12:00:00.000Z',
-    sources: [source],
+    sources,
   }
 }
 
@@ -136,6 +138,56 @@ describe('contract relationship graph', () => {
         'celebrateTodo',
         'todo-added',
       ]),
+    )
+  })
+
+  it('uses the selected complete source instead of merging the environment', () => {
+    const otherSource = { ...source, instanceId: 'two' }
+    const otherList = collected(
+      'sha256:other-list',
+      {
+        ...listTodos.document,
+        name: 'otherTodosQuery',
+      },
+      [otherSource],
+    )
+    const graph = buildContractGraph([addTodo, listTodos, otherList], {
+      application: 'todo',
+      environment: 'development',
+      source: runtimeSourceIdentity(source),
+    })
+
+    expect(graph.nodes.some((node) => node.digest === otherList.digest)).toBe(
+      false,
+    )
+    expect(graph.nodes.some((node) => node.digest === listTodos.digest)).toBe(
+      true,
+    )
+  })
+
+  it('marks same-source command revisions as ambiguous', () => {
+    const oldAddTodo = collected('sha256:old-add', {
+      ...addTodo.document,
+      description: 'Older add behavior.',
+    })
+    const graph = buildContractGraph([addTodo, oldAddTodo, celebrate], {
+      application: 'todo',
+      environment: 'development',
+      source: runtimeSourceIdentity(source),
+    })
+
+    expect(graph.nodes).toContainEqual(
+      expect.objectContaining({
+        id: 'ambiguous-command:addTodo',
+        kind: 'ambiguous-command',
+      }),
+    )
+    expect(graph.edges).toContainEqual(
+      expect.objectContaining({
+        from: sliceNodeId(celebrate.digest),
+        to: 'ambiguous-command:addTodo',
+        kind: 'requests-command',
+      }),
     )
   })
 })

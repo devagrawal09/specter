@@ -1,11 +1,15 @@
 import type { ScenarioEvent } from '@specter-ts/spec'
 
-import type { RuntimeScope } from './dashboard-model'
+import {
+  runtimeSourceIdentity,
+  sourceMatchesScope,
+  type RuntimeScope,
+} from './dashboard-model'
 import type { CollectedSpecification } from './specification-catalog'
 
 export type ContractNode = {
   readonly id: string
-  readonly kind: 'event' | 'slice' | 'unresolved-command'
+  readonly kind: 'event' | 'slice' | 'unresolved-command' | 'ambiguous-command'
   readonly label: string
   readonly digest?: string
   readonly sliceKind?: CollectedSpecification['document']['kind']
@@ -30,11 +34,17 @@ export function buildContractGraph(
   scope: RuntimeScope,
 ): ContractGraph {
   const scoped = specifications.filter((item) =>
-    item.sources.some(
-      (source) =>
-        source.application === scope.application &&
-        source.environment === scope.environment,
-    ),
+    item.sources.some((source) => sourceMatchesScope(source, scope)),
+  )
+  const scopedSourceIdentities = new Map(
+    scoped.map((item) => [
+      item.digest,
+      new Set(
+        item.sources
+          .filter((source) => sourceMatchesScope(source, scope))
+          .map(runtimeSourceIdentity),
+      ),
+    ]),
   )
   const nodes = new Map<string, ContractNode>()
   const edgeScenarios = new Map<
@@ -96,18 +106,27 @@ export function buildContractGraph(
       if (item.document.kind === 'reaction' && Array.isArray(scenario.expect)) {
         for (const value of scenario.expect) {
           if (!isCommandEnvelope(value)) continue
-          const target = scoped.find(
+          const sourceIdentities =
+            scopedSourceIdentities.get(item.digest) ?? new Set<string>()
+          const targets = scoped.filter(
             (candidate) =>
               candidate.document.kind === 'command' &&
-              candidate.document.name === value.type,
+              candidate.document.name === value.type &&
+              sharesSource(
+                sourceIdentities,
+                scopedSourceIdentities.get(candidate.digest),
+              ),
           )
+          const target = targets.length === 1 ? targets[0] : undefined
           const commandId = target
             ? sliceNodeId(target.digest)
-            : unresolvedCommandNodeId(value.type)
+            : targets.length
+              ? ambiguousCommandNodeId(value.type)
+              : unresolvedCommandNodeId(value.type)
           if (!target)
             nodes.set(commandId, {
               id: commandId,
-              kind: 'unresolved-command',
+              kind: targets.length ? 'ambiguous-command' : 'unresolved-command',
               label: value.type,
             })
           addEdge(
@@ -164,6 +183,19 @@ function eventNodeId(type: string): string {
 
 function unresolvedCommandNodeId(type: string): string {
   return `command:${type}`
+}
+
+function ambiguousCommandNodeId(type: string): string {
+  return `ambiguous-command:${type}`
+}
+
+function sharesSource(
+  left: ReadonlySet<string>,
+  right: ReadonlySet<string> | undefined,
+) {
+  if (!right) return false
+  for (const identity of left) if (right.has(identity)) return true
+  return false
 }
 
 function addEdge(

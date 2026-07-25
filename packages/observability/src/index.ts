@@ -7,6 +7,7 @@ export type {
   CollectedRuntimeObservation,
   CollectorState,
   RuntimeActivityFilter,
+  RuntimeExecutionSummary,
   RuntimeOverview,
   RuntimeSourceSummary,
   RuntimeTrace,

@@ -220,6 +220,8 @@ function traceFilterFromUrl(url: URL): RuntimeTraceFilter {
   return {
     application: value('application'),
     environment: value('environment'),
+    runtimeLanguage: value('runtimeLanguage'),
+    runtimeVersion: value('runtimeVersion'),
     instanceId: value('instanceId'),
     eventLogId: value('eventLogId'),
   }
@@ -235,6 +237,8 @@ function filterFromUrl(url: URL): RuntimeActivityFilter {
   return {
     application: value('application'),
     environment: value('environment'),
+    runtimeLanguage: value('runtimeLanguage'),
+    runtimeVersion: value('runtimeVersion'),
     instanceId: value('instanceId'),
     eventLogId: value('eventLogId'),
     kind: value('kind'),

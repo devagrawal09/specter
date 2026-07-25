@@ -1,3 +1,6 @@
+import { runtimeSourceIdentity } from './dashboard-model'
+import type { CollectedSpecification } from './specification-catalog'
+
 export type DashboardView = 'home' | 'relationships' | 'slice'
 
 export type DashboardLocation = {
@@ -60,4 +63,75 @@ export function dashboardSearch(location: DashboardLocation): string {
     parameters.set('stage', String(location.guidedStage))
   const value = parameters.toString()
   return value ? `?${value}` : ''
+}
+
+export function canonicalDashboardLocation(
+  location: DashboardLocation,
+  specifications: readonly CollectedSpecification[],
+): DashboardLocation {
+  if (location.view === 'home')
+    return {
+      ...defaultDashboardLocation,
+      search: location.search,
+    }
+
+  const item = specifications.find(
+    (specification) => specification.digest === location.digest,
+  )
+  if (!item)
+    return {
+      ...defaultDashboardLocation,
+      search: location.search,
+    }
+
+  const source =
+    item.sources.find(
+      (candidate) =>
+        candidate.application === location.application &&
+        candidate.environment === location.environment,
+    ) ?? item.sources[0]
+  if (!source)
+    return {
+      ...defaultDashboardLocation,
+      search: location.search,
+    }
+
+  const scopedSources = item.sources.filter(
+    (candidate) =>
+      candidate.application === source.application &&
+      candidate.environment === source.environment,
+  )
+  const selectedSource = scopedSources.some(
+    (candidate) => runtimeSourceIdentity(candidate) === location.source,
+  )
+    ? location.source
+    : ''
+  const scenarioCount = item.document.scenarios.length
+  const scenario = Math.max(
+    0,
+    Math.min(location.scenario, Math.max(0, scenarioCount - 1)),
+  )
+
+  return {
+    ...location,
+    application: source.application,
+    environment: source.environment,
+    source: selectedSource,
+    scenario,
+    guidedStage: location.view === 'slice' ? location.guidedStage : 0,
+  }
+}
+
+export function scenarioTabIndexForKey(
+  key: string,
+  current: number,
+  count: number,
+): number | undefined {
+  if (count <= 0) return undefined
+  if (key === 'Home') return 0
+  if (key === 'End') return count - 1
+  if (key === 'ArrowDown' || key === 'ArrowRight') return (current + 1) % count
+  if (key === 'ArrowUp' || key === 'ArrowLeft')
+    return (current - 1 + count) % count
+  return undefined
 }

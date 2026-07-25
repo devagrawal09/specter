@@ -9,17 +9,23 @@ import type {
   RuntimeTrace,
 } from './collector-model'
 import {
+  applicationEnvironmentCountLabel,
   applicationRuntimeGroups,
-  executionSummary,
+  dashboardHealthMessage,
+  mergeRecentRuntimeActivity,
   observationMatchesScope,
+  relativeRuntimeTime,
   runtimeSourceIdentity,
+  runtimeSignalStatus,
+  summarizeSpecificationRuntimeScope,
   summarizeRuntimeScope,
-  type ApplicationRuntimeGroup,
   type RuntimeScope,
 } from './dashboard-model'
 import {
+  canonicalDashboardLocation,
   dashboardSearch,
   parseDashboardLocation,
+  scenarioTabIndexForKey,
   type DashboardLocation,
   type DashboardView,
 } from './dashboard-navigation'
@@ -61,6 +67,10 @@ const [guidedStage, setGuidedStage] = createSignal<0 | 1 | 2 | 3>(
 const [trace, setTrace] = createSignal<RuntimeTrace>()
 const [linkCopied, setLinkCopied] = createSignal(false)
 const [loadError, setLoadError] = createSignal('')
+const [streamError, setStreamError] = createSignal('')
+const [lastLoadedAt, setLastLoadedAt] = createSignal<number>()
+const [currentTime, setCurrentTime] = createSignal(Date.now())
+let refreshSequence = 0
 
 function currentLocation(): DashboardLocation {
   return {
@@ -99,6 +109,7 @@ function navigate(
 }
 
 async function refresh() {
+  const sequence = ++refreshSequence
   let specs: readonly CollectedSpecification[]
   let summary: RuntimeOverview
   let recent: readonly CollectedRuntimeObservation[]
@@ -110,8 +121,10 @@ async function refresh() {
         `${base}/v1/activity?limit=200`,
       ),
     ])
+    if (sequence !== refreshSequence) return
     setLoadError('')
   } catch (cause) {
+    if (sequence !== refreshSequence) return
     setLoadError(
       cause instanceof Error ? cause.message : 'Dashboard data is unavailable.',
     )
@@ -120,22 +133,14 @@ async function refresh() {
   setSpecifications(specs)
   setOverview(summary)
   setActivity(recent)
+  const loadedAt = Date.now()
+  setLastLoadedAt(loadedAt)
+  setCurrentTime(loadedAt)
 
-  const linked = specs.find((item) => item.digest === selectedDigest())
-  const source = linked?.sources[0]
-  if (linked && source && (!application() || !environment()))
-    navigate(
-      {
-        application: source.application,
-        environment: source.environment,
-      },
-      'replace',
-    )
-  else if (selectedDigest() && !linked)
-    navigate(
-      { view: 'home', digest: '', scenario: 0, guidedStage: 0 },
-      'replace',
-    )
+  const current = currentLocation()
+  const canonical = canonicalDashboardLocation(current, specs)
+  if (JSON.stringify(current) !== JSON.stringify(canonical))
+    navigate(canonical, 'replace')
 }
 
 async function dashboardRequest<T>(url: string): Promise<T> {
@@ -198,7 +203,12 @@ const correlated = createMemo(() => {
     observationMatchesScope(item, scope, selectedDigest()),
   )
 })
-const correlatedSummary = createMemo(() => executionSummary(correlated()))
+const specificationSummary = createMemo(() => {
+  const scope = selectedScope()
+  return scope
+    ? summarizeSpecificationRuntimeScope(overview(), scope, selectedDigest())
+    : { executions: 0, failures: 0, rejections: 0 }
+})
 const scopeSummary = createMemo(() => {
   const scope = selectedScope()
   return scope
@@ -332,15 +342,24 @@ async function showTrace(entry: CollectedRuntimeObservation) {
   const parameters = new URLSearchParams({
     application: entry.source.application,
     environment: entry.source.environment,
+    runtimeLanguage: entry.source.runtimeLanguage,
+    runtimeVersion: entry.source.runtimeVersion,
     instanceId: entry.source.instanceId,
     eventLogId: entry.source.eventLogId,
   })
-  setTrace(
-    await fetch(
+  try {
+    const response = await fetch(
       `${base}/v1/traces/${encodeURIComponent(entry.operationId)}?${parameters}`,
       { cache: 'no-store' },
-    ).then((response) => response.json() as Promise<RuntimeTrace>),
-  )
+    )
+    if (!response.ok)
+      throw new Error(`Trace request failed with HTTP ${response.status}.`)
+    setTrace((await response.json()) as RuntimeTrace)
+  } catch (cause) {
+    setLoadError(
+      cause instanceof Error ? cause.message : 'Runtime trace is unavailable.',
+    )
+  }
 }
 
 function SliceMap(props: { specification: CollectedSpecification }) {
@@ -357,31 +376,6 @@ function SliceMap(props: { specification: CollectedSpecification }) {
     <g><rect x="295" y="40" width="190" height="110" rx="14" fill="#f4f3ff" stroke="#c7c0ff"/><text x="315" y="72" font-size="13" font-weight="700" fill="#4235a8">WHEN</text><text x="315" y="104" font-size="19" font-weight="700" fill="#18202d">${doc().kind}</text><text x="315" y="126" font-size="12" fill="#667085">${doc().name}</text></g>
     <g><rect x="550" y="40" width="205" height="110" rx="14" fill="#ecfdf3" stroke="#a6f4c5"/><text x="570" y="72" font-size="13" font-weight="700" fill="#067647">EXPECT</text><text x="570" y="104" font-size="24" font-weight="700" fill="#18202d">${doc().scenarios.length}</text><text x="570" y="126" font-size="12" fill="#667085">specified outcomes</text></g>
   </svg>`
-}
-
-function signalStatus(group: ApplicationRuntimeGroup) {
-  if (group.summary.failures || group.summary.dropped)
-    return { label: 'Issue observed', tone: 'issue' }
-  if (!group.summary.observations)
-    return { label: 'No telemetry', tone: 'unknown' }
-  const last = group.summary.lastObservedAt
-  if (!last || Date.now() - Date.parse(last) > 15 * 60 * 1000)
-    return { label: 'No recent evidence', tone: 'unknown' }
-  return { label: 'Active', tone: 'active' }
-}
-
-function relativeTime(value: string | undefined) {
-  if (!value) return 'Never observed'
-  const seconds = Math.max(
-    0,
-    Math.round((Date.now() - Date.parse(value)) / 1000),
-  )
-  if (seconds < 60) return `${seconds}s ago`
-  const minutes = Math.round(seconds / 60)
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  if (hours < 48) return `${hours}h ago`
-  return `${Math.round(hours / 24)}d ago`
 }
 
 function openSpecification(
@@ -410,19 +404,14 @@ function ApplicationHome() {
     dropped: overview()?.droppedObservationCount ?? 0,
   })
   return html`<div class="home-view">
-    ${
-      loadError()
-        ? html`<div class="load-error" role="alert"><strong>Runtime signals unavailable</strong><span>${loadError()}</span><button onClick=${() => void refresh()}>Try again</button></div>`
-        : null
-    }
     <header class="home-hero"><div><span class="eyebrow">Collector history</span><h1>Applications & runtime signals</h1><p>See what this collector has observed, then open a behavior specification for the exact application and environment.</p></div><span class="evidence-window">Freshness window · 15 minutes</span></header>
-    <section class="stats home-stats"><div class="stat"><span class="muted">Applications</span><strong>${groups.length}</strong></div><div class="stat"><span class="muted">Observations</span><strong>${totals().observations}</strong></div><div class="stat failure-stat"><span class="muted">Failures</span><strong>${totals().failures}</strong></div><div class="stat"><span class="muted">Expected rejections</span><strong>${totals().rejections}</strong></div><div class="stat"><span class="muted">Dropped telemetry</span><strong>${totals().dropped}</strong></div></section>
+    <section class="stats home-stats"><div class="stat"><span class="muted">${applicationEnvironmentCountLabel}</span><strong>${groups.length}</strong></div><div class="stat"><span class="muted">Observations</span><strong>${totals().observations}</strong></div><div class="stat failure-stat"><span class="muted">Failures</span><strong>${totals().failures}</strong></div><div class="stat"><span class="muted">Expected rejections</span><strong>${totals().rejections}</strong></div><div class="stat"><span class="muted">Dropped telemetry</span><strong>${totals().dropped}</strong></div></section>
     <section class="application-grid">${
       groups.length
         ? groups.map((group) => {
-            const status = signalStatus(group)
+            const status = runtimeSignalStatus(group.summary, currentTime())
             return html`<article class="application-card"><header><div><span class="environment-label">${group.environment}</span><h2>${group.application}</h2></div><span class=${`signal-status ${status.tone}`}><i></i>${status.label}</span></header>
-              <div class="signal-grid"><div><span>Specifications</span><strong>${group.specifications.length}</strong></div><div><span>Runtime sources</span><strong>${group.sourceCount}</strong></div><div><span>Failures</span><strong>${group.summary.failures}</strong></div><div><span>Rejections</span><strong>${group.summary.rejections}</strong></div><div><span>Max source lag</span><strong>${group.summary.maxProjectionLag}</strong></div><div><span>Last evidence</span><strong title=${group.summary.lastObservedAt ?? ''}>${relativeTime(group.summary.lastObservedAt)}</strong></div></div>
+              <div class="signal-grid"><div><span>Specifications</span><strong>${group.specifications.length}</strong></div><div><span>Runtime sources</span><strong>${group.sourceCount}</strong></div><div><span>Failures</span><strong>${group.summary.failures}</strong></div><div><span>Rejections</span><strong>${group.summary.rejections}</strong></div><div><span>Max source lag</span><strong>${group.summary.maxProjectionLag}</strong></div><div><span>Last evidence</span><strong title=${group.summary.lastObservedAt ?? ''}>${relativeRuntimeTime(group.summary.lastObservedAt, currentTime())}</strong></div></div>
               <div class="application-specs">${group.specifications.map(
                 (item) =>
                   html`<button onClick=${() =>
@@ -440,10 +429,17 @@ function ApplicationHome() {
 }
 
 function copyCurrentLink() {
-  void navigator.clipboard.writeText(window.location.href).then(() => {
-    setLinkCopied(true)
-    window.setTimeout(() => setLinkCopied(false), 1800)
-  })
+  void navigator.clipboard
+    .writeText(window.location.href)
+    .then(() => {
+      setLinkCopied(true)
+      window.setTimeout(() => setLinkCopied(false), 1800)
+    })
+    .catch((cause) =>
+      setLoadError(
+        cause instanceof Error ? cause.message : 'Could not copy the link.',
+      ),
+    )
 }
 
 function SliceToolbar() {
@@ -457,7 +453,7 @@ function SliceToolbar() {
       )}><option value="" selected=${!selectedSource()}>All sources in environment</option>${scopedSources().map(
       (source) => {
         const identity = runtimeSourceIdentity(source)
-        return html`<option value=${identity} selected=${identity === selectedSource()}>${source.runtimeLanguage} · ${source.instanceId} · ${source.eventLogId}</option>`
+        return html`<option value=${identity} selected=${identity === selectedSource()}>${source.runtimeLanguage} ${source.runtimeVersion} · ${source.instanceId} · ${source.eventLogId}</option>`
       },
     )}</select></label>
     ${
@@ -471,7 +467,7 @@ function SliceToolbar() {
 
 function SliceHeader(props: { item: CollectedSpecification }) {
   const doc = props.item.document
-  return html`<header class="slice-page-header"><div class="breadcrumbs"><button onClick=${() => navigate({ view: 'home', digest: '', scenario: 0, source: '', guidedStage: 0 })}>Applications</button><span>›</span><span>${application()}</span><span>›</span><span>${environment()}</span></div><div class="topbar"><div><div class="eyebrow">${doc.kind} Slice · ${doc.scenarios.length} scenarios</div><h1>${humanizeLabel(doc.name)}</h1><p class="muted">${doc.description}</p><details class="technical-details"><summary>Technical details</summary><code>${props.item.digest}</code><span>First observed ${new Date(props.item.firstPublishedAt).toLocaleString()}</span></details></div></div><${SliceToolbar} /></header>`
+  return html`<header class="slice-page-header"><div class="breadcrumbs"><button onClick=${() => navigate({ view: 'home', application: '', environment: '', digest: '', scenario: 0, source: '', guidedStage: 0 })}>Applications</button><span>›</span><span>${application()}</span><span>›</span><span>${environment()}</span></div><div class="topbar"><div><div class="eyebrow">${doc.kind} Slice · ${doc.scenarios.length} scenarios</div><h1>${humanizeLabel(doc.name)}</h1><p class="muted">${doc.description}</p><details class="technical-details"><summary>Technical details</summary><code>${props.item.digest}</code><span>First observed ${new Date(props.item.firstPublishedAt).toLocaleString()}</span></details></div></div><${SliceToolbar} /></header>`
 }
 
 function RelationshipNodeCard(props: {
@@ -486,7 +482,7 @@ function RelationshipNodeCard(props: {
     if (item)
       openSpecification(item, application(), environment(), 'relationships')
   }
-  const content = html`<span class=${`relationship-node-icon ${props.node.kind}`}>${props.node.kind === 'event' ? 'E' : props.node.kind === 'slice' ? 'S' : 'C'}</span><span><small>${props.node.kind === 'slice' ? props.node.sliceKind : props.node.kind === 'event' ? 'Event' : 'Command not published'}</small><strong>${humanizeLabel(props.node.label)}</strong></span>`
+  const content = html`<span class=${`relationship-node-icon ${props.node.kind}`}>${props.node.kind === 'event' ? 'E' : props.node.kind === 'slice' ? 'S' : 'C'}</span><span><small>${props.node.kind === 'slice' ? props.node.sliceKind : props.node.kind === 'event' ? 'Event' : props.node.kind === 'ambiguous-command' ? 'Multiple command revisions' : 'Command not published'}</small><strong>${humanizeLabel(props.node.label)}</strong></span>`
   return props.node.digest
     ? html`<button class=${`relationship-node ${props.selected ? 'selected' : ''}`} onClick=${open}>${content}</button>`
     : html`<div class="relationship-node">${content}</div>`
@@ -539,6 +535,29 @@ function reviewPrevious() {
     navigate({ scenario: selectedScenario() - 1, guidedStage: 3 }, 'replace')
 }
 
+function scenarioTabId(digest: string, index: number) {
+  return `scenario-tab-${digest.replace(/[^a-zA-Z0-9_-]/g, '-')}-${index}`
+}
+
+function scenarioPanelId(digest: string) {
+  return `scenario-panel-${digest.replace(/[^a-zA-Z0-9_-]/g, '-')}`
+}
+
+function changeScenarioFromTab(
+  event: KeyboardEvent,
+  index: number,
+  count: number,
+  digest: string,
+) {
+  const next = scenarioTabIndexForKey(event.key, index, count)
+  if (next === undefined) return
+  event.preventDefault()
+  changeScenario(next)
+  window.requestAnimationFrame(() =>
+    document.getElementById(scenarioTabId(digest, next))?.focus(),
+  )
+}
+
 function ScenarioExplorer(props: { item: CollectedSpecification }) {
   const doc = props.item.document
   const lane = doc.scenarios[selectedScenario()] ?? doc.scenarios[0]
@@ -547,13 +566,13 @@ function ScenarioExplorer(props: { item: CollectedSpecification }) {
   const showStage = (stage: 1 | 2 | 3) =>
     guidedStage() === 0 || guidedStage() === stage
   return html`<section class="panel scenario-panel"><div class="section-heading"><div><span class="eyebrow">Behavior specification</span><h2>Scenarios</h2></div><span class="scenario-count">${doc.scenarios.length} total</span></div>
-    <div class="scenario-explorer"><div class="scenario-nav" role="tablist" aria-label="Specification scenarios">${doc.scenarios.map(
+    <div class="scenario-explorer"><div class="scenario-nav" role="tablist" aria-label="Specification scenarios" aria-orientation="vertical">${doc.scenarios.map(
       (scenario, index) => {
         const outcome = scenarioThen(doc, scenario).status
-        return html`<button class="scenario-nav-item" role="tab" aria-selected=${selectedScenario() === index} onClick=${() => changeScenario(index)}><span class="scenario-number">${String(index + 1).padStart(2, '0')}</span><span class="scenario-label">${scenario.description}</span><span class=${`scenario-outcome ${outcome}`}>${outcome}</span></button>`
+        return html`<button id=${scenarioTabId(props.item.digest, index)} class="scenario-nav-item" role="tab" aria-selected=${selectedScenario() === index} aria-controls=${scenarioPanelId(props.item.digest)} tabIndex=${selectedScenario() === index ? 0 : -1} onClick=${() => changeScenario(index)} onKeyDown=${(event: KeyboardEvent) => changeScenarioFromTab(event, index, doc.scenarios.length, props.item.digest)}><span class="scenario-number">${String(index + 1).padStart(2, '0')}</span><span class="scenario-label">${scenario.description}</span><span class=${`scenario-outcome ${outcome}`}>${outcome}</span></button>`
       },
     )}</div>
-    <article class=${`scenario-detail ${guidedStage() ? 'guided' : ''}`}><header class="scenario-header"><div><span class="eyebrow">Scenario ${selectedScenario() + 1}</span><h3>${lane.description}</h3></div><span class=${`status ${then.status}`}>${then.status}</span></header>
+    <article id=${scenarioPanelId(props.item.digest)} class=${`scenario-detail ${guidedStage() ? 'guided' : ''}`} role="tabpanel" aria-labelledby=${scenarioTabId(props.item.digest, selectedScenario())} tabIndex="0"><header class="scenario-header"><div><span class="eyebrow">Scenario ${selectedScenario() + 1}</span><h3>${lane.description}</h3></div><span class=${`status ${then.status}`}>${then.status}</span></header>
       ${
         guidedStage()
           ? html`<div class="review-controls"><button onClick=${reviewPrevious} disabled=${guidedStage() === 1 && selectedScenario() === 0}>← Previous</button><div><strong>Guided review</strong><span>Stage ${guidedStage()} of 3</span><div class="review-progress"><i class=${guidedStage() >= 1 ? 'done' : ''}></i><i class=${guidedStage() >= 2 ? 'done' : ''}></i><i class=${guidedStage() >= 3 ? 'done' : ''}></i></div></div><button class="primary-button" onClick=${reviewNext}>${guidedStage() === 3 && selectedScenario() === doc.scenarios.length - 1 ? 'Finish' : 'Next →'}</button></div>`
@@ -592,7 +611,7 @@ function SlicePage(props: { item: CollectedSpecification }) {
     ${
       view() === 'relationships'
         ? html`<${RelationshipExplorer} item=${props.item} />`
-        : html`<section class="stats"><div class="stat"><span class="muted">Scenarios</span><strong>${props.item.document.scenarios.length}</strong></div><div class="stat"><span class="muted">Executions</span><strong>${correlatedSummary().executions}</strong></div><div class="stat"><span class="muted">Expected rejections</span><strong>${correlatedSummary().rejections}</strong></div><div class="stat failure-stat"><span class="muted">Failures</span><strong>${correlatedSummary().failures}</strong></div><div class="stat"><span class="muted">Source lag</span><strong>${scopeSummary().maxProjectionLag}</strong></div></section>
+        : html`<section class="stats"><div class="stat"><span class="muted">Scenarios</span><strong>${props.item.document.scenarios.length}</strong></div><div class="stat"><span class="muted">Executions</span><strong>${specificationSummary().executions}</strong></div><div class="stat"><span class="muted">Expected rejections</span><strong>${specificationSummary().rejections}</strong></div><div class="stat failure-stat"><span class="muted">Failures</span><strong>${specificationSummary().failures}</strong></div><div class="stat"><span class="muted">Source lag</span><strong>${scopeSummary().maxProjectionLag}</strong></div></section>
         <div class="grid overview-grid"><section class="panel"><h2>Whole-Slice map</h2><${SliceMap} specification=${props.item} /></section>
         <section class="panel telemetry-panel"><div class="panel-heading"><h2>Runtime evidence</h2><span>${selectedSource() ? 'Selected source' : 'All environment sources'}</span></div><div class="activity">${
           correlated().length
@@ -601,7 +620,7 @@ function SlicePage(props: { item: CollectedSpecification }) {
                 .reverse()
                 .map(
                   (entry) =>
-                    html`<article class="activity-item"><span class=${`kind ${entry.outcome === 'failed' ? 'failure' : ''}`}>${entry.kind}</span><div><button class="operation" onClick=${() => void showTrace(entry)}>${entry.operationId}</button><div class="muted">${entry.source.instanceId} · ${relativeTime(entry.observedAt)}</div></div><span class=${`status ${entry.outcome === 'failed' ? 'rejected' : entry.outcome === 'rejected' ? 'expected-rejection' : 'accepted'}`}>${entry.outcome ?? 'active'}</span></article>`,
+                    html`<article class="activity-item"><span class=${`kind ${entry.outcome === 'failed' ? 'failure' : ''}`}>${entry.kind}</span><div><button class="operation" onClick=${() => void showTrace(entry)}>${entry.operationId}</button><div class="muted">${entry.source.instanceId} · ${relativeRuntimeTime(entry.observedAt, currentTime())}</div></div><span class=${`status ${entry.outcome === 'failed' ? 'rejected' : entry.outcome === 'rejected' ? 'expected-rejection' : 'accepted'}`}>${entry.outcome ?? 'active'}</span></article>`,
                 )
             : html`<p class="empty">No telemetry has resolved to this exact digest and runtime scope.</p>`
         }</div>${
@@ -616,8 +635,8 @@ function SlicePage(props: { item: CollectedSpecification }) {
 
 function App() {
   return html`<div class="shell">
-    <aside class="rail"><button class="brand" aria-current=${() => view() === 'home'} onClick=${() => navigate({ view: 'home', digest: '', scenario: 0, source: '', guidedStage: 0 })}><span class="mark"></span><span><strong>Specter</strong><small>Runtime evidence</small></span></button>
-      <button class="home-link" aria-current=${() => view() === 'home'} onClick=${() => navigate({ view: 'home', digest: '', scenario: 0, source: '', guidedStage: 0 })}><span>⌂</span>Applications</button>
+    <aside class="rail"><button class="brand" aria-current=${() => view() === 'home'} onClick=${() => navigate({ view: 'home', application: '', environment: '', digest: '', scenario: 0, source: '', guidedStage: 0 })}><span class="mark"></span><span><strong>Specter</strong><small>Runtime evidence</small></span></button>
+      <button class="home-link" aria-current=${() => view() === 'home'} onClick=${() => navigate({ view: 'home', application: '', environment: '', digest: '', scenario: 0, source: '', guidedStage: 0 })}><span>⌂</span>Applications</button>
       <input aria-label="Search applications and Slices" placeholder="Search apps or Slices" value=${search()} onInput=${(
         event: InputEvent,
       ) =>
@@ -658,35 +677,62 @@ function App() {
       trace()
       linkCopied()
       loadError()
+      streamError()
+      lastLoadedAt()
+      currentTime()
       const item = selected()
-      if (view() === 'home' || !item) return html`<${ApplicationHome} />`
-      return html`<${SlicePage} item=${item} />`
+      const health = dashboardHealthMessage(
+        loadError(),
+        streamError(),
+        lastLoadedAt(),
+        currentTime(),
+      )
+      const page =
+        view() === 'home' || !item
+          ? html`<${ApplicationHome} />`
+          : html`<${SlicePage} item=${item} />`
+      return html`<div class="content-stack">${
+        health
+          ? html`<div class="load-error" role="alert"><strong>${health.title}</strong><span>${health.detail}</span><button onClick=${() => void refresh()}>Try again</button></div>`
+          : null
+      }${page}</div>`
     }}</main>
   </div>`
 }
 
 function startDashboard() {
   void refresh()
+  const freshnessTimer = window.setInterval(
+    () => setCurrentTime(Date.now()),
+    30_000,
+  )
   const stream =
     typeof EventSource === 'undefined'
       ? undefined
       : new EventSource(`${base}/v1/stream`)
   const activityListener = (event: Event) => {
-    const item = JSON.parse(
-      (event as MessageEvent).data,
-    ) as CollectedRuntimeObservation
-    setActivity((items) =>
-      [
-        ...items.filter(
-          (candidate) => candidate.observationId !== item.observationId,
-        ),
-        item,
-      ].slice(-200),
-    )
-    void refresh()
+    try {
+      const item = JSON.parse(
+        (event as MessageEvent).data,
+      ) as CollectedRuntimeObservation
+      setActivity((items) => mergeRecentRuntimeActivity(items, item))
+      void refresh()
+    } catch {
+      setStreamError('A live runtime update could not be read.')
+    }
   }
+  const streamOpenListener = () => setStreamError('')
+  const streamErrorListener = () =>
+    setStreamError(
+      'Live runtime updates are disconnected; the browser is retrying.',
+    )
   const popstateListener = () =>
-    applyLocation(parseDashboardLocation(window.location.search))
+    applyLocation(
+      canonicalDashboardLocation(
+        parseDashboardLocation(window.location.search),
+        specifications(),
+      ),
+    )
   const keydownListener = (event: KeyboardEvent) => {
     const target = event.target as HTMLElement | null
     if (target?.matches('input, select, textarea, button')) return
@@ -705,11 +751,16 @@ function startDashboard() {
     }
   }
   stream?.addEventListener('activity', activityListener)
+  stream?.addEventListener('open', streamOpenListener)
+  stream?.addEventListener('error', streamErrorListener)
+  if (!stream)
+    setStreamError('This browser does not support live runtime updates.')
   window.addEventListener('popstate', popstateListener)
   window.addEventListener('keydown', keydownListener)
   window.addEventListener(
     'pagehide',
     () => {
+      window.clearInterval(freshnessTimer)
       stream?.close()
       window.removeEventListener('popstate', popstateListener)
       window.removeEventListener('keydown', keydownListener)

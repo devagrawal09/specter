@@ -39,6 +39,7 @@ export const runtimeOverviewSpec = createQuerySlice('runtimeOverview')
           lastSequence: 1,
           lastObservedAt: observation.observedAt,
           projectionLag: 0,
+          executionsBySpecification: {},
         },
       ],
       kinds: { 'command.completed': 1 },

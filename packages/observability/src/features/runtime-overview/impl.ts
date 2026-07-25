@@ -5,6 +5,7 @@ import { z } from 'zod'
 import {
   copyCollectorState,
   runtimeObservationIdentity,
+  summarizeRuntimeExecutions,
   type RuntimeOverview,
   type RuntimeSourceSummary,
 } from '../../collector-model'
@@ -49,6 +50,10 @@ export const runtimeOverview = implementQuery(specification)
     const summaries = new Map<string, RuntimeSourceSummary>()
     const sourceEventOrders = new Map<string, number>()
     const sourceCursors = new Map<string, number>()
+    const executionObservations = new Map<
+      string,
+      Map<string, RuntimeObservation[]>
+    >()
     const kinds: Record<string, number> = {}
     let failureCount = 0
     let rejectionCount = 0
@@ -64,6 +69,16 @@ export const runtimeOverview = implementQuery(specification)
       kinds[observation.kind] = (kinds[observation.kind] ?? 0) + 1
 
       const key = sourceKey(observation.source)
+      if (observation.specificationDigest) {
+        const bySpecification =
+          executionObservations.get(key) ??
+          new Map<string, RuntimeObservation[]>()
+        const observations =
+          bySpecification.get(observation.specificationDigest) ?? []
+        observations.push(observation)
+        bySpecification.set(observation.specificationDigest, observations)
+        executionObservations.set(key, bySpecification)
+      }
       const eventOrder = Math.max(
         sourceEventOrders.get(key) ?? 0,
         ...(observation.events ?? []).map((event) => event.order),
@@ -91,6 +106,7 @@ export const runtimeOverview = implementQuery(specification)
             ? observation.observedAt
             : previous.lastObservedAt,
         projectionLag: Math.max(0, eventOrder - cursor),
+        executionsBySpecification: {},
       })
     }
 
@@ -103,9 +119,21 @@ export const runtimeOverview = implementQuery(specification)
       failureCount,
       rejectionCount,
       droppedObservationCount,
-      sources: [...summaries.values()].sort((left, right) =>
-        sourceKey(left.source).localeCompare(sourceKey(right.source)),
-      ),
+      sources: [...summaries.entries()]
+        .map(([key, summary]) => ({
+          ...summary,
+          executionsBySpecification: Object.fromEntries(
+            [...(executionObservations.get(key) ?? [])].map(
+              ([digest, observations]) => [
+                digest,
+                summarizeRuntimeExecutions(observations),
+              ],
+            ),
+          ),
+        }))
+        .sort((left, right) =>
+          sourceKey(left.source).localeCompare(sourceKey(right.source)),
+        ),
       kinds,
       recent: copied.observations.slice(-100),
     }
