@@ -54,7 +54,10 @@ export function createSpecterObservabilityHttpHandler(
     try {
       if (request.method === 'GET' && route === '/') {
         return new Response(renderCollectorHtml(basePath), {
-          headers: { 'content-type': 'text/html; charset=utf-8' },
+          headers: {
+            'content-type': 'text/html; charset=utf-8',
+            'cache-control': 'no-store',
+          },
         })
       }
       if (request.method === 'GET' && route === '/dashboard.js') {
@@ -62,7 +65,7 @@ export function createSpecterObservabilityHttpHandler(
         return new Response(source, {
           headers: {
             'content-type': 'text/javascript; charset=utf-8',
-            'cache-control': 'no-cache',
+            'cache-control': 'no-store',
           },
         })
       }
@@ -88,7 +91,7 @@ export function createSpecterObservabilityHttpHandler(
         )
       }
       if (request.method === 'GET' && route === '/v1/specifications') {
-        return Response.json(
+        return dashboardJson(
           await options.collector.specifications({
             application: url.searchParams.get('application') || undefined,
             slice: url.searchParams.get('slice') || undefined,
@@ -105,10 +108,10 @@ export function createSpecterObservabilityHttpHandler(
         })
       }
       if (request.method === 'GET' && route === '/v1/overview') {
-        return Response.json(await options.collector.overview())
+        return dashboardJson(await options.collector.overview())
       }
       if (request.method === 'GET' && route === '/v1/activity') {
-        return Response.json(
+        return dashboardJson(
           await options.collector.activity(filterFromUrl(url)),
         )
       }
@@ -123,7 +126,7 @@ export function createSpecterObservabilityHttpHandler(
             'operationId is required.',
           )
         }
-        return Response.json(
+        return dashboardJson(
           await options.collector.trace(operationId, traceFilterFromUrl(url)),
         )
       }
@@ -151,6 +154,12 @@ export function createSpecterObservabilityHttpHandler(
   }
 
   return handle
+}
+
+function dashboardJson(value: unknown) {
+  return Response.json(value, {
+    headers: { 'cache-control': 'no-store' },
+  })
 }
 
 function specificationDigests(value: unknown): readonly `sha256:${string}`[] {
@@ -211,6 +220,8 @@ function traceFilterFromUrl(url: URL): RuntimeTraceFilter {
   return {
     application: value('application'),
     environment: value('environment'),
+    runtimeLanguage: value('runtimeLanguage'),
+    runtimeVersion: value('runtimeVersion'),
     instanceId: value('instanceId'),
     eventLogId: value('eventLogId'),
   }
@@ -226,6 +237,8 @@ function filterFromUrl(url: URL): RuntimeActivityFilter {
   return {
     application: value('application'),
     environment: value('environment'),
+    runtimeLanguage: value('runtimeLanguage'),
+    runtimeVersion: value('runtimeVersion'),
     instanceId: value('instanceId'),
     eventLogId: value('eventLogId'),
     kind: value('kind'),
