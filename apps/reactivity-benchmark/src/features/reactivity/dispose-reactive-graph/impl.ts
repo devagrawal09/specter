@@ -1,0 +1,38 @@
+import { FusedCommandRejectedError } from '../../../runtime/fused-runtime'
+import { implementFusedCommand } from '../../../runtime/fused-slices'
+import {
+  reactiveComputationCreatedEvent,
+  reactiveEffectCreatedEvent,
+  reactiveGraphDisposedEvent,
+  reactiveSignalCreatedEvent,
+} from '../events'
+import type { DisposeReactiveGraphInput } from '../model'
+import { applyReactiveEvent, reactiveStore } from '../state'
+import specification from './spec.json' with { type: 'json' }
+
+export const disposeReactiveGraph = implementFusedCommand(specification)
+  .inputSchema<DisposeReactiveGraphInput>()
+  .store(reactiveStore)
+  .apply(reactiveSignalCreatedEvent, applyReactiveEvent)
+  .apply(reactiveComputationCreatedEvent, applyReactiveEvent)
+  .apply(reactiveEffectCreatedEvent, applyReactiveEvent)
+  .apply(reactiveGraphDisposedEvent, applyReactiveEvent)
+  .handle((command, state, context) => {
+    if (state.isDisposed(command.graphId)) {
+      throw new FusedCommandRejectedError(
+        `Reactive graph ${command.graphId} is already disposed`,
+      )
+    }
+    if (!state.hasGraph(command.graphId)) {
+      throw new FusedCommandRejectedError(
+        `Reactive graph ${command.graphId} was not found`,
+      )
+    }
+    context.emit(
+      reactiveGraphDisposedEvent.create({
+        graphId: command.graphId,
+      }),
+    )
+  })
+
+export default disposeReactiveGraph
