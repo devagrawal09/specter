@@ -1,0 +1,131 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "query",
+  "name": "compilationStatusQuery",
+  "description": "Reports compilation, artifact, and deployment status rebuilt entirely from the durable Event Log.",
+  "scenarios": [
+    {
+      "description": "Reports an implementation attempt in progress.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-001",
+            "assignedBaseRevision": "git:source-001",
+            "specificationDigest": "sha256:create-order-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T10:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001"
+      },
+      "expect": {
+        "runId": "compile-001",
+        "status": "running",
+        "stage": "slice-implementation",
+        "activeAttemptIds": [
+          "create-order-attempt-001"
+        ],
+        "artifact": null,
+        "deployment": null
+      }
+    },
+    {
+      "description": "Reports a successful compilation whose optional deployment failed.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-succeeded",
+          "examplePayload": {
+            "runId": "compile-002",
+            "artifactDigest": "sha256:artifact-002",
+            "receiptDigest": "sha256:receipt-002",
+            "completedAt": "2026-07-22T11:11:30.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "deploymentId": "deployment-002",
+            "artifactDigest": "sha256:artifact-002",
+            "reason": "Target rejected credentials",
+            "evidenceDigest": "sha256:deployment-log-002",
+            "failedAt": "2026-07-22T11:14:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002"
+      },
+      "expect": {
+        "runId": "compile-002",
+        "status": "succeeded",
+        "stage": "complete",
+        "activeAttemptIds": [],
+        "artifact": {
+          "digest": "sha256:artifact-002",
+          "receiptDigest": "sha256:receipt-002"
+        },
+        "deployment": {
+          "status": "failed",
+          "deploymentId": "deployment-002",
+          "reason": "Target rejected credentials"
+        }
+      }
+    },
+    {
+      "description": "Reports a cancelled compilation with no resumable work.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-003",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T12:02:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003"
+      },
+      "expect": {
+        "runId": "compile-003",
+        "status": "cancelled",
+        "stage": "cancelled",
+        "activeAttemptIds": [],
+        "artifact": null,
+        "deployment": null
+      }
+    }
+  ]
+}

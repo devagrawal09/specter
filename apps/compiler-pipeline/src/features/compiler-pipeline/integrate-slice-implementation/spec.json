@@ -1,0 +1,476 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "integrateSliceImplementation",
+  "description": "Integrates a Slice patch in deterministic Slice-name order after verifying its immutable specification, owned paths, and assigned base.",
+  "scenarios": [
+    {
+      "description": "Integrates the lexicographically next valid Slice patch and records the resulting source tree.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-001",
+            "assignedBaseRevision": "git:source-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T10:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-001",
+            "observedSpecificationDigest": "sha256:create-order-001",
+            "patchDigest": "sha256:patch-001",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts"
+            ],
+            "completedAt": "2026-07-22T10:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "patchDigest": "sha256:patch-001",
+        "reportedBaseRevision": "git:source-001",
+        "observedSpecificationDigest": "sha256:create-order-001",
+        "changedPaths": [
+          "src/features/orders/create-order/impl.ts"
+        ],
+        "currentSourceRevision": "git:source-001",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-001",
+          "sourceTreeDigest": "sha256:tree-001"
+        },
+        "completedAt": "2026-07-22T10:04:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-integrated",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "patchDigest": "sha256:patch-001",
+            "sourceRevision": "git:integrated-001",
+            "sourceTreeDigest": "sha256:tree-001",
+            "completedAt": "2026-07-22T10:04:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects a patch produced against a different assigned base revision.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-002",
+            "assignedBaseRevision": "git:source-002",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T11:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:other-source",
+            "observedSpecificationDigest": "sha256:create-order-002",
+            "patchDigest": "sha256:patch-002",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts"
+            ],
+            "completedAt": "2026-07-22T11:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "patchDigest": "sha256:patch-002",
+        "reportedBaseRevision": "git:other-source",
+        "observedSpecificationDigest": "sha256:create-order-002",
+        "changedPaths": [
+          "src/features/orders/create-order/impl.ts"
+        ],
+        "currentSourceRevision": "git:source-002",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-002",
+          "sourceTreeDigest": "sha256:tree-002"
+        },
+        "completedAt": "2026-07-22T11:04:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Patch base revision differs from its assigned base revision"
+      }
+    },
+    {
+      "description": "Rejects a patch that changed its frozen Slice specification.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-003",
+            "assignedBaseRevision": "git:source-003",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T12:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-003",
+            "observedSpecificationDigest": "sha256:changed-spec",
+            "patchDigest": "sha256:patch-003",
+            "changedPaths": [
+              "src/features/orders/create-order/spec.json"
+            ],
+            "completedAt": "2026-07-22T12:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "patchDigest": "sha256:patch-003",
+        "reportedBaseRevision": "git:source-003",
+        "observedSpecificationDigest": "sha256:changed-spec",
+        "changedPaths": [
+          "src/features/orders/create-order/spec.json"
+        ],
+        "currentSourceRevision": "git:source-003",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-003",
+          "sourceTreeDigest": "sha256:tree-003"
+        },
+        "completedAt": "2026-07-22T12:04:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice specification changed during implementation"
+      }
+    },
+    {
+      "description": "Rejects a patch that writes outside its Slice-owned paths.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-004",
+            "assignedBaseRevision": "git:source-004",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T13:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-004",
+            "observedSpecificationDigest": "sha256:create-order-004",
+            "patchDigest": "sha256:patch-004",
+            "changedPaths": [
+              "src/registry.ts"
+            ],
+            "completedAt": "2026-07-22T13:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "patchDigest": "sha256:patch-004",
+        "reportedBaseRevision": "git:source-004",
+        "observedSpecificationDigest": "sha256:create-order-004",
+        "changedPaths": [
+          "src/registry.ts"
+        ],
+        "currentSourceRevision": "git:source-004",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-004",
+          "sourceTreeDigest": "sha256:tree-004"
+        },
+        "completedAt": "2026-07-22T13:04:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Patch writes outside Slice-owned paths"
+      }
+    },
+    {
+      "description": "Records an integration conflict without erasing the produced patch.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-005",
+            "sliceName": "ordersQuery",
+            "sliceKind": "query",
+            "specificationDigest": "sha256:orders-query-005",
+            "assignedBaseRevision": "git:source-005",
+            "ownedPaths": [
+              "src/features/orders/orders-query"
+            ],
+            "plannedAt": "2026-07-22T14:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-005",
+            "sliceName": "ordersQuery",
+            "attemptId": "orders-query-attempt-001",
+            "baseRevision": "git:source-005",
+            "observedSpecificationDigest": "sha256:orders-query-005",
+            "patchDigest": "sha256:patch-005",
+            "changedPaths": [
+              "src/features/orders/orders-query/impl.ts"
+            ],
+            "completedAt": "2026-07-22T14:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-005",
+        "sliceName": "ordersQuery",
+        "attemptId": "orders-query-attempt-001",
+        "patchDigest": "sha256:patch-005",
+        "reportedBaseRevision": "git:source-005",
+        "observedSpecificationDigest": "sha256:orders-query-005",
+        "changedPaths": [
+          "src/features/orders/orders-query/impl.ts"
+        ],
+        "currentSourceRevision": "git:integrated-create-order",
+        "result": {
+          "status": "conflict",
+          "reason": "Patch does not apply cleanly"
+        },
+        "completedAt": "2026-07-22T14:04:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-integration-failed",
+          "examplePayload": {
+            "runId": "compile-005",
+            "sliceName": "ordersQuery",
+            "attemptId": "orders-query-attempt-001",
+            "patchDigest": "sha256:patch-005",
+            "currentSourceRevision": "git:integrated-create-order",
+            "reason": "Patch does not apply cleanly",
+            "failedAt": "2026-07-22T14:04:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects integrating a Slice before a lexicographically earlier produced Slice.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-006",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-006",
+            "assignedBaseRevision": "git:source-006",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T15:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-006",
+            "sliceName": "ordersQuery",
+            "sliceKind": "query",
+            "specificationDigest": "sha256:orders-query-006",
+            "assignedBaseRevision": "git:source-006",
+            "ownedPaths": [
+              "src/features/orders/orders-query"
+            ],
+            "plannedAt": "2026-07-22T15:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-006",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-006",
+            "observedSpecificationDigest": "sha256:create-order-006",
+            "patchDigest": "sha256:patch-create-order-006",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts"
+            ],
+            "completedAt": "2026-07-22T15:03:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-006",
+            "sliceName": "ordersQuery",
+            "attemptId": "orders-query-attempt-001",
+            "baseRevision": "git:source-006",
+            "observedSpecificationDigest": "sha256:orders-query-006",
+            "patchDigest": "sha256:patch-orders-query-006",
+            "changedPaths": [
+              "src/features/orders/orders-query/impl.ts"
+            ],
+            "completedAt": "2026-07-22T15:02:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-006",
+        "sliceName": "ordersQuery",
+        "attemptId": "orders-query-attempt-001",
+        "patchDigest": "sha256:patch-orders-query-006",
+        "reportedBaseRevision": "git:source-006",
+        "observedSpecificationDigest": "sha256:orders-query-006",
+        "changedPaths": [
+          "src/features/orders/orders-query/impl.ts"
+        ],
+        "currentSourceRevision": "git:source-006",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-orders-query-006",
+          "sourceTreeDigest": "sha256:tree-orders-query-006"
+        },
+        "completedAt": "2026-07-22T15:04:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "An earlier Slice is waiting for integration"
+      }
+    },
+    {
+      "description": "Rejects a late integration result after cancellation.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-007",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-007",
+            "assignedBaseRevision": "git:source-007",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T16:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-007",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-007",
+            "observedSpecificationDigest": "sha256:create-order-007",
+            "patchDigest": "sha256:patch-007",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts"
+            ],
+            "completedAt": "2026-07-22T16:03:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-007",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T16:03:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-007",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "patchDigest": "sha256:patch-007",
+        "reportedBaseRevision": "git:source-007",
+        "observedSpecificationDigest": "sha256:create-order-007",
+        "changedPaths": [
+          "src/features/orders/create-order/impl.ts"
+        ],
+        "currentSourceRevision": "git:source-007",
+        "result": {
+          "status": "integrated",
+          "sourceRevision": "git:integrated-007",
+          "sourceTreeDigest": "sha256:tree-007"
+        },
+        "completedAt": "2026-07-22T16:04:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is cancelled"
+      }
+    }
+  ]
+}

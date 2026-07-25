@@ -1,0 +1,197 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "reaction",
+  "name": "compilationWorkReaction",
+  "description": "Runs external compiler work with stable operation keys so durable Event replay is safe after retries or restart.",
+  "scenarios": [
+    {
+      "description": "Prepares the sandbox after compilation starts.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        }
+      ],
+      "expect": [
+        {
+          "type": "prepareCompilationWorkspace",
+          "operationKey": "compile-001:workspace:attempt-1",
+          "runId": "compile-001",
+          "sourceRevision": "git:source-001",
+          "sourceTreeDigest": "sha256:source-tree-001",
+          "specificationBundleDigest": "sha256:bundle-001",
+          "profileDigest": "sha256:profile-001"
+        }
+      ]
+    },
+    {
+      "description": "Runs one agent with only the planned Slice-owned paths and frozen inputs.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-002",
+            "assignedBaseRevision": "git:source-002",
+            "specificationDigest": "sha256:create-order-002",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T11:02:00.000Z"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "type": "runSliceImplementationAgent",
+          "operationKey": "compile-002:slice:createOrder:create-order-attempt-001",
+          "runId": "compile-002",
+          "sliceName": "createOrder",
+          "attemptId": "create-order-attempt-001",
+          "baseRevision": "git:source-002",
+          "specificationDigest": "sha256:create-order-002",
+          "ownedPaths": [
+            "src/features/orders/create-order"
+          ]
+        }
+      ]
+    },
+    {
+      "description": "Runs whole-application verification for the exact active attempt.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "application-verification-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "attemptId": "verification-attempt-001",
+            "sourceRevision": "git:assembled-003",
+            "sourceTreeDigest": "sha256:assembled-tree-003",
+            "specificationBundleDigest": "sha256:bundle-003",
+            "profileDigest": "sha256:profile-003",
+            "verifier": {
+              "name": "@specter-ts/core/testing",
+              "version": "0.4.0"
+            },
+            "toolchain": {
+              "runtime": "node@24.4.1",
+              "packageManager": "pnpm@10.13.1"
+            },
+            "startedAt": "2026-07-22T12:06:00.000Z"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "type": "runApplicationVerification",
+          "operationKey": "compile-003:verification:verification-attempt-001",
+          "runId": "compile-003",
+          "attemptId": "verification-attempt-001",
+          "sourceTreeDigest": "sha256:assembled-tree-003",
+          "specificationBundleDigest": "sha256:bundle-003",
+          "profileDigest": "sha256:profile-003"
+        }
+      ]
+    },
+    {
+      "description": "Builds the artifact from the exact verified source tree.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-004",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-004",
+            "sourceTreeDigest": "sha256:assembled-tree-004",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-004",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T13:09:00.000Z"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "type": "buildAndVerifyArtifact",
+          "operationKey": "compile-004:artifact:artifact-attempt-001",
+          "runId": "compile-004",
+          "attemptId": "artifact-attempt-001",
+          "sourceRevision": "git:assembled-004",
+          "sourceTreeDigest": "sha256:assembled-tree-004",
+          "verificationEvidenceManifestDigest": "sha256:verification-evidence-004",
+          "artifactKind": "container"
+        }
+      ]
+    },
+    {
+      "description": "Deploys the exact artifact and receipt requested.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-005",
+            "deploymentId": "deployment-005",
+            "artifactDigest": "sha256:artifact-005",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-005",
+            "receiptDigest": "sha256:receipt-005",
+            "receiptUri": "artifact://receipts/compile-005.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T14:12:00.000Z"
+          }
+        }
+      ],
+      "expect": [
+        {
+          "type": "deployArtifact",
+          "operationKey": "compile-005:deployment:deployment-005",
+          "runId": "compile-005",
+          "deploymentId": "deployment-005",
+          "artifactDigest": "sha256:artifact-005",
+          "receiptDigest": "sha256:receipt-005",
+          "adapter": "container",
+          "target": "production"
+        }
+      ]
+    },
+    {
+      "description": "Produces no work after cancellation.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-006",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T15:00:00.000Z"
+          }
+        }
+      ],
+      "expect": []
+    }
+  ]
+}

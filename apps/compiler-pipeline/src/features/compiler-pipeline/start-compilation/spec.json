@@ -1,0 +1,164 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "startCompilation",
+  "description": "Starts a compilation from an immutable source revision, specification bundle, and adapter profile.",
+  "scenarios": [
+    {
+      "description": "Starts a compilation with two frozen Slice specifications.",
+      "given": [],
+      "when": {
+        "runId": "compile-001",
+        "requestedAt": "2026-07-22T10:00:00.000Z",
+        "sourceRevision": "git:source-001",
+        "sourceTreeDigest": "sha256:source-tree-001",
+        "specificationBundleDigest": "sha256:bundle-001",
+        "specifications": [
+          {
+            "name": "createOrder",
+            "kind": "command",
+            "digest": "sha256:create-order-001",
+            "scenarioCount": 5
+          },
+          {
+            "name": "ordersQuery",
+            "kind": "query",
+            "digest": "sha256:orders-query-001",
+            "scenarioCount": 3
+          }
+        ],
+        "profile": {
+          "name": "specter-solid-sqlite",
+          "digest": "sha256:profile-001"
+        },
+        "deployment": {
+          "adapter": "container",
+          "target": "production"
+        }
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-001",
+                "scenarioCount": 5
+              },
+              {
+                "name": "ordersQuery",
+                "kind": "query",
+                "digest": "sha256:orders-query-001",
+                "scenarioCount": 3
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": {
+              "adapter": "container",
+              "target": "production"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects starting a compilation whose run identifier already exists.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "requestedAt": "2026-07-22T10:05:00.000Z",
+            "sourceRevision": "git:source-002",
+            "sourceTreeDigest": "sha256:source-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-002",
+                "scenarioCount": 5
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "requestedAt": "2026-07-22T10:06:00.000Z",
+        "sourceRevision": "git:other-source",
+        "sourceTreeDigest": "sha256:other-source-tree",
+        "specificationBundleDigest": "sha256:other-bundle",
+        "specifications": [
+          {
+            "name": "otherSlice",
+            "kind": "command",
+            "digest": "sha256:other-slice",
+            "scenarioCount": 1
+          }
+        ],
+        "profile": {
+          "name": "specter-solid-sqlite",
+          "digest": "sha256:profile-001"
+        },
+        "deployment": null
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation run already exists"
+      }
+    },
+    {
+      "description": "Rejects contradictory specifications for the same Slice name.",
+      "given": [],
+      "when": {
+        "runId": "compile-003",
+        "requestedAt": "2026-07-22T10:10:00.000Z",
+        "sourceRevision": "git:source-003",
+        "sourceTreeDigest": "sha256:source-tree-003",
+        "specificationBundleDigest": "sha256:bundle-003",
+        "specifications": [
+          {
+            "name": "createOrder",
+            "kind": "command",
+            "digest": "sha256:create-order-a",
+            "scenarioCount": 5
+          },
+          {
+            "name": "createOrder",
+            "kind": "command",
+            "digest": "sha256:create-order-b",
+            "scenarioCount": 6
+          }
+        ],
+        "profile": {
+          "name": "specter-solid-sqlite",
+          "digest": "sha256:profile-001"
+        },
+        "deployment": null
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Specification bundle contains contradictory Slice definitions"
+      }
+    }
+  ]
+}
