@@ -1,0 +1,46 @@
+{
+  "name": "@specter/personal-mail",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "predev": "pnpm spec:build && pnpm db:migrate",
+    "dev": "vite dev",
+    "dev:kill": "fuser -k 41738/tcp || true",
+    "build": "pnpm spec:build && vite build --mode client && vite build",
+    "prestart": "pnpm db:migrate",
+    "start": "node dist/index.js",
+    "preview": "vite preview",
+    "test": "pnpm spec:build && vitest run",
+    "test:e2e": "playwright test",
+    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "spec:build": "node ../../packages/spec/dist/cli.js export src/features",
+    "db:prepare": "node -e \"require('node:fs').mkdirSync('data', { recursive: true })\"",
+    "db:migrate": "pnpm db:prepare && drizzle-kit migrate",
+    "db:generate": "drizzle-kit generate",
+    "lint": "biome lint"
+  },
+  "dependencies": {
+    "@hono/node-server": "2.0.3",
+    "@hono/vite-build": "1.11.1",
+    "@hono/vite-dev-server": "0.25.3",
+    "@libsql/client": "^0.17.3",
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
+    "@specter-ts/sqlite": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "dotenv": "^17.4.2",
+    "effect": "4.0.0-beta.78",
+    "hono": "4.12.19",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.5",
+    "@playwright/test": "^1.60.0",
+    "drizzle-kit": "^0.31.10",
+    "typescript": "^6.0.2",
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
+  }
+}

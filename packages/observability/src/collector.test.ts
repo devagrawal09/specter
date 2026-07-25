@@ -353,6 +353,134 @@ describe('Specter observability collector', () => {
     ])
   })
 
+  it('reports expected command rejections separately from runtime failures', async () => {
+    const { collector } = await setup()
+
+    await collector.ingest(
+      batch('rejected-command', [
+        observation({
+          observationId: 'rejection-1',
+          sequence: 1,
+          kind: 'command.rejected',
+          operationId: 'command-1',
+          outcome: 'rejected',
+          commandType: 'removeTodo',
+        }),
+      ]),
+    )
+
+    await expect(collector.overview()).resolves.toMatchObject({
+      observationCount: 1,
+      failureCount: 0,
+      rejectionCount: 1,
+      sources: [{ failureCount: 0, rejectionCount: 1 }],
+    })
+  })
+
+  it('keeps activity and trace filters scoped to the complete runtime source', async () => {
+    const { collector } = await setup()
+    const upgradedSource = { ...source, runtimeVersion: '0.5.0' }
+    await collector.ingest(
+      batch('complete-source-identity', [
+        observation({
+          observationId: 'shared-observation',
+          sequence: 1,
+          kind: 'query.completed',
+          operationId: 'shared-operation',
+          outcome: 'succeeded',
+        }),
+        observation({
+          source: upgradedSource,
+          observationId: 'shared-observation',
+          sequence: 1,
+          kind: 'query.completed',
+          operationId: 'shared-operation',
+          outcome: 'succeeded',
+        }),
+      ]),
+    )
+
+    await expect(
+      collector.activity({
+        application: source.application,
+        environment: source.environment,
+        runtimeLanguage: source.runtimeLanguage,
+        runtimeVersion: source.runtimeVersion,
+        instanceId: source.instanceId,
+        eventLogId: source.eventLogId,
+      }),
+    ).resolves.toHaveLength(1)
+    await expect(
+      collector.trace('shared-operation', {
+        application: source.application,
+        environment: source.environment,
+        runtimeLanguage: source.runtimeLanguage,
+        runtimeVersion: source.runtimeVersion,
+        instanceId: source.instanceId,
+        eventLogId: source.eventLogId,
+      }),
+    ).resolves.toMatchObject({
+      observations: [{ source: { runtimeVersion: '0.4.0' } }],
+    })
+  })
+
+  it('keeps exact per-specification totals beyond the recent activity window', async () => {
+    const { collector } = await setup()
+    const selectedDigest = `sha256:${'a'.repeat(64)}` as const
+    const otherDigest = `sha256:${'b'.repeat(64)}` as const
+    const observations = [
+      observation({
+        observationId: 'selected-execution',
+        sequence: 1,
+        kind: 'command.completed',
+        operationId: 'selected-operation',
+        outcome: 'succeeded',
+        specificationDigest: selectedDigest,
+      }),
+      ...Array.from({ length: 204 }, (_, index) =>
+        observation({
+          observationId: `other-execution-${index}`,
+          sequence: index + 2,
+          kind: 'query.completed',
+          operationId: `other-operation-${index}`,
+          outcome: 'succeeded',
+          specificationDigest: otherDigest,
+        }),
+      ),
+    ]
+    for (let index = 0; index < observations.length; index += 100)
+      await collector.ingest(
+        batch(
+          `execution-page-${index}`,
+          observations.slice(index, index + 100),
+        ),
+      )
+
+    const recent = await collector.activity({ limit: 200 })
+    expect(
+      recent.some((item) => item.specificationDigest === selectedDigest),
+    ).toBe(false)
+    await expect(collector.overview()).resolves.toMatchObject({
+      observationCount: 205,
+      sources: [
+        {
+          executionsBySpecification: {
+            [selectedDigest]: {
+              executions: 1,
+              failures: 0,
+              rejections: 0,
+            },
+            [otherDigest]: {
+              executions: 204,
+              failures: 0,
+              rejections: 0,
+            },
+          },
+        },
+      ],
+    })
+  })
+
   it('resolves a unique parent operation across instances and rejects ambiguous parents', async () => {
     const { collector } = await setup()
     const secondInstance: RuntimeSource = {
@@ -492,9 +620,11 @@ describe('Specter observability collector', () => {
     expect(ingestion.headers.get('Specter-Protocol-Version')).toBe('1')
     const overview = await handler(new Request('http://collector/v1/overview'))
     expect(overview.headers.get('Specter-Protocol-Version')).toBeNull()
+    expect(overview.headers.get('cache-control')).toBe('no-store')
     await expect(overview.json()).resolves.toMatchObject({ failureCount: 1 })
     const dashboard = await handler(new Request('http://collector/'))
     expect(dashboard.headers.get('Specter-Protocol-Version')).toBeNull()
+    expect(dashboard.headers.get('cache-control')).toBe('no-store')
     const html = await dashboard.text()
     expect(html).toContain('Specter runtime observability')
     expect(html).not.toContain('<private>')
