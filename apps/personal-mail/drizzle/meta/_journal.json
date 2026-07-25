@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1784721600000,
+      "tag": "0000_personal_mail",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1784752157524,
+      "tag": "0001_overjoyed_polaris",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785005099122,
+      "tag": "0002_empty_multiple_man",
+      "breakpoints": true
+    }
+  ]
+}

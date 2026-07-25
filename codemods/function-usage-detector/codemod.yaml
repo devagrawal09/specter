@@ -1,0 +1,25 @@
+schema_version: "1.0"
+
+name: "function-usage-detector"
+version: "0.1.0"
+description: "Generate JSON and HTML reports for short or rarely called functions"
+author: "devagrawal09"
+license: "MIT"
+
+
+targets:
+  # Keep this aligned with the files matched in workflow.yaml.
+  languages: ["javascript", "jsx", "typescript", "tsx"]
+
+keywords: ["analysis", "functions", "call-sites", "code-mining", "reporting"]
+
+registry:
+  access: "public"
+  visibility: "public"
+
+capabilities: []
+
+workflows:
+  - name: main
+    default: true
+    path: workflow.yaml

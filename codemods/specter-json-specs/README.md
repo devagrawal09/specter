@@ -21,6 +21,10 @@ pnpm check-types
 pnpm dlx codemod@latest workflow validate -w workflow.yaml
 ```
 
+The optional `pnpm validate-package:ai` command invokes an external AI validator
+that may transmit package source. It is intentionally excluded from `pnpm
+verify` and the root test baseline; run it only with explicit authorization.
+
 ## License
 
 MIT
