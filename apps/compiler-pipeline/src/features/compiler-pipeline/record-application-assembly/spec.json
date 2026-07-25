@@ -1,0 +1,188 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "recordApplicationAssembly",
+  "description": "Records compiler-owned shared wiring after every Slice patch has been integrated in deterministic order.",
+  "scenarios": [
+    {
+      "description": "Records registry and schema wiring generated from the frozen specification bundle.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-001",
+                "scenarioCount": 5
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-integrated",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "patchDigest": "sha256:patch-001",
+            "sourceRevision": "git:integrated-001",
+            "sourceTreeDigest": "sha256:integrated-tree-001",
+            "completedAt": "2026-07-22T10:04:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "inputSourceRevision": "git:integrated-001",
+        "inputSourceTreeDigest": "sha256:integrated-tree-001",
+        "observedSpecificationBundleDigest": "sha256:bundle-001",
+        "observedProfileDigest": "sha256:profile-001",
+        "wiringDigest": "sha256:wiring-001",
+        "sourceRevision": "git:assembled-001",
+        "sourceTreeDigest": "sha256:assembled-tree-001",
+        "assembledAt": "2026-07-22T10:05:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "application-assembled",
+          "examplePayload": {
+            "runId": "compile-001",
+            "inputSourceRevision": "git:integrated-001",
+            "inputSourceTreeDigest": "sha256:integrated-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "profileDigest": "sha256:profile-001",
+            "wiringDigest": "sha256:wiring-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "assembledAt": "2026-07-22T10:05:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects assembly when a frozen compilation input has changed.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "requestedAt": "2026-07-22T11:00:00.000Z",
+            "sourceRevision": "git:source-002",
+            "sourceTreeDigest": "sha256:source-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-002"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-integrated",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "patchDigest": "sha256:patch-002",
+            "sourceRevision": "git:integrated-002",
+            "sourceTreeDigest": "sha256:integrated-tree-002",
+            "completedAt": "2026-07-22T11:04:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "inputSourceRevision": "git:integrated-002",
+        "inputSourceTreeDigest": "sha256:integrated-tree-002",
+        "observedSpecificationBundleDigest": "sha256:changed-bundle",
+        "observedProfileDigest": "sha256:profile-002",
+        "wiringDigest": "sha256:wiring-002",
+        "sourceRevision": "git:assembled-002",
+        "sourceTreeDigest": "sha256:assembled-tree-002",
+        "assembledAt": "2026-07-22T11:05:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Frozen compilation inputs changed before application assembly"
+      }
+    },
+    {
+      "description": "Rejects assembly before every planned Slice is integrated.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "requestedAt": "2026-07-22T12:00:00.000Z",
+            "sourceRevision": "git:source-003",
+            "sourceTreeDigest": "sha256:source-tree-003",
+            "specificationBundleDigest": "sha256:bundle-003",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-003",
+                "scenarioCount": 5
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-003"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-003",
+            "assignedBaseRevision": "git:source-003",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T12:01:10.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "inputSourceRevision": "git:source-003",
+        "inputSourceTreeDigest": "sha256:source-tree-003",
+        "observedSpecificationBundleDigest": "sha256:bundle-003",
+        "observedProfileDigest": "sha256:profile-003",
+        "wiringDigest": "sha256:wiring-003",
+        "sourceRevision": "git:assembled-003",
+        "sourceTreeDigest": "sha256:assembled-tree-003",
+        "assembledAt": "2026-07-22T12:05:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Not every planned Slice is integrated"
+      }
+    }
+  ]
+}

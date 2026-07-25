@@ -1,0 +1,168 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "recordDeployment",
+  "description": "Records success or failure for deployment of one exact artifact digest.",
+  "scenarios": [
+    {
+      "description": "Records successful deployment of the requested artifact.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-001",
+            "deploymentId": "deployment-001",
+            "artifactDigest": "sha256:artifact-001",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+            "receiptDigest": "sha256:receipt-001",
+            "receiptUri": "artifact://receipts/compile-001.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T10:12:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "deploymentId": "deployment-001",
+        "artifactDigest": "sha256:artifact-001",
+        "status": "succeeded",
+        "endpoint": "https://compiler-app.example.com",
+        "completedAt": "2026-07-22T10:14:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-succeeded",
+          "examplePayload": {
+            "runId": "compile-001",
+            "deploymentId": "deployment-001",
+            "artifactDigest": "sha256:artifact-001",
+            "endpoint": "https://compiler-app.example.com",
+            "completedAt": "2026-07-22T10:14:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Records deployment failure without invalidating the compiled artifact.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-002",
+            "deploymentId": "deployment-002",
+            "artifactDigest": "sha256:artifact-002",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-002",
+            "receiptDigest": "sha256:receipt-002",
+            "receiptUri": "artifact://receipts/compile-002.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T11:12:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "deploymentId": "deployment-002",
+        "artifactDigest": "sha256:artifact-002",
+        "status": "failed",
+        "reason": "Target rejected credentials",
+        "evidenceDigest": "sha256:deployment-log-002",
+        "completedAt": "2026-07-22T11:14:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "deploymentId": "deployment-002",
+            "artifactDigest": "sha256:artifact-002",
+            "reason": "Target rejected credentials",
+            "evidenceDigest": "sha256:deployment-log-002",
+            "failedAt": "2026-07-22T11:14:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects a deployment result for a different artifact digest.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-003",
+            "deploymentId": "deployment-003",
+            "artifactDigest": "sha256:artifact-003",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-003",
+            "receiptDigest": "sha256:receipt-003",
+            "receiptUri": "artifact://receipts/compile-003.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T12:12:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "deploymentId": "deployment-003",
+        "artifactDigest": "sha256:other-artifact",
+        "status": "failed",
+        "reason": "Target rejected credentials",
+        "evidenceDigest": "sha256:deployment-log-003",
+        "completedAt": "2026-07-22T12:14:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Deployment result does not match the requested artifact"
+      }
+    },
+    {
+      "description": "Rejects a late deployment result after cancellation.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "deployment-requested",
+          "examplePayload": {
+            "runId": "compile-004",
+            "deploymentId": "deployment-004",
+            "artifactDigest": "sha256:artifact-004",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-004",
+            "receiptDigest": "sha256:receipt-004",
+            "receiptUri": "artifact://receipts/compile-004.json",
+            "adapter": "container",
+            "target": "production",
+            "requestedAt": "2026-07-22T13:12:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-004",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T13:13:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "deploymentId": "deployment-004",
+        "artifactDigest": "sha256:artifact-004",
+        "status": "failed",
+        "reason": "Target rejected credentials",
+        "evidenceDigest": "sha256:deployment-log-004",
+        "completedAt": "2026-07-22T13:14:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is cancelled"
+      }
+    }
+  ]
+}

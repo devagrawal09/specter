@@ -25,7 +25,7 @@ packages/observability/    shared collector, dashboard, CLI, and telemetry produ
 packages/create-specter/   create-specter initializer CLI
 protocol/                  normative schemas, behavior, and golden fixtures
 runtimes/go/               independent Go 1.24 runtime and Todo reference app
-codemods/specter-envelope-api/ deterministic flat API to envelope migration
+codemods/specter-json-specs/ deterministic 0.3-to-0.4 JSON-spec migration
 apps/reference/            Todo Reference application used as the starter template
 apps/booking-reference/    Meeting-room booking Reference application
 apps/threadplane-reference/ Threadplane-style workspace Reference application
@@ -173,7 +173,7 @@ The unpublished `0.4.0` release set contains `@specter-ts/spec`,
 `@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/protocol`,
 `@specter-ts/observability`, and
 `create-specter`. Release verification builds every publishable package before
-workspace typechecks/tests, validates the envelope codemod package, packs and
+workspace typechecks/tests, validates the JSON-spec migration codemod, packs and
 tests a generated starter, and runs that starter's Playwright workflow.
 
 `release:auth` checks all nine names. It verifies that the authenticated npm
