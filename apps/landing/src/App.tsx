@@ -271,7 +271,7 @@ export function App(): JSX.Element {
       </header>
 
       <main id="main-content" tabIndex={-1}>
-        <section class="hero">
+        <section class="hero content-panel">
           <h1 class="hero__title">Compile JSON Specs into Complete Apps</h1>
           <p class="hero__lede">
             Specter is a framework for authoring specifications that can be
@@ -287,7 +287,7 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        <section class="band" id="stack">
+        <section class="band content-panel" id="stack">
           <div class="band__head">
             <h2>Works With Your Stack</h2>
           </div>
@@ -305,62 +305,60 @@ export function App(): JSX.Element {
           </div>
         </section>
 
-        <article class="compiler-article compiler-argument" id="why">
+        <article
+          class="compiler-article compiler-argument content-panel"
+          id="why"
+        >
           <header class="compiler-article__head">
-            <h2>LLMs can’t compile!</h2>
+            <h2>LLMs generate code. Specter makes it trustworthy.</h2>
           </header>
 
           <div
             class="compiler-visual"
             role="img"
-            aria-label="A compiler deterministically maps source to one output. An LLM can produce many implementations from one specification. Specter constrains those implementations with generated scaffolds and tests."
+            aria-label="A compiler maps source to deterministic output. An LLM alone produces plausible code. Specter combines the specification with generated constraints to produce an implementation verified against the specification."
           >
             <strong class="compiler-visual__label compiler-visual__label--compiler">
               compiler
             </strong>
             <span class="compiler-visual__flow">
-              source <b aria-hidden="true">→</b> one output
+              source <b aria-hidden="true">→</b> deterministic output
             </span>
             <strong class="compiler-visual__label compiler-visual__label--llm">
-              LLM
+              LLM alone
             </strong>
             <span class="compiler-visual__flow">
-              spec <b aria-hidden="true">↗ → ↘</b> many outputs
+              spec <b aria-hidden="true">→</b> plausible code
             </span>
             <strong class="compiler-visual__label compiler-visual__label--specter">
               Specter
             </strong>
             <span class="compiler-visual__flow">
-              spec + scaffolds + tests <b aria-hidden="true">→</b> constrained
-              output
+              spec + constraints <b aria-hidden="true">→</b> verified against
+              spec
             </span>
           </div>
 
           <div class="compiler-argument__body">
             <p>
-              Compilers transform source code into low-level logic so that we
-              can author logic using higher-level primitives. Compilers also
-              provide deterministic guarantees about the low-level logic being
-              generated, so we can trust their output without reviewing every
-              line manually.
+              Compilers are trusted because source code constrains their output.
+              LLMs are useful because they can invent an implementation.
             </p>
             <p>
-              LLMs are famously nondeterministic. This is by design: it allows
-              them to solve problems creatively. But it also means LLMs can’t
-              compile specifications into implementations on their own.
+              That flexibility becomes a liability when the model can also
+              invent architecture, skip required behavior, or change what the
+              specification means.
             </p>
             <p class="compiler-argument__answer">
-              Specter addresses this by procedurally generating scaffolds and
-              tests from the specifications. Those constraints ensure that
-              LLM-generated code follows a predefined structure, fulfills the
-              specified behavior, and doesn’t accidentally perform unspecified
-              actions.
+              Specter compiles structure, boundaries, and tests from the
+              specification, then lets the agent fill in the implementation. The
+              code can vary. The specified behavior cannot.
             </p>
           </div>
         </article>
       </main>
 
-      <footer class="foot">
+      <footer class="foot content-panel">
         <span>Specter · specifications for agent-built applications</span>
         <a href={REPOSITORY_URL}>GitHub ↗</a>
       </footer>

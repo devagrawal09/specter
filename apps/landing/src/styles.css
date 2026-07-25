@@ -13,6 +13,7 @@
   --amber: #f6c177;
   --violet: #a5b4fc;
   --topbar-bg: rgba(10, 13, 17, 0.82);
+  --panel-translucent: rgba(14, 19, 26, 0.76);
   --page-glow: rgba(52, 211, 153, 0.09);
   --accent-rule: rgba(110, 231, 183, 0.52);
   --amber-line: rgba(246, 193, 119, 0.38);
@@ -45,6 +46,7 @@
   --amber: #8a4d08;
   --violet: #584fad;
   --topbar-bg: rgba(245, 247, 243, 0.86);
+  --panel-translucent: rgba(251, 252, 250, 0.78);
   --page-glow: rgba(8, 118, 83, 0.1);
   --accent-rule: rgba(8, 118, 83, 0.55);
   --amber-line: rgba(138, 77, 8, 0.38);
@@ -1120,6 +1122,23 @@ h3 {
   color: var(--accent);
 }
 
+/* ---------- page panels ---------- */
+.content-panel {
+  margin-block: clamp(16px, 2.5vw, 28px);
+  padding: clamp(32px, 5vw, 58px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-translucent);
+  box-shadow: 0 28px 70px -58px var(--code-shadow);
+  backdrop-filter: blur(8px);
+}
+
+.foot.content-panel {
+  width: calc(100% - 32px);
+  margin: 16px auto 28px;
+  padding: 20px clamp(20px, 4vw, 36px);
+}
+
 /* ---------- animation ---------- */
 @keyframes blink {
   0%,
@@ -1332,5 +1351,15 @@ h3 {
 
   .brand__tag {
     display: none;
+  }
+
+  .content-panel {
+    margin-block: 14px;
+    padding: 28px 20px;
+  }
+
+  .foot.content-panel {
+    width: calc(100% - 24px);
+    padding: 18px 20px;
   }
 }
