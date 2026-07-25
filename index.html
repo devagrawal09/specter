@@ -3,23 +3,46 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Specter — give your coding agent a better architecture</title>
+    <title>Specter — Compile JSON Specs into Complete Apps</title>
     <meta
       name="description"
-      content="Give coding agents executable Slice specifications, bounded context, and conformance checks for TypeScript applications. Explore the Specter main-branch preview."
+      content="Specter is a framework for authoring specifications that coding agents can compile into complete, well-architected, fully tested applications."
     />
     <meta name="theme-color" content="#0a0d11" />
+    <script>
+      ;(() => {
+        const storageKey = 'specter-theme'
+        let theme
+
+        try {
+          const storedTheme = localStorage.getItem(storageKey)
+          if (storedTheme === 'light' || storedTheme === 'dark') {
+            theme = storedTheme
+          }
+        } catch {}
+
+        theme ??= matchMedia('(prefers-color-scheme: light)').matches
+          ? 'light'
+          : 'dark'
+
+        document.documentElement.dataset.theme = theme
+        document.documentElement.style.colorScheme = theme
+        document
+          .querySelector('meta[name="theme-color"]')
+          ?.setAttribute('content', theme === 'light' ? '#f5f7f3' : '#0a0d11')
+      })()
+    </script>
     <link rel="canonical" href="https://devagrawal09.github.io/specter/" />
     <link rel="icon" href="/specter/favicon.svg" type="image/svg+xml" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Specter" />
     <meta
       property="og:title"
-      content="Specter — give your coding agent a better architecture"
+      content="Specter — Compile JSON Specs into Complete Apps"
     />
     <meta
       property="og:description"
-      content="Executable Slice specifications, bounded agent context, and conformance checks for TypeScript applications."
+      content="Author specifications that coding agents can compile into complete, well-architected, fully tested applications."
     />
     <meta property="og:url" content="https://devagrawal09.github.io/specter/" />
     <meta
@@ -31,18 +54,18 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta
       name="twitter:title"
-      content="Specter — give your coding agent a better architecture"
+      content="Specter — Compile JSON Specs into Complete Apps"
     />
     <meta
       name="twitter:description"
-      content="Executable Slice specifications, bounded agent context, and conformance checks for TypeScript applications."
+      content="Author specifications that coding agents can compile into complete, well-architected, fully tested applications."
     />
     <meta
       name="twitter:image"
       content="https://devagrawal09.github.io/specter/og-image.png"
     />
-    <script type="module" crossorigin src="/specter/assets/index-BA0ySP89.js"></script>
-    <link rel="stylesheet" crossorigin href="/specter/assets/index-ClIvQSBZ.css">
+    <script type="module" crossorigin src="/specter/assets/index-9oS9P3bA.js"></script>
+    <link rel="stylesheet" crossorigin href="/specter/assets/index-cBY_f70o.css">
   </head>
   <body>
     <div id="root"></div>
