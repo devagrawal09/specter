@@ -7,6 +7,8 @@ export type CollectedRuntimeObservation = RuntimeObservation & {
 export type RuntimeActivityFilter = {
   readonly application?: string
   readonly environment?: string
+  readonly runtimeLanguage?: string
+  readonly runtimeVersion?: string
   readonly instanceId?: string
   readonly eventLogId?: string
   readonly kind?: string
@@ -21,16 +23,32 @@ export type RuntimeActivityFilter = {
 
 export type RuntimeTraceFilter = Pick<
   RuntimeActivityFilter,
-  'application' | 'environment' | 'instanceId' | 'eventLogId'
+  | 'application'
+  | 'environment'
+  | 'runtimeLanguage'
+  | 'runtimeVersion'
+  | 'instanceId'
+  | 'eventLogId'
 >
+
+export type RuntimeExecutionSummary = {
+  readonly executions: number
+  readonly failures: number
+  readonly rejections: number
+}
 
 export type RuntimeSourceSummary = {
   readonly source: RuntimeSource
   readonly observationCount: number
   readonly failureCount: number
+  readonly rejectionCount: number
+  readonly droppedObservationCount: number
   readonly lastSequence: number
   readonly lastObservedAt: string
   readonly projectionLag: number
+  readonly executionsBySpecification: Readonly<
+    Record<string, RuntimeExecutionSummary>
+  >
 }
 
 export type RuntimeOverview = {
@@ -38,6 +56,7 @@ export type RuntimeOverview = {
   readonly collectorVersion: number
   readonly observationCount: number
   readonly failureCount: number
+  readonly rejectionCount: number
   readonly droppedObservationCount: number
   readonly sources: readonly RuntimeSourceSummary[]
   readonly kinds: Readonly<Record<string, number>>
@@ -96,4 +115,42 @@ export function runtimeEventLogIdentity(source: RuntimeSource) {
   return [source.application, source.environment, source.eventLogId].join(
     '\u0000',
   )
+}
+
+const terminalKinds = new Set<RuntimeObservation['kind']>([
+  'command.completed',
+  'command.rejected',
+  'command.failed',
+  'query.completed',
+  'query.rejected',
+  'query.failed',
+  'reaction.run.completed',
+  'reaction.run.failed',
+])
+
+export function runtimeExecutionIdentity(observation: RuntimeObservation) {
+  const executionIdentity =
+    observation.kind.startsWith('reaction.run.') && observation.deliveryId
+      ? `reaction:${observation.deliveryId}`
+      : `operation:${observation.operationId}`
+  return `${runtimeSourceIdentity(observation.source)}\u0000${executionIdentity}`
+}
+
+export function summarizeRuntimeExecutions(
+  observations: readonly RuntimeObservation[],
+): RuntimeExecutionSummary {
+  const terminalByOperation = new Map<string, RuntimeObservation>()
+  for (const observation of observations) {
+    if (!terminalKinds.has(observation.kind)) continue
+    terminalByOperation.set(runtimeExecutionIdentity(observation), observation)
+  }
+  const terminal = [...terminalByOperation.values()]
+  return {
+    executions: terminal.length,
+    failures: terminal.filter((observation) => observation.outcome === 'failed')
+      .length,
+    rejections: terminal.filter(
+      (observation) => observation.outcome === 'rejected',
+    ).length,
+  }
 }
