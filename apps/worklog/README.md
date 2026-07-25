@@ -79,11 +79,10 @@ Omit `--json` to read one envelope from standard input. Commands also accept
 exclusive transport overrides. Command failures after a successful server
 health check never fall back to SQLite, avoiding ambiguous duplicate writes.
 
-The production server binds only to `127.0.0.1`. Specter API requests also
-require JSON bodies, a Worklog client header, a loopback Host, and a trusted
-same-origin browser Origin. These controls keep the unauthenticated local API
-out of reach of LAN clients and cross-origin form submissions; Worklog is not
-designed to be exposed through a remote bind or reverse proxy.
+The production server binds only to `127.0.0.1`. Specter API requests require
+JSON bodies and a Worklog client header. A private reverse proxy such as
+tailnet-only Tailscale Serve can forward requests without application Host or
+Origin configuration; the proxy is responsible for access control and HTTPS.
 
 ## Backup
 

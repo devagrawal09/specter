@@ -1,0 +1,230 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "recordArtifactBuild",
+  "description": "Records a tested artifact and a non-self-referential sidecar compilation receipt, or records build failure.",
+  "scenarios": [
+    {
+      "description": "Records a built artifact whose final packaged form passed smoke and conformance checks.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-001",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T10:09:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "attemptId": "artifact-attempt-001",
+        "status": "built",
+        "sourceRevision": "git:assembled-001",
+        "sourceTreeDigest": "sha256:assembled-tree-001",
+        "specificationBundleDigest": "sha256:bundle-001",
+        "profileDigest": "sha256:profile-001",
+        "artifactKind": "container",
+        "artifactDigest": "sha256:artifact-001",
+        "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+        "finalArtifactChecks": [
+          {
+            "name": "packaged-scenario-conformance",
+            "status": "passed",
+            "evidenceDigest": "sha256:packaged-scenarios-001"
+          },
+          {
+            "name": "container-smoke-test",
+            "status": "passed",
+            "evidenceDigest": "sha256:smoke-test-001"
+          }
+        ],
+        "finalArtifactEvidenceDigest": "sha256:artifact-evidence-001",
+        "receiptDigest": "sha256:receipt-001",
+        "receiptUri": "artifact://receipts/compile-001.json",
+        "completedAt": "2026-07-22T10:11:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-built",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "profileDigest": "sha256:profile-001",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-001",
+            "artifactKind": "container",
+            "artifactDigest": "sha256:artifact-001",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+            "finalArtifactChecks": [
+              {
+                "name": "packaged-scenario-conformance",
+                "status": "passed",
+                "evidenceDigest": "sha256:packaged-scenarios-001"
+              },
+              {
+                "name": "container-smoke-test",
+                "status": "passed",
+                "evidenceDigest": "sha256:smoke-test-001"
+              }
+            ],
+            "finalArtifactEvidenceDigest": "sha256:artifact-evidence-001",
+            "receiptDigest": "sha256:receipt-001",
+            "receiptUri": "artifact://receipts/compile-001.json",
+            "completedAt": "2026-07-22T10:11:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Records an artifact build failure using an immutable evidence reference.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-002",
+            "sourceTreeDigest": "sha256:assembled-tree-002",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-002",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T11:09:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "attemptId": "artifact-attempt-001",
+        "status": "failed",
+        "sourceRevision": "git:assembled-002",
+        "sourceTreeDigest": "sha256:assembled-tree-002",
+        "reason": "Container image build failed",
+        "evidenceDigest": "sha256:artifact-failure-log-002",
+        "evidenceUri": "artifact://builds/compile-002/artifact-attempt-001",
+        "completedAt": "2026-07-22T11:11:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-002",
+            "sourceTreeDigest": "sha256:assembled-tree-002",
+            "reason": "Container image build failed",
+            "evidenceDigest": "sha256:artifact-failure-log-002",
+            "evidenceUri": "artifact://builds/compile-002/artifact-attempt-001",
+            "failedAt": "2026-07-22T11:11:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects an artifact result built from a different source tree.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-003",
+            "sourceTreeDigest": "sha256:assembled-tree-003",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-003",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T12:09:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "attemptId": "artifact-attempt-001",
+        "status": "failed",
+        "sourceRevision": "git:other-revision",
+        "sourceTreeDigest": "sha256:other-tree",
+        "reason": "Build failed",
+        "evidenceDigest": "sha256:artifact-failure-log-003",
+        "evidenceUri": "artifact://builds/compile-003/artifact-attempt-001",
+        "completedAt": "2026-07-22T12:11:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Artifact result does not match the active build source tree"
+      }
+    },
+    {
+      "description": "Rejects a late artifact result after cancellation.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-004",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-004",
+            "sourceTreeDigest": "sha256:assembled-tree-004",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-004",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T13:09:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-004",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T13:10:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "attemptId": "artifact-attempt-001",
+        "status": "failed",
+        "sourceRevision": "git:assembled-004",
+        "sourceTreeDigest": "sha256:assembled-tree-004",
+        "reason": "Build failed",
+        "evidenceDigest": "sha256:artifact-failure-log-004",
+        "evidenceUri": "artifact://builds/compile-004/artifact-attempt-001",
+        "completedAt": "2026-07-22T13:11:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is cancelled"
+      }
+    }
+  ]
+}

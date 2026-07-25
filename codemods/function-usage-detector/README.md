@@ -42,9 +42,10 @@ interpretation.
 
 ## Supported functions
 
-The detector covers named function declarations and identifier-bound arrow or
-function expressions. Anonymous callbacks, class and object methods, and
-function values stored in destructuring patterns are intentionally skipped.
+The detector covers named function and generator declarations plus
+identifier-bound arrow, function, and generator expressions. Anonymous
+callbacks, class and object methods, and function values stored in destructuring
+patterns are intentionally skipped.
 The current JavaScript/TypeScript semantic provider does not reliably connect a
 method definition to member-expression calls, so skipping methods avoids
 reporting misleading zero-call-site counts.
@@ -77,8 +78,9 @@ pnpm dlx codemod@1.12.13 workflow run -w workflow.yaml -t /path/to/project \
 ```
 
 The workflow scans JavaScript, JSX, TypeScript, and TSX source files. It excludes
-dependencies, generated output, coverage, declaration files, and codemod
-packages by default.
+dependencies, declaration files, codemod packages, coverage, and common
+generated trees such as `build`, `dist`, `generated`, `out`, `target`, `.next`,
+`.nuxt`, `.svelte-kit`, and `.turbo` by default.
 
 Codemod dry-run mode performs the analysis and emits warnings/metrics, but the
 runtime does not persist cross-step state or filesystem artifacts in dry-runs.
@@ -92,13 +94,16 @@ unchanged.
 pnpm test
 pnpm check-types
 pnpm validate
-pnpm validate-package
 ```
 
 `pnpm test` proves that report-only analysis leaves every fixture unchanged,
 checks emitted metrics snapshots, validates the JSON summary, tests output-path
 containment and HTML escaping, verifies the self-contained report shell, and
 runs a cross-file workflow smoke test over the generated artifacts.
+
+The optional `pnpm validate-package:ai` command invokes an external AI validator
+that may transmit package source. It is intentionally excluded from `pnpm
+verify` and the root test baseline; run it only with explicit authorization.
 
 ## License
 

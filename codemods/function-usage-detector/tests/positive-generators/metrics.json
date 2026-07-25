@@ -1,0 +1,28 @@
+{
+  "function-usage-findings": [
+    {
+      "cardinality": {
+        "callSites": "1",
+        "file": "input.ts",
+        "function": "rareGenerator",
+        "kind": "declaration",
+        "line": "1",
+        "lines": "3",
+        "reason": "few-call-sites"
+      },
+      "count": 1
+    },
+    {
+      "cardinality": {
+        "callSites": "1",
+        "file": "input.ts",
+        "function": "rareGeneratorExpression",
+        "kind": "variable",
+        "line": "9",
+        "lines": "3",
+        "reason": "few-call-sites"
+      },
+      "count": 1
+    }
+  ]
+}

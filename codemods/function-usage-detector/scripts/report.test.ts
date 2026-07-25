@@ -1,4 +1,15 @@
 import assert from 'node:assert/strict'
+import {
+  lstatSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import {
   buildReport,
@@ -6,7 +17,11 @@ import {
   renderJsonReport,
   type FunctionUsageFinding,
 } from './report.ts'
-import { reportDirectory } from './report-path.ts'
+import {
+  prepareReportDirectory,
+  reportDirectory,
+  writeReportArtifact,
+} from './report-path.ts'
 
 const finding: FunctionUsageFinding = {
   id: 'src/math.ts:4:17:double',
@@ -90,5 +105,54 @@ test('keeps report output inside the target directory', () => {
   assert.throws(
     () => reportDirectory('/workspace/project', '/tmp/outside'),
     /must be relative/,
+  )
+})
+
+test('rejects report directories that escape through a symlink', () => {
+  const root = mkdtempSync(join(tmpdir(), 'function-usage-report-path-'))
+  try {
+    const target = join(root, 'target')
+    const outside = join(root, 'outside')
+    mkdirSync(target)
+    mkdirSync(outside)
+    symlinkSync(outside, join(target, '.reports'))
+
+    assert.throws(
+      () => prepareReportDirectory(target, '.reports/functions'),
+      /symbolic link/,
+    )
+    assert.equal(lstatSync(join(target, '.reports')).isSymbolicLink(), true)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('replaces a report file symlink without writing through it', () => {
+  const root = mkdtempSync(join(tmpdir(), 'function-usage-report-file-'))
+  try {
+    const target = join(root, 'target')
+    const outside = join(root, 'outside.json')
+    mkdirSync(target)
+    writeFileSync(outside, 'outside')
+    symlinkSync(outside, join(target, 'report.json'))
+
+    writeReportArtifact(target, 'report.json', 'inside')
+
+    assert.equal(readFileSync(outside, 'utf8'), 'outside')
+    assert.equal(readFileSync(join(target, 'report.json'), 'utf8'), 'inside')
+    assert.equal(lstatSync(join(target, 'report.json')).isSymbolicLink(), false)
+  } finally {
+    rmSync(root, { force: true, recursive: true })
+  }
+})
+
+test('rejects report filenames that contain a path', () => {
+  assert.throws(
+    () => writeReportArtifact('/workspace/project', '../outside.json', '{}'),
+    /must not contain a path/,
+  )
+  assert.throws(
+    () => writeReportArtifact('/workspace/project', '..', '{}'),
+    /must not contain a path/,
   )
 })

@@ -46,7 +46,12 @@ export type FunctionUsageReport = {
   generatedAt: string
   target: string
   detector: {
-    functionShapes: ['function-declaration', 'identifier-bound-function']
+    functionShapes: [
+      'function-declaration',
+      'generator-declaration',
+      'identifier-bound-function',
+      'identifier-bound-generator',
+    ]
     usageMetric: 'resolved-direct-call-sites'
     limitations: string[]
   }
@@ -95,10 +100,15 @@ export function buildReport(input: {
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     target: input.target,
     detector: {
-      functionShapes: ['function-declaration', 'identifier-bound-function'],
+      functionShapes: [
+        'function-declaration',
+        'generator-declaration',
+        'identifier-bound-function',
+        'identifier-bound-generator',
+      ],
       usageMetric: 'resolved-direct-call-sites',
       limitations: [
-        'Only named function declarations and identifier-bound arrow or function expressions are analyzed.',
+        'Only named function or generator declarations and identifier-bound arrow, function, or generator expressions are analyzed.',
         'Usage counts only semantically resolved direct calls; JSX, callbacks, registrations, aliases, and unresolved package references are not direct call sites.',
         'The threshold applies to call sites, not unique callers. Distinct direct callers are included as supporting evidence.',
       ],

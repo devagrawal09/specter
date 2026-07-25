@@ -1,9 +1,11 @@
 import type { Codemod } from 'codemod:ast-grep'
 import type TSX from 'codemod:ast-grep/langs/tsx'
 import { acquireLock, getState, setState } from 'codemod:workflow'
-import { mkdirSync, writeFileSync } from 'fs'
 import { relative, resolve } from 'path'
-import { reportDirectory } from './report-path.ts'
+import {
+  prepareReportDirectory,
+  writeReportArtifact,
+} from './report-path.ts'
 import {
   buildReport,
   renderHtmlReport,
@@ -28,7 +30,7 @@ const writeReport: Codemod<TSX> = async (_root, options) => {
       return null
     }
 
-    const outputDirectory = reportDirectory(
+    const outputDirectory = prepareReportDirectory(
       options.targetDir,
       options.params.report_directory ?? '.codemod-reports/function-usage',
     )
@@ -47,9 +49,16 @@ const writeReport: Codemod<TSX> = async (_root, options) => {
     const jsonPath = resolve(outputDirectory, 'function-usage-report.json')
     const htmlPath = resolve(outputDirectory, 'function-usage-report.html')
 
-    mkdirSync(outputDirectory, { recursive: true })
-    writeFileSync(jsonPath, renderJsonReport(report))
-    writeFileSync(htmlPath, renderHtmlReport(report))
+    writeReportArtifact(
+      outputDirectory,
+      'function-usage-report.json',
+      renderJsonReport(report),
+    )
+    writeReportArtifact(
+      outputDirectory,
+      'function-usage-report.html',
+      renderHtmlReport(report),
+    )
     setState(REPORT_WRITTEN_STATE_KEY, true, false)
 
     console.warn(

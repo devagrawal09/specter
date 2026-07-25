@@ -11,8 +11,8 @@
     "test:workflow": "pnpm dlx codemod@1.12.13 workflow run -w workflow.yaml -t tests/workspace-smoke --allow-dirty --no-interactive --param report_directory=.codemod-reports/workflow-test && node scripts/verify-workflow-report.mjs",
     "check-types": "tsc --noEmit",
     "validate": "pnpm dlx codemod@1.12.13 workflow validate -w workflow.yaml",
-    "validate-package": "pnpm dlx codemod@1.12.13 ai call validate_codemod_package --input '{\"package_path\":\".\"}'",
-    "verify": "pnpm test && pnpm check-types && pnpm validate && pnpm validate-package"
+    "validate-package:ai": "pnpm dlx codemod@1.12.13 ai call validate_codemod_package --input '{\"package_path\":\".\"}'",
+    "verify": "pnpm test && pnpm check-types && pnpm validate"
   },
   "devDependencies": {
     "@codemod.com/jssg-types": "1.6.2",

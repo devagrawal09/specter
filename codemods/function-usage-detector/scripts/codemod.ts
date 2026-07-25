@@ -12,6 +12,7 @@ type FunctionCandidate = {
   body: SgNode<TSX>
   kind: 'declaration' | 'variable'
   name: SgNode<TSX>
+  referenceNames: SgNode<TSX>[]
 }
 
 const findings = useMetricAtom('function-usage-findings')
@@ -30,7 +31,7 @@ const codemod: Codemod<TSX> = async (root, options) => {
 
   for (const candidate of functionCandidates(root.root())) {
     const lineCount = codeLineCount(candidate.body)
-    const usage = usageEvidence(candidate.name)
+    const usage = usageEvidence(candidate.referenceNames)
     const callSiteCount = usage.callSites.length
     const isShort = lineCount < minimumLines
     const hasFewCallSites = callSiteCount < minimumCallSites
@@ -115,7 +116,23 @@ function functionCandidates(rootNode: SgNode<TSX>): FunctionCandidate[] {
   for (const declaration of rootNode.findAll({
     rule: { kind: 'function_declaration' },
   })) {
-    addCandidate(candidates, declaration.field('name'), declaration.field('body'), 'declaration')
+    addCandidate(
+      candidates,
+      declaration.field('name'),
+      declaration.field('body'),
+      'declaration',
+    )
+  }
+
+  for (const declaration of rootNode.findAll({
+    rule: { kind: 'generator_function_declaration' },
+  })) {
+    addCandidate(
+      candidates,
+      declaration.field('name'),
+      declaration.field('body'),
+      'declaration',
+    )
   }
 
   for (const declarator of rootNode.findAll({
@@ -124,12 +141,20 @@ function functionCandidates(rootNode: SgNode<TSX>): FunctionCandidate[] {
     const value = declarator.field('value')
     if (
       value?.kind() !== 'arrow_function' &&
-      value?.kind() !== 'function_expression'
+      value?.kind() !== 'function_expression' &&
+      value?.kind() !== 'generator_function'
     ) {
       continue
     }
 
-    addCandidate(candidates, declarator.field('name'), value.field('body'), 'variable')
+    const internalName = value.field('name')
+    addCandidate(
+      candidates,
+      declarator.field('name'),
+      value.field('body'),
+      'variable',
+      internalName?.kind() === 'identifier' ? [internalName] : [],
+    )
   }
 
   return candidates
@@ -140,79 +165,102 @@ function addCandidate(
   name: SgNode<TSX> | null,
   body: SgNode<TSX> | null,
   kind: FunctionCandidate['kind'],
+  additionalReferenceNames: SgNode<TSX>[] = [],
 ) {
   if (!name || !body) return
   if (name.kind() !== 'identifier') return
 
-  candidates.push({ body, kind, name })
+  candidates.push({
+    body,
+    kind,
+    name,
+    referenceNames: [name, ...additionalReferenceNames],
+  })
 }
 
 function codeLineCount(body: SgNode<TSX>) {
-  let source = body.text()
+  const source = body.text()
+  let contentStart = 0
+  let contentEnd = source.length
   if (body.kind() === 'statement_block') {
     const openingBrace = source.indexOf('{')
     const closingBrace = source.lastIndexOf('}')
     if (openingBrace >= 0 && closingBrace > openingBrace) {
-      source = source.slice(openingBrace + 1, closingBrace)
+      contentStart = openingBrace + 1
+      contentEnd = closingBrace
     }
   }
+
+  const bodyStart = body.range().start.index
+  const commentRanges = body
+    .findAll({ rule: { kind: 'comment' } })
+    .map((comment) => ({
+      start: comment.range().start.index - bodyStart,
+      end: comment.range().end.index - bodyStart,
+    }))
+    .sort((left, right) => left.start - right.start)
 
   let count = 0
-  let inBlockComment = false
+  let commentIndex = 0
+  let hasCode = false
 
-  for (const line of source.split(/\r?\n/)) {
-    let cursor = 0
-    let hasCode = false
-
-    while (cursor < line.length) {
-      if (inBlockComment) {
-        const end = line.indexOf('*/', cursor)
-        if (end === -1) break
-        inBlockComment = false
-        cursor = end + 2
-        continue
-      }
-
-      while (/\s/.test(line[cursor] ?? '')) cursor += 1
-      if (cursor >= line.length || line.startsWith('//', cursor)) break
-      if (line.startsWith('/*', cursor)) {
-        inBlockComment = true
-        cursor += 2
-        continue
-      }
-
-      hasCode = true
-      break
+  for (let index = contentStart; index < contentEnd; index += 1) {
+    while (
+      commentIndex < commentRanges.length &&
+      index >= (commentRanges[commentIndex]?.end ?? Number.POSITIVE_INFINITY)
+    ) {
+      commentIndex += 1
     }
 
-    if (hasCode) count += 1
+    const character = source[index] ?? ''
+    if (character === '\n') {
+      if (hasCode) count += 1
+      hasCode = false
+      continue
+    }
+
+    const comment = commentRanges[commentIndex]
+    const insideComment =
+      comment !== undefined && index >= comment.start && index < comment.end
+    if (!insideComment && !/\s/.test(character)) {
+      hasCode = true
+    }
   }
 
+  if (hasCode) count += 1
   return count
 }
 
-function usageEvidence(name: SgNode<TSX>) {
+function usageEvidence(names: SgNode<TSX>[]) {
   const callSites = new Set<string>()
+  const referenceSites = new Set<string>()
   const evidence: DirectCallSite[] = []
   let resolvedReferences = 0
 
-  for (const fileReferences of name.references()) {
-    for (const reference of fileReferences.nodes) {
-      resolvedReferences += 1
-      const call = directInvocation(reference)
-      if (!call) continue
+  for (const name of names) {
+    for (const fileReferences of name.references()) {
+      for (const reference of fileReferences.nodes) {
+        const filename = fileReferences.root.relativeFilename()
+        const referenceKey = `${filename}:${reference.range().start.index}`
+        if (referenceSites.has(referenceKey)) continue
+        referenceSites.add(referenceKey)
+        resolvedReferences += 1
 
-      const key = `${fileReferences.root.relativeFilename()}:${call.range().start.index}`
-      if (callSites.has(key)) continue
-      callSites.add(key)
+        const call = directInvocation(reference)
+        if (!call) continue
 
-      const caller = enclosingCaller(call)
-      evidence.push({
-        file: fileReferences.root.relativeFilename(),
-        line: call.range().start.line + 1,
-        column: call.range().start.column + 1,
-        caller,
-      })
+        const callKey = `${filename}:${call.range().start.index}`
+        if (callSites.has(callKey)) continue
+        callSites.add(callKey)
+
+        const caller = enclosingCaller(call)
+        evidence.push({
+          file: filename,
+          line: call.range().start.line + 1,
+          column: call.range().start.column + 1,
+          caller,
+        })
+      }
     }
   }
 
@@ -229,7 +277,10 @@ function usageEvidence(name: SgNode<TSX>) {
 
 function enclosingCaller(call: SgNode<TSX>): DirectCallSite['caller'] {
   for (const ancestor of call.ancestors()) {
-    if (ancestor.kind() === 'function_declaration') {
+    if (
+      ancestor.kind() === 'function_declaration' ||
+      ancestor.kind() === 'generator_function_declaration'
+    ) {
       return {
         kind: 'function',
         name: ancestor.field('name')?.text() ?? '<anonymous>',
@@ -238,7 +289,8 @@ function enclosingCaller(call: SgNode<TSX>): DirectCallSite['caller'] {
     }
     if (
       ancestor.kind() === 'arrow_function' ||
-      ancestor.kind() === 'function_expression'
+      ancestor.kind() === 'function_expression' ||
+      ancestor.kind() === 'generator_function'
     ) {
       const declarator = ancestor.parent()
       return {
@@ -266,21 +318,31 @@ function directInvocation(reference: SgNode<TSX>) {
   let callee = reference
   let parent = callee.parent()
 
-  while (
-    parent &&
-    (parent.kind() === 'parenthesized_expression' ||
-      parent.kind() === 'optional_chain')
-  ) {
-    callee = parent
-    parent = callee.parent()
-  }
+  while (parent) {
+    if (
+      parent.kind() === 'parenthesized_expression' ||
+      parent.kind() === 'optional_chain' ||
+      parent.kind() === 'non_null_expression' ||
+      parent.kind() === 'as_expression' ||
+      parent.kind() === 'satisfies_expression' ||
+      parent.kind() === 'type_assertion' ||
+      parent.kind() === 'instantiation_expression'
+    ) {
+      callee = parent
+      parent = callee.parent()
+      continue
+    }
 
-  if (
-    parent?.kind() === 'member_expression' &&
-    parent.field('property')?.id() === callee.id()
-  ) {
-    callee = parent
-    parent = callee.parent()
+    if (
+      parent.kind() === 'member_expression' &&
+      parent.field('property')?.id() === callee.id()
+    ) {
+      callee = parent
+      parent = callee.parent()
+      continue
+    }
+
+    break
   }
 
   if (

@@ -1,0 +1,312 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "planSliceImplementations",
+  "description": "Freezes isolated implementation ownership for every Slice in the compilation bundle.",
+  "scenarios": [
+    {
+      "description": "Plans one isolated implementation task per frozen Slice.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-001",
+                "scenarioCount": 5
+              },
+              {
+                "name": "ordersQuery",
+                "kind": "query",
+                "digest": "sha256:orders-query-001",
+                "scenarioCount": 3
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "workspace-prepared",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "workspace-attempt-001",
+            "workspaceId": "sandbox-001",
+            "preparedRevision": "git:source-001",
+            "completedAt": "2026-07-22T10:01:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "specificationBundleDigest": "sha256:bundle-001",
+        "plans": [
+          {
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-001",
+            "assignedBaseRevision": "git:source-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ]
+          },
+          {
+            "sliceName": "ordersQuery",
+            "sliceKind": "query",
+            "specificationDigest": "sha256:orders-query-001",
+            "assignedBaseRevision": "git:source-001",
+            "ownedPaths": [
+              "src/features/orders/orders-query"
+            ]
+          }
+        ],
+        "plannedAt": "2026-07-22T10:01:10.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-001",
+            "assignedBaseRevision": "git:source-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T10:01:10.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "ordersQuery",
+            "sliceKind": "query",
+            "specificationDigest": "sha256:orders-query-001",
+            "assignedBaseRevision": "git:source-001",
+            "ownedPaths": [
+              "src/features/orders/orders-query"
+            ],
+            "plannedAt": "2026-07-22T10:01:10.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects a plan whose specification bundle digest differs from the frozen input.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "requestedAt": "2026-07-22T11:00:00.000Z",
+            "sourceRevision": "git:source-002",
+            "sourceTreeDigest": "sha256:source-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-002",
+                "scenarioCount": 5
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "workspace-prepared",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "workspace-attempt-001",
+            "workspaceId": "sandbox-002",
+            "preparedRevision": "git:source-002",
+            "completedAt": "2026-07-22T11:01:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "specificationBundleDigest": "sha256:changed-bundle",
+        "plans": [],
+        "plannedAt": "2026-07-22T11:01:10.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Specification bundle changed after compilation started"
+      }
+    },
+    {
+      "description": "Rejects plans with overlapping owned paths.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "requestedAt": "2026-07-22T12:00:00.000Z",
+            "sourceRevision": "git:source-003",
+            "sourceTreeDigest": "sha256:source-tree-003",
+            "specificationBundleDigest": "sha256:bundle-003",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-003",
+                "scenarioCount": 5
+              },
+              {
+                "name": "ordersQuery",
+                "kind": "query",
+                "digest": "sha256:orders-query-003",
+                "scenarioCount": 3
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "workspace-prepared",
+          "examplePayload": {
+            "runId": "compile-003",
+            "attemptId": "workspace-attempt-001",
+            "workspaceId": "sandbox-003",
+            "preparedRevision": "git:source-003",
+            "completedAt": "2026-07-22T12:01:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "specificationBundleDigest": "sha256:bundle-003",
+        "plans": [
+          {
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-003",
+            "assignedBaseRevision": "git:source-003",
+            "ownedPaths": [
+              "src/features/orders"
+            ]
+          },
+          {
+            "sliceName": "ordersQuery",
+            "sliceKind": "query",
+            "specificationDigest": "sha256:orders-query-003",
+            "assignedBaseRevision": "git:source-003",
+            "ownedPaths": [
+              "src/features/orders/orders-query"
+            ]
+          }
+        ],
+        "plannedAt": "2026-07-22T12:01:10.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation paths overlap"
+      }
+    },
+    {
+      "description": "Rejects planning the same Slice more than once.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-004",
+            "requestedAt": "2026-07-22T13:00:00.000Z",
+            "sourceRevision": "git:source-004",
+            "sourceTreeDigest": "sha256:source-tree-004",
+            "specificationBundleDigest": "sha256:bundle-004",
+            "specifications": [
+              {
+                "name": "createOrder",
+                "kind": "command",
+                "digest": "sha256:create-order-004",
+                "scenarioCount": 5
+              }
+            ],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "workspace-prepared",
+          "examplePayload": {
+            "runId": "compile-004",
+            "attemptId": "workspace-attempt-001",
+            "workspaceId": "sandbox-004",
+            "preparedRevision": "git:source-004",
+            "completedAt": "2026-07-22T13:01:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-planned",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-004",
+            "assignedBaseRevision": "git:source-004",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "plannedAt": "2026-07-22T13:01:10.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "specificationBundleDigest": "sha256:bundle-004",
+        "plans": [
+          {
+            "sliceName": "createOrder",
+            "sliceKind": "command",
+            "specificationDigest": "sha256:create-order-004",
+            "assignedBaseRevision": "git:source-004",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ]
+          }
+        ],
+        "plannedAt": "2026-07-22T13:01:20.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation already planned"
+      }
+    }
+  ]
+}
