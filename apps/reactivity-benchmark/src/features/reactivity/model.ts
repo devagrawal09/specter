@@ -33,6 +33,23 @@ export type ReactiveNodeInput = {
   readonly nodeId: string
 }
 
+export type ReactiveNodeValue =
+  | {
+      readonly status: 'available'
+      readonly value: ReactiveValue
+    }
+  | {
+      readonly status: 'batch-open'
+      readonly batchId: string
+    }
+  | {
+      readonly status:
+        | 'graph-disposed'
+        | 'graph-not-found'
+        | 'not-found'
+        | 'not-readable'
+    }
+
 export type DisposeReactiveGraphInput = {
   readonly graphId: string
 }

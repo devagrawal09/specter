@@ -6,6 +6,7 @@
     "benchmark:upstream": "pnpm spec:build && node scripts/run-upstream.mjs",
     "benchmark:upstream:smoke": "pnpm spec:build && node scripts/run-upstream.mjs --specter-only",
     "build": "pnpm spec:build && tsc --noEmit",
+    "contract:verify": "pnpm spec:build && node scripts/verify-contract.mjs",
     "spec:build": "node ../../packages/spec/dist/cli.js export src/features",
     "test": "pnpm spec:build && vitest run",
     "typecheck": "pnpm spec:build && tsc --noEmit"

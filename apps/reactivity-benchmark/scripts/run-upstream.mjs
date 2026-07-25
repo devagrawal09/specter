@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 
 const appRoot = dirname(dirname(fileURLToPath(import.meta.url)))
 const pin = JSON.parse(
-  readFileSync(join(appRoot, 'scripts/upstream.json'), 'utf8'),
+  readFileSync(join(appRoot, 'upstream.json'), 'utf8'),
 )
 const specterOnly = process.argv.includes('--specter-only')
 const skipTests = process.argv.includes('--skip-tests')

@@ -2,7 +2,7 @@ import { createCommandSlice, event } from '@specter-ts/spec'
 
 export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
   .description(
-    'Records every signal write while identifying whether the value changed from the immediately preceding value.',
+    'Records every portable-JSON signal write and compares live values with Object.is inside the open graph batch.',
   )
   .scenarios(
     {
@@ -13,6 +13,12 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
           batchId: 'build-1',
           nodeId: 'signal-1',
           value: 1,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
         }),
       ],
       when: {
@@ -41,6 +47,12 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
           nodeId: 'signal-1',
           value: 1,
         }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
+        }),
       ],
       when: {
         graphId: 'graph-1',
@@ -60,6 +72,47 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
       ],
     },
     {
+      description: 'Treats an equal-shaped record write as a changed identity.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: {
+            total: 1,
+          },
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-1',
+        nodeId: 'signal-1',
+        value: {
+          total: 1,
+        },
+      },
+      expect: [
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'signal-1',
+          previousValue: {
+            total: 1,
+          },
+          value: {
+            total: 1,
+          },
+          changed: true,
+        }),
+      ],
+    },
+    {
       description: 'Records each write in a multi-write batch.',
       given: [
         event('reactive-signal-created', {
@@ -67,6 +120,12 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
           batchId: 'build-1',
           nodeId: 'signal-1',
           value: 1,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
         }),
         event('reactive-signal-written', {
           graphId: 'graph-1',
@@ -95,6 +154,68 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
       ],
     },
     {
+      description: 'Rejects a different batch while an update batch is open.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
+        }),
+        event('reactive-signal-written', {
+          graphId: 'graph-1',
+          batchId: 'update-1',
+          nodeId: 'signal-1',
+          previousValue: 1,
+          value: 2,
+          changed: true,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'update-2',
+        nodeId: 'signal-1',
+        value: 3,
+      },
+      expect: [],
+      reject: {
+        reason: 'Reactive batch update-1 is already open in graph graph-1',
+      },
+    },
+    {
+      description: 'Rejects a write in a batch that has already settled.',
+      given: [
+        event('reactive-signal-created', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          nodeId: 'signal-1',
+          value: 1,
+        }),
+        event('reactive-batch-settled', {
+          graphId: 'graph-1',
+          batchId: 'build-1',
+          evaluatedComputationCount: 0,
+          executedEffectCount: 0,
+        }),
+      ],
+      when: {
+        graphId: 'graph-1',
+        batchId: 'build-1',
+        nodeId: 'signal-1',
+        value: 2,
+      },
+      expect: [],
+      reject: {
+        reason: 'Reactive batch build-1 is already settled in graph graph-1',
+      },
+    },
+    {
       description: 'Rejects a write to an unknown node.',
       given: [],
       when: {
@@ -120,7 +241,7 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
       ],
       when: {
         graphId: 'graph-1',
-        batchId: 'update-1',
+        batchId: 'build-1',
         nodeId: 'computed-1',
         value: 2,
       },
@@ -141,7 +262,7 @@ export const writeReactiveSignalSpec = createCommandSlice('writeReactiveSignal')
       ],
       when: {
         graphId: 'graph-1',
-        batchId: 'update-1',
+        batchId: 'build-1',
         nodeId: 'effect-1',
         value: 2,
       },

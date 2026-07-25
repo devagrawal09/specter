@@ -1,23 +1,100 @@
-import { createSignal, For, type JSX } from 'solid-js'
-import { CodeBlock } from './CodeBlock'
+import { createSignal, onCleanup, type JSX } from 'solid-js'
 import {
-  adapters,
-  agentBenefits,
-  eventLog,
-  externalApiSource,
-  implementationSource,
-  observabilityOutput,
-  pipeline,
-  portableSpecSource,
-  reactionSource,
-  scenarioTestSource,
-  specSource,
-} from './content'
+  siAngular,
+  siDotnet,
+  siGo,
+  siMongodb,
+  siMysql,
+  siOpenjdk,
+  siPhp,
+  siPostgresql,
+  siReact,
+  siRedis,
+  siRuby,
+  siRust,
+  siSolid,
+  siSqlite,
+  siSvelte,
+  siTypescript,
+  siVuedotjs,
+  type SimpleIcon,
+} from 'simple-icons'
 
 const REPOSITORY_URL = 'https://github.com/devagrawal09/specter'
 const CLONE_COMMAND = `git clone ${REPOSITORY_URL}.git`
 const AGENT_PROMPT = `Summarize \`${CLONE_COMMAND}\``
 const GETTING_STARTED_URL = `${REPOSITORY_URL}/blob/main/docs/getting-started.md`
+const THEME_STORAGE_KEY = 'specter-theme'
+
+type Theme = 'light' | 'dark'
+
+function applyTheme(theme: Theme): void {
+  document.documentElement.dataset.theme = theme
+  document.documentElement.style.colorScheme = theme
+  document
+    .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'light' ? '#f5f7f3' : '#0a0d11')
+}
+
+function ThemeToggle(): JSX.Element {
+  const initialTheme: Theme =
+    document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+  const [theme, setTheme] = createSignal<Theme>(initialTheme)
+  const colorSchemeQuery = window.matchMedia('(prefers-color-scheme: light)')
+  let followsSystem = true
+
+  try {
+    const storedTheme = localStorage.getItem(THEME_STORAGE_KEY)
+    followsSystem = storedTheme !== 'light' && storedTheme !== 'dark'
+  } catch {
+    // Without storage, keep following the system until this page's toggle is used.
+  }
+
+  const followSystemTheme = (event: MediaQueryListEvent) => {
+    if (!followsSystem) return
+
+    const systemTheme: Theme = event.matches ? 'light' : 'dark'
+    applyTheme(systemTheme)
+    setTheme(systemTheme)
+  }
+
+  colorSchemeQuery.addEventListener('change', followSystemTheme)
+  onCleanup(() =>
+    colorSchemeQuery.removeEventListener('change', followSystemTheme),
+  )
+
+  const toggleTheme = () => {
+    const nextTheme: Theme = theme() === 'light' ? 'dark' : 'light'
+    followsSystem = false
+    applyTheme(nextTheme)
+    setTheme(nextTheme)
+
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, nextTheme)
+    } catch {
+      // The selected theme still applies when storage is unavailable.
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      class="theme-toggle"
+      role="switch"
+      aria-checked={theme() === 'light'}
+      aria-label="Light mode"
+      title={`Switch to ${theme() === 'light' ? 'dark' : 'light'} mode`}
+      onClick={toggleTheme}
+    >
+      <span class="theme-toggle__glyph" aria-hidden="true">
+        {theme() === 'light' ? '☼' : '◐'}
+      </span>
+      <span class="theme-toggle__label" aria-hidden="true">
+        light
+      </span>
+    </button>
+  )
+}
 
 function AgentPrompt(): JSX.Element {
   const [copyStatus, setCopyStatus] = createSignal<
@@ -69,12 +146,773 @@ function AgentPrompt(): JSX.Element {
   )
 }
 
+type StackTechnology = {
+  label: string
+  icon?: SimpleIcon
+  status?: 'official' | 'WIP'
+}
+
+type StackGroup = {
+  category: string
+  technologies: StackTechnology[]
+}
+
+function StackLogo(props: StackTechnology): JSX.Element {
+  const tooltip = props.status
+    ? `${props.label} — ${props.status}`
+    : props.label
+
+  return (
+    <li>
+      <span
+        class="stack-logo"
+        classList={{ 'stack-logo--more': !props.icon }}
+        data-tooltip={tooltip}
+        title={tooltip}
+        role="img"
+        aria-label={tooltip}
+        style={props.icon ? `--brand: #${props.icon.hex}` : undefined}
+      >
+        {props.icon ? (
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d={props.icon.path} />
+          </svg>
+        ) : (
+          <span class="stack-logo__more" aria-hidden="true">
+            +…
+          </span>
+        )}
+        {props.status ? (
+          <span
+            class="stack-logo__status"
+            data-status={props.status.toLowerCase()}
+            aria-hidden="true"
+          >
+            {props.status === 'official' ? '✓' : 'WIP'}
+          </span>
+        ) : null}
+      </span>
+    </li>
+  )
+}
+
+type SpecificationFormat = 'typescript' | 'json'
+
+function TypeScriptSpecificationExample(): JSX.Element {
+  return (
+    <pre class="spec-example__code">
+      <code>
+        <span class="syntax-key">import</span>
+        <span class="syntax-punctuation">{' { '}</span>
+        <span class="syntax-variable">createCommandSlice</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-variable">event</span>
+        <span class="syntax-punctuation">{' } '}</span>
+        <span class="syntax-key">from</span>{' '}
+        <span class="syntax-string">'@specter-ts/spec'</span>
+        {'\n\n'}
+        <span class="syntax-key">export default</span>{' '}
+        <span class="syntax-function">createCommandSlice</span>
+        <span class="syntax-punctuation">(</span>
+        <span class="syntax-string">'addTodo'</span>
+        <span class="syntax-punctuation">)</span>
+        {'\n  '}
+        <span class="syntax-punctuation">.</span>
+        <span class="syntax-function">description</span>
+        <span class="syntax-punctuation">(</span>
+        <span class="syntax-string">'Adds a todo when its id is unused.'</span>
+        <span class="syntax-punctuation">)</span>
+        {'\n  '}
+        <span class="syntax-punctuation">.</span>
+        <span class="syntax-function">scenarios</span>
+        <span class="syntax-punctuation">(</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'{'}</span>
+        {'\n      '}
+        <span class="syntax-variable">description</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Adds a new todo.'</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n      '}
+        <span class="syntax-variable">given</span>
+        <span class="syntax-punctuation">: [],</span>
+        {'\n      '}
+        <span class="syntax-variable">when</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-variable">todoId</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'todo-1'</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-variable">title</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Ship Specter'</span>{' '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n      '}
+        <span class="syntax-variable">expect</span>
+        <span class="syntax-punctuation">: [</span>
+        <span class="syntax-function">event</span>
+        <span class="syntax-punctuation">(</span>
+        <span class="syntax-string">'todo-added'</span>
+        <span class="syntax-punctuation">, {'{'}</span>{' '}
+        <span class="syntax-variable">todoId</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'todo-1'</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-variable">title</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Ship Specter'</span>{' '}
+        <span class="syntax-punctuation">{'}'}</span>
+        <span class="syntax-punctuation">)</span>
+        <span class="syntax-punctuation">],</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'{'}</span>
+        {'\n      '}
+        <span class="syntax-variable">description</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Rejects an existing id.'</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n      '}
+        <span class="syntax-variable">given</span>
+        <span class="syntax-punctuation">: [</span>
+        <span class="syntax-function">event</span>
+        <span class="syntax-punctuation">(</span>
+        <span class="syntax-string">'todo-added'</span>
+        <span class="syntax-punctuation">, {'{'}</span>{' '}
+        <span class="syntax-variable">todoId</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'todo-1'</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-variable">title</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Ship Specter'</span>{' '}
+        <span class="syntax-punctuation">{'}'}</span>
+        <span class="syntax-punctuation">)</span>
+        <span class="syntax-punctuation">],</span>
+        {'\n      '}
+        <span class="syntax-variable">when</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-variable">todoId</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'todo-1'</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-variable">title</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Another'</span>{' '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n      '}
+        <span class="syntax-variable">expect</span>
+        <span class="syntax-punctuation">: [],</span>
+        {'\n      '}
+        <span class="syntax-variable">reject</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-variable">reason</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">'Todo already exists'</span>{' '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n  '}
+        <span class="syntax-punctuation">)</span>
+      </code>
+    </pre>
+  )
+}
+
+function JsonSpecificationExample(): JSX.Element {
+  return (
+    <pre class="spec-example__code">
+      <code>
+        <span class="syntax-punctuation">{'{'}</span>
+        {'\n  '}
+        <span class="syntax-key">"$schema"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">
+          "https://specter.dev/specification/v1/slice.schema.json"
+        </span>
+        <span class="syntax-punctuation">,</span>
+        {'\n  '}
+        <span class="syntax-key">"kind"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"command"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n  '}
+        <span class="syntax-key">"name"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"addTodo"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n  '}
+        <span class="syntax-key">"description"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Adds a todo when its id is unused."</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n  '}
+        <span class="syntax-key">"scenarios"</span>
+        <span class="syntax-punctuation">: [{'\n    {'}</span>
+        {'\n      '}
+        <span class="syntax-key">"description"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Adds a new todo."</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n      '}
+        <span class="syntax-key">"given"</span>
+        <span class="syntax-punctuation">: [],</span>
+        {'\n      '}
+        <span class="syntax-key">"when"</span>
+        <span class="syntax-punctuation">: {'{'}</span>
+        {'\n        '}
+        <span class="syntax-key">"todoId"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-1"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n        '}
+        <span class="syntax-key">"title"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Ship Specter"</span>
+        {'\n      '}
+        <span class="syntax-punctuation">{'}'}</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n      '}
+        <span class="syntax-key">"expect"</span>
+        <span class="syntax-punctuation">: [{'\n        {'}</span>
+        {'\n          '}
+        <span class="syntax-key">"kind"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"scenario-event"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n          '}
+        <span class="syntax-key">"eventType"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-added"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n          '}
+        <span class="syntax-key">"examplePayload"</span>
+        <span class="syntax-punctuation">: {'{'}</span>
+        {'\n            '}
+        <span class="syntax-key">"todoId"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-1"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n            '}
+        <span class="syntax-key">"title"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Ship Specter"</span>
+        {'\n          '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n        '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n      '}
+        <span class="syntax-punctuation">]</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'}'}</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'{'}</span>
+        {'\n      '}
+        <span class="syntax-key">"description"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Rejects an existing id."</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n      '}
+        <span class="syntax-key">"given"</span>
+        <span class="syntax-punctuation">: [{'\n        {'}</span>
+        {'\n          '}
+        <span class="syntax-key">"kind"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"scenario-event"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n          '}
+        <span class="syntax-key">"eventType"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-added"</span>
+        <span class="syntax-punctuation">,</span>
+        {'\n          '}
+        <span class="syntax-key">"examplePayload"</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-key">"todoId"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-1"</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-key">"title"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Ship Specter"</span>{' '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n        '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n      '}
+        <span class="syntax-punctuation">],</span>
+        {'\n      '}
+        <span class="syntax-key">"when"</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-key">"todoId"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"todo-1"</span>
+        <span class="syntax-punctuation">, </span>
+        <span class="syntax-key">"title"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Another"</span>{' '}
+        <span class="syntax-punctuation">{'},'}</span>
+        {'\n      '}
+        <span class="syntax-key">"expect"</span>
+        <span class="syntax-punctuation">: [],</span>
+        {'\n      '}
+        <span class="syntax-key">"reject"</span>
+        <span class="syntax-punctuation">: {'{'}</span>{' '}
+        <span class="syntax-key">"reason"</span>
+        <span class="syntax-punctuation">: </span>
+        <span class="syntax-string">"Todo already exists"</span>{' '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n    '}
+        <span class="syntax-punctuation">{'}'}</span>
+        {'\n  '}
+        <span class="syntax-punctuation">]</span>
+        {'\n'}
+        <span class="syntax-punctuation">{'}'}</span>
+      </code>
+    </pre>
+  )
+}
+
+function SpecificationTabs(): JSX.Element {
+  const [format, setFormat] = createSignal<SpecificationFormat>('typescript')
+  let typeScriptTab!: HTMLButtonElement
+  let jsonTab!: HTMLButtonElement
+
+  const selectFormat = (nextFormat: SpecificationFormat, focus = false) => {
+    setFormat(nextFormat)
+    if (focus) {
+      ;(nextFormat === 'typescript' ? typeScriptTab : jsonTab).focus()
+    }
+  }
+
+  const handleTabKeyDown: JSX.EventHandler<HTMLButtonElement, KeyboardEvent> = (
+    event,
+  ) => {
+    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+    event.preventDefault()
+    selectFormat(format() === 'typescript' ? 'json' : 'typescript', true)
+  }
+
+  const isTypeScript = () => format() === 'typescript'
+
+  return (
+    <figure class="spec-example">
+      <figcaption class="spec-example__bar">
+        <span>
+          src/features/todos/add-todo/
+          {isTypeScript() ? 'spec.ts' : 'spec.json'}
+        </span>
+        <div class="spec-example__tabs" role="tablist" aria-label="Spec format">
+          <button
+            ref={typeScriptTab}
+            type="button"
+            class="spec-example__tab"
+            classList={{ 'spec-example__tab--active': isTypeScript() }}
+            role="tab"
+            id="typescript-spec-tab"
+            aria-selected={isTypeScript()}
+            aria-controls="spec-code-panel"
+            tabIndex={isTypeScript() ? 0 : -1}
+            onClick={() => selectFormat('typescript')}
+            onKeyDown={handleTabKeyDown}
+          >
+            TypeScript
+          </button>
+          <button
+            ref={jsonTab}
+            type="button"
+            class="spec-example__tab"
+            classList={{ 'spec-example__tab--active': !isTypeScript() }}
+            role="tab"
+            id="json-spec-tab"
+            aria-selected={!isTypeScript()}
+            aria-controls="spec-code-panel"
+            tabIndex={isTypeScript() ? -1 : 0}
+            onClick={() => selectFormat('json')}
+            onKeyDown={handleTabKeyDown}
+          >
+            JSON
+          </button>
+        </div>
+      </figcaption>
+      <div
+        id="spec-code-panel"
+        role="tabpanel"
+        aria-labelledby={
+          isTypeScript() ? 'typescript-spec-tab' : 'json-spec-tab'
+        }
+      >
+        {isTypeScript() ? (
+          <TypeScriptSpecificationExample />
+        ) : (
+          <JsonSpecificationExample />
+        )}
+      </div>
+    </figure>
+  )
+}
+
+const stack: StackGroup[] = [
+  {
+    category: 'Languages',
+    technologies: [
+      { label: 'TypeScript', icon: siTypescript, status: 'official' },
+      { label: 'Go', icon: siGo, status: 'WIP' },
+      { label: 'Rust', icon: siRust, status: 'WIP' },
+      { label: 'Java', icon: siOpenjdk },
+      { label: 'Ruby', icon: siRuby },
+      { label: 'PHP', icon: siPhp },
+      { label: '.NET', icon: siDotnet },
+      { label: 'And more' },
+    ],
+  },
+  {
+    category: 'Database',
+    technologies: [
+      { label: 'Postgres', icon: siPostgresql },
+      { label: 'SQLite', icon: siSqlite },
+      { label: 'MySQL', icon: siMysql },
+      { label: 'MongoDB', icon: siMongodb },
+      { label: 'And more' },
+    ],
+  },
+  {
+    category: 'Frontend',
+    technologies: [
+      { label: 'React', icon: siReact },
+      { label: 'Solid', icon: siSolid },
+      { label: 'Vue', icon: siVuedotjs },
+      { label: 'Svelte', icon: siSvelte },
+      { label: 'Angular', icon: siAngular },
+      { label: 'And more' },
+    ],
+  },
+  {
+    category: 'Realtime',
+    technologies: [{ label: 'Redis', icon: siRedis }, { label: 'And more' }],
+  },
+]
+
+function ProductivitySections(): JSX.Element {
+  return (
+    <>
+      <section
+        class="productivity-section feature-focus content-panel"
+        id="one-feature"
+      >
+        <div class="productivity-copy">
+          <h2>Build One Feature at a Time</h2>
+          <p>
+            A Specter application is divided into independent vertical slices.
+            Each slice keeps its behavior contract, implementation, state, and
+            tests close together, giving an agent one bounded problem to solve.
+          </p>
+          <ul class="productivity-points">
+            <li>Only the feature’s scenarios define its required behavior.</li>
+            <li>Private state stays behind the feature boundary.</li>
+            <li>
+              Focused tests run without loading every other implementation.
+            </li>
+          </ul>
+        </div>
+
+        <div class="slice-inspector">
+          <div class="slice-inspector__bar">
+            <span>src/features/todos/</span>
+            <span>3 slices</span>
+          </div>
+          <div class="slice-inspector__body">
+            <ul class="slice-inspector__siblings" aria-label="Todo slices">
+              <li class="slice-inspector__sibling slice-inspector__sibling--active">
+                add-todo
+              </li>
+              <li class="slice-inspector__sibling">todos-query</li>
+              <li class="slice-inspector__sibling">completion-reaction</li>
+            </ul>
+            <div class="slice-inspector__focus">
+              <div class="slice-inspector__focus-head">
+                <strong>addTodo</strong>
+                <span>agent scope</span>
+              </div>
+              <div class="slice-file">
+                <code>spec.ts</code>
+                <span>required behavior</span>
+                <b>fixed</b>
+              </div>
+              <div class="slice-file">
+                <code>impl.ts</code>
+                <span>schemas, state, handler</span>
+                <b data-state="agent">agent</b>
+              </div>
+              <div class="slice-file">
+                <code>scenarios.test.ts</code>
+                <span>focused verification</span>
+                <b>generated</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="productivity-section context-section content-panel"
+        id="smaller-models"
+      >
+        <header class="productivity-head">
+          <h2>Small Enough for Smaller Models</h2>
+          <p>
+            Agents perform better when the relevant problem fits cleanly in
+            context. A feature-sized task lets the model focus on its spec and
+            nearby implementation instead of rediscovering the whole
+            application.
+          </p>
+        </header>
+
+        <div class="context-comparison">
+          <div class="context-row context-row--application">
+            <div class="context-row__label">
+              <strong>Whole application</strong>
+              <span>architecture, unrelated features, tests, integrations</span>
+            </div>
+            <div class="context-meter" aria-hidden="true">
+              <span>UI</span>
+              <span>API</span>
+              <span>DB</span>
+              <span>auth</span>
+              <span>jobs</span>
+              <span>billing</span>
+              <span>tests</span>
+            </div>
+            <small>everything competes for attention</small>
+          </div>
+
+          <div class="context-divider" aria-hidden="true">
+            <span>scope to one slice</span>
+            <b>↓</b>
+          </div>
+
+          <div class="context-row context-row--slice">
+            <div class="context-row__label">
+              <strong>One vertical slice</strong>
+              <span>exact scenarios and local implementation files</span>
+            </div>
+            <div class="context-meter" aria-hidden="true">
+              <span>spec</span>
+              <span>implementation</span>
+              <span>tests</span>
+            </div>
+            <small>less context, more attention per requirement</small>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="productivity-section parallel-section content-panel"
+        id="parallel"
+      >
+        <header class="productivity-head">
+          <h2>Parallel by Construction</h2>
+          <p>
+            Independent slices can be assigned to separate agents. They
+            coordinate through explicit event contracts and converge through app
+            registration and whole-application verification.
+          </p>
+        </header>
+
+        <div class="parallel-map">
+          <article class="agent-lane">
+            <div class="agent-lane__head">
+              <span>A</span>
+              <strong>Command</strong>
+            </div>
+            <code>addTodo</code>
+            <p>Decide and emit domain facts.</p>
+            <b>implementation ✓</b>
+          </article>
+          <article class="agent-lane">
+            <div class="agent-lane__head">
+              <span>B</span>
+              <strong>Query</strong>
+            </div>
+            <code>todosQuery</code>
+            <p>Project facts into a public result.</p>
+            <b>implementation ✓</b>
+          </article>
+          <article class="agent-lane">
+            <div class="agent-lane__head">
+              <span>C</span>
+              <strong>Reaction</strong>
+            </div>
+            <code>todoCompletionCheer</code>
+            <p>Respond to committed domain facts.</p>
+            <b>implementation ✓</b>
+          </article>
+
+          <div class="parallel-map__join" aria-hidden="true">
+            <span>↓</span>
+            <span>↓</span>
+            <span>↓</span>
+          </div>
+          <div class="parallel-map__contract">
+            <span>shared event contracts</span>
+            <b>registered app</b>
+            <span>whole-app checks</span>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="productivity-section complete-section content-panel"
+        id="complete"
+      >
+        <div class="productivity-copy">
+          <h2>Complete Means More Than Generated Code</h2>
+          <p>
+            A feature is only useful when it works inside an application.
+            Specter supplies behavioral contracts, runtime boundaries, adapters,
+            and verification; the agent completes the product using your stack.
+          </p>
+          <p class="complete-section__note">
+            The specification constrains described behavior. Everything else
+            remains an ordinary software-engineering decision.
+          </p>
+        </div>
+
+        <div class="application-orbit">
+          <div class="application-orbit__item application-orbit__item--behavior">
+            <span>Behavior</span>
+            <small>exact scenarios</small>
+          </div>
+          <div class="application-orbit__item application-orbit__item--state">
+            <span>State</span>
+            <small>stores + adapters</small>
+          </div>
+          <div class="application-orbit__item application-orbit__item--api">
+            <span>API</span>
+            <small>typed envelopes</small>
+          </div>
+          <div class="application-orbit__core">
+            <strong>Complete app</strong>
+            <span>implemented by agents</span>
+          </div>
+          <div class="application-orbit__item application-orbit__item--ui">
+            <span>UI</span>
+            <small>your framework</small>
+          </div>
+          <div class="application-orbit__item application-orbit__item--work">
+            <span>Background work</span>
+            <small>durable reactions</small>
+          </div>
+          <div class="application-orbit__item application-orbit__item--tests">
+            <span>Verification</span>
+            <small>scenarios + checks</small>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="productivity-section catches-section content-panel"
+        id="catches"
+      >
+        <header class="productivity-head">
+          <h2>What Specter Catches</h2>
+          <p>
+            Generated code is not accepted because it looks plausible. Specter
+            checks the implementation against the specification and the
+            application’s structural rules.
+          </p>
+        </header>
+
+        <div class="checks-console">
+          <div class="checks-console__bar">
+            <span>npm test</span>
+            <b>5 guardrails</b>
+          </div>
+          <div class="checks-console__table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Generated-code mistake</th>
+                  <th scope="col">Detected by</th>
+                  <th scope="col">
+                    <span class="sr-only">Result</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Output differs from its Scenario</td>
+                  <td>Exact Scenario comparison</td>
+                  <td>
+                    <span class="check-failure">fail</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Emits an undeclared Event type</td>
+                  <td>Command outcome authorization</td>
+                  <td>
+                    <span class="check-failure">blocked</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Registers an Event without Scenario coverage</td>
+                  <td>Construction conformance</td>
+                  <td>
+                    <span class="check-failure">reported</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Registers the wrong implementation</td>
+                  <td>Registry/spec name conformance</td>
+                  <td>
+                    <span class="check-failure">blocked</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td>Crosses a private Slice boundary</td>
+                  <td>Project boundary checks</td>
+                  <td>
+                    <span class="check-failure">fail</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="checks-console__result">
+            <span aria-hidden="true">✓</span>
+            <strong>Only conforming implementations move forward.</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="cta productivity-cta content-panel" id="start">
+        <h2>Give a Spec to Your Agent</h2>
+        <p>
+          Start with one feature. Let the specification define what must happen,
+          then let your coding agent decide how to implement it.
+        </p>
+        <AgentPrompt />
+        <div class="cta__links">
+          <a href={GETTING_STARTED_URL}>Read the getting-started guide ↗</a>
+          <a href={REPOSITORY_URL}>Explore the repository ↗</a>
+        </div>
+        <p class="cta__note">
+          TypeScript is official. Go and Rust support are in progress.
+        </p>
+      </section>
+    </>
+  )
+}
+
 export function App(): JSX.Element {
   return (
     <div class="page" id="top">
       <a class="skip-link" href="#main-content">
         Skip to content
       </a>
+
       <header class="topbar">
         <a class="brand" href="#top">
           <span class="brand__mark" aria-hidden="true">
@@ -83,445 +921,219 @@ export function App(): JSX.Element {
           <span class="brand__name">Specter</span>
           <span class="brand__tag">0.4 · main</span>
         </a>
-        <nav class="topnav" aria-label="Pipeline">
-          <For each={pipeline}>
-            {(stage) => (
-              <a class="topnav__link" href={`#${stage.id}`}>
-                {stage.title}
-              </a>
-            )}
-          </For>
+        <nav class="topnav" aria-label="Landing page">
+          <a class="topnav__link" href="#stack">
+            Stack
+          </a>
+          <a class="topnav__link" href="#why">
+            Why Specter
+          </a>
+          <a class="topnav__link" href="#spec-example">
+            Example
+          </a>
+          <a class="topnav__link" href="#one-feature">
+            Agents
+          </a>
         </nav>
         <a class="topbar__link" href={GETTING_STARTED_URL}>
           Docs
         </a>
+        <ThemeToggle />
         <a class="topbar__cta" href="#start">
-          Give it to your agent
+          <span class="topbar__cta-full">Give it to your agent</span>
+          <span class="topbar__cta-short">Give to agent</span>
         </a>
       </header>
 
       <main id="main-content" tabIndex={-1}>
-        <section class="hero">
-          <p class="preview-badge">Specter 0.4 · source preview</p>
-          <p class="eyebrow">
-            Executable specifications · portable JSON · TypeScript + Go
-          </p>
-          <h1 class="hero__title">
-            Give your coding agent a better architecture
-          </h1>
+        <section class="hero content-panel">
+          <h1 class="hero__title">Compile JSON Specs into Complete Apps</h1>
           <p class="hero__lede">
-            Specter turns each vertical Slice into an exact, portable behavior
-            contract. Coding agents work inside a small feature boundary;
-            TypeScript and Go runtimes execute the same scenarios, and the
-            dashboard shows intended behavior beside real execution.
+            Specter is a framework for authoring specifications that can be
+            compiled into complete, well-architected, fully tested applications
+            using coding agents.
           </p>
-          <div class="hero__actions">
+
+          <div class="hero__agent-cta" id="give-to-agent">
+            <p>
+              <strong>Give it to your agent:</strong>
+            </p>
             <AgentPrompt />
-            <a class="btn btn--ghost" href="#pipeline">
-              See the pipeline
-            </a>
-            <a class="btn btn--text" href={REPOSITORY_URL}>
-              View on GitHub ↗
-            </a>
+          </div>
+        </section>
+
+        <section class="band content-panel" id="stack">
+          <div class="band__head">
+            <h2>Works With Your Stack</h2>
+          </div>
+          <div class="grid grid--4 stack-grid">
+            {stack.map((group) => (
+              <article class="stack-card">
+                <h3>{group.category}</h3>
+                <ul class="stack-list">
+                  {group.technologies.map((technology) => (
+                    <StackLogo {...technology} />
+                  ))}
+                </ul>
+              </article>
+            ))}
+          </div>
+        </section>
+
+        <article
+          class="compiler-article compiler-argument content-panel"
+          id="why"
+        >
+          <header class="compiler-article__head">
+            <h2>LLMs generate code. Specter makes it trustworthy.</h2>
+          </header>
+
+          <div
+            class="compiler-visual"
+            role="img"
+            aria-label="A compiler maps source to deterministic output. An LLM alone produces plausible code. Specter combines the specification with generated constraints to produce an implementation verified against the specification."
+          >
+            <strong class="compiler-visual__label compiler-visual__label--compiler">
+              compiler
+            </strong>
+            <span class="compiler-visual__flow">
+              source <b aria-hidden="true">→</b> deterministic output
+            </span>
+            <strong class="compiler-visual__label compiler-visual__label--llm">
+              LLM alone
+            </strong>
+            <span class="compiler-visual__flow">
+              spec <b aria-hidden="true">→</b> plausible code
+            </span>
+            <strong class="compiler-visual__label compiler-visual__label--specter">
+              Specter
+            </strong>
+            <span class="compiler-visual__flow">
+              spec + constraints <b aria-hidden="true">→</b> verified against
+              spec
+            </span>
           </div>
 
-          <div class="hero__pipeline" aria-hidden="true">
-            <For each={pipeline}>
-              {(stage, i) => (
-                <>
-                  <span class="chip">
-                    <b>{stage.step}</b>
-                    {stage.title}
+          <div class="compiler-argument__body">
+            <p>
+              Compilers are trusted because source code constrains their output.
+              LLMs are useful because they can invent an implementation.
+            </p>
+            <p>
+              That flexibility becomes a liability when the model can also
+              invent architecture, skip required behavior, or change what the
+              specification means.
+            </p>
+            <p class="compiler-argument__answer">
+              Specter compiles structure, boundaries, and tests from the
+              specification, then lets the agent fill in the implementation. The
+              code can vary. The specified behavior cannot.
+            </p>
+          </div>
+        </article>
+
+        <section class="spec-result content-panel" id="spec-example">
+          <header class="spec-result__head">
+            <h2>
+              What a Spec Looks Like <span aria-hidden="true">→</span> What You
+              Get
+            </h2>
+            <p>
+              Each feature is described as exact inputs, prior facts, and
+              expected outcomes. Specter turns that contract into a bounded
+              implementation task for a coding agent.
+            </p>
+          </header>
+
+          <div class="spec-result__layout">
+            <SpecificationTabs />
+
+            <div class="spec-result__connector" aria-hidden="true">
+              <span>compile</span>
+              <b>→</b>
+            </div>
+
+            <div class="spec-outputs">
+              <article class="spec-output">
+                <div class="spec-output__icon" aria-hidden="true">
+                  ├─
+                </div>
+                <div>
+                  <span class="spec-output__source">Generated by Specter</span>
+                  <h3>Architecture and boundaries</h3>
+                  <p>
+                    A vertical slice scaffold, implementation stages, registry
+                    wiring, and isolated state boundaries.
+                  </p>
+                  <div class="file-tree">
+                    <span>add-todo/</span>
+                    <span>├─ spec.json</span>
+                    <span>├─ impl.ts</span>
+                    <span>└─ scenarios.test.ts</span>
+                  </div>
+                </div>
+              </article>
+
+              <article class="spec-output">
+                <div
+                  class="spec-output__icon spec-output__icon--test"
+                  aria-hidden="true"
+                >
+                  ✓
+                </div>
+                <div>
+                  <span class="spec-output__source">Executable contract</span>
+                  <h3>Tests for the specified behavior</h3>
+                  <p>
+                    The generated harness runs the implementation against every
+                    scenario and checks exact inputs, events, outputs, and
+                    rejections.
+                  </p>
+                  <div class="test-result">
+                    <span>PASS</span>
+                    <code>Adds a new todo.</code>
+                  </div>
+                </div>
+              </article>
+
+              <article class="spec-output">
+                <div
+                  class="spec-output__icon spec-output__icon--agent"
+                  aria-hidden="true"
+                >
+                  ◆
+                </div>
+                <div>
+                  <span class="spec-output__source">
+                    Completed by your agent
                   </span>
-                  {i() < pipeline.length - 1 ? (
-                    <span class="chip__arrow">→</span>
-                  ) : null}
-                </>
-              )}
-            </For>
-          </div>
-        </section>
-
-        <section class="band" id="how">
-          <div class="band__head">
-            <h2>How it works</h2>
-            <p>
-              The specification records the behavior that must remain stable. An
-              implementation supplies runtime details, and Specter checks the
-              two together through scenario tests and construction-time
-              conformance.
-            </p>
-          </div>
-          <div class="grid grid--3">
-            <article class="card">
-              <h3>Specify the what</h3>
-              <p>
-                Give one Command, Query, or Reaction Slice a stable name,
-                description, and exact scenarios in <code>spec.ts</code>.
-              </p>
-            </article>
-            <article class="card">
-              <h3>Export one portable contract</h3>
-              <p>
-                Deterministically export adjacent <code>spec.json</code>. Every
-                runtime and tool consumes the same strict contract.
-              </p>
-            </article>
-            <article class="card">
-              <h3>Implement, validate, and compose</h3>
-              <p>
-                Supply language-native schemas and handlers, run every scenario,
-                then register one implementation per Slice.
-              </p>
-            </article>
-          </div>
-        </section>
-
-        <section class="stage" id="pipeline">
-          <div class="band__head">
-            <h2>The pipeline</h2>
-            <p>
-              specification → portable JSON → implementation → scenario tests →
-              event log → typed envelope. Each boundary has one explicit job.
-            </p>
-          </div>
-        </section>
-
-        <section class="stage" id="specification">
-          <div class="stage__grid">
-            <div class="stage__copy">
-              <span class="stage__step">01 · specification</span>
-              <h2>The behavior contract stays immutable</h2>
-              <p>
-                A Slice Specification contains only its name, human-readable
-                description, and concrete <em>given / when / expect</em>{' '}
-                scenarios. Runtime schemas, stores, plugins, and handlers stay
-                out of this file.
-              </p>
-              <ul class="ticks">
-                <li>Scenario Events use exact example payloads.</li>
-                <li>
-                  Specifications import only from <code>@specter-ts/spec</code>
-                  and implementation-independent constants.
-                </li>
-                <li>
-                  An accepted Command expects Events; an empty expectation
-                  records a rejected outcome.
-                </li>
-              </ul>
-            </div>
-            <CodeBlock
-              label="features/todos/add-todo/spec.ts"
-              tag="spec"
-              code={specSource}
-            />
-          </div>
-        </section>
-
-        <section class="stage" id="portable-contract">
-          <div class="stage__grid stage__grid--flip">
-            <CodeBlock
-              label="features/todos/add-todo/spec.json"
-              tag="portable contract"
-              code={portableSpecSource}
-            />
-            <div class="stage__copy">
-              <span class="stage__step">02 · portable JSON</span>
-              <h2>One behavior contract, independent of runtime language</h2>
-              <p>
-                <code>specter-spec export</code> converts the TypeScript
-                authoring DSL into strict, versioned JSON. Implementations,
-                scenario runners, and visual tools consume only this artifact.
-              </p>
-              <ul class="ticks">
-                <li>Unknown fields and unsafe JSON values are rejected.</li>
-                <li>Canonical bytes produce a stable specification digest.</li>
-                <li>TypeScript and Go validate the same fixtures.</li>
-              </ul>
+                  <h3>Idiomatic application code</h3>
+                  <p>
+                    The agent implements schemas, storage, and business logic
+                    inside the generated boundaries, using your chosen stack.
+                  </p>
+                  <ul
+                    class="implementation-stages"
+                    aria-label="Implementation stages"
+                  >
+                    <li>input schema</li>
+                    <li>private store</li>
+                    <li>event apply</li>
+                    <li>handler</li>
+                  </ul>
+                </div>
+              </article>
             </div>
           </div>
         </section>
 
-        <section class="stage" id="implementation">
-          <div class="stage__grid stage__grid--flip">
-            <CodeBlock
-              label="features/todos/add-todo/impl.ts"
-              tag="implementation"
-              code={implementationSource}
-            />
-            <div class="stage__copy">
-              <span class="stage__step">03 · implementation</span>
-              <h2>Runtime details complete the specification</h2>
-              <p>
-                The implementation loads generated portable JSON, supplies the
-                schema stages required by that Slice kind, selects a private
-                Slice Store, applies relevant Events, and finishes with a
-                handler.
-              </p>
-              <ul class="ticks">
-                <li>
-                  The builder order makes every runtime dependency visible.
-                </li>
-                <li>Slice State stays private and catches up from Events.</li>
-                <li>One specification can have divergent implementations.</li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section class="stage" id="scenario-tests">
-          <div class="stage__grid">
-            <div class="stage__copy">
-              <span class="stage__step">04 · scenario tests</span>
-              <h2>Run every implementation against its contract</h2>
-              <p>
-                A small test entry point registers the selected implementations,
-                the app's Event Definition catalog, and a scenario runner. The
-                scenario descriptions become the test names.
-              </p>
-              <ul class="ticks">
-                <li>Given Events rebuild the Slice's private test state.</li>
-                <li>Expected Events and rejections are checked exactly.</li>
-                <li>
-                  Registries keep app composition explicit and inspectable.
-                </li>
-              </ul>
-            </div>
-            <CodeBlock
-              label="features/todos/scenarios.test.ts"
-              tag="validation"
-              code={scenarioTestSource}
-            />
-          </div>
-        </section>
-
-        <section class="stage" id="event-log">
-          <div class="stage__grid stage__grid--flip">
-            <CodeBlock
-              label="app event log"
-              tag="durable"
-              tone="output"
-              code={eventLog}
-            />
-            <div class="stage__copy">
-              <span class="stage__step">05 · event log</span>
-              <h2>Accepted facts stay in one ordered history</h2>
-              <p>
-                The Event Log is the durable source of truth for a Specter App.
-                Accepted Commands append domain facts; each Slice catches up by
-                applying the relevant Events in global order.
-              </p>
-              <ul class="ticks">
-                <li>Event payloads contain domain facts, not log metadata.</li>
-                <li>
-                  The starter supplies SQLite; the core depends on an Event Log
-                  adapter contract.
-                </li>
-                <li>
-                  Slice State can catch up again by replaying relevant Events.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section class="stage" id="orchestration">
-          <div class="stage__grid">
-            <div class="stage__copy">
-              <span class="stage__step">flow · reactions</span>
-              <h2>Slices are orchestrated through events</h2>
-              <p>
-                Slices don't call each other. A command appends events; reaction
-                Slices observe committed Events and may produce one typed
-                output. A Reaction Plugin interprets that output, including
-                dispatching a follow-up Command when appropriate.
-              </p>
-              <div class="flow" aria-hidden="true">
-                <span class="flow__node">command</span>
-                <span class="flow__edge">emits →</span>
-                <span class="flow__node flow__node--event">event</span>
-                <span class="flow__edge">observed by →</span>
-                <span class="flow__node">reaction</span>
-                <span class="flow__edge">effect →</span>
-                <span class="flow__node flow__node--muted">command</span>
-              </div>
-            </div>
-            <CodeBlock
-              label="features/todos/todo-completion-cheer-reaction/impl.ts"
-              tag="reaction"
-              code={reactionSource}
-            />
-          </div>
-        </section>
-
-        <section class="band" id="anywhere">
-          <div class="band__head">
-            <h2>Explicit edges around a stable core</h2>
-            <p>
-              Specifications do not depend on databases, transports, or UI
-              frameworks. Implementations and app wiring choose those concrete
-              boundaries without changing the behavior contract.
-            </p>
-          </div>
-          <div class="grid grid--4">
-            <For each={adapters}>
-              {(adapter) => (
-                <article class="card card--slot">
-                  <h3>{adapter.slot}</h3>
-                  <p>{adapter.detail}</p>
-                  <p class="card__swap">{adapter.swap}</p>
-                </article>
-              )}
-            </For>
-          </div>
-        </section>
-
-        <section class="stage" id="external">
-          <div class="stage__grid stage__grid--flip">
-            <CodeBlock
-              label="features/notify/email-plugin.server.ts"
-              tag="plugin"
-              code={externalApiSource}
-            />
-            <div class="stage__copy">
-              <span class="stage__step">integration · plugins</span>
-              <h2>Keep external effects behind a plugin</h2>
-              <p>
-                A Reaction's typed output is interpreted by an explicit plugin.
-                The plugin can call an external service or dispatch another
-                Command while the specification stays focused on observable
-                behavior.
-              </p>
-              <ul class="ticks">
-                <li>Output schemas validate the value before execution.</li>
-                <li>Service credentials stay in server-side plugin modules.</li>
-                <li>
-                  Use the stable delivery ID for downstream idempotency; wrap
-                  slow effects with the optional outbox.
-                </li>
-              </ul>
-            </div>
-          </div>
-        </section>
-
-        <section class="band" id="agents">
-          <div class="band__head">
-            <h2>Built for coding agents</h2>
-            <p>
-              The same boundaries that orient humans give agents smaller context
-              windows and executable examples. Conformance diagnostics point
-              back to a Slice, Scenario, Event, and schema path.
-            </p>
-          </div>
-          <div class="grid grid--2">
-            <For each={agentBenefits}>
-              {(benefit) => (
-                <article class="card">
-                  <h3>{benefit.title}</h3>
-                  <p>{benefit.body}</p>
-                </article>
-              )}
-            </For>
-          </div>
-        </section>
-
-        <section class="stage" id="typed-envelope">
-          <div class="band__head">
-            <span class="stage__step">06 · typed envelope</span>
-            <h2>One typed envelope API in process or over the wire</h2>
-            <p>
-              The completed app exposes command, query, and subscription
-              envelopes. A project-owned transport carries that same contract to
-              remote UI code without importing server, database, or Slice
-              modules.
-            </p>
-          </div>
-          <figure class="map" aria-labelledby="app-shape-caption">
-            <figcaption class="map__cap" id="app-shape-caption">
-              completed app · explicit composition
-            </figcaption>
-            <p class="sr-only">
-              A typed command envelope reaches the addTodo Command Slice and a
-              typed query envelope reaches the todosQuery Query Slice.
-              Registered implementations share the app's ordered Event Log.
-            </p>
-            <pre class="map__art" aria-hidden="true">
-              {MAP_ART}
-            </pre>
-          </figure>
-        </section>
-
-        <section class="stage" id="observability">
-          <div class="stage__grid">
-            <div class="stage__copy">
-              <span class="stage__step">observe · specification + runtime</span>
-              <h2>See intended behavior beside real execution</h2>
-              <p>
-                Runtimes publish each immutable specification once, then attach
-                its digest to Slice telemetry. The shared collector joins both
-                streams without becoming part of application execution.
-              </p>
-              <ul class="ticks">
-                <li>
-                  Browse the whole Slice and every Given / When / Then lane.
-                </li>
-                <li>
-                  Filter activity and causal traces to the exact spec version.
-                </li>
-                <li>TypeScript and Go producers appear in one dashboard.</li>
-              </ul>
-            </div>
-            <CodeBlock
-              label="observability dashboard / addTodo"
-              tag="spec + telemetry"
-              tone="output"
-              code={observabilityOutput}
-            />
-          </div>
-        </section>
-
-        <section class="cta" id="start">
-          <p class="preview-badge preview-badge--center">
-            Specter 0.4 · available on main
-          </p>
-          <h2>Give Specter to your agent</h2>
-          <p>
-            Paste this prompt into your coding agent. It points at the source
-            preview so the agent can inspect the architecture before touching
-            your application.
-          </p>
-          <AgentPrompt />
-          <div class="cta__links">
-            <a href={GETTING_STARTED_URL}>Read the preview guide ↗</a>
-            <a href={REPOSITORY_URL}>Browse the repository ↗</a>
-          </div>
-          <p class="cta__note">
-            Specter 0.4 source is available on <code>main</code>. npm remains on
-            the stable 0.2.1 release until the 0.4 packages are published.
-          </p>
-        </section>
+        <ProductivitySections />
       </main>
 
-      <footer class="foot">
-        <span>
-          Specter · portable Slice specifications for vertically sliced,
-          event-sourced apps.
-        </span>
-        <span class="foot__mark">
-          spec.ts → spec.json → implementation → validation → runtime
-        </span>
+      <footer class="foot content-panel">
+        <span>Specter · specifications for agent-built applications</span>
+        <a href={REPOSITORY_URL}>GitHub ↗</a>
       </footer>
     </div>
   )
 }
-
-const MAP_ART = `        ┌───────────────────────── Specter App ─────────────────────────┐
-        │                                                                │
-command │   { type: 'addTodo', payload } ─▶ [ addTodo ] ─▶ ( todo-added )│
-        │                                                    │           │
- query  │   { type: 'todosQuery', payload } ─▶ [ todosQuery ] ◀─────────┘│
-        │                                                                │
-        │   specifications + selected implementations + Event Definitions│
-        │                                                                │
-        │   ═══════════════════  ordered Event Log  ═══════════════════ │
-        └────────────────────────────────────────────────────────────────┘`

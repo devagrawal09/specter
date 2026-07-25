@@ -3,6 +3,10 @@ import type { CommandScenario, QueryScenario } from '@specter-ts/spec'
 
 import { createFusedReactivityApp } from './app'
 import { reactiveNodeValue } from './features/reactivity/reactive-node-value/impl'
+import type {
+  ReactiveNodeValue,
+  ReactiveValue,
+} from './features/reactivity/model'
 import { reactiveRegistrations } from './features/reactivity/registrations'
 import { reactiveStore } from './features/reactivity/state'
 import {
@@ -66,38 +70,62 @@ describe('approved reactive Slice specifications', () => {
 })
 
 function registerScenarioCallbacks(runtime: FusedSyncRuntime): void {
-  const graphId = 'graph-1'
   const state = runtime.state(reactiveStore)
-  const read = (nodeId: string) =>
-    runtime.query(reactiveNodeValue, { graphId, nodeId })
-  const number = (nodeId: string) => read(nodeId) as number
-  const boolean = (nodeId: string) => read(nodeId) as boolean
-  const observe = (nodeId: string) => () => {
-    read(nodeId)
-    return undefined
-  }
+  for (const graphId of ['graph-1', 'graph-2']) {
+    const read = (nodeId: string): ReactiveValue => {
+      const result = runtime.query(reactiveNodeValue, {
+        graphId,
+        nodeId,
+      }) as ReactiveNodeValue
+      if (result.status !== 'available') {
+        throw new Error(
+          `Fixture could not read ${nodeId} in ${graphId}: ${result.status}`,
+        )
+      }
+      return result.value
+    }
+    const number = (nodeId: string) => read(nodeId) as number
+    const boolean = (nodeId: string) => read(nodeId) as boolean
+    const observe =
+      (...nodeIds: string[]) =>
+      () => {
+        for (const nodeId of nodeIds) read(nodeId)
+        return undefined
+      }
 
-  const callbacks = {
-    'double-signal-1': () => number('signal-1') * 2,
-    'observe-computed-1': observe('computed-1'),
-    'sum-left-right': () => number('left') + number('right'),
-    'head-plus-one': () => number('head') + 1,
-    'head-times-two': () => number('head') * 2,
-    'observe-sum': observe('sum'),
-    'constant-zero-from-head': () => {
-      read('head')
-      return 0
-    },
-    'expensive-constant-plus-one': () => number('constant') + 1,
-    'observe-downstream': observe('downstream'),
-    'select-left-or-right': () =>
-      boolean('selector') ? number('right') : number('left'),
-    'read-head-three-times': () =>
-      number('head') + number('head') + number('head'),
-    'double-head': () => number('head') * 2,
-  } as const
+    const callbacks = {
+      'double-signal-1': () => number('signal-1') * 2,
+      'observe-computed-1': observe('computed-1'),
+      'sum-left-right': () => number('left') + number('right'),
+      'head-plus-one': () => number('head') + 1,
+      'head-times-two': () => number('head') * 2,
+      'observe-sum': observe('sum'),
+      'constant-zero-from-head': () => {
+        read('head')
+        return 0
+      },
+      'expensive-constant-plus-one': () => number('constant') + 1,
+      'observe-downstream': observe('downstream'),
+      'select-left-or-right': () =>
+        boolean('selector') ? number('right') : number('left'),
+      'read-head-three-times': () =>
+        number('head') + number('head') + number('head'),
+      'double-head': () => number('head') * 2,
+      'fresh-parity-record': () => ({ parity: number('head') % 2 }),
+      'observe-left-right': observe('left', 'right'),
+      'observe-signal-1': observe('signal-1'),
+      'observe-value': () => undefined,
+      'observe-other-value': () => undefined,
+      double: () => 2,
+      triple: () => 3,
+      'shared-callback': () => 1,
+      'throws-on-evaluation': () => {
+        throw new Error('fixture failure')
+      },
+    } as const
 
-  for (const [callbackId, callback] of Object.entries(callbacks)) {
-    state.registerCallback(graphId, callbackId, callback)
+    for (const [callbackId, callback] of Object.entries(callbacks)) {
+      state.registerCallback(graphId, callbackId, callback)
+    }
   }
 }

@@ -131,10 +131,10 @@ export class FusedSyncRuntime {
     if (!this.#eventTypes.has(event.type)) {
       throw new Error(`Unknown fused Event type: ${event.type}`)
     }
-    this.#events.push(event)
     for (const projector of this.#projectors.get(event.type) ?? []) {
       projector.handle(event, this.#stateFor(projector.store))
     }
+    this.#events.push(event)
   }
 
   #stateFor<TState>(store: FusedStore<TState>): TState {

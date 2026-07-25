@@ -1,6 +1,7 @@
 import { FusedCommandRejectedError } from '../../../runtime/fused-runtime'
 import { implementFusedCommand } from '../../../runtime/fused-slices'
 import {
+  reactiveBatchSettledEvent,
   reactiveComputationCreatedEvent,
   reactiveEffectCreatedEvent,
   reactiveGraphDisposedEvent,
@@ -18,13 +19,19 @@ export const writeReactiveSignal = implementFusedCommand(specification)
   .apply(reactiveSignalWrittenEvent, applyReactiveEvent)
   .apply(reactiveComputationCreatedEvent, applyReactiveEvent)
   .apply(reactiveEffectCreatedEvent, applyReactiveEvent)
+  .apply(reactiveBatchSettledEvent, applyReactiveEvent)
   .apply(reactiveGraphDisposedEvent, applyReactiveEvent)
   .handle((command, state, context) => {
-    if (state.isDisposed(command.graphId)) {
+    if (state.isSettling(command.graphId)) {
       throw new FusedCommandRejectedError(
-        `Reactive graph ${command.graphId} is disposed`,
+        `Reactive callbacks cannot write in graph ${command.graphId}`,
       )
     }
+    const batchRejection = state.mutationRejection(
+      command.graphId,
+      command.batchId,
+    )
+    if (batchRejection) throw new FusedCommandRejectedError(batchRejection)
     const kind = state.nodeKind(command.graphId, command.nodeId)
     if (kind === undefined) {
       throw new FusedCommandRejectedError(
@@ -36,7 +43,16 @@ export const writeReactiveSignal = implementFusedCommand(specification)
         `Reactive node ${command.nodeId} is not a signal`,
       )
     }
-    const previousValue = state.read(command.graphId, command.nodeId)
+    const result = state.nodeValue(command.graphId, command.nodeId)
+    if (result.status !== 'batch-open' && result.status !== 'available') {
+      throw new FusedCommandRejectedError(
+        `Reactive signal ${command.nodeId} was not found in graph ${command.graphId}`,
+      )
+    }
+    const previousValue =
+      result.status === 'available'
+        ? result.value
+        : state.signalValue(command.graphId, command.nodeId)
     context.emit(
       reactiveSignalWrittenEvent.create({
         ...command,

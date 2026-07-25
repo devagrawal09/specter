@@ -3,6 +3,35 @@ import { describe, expect, it } from 'vitest'
 import { createSpecterFusedSyncFramework } from './framework'
 
 describe('Specter fused synchronous ReactiveFramework', () => {
+  it('matches the upstream direct signal and computed contract', () => {
+    const framework = createSpecterFusedSyncFramework()
+    const source = framework.signal(2)
+    const doubled = framework.computed(() => source.read() * 2)
+
+    expect(doubled.read()).toBe(4)
+  })
+
+  it('supports the upstream three-build warmup before cleanup', () => {
+    const framework = createSpecterFusedSyncFramework()
+    const values: number[] = []
+
+    for (let index = 0; index < 3; index += 1) {
+      const update = framework.withBuild(() => {
+        const source = framework.signal(index)
+        const doubled = framework.computed(() => source.read() * 2)
+        return () => {
+          source.write(index + 1)
+          values.push(doubled.read())
+        }
+      })
+      update()
+    }
+
+    expect(values).toEqual([2, 4, 6])
+    framework.cleanup()
+    expect(framework.withBuild(() => framework.signal(4)).read()).toBe(4)
+  })
+
   it('coalesces writes and runs an effect once with the settled value', () => {
     const framework = createSpecterFusedSyncFramework()
     let source: ReturnType<typeof framework.signal<number>> | undefined
@@ -116,5 +145,58 @@ describe('Specter fused synchronous ReactiveFramework', () => {
     const value = framework.withBuild(() => framework.signal(2))
 
     expect(value.read()).toBe(2)
+  })
+
+  it('evaluates a forward dependency before its dependent', () => {
+    const framework = createSpecterFusedSyncFramework()
+    let later: ReturnType<typeof framework.computed<number>> | undefined
+
+    const first = framework.withBuild(() => {
+      const firstNode = framework.computed(() => (later?.read() as number) + 1)
+      const source = framework.signal(2)
+      later = framework.computed(() => source.read() * 2)
+      return firstNode
+    })
+
+    expect(first.read()).toBe(5)
+  })
+
+  it('publishes no settlement events and discards the graph on callback failure', () => {
+    const framework = createSpecterFusedSyncFramework()
+    let source: ReturnType<typeof framework.signal<number>> | undefined
+
+    expect(() =>
+      framework.withBuild(() => {
+        source = framework.signal(1)
+        framework.computed(() => (source?.read() as number) * 2)
+        framework.computed(() => {
+          throw new Error('boom')
+        })
+      }),
+    ).toThrow(/Reactive callback .* failed/)
+
+    expect(framework.inspect().eventTypes).toEqual([
+      'reactive-signal-created',
+      'reactive-computation-created',
+      'reactive-computation-created',
+    ])
+    expect(() => source?.write(2)).toThrow()
+    expect(framework.withBuild(() => framework.signal(3)).read()).toBe(3)
+  })
+
+  it('rejects callback writes without publishing a partial settlement', () => {
+    const framework = createSpecterFusedSyncFramework()
+
+    expect(() =>
+      framework.withBuild(() => {
+        const source = framework.signal(1)
+        framework.effect(() => source.write(2))
+      }),
+    ).toThrow(/Reactive callback .* failed/)
+
+    expect(framework.inspect().eventTypes).toEqual([
+      'reactive-signal-created',
+      'reactive-effect-created',
+    ])
   })
 })
