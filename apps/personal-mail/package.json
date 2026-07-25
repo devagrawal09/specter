@@ -26,9 +26,11 @@
     "@hono/vite-dev-server": "0.25.3",
     "@libsql/client": "^0.17.3",
     "@specter-ts/core": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/spec": "workspace:*",
     "@specter-ts/sqlite": "workspace:*",
     "drizzle-orm": "^0.45.2",
+    "dotenv": "^17.4.2",
     "effect": "4.0.0-beta.78",
     "hono": "4.12.19",
     "zod": "^4.4.3"

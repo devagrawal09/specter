@@ -1,6 +1,6 @@
 import { asc, eq } from 'drizzle-orm'
 import { sqliteTable, text } from 'drizzle-orm/sqlite-core'
-import { implementReaction } from '@specter-ts/core'
+import { implementReaction, type ReactionPlugin } from '@specter-ts/core'
 import { z } from 'zod'
 
 import { sqliteSliceStore } from '../../../db/specter-store'
@@ -19,6 +19,11 @@ export type AnalyzeThreadEffect = {
   sender: string
   subject: string
   bodyText: string
+}
+
+export type AnalyzeThreadOutput = {
+  type: 'analyzeThread'
+  payload: AnalyzeThreadEffect
 }
 
 export const analysisReactionStates = sqliteTable(
@@ -41,84 +46,90 @@ export const analysisReactionThreads = sqliteTable(
   },
 )
 
-export const analyzeThreadReaction = implementReaction(specification)
-  .outputSchema(
-    z.object({
-      type: z.literal('analyzeThread'),
-      payload: z.object({
-        analysisId: z.string(),
-        threadId: z.string(),
-        provider: z.enum(['local', 'cloud']),
-        sender: z.string(),
-        subject: z.string(),
-        bodyText: z.string(),
+export function createAnalyzeThreadReaction(
+  plugin: ReactionPlugin<AnalyzeThreadOutput> = analyzeThreadPlugin,
+) {
+  return implementReaction(specification)
+    .outputSchema(
+      z.object({
+        type: z.literal('analyzeThread'),
+        payload: z.object({
+          analysisId: z.string(),
+          threadId: z.string(),
+          provider: z.enum(['local', 'cloud']),
+          sender: z.string(),
+          subject: z.string(),
+          bodyText: z.string(),
+        }),
       }),
-    }),
-  )
-  .plugin(analyzeThreadPlugin)
-  .store(sqliteSliceStore)
-  .apply(gmailThreadRecordedEvent, async (event, db) => {
-    await db
-      .insert(analysisReactionThreads)
-      .values({
-        threadId: event.payload.threadId,
-        sender: event.payload.sender,
-        subject: event.payload.subject,
-        bodyText: event.payload.bodyText,
-      })
-      .onConflictDoUpdate({
-        target: analysisReactionThreads.threadId,
-        set: {
+    )
+    .plugin(plugin)
+    .store(sqliteSliceStore)
+    .apply(gmailThreadRecordedEvent, async (event, db) => {
+      await db
+        .insert(analysisReactionThreads)
+        .values({
+          threadId: event.payload.threadId,
           sender: event.payload.sender,
           subject: event.payload.subject,
           bodyText: event.payload.bodyText,
+        })
+        .onConflictDoUpdate({
+          target: analysisReactionThreads.threadId,
+          set: {
+            sender: event.payload.sender,
+            subject: event.payload.subject,
+            bodyText: event.payload.bodyText,
+          },
+        })
+        .run()
+    })
+    .apply(threadAnalysisRequestedEvent, async (event, db) => {
+      await db
+        .insert(analysisReactionStates)
+        .values({
+          analysisId: event.payload.analysisId,
+          threadId: event.payload.threadId,
+          provider: event.payload.provider,
+          status: 'pending',
+        })
+        .onConflictDoNothing()
+        .run()
+    })
+    .apply(threadAnalyzedEvent, async (event, db) => {
+      await db
+        .update(analysisReactionStates)
+        .set({ status: 'complete' })
+        .where(eq(analysisReactionStates.analysisId, event.payload.analysisId))
+        .run()
+    })
+    .handle(async (db) => {
+      const pending = await db
+        .select()
+        .from(analysisReactionStates)
+        .where(eq(analysisReactionStates.status, 'pending'))
+        .orderBy(asc(analysisReactionStates.analysisId))
+        .all()
+      const request = pending[0]
+      if (!request) return undefined
+      const [thread] = await db
+        .select()
+        .from(analysisReactionThreads)
+        .where(eq(analysisReactionThreads.threadId, request.threadId))
+        .all()
+      if (!thread) return undefined
+      return {
+        type: 'analyzeThread' as const,
+        payload: {
+          analysisId: request.analysisId,
+          threadId: request.threadId,
+          provider: request.provider as 'local' | 'cloud',
+          sender: thread.sender,
+          subject: thread.subject,
+          bodyText: thread.bodyText,
         },
-      })
-      .run()
-  })
-  .apply(threadAnalysisRequestedEvent, async (event, db) => {
-    await db
-      .insert(analysisReactionStates)
-      .values({
-        analysisId: event.payload.analysisId,
-        threadId: event.payload.threadId,
-        provider: event.payload.provider,
-        status: 'pending',
-      })
-      .onConflictDoNothing()
-      .run()
-  })
-  .apply(threadAnalyzedEvent, async (event, db) => {
-    await db
-      .update(analysisReactionStates)
-      .set({ status: 'complete' })
-      .where(eq(analysisReactionStates.analysisId, event.payload.analysisId))
-      .run()
-  })
-  .handle(async (db) => {
-    const pending = await db
-      .select()
-      .from(analysisReactionStates)
-      .where(eq(analysisReactionStates.status, 'pending'))
-      .orderBy(asc(analysisReactionStates.analysisId))
-      .all()
-    const request = pending[0]
-    if (!request) return undefined
-    const [thread] = await db
-      .select()
-      .from(analysisReactionThreads)
-      .where(eq(analysisReactionThreads.threadId, request.threadId))
-      .all()
-    if (!thread) return undefined
-    return {
-      type: 'analyzeThread' as const,
-      payload: {
-        analysisId: request.analysisId,
-        threadId: request.threadId,
-        provider: request.provider as 'local' | 'cloud',
-        sender: thread.sender,
-        subject: thread.subject,
-        bodyText: thread.bodyText,
-      },
-    }
-  })
+      }
+    })
+}
+
+export const analyzeThreadReaction = createAnalyzeThreadReaction()

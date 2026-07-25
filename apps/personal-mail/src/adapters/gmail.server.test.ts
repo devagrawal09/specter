@@ -209,6 +209,129 @@ describe('Gmail synchronization durability', () => {
     ).resolves.toMatchObject({ threadId: 'thread-1', labels: ['INBOX'] })
     expect(fetch).toHaveBeenCalledTimes(3)
   })
+
+  test('bounds concurrent thread reads during a full sync', async () => {
+    const { db } = await testDatabase()
+    await connect(db)
+    let active = 0
+    let maximumActive = 0
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/users/me/profile')) {
+        return Response.json({
+          emailAddress: 'owner@example.com',
+          historyId: '200',
+        })
+      }
+      if (url.includes('/users/me/threads?')) {
+        return Response.json({
+          threads: Array.from({ length: 12 }, (_, index) => ({
+            id: `thread-${index}`,
+          })),
+        })
+      }
+      if (url.includes('/users/me/threads/thread-')) {
+        active += 1
+        maximumActive = Math.max(maximumActive, active)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        active -= 1
+        const threadId = new URL(url).pathname.split('/').at(-1) ?? 'thread'
+        return Response.json({
+          ...gmailThread(['INBOX']),
+          id: threadId,
+          messages: [
+            {
+              ...gmailThread(['INBOX']).messages[0],
+              threadId,
+            },
+          ],
+        })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    const batch = await createGmailService({
+      db,
+      fetch,
+      readConcurrency: 3,
+    }).sync()
+
+    expect(batch.threads).toHaveLength(12)
+    expect(maximumActive).toBe(3)
+  })
+
+  test('retries transient Gmail reads without advancing the cursor early', async () => {
+    const { db } = await testDatabase()
+    await connect(db)
+    let profileCalls = 0
+    const sleep = vi.fn(async () => {})
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/users/me/profile')) {
+        profileCalls += 1
+        if (profileCalls === 1) return new Response(null, { status: 429 })
+        return Response.json({
+          emailAddress: 'owner@example.com',
+          historyId: '200',
+        })
+      }
+      if (url.includes('/users/me/threads?')) {
+        return Response.json({ threads: [] })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+
+    await expect(
+      createGmailService({ db, fetch, sleep }).sync(),
+    ).resolves.toMatchObject({ nextHistoryId: '200' })
+    expect(profileCalls).toBe(2)
+    expect(sleep).toHaveBeenCalledOnce()
+    expect(await db.select().from(gmailSyncState).all()).toEqual([])
+  })
+
+  test('times out a hung Gmail read without advancing the cursor', async () => {
+    const { db } = await testDatabase()
+    await connect(db)
+    const fetch = vi.fn(
+      (_input: string | URL | Request, init?: RequestInit) =>
+        new Promise<Response>((_resolve, reject) => {
+          const signal = init?.signal
+          if (signal?.aborted) {
+            reject(signal.reason)
+            return
+          }
+          signal?.addEventListener('abort', () => reject(signal.reason), {
+            once: true,
+          })
+        }),
+    )
+
+    await expect(
+      createGmailService({
+        db,
+        fetch,
+        requestTimeoutMs: 5,
+        readAttempts: 1,
+      }).sync(),
+    ).rejects.toThrow('Gmail request timed out')
+    expect(await db.select().from(gmailSyncState).all()).toEqual([])
+  })
+
+  test('refuses a fake Gmail endpoint in production', async () => {
+    const { db } = await testDatabase()
+    expect(() =>
+      createGmailService({
+        db,
+        env: {
+          NODE_ENV: 'production',
+          SPECTER_MAIL_TEST_PROVIDERS: '1',
+          GMAIL_API_BASE_URL: 'http://127.0.0.1:41740/gmail/v1',
+        },
+      }),
+    ).toThrow(
+      'GMAIL_API_BASE_URL is allowed only for non-production provider tests',
+    )
+  })
 })
 
 describe('Gmail mailbox-action reconciliation', () => {
@@ -216,6 +339,8 @@ describe('Gmail mailbox-action reconciliation', () => {
     actionId: 'action-1',
     threadId: 'thread-1',
     action: 'archive' as const,
+    source: 'manual' as const,
+    authorizedByRuleId: null,
   }
 
   test('reconciles a network-ambiguous mutation before retrying it', async () => {
@@ -271,6 +396,32 @@ describe('Gmail mailbox-action reconciliation', () => {
       reason: 'Gmail rejected the action with HTTP 400',
     })
     expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  test('surfaces reconciliation when an ambiguous thread disappears', async () => {
+    const { db } = await testDatabase()
+    await connect(db)
+    const fetch = vi.fn(async (input: string | URL | Request) => {
+      const url = String(input)
+      if (url.endsWith('/modify')) {
+        throw new Error('Connection closed after request started')
+      }
+      if (url.includes('/users/me/threads/thread-1?')) {
+        return new Response(null, { status: 404 })
+      }
+      throw new Error(`Unexpected request: ${url}`)
+    })
+    const gmail = createGmailService({ db, fetch, readAttempts: 1 })
+
+    await expect(
+      gmail.applyMailboxAction(effect, 'delivery-1'),
+    ).rejects.toThrow('Connection closed after request started')
+    await expect(
+      gmail.applyMailboxAction(effect, 'delivery-1'),
+    ).resolves.toEqual({
+      status: 'reconciliationNeeded',
+      reason: 'Gmail no longer exposes the thread after an ambiguous mutation',
+    })
   })
 })
 

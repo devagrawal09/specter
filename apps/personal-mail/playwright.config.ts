@@ -5,7 +5,7 @@ export default defineConfig({
   testMatch: '**/*.e2e.ts',
   use: { baseURL: 'http://127.0.0.1:41738' },
   webServer: {
-    command: 'pnpm dev',
+    command: 'node tests/e2e/fake-provider-server.mjs',
     url: 'http://127.0.0.1:41738',
     reuseExistingServer: false,
     timeout: 120_000,

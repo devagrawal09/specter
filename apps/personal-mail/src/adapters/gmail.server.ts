@@ -109,11 +109,27 @@ export function createGmailService(options: {
   fetch?: typeof fetch
   env?: NodeJS.ProcessEnv
   now?: () => Date
+  sleep?: (milliseconds: number) => Promise<void>
+  requestTimeoutMs?: number
+  readAttempts?: number
+  readConcurrency?: number
 }) {
   const db = options.db
   const fetchImplementation = options.fetch ?? fetch
   const env = options.env ?? process.env
   const now = options.now ?? (() => new Date())
+  const sleep =
+    options.sleep ??
+    ((milliseconds: number) =>
+      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)))
+  const requestTimeoutMs =
+    options.requestTimeoutMs ??
+    positiveInteger(env.GMAIL_REQUEST_TIMEOUT_MS, 20_000)
+  const readAttempts =
+    options.readAttempts ?? positiveInteger(env.GMAIL_READ_ATTEMPTS, 3)
+  const readConcurrency =
+    options.readConcurrency ?? positiveInteger(env.GMAIL_READ_CONCURRENCY, 8)
+  const apiBaseUrl = gmailApiBaseUrl(env)
 
   function oauthConfiguration() {
     const clientId = env.GOOGLE_CLIENT_ID
@@ -164,7 +180,7 @@ export function createGmailService(options: {
       throw new Error('OAuth state is invalid or expired')
     }
     const oauth = oauthConfiguration()
-    const response = await fetchImplementation(
+    const response = await fetchWithTimeout(
       'https://oauth2.googleapis.com/token',
       {
         method: 'POST',
@@ -255,7 +271,7 @@ export function createGmailService(options: {
       threadIds.push(...(page.threads ?? []).map((thread) => thread.id))
       pageToken = threadIds.length < 200 ? page.nextPageToken : undefined
     } while (pageToken)
-    const threads = await Promise.all(threadIds.map(loadThread))
+    const threads = await mapConcurrent(threadIds, readConcurrency, loadThread)
     return {
       threads,
       removedThreadIds: [],
@@ -293,8 +309,10 @@ export function createGmailService(options: {
       }
       pageToken = page.nextPageToken
     } while (pageToken)
-    const loaded = await Promise.all(
-      [...threadIds].map(async (threadId) => {
+    const loaded = await mapConcurrent(
+      [...threadIds],
+      readConcurrency,
+      async (threadId) => {
         try {
           return { thread: await loadThread(threadId) }
         } catch (cause) {
@@ -303,7 +321,7 @@ export function createGmailService(options: {
           }
           throw cause
         }
-      }),
+      },
     )
     const threads = loaded.flatMap((item) => (item.thread ? [item.thread] : []))
     const removedThreadIds = new Set(
@@ -357,7 +375,22 @@ export function createGmailService(options: {
       }
     }
     if (existing) {
-      const current = await loadThread(effect.threadId)
+      let current: NormalizedGmailThread
+      try {
+        current = await loadThread(effect.threadId)
+      } catch (cause) {
+        if (
+          existing.status === 'ambiguous' &&
+          cause instanceof GmailHttpError &&
+          cause.status === 404
+        ) {
+          const reason =
+            'Gmail no longer exposes the thread after an ambiguous mutation'
+          await markAttempt(deliveryId, 'reconciliation-needed', reason)
+          return { status: 'reconciliationNeeded', reason }
+        }
+        throw cause
+      }
       if (actionIsVisible(current.labels, effect.action)) {
         const result = {
           status: 'applied' as const,
@@ -437,21 +470,32 @@ export function createGmailService(options: {
   }
 
   async function gmailJson(path: string) {
-    const response = await gmailFetch(path)
-    if (!response.ok) throw new GmailHttpError(response.status)
-    return response.json()
+    let lastCause: unknown
+    for (let attempt = 1; attempt <= readAttempts; attempt += 1) {
+      try {
+        const response = await gmailFetch(path)
+        if (!response.ok) throw new GmailHttpError(response.status)
+        return response.json()
+      } catch (cause) {
+        lastCause = cause
+        if (!isRetryableReadCause(cause) || attempt === readAttempts)
+          throw cause
+        await sleep(Math.min(2_000, 250 * 2 ** (attempt - 1)))
+      }
+    }
+    throw lastCause
   }
 
   async function gmailFetch(path: string, init: RequestInit = {}) {
-    const url = `https://gmail.googleapis.com/gmail/v1${path}`
+    const url = `${apiBaseUrl}${path}`
     const accessToken = await validAccessToken()
-    const response = await fetchImplementation(url, {
+    const response = await fetchWithTimeout(url, {
       ...init,
       headers: { ...init.headers, authorization: `Bearer ${accessToken}` },
     })
     if (response.status !== 401) return response
     const refreshedToken = await validAccessToken(true)
-    return fetchImplementation(url, {
+    return fetchWithTimeout(url, {
       ...init,
       headers: { ...init.headers, authorization: `Bearer ${refreshedToken}` },
     })
@@ -469,7 +513,7 @@ export function createGmailService(options: {
     if (!credentials.refreshToken)
       throw new Error('Gmail refresh token is unavailable')
     const oauth = oauthConfiguration()
-    const response = await fetchImplementation(
+    const response = await fetchWithTimeout(
       'https://oauth2.googleapis.com/token',
       {
         method: 'POST',
@@ -496,6 +540,25 @@ export function createGmailService(options: {
     return token.access_token
   }
 
+  async function fetchWithTimeout(
+    input: string | URL | Request,
+    init: RequestInit = {},
+  ) {
+    const controller = new AbortController()
+    const timeout = setTimeout(
+      () => controller.abort(new Error('Gmail request timed out')),
+      requestTimeoutMs,
+    )
+    const signal = init.signal
+      ? AbortSignal.any([init.signal, controller.signal])
+      : controller.signal
+    try {
+      return await fetchImplementation(input, { ...init, signal })
+    } finally {
+      clearTimeout(timeout)
+    }
+  }
+
   return {
     createAuthorizationUrl,
     finishAuthorization,
@@ -506,6 +569,8 @@ export function createGmailService(options: {
     applyMailboxAction,
   }
 }
+
+export type GmailService = ReturnType<typeof createGmailService>
 
 export class GmailHttpError extends Error {
   constructor(readonly status: number) {
@@ -592,4 +657,66 @@ function actionIsVisible(
   if (action === 'archive') return !labels.includes('INBOX')
   if (action === 'markRead') return !labels.includes('UNREAD')
   return labels.includes('STARRED')
+}
+
+function positiveInteger(value: string | undefined, fallback: number) {
+  if (value === undefined) return fallback
+  const parsed = Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive integer, received "${value}"`)
+  }
+  return parsed
+}
+
+function gmailApiBaseUrl(env: NodeJS.ProcessEnv) {
+  const official = 'https://gmail.googleapis.com/gmail/v1'
+  const configured = env.GMAIL_API_BASE_URL
+  if (!configured) return official
+  if (
+    env.SPECTER_MAIL_TEST_PROVIDERS !== '1' ||
+    env.NODE_ENV === 'production'
+  ) {
+    throw new Error(
+      'GMAIL_API_BASE_URL is allowed only for non-production provider tests',
+    )
+  }
+  const url = new URL(configured)
+  if (
+    !['http:', 'https:'].includes(url.protocol) ||
+    !['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+  ) {
+    throw new Error('Test Gmail API endpoint must use a loopback HTTP URL')
+  }
+  return configured.replace(/\/$/, '')
+}
+
+function isRetryableReadCause(cause: unknown) {
+  return (
+    !(cause instanceof GmailHttpError) ||
+    cause.status === 408 ||
+    cause.status === 429 ||
+    cause.status >= 500
+  )
+}
+
+async function mapConcurrent<TInput, TOutput>(
+  inputs: readonly TInput[],
+  concurrency: number,
+  run: (input: TInput) => Promise<TOutput>,
+) {
+  const output = new Array<TOutput>(inputs.length)
+  let nextIndex = 0
+  const workers = Array.from(
+    { length: Math.min(inputs.length, concurrency) },
+    async () => {
+      for (;;) {
+        const index = nextIndex
+        nextIndex += 1
+        if (index >= inputs.length) return
+        output[index] = await run(inputs[index])
+      }
+    },
+  )
+  await Promise.all(workers)
+  return output
 }

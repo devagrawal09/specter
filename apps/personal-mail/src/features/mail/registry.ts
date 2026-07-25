@@ -1,8 +1,14 @@
-import type { CommandRef, QueryRef } from '@specter-ts/core'
+import type { CommandRef, QueryRef, ReactionPlugin } from '@specter-ts/core'
 
 import { activityQuery } from './activity-query/impl'
-import { analyzeThreadReaction } from './analyze-thread-reaction/impl'
-import { applyMailboxActionReaction } from './apply-mailbox-action-reaction/impl'
+import {
+  analyzeThreadReaction,
+  createAnalyzeThreadReaction,
+} from './analyze-thread-reaction/impl'
+import {
+  applyMailboxActionReaction,
+  createApplyMailboxActionReaction,
+} from './apply-mailbox-action-reaction/impl'
 import { changeAutomationRuleEnabled } from './change-automation-rule-enabled/impl'
 import { createAutomationRule } from './create-automation-rule/impl'
 import { mailEventDefinitions } from './events'
@@ -14,6 +20,7 @@ import { recordThreadAnalysis } from './record-thread-analysis/impl'
 import { requestMailboxAction } from './request-mailbox-action/impl'
 import { requestThreadAnalysis } from './request-thread-analysis/impl'
 import { rulesQuery } from './rules-query/impl'
+import type { MailDeliveryOutput } from './delivery-plugin.server'
 
 export const mailRegistrations = {
   recordGmailThread,
@@ -35,6 +42,20 @@ export const mailSpecterAppConfig = {
   events: mailEventDefinitions,
   slices: mailRegistrations,
 } as const
+
+export function createMailSpecterAppConfig(
+  deliveryPlugin: ReactionPlugin<MailDeliveryOutput>,
+) {
+  return {
+    events: mailEventDefinitions,
+    slices: {
+      ...mailRegistrations,
+      analyzeThreadReaction: createAnalyzeThreadReaction(deliveryPlugin),
+      applyMailboxActionReaction:
+        createApplyMailboxActionReaction(deliveryPlugin),
+    },
+  } as const
+}
 
 export type MailSpecterAppConfig = typeof mailSpecterAppConfig
 export type InboxQueryRef = QueryRef<typeof inboxQuery>

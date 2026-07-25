@@ -1,59 +1,30 @@
+import 'dotenv/config'
+
 import { serveStatic } from '@hono/node-server/serve-static'
-import { createClient } from '@libsql/client/sqlite3'
 import { Hono } from 'hono'
 import { z } from 'zod'
-import { createSpecterApp, EventLog, type SpecterApp } from '@specter-ts/core'
 import {
-  createSqliteDatabaseContext,
-  createSqliteReactionSchedulerLayer,
-  createSpecterSqlitePersistence,
-  prepareSqliteReactionScheduler,
-  prepareSpecterSqlite,
-} from '@specter-ts/sqlite'
-import { Layer } from 'effect'
+  type SpecterApp,
+  SpecterCommandRejectedError,
+  SpecterIdempotencyConflictError,
+  SpecterInvalidInputError,
+  SpecterUnknownCommandError,
+  SpecterUnknownQueryError,
+  SpecterVersionConflictError,
+} from '@specter-ts/core'
+import { Effect } from 'effect'
 
 import {
   accessConfiguration,
   requestHasActionAuthorization,
   requestIsAuthorized,
 } from './access-control.server'
-import { createAiAnalyzer } from './adapters/ai.server'
-import { createGmailService } from './adapters/gmail.server'
-import { openApplicationDatabase } from './db/client.server'
-import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
-import { AiAnalyzer } from './features/mail/analyze-thread-reaction/plugin.server'
-import { GmailActions } from './features/mail/apply-mailbox-action-reaction/plugin.server'
-import {
-  mailSpecterAppConfig,
-  type MailSpecterAppConfig,
-} from './features/mail/registry'
+import type { MailSpecterAppConfig } from './features/mail/registry'
+import { createPersonalMailRuntime } from './runtime.server'
 
 const access = accessConfiguration(process.env, import.meta.env.PROD)
-const { client: sqliteClient, db, sqlitePath } = openApplicationDatabase()
-const operationalClient = createClient({ url: `file:${sqlitePath}` })
-await prepareSpecterSqlite(sqliteClient)
-await operationalClient.execute('PRAGMA journal_mode = WAL')
-await operationalClient.execute('PRAGMA busy_timeout = 5000')
-await prepareSqliteReactionScheduler(operationalClient)
-
-const gmail = createGmailService({ db })
-const persistence = createSpecterSqlitePersistence(sqliteClient)
-const operationalContext = createSqliteDatabaseContext(operationalClient)
-const specterApp = await createSpecterApp(
-  mailSpecterAppConfig,
-  Layer.mergeAll(
-    Layer.succeed(EventLog, persistence.eventLog),
-    createSqliteReactionSchedulerLayer(operationalClient, {
-      context: operationalContext,
-    }),
-    createSqliteSliceStoreLayer(persistence.context),
-    Layer.succeed(AiAnalyzer, createAiAnalyzer()),
-    Layer.succeed(GmailActions, {
-      apply: (effect, deliveryId) =>
-        gmail.applyMailboxAction(effect, deliveryId),
-    }),
-  ),
-)
+const runtime = await createPersonalMailRuntime()
+const { app: specterApp, gmail, outbox } = runtime
 
 const analysisRequestSchema = z.object({
   threadId: z.string().min(1),
@@ -143,7 +114,23 @@ app.get('/api/activity', async (c) =>
   ),
 )
 
+app.get('/api/deliveries/dead-letter', async (c) => {
+  const jobs = await Effect.runPromise(outbox.list('dead-letter'))
+  return c.json(jobs.map(describeDeadLetter))
+})
+
 app.post('/api/sync', async (c) => c.json(await syncMailbox()))
+
+app.post('/api/deliveries/:jobId/retry', async (c) => {
+  const jobId = c.req.param('jobId')
+  const job = await Effect.runPromise(outbox.get(jobId))
+  if (!job) return c.json({ error: 'Delivery job was not found.' }, 404)
+  if (job.status !== 'dead-letter') {
+    return c.json({ error: 'Delivery job is not dead-lettered.' }, 409)
+  }
+  await Effect.runPromise(outbox.retryDeadLetter(jobId, new Date()))
+  return c.json({ jobId, status: 'pending' })
+})
 
 app.post('/api/analyze', async (c) => {
   const input = analysisRequestSchema.parse(await c.req.json())
@@ -230,11 +217,30 @@ app.onError((cause, c) => {
     '[personal-mail]',
     cause instanceof Error ? cause.message : cause,
   )
-  const message =
-    cause instanceof z.ZodError
-      ? 'Request validation failed.'
-      : 'Unexpected server error.'
-  return c.json({ error: message }, cause instanceof z.ZodError ? 400 : 500)
+  if (cause instanceof z.ZodError) {
+    return c.json({ error: 'Request validation failed.' }, 400)
+  }
+  if (cause instanceof SpecterCommandRejectedError) {
+    const reason =
+      cause.cause instanceof Error ? cause.cause.message : cause.message
+    return c.json({ error: reason }, 409)
+  }
+  if (cause instanceof SpecterInvalidInputError) {
+    return c.json({ error: cause.message }, 400)
+  }
+  if (
+    cause instanceof SpecterUnknownCommandError ||
+    cause instanceof SpecterUnknownQueryError
+  ) {
+    return c.json({ error: cause.message }, 404)
+  }
+  if (
+    cause instanceof SpecterVersionConflictError ||
+    cause instanceof SpecterIdempotencyConflictError
+  ) {
+    return c.json({ error: cause.message }, 409)
+  }
+  return c.json({ error: 'Unexpected server error.' }, 500)
 })
 
 let activeSync: Promise<{ imported: number; automations: number }> | undefined
@@ -390,6 +396,31 @@ function logBackgroundError(cause: unknown) {
     '[personal-mail background]',
     cause instanceof Error ? cause.message : cause,
   )
+}
+
+function describeDeadLetter(
+  job: Awaited<ReturnType<typeof deadLetters>>[number],
+) {
+  const output = job.payload.output
+  return {
+    jobId: job.id,
+    kind: output.type === 'analyzeThread' ? 'analysis' : 'mailboxAction',
+    referenceId:
+      output.type === 'analyzeThread'
+        ? output.payload.analysisId
+        : output.payload.actionId,
+    threadId: output.payload.threadId,
+    detail:
+      output.type === 'analyzeThread'
+        ? `${output.payload.provider}: ${output.payload.subject}`
+        : `${output.payload.action}: ${output.payload.source}`,
+    attemptCount: job.attemptCount,
+    lastError: job.lastError ?? 'Delivery failed',
+  }
+}
+
+async function deadLetters() {
+  return Effect.runPromise(outbox.list('dead-letter'))
 }
 
 const syncInterval = Number(

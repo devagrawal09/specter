@@ -73,4 +73,25 @@ describe('AI adapter', () => {
     })
     await expect(analyzer.analyze(effect)).rejects.toThrow()
   })
+
+  test('aborts a provider request that exceeds its timeout', async () => {
+    const analyzer = createAiAnalyzer({
+      requestTimeoutMs: 5,
+      fetch: vi.fn(
+        async (_input, init) =>
+          new Promise<Response>((_resolve, reject) => {
+            init?.signal?.addEventListener(
+              'abort',
+              () => reject(init.signal?.reason),
+              { once: true },
+            )
+          }),
+      ),
+      env: {},
+    })
+
+    await expect(analyzer.analyze(effect)).rejects.toThrow(
+      'AI request timed out',
+    )
+  })
 })

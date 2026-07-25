@@ -15,6 +15,13 @@
       "when": 1784752157524,
       "tag": "0001_overjoyed_polaris",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1785005099122,
+      "tag": "0002_empty_multiple_man",
+      "breakpoints": true
     }
   ]
 }

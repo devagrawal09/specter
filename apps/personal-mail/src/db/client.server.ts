@@ -1,4 +1,4 @@
-import { chmodSync, closeSync, mkdirSync, openSync } from 'node:fs'
+import { chmodSync, closeSync, mkdirSync, openSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 
 import { createClient } from '@libsql/client/sqlite3'
@@ -11,8 +11,19 @@ export function openApplicationDatabase(
     './data/personal-mail.db',
 ) {
   const databaseDirectory = dirname(sqlitePath)
-  mkdirSync(databaseDirectory, { recursive: true, mode: 0o700 })
-  if (databaseDirectory !== '.') chmodSync(databaseDirectory, 0o700)
+  const createdDirectory = mkdirSync(databaseDirectory, {
+    recursive: true,
+    mode: 0o700,
+  })
+  if (databaseDirectory !== '.') {
+    const directoryMode = statSync(databaseDirectory).mode & 0o777
+    if (createdDirectory === undefined && (directoryMode & 0o077) !== 0) {
+      throw new Error(
+        `Personal Mail database directory must be owner-only (chmod 700): ${databaseDirectory}`,
+      )
+    }
+    if (createdDirectory !== undefined) chmodSync(databaseDirectory, 0o700)
+  }
   closeSync(openSync(sqlitePath, 'a', 0o600))
   chmodSync(sqlitePath, 0o600)
   const client = createClient({ url: `file:${sqlitePath}` })

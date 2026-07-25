@@ -22,6 +22,8 @@ export default createReactionSlice('applyMailboxActionReaction')
             actionId: 'action-1',
             threadId: 'thread-1',
             action: 'archive',
+            source: 'automation',
+            authorizedByRuleId: 'rule-1',
           },
         },
       ],

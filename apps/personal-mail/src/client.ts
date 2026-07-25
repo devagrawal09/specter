@@ -43,6 +43,16 @@ type Activity = {
   occurredAt: string
 }
 
+type DeliveryFailure = {
+  jobId: string
+  kind: 'analysis' | 'mailboxAction'
+  referenceId: string
+  threadId: string
+  detail: string
+  attemptCount: number
+  lastError: string
+}
+
 const root = document.querySelector<HTMLDivElement>('#app')
 if (!root) throw new Error('Missing app root')
 
@@ -104,7 +114,7 @@ function buildShell() {
   inbox.append(inboxHeader, list)
 
   const rail = element('aside', 'rail')
-  rail.append(buildRulePanel(), buildActivityPanel())
+  rail.append(buildRulePanel(), buildDeliveryPanel(), buildActivityPanel())
   content.append(inbox, rail)
   main.append(header, notice, content)
   return main
@@ -161,9 +171,26 @@ function buildActivityPanel() {
   return panel
 }
 
+function buildDeliveryPanel() {
+  const panel = element('section', 'panel')
+  panel.append(
+    element('h2', '', 'Delivery recovery'),
+    element('p', 'muted', 'Failed provider work can be retried explicitly.'),
+  )
+  const deliveries = element('div', 'delivery-list')
+  deliveries.id = 'delivery-failures'
+  panel.append(deliveries)
+  return panel
+}
+
 async function refreshAll() {
   await refreshStatus()
-  await Promise.all([refreshInbox(), refreshRules(), refreshActivity()])
+  await Promise.all([
+    refreshInbox(),
+    refreshRules(),
+    refreshDeliveries(),
+    refreshActivity(),
+  ])
 }
 
 async function refreshStatus() {
@@ -307,6 +334,32 @@ async function refreshActivity() {
   }
 }
 
+async function refreshDeliveries() {
+  const deliveries = await api<DeliveryFailure[]>('/api/deliveries/dead-letter')
+  const target = document.querySelector<HTMLDivElement>('#delivery-failures')
+  if (!target) return
+  target.replaceChildren()
+  if (deliveries.length === 0) {
+    target.append(element('p', 'empty', 'No failed deliveries.'))
+    return
+  }
+  for (const delivery of deliveries) {
+    const item = element('div', 'delivery-failure')
+    const retry = button('Retry', 'quiet')
+    retry.addEventListener('click', () => void retryDelivery(delivery, retry))
+    item.append(
+      element('strong', '', delivery.detail),
+      element(
+        'small',
+        '',
+        `${delivery.attemptCount} attempts · ${delivery.lastError}`,
+      ),
+      retry,
+    )
+    target.append(item)
+  }
+}
+
 async function synchronize(control: HTMLButtonElement) {
   await withBusy(control, 'Syncing…', async () => {
     const result = await api<{ imported: number; automations: number }>(
@@ -398,6 +451,19 @@ async function changeRuleEnabled(rule: Rule, control: HTMLButtonElement) {
         : 'Automation authority revoked for this rule.',
     )
     await refreshRules()
+  })
+}
+
+async function retryDelivery(
+  delivery: DeliveryFailure,
+  control: HTMLButtonElement,
+) {
+  await withBusy(control, 'Retrying…', async () => {
+    await api(`/api/deliveries/${encodeURIComponent(delivery.jobId)}/retry`, {
+      method: 'POST',
+    })
+    notify(`${delivery.kind} delivery queued for retry.`)
+    await refreshDeliveries()
   })
 }
 

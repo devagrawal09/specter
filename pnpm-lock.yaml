@@ -234,12 +234,18 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
       '@specter-ts/spec':
         specifier: workspace:*
         version: link:../../packages/spec
       '@specter-ts/sqlite':
         specifier: workspace:*
         version: link:../../packages/sqlite
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)

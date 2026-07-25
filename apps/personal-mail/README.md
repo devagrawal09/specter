@@ -27,7 +27,8 @@ explicit automation authority, and mailbox-action outcomes.
   `http://127.0.0.1:11434/v1`. Cloud inference is disabled unless configured,
   and each cloud request must explicitly opt in. There is no global cloud mode.
 - Automation rules are explicit grants. Disable a rule in the app to revoke its
-  authority; disabled rules cannot authorize new mailbox actions.
+  authority. The delivery worker checks the rule again immediately before a
+  queued automatic action reaches Gmail, so revocation also stops queued work.
 
 ## Google setup
 
@@ -58,6 +59,34 @@ ambiguous attempts by reading current labels before retrying. This narrows the
 crash window but does not claim exactly-once remote effects. Archive, mark-read,
 and star are label-state mutations designed to be safely reconcilable.
 
+Reaction Slices only write provider work to the SQLite outbox. One runtime-owned
+worker performs Gmail and AI calls after the Slice transaction commits. Failed
+work is retried with a lease and backoff, then moved to dead-letter without
+blocking later work. The **Delivery recovery** panel lists safe failure metadata
+and requires an explicit retry.
+
 When the MacBook sleeps, leaves the tailnet, or the process stops, sync and
-automations pause. Specter's Event Log and reaction cursor resume durable work
-when the process returns.
+automations pause. Specter's Event Log, Slice cursors, and the outbox resume
+durable work when the process returns. The Event Log owns domain results; the
+outbox only owns delivery attempts and dead-letter state.
+
+Gmail reads use bounded concurrency, request timeouts, and retries for transient
+network, 408, 429, and 5xx failures. The Gmail history cursor advances only
+after the whole import is recorded. AI requests also have a request timeout.
+See `.env.example` for the limits.
+
+## Validation
+
+The browser test runs against loopback-only fake Gmail and local-AI providers;
+it does not need or read live credentials:
+
+```sh
+pnpm --filter @specter/personal-mail test
+pnpm --filter @specter/personal-mail test:e2e
+```
+
+The runtime integration suite covers SQLite delivery outside Slice
+transactions, dead-letter recovery after restart, later work after a failed
+delivery, and rule revocation while an automatic action is queued. Live Gmail,
+OAuth, Tailscale identity forwarding, sleep/wake, and the chosen local model
+still require an operator smoke test on the target Mac.
