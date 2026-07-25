@@ -1,0 +1,101 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "startArtifactBuild",
+  "description": "Starts a deployable artifact build from the exact source tree that passed whole-application verification.",
+  "scenarios": [
+    {
+      "description": "Starts an artifact build from the verified immutable tree.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "application-verification-passed",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "verification-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "checks": [
+              {
+                "name": "specter-scenarios",
+                "status": "passed",
+                "evidenceDigest": "sha256:scenarios-log-001"
+              }
+            ],
+            "evidenceManifestDigest": "sha256:verification-evidence-001",
+            "evidenceUri": "artifact://verification/compile-001/verification-attempt-001",
+            "completedAt": "2026-07-22T10:08:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "attemptId": "artifact-attempt-001",
+        "sourceRevision": "git:assembled-001",
+        "sourceTreeDigest": "sha256:assembled-tree-001",
+        "artifactKind": "container",
+        "builder": {
+          "name": "buildkit",
+          "version": "0.23.2"
+        },
+        "startedAt": "2026-07-22T10:09:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-build-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-001",
+            "artifactKind": "container",
+            "builder": {
+              "name": "buildkit",
+              "version": "0.23.2"
+            },
+            "startedAt": "2026-07-22T10:09:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects building from a source tree other than the verified tree.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "application-verification-passed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "verification-attempt-001",
+            "sourceRevision": "git:assembled-002",
+            "sourceTreeDigest": "sha256:assembled-tree-002",
+            "checks": [],
+            "evidenceManifestDigest": "sha256:verification-evidence-002",
+            "evidenceUri": "artifact://verification/compile-002/verification-attempt-001",
+            "completedAt": "2026-07-22T11:08:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "attemptId": "artifact-attempt-001",
+        "sourceRevision": "git:unverified",
+        "sourceTreeDigest": "sha256:unverified-tree",
+        "artifactKind": "container",
+        "builder": {
+          "name": "buildkit",
+          "version": "0.23.2"
+        },
+        "startedAt": "2026-07-22T11:09:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Artifact source tree was not verified"
+      }
+    }
+  ]
+}

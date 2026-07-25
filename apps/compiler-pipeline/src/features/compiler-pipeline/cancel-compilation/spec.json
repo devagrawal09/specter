@@ -1,0 +1,158 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "cancelCompilation",
+  "description": "Cancels an in-flight compilation while preserving every durable attempt and result recorded so far.",
+  "scenarios": [
+    {
+      "description": "Cancels a compilation while an agent attempt is in flight.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "requestedAt": "2026-07-22T10:00:00.000Z",
+            "sourceRevision": "git:source-001",
+            "sourceTreeDigest": "sha256:source-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-001"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-001",
+            "assignedBaseRevision": "git:source-001",
+            "specificationDigest": "sha256:create-order-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T10:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "reason": "Cancelled by operator",
+        "cancelledAt": "2026-07-22T10:02:30.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-001",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T10:02:30.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects cancelling a successfully compiled run.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "requestedAt": "2026-07-22T11:00:00.000Z",
+            "sourceRevision": "git:source-002",
+            "sourceTreeDigest": "sha256:source-tree-002",
+            "specificationBundleDigest": "sha256:bundle-002",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-002"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-succeeded",
+          "examplePayload": {
+            "runId": "compile-002",
+            "artifactDigest": "sha256:artifact-002",
+            "receiptDigest": "sha256:receipt-002",
+            "completedAt": "2026-07-22T11:11:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "reason": "Cancelled by operator",
+        "cancelledAt": "2026-07-22T11:12:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation already has a terminal result"
+      }
+    },
+    {
+      "description": "Rejects cancelling the same compilation twice.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "requestedAt": "2026-07-22T12:00:00.000Z",
+            "sourceRevision": "git:source-003",
+            "sourceTreeDigest": "sha256:source-tree-003",
+            "specificationBundleDigest": "sha256:bundle-003",
+            "specifications": [],
+            "profile": {
+              "name": "specter-solid-sqlite",
+              "digest": "sha256:profile-003"
+            },
+            "deployment": null
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-003",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T12:01:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "reason": "Cancelled again",
+        "cancelledAt": "2026-07-22T12:02:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is already cancelled"
+      }
+    },
+    {
+      "description": "Rejects cancelling a run that never started.",
+      "given": [],
+      "when": {
+        "runId": "unknown-run",
+        "reason": "Cancelled by operator",
+        "cancelledAt": "2026-07-22T13:00:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation run does not exist"
+      }
+    }
+  ]
+}
