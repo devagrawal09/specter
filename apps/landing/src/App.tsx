@@ -293,7 +293,7 @@ export function App(): JSX.Element {
           </div>
           <div class="grid grid--4 stack-grid">
             {stack.map((group) => (
-              <article class="card stack-card">
+              <article class="stack-card">
                 <h3>{group.category}</h3>
                 <ul class="stack-list">
                   {group.technologies.map((technology) => (
@@ -315,32 +315,25 @@ export function App(): JSX.Element {
             role="img"
             aria-label="A compiler deterministically maps source to one output. An LLM can produce many implementations from one specification. Specter constrains those implementations with generated scaffolds and tests."
           >
-            <div class="compiler-visual__lane">
-              <span class="compiler-visual__node">source</span>
-              <span class="compiler-visual__arrow" aria-hidden="true">
-                →
-              </span>
-              <strong class="compiler-visual__processor">compiler</strong>
-              <span class="compiler-visual__arrow" aria-hidden="true">
-                →
-              </span>
-              <span class="compiler-visual__result">one output</span>
-            </div>
-            <div class="compiler-visual__lane compiler-visual__lane--llm">
-              <span class="compiler-visual__node">spec</span>
-              <span class="compiler-visual__arrow" aria-hidden="true">
-                →
-              </span>
-              <strong class="compiler-visual__processor">LLM</strong>
-              <span class="compiler-visual__branches" aria-hidden="true">
-                ↗ → ↘
-              </span>
-              <span class="compiler-visual__result">many outputs</span>
-            </div>
-            <div class="compiler-visual__guard">
-              <strong>Specter</strong>
-              <span>scaffolds + tests constrain the result</span>
-            </div>
+            <strong class="compiler-visual__label compiler-visual__label--compiler">
+              compiler
+            </strong>
+            <span class="compiler-visual__flow">
+              source <b aria-hidden="true">→</b> one output
+            </span>
+            <strong class="compiler-visual__label compiler-visual__label--llm">
+              LLM
+            </strong>
+            <span class="compiler-visual__flow">
+              spec <b aria-hidden="true">↗ → ↘</b> many outputs
+            </span>
+            <strong class="compiler-visual__label compiler-visual__label--specter">
+              Specter
+            </strong>
+            <span class="compiler-visual__flow">
+              spec + scaffolds + tests <b aria-hidden="true">→</b> constrained
+              output
+            </span>
           </div>
 
           <div class="compiler-argument__body">
