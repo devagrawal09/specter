@@ -1,0 +1,206 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "requestSliceImplementationRetry",
+  "description": "Explicitly authorizes another isolated agent attempt after a failed Slice implementation.",
+  "scenarios": [
+    {
+      "description": "Requests the next numbered attempt after an implementation failure.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-001",
+            "assignedBaseRevision": "git:source-001",
+            "specificationDigest": "sha256:create-order-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T10:02:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-failed",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-001",
+            "reason": "Scenario tests failed",
+            "failedAt": "2026-07-22T10:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "sliceName": "createOrder",
+        "failedAttemptId": "create-order-attempt-001",
+        "nextAttemptNumber": 2,
+        "requestedAt": "2026-07-22T10:03:30.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-retry-requested",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "failedAttemptId": "create-order-attempt-001",
+            "nextAttemptNumber": 2,
+            "requestedAt": "2026-07-22T10:03:30.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects retrying an attempt that has not failed.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-002",
+            "assignedBaseRevision": "git:source-002",
+            "specificationDigest": "sha256:create-order-002",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T11:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "sliceName": "createOrder",
+        "failedAttemptId": "create-order-attempt-001",
+        "nextAttemptNumber": 2,
+        "requestedAt": "2026-07-22T11:03:30.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation attempt has not failed"
+      }
+    },
+    {
+      "description": "Rejects a retry after the compilation is cancelled.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-003",
+            "assignedBaseRevision": "git:source-003",
+            "specificationDigest": "sha256:create-order-003",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T12:02:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-failed",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-003",
+            "reason": "Scenario tests failed",
+            "failedAt": "2026-07-22T12:03:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-003",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T12:03:15.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "sliceName": "createOrder",
+        "failedAttemptId": "create-order-attempt-001",
+        "nextAttemptNumber": 2,
+        "requestedAt": "2026-07-22T12:03:30.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is cancelled"
+      }
+    },
+    {
+      "description": "Rejects requesting the same retry twice.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-004",
+            "assignedBaseRevision": "git:source-004",
+            "specificationDigest": "sha256:create-order-004",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T13:02:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-failed",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-004",
+            "reason": "Scenario tests failed",
+            "failedAt": "2026-07-22T13:03:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-retry-requested",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "failedAttemptId": "create-order-attempt-001",
+            "nextAttemptNumber": 2,
+            "requestedAt": "2026-07-22T13:03:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "sliceName": "createOrder",
+        "failedAttemptId": "create-order-attempt-001",
+        "nextAttemptNumber": 2,
+        "requestedAt": "2026-07-22T13:03:31.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation retry already requested"
+      }
+    }
+  ]
+}

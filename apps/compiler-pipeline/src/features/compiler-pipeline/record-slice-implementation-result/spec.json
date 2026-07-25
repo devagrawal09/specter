@@ -1,0 +1,243 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "recordSliceImplementationResult",
+  "description": "Records the patch or failure produced by one exact isolated agent attempt.",
+  "scenarios": [
+    {
+      "description": "Records a patch bound to its attempt, base revision, specification digest, and changed paths.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-001",
+            "assignedBaseRevision": "git:source-001",
+            "specificationDigest": "sha256:create-order-001",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T10:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "status": "produced",
+        "baseRevision": "git:source-001",
+        "observedSpecificationDigest": "sha256:create-order-001",
+        "patchDigest": "sha256:patch-001",
+        "changedPaths": [
+          "src/features/orders/create-order/impl.ts",
+          "src/features/orders/create-order/impl.test.ts"
+        ],
+        "completedAt": "2026-07-22T10:03:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-001",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-001",
+            "observedSpecificationDigest": "sha256:create-order-001",
+            "patchDigest": "sha256:patch-001",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts",
+              "src/features/orders/create-order/impl.test.ts"
+            ],
+            "completedAt": "2026-07-22T10:03:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Records a failed agent attempt with the exact base revision.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-002",
+            "assignedBaseRevision": "git:source-002",
+            "specificationDigest": "sha256:create-order-002",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T11:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "status": "failed",
+        "baseRevision": "git:source-002",
+        "reason": "Scenario tests failed",
+        "completedAt": "2026-07-22T11:03:00.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-002",
+            "reason": "Scenario tests failed",
+            "failedAt": "2026-07-22T11:03:00.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects a result whose attempt identifier is not active.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-003",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-003",
+            "assignedBaseRevision": "git:source-003",
+            "specificationDigest": "sha256:create-order-003",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T12:02:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "sliceName": "createOrder",
+        "attemptId": "unknown-attempt",
+        "status": "failed",
+        "baseRevision": "git:source-003",
+        "reason": "Agent process exited",
+        "completedAt": "2026-07-22T12:03:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation attempt is not active"
+      }
+    },
+    {
+      "description": "Rejects a duplicate terminal result for the same attempt.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-004",
+            "assignedBaseRevision": "git:source-004",
+            "specificationDigest": "sha256:create-order-004",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T13:02:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-produced",
+          "examplePayload": {
+            "runId": "compile-004",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "baseRevision": "git:source-004",
+            "observedSpecificationDigest": "sha256:create-order-004",
+            "patchDigest": "sha256:patch-004",
+            "changedPaths": [
+              "src/features/orders/create-order/impl.ts"
+            ],
+            "completedAt": "2026-07-22T13:03:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "status": "produced",
+        "baseRevision": "git:source-004",
+        "observedSpecificationDigest": "sha256:create-order-004",
+        "patchDigest": "sha256:patch-004",
+        "changedPaths": [
+          "src/features/orders/create-order/impl.ts"
+        ],
+        "completedAt": "2026-07-22T13:03:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Slice implementation attempt already completed"
+      }
+    },
+    {
+      "description": "Rejects a late agent result after cancellation.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "slice-implementation-attempt-started",
+          "examplePayload": {
+            "runId": "compile-005",
+            "sliceName": "createOrder",
+            "attemptId": "create-order-attempt-001",
+            "attemptNumber": 1,
+            "sandboxId": "slice-sandbox-005",
+            "assignedBaseRevision": "git:source-005",
+            "specificationDigest": "sha256:create-order-005",
+            "ownedPaths": [
+              "src/features/orders/create-order"
+            ],
+            "startedAt": "2026-07-22T14:02:00.000Z"
+          }
+        },
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-cancelled",
+          "examplePayload": {
+            "runId": "compile-005",
+            "reason": "Cancelled by operator",
+            "cancelledAt": "2026-07-22T14:02:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-005",
+        "sliceName": "createOrder",
+        "attemptId": "create-order-attempt-001",
+        "status": "failed",
+        "baseRevision": "git:source-005",
+        "reason": "Agent process exited",
+        "completedAt": "2026-07-22T14:03:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation is cancelled"
+      }
+    }
+  ]
+}

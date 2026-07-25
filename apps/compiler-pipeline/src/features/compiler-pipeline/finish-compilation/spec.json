@@ -1,0 +1,165 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "finishCompilation",
+  "description": "Records the terminal success of a verified artifact or an explicit terminal failure after retries are abandoned.",
+  "scenarios": [
+    {
+      "description": "Completes compilation successfully once a tested artifact and receipt exist.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-built",
+          "examplePayload": {
+            "runId": "compile-001",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-001",
+            "sourceTreeDigest": "sha256:assembled-tree-001",
+            "specificationBundleDigest": "sha256:bundle-001",
+            "profileDigest": "sha256:profile-001",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-001",
+            "artifactKind": "container",
+            "artifactDigest": "sha256:artifact-001",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-001",
+            "finalArtifactChecks": [],
+            "finalArtifactEvidenceDigest": "sha256:artifact-evidence-001",
+            "receiptDigest": "sha256:receipt-001",
+            "receiptUri": "artifact://receipts/compile-001.json",
+            "completedAt": "2026-07-22T10:11:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-001",
+        "status": "succeeded",
+        "artifactDigest": "sha256:artifact-001",
+        "receiptDigest": "sha256:receipt-001",
+        "completedAt": "2026-07-22T10:11:30.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-succeeded",
+          "examplePayload": {
+            "runId": "compile-001",
+            "artifactDigest": "sha256:artifact-001",
+            "receiptDigest": "sha256:receipt-001",
+            "completedAt": "2026-07-22T10:11:30.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Records terminal failure when the operator abandons verification retries.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "application-verification-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "attemptId": "verification-attempt-003",
+            "sourceRevision": "git:assembled-002",
+            "sourceTreeDigest": "sha256:assembled-tree-002",
+            "failedChecks": [
+              {
+                "name": "specter-scenarios",
+                "evidenceDigest": "sha256:failed-scenarios-log-002"
+              }
+            ],
+            "evidenceManifestDigest": "sha256:verification-evidence-002",
+            "evidenceUri": "artifact://verification/compile-002/verification-attempt-003",
+            "completedAt": "2026-07-22T11:08:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-002",
+        "status": "failed",
+        "stage": "application-verification",
+        "reason": "Verification retry limit reached",
+        "evidenceDigest": "sha256:verification-evidence-002",
+        "completedAt": "2026-07-22T11:08:30.000Z"
+      },
+      "expect": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-failed",
+          "examplePayload": {
+            "runId": "compile-002",
+            "stage": "application-verification",
+            "reason": "Verification retry limit reached",
+            "evidenceDigest": "sha256:verification-evidence-002",
+            "completedAt": "2026-07-22T11:08:30.000Z"
+          }
+        }
+      ]
+    },
+    {
+      "description": "Rejects successful completion for a digest other than the built artifact.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "artifact-built",
+          "examplePayload": {
+            "runId": "compile-003",
+            "attemptId": "artifact-attempt-001",
+            "sourceRevision": "git:assembled-003",
+            "sourceTreeDigest": "sha256:assembled-tree-003",
+            "specificationBundleDigest": "sha256:bundle-003",
+            "profileDigest": "sha256:profile-003",
+            "verificationAttemptId": "verification-attempt-001",
+            "verificationEvidenceManifestDigest": "sha256:verification-evidence-003",
+            "artifactKind": "container",
+            "artifactDigest": "sha256:artifact-003",
+            "artifactUri": "registry://specter/compiler-app@sha256:artifact-003",
+            "finalArtifactChecks": [],
+            "finalArtifactEvidenceDigest": "sha256:artifact-evidence-003",
+            "receiptDigest": "sha256:receipt-003",
+            "receiptUri": "artifact://receipts/compile-003.json",
+            "completedAt": "2026-07-22T12:11:00.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-003",
+        "status": "succeeded",
+        "artifactDigest": "sha256:other-artifact",
+        "receiptDigest": "sha256:receipt-003",
+        "completedAt": "2026-07-22T12:11:30.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Completion artifact does not match the tested artifact"
+      }
+    },
+    {
+      "description": "Rejects changing an existing terminal compilation result.",
+      "given": [
+        {
+          "kind": "scenario-event",
+          "eventType": "compilation-succeeded",
+          "examplePayload": {
+            "runId": "compile-004",
+            "artifactDigest": "sha256:artifact-004",
+            "receiptDigest": "sha256:receipt-004",
+            "completedAt": "2026-07-22T13:11:30.000Z"
+          }
+        }
+      ],
+      "when": {
+        "runId": "compile-004",
+        "status": "failed",
+        "stage": "artifact-build",
+        "reason": "Late failure",
+        "evidenceDigest": "sha256:late-failure",
+        "completedAt": "2026-07-22T13:12:00.000Z"
+      },
+      "expect": [],
+      "reject": {
+        "reason": "Compilation already has a terminal result"
+      }
+    }
+  ]
+}
