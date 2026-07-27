@@ -203,6 +203,7 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     const dayGroup = document.querySelector('.day-group')!
     const dayItems = document.querySelector('.day-items')!
     const card = document.querySelector('.timeline-card')!
+    const icon = card.querySelector('.timeline-icon')!
     const viewportRect = viewport.getBoundingClientRect()
     const cardRect = card.getBoundingClientRect()
     return {
@@ -211,10 +212,14 @@ test('keeps subscriptions live and preserves rejected connection input', async (
       dayItemsPaddingLeft: getComputedStyle(dayItems).paddingLeft,
       cardLeftInset: Math.round(cardRect.left - viewportRect.left),
       cardRightInset: Math.round(viewportRect.right - cardRect.right),
+      iconWidth: icon.getBoundingClientRect().width,
+      iconFlexShrink: getComputedStyle(icon).flexShrink,
     }
   })
   expect(desktopTimelineLayout.dayGroupColumns).toBe(1)
   expect(desktopTimelineLayout.dayItemsPaddingLeft).toBe('0px')
+  expect(desktopTimelineLayout.iconWidth).toBe(34)
+  expect(desktopTimelineLayout.iconFlexShrink).toBe('0')
   expect(
     Math.abs(
       desktopTimelineLayout.cardLeftInset -

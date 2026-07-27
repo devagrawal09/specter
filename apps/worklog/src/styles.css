@@ -394,6 +394,7 @@ button:disabled {
 
 .timeline-icon {
   display: grid;
+  flex: 0 0 34px;
   width: 34px;
   height: 34px;
   place-items: center;
