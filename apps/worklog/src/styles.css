@@ -245,9 +245,52 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.capture-types {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #f0eadf;
+}
+
+.capture-types legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.capture-types button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.capture-types button span {
+  margin-right: 7px;
+  font-family: 'DM Mono', monospace;
+}
+
+.capture-types button[aria-pressed='true'] {
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgb(47 37 30 / 9%);
+  color: var(--ink);
+}
+
 .composer textarea {
   width: 100%;
-  min-height: 132px;
+  min-height: 116px;
   padding: 22px 20px;
   resize: vertical;
   border: 0;
@@ -275,6 +318,11 @@ h1 {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.composer-hint {
   color: var(--muted);
   font-size: 11px;
 }
@@ -321,69 +369,6 @@ button:disabled {
   opacity: 0.45;
 }
 
-.quick-grid {
-  display: grid;
-  gap: 14px;
-  margin: 16px 0 48px;
-}
-
-.quick-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  padding: 16px;
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  background: rgb(251 248 241 / 76%);
-}
-
-.quick-card h2 {
-  margin: 1px 0 9px;
-  font-family: 'Newsreader', serif;
-  font-size: 21px;
-}
-
-.quick-card div {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-.quick-card input {
-  font-size: 12px;
-}
-
-.quick-card > button {
-  grid-column: 1 / -1;
-  min-height: 42px;
-  border: 1px solid var(--accent-soft);
-  border-radius: 10px;
-  background: #fff7f2;
-  color: var(--accent);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.quick-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 10px;
-  font-family: 'DM Mono', monospace;
-}
-
-.task-icon {
-  background: #dce7de;
-  color: var(--green);
-}
-
-.topic-icon {
-  background: #e8dfcf;
-  color: #896e45;
-}
-
 .section-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -403,6 +388,34 @@ button:disabled {
   color: var(--muted);
   font-size: 11px;
   text-align: right;
+}
+
+.timeline-section {
+  display: grid;
+  gap: 16px;
+}
+
+.timeline-viewport {
+  height: clamp(320px, 55vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 12px 2px;
+  border: 1px solid var(--line);
+  border-radius: 19px;
+  background: rgb(235 228 217 / 48%);
+  scrollbar-color: #c9bfb2 transparent;
+}
+
+.timeline-list {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.unified-composer {
+  position: relative;
+  z-index: 2;
 }
 
 .day-group {
@@ -790,7 +803,7 @@ button:disabled {
   }
 
   .composer textarea {
-    min-height: 150px;
+    min-height: 128px;
     padding: 26px;
     font-size: 24px;
   }
@@ -801,29 +814,18 @@ button:disabled {
     padding: 13px 16px 13px 22px;
   }
 
+  .capture-types {
+    display: flex;
+  }
+
+  .capture-types button {
+    min-width: 112px;
+    padding: 8px 18px;
+  }
+
   .composer-footer label {
     grid-template-columns: auto minmax(190px, 250px);
     justify-content: start;
-  }
-
-  .quick-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-bottom: 56px;
-  }
-
-  .quick-card {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 116px;
-    padding: 18px;
-  }
-
-  .quick-card > button {
-    grid-column: 3;
-    align-self: center;
-    min-height: 40px;
-    padding: 0 5px;
-    border: 0;
-    background: transparent;
   }
 
   .timeline-copy > div {
@@ -887,6 +889,10 @@ button:disabled {
     grid-template-columns: 160px minmax(0, 1fr);
     gap: 28px;
     margin-bottom: 30px;
+  }
+
+  .timeline-viewport {
+    padding: 28px 28px 2px;
   }
 
   .day-label {

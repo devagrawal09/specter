@@ -14,16 +14,24 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await expect(page.getByRole('heading', { name: 'What are you working on?' })).toBeVisible()
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
 
-  const journalEntry = page.getByLabel('Journal entry')
-  await journalEntry.fill('First line')
-  await journalEntry.press('Enter')
-  await journalEntry.pressSequentially('Second line')
-  await expect(journalEntry).toHaveValue('First line\nSecond line')
+  const captureText = page.getByLabel('Capture text')
+  await expect(
+    page.getByRole('button', { name: 'Journal', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await captureText.fill('First line')
+  await captureText.press('Enter')
+  await captureText.pressSequentially('Second line')
+  await expect(captureText).toHaveValue('First line\nSecond line')
+  await page.getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(captureText).toHaveValue('First line\nSecond line')
+  await expect(page.getByLabel('Due time')).toBeVisible()
+  await page.getByRole('button', { name: 'Journal', exact: true }).click()
+  await expect(page.getByLabel('Activity time')).toBeVisible()
 
   const shortcutJournal = 'Submitted with Command+Enter'
-  await journalEntry.fill(shortcutJournal)
-  await journalEntry.press('Meta+Enter')
-  await expect(journalEntry).toHaveValue('')
+  await captureText.fill(shortcutJournal)
+  await captureText.press('Meta+Enter')
+  await expect(captureText).toHaveValue('')
   await expect(page.getByText(shortcutJournal, { exact: true })).toBeVisible()
 
   const cliTask = 'CLI subscription task'
@@ -38,6 +46,16 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     },
   })
   await expect(page.getByText(cliTask, { exact: true })).toBeVisible()
+  const timelineCards = page.locator('.timeline-card')
+  await expect(timelineCards.first()).toContainText(cliTask)
+  await expect(timelineCards.last()).toContainText(shortcutJournal)
+  const timelineAtBottom = await page
+    .getByLabel('Work timeline')
+    .evaluate(
+      (element) =>
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+    )
+  expect(timelineAtBottom).toBeLessThanOrEqual(1)
 
   const responseLossTitle = 'Committed before response loss'
   let droppedCommittedResponse = false
@@ -58,17 +76,18 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     await route.continue()
   })
 
-  const taskTitle = page.getByLabel('Task title')
-  await taskTitle.fill(responseLossTitle)
-  const addTaskButton = page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New task' })
-    .getByRole('button', { name: 'Add' })
+  await page.getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(captureText).toHaveValue('')
+  await captureText.fill(responseLossTitle)
+  const addTaskButton = page.getByRole('button', {
+    name: 'Add task',
+    exact: true,
+  })
   await addTaskButton.click()
   await expect(page.getByRole('alert')).toBeVisible()
-  await expect(taskTitle).toHaveValue(responseLossTitle)
+  await expect(captureText).toHaveValue(responseLossTitle)
   await addTaskButton.click()
-  await expect(taskTitle).toHaveValue('')
+  await expect(captureText).toHaveValue('')
   await page.unroute('**/api/command')
 
   const tasksAfterRetry = await runCli('query', {
@@ -82,12 +101,8 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   ).toHaveLength(1)
 
   const archiveTitle = 'Archive through the UI'
-  await page.getByLabel('Task title').fill(archiveTitle)
-  await page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New task' })
-    .getByRole('button', { name: 'Add' })
-    .click()
+  await captureText.fill(archiveTitle)
+  await addTaskButton.click()
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
 
   const archiveRow = page.locator('article.task-row').filter({ hasText: archiveTitle })
@@ -97,11 +112,10 @@ test('keeps subscriptions live and preserves rejected connection input', async (
 
   await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const topicName = 'Connection topic'
-  await page.getByLabel('Topic name').fill(topicName)
+  await page.getByRole('button', { name: 'Topic', exact: true }).click()
+  await captureText.fill(topicName)
   await page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New topic' })
-    .getByRole('button', { name: 'Add' })
+    .getByRole('button', { name: 'Add topic', exact: true })
     .click()
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
 
@@ -151,16 +165,14 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const mobileTimelineLayout = await page.evaluate(() => {
     const nav = document.querySelector('nav')
-    const quickTask = document
-      .querySelector('input[aria-label="Task title"]')
-      ?.closest('form')
+    const composer = document.querySelector('form.unified-composer')
     const navRect = nav?.getBoundingClientRect()
     return {
       horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
       navPosition: nav ? getComputedStyle(nav).position : null,
       navBottom: navRect ? Math.round(navRect.bottom) : null,
       viewportHeight: innerHeight,
-      quickTaskWidth: quickTask?.getBoundingClientRect().width ?? 0,
+      composerWidth: composer?.getBoundingClientRect().width ?? 0,
     }
   })
   expect(mobileTimelineLayout).toMatchObject({
@@ -168,7 +180,7 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     navPosition: 'fixed',
     navBottom: mobileTimelineLayout.viewportHeight - 12,
   })
-  expect(mobileTimelineLayout.quickTaskWidth).toBeGreaterThan(340)
+  expect(mobileTimelineLayout.composerWidth).toBeGreaterThan(340)
 
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
   const activeTaskRow = page

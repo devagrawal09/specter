@@ -6,7 +6,10 @@ earning an auditable lifetime score.
 
 ## Core release
 
-- Timeline-first Solid web UI with a persistent journal composer.
+- Timeline-first Solid web UI with one composer for journals, tasks, and
+  topics.
+- An oldest-to-newest, bottom-following timeline that lets new work push
+  earlier activity upward without interrupting someone reading the past.
 - Journal entries with a user-selected activity timestamp.
 - One-off tasks with optional notes and due timestamps.
 - Topics and symmetric connections between supported record types.
