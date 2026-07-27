@@ -297,13 +297,6 @@ export function WorklogApp() {
       <main>
         <Show when={view() === 'timeline'}>
           <section class="timeline-section">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Oldest to newest</p>
-                <h2>Your work moves upward</h2>
-              </div>
-              <span>{timeline().length} entries</span>
-            </div>
             <div
               class="timeline-viewport"
               role="log"

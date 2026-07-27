@@ -11,9 +11,11 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   page,
 }) => {
   await page.goto('/')
+  await expect(page.getByLabel('Work timeline')).toBeVisible()
+  await expect(page.getByText('Oldest to newest', { exact: true })).toHaveCount(0)
   await expect(
     page.getByRole('heading', { name: 'Your work moves upward' }),
-  ).toBeVisible()
+  ).toHaveCount(0)
   await expect(page.getByText('Open tasks', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
 

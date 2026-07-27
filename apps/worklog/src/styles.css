@@ -333,27 +333,6 @@ button:disabled {
   opacity: 0.45;
 }
 
-.section-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.section-heading h2 {
-  margin: 0;
-  font-family: 'Newsreader', serif;
-  font-size: 30px;
-  line-height: 1.02;
-}
-
-.section-heading > span {
-  color: var(--muted);
-  font-size: 11px;
-  text-align: right;
-}
-
 .timeline-section {
   display: grid;
   gap: 16px;
