@@ -296,28 +296,6 @@ export function WorklogApp() {
 
       <main>
         <Show when={view() === 'timeline'}>
-          <section class="hero-grid">
-            <div>
-              <p class="eyebrow">Activity timeline</p>
-              <h1>What are you working on?</h1>
-              <p class="lede">
-                Capture the moment. Worklog will keep the thread between your
-                notes, tasks, and topics.
-              </p>
-            </div>
-            <div class="today-card">
-              <span>Open tasks</span>
-              <strong>{openTasks().length}</strong>
-              <small>
-                {new Intl.DateTimeFormat(undefined, {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                }).format(new Date())}
-              </small>
-            </div>
-          </section>
-
           <section class="timeline-section">
             <div class="section-heading">
               <div>
