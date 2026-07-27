@@ -197,6 +197,32 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   ).toBeVisible()
 
   await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
+  const desktopTimelineLayout = await page.evaluate(() => {
+    const viewport = document.querySelector('.timeline-viewport')!
+    const dayGroup = document.querySelector('.day-group')!
+    const dayItems = document.querySelector('.day-items')!
+    const card = document.querySelector('.timeline-card')!
+    const viewportRect = viewport.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    return {
+      dayGroupColumns: getComputedStyle(dayGroup).gridTemplateColumns.split(' ')
+        .length,
+      dayItemsPaddingLeft: getComputedStyle(dayItems).paddingLeft,
+      cardLeftInset: Math.round(cardRect.left - viewportRect.left),
+      cardRightInset: Math.round(viewportRect.right - cardRect.right),
+    }
+  })
+  expect(desktopTimelineLayout.dayGroupColumns).toBe(1)
+  expect(desktopTimelineLayout.dayItemsPaddingLeft).toBe('0px')
+  expect(
+    Math.abs(
+      desktopTimelineLayout.cardLeftInset -
+        desktopTimelineLayout.cardRightInset,
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  await page.getByRole('button', { name: 'tasks', exact: true }).click()
   const desktopLayout = await page.evaluate(() => ({
     horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
     navPosition: getComputedStyle(document.querySelector('nav')!).position,

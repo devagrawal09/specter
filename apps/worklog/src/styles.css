@@ -805,8 +805,6 @@ button:disabled {
   }
 
   .day-group {
-    grid-template-columns: 160px minmax(0, 1fr);
-    gap: 28px;
     margin-bottom: 30px;
   }
 
@@ -815,14 +813,11 @@ button:disabled {
   }
 
   .day-label {
-    padding-top: 18px;
     font-size: 10px;
   }
 
   .day-items {
     gap: 10px;
-    padding-left: 28px;
-    border-left: 1px solid var(--line);
   }
 
   .timeline-card {
@@ -830,17 +825,6 @@ button:disabled {
     align-items: center;
     padding: 15px 16px;
     border-color: transparent;
-  }
-
-  .timeline-card::before {
-    position: absolute;
-    left: -34px;
-    width: 10px;
-    height: 10px;
-    border: 3px solid #f3efe6;
-    border-radius: 50%;
-    background: #b9aea3;
-    content: '';
   }
 
   .timeline-card:hover {
