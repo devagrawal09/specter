@@ -23,6 +23,137 @@ Specter already provides the contract that the rest of this work can build on:
 The next steps should reuse existing tools where they provide stronger and
 simpler guarantees than custom Specter machinery.
 
+## Visual Slice Scenario Editor
+
+The dashboard already renders portable Slice specifications and their
+Given/When/Then lanes. It should add an authoring mode for creating and editing
+those same documents visually.
+
+The editor should support:
+
+- Creating Command, Query, and Reaction specifications.
+- Adding, reordering, duplicating, and removing Scenarios.
+- Editing Given Events, Command or Query inputs, expected Events, Query
+  results, Reaction outputs, and exact rejection reasons.
+- Reusing Event types and example payloads from the other Slices in the
+  workspace.
+- Importing an existing `spec.json` without losing information.
+- Showing schema errors, duplicate names, invalid Event names, and incomplete
+  Scenarios while editing.
+- Previewing the same Given/When/Then view used by the read-only dashboard.
+- Exporting canonical `spec.json` with the same digest as the CLI and other
+  language implementations.
+
+The visual editor and `spec.ts` should be two authoring tools for the same
+portable document. The editor must not add layout, comments, source locations,
+or dashboard state to `spec.json`.
+
+Round-trip tests should prove that importing and exporting a valid document
+does not change its meaning or digest. Structural validation must also remain
+separate from implementation verification: a well-formed Scenario is not proof
+that an implementation passes it.
+
+The existing observation collector and its application-facing APIs should stay
+read-only. A local editing mode can keep drafts in the browser and download
+files without giving the dashboard permission to change an observed
+application.
+
+## Collaborative Specification Workspaces
+
+Teams should be able to edit a set of Slice specifications together in a
+shared workspace. The dashboard can provide the UI, while an optional,
+self-hostable collaboration service owns shared drafts, access control, and
+history.
+
+Collaboration should include:
+
+- Live cursors, selections, presence, and reconnecting edits.
+- Conflict-free convergence when several people edit the same Scenario.
+- Viewer, editor, and publisher roles.
+- Comments and review threads attached to fields and Scenarios.
+- An application-wide view that catches duplicate Slice names and unresolved
+  Event references.
+- Named checkpoints, revision history, comparison, and restoration.
+- Deterministic download of one `spec.json` or a bundle of all specifications.
+
+Presence, comments, permissions, and edit history are collaboration data. They
+must not appear in the portable specification.
+
+A shared draft may be temporarily incomplete and may still be downloaded for
+local work. Automated implementation and deployment should accept only an
+explicit publish operation that:
+
+1. validates the whole workspace;
+2. freezes an immutable revision;
+3. computes the canonical digest of every specification; and
+4. records a small revision manifest that points to those exact documents.
+
+The manifest is coordination metadata, not a new behavioral specification
+format. A later edit creates another draft and cannot silently alter a published
+revision.
+
+## Specification-To-Preview Pipeline
+
+An optional delivery service should take a published collaborative revision,
+build an implementation in the background, and return a preview environment
+with a draft pull request.
+
+```text
+Collaborative draft
+  -> published specification revision
+  -> isolated branch and draft pull request
+  -> coding agent implementation
+  -> deterministic verification
+  -> preview deployment and evidence
+```
+
+The pipeline should start only after an explicit **Create preview** action or an
+approved repository policy. It should not deploy every collaborative
+keystroke.
+
+Each run should:
+
+1. Pin the repository commit, published revision, and specification digests.
+2. Create an isolated branch or worktree and open a draft pull request.
+3. Place the specifications only in their configured feature paths.
+4. Run a coding agent with the dependency, capability, filesystem, and runtime
+   restrictions described elsewhere in this roadmap.
+5. Run specification conformance, exact Scenarios, dependency checks,
+   generated tests, runtime tests, and the project build.
+6. Deploy the verified commit to a short-lived preview environment.
+7. Update the pull request with the preview URL, specification digests,
+   changed files, verification results, and attestation.
+8. Stream progress and failures back to the collaborative workspace.
+
+Repositories must choose how specification source is owned. A JSON-authored
+project can commit the published `spec.json` files directly. A project that
+uses hand-authored `spec.ts` must define a lossless synchronization step. The
+pipeline must fail if `spec.ts` and `spec.json` disagree; it must never silently
+overwrite human-authored source.
+
+Alchemy can provide one implementation of the preview deployment step, but the
+pipeline contract should also allow other project-owned deployment providers.
+
+Preview automation also needs operational limits:
+
+- Build jobs must be durable and idempotent so a worker restart does not create
+  duplicate pull requests or environments.
+- Repository tokens and deployment credentials must be scoped to the selected
+  repository and preview environment.
+- Pull requests from untrusted forks must not receive deployment secrets.
+- Preview deployments must have resource, time, network, and cost limits.
+- A preview must be tied to the exact verified commit, not a moving branch.
+- Updating a published revision must create an explicit new run and new
+  evidence.
+- Closing the pull request or reaching a time limit should remove the preview.
+- The service must never merge the pull request or deploy to production without
+  a separate human-approved action.
+
+The pull request remains the review boundary. Automation can produce an
+implementation and evidence, but people still decide whether the
+specifications are complete, the generated design is maintainable, and the
+preview behaves as intended.
+
 ## Typed Capabilities With Effect
 
 Slice handlers should express infrastructure access through Effect services.
