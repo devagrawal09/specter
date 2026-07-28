@@ -19,6 +19,8 @@ Specter already provides the contract that the rest of this work can build on:
   mechanics.
 - An independent Go reference runtime that validates portable specifications
   and publishes observations through the same language-neutral formats.
+- Codemod packages for the JSON-spec migration and report-only, workspace-wide
+  source analysis.
 
 The next steps should reuse existing tools where they provide stronger and
 simpler guarantees than custom Specter machinery.
@@ -351,6 +353,139 @@ We will evaluate `dependency-cruiser` for rules such as:
 
 These checks belong in language-specific, read-only project tooling. Specter
 Core and portable specifications will remain language-neutral.
+
+## Codemod-Powered Analysis And Upgrades
+
+Specter already contains two Codemod packages that prove different uses:
+
+- [`specter-json-specs`](./codemods/specter-json-specs/) performs the mechanical
+  migration from direct TypeScript specification imports to generated
+  `spec.json`.
+- [`function-usage-detector`](./codemods/function-usage-detector/) performs
+  workspace-wide semantic analysis and produces JSON and HTML reports without
+  changing analyzed source files.
+
+These should become the start of a maintained Specter migration and analysis
+toolkit.
+
+### Read-Only Project Analysis
+
+Codemod's JSSG engine combines syntax-aware matching with
+[workspace semantic analysis](https://docs.codemod.com/jssg/semantic-analysis)
+for JavaScript and TypeScript. It can follow definitions, references, imports,
+and re-exports across files. Specter can use that for checks that need more
+context than text matching:
+
+- Find `impl.ts` files that bypass their adjacent `spec.json`.
+- Detect Slice implementations that import or call another Slice
+  implementation.
+- Detect `Effect.run*`, live Layer construction, ambient `fetch`,
+  `process.env`, `Date.now`, `Math.random`, and direct Node built-in use inside
+  Slice implementations.
+- Compare explicit Effect service use with the services allowed by the Slice's
+  execution policy. The TypeScript compiler remains responsible for inferred
+  Effect requirements.
+- Find old builders, deprecated APIs, and partially completed migrations.
+- Produce an adoption inventory before changing a brownfield application.
+
+Analysis packages should return no source edits. They should emit stable,
+machine-readable findings with:
+
+- A rule identifier and severity.
+- Exact file and source location.
+- Resolved definition and reference evidence where available.
+- The policy or Specter version that produced the finding.
+- Known blind spots and unresolved references.
+- A stable summary suitable for CI and verification attestations.
+
+The same analysis may also render a local HTML report for people. The JSON
+report remains the canonical artifact.
+
+Codemod does not replace the resolved module-graph checks described above. JSSG
+is useful for symbol and call relationships, while a TypeScript resolver and
+whole-project graph are better for transitive package rules, path aliases,
+workspace packages, and unresolved dynamic imports. Both tools should emit the
+same Specter violation format so CI and the dashboard can show one result.
+
+Open-source JSSG semantic analysis currently covers JavaScript, TypeScript, and
+Python. Go and Rust checks should use their language-native compiler and module
+tools rather than make a paid semantic service part of Specter Core.
+
+### Versioned Specter Migrations
+
+Every breaking Specter release should include deterministic migrations for the
+parts that can be changed safely:
+
+- Package names, imports, builders, and runtime construction.
+- `spec.ts` authoring API changes.
+- Portable `spec.json` format upgrades.
+- Configuration, scripts, and generated-file conventions.
+- Adapter construction and renamed Effect services.
+- Transport envelope and client API changes.
+
+Each migration should be a small, exact `from -> to` package with positive,
+negative, edge, and no-op fixtures. It should be idempotent and safe to run
+again. Official packages can be distributed through the
+[Codemod Registry](https://docs.codemod.com/platform/registry), with exact
+versions pinned in automated runs.
+
+A migration must not guess when a change needs domain or architecture judgment.
+Ambiguous cases should remain unchanged and produce a finding or explicit
+review marker. Event-history migrations, new business rules, Slice ownership
+changes, and application partitioning still require a separately reviewed
+plan.
+
+After applying a migration, its workflow should run:
+
+1. portable specification export and canonical digest checks;
+2. Specter conformance and exact Scenarios;
+3. dependency and capability checks;
+4. typecheck, tests, and build; and
+5. a second dry run showing that no further edits are needed.
+
+The resulting report should record the Codemod package and version, input
+commit, changed files, unresolved findings, and verification results. That
+report can become an input to the verification attestation.
+
+### Workflows, Pull Requests, And Large Repositories
+
+[Codemod Workflows](https://docs.codemod.com/workflows/introduction) can order
+analysis, deterministic transforms, validation commands, and manual approval
+gates. The local open-source workflow should be the portable foundation.
+Optional Codemod Campaigns can add hosted execution, resumable tasks, sharding,
+and pull requests across many repositories.
+
+For Specter's specification-to-preview pipeline, a Codemod workflow can:
+
+1. inventory the target repository;
+2. apply required Specter upgrades;
+3. stop for approval when findings need judgment;
+4. hand the narrowed remainder to the coding agent;
+5. verify the result; and
+6. contribute its report to the draft pull request.
+
+Large migrations can be split by feature directory or `CODEOWNERS` so each
+team receives a reviewable pull request instead of one repository-wide change.
+Codemod's
+[Campaign model](https://docs.codemod.com/platform/campaigns) can provide this
+when a team chooses the hosted product, but Specter should not require it.
+
+All Codemod execution should follow the same safety rules as coding-agent
+execution:
+
+- Run against an isolated branch or worktree.
+- Pin the CLI and package versions in CI.
+- Start with analysis or dry run before applying changes.
+- Limit file scope explicitly.
+- Review the resulting patch before commit.
+- Run transforms without network or secrets unless the workflow declares and
+  is approved for them.
+- Treat optional AI steps and external package validation as source-sharing
+  boundaries that require explicit approval.
+
+Codemod is not the verifier and it is not a security sandbox. It reduces
+repeatable migration and analysis work; Specter still decides whether the
+result conforms to the specification and runtime contracts.
 
 ## Tests Generated From Schemas
 
