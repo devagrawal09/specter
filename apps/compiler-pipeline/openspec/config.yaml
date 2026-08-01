@@ -1,0 +1,25 @@
+schema: ongoing-change
+
+context: |
+  Planning scope: apps/compiler-pipeline only.
+  This OpenSpec root owns temporary specs for active changes in this workspace.
+  Repository-wide organization belongs in the top-level openspec root.
+  Exact Specter Slice behavior belongs in spec.ts/spec.json and its executable scenarios.
+
+rules:
+  spec:
+    - Keep the change inside apps/compiler-pipeline.
+    - List dependencies on sibling apps or packages without specifying their behavior here.
+    - Include explicit non-goals.
+    - Describe observable capability behavior owned by apps/compiler-pipeline.
+    - Do not duplicate exact Event payloads or executable Specter Slice scenarios.
+    - Put repository-wide rules in the top-level OpenSpec root.
+    - Include the narrowest relevant tests and validation commands.
+    - Update lasting README/docs, then delete the change directory before merge.
+    - If another workspace must change, require a separate change in that workspace's OpenSpec root.
+
+operations:
+  apply:
+    guidance:
+      - Follow the nearest AGENTS.md instructions.
+      - Do not edit a sibling workspace's OpenSpec files as part of this change.
