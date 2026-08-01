@@ -1,0 +1,26 @@
+name: ongoing-change
+version: 1
+description: One temporary spec file for an active change
+
+artifacts:
+  - id: spec
+    generates: spec.md
+    description: The complete temporary plan for this change
+    template: spec.md
+    instruction: |
+      Write one concise spec for the active change.
+      Keep intent, scope, required behavior, implementation tasks, validation,
+      and lasting documentation updates in this file. Omit sections that truly
+      do not apply. Do not create proposal, design, task, delta-spec, or archive
+      artifacts. This file is temporary and must be removed before merge after
+      any lasting README or documentation updates are complete.
+    requires: []
+
+apply:
+  requires:
+    - spec
+  tracks: spec.md
+  instruction: |
+    Implement the change from spec.md and keep its task checkboxes current.
+    Run the listed checks. Before merge, move any lasting knowledge into the
+    relevant README or docs, then delete the entire OpenSpec change directory.

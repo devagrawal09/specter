@@ -1,21 +1,20 @@
-schema: spec-driven
+schema: ongoing-change
 
 context: |
-  Scope: repository-wide organization for the Specter monorepo.
-  Use this root only for behavior and decisions that apply across apps and packages,
+  Temporary planning scope: repository-wide organization for the Specter monorepo.
+  Use this root only for active changes that apply across apps and packages,
   such as workspace organization, contribution rules, releases, and shared tooling.
   Every direct apps/* and packages/* folder has its own independent OpenSpec root.
+  Each change uses one spec.md and is removed before merge after lasting docs are updated.
   Exact Specter Slice behavior belongs in that Slice's spec.ts/spec.json contract.
 
 rules:
-  proposal:
+  spec:
     - Explain why this change belongs at repository scope instead of one app or package.
     - List every app or package affected by the change.
     - Include explicit non-goals.
-  specs:
-    - Specify only repository-wide behavior; never copy app or package behavior here.
+    - Describe only repository-wide behavior; never copy app or package behavior here.
     - Keep exact Event payloads and Slice scenarios in Specter specifications.
-  tasks:
     - Name the owning root for each task and include the narrowest relevant validation.
 
 operations:
@@ -23,6 +22,3 @@ operations:
     guidance:
       - Preserve independent app and package OpenSpec ownership.
       - Do not add app-local or package-local behavior to the repository root.
-  archive:
-    guidance:
-      - Confirm any workspace-local behavior was recorded in its owning OpenSpec root before archiving.

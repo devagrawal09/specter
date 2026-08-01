@@ -31,7 +31,9 @@ This file is public project guidance for coding agents and agent-assisted contri
 - Run all later OpenSpec commands for that change with the same app or package as the command working directory. Stop rather than writing if root resolution selects a different directory.
 - Use the top-level `openspec/` root only when the change is truly repository-wide and cannot be owned by one app or package, such as workspace organization, shared tooling, contribution rules, or releases.
 - Keep app and package behavior in the owning workspace. A change spanning several workspaces needs a separate OpenSpec change in each affected root; use a root change only for repository-wide coordination.
-- OpenSpec records change intent and capability requirements. Exact Slice inputs, Events, outputs, and rejection behavior remain in Specter `spec.ts`/`spec.json` files and executable Scenarios.
+- Each active change has one temporary `openspec/changes/<change-name>/spec.md`. Do not create separate proposal, design, task, delta-spec, or archive files.
+- OpenSpec is only for ongoing work. Before merge, update any lasting README or docs, then delete the whole change directory. Do not keep completed or archived OpenSpec changes on `main`.
+- OpenSpec records temporary change intent, scope, tasks, and checks. Exact Slice inputs, Events, outputs, and rejection behavior remain in Specter `spec.ts`/`spec.json` files and executable Scenarios.
 - Run `node scripts/validate-openspec.mjs` after changing any OpenSpec artifact or configuration.
 
 ## Pull Request Workflow

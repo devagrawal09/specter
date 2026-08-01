@@ -1,111 +1,102 @@
 # OpenSpec workflow
 
-Specter uses independent OpenSpec roots so each app and package owns its own
-requirements and change history.
+Specter uses OpenSpec only as a temporary plan for ongoing work. Each change has
+one `spec.md`. Completed specs are not project documentation and are not kept on
+`main`.
+
+Each app and package has its own independent OpenSpec root:
 
 ```text
-openspec/                    repository-wide organization only
-apps/<name>/openspec/        one independent root per app
-packages/<name>/openspec/    one independent root per package
+openspec/                    repository-wide changes only
+apps/<name>/openspec/        changes owned by one app
+packages/<name>/openspec/    changes owned by one package
 ```
 
-OpenSpec resolves the nearest `openspec/` directory by walking up from the
-current working directory. Always run its commands from the app or package that
-owns the behavior.
+Codex may stay open at the repository root, but every OpenSpec command must use
+the owning app or package as its working directory. Starting Codex at the root
+does not make a change repository-wide.
 
-Codex itself may remain open at the repository root. Its shell command working
-directory must still be set to the owning app or package for every OpenSpec
-command. Starting Codex at the repository root does not make a change
-repository-wide.
+## Choose the owner
 
-## Choose the owning root
+- Use `apps/<name>/openspec/` for a change owned by that app.
+- Use `packages/<name>/openspec/` for a change owned by that package.
+- Use the top-level `openspec/` only when no single app or package can own the
+  change, such as workspace organization, shared tooling, contribution rules,
+  or releases.
+- If several workspaces have independent changes, give each one its own change
+  and local `spec.md`.
 
-- Use `apps/<name>/openspec/` for behavior owned by that application.
-- Use `packages/<name>/openspec/` for behavior owned by that package.
-- Use the top-level `openspec/` only for workspace organization, shared tooling,
-  contribution rules, releases, and other repository-wide behavior.
-- For work spanning several owners, create one change in each affected root.
-  Add a root change only when repository-wide coordination is itself part of the
-  work.
-
-Check the selected root before every new change:
+Confirm the selected root before creating or reading a change:
 
 ```sh
 cd apps/reference
 openspec context --json
 ```
 
-The output must name `apps/reference` as the OpenSpec root. Substitute the
-intended app or package path.
+The output must name `apps/reference` as the OpenSpec root. Substitute the real
+owner path.
 
-## Work with Codex
+## One-file lifecycle
 
-Install the CLI on the machine so generated Codex skills can call `openspec`
-directly:
+Install the CLI if needed:
 
 ```sh
 npm install -g @fission-ai/openspec@1.7.0
 ```
 
-The repository-level `.codex/skills/` directory contains the OpenSpec skills.
-After cloning or updating the repository, restart Codex so it discovers them.
+The repository-level `.codex/skills/` directory contains the OpenSpec Codex
+skills. Restart Codex after cloning or updating the repository so it discovers
+them.
 
-Tell Codex both the change and its owner, for example:
+Start a change by naming its owner:
 
 ```text
 $openspec-propose Add bulk todo completion in apps/reference.
 ```
 
-The agent must run OpenSpec commands with `apps/reference` as its working
-directory. The resulting proposal, delta specs, design, tasks, and archive stay
-inside `apps/reference/openspec/`.
-
-Use the normal cycle:
+This creates only:
 
 ```text
-$openspec-explore
-$openspec-propose
-$openspec-apply-change
-$openspec-sync-specs
-$openspec-archive-change
+apps/reference/openspec/changes/<change-name>/
+├── .openspec.yaml
+└── spec.md
 ```
+
+The `spec.md` holds the goal, scope, required behavior, tasks, validation, and
+documentation work. Use `$openspec-apply-change` to implement it and keep its
+checkboxes current. `$openspec-explore` is optional before proposing a change.
+
+Before merging the PR:
+
+1. Finish the implementation and checks.
+2. Update the relevant README or durable docs with anything that must remain
+   true after the change. If nothing needs documenting, record that decision in
+   the spec while the work is active.
+3. Delete the whole `openspec/changes/<change-name>/` directory.
+
+Do not archive or sync the spec. The Git history and PR retain its working
+record; `main` retains the code, tests, and durable documentation.
 
 ## Keep OpenSpec and Specter distinct
 
-OpenSpec owns change intent, scope, capability requirements, design decisions,
-tasks, and planning history. Specter `spec.ts` and exported `spec.json` files own
-exact Slice examples, Event payloads, outputs, and rejection behavior.
+The temporary OpenSpec file owns change intent, scope, tasks, and checks.
+Specter `spec.ts` and exported `spec.json` files own exact Slice examples, Event
+payloads, outputs, and rejection behavior.
 
-Do not copy exact Specter Scenarios into OpenSpec Markdown. State the observable
-capability in OpenSpec, then point implementation tasks at the relevant Specter
-Slice specifications and tests.
+Do not copy exact Specter Scenarios into the OpenSpec file. State the intended
+result, then point tasks at the relevant Specter specifications and tests.
 
-## Validation and maintenance
+## Validation and new workspaces
 
-Validate every root from the repository root:
-
-```sh
-node scripts/validate-openspec.mjs
-```
-
-`pnpm openspec:validate` is an equivalent package-script alias.
-
-Validate only the current owner from inside its directory:
+Validate every configured root from the repository root:
 
 ```sh
-openspec validate --all --strict --no-interactive
+pnpm openspec:validate
 ```
 
-When adding a direct app or package, initialize its independent root without
-duplicating the repository-level Codex skills:
+When adding a direct app or package, copy a neighboring `openspec/config.yaml`
+and its `openspec/schemas` link, then change the planning scope to the new path.
+The shared schema remains in the top-level `openspec/schemas/` directory.
 
-```sh
-openspec init apps/new-app --tools none --profile core --no-animation
-```
-
-Then replace the generated generic context with the same ownership rules used
-by neighboring roots. Run `openspec update` at the repository root after
-upgrading OpenSpec so the shared Codex skills stay current.
-
-Do not backfill specifications for untouched code. Add them when real changes
-need them.
+Do not write specs for untouched code. Create one only when real work begins,
+and remove it before that work merges.
