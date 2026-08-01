@@ -27,6 +27,7 @@
     "format": "biome format",
     "lint": "biome lint && node scripts/check-slice-imports.mjs && node scripts/sync-specter-skill.mjs --check && node scripts/sync-specter-transport.mjs --check && pnpm -r --filter @specter/reference --filter @specter/booking-reference --filter @specter/worklog lint:boundaries",
     "check": "biome check && node scripts/sync-specter-skill.mjs --check && node scripts/sync-specter-transport.mjs --check",
+    "openspec:validate": "node scripts/validate-openspec.mjs",
     "release:auth": "node scripts/verify-release-auth.mjs",
     "verify:starter": "node scripts/verify-generated-project.mjs",
     "verify:codemod": "pnpm --dir codemods/specter-json-specs verify && pnpm --dir codemods/function-usage-detector verify",

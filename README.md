@@ -58,6 +58,7 @@ For the unreleased 0.4 API shown in this README, use the
 
 - [Documentation hub](docs/README.md)
 - [Getting started from main](docs/getting-started.md)
+- [OpenSpec workflow](docs/guides/openspec.md)
 - [Specter runtime](docs/architecture/runtime.md)
 - [API reference](docs/api-reference/README.md)
 

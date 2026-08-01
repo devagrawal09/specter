@@ -23,6 +23,17 @@ This file is public project guidance for coding agents and agent-assisted contri
 - Keep core semantics smaller than adapter mechanics. Put locking, leases, retries, and persistence strategy behind adapter contracts.
 - Keep optional guarantees optional. For example, wrap slow Reaction plugins with an outbox instead of forcing outbox machinery into every Reaction.
 
+## OpenSpec Scope
+
+- The repository root and every direct `apps/*` and `packages/*` folder are independent OpenSpec roots.
+- Codex sessions start at the repository root, but the starting directory is not an OpenSpec scope signal.
+- Before every OpenSpec read or write, identify the smallest owning app or package, run `openspec context --json` with that directory as the command working directory, and confirm the reported root matches the owner.
+- Run all later OpenSpec commands for that change with the same app or package as the command working directory. Stop rather than writing if root resolution selects a different directory.
+- Use the top-level `openspec/` root only when the change is truly repository-wide and cannot be owned by one app or package, such as workspace organization, shared tooling, contribution rules, or releases.
+- Keep app and package behavior in the owning workspace. A change spanning several workspaces needs a separate OpenSpec change in each affected root; use a root change only for repository-wide coordination.
+- OpenSpec records change intent and capability requirements. Exact Slice inputs, Events, outputs, and rejection behavior remain in Specter `spec.ts`/`spec.json` files and executable Scenarios.
+- Run `node scripts/validate-openspec.mjs` after changing any OpenSpec artifact or configuration.
+
 ## Pull Request Workflow
 
 - Do not use GitHub issues for work tracking in this repo.
