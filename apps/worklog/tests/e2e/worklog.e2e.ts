@@ -19,6 +19,15 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await expect(page.getByText('Open tasks', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
 
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(
+    page.getByRole('heading', { name: 'Your work is growing.' }),
+  ).toBeVisible()
+  await expect(page.locator('.garden-toast')).toHaveCount(0)
+  await page.getByRole('button', { name: 'night', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-night/)
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
+
   const captureText = page.getByLabel('Capture text')
   await expect(
     page.getByRole('button', { name: 'Journal', exact: true }),
@@ -38,6 +47,15 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await captureText.press('Meta+Enter')
   await expect(captureText).toHaveValue('')
   await expect(page.getByText(shortcutJournal, { exact: true })).toBeVisible()
+  await expect(page.locator('.garden-toast')).toContainText('1 flower grew')
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  const journalFlower = page.getByRole('button', {
+    name: `Journal flower: ${shortcutJournal}`,
+  })
+  await expect(journalFlower).toBeVisible()
+  await journalFlower.click()
+  await expect(page.locator('.garden-inspector')).toContainText(shortcutJournal)
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
 
   const cliTask = 'CLI subscription task'
   await runCli('command', {
@@ -145,8 +163,49 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await expect(firstRecord).toHaveValue(taskValue)
   await expect(secondRecord).toHaveValue(topicValue as string)
 
+  await page.getByRole('button', { name: 'tasks', exact: true }).click()
+  const connectedTask = page
+    .locator('article.task-row')
+    .filter({ hasText: cliTask })
+  await connectedTask
+    .getByRole('button', { name: `Complete ${cliTask}` })
+    .click()
+  await expect(page.locator('.garden-toast')).toContainText('crop ripened')
+
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: `Task crop: ${cliTask}` }),
+  ).toHaveClass(/ripe/)
+  await expect(
+    page.getByRole('button', { name: `Task crop: ${archiveTitle}, dormant` }),
+  ).toHaveClass(/dormant/)
+  await expect(page.locator('.vine-marker.flowering')).toHaveCount(1)
+  await page.getByRole('button', { name: 'sunset', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-sunset/)
+
   await page.reload()
-  await expect(page.getByText(cliTask, { exact: true })).toBeVisible()
+  await expect(page.getByText(cliTask, { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.garden-toast')).toHaveCount(0)
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-sunset/)
+  const desktopVine = await page.locator('.garden-vines path').getAttribute('d')
+  expect(desktopVine).toBeTruthy()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect
+    .poll(() => page.locator('.garden-vines path').getAttribute('d'))
+    .not.toBe(desktopVine)
+  const mobileGardenLayout = await page.evaluate(() => ({
+    horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
+    plotColumns: getComputedStyle(
+      document.querySelector('.garden-plots')!,
+    ).gridTemplateColumns.split(' ').length,
+  }))
+  expect(mobileGardenLayout).toEqual({
+    horizontalOverflow: 0,
+    plotColumns: 1,
+  })
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const journalBody = 'Appears after subscription reconnect'
   await runCli('command', {
     type: 'addJournalEntry',

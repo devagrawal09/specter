@@ -13,6 +13,7 @@ import { connectionsQuery } from './connections-query/impl'
 import { editJournalEntry } from './edit-journal-entry/impl'
 import { editTask } from './edit-task/impl'
 import { editTopic } from './edit-topic/impl'
+import { gardenQuery } from './garden-query/impl'
 import { worklogEventDefinitions } from './events'
 import { scoreQuery } from './score-query/impl'
 import { tasksQuery } from './tasks-query/impl'
@@ -37,6 +38,7 @@ export const worklogRegistrations = {
   topicsQuery,
   connectionsQuery,
   scoreQuery,
+  gardenQuery,
 } as const
 
 export const worklogAppConfig = {
@@ -52,3 +54,4 @@ export type TimelineQueryRef = QueryRef<typeof timelineQuery>
 export type TasksQueryRef = QueryRef<typeof tasksQuery>
 export type TopicsQueryRef = QueryRef<typeof topicsQuery>
 export type ScoreQueryRef = QueryRef<typeof scoreQuery>
+export type GardenQueryRef = QueryRef<typeof gardenQuery>

@@ -65,6 +65,23 @@ test('handles a command followed by timeline and score queries', async () => {
   expect(await scoreResponse.json()).toEqual(
     expect.objectContaining({ total: 1 }),
   )
+
+  const gardenResponse = await postJson('/api/query', {
+    envelope: { type: 'gardenQuery', payload: {} },
+  })
+  expect(gardenResponse.status).toBe(200)
+  expect(await gardenResponse.json()).toEqual({
+    totalPoints: 1,
+    records: [
+      expect.objectContaining({
+        id: 'journal-1',
+        kind: 'journal',
+        label: 'Building Worklog',
+        effects: [],
+      }),
+    ],
+    connections: [],
+  })
 })
 
 test('routes CLI commands through the server and updates active subscriptions', async () => {

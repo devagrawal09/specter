@@ -1,5 +1,15 @@
-import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from 'solid-js'
 
+import { summarizeGardenChanges } from './garden-layout'
+import { emptyGarden, type GardenMood } from './garden-types'
+import { GardenView } from './garden-view'
 import { runSpecterCommand, specterTransport } from './specter-transport'
 
 type WorklogCommandEnvelope = Parameters<typeof runSpecterCommand>[0]
@@ -41,7 +51,7 @@ type Topic = {
   completedTaskCount: number
 }
 type Award = { awardKey: string; reason: string; points: 1; awardedAt: string }
-type View = 'timeline' | 'tasks' | 'topics' | 'score'
+type View = 'timeline' | 'tasks' | 'topics' | 'garden' | 'score'
 type CaptureType = 'journal' | 'task' | 'topic'
 
 export function WorklogApp() {
@@ -53,6 +63,9 @@ export function WorklogApp() {
     total: 0,
     awards: [],
   })
+  const [garden, setGarden] = createSignal(emptyGarden)
+  const [gardenMood, setGardenMood] = createSignal<GardenMood>(loadGardenMood())
+  const [gardenToast, setGardenToast] = createSignal<string>()
   const [error, setError] = createSignal<string>()
   const [captureType, setCaptureType] = createSignal<CaptureType>('journal')
   const [captureText, setCaptureText] = createSignal('')
@@ -67,6 +80,10 @@ export function WorklogApp() {
   let timelineViewport: HTMLDivElement | undefined
   let followingTimeline = true
   let timelineHasRendered = false
+  let gardenReady = false
+  let gardenToastTimer: ReturnType<typeof setTimeout> | undefined
+
+  onCleanup(() => clearTimeout(gardenToastTimer))
 
   const openTasks = createMemo(() =>
     tasks().filter((task) => !task.completed && !task.archived),
@@ -109,6 +126,7 @@ export function WorklogApp() {
       void subscribeTasks(controller.signal)
       void subscribeTopics(controller.signal)
       void subscribeScore(controller.signal)
+      void subscribeGarden(controller.signal)
       return () => controller.abort()
     },
   )
@@ -175,6 +193,34 @@ export function WorklogApp() {
     } catch (cause) {
       if (!signal.aborted) setError(errorMessage(cause))
     }
+  }
+  async function subscribeGarden(signal: AbortSignal) {
+    try {
+      for await (const value of specterTransport.subscribe(
+        { type: 'gardenQuery', payload: {} },
+        { signal },
+      )) {
+        if (gardenReady && view() !== 'garden') {
+          const message = summarizeGardenChanges(garden(), value)
+          if (message) showGardenToast(message)
+        }
+        setGarden(value)
+        gardenReady = true
+      }
+    } catch (cause) {
+      if (!signal.aborted) setError(errorMessage(cause))
+    }
+  }
+
+  function showGardenToast(message: string) {
+    clearTimeout(gardenToastTimer)
+    setGardenToast(message)
+    gardenToastTimer = setTimeout(() => setGardenToast(), 4_500)
+  }
+
+  function changeGardenMood(mood: GardenMood) {
+    setGardenMood(mood)
+    window.localStorage.setItem('worklog-garden-mood', mood)
   }
 
   async function run(
@@ -262,7 +308,9 @@ export function WorklogApp() {
           </span>
         </button>
         <nav aria-label="Primary navigation">
-          <For each={['timeline', 'tasks', 'topics', 'score'] as View[]}>
+          <For
+            each={['timeline', 'tasks', 'topics', 'garden', 'score'] as View[]}
+          >
             {(item) => (
               <button
                 type="button"
@@ -291,6 +339,22 @@ export function WorklogApp() {
               ×
             </button>
           </div>
+        )}
+      </Show>
+
+      <Show when={gardenToast()}>
+        {(message) => (
+          <output class="garden-toast">
+            <span aria-hidden="true">✦</span>
+            <p>{message()}</p>
+            <button
+              type="button"
+              aria-label="Dismiss garden update"
+              onClick={() => setGardenToast()}
+            >
+              ×
+            </button>
+          </output>
         )}
       </Show>
 
@@ -462,6 +526,14 @@ export function WorklogApp() {
               {(topic) => <TopicCard topic={topic} run={run} />}
             </For>
           </div>
+        </Show>
+
+        <Show when={view() === 'garden'}>
+          <GardenView
+            snapshot={garden()}
+            mood={gardenMood()}
+            setMood={changeGardenMood}
+          />
         </Show>
 
         <Show when={view() === 'score'}>
@@ -806,6 +878,11 @@ function parseRef(
 function toLocalInput(date: Date) {
   const offset = date.getTimezoneOffset() * 60_000
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+function loadGardenMood(): GardenMood {
+  if (typeof window === 'undefined') return 'day'
+  const value = window.localStorage.getItem('worklog-garden-mood')
+  return value === 'sunset' || value === 'night' ? value : 'day'
 }
 function formatTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {
