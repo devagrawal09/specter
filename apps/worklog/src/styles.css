@@ -169,12 +169,6 @@ main {
   padding: 34px 0 calc(108px + env(safe-area-inset-bottom));
 }
 
-.hero-grid {
-  display: grid;
-  gap: 20px;
-  margin-bottom: 24px;
-}
-
 .eyebrow {
   margin: 0 0 9px;
   color: var(--accent);
@@ -200,41 +194,11 @@ h1 {
   letter-spacing: -0.035em;
 }
 
-.lede,
 .page-heading > p:last-child {
   max-width: 650px;
   color: var(--muted);
   font-size: 15px;
   line-height: 1.65;
-}
-
-.today-card {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 2px 16px;
-  padding: 16px 18px;
-  border-radius: 16px;
-  background: var(--ink);
-  box-shadow: var(--shadow);
-  color: var(--paper);
-}
-
-.today-card span,
-.today-card small {
-  display: block;
-  color: #bdb5ad;
-  font-size: 10px;
-}
-
-.today-card strong {
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  display: block;
-  color: #f1c8b7;
-  font-family: 'Newsreader', serif;
-  font-size: 42px;
-  line-height: 1;
 }
 
 .composer {
@@ -245,9 +209,52 @@ h1 {
   box-shadow: var(--shadow);
 }
 
+.capture-types {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  min-width: 0;
+  margin: 0;
+  padding: 8px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: #f0eadf;
+}
+
+.capture-types legend {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.capture-types button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.capture-types button span {
+  margin-right: 7px;
+  font-family: 'DM Mono', monospace;
+}
+
+.capture-types button[aria-pressed='true'] {
+  background: var(--paper);
+  box-shadow: 0 2px 8px rgb(47 37 30 / 9%);
+  color: var(--ink);
+}
+
 .composer textarea {
   width: 100%;
-  min-height: 132px;
+  min-height: 116px;
   padding: 22px 20px;
   resize: vertical;
   border: 0;
@@ -275,6 +282,11 @@ h1 {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.composer-hint {
   color: var(--muted);
   font-size: 11px;
 }
@@ -321,88 +333,32 @@ button:disabled {
   opacity: 0.45;
 }
 
-.quick-grid {
+.timeline-section {
   display: grid;
-  gap: 14px;
-  margin: 16px 0 48px;
+  gap: 16px;
 }
 
-.quick-card {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
-  align-items: start;
-  padding: 16px;
+.timeline-viewport {
+  height: clamp(320px, 55vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 12px 2px;
   border: 1px solid var(--line);
-  border-radius: 17px;
-  background: rgb(251 248 241 / 76%);
+  border-radius: 19px;
+  background: rgb(235 228 217 / 48%);
+  scrollbar-color: #c9bfb2 transparent;
 }
 
-.quick-card h2 {
-  margin: 1px 0 9px;
-  font-family: 'Newsreader', serif;
-  font-size: 21px;
+.timeline-list {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
 }
 
-.quick-card div {
-  display: grid;
-  min-width: 0;
-  gap: 8px;
-}
-
-.quick-card input {
-  font-size: 12px;
-}
-
-.quick-card > button {
-  grid-column: 1 / -1;
-  min-height: 42px;
-  border: 1px solid var(--accent-soft);
-  border-radius: 10px;
-  background: #fff7f2;
-  color: var(--accent);
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.quick-icon {
-  display: grid;
-  width: 36px;
-  height: 36px;
-  place-items: center;
-  border-radius: 10px;
-  font-family: 'DM Mono', monospace;
-}
-
-.task-icon {
-  background: #dce7de;
-  color: var(--green);
-}
-
-.topic-icon {
-  background: #e8dfcf;
-  color: #896e45;
-}
-
-.section-heading {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 12px;
-  margin-bottom: 18px;
-}
-
-.section-heading h2 {
-  margin: 0;
-  font-family: 'Newsreader', serif;
-  font-size: 30px;
-  line-height: 1.02;
-}
-
-.section-heading > span {
-  color: var(--muted);
-  font-size: 11px;
-  text-align: right;
+.unified-composer {
+  position: relative;
+  z-index: 2;
 }
 
 .day-group {
@@ -438,6 +394,7 @@ button:disabled {
 
 .timeline-icon {
   display: grid;
+  flex: 0 0 34px;
   width: 34px;
   height: 34px;
   place-items: center;
@@ -790,7 +747,7 @@ button:disabled {
   }
 
   .composer textarea {
-    min-height: 150px;
+    min-height: 128px;
     padding: 26px;
     font-size: 24px;
   }
@@ -801,29 +758,18 @@ button:disabled {
     padding: 13px 16px 13px 22px;
   }
 
+  .capture-types {
+    display: flex;
+  }
+
+  .capture-types button {
+    min-width: 112px;
+    padding: 8px 18px;
+  }
+
   .composer-footer label {
     grid-template-columns: auto minmax(190px, 250px);
     justify-content: start;
-  }
-
-  .quick-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    margin-bottom: 56px;
-  }
-
-  .quick-card {
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    min-height: 116px;
-    padding: 18px;
-  }
-
-  .quick-card > button {
-    grid-column: 3;
-    align-self: center;
-    min-height: 40px;
-    padding: 0 5px;
-    border: 0;
-    background: transparent;
   }
 
   .timeline-copy > div {
@@ -859,45 +805,20 @@ button:disabled {
     padding-top: 58px;
   }
 
-  .hero-grid {
-    grid-template-columns: minmax(0, 1fr) 230px;
-    align-items: end;
-    gap: 70px;
-    margin-bottom: 32px;
-  }
-
-  .today-card {
-    display: block;
-    padding: 22px;
-    border-radius: 20px;
-  }
-
-  .today-card span,
-  .today-card small {
-    font-size: 11px;
-  }
-
-  .today-card strong {
-    display: block;
-    font-size: 48px;
-    line-height: 1.1;
-  }
-
   .day-group {
-    grid-template-columns: 160px minmax(0, 1fr);
-    gap: 28px;
     margin-bottom: 30px;
   }
 
+  .timeline-viewport {
+    padding: 28px 28px 2px;
+  }
+
   .day-label {
-    padding-top: 18px;
     font-size: 10px;
   }
 
   .day-items {
     gap: 10px;
-    padding-left: 28px;
-    border-left: 1px solid var(--line);
   }
 
   .timeline-card {
@@ -905,17 +826,6 @@ button:disabled {
     align-items: center;
     padding: 15px 16px;
     border-color: transparent;
-  }
-
-  .timeline-card::before {
-    position: absolute;
-    left: -34px;
-    width: 10px;
-    height: 10px;
-    border: 3px solid #f3efe6;
-    border-radius: 50%;
-    background: #b9aea3;
-    content: '';
   }
 
   .timeline-card:hover {
