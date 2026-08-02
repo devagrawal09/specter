@@ -17,7 +17,7 @@ Public package entrypoints are the source of truth. Import only the names docume
 | `@specter-ts/sqlite-node` | Native `node:sqlite` adapters and scoped Effect runtime bundle | [Persistence API](./persistence.md) |
 | `@specter-ts/postgres` | Postgres Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
 | `@specter-ts/reaction-outbox` | Durable Reaction Plugin wrapper, worker, store contract, retries, and dead-letter handling | [Reaction outbox API](./reaction-outbox.md) |
-| `@specter-ts/observability` | Shared collector, dashboard, CLI, and non-blocking runtime producer | [Observability API](./observability.md) |
+| `@specter-ts/spec-editor` | Local browser editor for committed portable Slice specifications | [Visual Spec Editor](../../packages/spec-editor/README.md) |
 | `create-specter` | CLI that creates the Todo reference project and generates Slices and Events | [Create Specter CLI](./create-specter.md) |
 
 There is no `@specter-ts/core/client` entrypoint. Browser transports are
@@ -28,7 +28,7 @@ project-owned code, as described in [Runtime architecture](../architecture/runti
 - Import specification builders and Scenario types from `@specter-ts/spec` in `spec.ts` files.
 - Import scenario-test helpers from `@specter-ts/core/testing` in tests.
 - Import runtime values and completed implementation types from `@specter-ts/core` in application wiring and `impl.ts` files.
-- Import persistence, scheduling, outbox, and observability capabilities from their named packages.
+- Import persistence, scheduling, and outbox capabilities from their named packages.
 - Use named package exports. These packages do not expose default exports; the
   required default export from each application-owned `spec.ts` is a separate
   authoring convention used by `specter-spec export`.

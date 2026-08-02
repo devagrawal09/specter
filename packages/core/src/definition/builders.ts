@@ -1,5 +1,12 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { parseSpecification, parseSpecificationJson } from '@specter-ts/spec'
+import {
+  digestSpecification,
+  parseSpecification,
+  parseSpecificationJson,
+  SPECTER_SPECIFICATION_FORMAT_VERSION,
+  SPECTER_SPECIFICATION_SCHEMA,
+  type SpecificationDigest,
+} from '@specter-ts/spec'
 
 import type { EventDraft } from './events'
 import type {
@@ -370,6 +377,7 @@ type Specification<
   readonly name: TName
   readonly description: string
   readonly scenarios: TScenarios
+  readonly specificationDigest: SpecificationDigest
 }
 
 export function createCommandSlice<const TName extends string>(
@@ -410,6 +418,12 @@ function createCommandSpec<
     name,
     description,
     scenarios,
+    specificationDigest: specificationDigest(
+      'command',
+      name,
+      description,
+      scenarios,
+    ),
   })
 
   return Object.freeze({
@@ -529,6 +543,12 @@ function createQuerySpec<
     name,
     description,
     scenarios,
+    specificationDigest: specificationDigest(
+      'query',
+      name,
+      description,
+      scenarios,
+    ),
   })
 
   return Object.freeze({
@@ -661,6 +681,12 @@ function createReactionSpec<
     name,
     description,
     scenarios,
+    specificationDigest: specificationDigest(
+      'reaction',
+      name,
+      description,
+      scenarios,
+    ),
   })
 
   return Object.freeze({
@@ -686,6 +712,28 @@ function createReactionSpec<
       }
     },
   }) as ReactionSliceSpec<TName, TScenarios>
+}
+
+function specificationDigest(
+  kind: 'command' | 'query' | 'reaction',
+  name: string,
+  description: string,
+  scenarios: readonly SliceScenario[],
+): SpecificationDigest {
+  try {
+    return digestSpecification({
+      $schema: SPECTER_SPECIFICATION_SCHEMA,
+      formatVersion: SPECTER_SPECIFICATION_FORMAT_VERSION,
+      kind,
+      name,
+      description,
+      scenarios,
+    })
+  } catch {
+    // Existing TypeScript builders still allow conformance tests to construct
+    // invalid drafts. The runtime rejects those before it can emit a span.
+    return 'sha256:unavailable'
+  }
 }
 
 function createReactionApplyStep<

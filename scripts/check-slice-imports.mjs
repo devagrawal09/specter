@@ -16,7 +16,6 @@ for (const filePath of files) {
     filenames.add(path.basename(filePath))
     sliceDirectories.set(slice.directory, filenames)
   }
-
 }
 
 const sliceContractDirectories = new Set(
@@ -38,8 +37,8 @@ for (const [directory, filenames] of sliceDirectories) {
       'legacy slice.ts must be split into spec.ts and impl.ts',
     )
   }
-  if (!filenames.has('spec.ts')) {
-    addViolation(directory, 'Slice directory is missing spec.ts')
+  if (!filenames.has('spec.ts') && !filenames.has('spec.json')) {
+    addViolation(directory, 'Slice directory is missing spec.ts or spec.json')
   }
   if (!filenames.has('impl.ts')) {
     addViolation(directory, 'Slice directory is missing impl.ts')

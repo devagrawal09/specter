@@ -18,6 +18,7 @@ coverage/
 playwright-report/
 test-results/
 **/spec.json
+!apps/worklog/src/features/**/spec.json
 
 # Local environment and secrets
 .env

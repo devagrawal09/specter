@@ -111,22 +111,23 @@ the outer Promise settles from the committed response, while
 `execution.reactions` observes a separate completion endpoint. Subscriptions
 use abortable, reconnect-capable SSE.
 
-For cross-language tooling, Specter publishes versioned, language-neutral
-contracts for runtime-observation metadata and portable Slice specifications.
-Runtimes send `observations.batch` and `specifications.publish` messages through
-independent JSON HTTP ingestion lanes; the collector acknowledges, retries, and
-deduplicates each lane separately. Matching major versions are required, and
-unknown optional fields are tolerated.
+## Native runtime tracing
 
-The protocol observes Command, Query, subscription, projection, and Reaction
-activity but does not invoke them. Portable specifications describe behavioral
-examples, not handlers, runtime schemas, persistence, or application APIs. The
-unified dashboard renders those exact specifications beside digest-correlated
-telemetry; it and the CLI query the collector's separate API. TypeScript and Go
-implementations conform independently against shared fixtures.
-See the [protocol overview](../../protocol/README.md),
-[behavioral contract](../../protocol/behavior.md), and
-[HTTP binding](../../protocol/http-binding.md).
+TypeScript core emits native Effect spans for Commands, Queries, Reactions, and
+Slice catch-up. Applications choose and configure Effect's OpenTelemetry layer,
+exporter, endpoint, and backend; core does not send telemetry by itself.
+
+Span names are `specter.command <name>`, `specter.query <name>`,
+`specter.reaction <name>`, and `specter.slice.catch-up <name>`. Attributes carry
+the Slice name, kind, specification digest, outcome, Event types and orders,
+Event Log versions, cursor ranges, and safe error codes. Command, Event, Query,
+Reaction, and Scenario payload values are never added. Successful operations
+do not produce routine Specter logs.
+
+The same `specificationDigest` is available on every completed TypeScript Slice
+and in its span metadata. Standard trace tools can therefore filter by
+`specter.slice.name` or `specter.spec.digest` without Specter owning trace
+storage or a dashboard.
 
 JSON boundaries must reject non-JSON values such as `undefined`, `bigint`,
 non-finite numbers, functions, symbols, `Map`, `Set`, class instances, and
@@ -154,8 +155,7 @@ Schema at an untrusted boundary.
 - Postgres provides multi-process persistence and database-level
   serialization.
 - Durable Reaction delivery uses `@specter-ts/reaction-outbox`.
-- Observability failures are swallowed by core and cannot turn a successful
-  domain operation into a failure.
+- Trace export is application-owned and stays outside domain correctness.
 
 Expected contract failures use stable `SpecterError` codes. Unexpected adapter,
 schema, and scheduler failures become `SpecterInfrastructureError`. Construction

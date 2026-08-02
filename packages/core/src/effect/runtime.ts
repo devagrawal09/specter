@@ -1,5 +1,4 @@
 import {
-  Clock,
   Context,
   Effect,
   Fiber,
@@ -59,6 +58,7 @@ import {
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
   SpecterProjectionFailedError,
+  specterErrorCodes,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,
   SpecterUnknownCommandError,
@@ -66,14 +66,6 @@ import {
   SpecterUnknownQueryError,
   SpecterVersionConflictError,
 } from '../runtime/errors'
-import {
-  SpecterIds,
-  type SpecterCausality,
-  type SpecterObservation,
-  type SpecterObservationDetails,
-  SpecterObservationCausality,
-  SpecterObserver,
-} from './observability'
 
 export type SpecterEffectError =
   | SpecterError
@@ -171,8 +163,6 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
     const eventLog = yield* EventLog
     const scheduler = yield* ReactionScheduler
-    const observer = yield* SpecterObserver
-    const ids = yield* SpecterIds
     const scope = yield* Effect.scope
     const services = yield* Effect.context<SpecterStoreRequirements<TConfig>>()
     const eventDefinitions = new Map<string, ApplyEventDefinition>()
@@ -256,14 +246,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       envelope: CommandEnvelope,
       options: CommandExecutionOptions = {},
     ): Effect.Effect<SpecterEffectCommandExecution, SpecterEffectError> {
+      const knownCommand = commands.get(envelope.type)
       return Effect.gen(function* () {
-        const operationId = yield* ids.next
-        const startedAt = yield* Clock.currentTimeMillis
-        yield* observe(operationId, {
-          type: 'command-started',
-          commandType: envelope.type,
-        })
-        const parentCausality = yield* SpecterObservationCausality
         const result = yield* Effect.result(
           Effect.gen(function* () {
             const optionError = validateCommandOptions(options)
@@ -306,53 +290,42 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                 : (scheduled?.success ?? Effect.void)
             const reactionFiber = yield* Effect.forkIn(completion, scope)
             return { command, commit, reactionFiber }
-          }).pipe(
-            Effect.provideService(
-              SpecterObservationCausality,
-              childCausality(parentCausality, operationId),
-            ),
-          ),
+          }),
         )
         if (result._tag === 'Failure') {
-          const completedAt = yield* Clock.currentTimeMillis
-          yield* observe(operationId, {
-            type: isCommandRejection(result.failure)
-              ? 'command-rejected'
-              : 'command-failed',
-            commandType: envelope.type,
-            durationMs: completedAt - startedAt,
-            cause: result.failure,
+          yield* Effect.annotateCurrentSpan({
+            'specter.outcome': isCommandRejection(result.failure)
+              ? 'rejected'
+              : 'failed',
+            ...safeErrorAttributes(result.failure),
           })
           return yield* Effect.fail(result.failure)
         }
-        const { command, commit, reactionFiber } = result.success
-
-        for (const event of commit.events) {
-          yield* observe(operationId, {
-            type: 'event-persisted',
-            event: eventReference(event, commit.version),
-          })
-        }
-        const completedAt = yield* Clock.currentTimeMillis
-        yield* observe(operationId, {
-          type: 'command-completed',
-          commandType: command.name,
-          version: commit.version,
-          events: commit.events.map((event) =>
-            eventReference(event, commit.version),
-          ),
-          duplicate: commit.duplicate,
-          durationMs: completedAt - startedAt,
+        const { commit, reactionFiber } = result.success
+        yield* Effect.annotateCurrentSpan({
+          'specter.outcome': 'accepted',
+          'specter.event.count': commit.events.length,
+          'specter.event.types': commit.events.map((event) => event.type),
+          'specter.event.orders': commit.events.map((event) => event.order),
+          'specter.event_log.version': commit.version,
+          'specter.command.duplicate': commit.duplicate,
         })
 
         return {
-          operationId,
           events: commit.events,
           version: commit.version,
           duplicate: commit.duplicate,
           reactions: Fiber.join(reactionFiber),
         }
-      })
+      }).pipe(
+        Effect.withSpan(`specter.command ${envelope.type}`, {
+          attributes: sliceSpanAttributes(
+            'command',
+            envelope.type,
+            knownCommand,
+          ),
+        }),
+      )
     }
 
     function dispatchQuery(
@@ -390,15 +363,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       envelope: CommandEnvelope,
       subscription: boolean,
     ): Effect.Effect<unknown, SpecterEffectError> {
+      const knownQuery = queries.get(envelope.type)
       return Effect.gen(function* () {
-        const operationId = yield* ids.next
-        const startedAt = yield* Clock.currentTimeMillis
-        yield* observe(operationId, {
-          type: 'query-started',
-          queryName: envelope.type,
-          subscription,
-        })
-        const parentCausality = yield* SpecterObservationCausality
         const result = yield* Effect.result(
           Effect.gen(function* () {
             const query = queries.get(envelope.type)
@@ -408,34 +374,27 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
               )
             }
             return yield* runQuery(query, envelope.payload)
-          }).pipe(
-            Effect.provideService(
-              SpecterObservationCausality,
-              childCausality(parentCausality, operationId),
-            ),
-          ),
+          }),
         )
-        const completedAt = yield* Clock.currentTimeMillis
         if (result._tag === 'Failure') {
-          yield* observe(operationId, {
-            type: isQueryRejection(result.failure)
-              ? 'query-rejected'
-              : 'query-failed',
-            queryName: envelope.type,
-            subscription,
-            durationMs: completedAt - startedAt,
-            cause: result.failure,
+          yield* Effect.annotateCurrentSpan({
+            'specter.outcome': isQueryRejection(result.failure)
+              ? 'rejected'
+              : 'failed',
+            ...safeErrorAttributes(result.failure),
           })
           return yield* Effect.fail(result.failure)
         }
-        yield* observe(operationId, {
-          type: 'query-completed',
-          queryName: envelope.type,
-          subscription,
-          durationMs: completedAt - startedAt,
-        })
+        yield* Effect.annotateCurrentSpan('specter.outcome', 'completed')
         return result.success
-      })
+      }).pipe(
+        Effect.withSpan(`specter.query ${envelope.type}`, {
+          attributes: {
+            ...sliceSpanAttributes('query', envelope.type, knownQuery),
+            'specter.query.subscription': subscription,
+          },
+        }),
+      )
     }
 
     function runCommand(
@@ -548,59 +507,78 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         )
       }
       return Effect.gen(function* () {
-        const caughtUp = yield* resolved.service
-          .transaction(slice.name, (write, _read, cursor, publishCursor) =>
-            Effect.gen(function* () {
-              const handlers = applyBySlice.get(slice)
-              const eventTypes = [...(handlers?.keys() ?? [])]
-              if (eventTypes.length === 0) return undefined
-              const loaded = yield* eventLog.query(cursor, eventTypes)
-              const events =
-                throughOrder === undefined
-                  ? loaded
-                  : loaded.filter((event) => event.order <= throughOrder)
-              assertEventLogOrder(cursor, events)
-              if (events.length === 0) return undefined
-              for (const event of yield* Effect.forEach(
-                events,
-                decodePersistedEvent,
-              )) {
-                const apply = handlers?.get(event.type)
-                if (!apply) continue
-                yield* fromPromise(
-                  () => apply.handle(event, write),
-                  (cause) =>
-                    new SpecterProjectionFailedError(slice.name, cause),
-                )
-              }
-              const toOrder = events[events.length - 1].order
-              yield* publishCursor(toOrder)
-              return { fromOrder: cursor, toOrder, events }
-            }),
-          )
-          .pipe(
-            Effect.mapError((cause) =>
-              isPublicError(cause)
-                ? cause
-                : new SpecterStoreFailureError(
-                    slice.name,
-                    'transaction',
-                    cause,
-                  ),
+        const result = yield* Effect.result(
+          resolved.service
+            .transaction(slice.name, (write, _read, cursor, publishCursor) =>
+              Effect.gen(function* () {
+                const handlers = applyBySlice.get(slice)
+                const eventTypes = [...(handlers?.keys() ?? [])]
+                if (eventTypes.length === 0) return undefined
+                const loaded = yield* eventLog.query(cursor, eventTypes)
+                const events =
+                  throughOrder === undefined
+                    ? loaded
+                    : loaded.filter((event) => event.order <= throughOrder)
+                assertEventLogOrder(cursor, events)
+                if (events.length === 0) return undefined
+                for (const event of yield* Effect.forEach(
+                  events,
+                  decodePersistedEvent,
+                )) {
+                  const apply = handlers?.get(event.type)
+                  if (!apply) continue
+                  yield* fromPromise(
+                    () => apply.handle(event, write),
+                    (cause) =>
+                      new SpecterProjectionFailedError(slice.name, cause),
+                  )
+                }
+                const toOrder = events[events.length - 1].order
+                yield* publishCursor(toOrder)
+                return { fromOrder: cursor, toOrder, events }
+              }),
+            )
+            .pipe(
+              Effect.mapError((cause) =>
+                isPublicError(cause)
+                  ? cause
+                  : new SpecterStoreFailureError(
+                      slice.name,
+                      'transaction',
+                      cause,
+                    ),
+              ),
             ),
-          )
-        if (!caughtUp) return
-        const operationId = yield* ids.next
-        yield* observe(operationId, {
-          type: 'slice-caught-up',
-          sliceName: slice.name,
-          sliceKind: slice.kind,
-          fromOrder: caughtUp.fromOrder,
-          toOrder: caughtUp.toOrder,
-          eventCount: caughtUp.events.length,
-          events: caughtUp.events.map((event) => eventReference(event)),
+        )
+        if (result._tag === 'Failure') {
+          yield* Effect.annotateCurrentSpan({
+            'specter.outcome': 'failed',
+            ...safeErrorAttributes(result.failure),
+          })
+          return yield* Effect.fail(result.failure)
+        }
+        const caughtUp = result.success
+        yield* Effect.annotateCurrentSpan({
+          'specter.outcome': 'completed',
+          'specter.event.count': caughtUp?.events.length ?? 0,
+          ...(caughtUp
+            ? {
+                'specter.cursor.from': caughtUp.fromOrder,
+                'specter.cursor.to': caughtUp.toOrder,
+                'specter.event.types': caughtUp.events.map(
+                  (event) => event.type,
+                ),
+                'specter.event.orders': caughtUp.events.map(
+                  (event) => event.order,
+                ),
+              }
+            : {}),
         })
-      })
+      }).pipe(
+        Effect.withSpan(`specter.slice.catch-up ${slice.name}`, {
+          attributes: sliceSpanAttributes(slice.kind, slice.name, slice),
+        }),
+      )
     }
 
     function readStore<A>(
@@ -683,32 +661,13 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           ),
         )
       }
+      const deliveryId = `${reaction.name}:${commit.version}`
       return Effect.gen(function* () {
-        const operationId = yield* ids.next
-        const deliveryId = `${reaction.name}:${commit.version}`
-        let startedAt: number | undefined
-        const currentCausality = yield* SpecterObservationCausality
-        const causedByEvents = commit.events.map((event) =>
-          eventReference(event, commit.version),
-        )
-        const reactionCausality: SpecterCausality = {
-          ...currentCausality,
-          causedByEvents,
-          triggeringEventIds: commit.events.map((event) => event.id),
-          triggeringEventOrder: eventOrderRange(commit.events),
-        }
         const result = yield* Effect.result(
           resolved.service
             .transaction(reaction.name, (write, read, cursor, publishCursor) =>
               Effect.gen(function* () {
                 if (cursor >= commit.version) return false
-                startedAt = yield* Clock.currentTimeMillis
-                yield* observeWithCausality(reactionCausality, operationId, {
-                  type: 'reaction-run-started',
-                  reactionName: reaction.name,
-                  deliveryId,
-                  commitVersion: commit.version,
-                })
                 const execute = yield* getReactionExec(reaction)
                 const handlers = applyBySlice.get(reaction)
                 const relevant = commit.events.filter(
@@ -778,34 +737,31 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                       cause,
                     ),
               ),
-            )
-            .pipe(
-              Effect.provideService(
-                SpecterObservationCausality,
-                childCausality(reactionCausality, operationId),
-              ),
             ),
         )
-        if (result._tag === 'Success' && !result.success) return
-        if (startedAt === undefined) {
-          if (result._tag === 'Failure')
-            return yield* Effect.fail(result.failure)
-          return
+        if (result._tag === 'Failure') {
+          yield* Effect.annotateCurrentSpan({
+            'specter.outcome': 'failed',
+            ...safeErrorAttributes(result.failure),
+          })
+          return yield* Effect.fail(result.failure)
         }
-        const completedAt = yield* Clock.currentTimeMillis
-        yield* observeWithCausality(reactionCausality, operationId, {
-          type:
-            result._tag === 'Success'
-              ? 'reaction-run-completed'
-              : 'reaction-run-failed',
-          reactionName: reaction.name,
-          deliveryId,
-          commitVersion: commit.version,
-          durationMs: completedAt - startedAt,
-          ...(result._tag === 'Failure' ? { cause: result.failure } : {}),
+        yield* Effect.annotateCurrentSpan({
+          'specter.outcome': result.success ? 'completed' : 'skipped',
+          'specter.reaction.duplicate': !result.success,
         })
-        if (result._tag === 'Failure') return yield* Effect.fail(result.failure)
-      })
+      }).pipe(
+        Effect.withSpan(`specter.reaction ${reaction.name}`, {
+          attributes: {
+            ...sliceSpanAttributes('reaction', reaction.name, reaction),
+            'specter.reaction.delivery_id': deliveryId,
+            'specter.event_log.commit_version': commit.version,
+            'specter.event.count': commit.events.length,
+            'specter.event.types': commit.events.map((event) => event.type),
+            'specter.event.orders': commit.events.map((event) => event.order),
+          },
+        }),
+      )
     }
 
     function getReactionExec(
@@ -858,11 +814,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     ): Effect.Effect<void> {
       if (events.length === 0) return Effect.void
       const changed = new Set(events.map((event) => event.type))
-      return Effect.gen(function* () {
-        const invalidated = new Map<
-          string,
-          { readonly count: number; readonly eventTypes: readonly string[] }
-        >()
+      return Effect.sync(() => {
         for (const subscription of subscriptions) {
           const handlers = applyBySlice.get(subscription.query)
           const eventTypes = [...(handlers?.keys() ?? [])].filter((type) =>
@@ -870,55 +822,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           )
           if (eventTypes.length === 0) continue
           Queue.offerUnsafe(subscription.queue, undefined)
-          const current = invalidated.get(subscription.query.name)
-          invalidated.set(subscription.query.name, {
-            count: (current?.count ?? 0) + 1,
-            eventTypes: [
-              ...new Set([...(current?.eventTypes ?? []), ...eventTypes]),
-            ],
-          })
-        }
-        for (const [queryName, invalidation] of invalidated) {
-          const operationId = yield* ids.next
-          yield* observe(operationId, {
-            type: 'subscriptions-invalidated',
-            queryName,
-            subscriberCount: invalidation.count,
-            changedEventTypes: invalidation.eventTypes,
-          })
         }
       })
-    }
-
-    function observe(
-      operationId: string,
-      details: SpecterObservationDetails,
-    ): Effect.Effect<void> {
-      return Effect.flatMap(SpecterObservationCausality, (causality) =>
-        observeWithCausality(causality, operationId, details),
-      )
-    }
-
-    function observeWithCausality(
-      causality: SpecterCausality,
-      operationId: string,
-      details: SpecterObservationDetails,
-    ): Effect.Effect<void> {
-      return Effect.ignoreCause(
-        Effect.gen(function* () {
-          const observationId = yield* ids.next
-          const observedAt = new Date(
-            yield* Clock.currentTimeMillis,
-          ).toISOString()
-          yield* observer.observe({
-            ...causality,
-            ...details,
-            observationId,
-            observedAt,
-            operationId,
-          } as SpecterObservation)
-        }),
-      )
     }
 
     function decodePersistedEvent(
@@ -992,7 +897,7 @@ export function createSpecterPromiseApp<const TConfig extends SpecterAppConfig>(
   dependencies: Layer.Layer<SpecterRuntimeRequirements<TConfig>>,
 ): SpecterApp<TConfig> {
   const runtime = ManagedRuntime.make(
-    createSpecterAppLayer(config).pipe(Layer.provide(dependencies)),
+    createSpecterAppLayer(config).pipe(Layer.provideMerge(dependencies)),
   )
   const service = runtime.runPromise(Effect.service(SpecterRuntime))
   let closed = false
@@ -1110,31 +1015,53 @@ function decodeInput(
   )
 }
 
-function eventReference(event: PersistedEvent, commitVersion?: number) {
+function sliceSpanAttributes(
+  kind: SliceRegistration['kind'],
+  name: string,
+  slice: SliceRegistration | undefined,
+): Record<string, unknown> {
   return {
-    id: event.id,
-    type: event.type,
-    order: event.order,
-    recordedAt: event.recordedAt,
-    ...(commitVersion === undefined ? {} : { commitVersion }),
+    'specter.slice.name': slice?.name ?? name,
+    'specter.slice.kind': kind,
+    ...(slice ? { 'specter.spec.digest': slice.specificationDigest } : {}),
   }
 }
 
-function eventOrderRange(events: readonly PersistedEvent[]) {
-  if (events.length === 0) return undefined
-  return {
-    from: events[0].order,
-    to: events[events.length - 1].order,
-  }
+const safeSpecterErrorMessages: Readonly<Record<string, string>> = {
+  [specterErrorCodes.commandRejected]: 'Command was rejected.',
+  [specterErrorCodes.conformanceFailed]: 'Runtime conformance failed.',
+  [specterErrorCodes.eventLogOrderViolation]: 'Event Log ordering is invalid.',
+  [specterErrorCodes.idempotencyConflict]:
+    'The idempotency key conflicts with an earlier Command.',
+  [specterErrorCodes.infrastructureFailure]: 'Runtime operation failed.',
+  [specterErrorCodes.invalidCommandOptions]: 'Command options are invalid.',
+  [specterErrorCodes.invalidInput]: 'Operation input is invalid.',
+  [specterErrorCodes.invalidOutput]: 'Operation output is invalid.',
+  [specterErrorCodes.projectionFailed]: 'Slice projection failed.',
+  [specterErrorCodes.reactionFailure]: 'One or more Reactions failed.',
+  [specterErrorCodes.storeConfiguration]: 'Slice Store is not configured.',
+  [specterErrorCodes.storeFailure]: 'Slice Store operation failed.',
+  [specterErrorCodes.unknownCommand]: 'Command type is not registered.',
+  [specterErrorCodes.unknownEvent]: 'Event type is not registered.',
+  [specterErrorCodes.unknownQuery]: 'Query type is not registered.',
+  [specterErrorCodes.versionConflict]: 'Event Log version conflict.',
 }
 
-function childCausality(
-  causality: SpecterCausality,
-  parentOperationId: string,
-): SpecterCausality {
+function safeErrorAttributes(cause: unknown): Record<string, unknown> {
+  const candidate =
+    typeof cause === 'object' &&
+    cause !== null &&
+    'code' in cause &&
+    typeof cause.code === 'string'
+      ? cause.code
+      : specterErrorCodes.infrastructureFailure
+  const code =
+    candidate in safeSpecterErrorMessages
+      ? candidate
+      : specterErrorCodes.infrastructureFailure
   return {
-    ...causality,
-    parentOperationIds: [parentOperationId],
+    'specter.error.code': code,
+    'specter.error.message': safeSpecterErrorMessages[code],
   }
 }
 

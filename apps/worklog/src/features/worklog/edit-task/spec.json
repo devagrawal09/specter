@@ -1,0 +1,128 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Edits the descriptive and due-date fields of a task.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "editTask",
+  "scenarios": [
+    {
+      "description": "Edits an active task.",
+      "expect": [
+        {
+          "eventType": "task-edited",
+          "examplePayload": {
+            "dueAt": "2026-07-18T15:00:00.000Z",
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "notes": "Details",
+            "taskId": "task-1",
+            "title": "Final"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Draft"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "dueAt": "2026-07-18T15:00:00.000Z",
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "notes": "Details",
+        "taskId": "task-1",
+        "title": "Final"
+      }
+    },
+    {
+      "description": "Edits a previously edited task.",
+      "expect": [
+        {
+          "eventType": "task-edited",
+          "examplePayload": {
+            "dueAt": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Final"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Draft"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-edited",
+          "examplePayload": {
+            "dueAt": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Middle"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "dueAt": null,
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "notes": null,
+        "taskId": "task-1",
+        "title": "Final"
+      }
+    },
+    {
+      "description": "Rejects editing an archived task.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Draft"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Task not found"
+      },
+      "when": {
+        "dueAt": null,
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "notes": null,
+        "taskId": "task-1",
+        "title": "Final"
+      }
+    }
+  ]
+}

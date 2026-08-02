@@ -1,0 +1,71 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Adds a journal entry to the activity timeline.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "addJournalEntry",
+  "scenarios": [
+    {
+      "description": "Adds a backdatable journal entry and awards its creation point.",
+      "expect": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Writing the plan",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "journal:journal-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "journal-added",
+            "related": [],
+            "subject": {
+              "id": "journal-1",
+              "kind": "journal"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [],
+      "when": {
+        "activityAt": "2026-07-18T15:00:00.000Z",
+        "body": "Writing the plan",
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Rejects a reused journal entry identifier.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Existing",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Journal entry already exists"
+      },
+      "when": {
+        "activityAt": "2026-07-18T15:00:00.000Z",
+        "body": "Duplicate",
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    }
+  ]
+}

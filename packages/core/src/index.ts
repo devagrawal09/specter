@@ -90,16 +90,3 @@ export {
   ReactionScheduler,
   ReactionSchedulerFailure,
 } from './adapters'
-export {
-  createPrettyConsoleSpecterObserver,
-  SpecterIds,
-  SpecterObserver,
-} from './effect/observability'
-export type {
-  SpecterCausality,
-  SpecterEventReference,
-  SpecterIdService,
-  SpecterObservation,
-  SpecterObservationDetails,
-  SpecterObserverService,
-} from './effect/observability'

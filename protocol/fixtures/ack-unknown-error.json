@@ -1,8 +1,0 @@
-{
-  "protocolVersion": 1,
-  "kind": "observations.ack",
-  "requestId": "ack-unknown-error-request",
-  "accepted": 1.0,
-  "duplicates": 0e0,
-  "error": { "code": "IGNORED", "message": "Unknown acknowledgement fields have no semantics." }
-}

@@ -17,7 +17,6 @@ type Subscription struct {
 	app        *App
 	query      string
 	payload    json.RawMessage
-	options    DispatchOptions
 	values     chan SubscriptionValue
 	ctx        context.Context
 	cancel     context.CancelFunc
@@ -31,10 +30,10 @@ func (a *App) Subscribe(ctx context.Context, query string, payload any) (*Subscr
 	if err != nil {
 		return nil, err
 	}
-	return a.SubscribeJSON(ctx, query, raw, DispatchOptions{})
+	return a.SubscribeJSON(ctx, query, raw)
 }
 
-func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawMessage, options DispatchOptions) (*Subscription, error) {
+func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawMessage) (*Subscription, error) {
 	if err := a.beginOperation(); err != nil {
 		return nil, err
 	}
@@ -44,13 +43,13 @@ func (a *App) SubscribeJSON(ctx context.Context, query string, payload json.RawM
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	values := make(chan SubscriptionValue, 1)
-	sub := &Subscription{ID: a.nextSubscription.Add(1), C: values, app: a, query: query, payload: payload, options: options, values: values, ctx: ctx, cancel: cancel}
+	sub := &Subscription{ID: a.nextSubscription.Add(1), C: values, app: a, query: query, payload: payload, values: values, ctx: ctx, cancel: cancel}
 	initialGeneration := sub.generation.Add(1)
 	a.subMu.Lock()
 	a.subscriptions[sub.ID] = sub
 	a.subMu.Unlock()
 	a.endOperation()
-	if err := sub.refresh(initialGeneration, options); err != nil {
+	if err := sub.refresh(initialGeneration); err != nil {
 		sub.Close()
 		return nil, err
 	}
@@ -82,8 +81,8 @@ func (s *Subscription) Close() {
 	})
 }
 
-func (s *Subscription) refresh(generation uint64, options DispatchOptions) error {
-	value, err := s.app.QueryJSON(s.ctx, s.query, s.payload, options)
+func (s *Subscription) refresh(generation uint64) error {
+	value, err := s.app.QueryJSON(s.ctx, s.query, s.payload)
 	if err != nil && s.ctx.Err() != nil {
 		return s.ctx.Err()
 	}
@@ -113,7 +112,7 @@ func (s *Subscription) refresh(generation uint64, options DispatchOptions) error
 	return nil
 }
 
-func (a *App) invalidateSubscriptions(parent, correlation string) {
+func (a *App) invalidateSubscriptions() {
 	a.subMu.Lock()
 	subscriptions := make([]*Subscription, 0, len(a.subscriptions))
 	for _, sub := range a.subscriptions {
@@ -122,15 +121,6 @@ func (a *App) invalidateSubscriptions(parent, correlation string) {
 	a.subMu.Unlock()
 	for _, sub := range subscriptions {
 		generation := sub.generation.Add(1)
-		operation := newID("op")
-		a.emit(Observation{Kind: "subscription.invalidated", OperationID: operation, CorrelationID: correlation, ParentOperationIDs: []string{parent}, QueryType: sub.query})
-		options := sub.options
-		options.OperationID = newID("op")
-		options.CorrelationID = correlation
-		options.ParentOperationIDs = []string{operation}
-		options.TriggeringEventIDs = nil
-		options.TriggeringEventOrder = nil
-		options.DeliveryID = ""
-		_ = sub.refresh(generation, options)
+		_ = sub.refresh(generation)
 	}
 }

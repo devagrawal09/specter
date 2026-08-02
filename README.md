@@ -20,10 +20,8 @@ packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
 packages/sqlite-node/      scoped native node:sqlite runtime bundle
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
-packages/protocol/         language-neutral v1 observation types and validation
-packages/observability/    shared collector, dashboard, CLI, and telemetry producer
+packages/spec-editor/      local visual editor for committed spec.json files
 packages/create-specter/   create-specter initializer CLI
-protocol/                  normative schemas, behavior, and golden fixtures
 runtimes/go/               independent Go 1.24 runtime and Todo reference app
 codemods/specter-json-specs/ deterministic 0.3-to-0.4 JSON-spec migration
 apps/reference/            Todo Reference application used as the starter template
@@ -78,7 +76,7 @@ pnpm dev:threadplane
 
 The Todo and Booking Reference applications use fixed port `41731`; the
 Threadplane Reference uses `41732`, Personal Mail uses `41738`, the
-observability collector uses `41739`, and the Go Todo reference uses `41737`.
+visual Spec Editor uses `41739`, and the Go Todo reference uses `41737`.
 
 Workspace apps resolve `@specter-ts/core` and `@specter-ts/core/testing` to
 local source through `tsconfig.base.json`. Root build, test, and typecheck
@@ -171,13 +169,13 @@ pnpm release:publish
 The unpublished `0.4.0` release set contains `@specter-ts/spec`,
 `@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
-`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`, `@specter-ts/protocol`,
-`@specter-ts/observability`, and
+`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`,
+`@specter-ts/spec-editor`, and
 `create-specter`. Release verification builds every publishable package before
 workspace typechecks/tests, validates the JSON-spec migration codemod, packs and
 tests a generated starter, and runs that starter's Playwright workflow.
 
-`release:auth` checks all nine names. It verifies that the authenticated npm
+`release:auth` checks every publishable name. It verifies that the authenticated npm
 identity owns every package that already exists. A 404 is recorded explicitly
 as an unpublished, first-publish package rather than mistaken for an auth
 failure; those names require `@specter-ts` scope publication rights. On later

@@ -24,17 +24,17 @@ Open `http://localhost:41731`. This fixed port belongs to the Todo Reference
 application. If it is occupied, investigate the conflicting process; Vite is
 configured to fail instead of silently choosing another port.
 
-To see specifications and telemetry together, start the collector in another
-terminal before exercising the Todo app:
+To inspect portable specifications, start the local editor in another terminal:
 
 ```sh
-node packages/observability/dist/cli.js serve
+pnpm --filter @specter-ts/spec-editor build
+node packages/spec-editor/dist/cli.js .
 ```
 
-Open `http://127.0.0.1:41739`. The Todo runtime publishes all loaded
-specifications at startup and sends correlated telemetry without blocking
-application execution. Publication includes complete synthetic Scenario
-values, so treat the collector as trusted local or team infrastructure.
+Open `http://127.0.0.1:41739`. The editor discovers
+`src/features/**/spec.json`. A JSON file beside `spec.ts` is read-only because
+the TypeScript source still owns it. Worklog is the first JSON-authoritative
+app and its 17 specifications can be edited and saved directly.
 
 ## Trace the `addTodo` Slice
 
@@ -147,8 +147,9 @@ pnpm build
   builders and types.
 - [Runtime architecture](architecture/runtime.md) for transactions,
   subscriptions, and Reaction completion.
-- [Observability API](api-reference/observability.md) for specification
-  publication, telemetry correlation, and the unified dashboard.
+- [Visual Spec Editor](../packages/spec-editor/README.md) for local JSON editing.
+- [Runtime architecture](architecture/runtime.md#native-runtime-tracing) for
+  Effect spans and application-owned OpenTelemetry export.
 
 The unreleased 0.4 documentation tracks `main` and may change before npm 0.4.0
 is published. Do not describe it as the stable npm release.

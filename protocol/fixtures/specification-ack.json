@@ -1,7 +1,0 @@
-{
-  "protocolVersion": 1,
-  "kind": "specifications.ack",
-  "requestId": "request-spec-1",
-  "acceptedDigests": ["sha256:eaf05020c0bbee5b8afb871f0a28b83678270c602495cc1476beb9b53cda20fd"],
-  "rejectedDigests": []
-}

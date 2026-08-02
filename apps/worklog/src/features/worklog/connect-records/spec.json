@@ -1,0 +1,487 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Creates a unique symmetric association between supported records.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "connectRecords",
+  "scenarios": [
+    {
+      "description": "Connects a journal to a completed task and awards both connection points.",
+      "expect": [
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "journal-1",
+              "kind": "journal"
+            },
+            "right": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "connection-added",
+            "related": [
+              {
+                "id": "journal-1",
+                "kind": "journal"
+              },
+              {
+                "id": "task-1",
+                "kind": "task"
+              }
+            ],
+            "subject": {
+              "id": "connection-1",
+              "kind": "connection"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-1:completed-task",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "completed-task-connection",
+            "related": [
+              {
+                "id": "journal-1",
+                "kind": "journal"
+              }
+            ],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "task:task-1:first-completion",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-first-completed",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "connectedAt": "2026-07-18T15:00:00.000Z",
+        "connectionId": "connection-1",
+        "left": {
+          "id": "journal-1",
+          "kind": "journal"
+        },
+        "right": {
+          "id": "task-1",
+          "kind": "task"
+        }
+      }
+    },
+    {
+      "description": "Connects a third completed task and awards the topic milestone.",
+      "expect": [
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-3",
+            "left": {
+              "id": "task-3",
+              "kind": "task"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-3:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "connection-added",
+            "related": [
+              {
+                "id": "task-3",
+                "kind": "task"
+              },
+              {
+                "id": "topic-1",
+                "kind": "topic"
+              }
+            ],
+            "subject": {
+              "id": "connection-3",
+              "kind": "connection"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-3:completed-task",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "completed-task-connection",
+            "related": [
+              {
+                "id": "topic-1",
+                "kind": "topic"
+              }
+            ],
+            "subject": {
+              "id": "task-3",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "topic:topic-1:all-tasks-completed",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "topic-all-tasks-completed",
+            "related": [
+              {
+                "id": "task-1",
+                "kind": "task"
+              },
+              {
+                "id": "task-2",
+                "kind": "task"
+              },
+              {
+                "id": "task-3",
+                "kind": "task"
+              }
+            ],
+            "subject": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Topic",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-2",
+            "title": "task-2"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-3",
+            "title": "task-3"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-2"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-3"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "task-1",
+              "kind": "task"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-2",
+            "left": {
+              "id": "task-2",
+              "kind": "task"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "connectedAt": "2026-07-18T15:00:00.000Z",
+        "connectionId": "connection-3",
+        "left": {
+          "id": "task-3",
+          "kind": "task"
+        },
+        "right": {
+          "id": "topic-1",
+          "kind": "topic"
+        }
+      }
+    },
+    {
+      "description": "Rejects recreating an archived endpoint pair.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Topic",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "journal-1",
+              "kind": "journal"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Records are already connected"
+      },
+      "when": {
+        "connectedAt": "2026-07-18T15:00:00.000Z",
+        "connectionId": "connection-2",
+        "left": {
+          "id": "topic-1",
+          "kind": "topic"
+        },
+        "right": {
+          "id": "journal-1",
+          "kind": "journal"
+        }
+      }
+    },
+    {
+      "description": "Rejects an archived endpoint.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-archived",
+            "title": "task-archived"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-archived"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Archived",
+            "topicId": "topic-archived"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "topicId": "topic-archived"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Connection endpoint not found"
+      },
+      "when": {
+        "connectedAt": "2026-07-18T15:00:00.000Z",
+        "connectionId": "connection-1",
+        "left": {
+          "id": "journal-1",
+          "kind": "journal"
+        },
+        "right": {
+          "id": "topic-archived",
+          "kind": "topic"
+        }
+      }
+    }
+  ]
+}

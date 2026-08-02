@@ -85,7 +85,6 @@ export type CommandExecutionCheck = Expect<
   Equal<
     Awaited<typeof execution>,
     {
-      readonly operationId?: string
       readonly events: readonly import('../definition').PersistedEvent[]
       readonly version: number
       readonly duplicate: boolean
