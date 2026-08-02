@@ -293,7 +293,7 @@ export function WorklogApp() {
   }
 
   return (
-    <div class="shell">
+    <div class={`shell${view() === 'garden' ? ' garden-shell' : ''}`}>
       <header class="masthead">
         <button
           type="button"

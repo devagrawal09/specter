@@ -106,32 +106,23 @@ export function GardenView(props: {
 
   return (
     <section class={`garden-view mood-${props.mood}`}>
-      <div class="garden-toolbar">
-        <div>
-          <p class="eyebrow">Lifetime garden</p>
-          <h1>Your work is growing.</h1>
-          <p>
-            {props.snapshot.records.length} plants ·{' '}
-            {props.snapshot.connections.length} vines ·{' '}
-            {props.snapshot.totalPoints} points
-          </p>
-        </div>
-        <fieldset class="mood-picker">
-          <legend>Garden mood</legend>
-          <For each={['day', 'sunset', 'night'] as GardenMood[]}>
-            {(mood) => (
-              <button
-                type="button"
-                class={props.mood === mood ? 'active' : ''}
-                aria-pressed={props.mood === mood ? 'true' : 'false'}
-                onClick={() => props.setMood(mood)}
-              >
-                {mood}
-              </button>
-            )}
-          </For>
-        </fieldset>
-      </div>
+      <fieldset class="mood-picker">
+        <legend>Garden mood</legend>
+        <For each={['day', 'sunset', 'night'] as GardenMood[]}>
+          {(mood) => (
+            <button
+              type="button"
+              class={props.mood === mood ? 'active' : ''}
+              aria-label={mood}
+              aria-pressed={props.mood === mood ? 'true' : 'false'}
+              title={`${mood[0].toUpperCase()}${mood.slice(1)} mood`}
+              onClick={() => props.setMood(mood)}
+            >
+              <MoodIcon mood={mood} />
+            </button>
+          )}
+        </For>
+      </fieldset>
 
       <div class="garden-scene">
         <div class="garden-sky" aria-hidden="true">
@@ -214,17 +205,16 @@ export function GardenView(props: {
             </For>
           </div>
 
-          <aside class="garden-inspector" aria-live="polite">
-            <Show
-              when={selectedRecord() || selectedConnection()}
-              fallback={
-                <div class="garden-inspector-empty">
-                  <span aria-hidden="true">⌁</span>
-                  <h2>Explore the garden</h2>
-                  <p>Select a plant or vine to see the work that grew it.</p>
-                </div>
-              }
-            >
+          <Show when={selectedRecord() || selectedConnection()}>
+            <aside class="garden-inspector" aria-live="polite">
+              <button
+                type="button"
+                class="garden-inspector-close"
+                aria-label="Close garden details"
+                onClick={() => setSelected()}
+              >
+                ×
+              </button>
               <Show when={selectedRecord()}>
                 {(record) => (
                   <RecordDetails record={record()} snapshot={props.snapshot} />
@@ -238,11 +228,28 @@ export function GardenView(props: {
                   />
                 )}
               </Show>
-            </Show>
-          </aside>
+            </aside>
+          </Show>
         </div>
       </div>
     </section>
+  )
+}
+
+function MoodIcon(props: { mood: GardenMood }) {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <Show when={props.mood === 'day'}>
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1" />
+      </Show>
+      <Show when={props.mood === 'sunset'}>
+        <path d="M4 15h16M6 19h12M8 15a4 4 0 0 1 8 0M12 4v3M5.6 7.6l2.1 2.1M18.4 7.6l-2.1 2.1" />
+      </Show>
+      <Show when={props.mood === 'night'}>
+        <path d="M19 15.5A8 8 0 0 1 8.5 5a8 8 0 1 0 10.5 10.5Z" />
+      </Show>
+    </svg>
   )
 }
 

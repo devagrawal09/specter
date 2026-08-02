@@ -20,9 +20,28 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
 
   await page.getByRole('button', { name: 'garden', exact: true }).click()
-  await expect(
-    page.getByRole('heading', { name: 'Your work is growing.' }),
-  ).toBeVisible()
+  await expect(page.locator('.garden-scene')).toBeVisible()
+  await expect(page.locator('.brand')).toBeHidden()
+  await expect(page.locator('.score-pill')).toBeHidden()
+  await expect(page.locator('.garden-inspector')).toHaveCount(0)
+  await expect(page.getByText('Your work is growing.')).toHaveCount(0)
+  await expect(page.locator('.mood-picker button')).toHaveCount(3)
+  expect(
+    await page
+      .locator('.mood-picker button')
+      .evaluateAll((buttons) => buttons.map((button) => button.textContent)),
+  ).toEqual(['', '', ''])
+  expect(
+    await page.locator('.garden-scene').evaluate((scene) => {
+      const rect = scene.getBoundingClientRect()
+      return {
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        minHeight: Math.round(rect.height) >= innerHeight,
+      }
+    }),
+  ).toEqual({ top: 0, left: 0, width: 1280, minHeight: true })
   await expect(page.locator('.garden-toast')).toHaveCount(0)
   await page.getByRole('button', { name: 'night', exact: true }).click()
   await expect(page.locator('.garden-view')).toHaveClass(/mood-night/)
