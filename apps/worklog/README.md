@@ -15,6 +15,8 @@ earning an auditable lifetime score.
 - Topics and symmetric connections between supported record types.
 - Permanent one-time points for creation, first completion, completed-task
   connections, and completing a topic containing at least three tasks.
+- A subscribed Garden view that turns those same permanent awards into flowers,
+  crops, topic trees, connection vines, and milestone growth.
 - A server-aware CLI that accepts raw Specter Command and Query envelopes,
   updates live subscriptions, and retains explicit direct-SQLite access.
 - Soft editing and archival; the Event Log remains the durable source of truth.
@@ -24,6 +26,19 @@ production server uses fixed port `41736`; dev, preview, and verification use
 fixed port `41737` so they can never attach to or displace the live service.
 Documents, recurring tasks, habits, routines, planning, authentication, sync,
 and application-level import/export are deferred.
+
+## Garden
+
+The Garden is a read-only view of the existing Event Log and permanent point
+ledger. Journal entries grow flowers, tasks grow crops, topics grow trees, and
+connections grow vines. First task completion ripens its crop, a completed-task
+connection flowers its vine, and a completed topic fruits its tree. These earned
+stages remain after reopening or later relationship changes.
+
+Topic trees anchor stable garden plots, records without a topic appear in a
+meadow, and archived elements remain visible but dormant. Day, Sunset, and Night
+are browser-only presentation choices. The Garden adds no domain Events,
+Commands, tables, timers, resources, decay, or upkeep state.
 
 ## Run it
 
