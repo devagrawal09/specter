@@ -122,7 +122,10 @@ Span names are `specter.command <name>`, `specter.query <name>`,
 the Slice name, kind, specification digest, outcome, Event types and orders,
 Event Log versions, cursor ranges, and safe error codes. Command, Event, Query,
 Reaction, and Scenario payload values are never added. Successful operations
-do not produce routine Specter logs.
+do not produce routine Specter logs. Failed spans end with a redacted Specter
+error, so OpenTelemetry status text and exception events cannot expose the
+original handler error or payload-derived values; callers still receive the
+original typed failure.
 
 The same `specificationDigest` is available on every completed TypeScript Slice
 and in its span metadata. Standard trace tools can therefore filter by

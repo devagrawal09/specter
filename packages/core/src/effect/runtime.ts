@@ -1,6 +1,8 @@
 import {
+  Cause,
   Context,
   Effect,
+  Exit,
   Fiber,
   Layer,
   ManagedRuntime,
@@ -318,7 +320,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           reactions: Fiber.join(reactionFiber),
         }
       }).pipe(
-        Effect.withSpan(`specter.command ${envelope.type}`, {
+        withSafeSpan(`specter.command ${envelope.type}`, {
           attributes: sliceSpanAttributes(
             'command',
             envelope.type,
@@ -388,7 +390,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         yield* Effect.annotateCurrentSpan('specter.outcome', 'completed')
         return result.success
       }).pipe(
-        Effect.withSpan(`specter.query ${envelope.type}`, {
+        withSafeSpan(`specter.query ${envelope.type}`, {
           attributes: {
             ...sliceSpanAttributes('query', envelope.type, knownQuery),
             'specter.query.subscription': subscription,
@@ -575,7 +577,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             : {}),
         })
       }).pipe(
-        Effect.withSpan(`specter.slice.catch-up ${slice.name}`, {
+        withSafeSpan(`specter.slice.catch-up ${slice.name}`, {
           attributes: sliceSpanAttributes(slice.kind, slice.name, slice),
         }),
       )
@@ -751,7 +753,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           'specter.reaction.duplicate': !result.success,
         })
       }).pipe(
-        Effect.withSpan(`specter.reaction ${reaction.name}`, {
+        withSafeSpan(`specter.reaction ${reaction.name}`, {
           attributes: {
             ...sliceSpanAttributes('reaction', reaction.name, reaction),
             'specter.reaction.delivery_id': deliveryId,
@@ -1063,6 +1065,40 @@ function safeErrorAttributes(cause: unknown): Record<string, unknown> {
     'specter.error.code': code,
     'specter.error.message': safeSpecterErrorMessages[code],
   }
+}
+
+/**
+ * Effect ends failed spans with the full failure Cause. OTLP exporters turn
+ * that Cause into status text and exception events, so ending with the public
+ * runtime error would leak handler or payload details. End the span with a new
+ * safe error, then return the original Exit to the caller.
+ */
+function withSafeSpan(
+  name: string,
+  options: {
+    readonly attributes?: Record<string, unknown>
+  },
+) {
+  return <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> =>
+    Effect.useSpan(name, options, (span) =>
+      Effect.gen(function* () {
+        const exit = yield* Effect.exit(Effect.withParentSpan(effect, span))
+        if (Exit.isFailure(exit)) {
+          const failed = exit.cause.reasons.find(Cause.isFailReason)
+          const attributes = safeErrorAttributes(failed?.error)
+          const safeError = new Error(
+            String(attributes['specter.error.message']),
+          )
+          safeError.name = 'SpecterSpanError'
+          yield* Effect.clockWith((clock) =>
+            Effect.sync(() =>
+              span.end(clock.currentTimeNanosUnsafe(), Exit.fail(safeError)),
+            ),
+          )
+        }
+        return yield* exit
+      }),
+    )
 }
 
 function isCommandRejection(cause: SpecterEffectError) {

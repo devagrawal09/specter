@@ -34,7 +34,7 @@ node packages/spec-editor/dist/cli.js .
 Open `http://127.0.0.1:41739`. The editor discovers
 `src/features/**/spec.json`. A JSON file beside `spec.ts` is read-only because
 the TypeScript source still owns it. Worklog is the first JSON-authoritative
-app and its 17 specifications can be edited and saved directly.
+app and its 18 specifications can be edited and saved directly.
 
 ## Trace the `addTodo` Slice
 

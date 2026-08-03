@@ -85,6 +85,64 @@ describe('specification repository', () => {
     ])
   })
 
+  it('serializes concurrent mutations for the same specification', async () => {
+    const root = await project()
+    const repository = await createSpecificationRepository(root)
+    const path = 'todos/add-todo/spec.json'
+    const created = await repository.create(path, specification())
+
+    const saves = await Promise.allSettled([
+      repository.save(
+        path,
+        created.revision,
+        specification('First save wins.'),
+      ),
+      repository.save(
+        path,
+        created.revision,
+        specification('Second save is stale.'),
+      ),
+    ])
+    expect(saves[0]).toMatchObject({
+      status: 'fulfilled',
+      value: { document: { description: 'First save wins.' } },
+    })
+    expect(saves[1]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'REVISION_CONFLICT' },
+    })
+
+    const [current] = await repository.list()
+    const saveAndDelete = await Promise.allSettled([
+      repository.save(
+        path,
+        current?.revision ?? '',
+        specification('Save before delete.'),
+      ),
+      repository.remove(path, current?.revision ?? ''),
+    ])
+    expect(saveAndDelete[0].status).toBe('fulfilled')
+    expect(saveAndDelete[1]).toMatchObject({
+      status: 'rejected',
+      reason: { code: 'REVISION_CONFLICT' },
+    })
+    await expect(
+      readFile(resolve(root, 'src/features', path), 'utf8'),
+    ).resolves.toContain('Save before delete.')
+
+    const creates = await Promise.allSettled([
+      repository.create('todos/new/spec.json', specification()),
+      repository.create('todos/new/spec.json', specification()),
+    ])
+    expect(creates.map(({ status }) => status)).toEqual([
+      'fulfilled',
+      'rejected',
+    ])
+    expect(creates[1]).toMatchObject({
+      reason: { code: 'ALREADY_EXISTS' },
+    })
+  })
+
   it('rejects traversal, absolute paths, invalid specs, and symlink paths', async () => {
     const root = await project()
     const repository = await createSpecificationRepository(root)

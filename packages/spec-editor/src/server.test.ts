@@ -1,4 +1,5 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
+import { request as httpRequest } from 'node:http'
 import { tmpdir } from 'node:os'
 import { resolve } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -26,6 +27,35 @@ describe('spec editor server', () => {
     const server = await startSpecEditor(root, { usePolling: true })
     servers.push(server)
 
+    expect(
+      await requestStatus(`${server.url}/api/specs`, {
+        host: 'attacker.example',
+      }),
+    ).toBe(403)
+
+    const crossOriginResponse = await fetch(`${server.url}/api/specs`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        origin: 'https://attacker.example',
+      },
+      body: JSON.stringify({
+        path: 'todos/cross-origin/spec.json',
+        document: specification('Must not be created.'),
+      }),
+    })
+    expect(crossOriginResponse.status).toBe(403)
+
+    const plainTextResponse = await fetch(`${server.url}/api/specs`, {
+      method: 'POST',
+      headers: { 'content-type': 'text/plain' },
+      body: JSON.stringify({
+        path: 'todos/plain-text/spec.json',
+        document: specification('Must not be created.'),
+      }),
+    })
+    expect(plainTextResponse.status).toBe(415)
+
     const response = await fetch(`${server.url}/api/specs`)
     expect(response.status).toBe(200)
     const files = (await response.json()) as Array<{
@@ -41,7 +71,10 @@ describe('spec editor server', () => {
 
     const createResponse = await fetch(`${server.url}/api/specs`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: {
+        'content-type': 'application/json; charset=utf-8',
+        origin: server.url,
+      },
       body: JSON.stringify({
         path: 'todos/archive-todo/spec.json',
         document: specification('Archives a todo.'),
@@ -53,6 +86,15 @@ describe('spec editor server', () => {
       document: { description: string }
     }
     expect(created.document.description).toBe('Archives a todo.')
+    const afterRejectedRequests = (await (
+      await fetch(`${server.url}/api/specs`)
+    ).json()) as Array<{ path: string }>
+    expect(afterRejectedRequests.map(({ path }) => path)).not.toContain(
+      'todos/cross-origin/spec.json',
+    )
+    expect(afterRejectedRequests.map(({ path }) => path)).not.toContain(
+      'todos/plain-text/spec.json',
+    )
 
     const saveResponse = await fetch(`${server.url}/api/specs`, {
       method: 'PUT',
@@ -109,6 +151,17 @@ describe('spec editor server', () => {
     expect(event).toContain('todos/add-todo/spec.json')
   })
 })
+
+function requestStatus(url: string, headers: Record<string, string>) {
+  return new Promise<number>((accept, reject) => {
+    const request = httpRequest(url, { headers }, (response) => {
+      response.resume()
+      accept(response.statusCode ?? 0)
+    })
+    request.once('error', reject)
+    request.end()
+  })
+}
 
 async function readEvent(
   reader: ReadableStreamDefaultReader<Uint8Array> | undefined,

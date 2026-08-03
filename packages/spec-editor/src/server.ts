@@ -12,6 +12,16 @@ import {
 
 export const SPEC_EDITOR_HOST = '127.0.0.1' as const
 export const SPEC_EDITOR_PORT = 41739 as const
+const SPEC_EDITOR_ORIGIN = `http://${SPEC_EDITOR_HOST}:${SPEC_EDITOR_PORT}`
+
+class SpecEditorRequestError extends Error {
+  constructor(
+    readonly status: 403 | 415,
+    message: string,
+  ) {
+    super(message)
+  }
+}
 
 export type SpecEditorServer = {
   readonly url: string
@@ -94,6 +104,12 @@ async function handleRequest(
 ) {
   try {
     const url = new URL(request.url ?? '/', 'http://localhost')
+    const isMutation =
+      url.pathname === '/api/specs' &&
+      (request.method === 'POST' ||
+        request.method === 'PUT' ||
+        request.method === 'DELETE')
+    assertLocalRequest(request, isMutation)
     if (url.pathname === '/api/specs' && request.method === 'GET') {
       return json(response, 200, await repository.list())
     }
@@ -158,16 +174,18 @@ async function handleRequest(
     response.end(source)
   } catch (cause) {
     const status =
-      cause instanceof SpecEditorRepositoryError
-        ? cause.code === 'NOT_FOUND'
-          ? 404
-          : cause.code === 'ALREADY_EXISTS' ||
-              cause.code === 'REVISION_CONFLICT'
-            ? 409
-            : cause.code === 'READ_ONLY'
-              ? 403
-              : 400
-        : 500
+      cause instanceof SpecEditorRequestError
+        ? cause.status
+        : cause instanceof SpecEditorRepositoryError
+          ? cause.code === 'NOT_FOUND'
+            ? 404
+            : cause.code === 'ALREADY_EXISTS' ||
+                cause.code === 'REVISION_CONFLICT'
+              ? 409
+              : cause.code === 'READ_ONLY'
+                ? 403
+                : 400
+          : 500
     json(response, status, {
       error: cause instanceof Error ? cause.message : String(cause),
       ...(cause instanceof SpecEditorRepositoryError
@@ -175,6 +193,32 @@ async function handleRequest(
         : {}),
     })
   }
+}
+
+function assertLocalRequest(
+  request: import('node:http').IncomingMessage,
+  requireJson: boolean,
+) {
+  if (request.headers.host !== `${SPEC_EDITOR_HOST}:${SPEC_EDITOR_PORT}`)
+    throw new SpecEditorRequestError(
+      403,
+      `Host must be ${SPEC_EDITOR_HOST}:${SPEC_EDITOR_PORT}.`,
+    )
+  const origin = request.headers.origin
+  if (origin !== undefined && origin !== SPEC_EDITOR_ORIGIN)
+    throw new SpecEditorRequestError(
+      403,
+      `Origin must be ${SPEC_EDITOR_ORIGIN}.`,
+    )
+  if (
+    requireJson &&
+    request.headers['content-type']?.split(';', 1)[0]?.trim().toLowerCase() !==
+      'application/json'
+  )
+    throw new SpecEditorRequestError(
+      415,
+      'Mutating requests require application/json.',
+    )
 }
 
 async function requestJson(request: import('node:http').IncomingMessage) {

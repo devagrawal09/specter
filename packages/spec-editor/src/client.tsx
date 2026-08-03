@@ -15,6 +15,7 @@ import {
   onCleanup,
   onMount,
 } from 'solid-js'
+import { createStore, produce, reconcile } from 'solid-js/store'
 import { render } from 'solid-js/web'
 
 import './style.css'
@@ -52,14 +53,17 @@ type SpecFile = {
 
 type Draft = SpecFile & { isNew: boolean }
 
-const root = document.querySelector<HTMLDivElement>('#app')
-if (!root) throw new Error('Missing #app mount point.')
+export function mountSpecEditor(root: HTMLDivElement) {
+  return render(() => <SpecEditor />, root)
+}
 
-render(() => <SpecEditor />, root)
+const root = document.querySelector<HTMLDivElement>('#app')
+if (root) mountSpecEditor(root)
 
 function SpecEditor() {
   const [files, setFiles] = createSignal<SpecFile[]>([])
-  const [draft, setDraft] = createSignal<Draft>()
+  const [draftState, setDraftState] = createStore<{ current?: Draft }>({})
+  const draft = () => draftState.current
   const [selectedScenario, setSelectedScenario] = createSignal(0)
   const [detailEpoch, setDetailEpoch] = createSignal(0)
   const [search, setSearch] = createSignal('')
@@ -114,6 +118,11 @@ function SpecEditor() {
     return [...names].sort()
   })
 
+  function replaceDraft(next: Draft | undefined) {
+    if (next) setDraftState('current', reconcile(next))
+    else setDraftState('current', undefined)
+  }
+
   void loadFiles()
   const watch = new EventSource('/api/watch')
   watch.onmessage = (message) => {
@@ -144,7 +153,7 @@ function SpecEditor() {
       const currentPath = draft()?.path
       setFiles(loaded)
       const next = loaded.find((file) => file.path === currentPath) ?? loaded[0]
-      setDraft(next ? { ...clone(next), isNew: false } : undefined)
+      replaceDraft(next ? { ...clone(next), isNew: false } : undefined)
       setSelectedScenario(0)
       resetDetail()
       setConflict(false)
@@ -170,7 +179,7 @@ function SpecEditor() {
 
   function selectFile(file: SpecFile) {
     if (dirty() && !window.confirm('Discard unsaved edits?')) return
-    setDraft({ ...clone(file), isNew: false })
+    replaceDraft({ ...clone(file), isNew: false })
     setSelectedScenario(0)
     setConflict(false)
     resetDetail()
@@ -179,9 +188,11 @@ function SpecEditor() {
   function updateDocument(update: (document: EditableSpecification) => void) {
     const current = draft()
     if (!current || current.readOnly) return
-    const next = clone(current)
-    update(next.document)
-    setDraft(next)
+    setDraftState(
+      produce((state) => {
+        if (state.current) update(state.current.document)
+      }),
+    )
   }
 
   function updateScenario(update: (item: EditableScenario) => void) {
@@ -207,7 +218,7 @@ function SpecEditor() {
     updateDocument((document) =>
       document.scenarios.push(defaultScenario(document.kind)),
     )
-    setSelectedScenario(current.document.scenarios.length)
+    setSelectedScenario(current.document.scenarios.length - 1)
     resetDetail()
   }
 
@@ -216,7 +227,7 @@ function SpecEditor() {
     if (!current || current.document.scenarios.length === 1) return
     updateDocument((document) => document.scenarios.splice(index, 1))
     setSelectedScenario(
-      Math.max(0, Math.min(index, current.document.scenarios.length - 2)),
+      Math.max(0, Math.min(index, current.document.scenarios.length - 1)),
     )
     resetDetail()
   }
@@ -245,6 +256,7 @@ function SpecEditor() {
       setStatus('Enter a relative path and a lower-camel Slice name.')
       return
     }
+    if (dirty() && !window.confirm('Discard unsaved edits?')) return
     const document = {
       $schema: 'https://specter.dev/specification/v1/slice.schema.json',
       formatVersion: 1,
@@ -253,7 +265,7 @@ function SpecEditor() {
       description: 'Describe this Slice.',
       scenarios: [defaultScenario(newKind())],
     } as EditableSpecification
-    setDraft({
+    replaceDraft({
       path,
       revision: '',
       digest: 'sha256:',
@@ -287,7 +299,7 @@ function SpecEditor() {
       })
       const loaded = await request<SpecFile[]>('/api/specs')
       setFiles(loaded)
-      setDraft({ ...clone(saved), isNew: false })
+      replaceDraft({ ...clone(saved), isNew: false })
       setConflict(false)
       setStatus(`Saved ${saved.path}`)
       resetDetail()
@@ -309,7 +321,7 @@ function SpecEditor() {
           expectedRevision: current.revision,
         }),
       })
-      setDraft(undefined)
+      replaceDraft(undefined)
       await loadFiles()
     } catch (cause) {
       setStatus(errorMessage(cause))

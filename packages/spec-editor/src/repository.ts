@@ -80,6 +80,28 @@ export async function createSpecificationRepository(
     )
   })
   assertInside(projectRoot, featuresRoot)
+  const mutationQueues = new Map<string, Promise<void>>()
+
+  async function serializeMutation<T>(
+    normalized: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    const previous = mutationQueues.get(normalized) ?? Promise.resolve()
+    let release!: () => void
+    const current = new Promise<void>((accept) => {
+      release = accept
+    })
+    const queued = previous.then(() => current)
+    mutationQueues.set(normalized, queued)
+    await previous
+    try {
+      return await operation()
+    } finally {
+      release()
+      if (mutationQueues.get(normalized) === queued)
+        mutationQueues.delete(normalized)
+    }
+  }
 
   async function resolveSpecPath(input: string, allowMissing: boolean) {
     const normalized = normalizeSpecPath(input)
@@ -136,60 +158,69 @@ export async function createSpecificationRepository(
   }
 
   async function create(path: string, input: unknown) {
-    const { normalized, target } = await resolveSpecPath(path, true)
-    if (await exists(target))
-      throw new SpecEditorRepositoryError(
-        'ALREADY_EXISTS',
-        `Specification already exists: ${normalized}`,
-      )
-    const document = validate(input)
-    await mkdir(dirname(target), { recursive: true })
-    assertInside(featuresRoot, await realpath(dirname(target)))
-    await atomicCreate(target, serializeSpecification(document), normalized)
-    return readSpecification(normalized, target)
+    const normalized = normalizeSpecPath(path)
+    return await serializeMutation(normalized, async () => {
+      const { target } = await resolveSpecPath(normalized, true)
+      if (await exists(target))
+        throw new SpecEditorRepositoryError(
+          'ALREADY_EXISTS',
+          `Specification already exists: ${normalized}`,
+        )
+      const document = validate(input)
+      await mkdir(dirname(target), { recursive: true })
+      assertInside(featuresRoot, await realpath(dirname(target)))
+      await atomicCreate(target, serializeSpecification(document), normalized)
+      return readSpecification(normalized, target)
+    })
   }
 
   async function save(path: string, expectedRevision: string, input: unknown) {
-    const { normalized, target } = await resolveSpecPath(path, false)
-    const current = await readSpecification(normalized, target)
-    if (current.readOnly)
-      throw new SpecEditorRepositoryError(
-        'READ_ONLY',
-        `${normalized} is generated from adjacent spec.ts.`,
-      )
-    if (current.revision !== expectedRevision)
-      throw new SpecEditorRepositoryError(
-        'REVISION_CONFLICT',
-        `${normalized} changed on disk. Reload before saving.`,
-      )
-    const document = validate(input)
-    await atomicWrite(target, serializeSpecification(document))
-    return readSpecification(normalized, target)
+    const normalized = normalizeSpecPath(path)
+    return await serializeMutation(normalized, async () => {
+      const { target } = await resolveSpecPath(normalized, false)
+      const current = await readSpecification(normalized, target)
+      if (current.readOnly)
+        throw new SpecEditorRepositoryError(
+          'READ_ONLY',
+          `${normalized} is generated from adjacent spec.ts.`,
+        )
+      if (current.revision !== expectedRevision)
+        throw new SpecEditorRepositoryError(
+          'REVISION_CONFLICT',
+          `${normalized} changed on disk. Reload before saving.`,
+        )
+      const document = validate(input)
+      await atomicWrite(target, serializeSpecification(document))
+      return readSpecification(normalized, target)
+    })
   }
 
   async function remove(path: string, expectedRevision: string) {
-    const { normalized, target } = await resolveSpecPath(path, false)
-    const current = await readSpecification(normalized, target)
-    if (current.readOnly)
-      throw new SpecEditorRepositoryError(
-        'READ_ONLY',
-        `${normalized} is generated from adjacent spec.ts.`,
-      )
-    if (current.revision !== expectedRevision)
-      throw new SpecEditorRepositoryError(
-        'REVISION_CONFLICT',
-        `${normalized} changed on disk. Reload before removing.`,
-      )
-    await unlink(target)
-    let directory = dirname(target)
-    while (directory !== featuresRoot) {
-      try {
-        await rmdir(directory)
-      } catch {
-        break
+    const normalized = normalizeSpecPath(path)
+    return await serializeMutation(normalized, async () => {
+      const { target } = await resolveSpecPath(normalized, false)
+      const current = await readSpecification(normalized, target)
+      if (current.readOnly)
+        throw new SpecEditorRepositoryError(
+          'READ_ONLY',
+          `${normalized} is generated from adjacent spec.ts.`,
+        )
+      if (current.revision !== expectedRevision)
+        throw new SpecEditorRepositoryError(
+          'REVISION_CONFLICT',
+          `${normalized} changed on disk. Reload before removing.`,
+        )
+      await unlink(target)
+      let directory = dirname(target)
+      while (directory !== featuresRoot) {
+        try {
+          await rmdir(directory)
+        } catch {
+          break
+        }
+        directory = dirname(directory)
       }
-      directory = dirname(directory)
-    }
+    })
   }
 
   return { projectRoot, featuresRoot, list, create, save, remove }

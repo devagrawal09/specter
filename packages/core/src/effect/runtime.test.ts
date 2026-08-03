@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import {
+  Cause,
   Context,
   Effect,
   Fiber,
@@ -17,9 +18,12 @@ import {
   type EventLogService,
   ReactionScheduler,
   ReactionSchedulerFailure,
+  ReactionRunFailure,
   type SliceStoreService,
   SpecterIdempotencyConflictError,
+  SpecterInfrastructureError,
   SpecterInvalidCommandOptionsError,
+  SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
 } from '..'
 import { createEventDefinition, createSpecterApp } from '..'
@@ -1174,10 +1178,24 @@ describe('Effect-native runtime', () => {
         state.values.push(applied.payload)
       })
       .handle(async (_input, state) => state.values)
+    const reaction = createReactionSlice('publishValue')
+      .description('Publishes the latest value.')
+      .scenarios({
+        description: 'Publishes one value.',
+        given: [event('value-recorded', 1)],
+        expect: 1,
+      })
+      .outputSchema<number>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => state.values.at(-1))
     const spans: Tracer.NativeSpan[] = []
     const layer = createSpecterAppLayer({
       events: [valueRecorded],
-      slices: { recordValue: command, values: query },
+      slices: { recordValue: command, values: query, publishValue: reaction },
     } as const).pipe(
       Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
     )
@@ -1205,12 +1223,30 @@ describe('Effect-native runtime', () => {
     const querySpan = spans.find(
       (candidate) => candidate.name === 'specter.query values',
     )
+    const reactionSpan = spans.find(
+      (candidate) => candidate.name === 'specter.reaction publishValue',
+    )
+    const commandCatchUpSpan = spans.find(
+      (candidate) => candidate.name === 'specter.slice.catch-up recordValue',
+    )
+    const queryCatchUpSpan = spans.find(
+      (candidate) => candidate.name === 'specter.slice.catch-up values',
+    )
     const requestSpan = spans.find((candidate) => candidate.name === 'request')
     expect(commandSpan?.parent).toEqual(
       expect.objectContaining({ value: requestSpan }),
     )
     expect(querySpan?.parent).toEqual(
       expect.objectContaining({ value: requestSpan }),
+    )
+    expect(commandCatchUpSpan?.parent).toEqual(
+      expect.objectContaining({ value: commandSpan }),
+    )
+    expect(queryCatchUpSpan?.parent).toEqual(
+      expect.objectContaining({ value: querySpan }),
+    )
+    expect(reactionSpan?.parent).toEqual(
+      expect.objectContaining({ value: commandSpan }),
     )
     expect(commandSpan?.attributes.get('specter.spec.digest')).toBe(
       command.specificationDigest,
@@ -1220,6 +1256,34 @@ describe('Effect-native runtime', () => {
       'value-recorded',
     ])
     expect(querySpan?.attributes.get('specter.query.subscription')).toBe(false)
+    expect(commandCatchUpSpan?.attributes.get('specter.outcome')).toBe(
+      'completed',
+    )
+    expect(commandCatchUpSpan?.attributes.get('specter.event.count')).toBe(0)
+    expect(queryCatchUpSpan?.attributes.get('specter.outcome')).toBe(
+      'completed',
+    )
+    expect(queryCatchUpSpan?.attributes.get('specter.cursor.from')).toBe(0)
+    expect(queryCatchUpSpan?.attributes.get('specter.cursor.to')).toBe(1)
+    expect(queryCatchUpSpan?.attributes.get('specter.event.types')).toEqual([
+      'value-recorded',
+    ])
+    expect(reactionSpan?.attributes.get('specter.outcome')).toBe('completed')
+    expect(reactionSpan?.attributes.get('specter.reaction.duplicate')).toBe(
+      false,
+    )
+    expect(reactionSpan?.attributes.get('specter.reaction.delivery_id')).toBe(
+      'publishValue:1',
+    )
+    expect(
+      reactionSpan?.attributes.get('specter.event_log.commit_version'),
+    ).toBe(1)
+    expect(reactionSpan?.attributes.get('specter.event.types')).toEqual([
+      'value-recorded',
+    ])
+    expect(reactionSpan?.attributes.get('specter.spec.digest')).toBe(
+      reaction.specificationDigest,
+    )
     expect(
       JSON.stringify(spans.map((span) => Object.fromEntries(span.attributes))),
     ).not.toContain('424242')
@@ -1335,7 +1399,250 @@ describe('Effect-native runtime', () => {
       'SPECTER_UNKNOWN_QUERY',
     )
   })
+
+  it('keeps payload-bearing failures out of Command and Query span exits', async () => {
+    const secret = 'card 424242 declined'
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const command = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async () => {
+        throw new Error(secret)
+      })
+    const query = createQuerySlice('values')
+      .description('Reads all values.')
+      .scenarios({
+        description: 'Reads no values.',
+        given: [],
+        when: {},
+        expect: [],
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<readonly number[]>()
+      .store(ValuesStore)
+      .handle(async () => {
+        throw new Error(secret)
+      })
+    const spans: Tracer.NativeSpan[] = []
+    const layer = createSpecterAppLayer({
+      events: [valueRecorded],
+      slices: { recordValue: command, values: query },
+    } as const).pipe(
+      Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
+    )
+
+    const [commandResult, queryResult] = await Effect.runPromise(
+      Effect.scoped(
+        Effect.provide(
+          Effect.gen(function* () {
+            const app = yield* SpecterRuntime
+            return yield* Effect.all([
+              Effect.result(
+                app.command({ type: 'recordValue', payload: 424242 }),
+              ),
+              Effect.result(app.query({ type: 'values', payload: {} })),
+            ])
+          }),
+          layer,
+        ),
+      ).pipe(Effect.provideService(Tracer.Tracer, captureSpansTracer(spans))),
+    )
+
+    expect(commandResult._tag).toBe('Failure')
+    if (commandResult._tag === 'Failure') {
+      expect(commandResult.failure.message).toContain(secret)
+    }
+    expect(queryResult._tag).toBe('Failure')
+    if (queryResult._tag === 'Failure') {
+      expect(queryResult.failure).toBeInstanceOf(SpecterInfrastructureError)
+      expect(
+        (queryResult.failure as Error & { cause?: Error }).cause?.message,
+      ).toBe(secret)
+    }
+    assertSafeFailedSpan(
+      spans,
+      'specter.command recordValue',
+      secret,
+      'Command was rejected.',
+    )
+    assertSafeFailedSpan(
+      spans,
+      'specter.query values',
+      secret,
+      'Runtime operation failed.',
+    )
+  })
+
+  it('keeps payload-bearing failures out of catch-up span exits', async () => {
+    const secret = 'projection payload 424242'
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const command = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const query = createQuerySlice('values')
+      .description('Reads all values.')
+      .scenarios({
+        description: 'Reads one value.',
+        given: [event('value-recorded', 1)],
+        when: {},
+        expect: [1],
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<readonly number[]>()
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        if (applied.payload === 424242) throw new Error(secret)
+        state.values.push(applied.payload)
+      })
+      .handle(async (_input, state) => state.values)
+    const spans: Tracer.NativeSpan[] = []
+    const layer = createSpecterAppLayer({
+      events: [valueRecorded],
+      slices: { recordValue: command, values: query },
+    } as const).pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          storeLayer(),
+          eventLogLayer([{ type: 'value-recorded', payload: 424242 }]),
+        ),
+      ),
+    )
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        Effect.scoped(
+          Effect.provide(
+            Effect.flatMap(SpecterRuntime, (app) =>
+              app.query({ type: 'values', payload: {} }),
+            ),
+            layer,
+          ),
+        ).pipe(Effect.provideService(Tracer.Tracer, captureSpansTracer(spans))),
+      ),
+    )
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(result.failure).toBeInstanceOf(SpecterProjectionFailedError)
+      expect((result.failure as Error & { cause?: Error }).cause?.message).toBe(
+        secret,
+      )
+    }
+    assertSafeFailedSpan(
+      spans,
+      'specter.slice.catch-up values',
+      secret,
+      'Slice projection failed.',
+    )
+  })
+
+  it('keeps payload-bearing failures out of Reaction span exits', async () => {
+    const secret = 'reaction payload 424242'
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const command = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const reaction = createReactionSlice('publishValue')
+      .description('Publishes the latest value.')
+      .scenarios({
+        description: 'Publishes one value.',
+        given: [event('value-recorded', 1)],
+        expect: 1,
+      })
+      .outputSchema<number>()
+      .plugin(() => Effect.succeed(() => Effect.fail(new Error(secret))))
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => state.values.at(-1))
+    const spans: Tracer.NativeSpan[] = []
+    const layer = createSpecterAppLayer({
+      events: [valueRecorded],
+      slices: { recordValue: command, publishValue: reaction },
+    } as const).pipe(
+      Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
+    )
+
+    const result = await Effect.runPromise(
+      Effect.result(
+        Effect.scoped(
+          Effect.provide(
+            Effect.gen(function* () {
+              const app = yield* SpecterRuntime
+              const execution = yield* app.command({
+                type: 'recordValue',
+                payload: 424242,
+              })
+              yield* execution.reactions
+            }),
+            layer,
+          ),
+        ).pipe(Effect.provideService(Tracer.Tracer, captureSpansTracer(spans))),
+      ),
+    )
+
+    expect(result._tag).toBe('Failure')
+    if (result._tag === 'Failure') {
+      expect(String(result.failure)).toContain(
+        'Reaction run failed for: publishValue',
+      )
+      expect(result.failure).toBeInstanceOf(ReactionRunFailure)
+      const failure = result.failure as ReactionRunFailure
+      expect(
+        (failure.failures[0]?.cause as Error & { cause?: Error }).cause
+          ?.message,
+      ).toBe(secret)
+    }
+    assertSafeFailedSpan(
+      spans,
+      'specter.reaction publishValue',
+      secret,
+      'Runtime operation failed.',
+    )
+  })
 })
+
+function assertSafeFailedSpan(
+  spans: readonly Tracer.NativeSpan[],
+  name: string,
+  secret: string,
+  safeMessage: string,
+) {
+  const span = spans.find((candidate) => candidate.name === name)
+  expect(span?.status._tag).toBe('Ended')
+  if (!span || span.status._tag !== 'Ended') return
+  expect(span.status.exit._tag).toBe('Failure')
+  if (span.status.exit._tag !== 'Failure') return
+  const exportedFailure = Cause.prettyErrors(span.status.exit.cause)
+    .flatMap((error) => [error.name, error.message, error.stack])
+    .join('\n')
+  expect(exportedFailure).toContain(safeMessage)
+  expect(exportedFailure).not.toContain(secret)
+}
 
 function captureSpansTracer(spans: Tracer.NativeSpan[]) {
   return Tracer.make({
