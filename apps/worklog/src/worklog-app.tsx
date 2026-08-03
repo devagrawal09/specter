@@ -1,5 +1,15 @@
-import { For, Show, createEffect, createMemo, createSignal } from 'solid-js'
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onCleanup,
+} from 'solid-js'
 
+import { summarizeGardenChanges } from './garden-layout'
+import { emptyGarden, type GardenMood } from './garden-types'
+import { GardenView } from './garden-view'
 import { runSpecterCommand, specterTransport } from './specter-transport'
 
 type WorklogCommandEnvelope = Parameters<typeof runSpecterCommand>[0]
@@ -41,7 +51,8 @@ type Topic = {
   completedTaskCount: number
 }
 type Award = { awardKey: string; reason: string; points: 1; awardedAt: string }
-type View = 'timeline' | 'tasks' | 'topics' | 'score'
+type View = 'timeline' | 'tasks' | 'topics' | 'garden' | 'score'
+type CaptureType = 'journal' | 'task' | 'topic'
 
 export function WorklogApp() {
   const [view, setView] = createSignal<View>('timeline')
@@ -52,24 +63,32 @@ export function WorklogApp() {
     total: 0,
     awards: [],
   })
+  const [garden, setGarden] = createSignal(emptyGarden)
+  const [gardenMood, setGardenMood] = createSignal<GardenMood>(loadGardenMood())
+  const [gardenToast, setGardenToast] = createSignal<string>()
   const [error, setError] = createSignal<string>()
-  const [journalBody, setJournalBody] = createSignal('')
+  const [captureType, setCaptureType] = createSignal<CaptureType>('journal')
+  const [captureText, setCaptureText] = createSignal('')
   const [journalAt, setJournalAt] = createSignal(toLocalInput(new Date()))
-  const [taskTitle, setTaskTitle] = createSignal('')
   const [taskDueAt, setTaskDueAt] = createSignal('')
-  const [topicName, setTopicName] = createSignal('')
   const [leftRef, setLeftRef] = createSignal('')
   const [rightRef, setRightRef] = createSignal('')
-  const [pendingJournal, setPendingJournal] = createSignal<PendingCommand>()
-  const [pendingTask, setPendingTask] = createSignal<PendingCommand>()
-  const [pendingTopic, setPendingTopic] = createSignal<PendingCommand>()
+  const [pendingCapture, setPendingCapture] = createSignal<PendingCommand>()
   const [pendingConnection, setPendingConnection] =
     createSignal<PendingCommand>()
   const [busy, setBusy] = createSignal(false)
+  let timelineViewport: HTMLDivElement | undefined
+  let followingTimeline = true
+  let timelineHasRendered = false
+  let gardenReady = false
+  let gardenToastTimer: ReturnType<typeof setTimeout> | undefined
+
+  onCleanup(() => clearTimeout(gardenToastTimer))
 
   const openTasks = createMemo(() =>
     tasks().filter((task) => !task.completed && !task.archived),
   )
+  const ascendingTimeline = createMemo(() => [...timeline()].reverse())
   const recordOptions = createMemo(() => {
     const journals = timeline()
       .filter(
@@ -107,7 +126,24 @@ export function WorklogApp() {
       void subscribeTasks(controller.signal)
       void subscribeTopics(controller.signal)
       void subscribeScore(controller.signal)
+      void subscribeGarden(controller.signal)
       return () => controller.abort()
+    },
+  )
+
+  createEffect(
+    () => timeline().length,
+    (itemCount) => {
+      if (!itemCount || !timelineViewport) return
+
+      requestAnimationFrame(() => {
+        if (!timelineViewport || !followingTimeline) return
+        timelineViewport.scrollTo({
+          top: timelineViewport.scrollHeight,
+          behavior: timelineHasRendered ? 'smooth' : 'auto',
+        })
+        timelineHasRendered = true
+      })
     },
   )
 
@@ -158,6 +194,34 @@ export function WorklogApp() {
       if (!signal.aborted) setError(errorMessage(cause))
     }
   }
+  async function subscribeGarden(signal: AbortSignal) {
+    try {
+      for await (const value of specterTransport.subscribe(
+        { type: 'gardenQuery', payload: {} },
+        { signal },
+      )) {
+        if (gardenReady && view() !== 'garden') {
+          const message = summarizeGardenChanges(garden(), value)
+          if (message) showGardenToast(message)
+        }
+        setGarden(value)
+        gardenReady = true
+      }
+    } catch (cause) {
+      if (!signal.aborted) setError(errorMessage(cause))
+    }
+  }
+
+  function showGardenToast(message: string) {
+    clearTimeout(gardenToastTimer)
+    setGardenToast(message)
+    gardenToastTimer = setTimeout(() => setGardenToast(), 4_500)
+  }
+
+  function changeGardenMood(mood: GardenMood) {
+    setGardenMood(mood)
+    window.localStorage.setItem('worklog-garden-mood', mood)
+  }
 
   async function run(
     envelope: WorklogCommandEnvelope,
@@ -176,79 +240,28 @@ export function WorklogApp() {
     }
   }
 
-  async function addJournal(event: SubmitEvent) {
+  async function submitCapture(event: SubmitEvent) {
     event.preventDefault()
-    const body = journalBody().trim()
-    if (!body) return
-    const activityAt = new Date(journalAt()).toISOString()
-    const attempt = retainedCommand(
-      pendingJournal(),
-      JSON.stringify({ body, activityAt }),
-      () => ({
-        type: 'addJournalEntry',
-        payload: {
-          journalEntryId: crypto.randomUUID(),
-          body,
-          activityAt,
-          createdAt: new Date().toISOString(),
-        },
-      }),
+    const text = captureText().trim()
+    if (!text) return
+    const type = captureType()
+    const fingerprint = JSON.stringify({
+      type,
+      text,
+      journalAt: type === 'journal' ? journalAt() : null,
+      taskDueAt: type === 'task' ? taskDueAt() : null,
+    })
+    const attempt = retainedCommand(pendingCapture(), fingerprint, () =>
+      createCaptureEnvelope(type, text, journalAt(), taskDueAt()),
     )
-    setPendingJournal(attempt)
+    setPendingCapture(attempt)
+    followingTimeline = true
     const succeeded = await run(attempt.envelope, attempt.options)
     if (succeeded) {
-      setPendingJournal()
-      setJournalBody('')
+      setPendingCapture()
+      setCaptureText('')
       setJournalAt(toLocalInput(new Date()))
-    }
-  }
-
-  async function addTask(event: SubmitEvent) {
-    event.preventDefault()
-    const title = taskTitle().trim()
-    if (!title) return
-    const dueAt = taskDueAt() ? new Date(taskDueAt()).toISOString() : null
-    const attempt = retainedCommand(
-      pendingTask(),
-      JSON.stringify({ title, dueAt }),
-      () => ({
-        type: 'addTask',
-        payload: {
-          taskId: crypto.randomUUID(),
-          title,
-          notes: null,
-          dueAt,
-          createdAt: new Date().toISOString(),
-        },
-      }),
-    )
-    setPendingTask(attempt)
-    const succeeded = await run(attempt.envelope, attempt.options)
-    if (succeeded) {
-      setPendingTask()
-      setTaskTitle('')
       setTaskDueAt('')
-    }
-  }
-
-  async function addTopic(event: SubmitEvent) {
-    event.preventDefault()
-    const name = topicName().trim()
-    if (!name) return
-    const attempt = retainedCommand(pendingTopic(), name, () => ({
-      type: 'addTopic',
-      payload: {
-        topicId: crypto.randomUUID(),
-        name,
-        description: null,
-        createdAt: new Date().toISOString(),
-      },
-    }))
-    setPendingTopic(attempt)
-    const succeeded = await run(attempt.envelope, attempt.options)
-    if (succeeded) {
-      setPendingTopic()
-      setTopicName('')
     }
   }
 
@@ -280,7 +293,7 @@ export function WorklogApp() {
   }
 
   return (
-    <div class="shell">
+    <div class={`shell${view() === 'garden' ? ' garden-shell' : ''}`}>
       <header class="masthead">
         <button
           type="button"
@@ -295,7 +308,9 @@ export function WorklogApp() {
           </span>
         </button>
         <nav aria-label="Primary navigation">
-          <For each={['timeline', 'tasks', 'topics', 'score'] as View[]}>
+          <For
+            each={['timeline', 'tasks', 'topics', 'garden', 'score'] as View[]}
+          >
             {(item) => (
               <button
                 type="button"
@@ -327,141 +342,146 @@ export function WorklogApp() {
         )}
       </Show>
 
+      <Show when={gardenToast()}>
+        {(message) => (
+          <output class="garden-toast">
+            <span aria-hidden="true">✦</span>
+            <p>{message()}</p>
+            <button
+              type="button"
+              aria-label="Dismiss garden update"
+              onClick={() => setGardenToast()}
+            >
+              ×
+            </button>
+          </output>
+        )}
+      </Show>
+
       <main>
         <Show when={view() === 'timeline'}>
-          <section class="hero-grid">
-            <div>
-              <p class="eyebrow">Activity timeline</p>
-              <h1>What are you working on?</h1>
-              <p class="lede">
-                Capture the moment. Worklog will keep the thread between your
-                notes, tasks, and topics.
-              </p>
-            </div>
-            <div class="today-card">
-              <span>Open tasks</span>
-              <strong>{openTasks().length}</strong>
-              <small>
-                {new Intl.DateTimeFormat(undefined, {
-                  weekday: 'long',
-                  month: 'long',
-                  day: 'numeric',
-                }).format(new Date())}
-              </small>
-            </div>
-          </section>
-
-          <form class="composer" onSubmit={addJournal}>
-            <textarea
-              aria-label="Journal entry"
-              aria-keyshortcuts="Meta+Enter"
-              placeholder="I’m working on…"
-              value={journalBody()}
-              onInput={(event) => setJournalBody(event.currentTarget.value)}
-              onKeyDown={(event) => {
-                if (
-                  event.key !== 'Enter' ||
-                  !event.metaKey ||
-                  event.isComposing ||
-                  event.repeat
-                )
-                  return
-
-                event.preventDefault()
-                if (busy() || !journalBody().trim()) return
-                event.currentTarget.form?.requestSubmit()
-              }}
-            />
-            <div class="composer-footer">
-              <label>
-                Activity time{' '}
-                <input
-                  type="datetime-local"
-                  value={journalAt()}
-                  onInput={(event) => setJournalAt(event.currentTarget.value)}
-                />
-              </label>
-              <button
-                type="submit"
-                class="primary"
-                disabled={busy() || !journalBody().trim()}
-              >
-                Add to timeline <span aria-hidden="true">⌘↵</span>
-              </button>
-            </div>
-          </form>
-
-          <section class="quick-grid">
-            <form class="quick-card" onSubmit={addTask}>
-              <span class="quick-icon task-icon">✓</span>
-              <div>
-                <h2>New task</h2>
-                <input
-                  aria-label="Task title"
-                  placeholder="Something to finish"
-                  value={taskTitle()}
-                  onInput={(event) => setTaskTitle(event.currentTarget.value)}
-                />
-                <input
-                  aria-label="Due time"
-                  type="datetime-local"
-                  value={taskDueAt()}
-                  onInput={(event) => setTaskDueAt(event.currentTarget.value)}
-                />
-              </div>
-              <button type="submit" disabled={busy() || !taskTitle().trim()}>
-                Add
-              </button>
-            </form>
-            <form class="quick-card" onSubmit={addTopic}>
-              <span class="quick-icon topic-icon">#</span>
-              <div>
-                <h2>New topic</h2>
-                <input
-                  aria-label="Topic name"
-                  placeholder="A thread of work"
-                  value={topicName()}
-                  onInput={(event) => setTopicName(event.currentTarget.value)}
-                />
-              </div>
-              <button type="submit" disabled={busy() || !topicName().trim()}>
-                Add
-              </button>
-            </form>
-          </section>
-
           <section class="timeline-section">
-            <div class="section-heading">
-              <div>
-                <p class="eyebrow">Recent</p>
-                <h2>Your work, in order</h2>
-              </div>
-              <span>{timeline().length} entries</span>
-            </div>
-            <div class="timeline-list">
-              <Show
-                when={timeline().length}
-                fallback={
-                  <div class="empty-state">
-                    <strong>Your timeline is quiet.</strong>
-                    <span>Write the first entry above.</span>
-                  </div>
-                }
-              >
-                <For each={groupTimeline(timeline())}>
-                  {(group) => (
-                    <div class="day-group">
-                      <div class="day-label">{group.label}</div>
-                      <div class="day-items">
-                        <For each={group.items}>
-                          {(item) => <TimelineCard item={item} run={run} />}
-                        </For>
-                      </div>
+            <div
+              class="timeline-viewport"
+              role="log"
+              aria-label="Work timeline"
+              ref={timelineViewport}
+              onScroll={(event) => {
+                const viewport = event.currentTarget
+                followingTimeline =
+                  viewport.scrollHeight -
+                    viewport.scrollTop -
+                    viewport.clientHeight <
+                  80
+              }}
+            >
+              <div class="timeline-list">
+                <Show
+                  when={timeline().length}
+                  fallback={
+                    <div class="empty-state">
+                      <strong>Your timeline is quiet.</strong>
+                      <span>Capture the first entry below.</span>
                     </div>
+                  }
+                >
+                  <For each={groupTimeline(ascendingTimeline())}>
+                    {(group) => (
+                      <div class="day-group">
+                        <div class="day-label">{group.label}</div>
+                        <div class="day-items">
+                          <For each={group.items}>
+                            {(item) => <TimelineCard item={item} run={run} />}
+                          </For>
+                        </div>
+                      </div>
+                    )}
+                  </For>
+                </Show>
+              </div>
+            </div>
+
+            <form class="composer unified-composer" onSubmit={submitCapture}>
+              <fieldset class="capture-types">
+                <legend>Capture type</legend>
+                <For each={['journal', 'task', 'topic'] as CaptureType[]}>
+                  {(type) => (
+                    <button
+                      type="button"
+                      aria-pressed={captureType() === type ? 'true' : 'false'}
+                      onClick={() => setCaptureType(type)}
+                    >
+                      <span aria-hidden="true">{captureIcon(type)}</span>
+                      {captureLabel(type)}
+                    </button>
                   )}
                 </For>
-              </Show>
-            </div>
+              </fieldset>
+              <textarea
+                aria-label="Capture text"
+                aria-keyshortcuts="Meta+Enter"
+                placeholder={capturePlaceholder(captureType())}
+                value={captureText()}
+                onInput={(event) => setCaptureText(event.currentTarget.value)}
+                onKeyDown={(event) => {
+                  if (
+                    event.key !== 'Enter' ||
+                    !event.metaKey ||
+                    event.isComposing ||
+                    event.repeat
+                  )
+                    return
+
+                  event.preventDefault()
+                  if (busy() || !captureText().trim()) return
+                  event.currentTarget.form?.requestSubmit()
+                }}
+              />
+              <div class="composer-footer">
+                <Show
+                  when={captureType() === 'journal'}
+                  fallback={
+                    <Show
+                      when={captureType() === 'task'}
+                      fallback={
+                        <span class="composer-hint">
+                          Topics keep related work together.
+                        </span>
+                      }
+                    >
+                      <label>
+                        Due time{' '}
+                        <input
+                          type="datetime-local"
+                          value={taskDueAt()}
+                          onInput={(event) =>
+                            setTaskDueAt(event.currentTarget.value)
+                          }
+                        />
+                      </label>
+                    </Show>
+                  }
+                >
+                  <label>
+                    Activity time{' '}
+                    <input
+                      type="datetime-local"
+                      value={journalAt()}
+                      onInput={(event) =>
+                        setJournalAt(event.currentTarget.value)
+                      }
+                    />
+                  </label>
+                </Show>
+                <button
+                  type="submit"
+                  class="primary"
+                  disabled={busy() || !captureText().trim()}
+                >
+                  Add {captureType()} <span aria-hidden="true">⌘↵</span>
+                </button>
+              </div>
+            </form>
           </section>
         </Show>
 
@@ -508,6 +528,14 @@ export function WorklogApp() {
           </div>
         </Show>
 
+        <Show when={view() === 'garden'}>
+          <GardenView
+            snapshot={garden()}
+            mood={gardenMood()}
+            setMood={changeGardenMood}
+          />
+        </Show>
+
         <Show when={view() === 'score'}>
           <PageHeading
             eyebrow="Lifetime score"
@@ -541,6 +569,45 @@ export function WorklogApp() {
   )
 }
 
+function createCaptureEnvelope(
+  type: CaptureType,
+  text: string,
+  journalAt: string,
+  taskDueAt: string,
+): WorklogCommandEnvelope {
+  const createdAt = new Date().toISOString()
+  if (type === 'journal')
+    return {
+      type: 'addJournalEntry',
+      payload: {
+        journalEntryId: crypto.randomUUID(),
+        body: text,
+        activityAt: journalAt ? new Date(journalAt).toISOString() : createdAt,
+        createdAt,
+      },
+    }
+  if (type === 'task')
+    return {
+      type: 'addTask',
+      payload: {
+        taskId: crypto.randomUUID(),
+        title: text,
+        notes: null,
+        dueAt: taskDueAt ? new Date(taskDueAt).toISOString() : null,
+        createdAt,
+      },
+    }
+  return {
+    type: 'addTopic',
+    payload: {
+      topicId: crypto.randomUUID(),
+      name: text,
+      description: null,
+      createdAt,
+    },
+  }
+}
+
 function retainedCommand(
   pending: PendingCommand | undefined,
   fingerprint: string,
@@ -554,6 +621,19 @@ function retainedCommand(
   }
 }
 
+function captureLabel(type: CaptureType) {
+  return type[0]?.toUpperCase() + type.slice(1)
+}
+function captureIcon(type: CaptureType) {
+  return type === 'journal' ? '✦' : type === 'task' ? '✓' : '#'
+}
+function capturePlaceholder(type: CaptureType) {
+  return type === 'journal'
+    ? 'I’m working on…'
+    : type === 'task'
+      ? 'Something to finish…'
+      : 'A thread of work…'
+}
 function TimelineCard(props: {
   item: TimelineItem
   run: (envelope: Parameters<typeof runSpecterCommand>[0]) => Promise<boolean>
@@ -798,6 +878,11 @@ function parseRef(
 function toLocalInput(date: Date) {
   const offset = date.getTimezoneOffset() * 60_000
   return new Date(date.getTime() - offset).toISOString().slice(0, 16)
+}
+function loadGardenMood(): GardenMood {
+  if (typeof window === 'undefined') return 'day'
+  const value = window.localStorage.getItem('worklog-garden-mood')
+  return value === 'sunset' || value === 'night' ? value : 'day'
 }
 function formatTime(value: string) {
   return new Intl.DateTimeFormat(undefined, {

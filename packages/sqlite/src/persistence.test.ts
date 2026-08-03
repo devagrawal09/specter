@@ -63,6 +63,73 @@ describe('Specter SQLite persistence', () => {
     await Effect.runPromise(eventLogConformance(Effect.succeed(eventLog)))
   })
 
+  it('uses a legacy Event commit table without changing its schema', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'specter-sqlite-legacy-'))
+    tempDirectories.push(directory)
+    const client = createClient({
+      url: `file:${join(directory, 'specter.db')}`,
+    })
+    clients.push(client)
+    await client.execute(`CREATE TABLE specter_event_commits (
+      idempotency_key TEXT PRIMARY KEY,
+      fingerprint TEXT,
+      first_event_order INTEGER NOT NULL,
+      last_event_order INTEGER NOT NULL,
+      committed_at TEXT NOT NULL
+    )`)
+    const schemaBefore = await eventCommitTableSql(client)
+
+    await prepareSpecterSqlite(client)
+    const { eventLog } = createSpecterSqlitePersistence(client)
+    const first = await Effect.runPromise(
+      eventLog.append(
+        [
+          { type: 'legacy-one', payload: { value: 1 } },
+          { type: 'legacy-two', payload: { value: 2 } },
+        ],
+        {
+          expectedVersion: 0,
+          idempotencyKey: 'legacy-request',
+          fingerprint: 'legacy-fingerprint',
+        },
+      ),
+    )
+    const duplicate = await Effect.runPromise(
+      eventLog.append([{ type: 'ignored', payload: {} }], {
+        idempotencyKey: 'legacy-request',
+        fingerprint: 'legacy-fingerprint',
+      }),
+    )
+    const unkeyed = await Effect.runPromise(
+      eventLog.append([{ type: 'legacy-three', payload: { value: 3 } }], {
+        expectedVersion: first.version,
+      }),
+    )
+    const commits = await Effect.runPromise(eventLog.commitsAfter(0))
+
+    expect(duplicate).toEqual({ ...first, duplicate: true })
+    expect(
+      commits.map((commit) => ({
+        version: commit.version,
+        idempotencyKey: commit.idempotencyKey,
+        eventTypes: commit.events.map((event) => event.type),
+      })),
+    ).toEqual([
+      {
+        version: first.version,
+        idempotencyKey: 'legacy-request',
+        eventTypes: ['legacy-one', 'legacy-two'],
+      },
+      {
+        version: unkeyed.version,
+        idempotencyKey: undefined,
+        eventTypes: ['legacy-three'],
+      },
+    ])
+    expect(await eventCommitTableSql(client)).toBe(schemaBefore)
+    expect(schemaBefore).not.toContain('commit_version')
+  })
+
   it('passes native Slice Store conformance', async () => {
     const { createSliceStoreService } = await setup()
     const store = createSliceStoreService(() => ({ count: 0 }))
@@ -279,3 +346,11 @@ describe('Specter SQLite persistence', () => {
     expect(await Effect.runPromise(eventLog.currentVersion)).toBe(1)
   })
 })
+
+async function eventCommitTableSql(client: ReturnType<typeof createClient>) {
+  const result = await client.execute(
+    `SELECT sql FROM sqlite_master
+     WHERE type = 'table' AND name = 'specter_event_commits'`,
+  )
+  return String(result.rows[0]?.sql)
+}

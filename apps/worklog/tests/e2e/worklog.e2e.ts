@@ -11,20 +11,70 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   page,
 }) => {
   await page.goto('/')
-  await expect(page.getByRole('heading', { name: 'What are you working on?' })).toBeVisible()
+  await expect(page.getByLabel('Work timeline')).toBeVisible()
+  await expect(page.getByText('Oldest to newest', { exact: true })).toHaveCount(0)
+  await expect(
+    page.getByRole('heading', { name: 'Your work moves upward' }),
+  ).toHaveCount(0)
+  await expect(page.getByText('Open tasks', { exact: true })).toHaveCount(0)
   await expect(page.getByText('Your timeline is quiet.')).toBeVisible()
 
-  const journalEntry = page.getByLabel('Journal entry')
-  await journalEntry.fill('First line')
-  await journalEntry.press('Enter')
-  await journalEntry.pressSequentially('Second line')
-  await expect(journalEntry).toHaveValue('First line\nSecond line')
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(page.locator('.garden-scene')).toBeVisible()
+  await expect(page.locator('.brand')).toBeHidden()
+  await expect(page.locator('.score-pill')).toBeHidden()
+  await expect(page.locator('.garden-inspector')).toHaveCount(0)
+  await expect(page.getByText('Your work is growing.')).toHaveCount(0)
+  await expect(page.locator('.mood-picker button')).toHaveCount(3)
+  expect(
+    await page
+      .locator('.mood-picker button')
+      .evaluateAll((buttons) => buttons.map((button) => button.textContent)),
+  ).toEqual(['', '', ''])
+  expect(
+    await page.locator('.garden-scene').evaluate((scene) => {
+      const rect = scene.getBoundingClientRect()
+      return {
+        top: Math.round(rect.top),
+        left: Math.round(rect.left),
+        width: Math.round(rect.width),
+        minHeight: Math.round(rect.height) >= innerHeight,
+      }
+    }),
+  ).toEqual({ top: 0, left: 0, width: 1280, minHeight: true })
+  await expect(page.locator('.garden-toast')).toHaveCount(0)
+  await page.getByRole('button', { name: 'night', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-night/)
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
+
+  const captureText = page.getByLabel('Capture text')
+  await expect(
+    page.getByRole('button', { name: 'Journal', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await captureText.fill('First line')
+  await captureText.press('Enter')
+  await captureText.pressSequentially('Second line')
+  await expect(captureText).toHaveValue('First line\nSecond line')
+  await page.getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(captureText).toHaveValue('First line\nSecond line')
+  await expect(page.getByLabel('Due time')).toBeVisible()
+  await page.getByRole('button', { name: 'Journal', exact: true }).click()
+  await expect(page.getByLabel('Activity time')).toBeVisible()
 
   const shortcutJournal = 'Submitted with Command+Enter'
-  await journalEntry.fill(shortcutJournal)
-  await journalEntry.press('Meta+Enter')
-  await expect(journalEntry).toHaveValue('')
+  await captureText.fill(shortcutJournal)
+  await captureText.press('Meta+Enter')
+  await expect(captureText).toHaveValue('')
   await expect(page.getByText(shortcutJournal, { exact: true })).toBeVisible()
+  await expect(page.locator('.garden-toast')).toContainText('1 flower grew')
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  const journalFlower = page.getByRole('button', {
+    name: `Journal flower: ${shortcutJournal}`,
+  })
+  await expect(journalFlower).toBeVisible()
+  await journalFlower.click()
+  await expect(page.locator('.garden-inspector')).toContainText(shortcutJournal)
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
 
   const cliTask = 'CLI subscription task'
   await runCli('command', {
@@ -38,6 +88,16 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     },
   })
   await expect(page.getByText(cliTask, { exact: true })).toBeVisible()
+  const timelineCards = page.locator('.timeline-card')
+  await expect(timelineCards.first()).toContainText(cliTask)
+  await expect(timelineCards.last()).toContainText(shortcutJournal)
+  const timelineAtBottom = await page
+    .getByLabel('Work timeline')
+    .evaluate(
+      (element) =>
+        element.scrollHeight - element.scrollTop - element.clientHeight,
+    )
+  expect(timelineAtBottom).toBeLessThanOrEqual(1)
 
   const responseLossTitle = 'Committed before response loss'
   let droppedCommittedResponse = false
@@ -58,17 +118,18 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     await route.continue()
   })
 
-  const taskTitle = page.getByLabel('Task title')
-  await taskTitle.fill(responseLossTitle)
-  const addTaskButton = page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New task' })
-    .getByRole('button', { name: 'Add' })
+  await page.getByRole('button', { name: 'Task', exact: true }).click()
+  await expect(captureText).toHaveValue('')
+  await captureText.fill(responseLossTitle)
+  const addTaskButton = page.getByRole('button', {
+    name: 'Add task',
+    exact: true,
+  })
   await addTaskButton.click()
   await expect(page.getByRole('alert')).toBeVisible()
-  await expect(taskTitle).toHaveValue(responseLossTitle)
+  await expect(captureText).toHaveValue(responseLossTitle)
   await addTaskButton.click()
-  await expect(taskTitle).toHaveValue('')
+  await expect(captureText).toHaveValue('')
   await page.unroute('**/api/command')
 
   const tasksAfterRetry = await runCli('query', {
@@ -82,12 +143,8 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   ).toHaveLength(1)
 
   const archiveTitle = 'Archive through the UI'
-  await page.getByLabel('Task title').fill(archiveTitle)
-  await page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New task' })
-    .getByRole('button', { name: 'Add' })
-    .click()
+  await captureText.fill(archiveTitle)
+  await addTaskButton.click()
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
 
   const archiveRow = page.locator('article.task-row').filter({ hasText: archiveTitle })
@@ -97,11 +154,10 @@ test('keeps subscriptions live and preserves rejected connection input', async (
 
   await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const topicName = 'Connection topic'
-  await page.getByLabel('Topic name').fill(topicName)
+  await page.getByRole('button', { name: 'Topic', exact: true }).click()
+  await captureText.fill(topicName)
   await page
-    .locator('form.quick-card')
-    .filter({ hasText: 'New topic' })
-    .getByRole('button', { name: 'Add' })
+    .getByRole('button', { name: 'Add topic', exact: true })
     .click()
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
 
@@ -126,8 +182,49 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await expect(firstRecord).toHaveValue(taskValue)
   await expect(secondRecord).toHaveValue(topicValue as string)
 
+  await page.getByRole('button', { name: 'tasks', exact: true }).click()
+  const connectedTask = page
+    .locator('article.task-row')
+    .filter({ hasText: cliTask })
+  await connectedTask
+    .getByRole('button', { name: `Complete ${cliTask}` })
+    .click()
+  await expect(page.locator('.garden-toast')).toContainText('crop ripened')
+
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(
+    page.getByRole('button', { name: `Task crop: ${cliTask}` }),
+  ).toHaveClass(/ripe/)
+  await expect(
+    page.getByRole('button', { name: `Task crop: ${archiveTitle}, dormant` }),
+  ).toHaveClass(/dormant/)
+  await expect(page.locator('.vine-marker.flowering')).toHaveCount(1)
+  await page.getByRole('button', { name: 'sunset', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-sunset/)
+
   await page.reload()
-  await expect(page.getByText(cliTask, { exact: true })).toBeVisible()
+  await expect(page.getByText(cliTask, { exact: true }).first()).toBeVisible()
+  await expect(page.locator('.garden-toast')).toHaveCount(0)
+  await page.getByRole('button', { name: 'garden', exact: true }).click()
+  await expect(page.locator('.garden-view')).toHaveClass(/mood-sunset/)
+  const desktopVine = await page.locator('.garden-vines path').getAttribute('d')
+  expect(desktopVine).toBeTruthy()
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect
+    .poll(() => page.locator('.garden-vines path').getAttribute('d'))
+    .not.toBe(desktopVine)
+  const mobileGardenLayout = await page.evaluate(() => ({
+    horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
+    plotColumns: getComputedStyle(
+      document.querySelector('.garden-plots')!,
+    ).gridTemplateColumns.split(' ').length,
+  }))
+  expect(mobileGardenLayout).toEqual({
+    horizontalOverflow: 0,
+    plotColumns: 1,
+  })
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const journalBody = 'Appears after subscription reconnect'
   await runCli('command', {
     type: 'addJournalEntry',
@@ -151,16 +248,14 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   await page.getByRole('button', { name: 'timeline', exact: true }).click()
   const mobileTimelineLayout = await page.evaluate(() => {
     const nav = document.querySelector('nav')
-    const quickTask = document
-      .querySelector('input[aria-label="Task title"]')
-      ?.closest('form')
+    const composer = document.querySelector('form.unified-composer')
     const navRect = nav?.getBoundingClientRect()
     return {
       horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
       navPosition: nav ? getComputedStyle(nav).position : null,
       navBottom: navRect ? Math.round(navRect.bottom) : null,
       viewportHeight: innerHeight,
-      quickTaskWidth: quickTask?.getBoundingClientRect().width ?? 0,
+      composerWidth: composer?.getBoundingClientRect().width ?? 0,
     }
   })
   expect(mobileTimelineLayout).toMatchObject({
@@ -168,7 +263,7 @@ test('keeps subscriptions live and preserves rejected connection input', async (
     navPosition: 'fixed',
     navBottom: mobileTimelineLayout.viewportHeight - 12,
   })
-  expect(mobileTimelineLayout.quickTaskWidth).toBeGreaterThan(340)
+  expect(mobileTimelineLayout.composerWidth).toBeGreaterThan(340)
 
   await page.getByRole('button', { name: 'tasks', exact: true }).click()
   const activeTaskRow = page
@@ -180,6 +275,37 @@ test('keeps subscriptions live and preserves rejected connection input', async (
   ).toBeVisible()
 
   await page.setViewportSize({ width: 1280, height: 900 })
+  await page.getByRole('button', { name: 'timeline', exact: true }).click()
+  const desktopTimelineLayout = await page.evaluate(() => {
+    const viewport = document.querySelector('.timeline-viewport')!
+    const dayGroup = document.querySelector('.day-group')!
+    const dayItems = document.querySelector('.day-items')!
+    const card = document.querySelector('.timeline-card')!
+    const icon = card.querySelector('.timeline-icon')!
+    const viewportRect = viewport.getBoundingClientRect()
+    const cardRect = card.getBoundingClientRect()
+    return {
+      dayGroupColumns: getComputedStyle(dayGroup).gridTemplateColumns.split(' ')
+        .length,
+      dayItemsPaddingLeft: getComputedStyle(dayItems).paddingLeft,
+      cardLeftInset: Math.round(cardRect.left - viewportRect.left),
+      cardRightInset: Math.round(viewportRect.right - cardRect.right),
+      iconWidth: icon.getBoundingClientRect().width,
+      iconFlexShrink: getComputedStyle(icon).flexShrink,
+    }
+  })
+  expect(desktopTimelineLayout.dayGroupColumns).toBe(1)
+  expect(desktopTimelineLayout.dayItemsPaddingLeft).toBe('0px')
+  expect(desktopTimelineLayout.iconWidth).toBe(34)
+  expect(desktopTimelineLayout.iconFlexShrink).toBe('0')
+  expect(
+    Math.abs(
+      desktopTimelineLayout.cardLeftInset -
+        desktopTimelineLayout.cardRightInset,
+    ),
+  ).toBeLessThanOrEqual(1)
+
+  await page.getByRole('button', { name: 'tasks', exact: true }).click()
   const desktopLayout = await page.evaluate(() => ({
     horizontalOverflow: document.documentElement.scrollWidth - innerWidth,
     navPosition: getComputedStyle(document.querySelector('nav')!).position,

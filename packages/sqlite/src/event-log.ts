@@ -39,6 +39,8 @@ export type SqliteEventLogService = EventLogService & {
   readonly context: SqliteDatabaseContext
 }
 
+type CommitTableShape = 'versioned' | 'legacy'
+
 const jsonCodec: SqliteEventCodec = {
   encode(payload) {
     const encoded = JSON.stringify(payload)
@@ -83,6 +85,25 @@ export function createSqliteEventLogService(
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
   const codec = options.codec ?? jsonCodec
+  let commitTableShape: Promise<CommitTableShape> | undefined
+
+  function getCommitTableShape(connection: SqliteConnection) {
+    commitTableShape ??= connection
+      .execute('PRAGMA table_info(specter_event_commits)')
+      .then((result) => {
+        const columns = new Set(
+          result.rows.map((row) =>
+            requireString(row.name, 'Event commit table column name'),
+          ),
+        )
+        if (columns.has('commit_version')) return 'versioned' as const
+        if (columns.has('idempotency_key') && columns.has('last_event_order')) {
+          return 'legacy' as const
+        }
+        throw new Error('Unsupported SQLite Event commit table schema')
+      })
+    return commitTableShape
+  }
 
   function fromRow(row: Record<string, unknown>): PersistedEvent {
     const recordedAt = requireString(row.recorded_at, 'recorded time')
@@ -179,12 +200,15 @@ export function createSqliteEventLogService(
     connection: SqliteConnection,
     afterVersion: number,
   ): Promise<readonly EventLogCommit[]> {
+    const tableShape = await getCommitTableShape(connection)
+    const versionColumn =
+      tableShape === 'versioned' ? 'commit_version' : 'last_event_order'
     const result = await connection.execute({
       sql: `SELECT idempotency_key, fingerprint, first_event_order,
           last_event_order, committed_at
         FROM specter_event_commits
-        WHERE commit_version > ?
-        ORDER BY commit_version ASC`,
+        WHERE ${versionColumn} > ?
+        ORDER BY ${versionColumn} ASC`,
       args: [afterVersion],
     })
     return Promise.all(
@@ -213,6 +237,8 @@ export function createSqliteEventLogService(
     if (drafts.length === 0) {
       throw new Error('Event Log append requires at least one Event')
     }
+
+    const tableShape = await getCommitTableShape(connection)
 
     const version = await currentVersion(connection)
     if (
@@ -247,24 +273,43 @@ export function createSqliteEventLogService(
     }
     const committedVersion = events.at(-1)?.order ?? version
     const committedAt = now().toISOString()
-    await connection.execute({
-      sql: `INSERT INTO specter_event_commits (
-          commit_version,
-          idempotency_key,
-          fingerprint,
-          first_event_order,
-          last_event_order,
-          committed_at
-        ) VALUES (?, ?, ?, ?, ?, ?)`,
-      args: [
-        committedVersion,
-        appendOptions.idempotencyKey ?? null,
-        appendOptions.fingerprint ?? null,
-        events[0]?.order ?? version,
-        committedVersion,
-        committedAt,
-      ],
-    })
+    if (tableShape === 'versioned') {
+      await connection.execute({
+        sql: `INSERT INTO specter_event_commits (
+            commit_version,
+            idempotency_key,
+            fingerprint,
+            first_event_order,
+            last_event_order,
+            committed_at
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+        args: [
+          committedVersion,
+          appendOptions.idempotencyKey ?? null,
+          appendOptions.fingerprint ?? null,
+          events[0]?.order ?? version,
+          committedVersion,
+          committedAt,
+        ],
+      })
+    } else {
+      await connection.execute({
+        sql: `INSERT INTO specter_event_commits (
+            idempotency_key,
+            fingerprint,
+            first_event_order,
+            last_event_order,
+            committed_at
+          ) VALUES (?, ?, ?, ?, ?)`,
+        args: [
+          appendOptions.idempotencyKey ?? null,
+          appendOptions.fingerprint ?? null,
+          events[0]?.order ?? version,
+          committedVersion,
+          committedAt,
+        ],
+      })
+    }
     return {
       events,
       version: committedVersion,
