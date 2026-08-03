@@ -18,7 +18,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 ## Canonical Imports
 
-- Use `@specter-ts/core/spec` in `spec.ts` for Slice specification builders and `event(type, payload)`.
+- Worklog is the committed-JSON pilot. Edit each Slice's `spec.json` through `specter-spec-editor`; do not add `spec.ts` or an exporter step.
 - Use `@specter-ts/core` in implementations and runtime wiring for Event Definitions, app creation, envelope/reference types, adapters, and structured errors.
 - Use `@specter-ts/core/testing` for Scenario tests, focused Event catalogs, and replay helpers.
 - Use local `src/db/*` and `src/transport/*` modules for stores, persistence, Scenario database setup, HTTP/SSE transport, and schema exports.
@@ -26,18 +26,19 @@ description: Teaches coding agents how to add and change Specter features in gen
 
 ## Slice Files
 
-Every Slice contract requires these two files:
+Every Worklog Slice contract requires these two files:
 
-- `spec.ts` exports `<sliceName>Spec` and defines only `name → description → scenarios`.
-- `impl.ts` imports that specification and exports `<sliceName>` after completing the implementation stages.
+- `spec.json` contains the portable `name → description → scenarios` contract.
+- `impl.ts` imports that JSON specification and exports `<sliceName>` after completing the implementation stages.
 
-Use named exports for both files. A generator may add adjacent Slice-owned
+Export implementations by name. A generator may add adjacent Slice-owned
 support files such as `events.ts`, `projection.ts`, `registry.ts`, a Scenario
 test, a database-schema re-export, or a migration checklist. Those files are
-optional support artifacts; they never replace the required `spec.ts` and
+optional support artifacts; they never replace the required `spec.json` and
 `impl.ts` boundary.
 
-Specifications may import only `@specter-ts/core/spec` and implementation-independent domain constants. They must not import Event Definitions, schemas, stores, plugins, database/server modules, implementations, or sibling Slices.
+Specifications are portable JSON and cannot import Event Definitions, schemas,
+stores, plugins, database/server modules, implementations, or sibling Slices.
 
 Implementations follow these exact builder orders:
 
@@ -50,7 +51,7 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 ## Scenarios And Events
 
 - Every Slice has at least one Scenario with a unique human-readable `description`.
-- Use `event('todo-added', { todoId: 'todo-1', title: 'Ship it' })`; never call an Event Definition from `spec.ts`.
+- Scenario Events use `{ "kind": "scenario-event", "eventType": "todo-added", "examplePayload": { "todoId": "todo-1", "title": "Ship it" } }`; do not place Event Definitions in `spec.json`.
 - Event types use kebab-case; Slice names use lower camel case.
 - Scenario payloads are exact. Include every ID-shaped field and domain timestamp.
 - Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and may state an exact rejection reason. Invalid schema input is not a Scenario.
@@ -111,7 +112,7 @@ await execution.reactions
 ## Feature Workflow
 
 1. Add or update kebab-case Event Definitions in the feature's `events.ts`.
-2. Write or update exact Scenarios in `spec.ts`.
+2. Start `specter-spec-editor` for Worklog and write or update exact Scenarios in `spec.json`.
 3. Complete the specification in `impl.ts`, keeping State private and applying each Given Event type.
 4. Register the implementation and Event Definitions.
 5. Await `createSpecterApp(config)` in runtime wiring.

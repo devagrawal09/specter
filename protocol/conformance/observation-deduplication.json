@@ -1,9 +1,0 @@
-{
-  "name": "collector deduplicates retried observations",
-  "source": { "application": "todo", "environment": "test", "runtimeLanguage": "typescript", "runtimeVersion": "0.3.0", "instanceId": "instance-1", "eventLogId": "log-1" },
-  "batches": [
-    { "observationIds": ["observation-1", "observation-2"], "expectAccepted": 2, "expectDuplicates": 0 },
-    { "observationIds": ["observation-1", "observation-2"], "expectAccepted": 0, "expectDuplicates": 2 }
-  ],
-  "expectPersistedObservationIds": ["observation-1", "observation-2"]
-}

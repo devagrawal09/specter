@@ -1,8 +1,0 @@
-{
-  "protocolVersion": 1,
-  "kind": "observations.ack",
-  "requestId": "duplicate-rejected-request",
-  "accepted": 0,
-  "duplicates": 0,
-  "rejectedObservationIds": ["observation-1", "observation-1"]
-}

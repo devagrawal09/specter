@@ -16,7 +16,6 @@ for (const filePath of files) {
     filenames.add(path.basename(filePath))
     sliceDirectories.set(slice.directory, filenames)
   }
-
 }
 
 const sliceContractDirectories = new Set(
@@ -38,12 +37,37 @@ for (const [directory, filenames] of sliceDirectories) {
       'legacy slice.ts must be split into spec.ts and impl.ts',
     )
   }
-  if (!filenames.has('spec.ts')) {
-    addViolation(directory, 'Slice directory is missing spec.ts')
+  if (
+    !filenames.has('spec.ts') &&
+    !(isWorklogSlice(directory) && filenames.has('spec.json'))
+  ) {
+    addViolation(
+      directory,
+      isWorklogSlice(directory)
+        ? 'Worklog Slice directory is missing spec.json'
+        : 'Slice directory is missing spec.ts',
+    )
   }
   if (!filenames.has('impl.ts')) {
     addViolation(directory, 'Slice directory is missing impl.ts')
   }
+}
+
+function isWorklogSlice(directory) {
+  const worklogFeatures = path.join(
+    repoRoot,
+    'apps',
+    'worklog',
+    'src',
+    'features',
+  )
+  const pathFromWorklog = path.relative(worklogFeatures, directory)
+  return (
+    pathFromWorklog !== '' &&
+    pathFromWorklog !== '..' &&
+    !pathFromWorklog.startsWith(`..${path.sep}`) &&
+    !path.isAbsolute(pathFromWorklog)
+  )
 }
 
 if (violations.length > 0) {

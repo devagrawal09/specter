@@ -1,0 +1,71 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Adds a topic for grouping related work.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "addTopic",
+  "scenarios": [
+    {
+      "description": "Adds a topic and awards its creation point.",
+      "expect": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Worklog",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "topic:topic-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "topic-added",
+            "related": [],
+            "subject": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [],
+      "when": {
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "description": null,
+        "name": "Worklog",
+        "topicId": "topic-1"
+      }
+    },
+    {
+      "description": "Rejects a reused topic identifier.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Existing",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Topic already exists"
+      },
+      "when": {
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "description": null,
+        "name": "Duplicate",
+        "topicId": "topic-1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,318 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Archives or restores a journal entry without deleting its history.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "changeJournalEntryArchived",
+  "scenarios": [
+    {
+      "description": "Archives an active journal entry.",
+      "expect": [
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "archived": true,
+        "changedAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Restores an edited archived journal entry.",
+      "expect": [
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-edited",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Edited",
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "archived": false,
+        "changedAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Restores a journal and awards its newly eligible completed-task connection.",
+      "expect": [
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-1:completed-task",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "completed-task-connection",
+            "related": [
+              {
+                "id": "journal-1",
+                "kind": "journal"
+              }
+            ],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Task"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "task-1",
+              "kind": "task"
+            },
+            "right": {
+              "id": "journal-1",
+              "kind": "journal"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "archived": false,
+        "changedAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Restores a journal without repeating a prior connection award.",
+      "expect": [
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Entry",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Task"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "task-1",
+              "kind": "task"
+            },
+            "right": {
+              "id": "journal-1",
+              "kind": "journal"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "connection:connection-1:completed-task",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "completed-task-connection",
+            "related": [
+              {
+                "id": "journal-1",
+                "kind": "journal"
+              }
+            ],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "archived": false,
+        "changedAt": "2026-07-18T15:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    }
+  ]
+}

@@ -1,0 +1,119 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Corrects the body or activity time of a journal entry.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "editJournalEntry",
+  "scenarios": [
+    {
+      "description": "Edits an active journal entry.",
+      "expect": [
+        {
+          "eventType": "journal-entry-edited",
+          "examplePayload": {
+            "activityAt": "2026-07-18T16:00:00.000Z",
+            "body": "Corrected",
+            "editedAt": "2026-07-18T16:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Draft",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "activityAt": "2026-07-18T16:00:00.000Z",
+        "body": "Corrected",
+        "editedAt": "2026-07-18T16:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Edits a journal entry that was corrected before.",
+      "expect": [
+        {
+          "eventType": "journal-entry-edited",
+          "examplePayload": {
+            "activityAt": "2026-07-18T16:00:00.000Z",
+            "body": "Final correction",
+            "editedAt": "2026-07-18T16:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Draft",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-edited",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "First correction",
+            "editedAt": "2026-07-18T16:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "activityAt": "2026-07-18T16:00:00.000Z",
+        "body": "Final correction",
+        "editedAt": "2026-07-18T16:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    },
+    {
+      "description": "Rejects editing an archived journal entry.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Draft",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T16:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Journal entry not found"
+      },
+      "when": {
+        "activityAt": "2026-07-18T16:00:00.000Z",
+        "body": "Nope",
+        "editedAt": "2026-07-18T16:00:00.000Z",
+        "journalEntryId": "journal-1"
+      }
+    }
+  ]
+}

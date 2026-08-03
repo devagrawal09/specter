@@ -11,7 +11,7 @@ import (
 )
 
 func TestTodoProjectAPIExecutesRuntimeCommandsAndQueries(t *testing.T) {
-	app, err := newTodoApp(nil)
+	app, err := newTodoApp()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +34,13 @@ func TestTodoProjectAPIExecutesRuntimeCommandsAndQueries(t *testing.T) {
 		t.Fatalf("POST /todos returned HTTP %d", response.StatusCode)
 	}
 	var command struct {
-		OperationID string `json:"operationId"`
-		Status      string `json:"status"`
-		Version     int64  `json:"version"`
+		Status  string `json:"status"`
+		Version int64  `json:"version"`
 	}
 	if err := json.NewDecoder(response.Body).Decode(&command); err != nil {
 		t.Fatal(err)
 	}
-	if command.OperationID == "" || command.Status != "committed" || command.Version != 1 {
+	if command.Status != "committed" || command.Version != 1 {
 		t.Fatalf("unexpected Command response: %#v", command)
 	}
 
@@ -63,7 +62,7 @@ func TestTodoProjectAPIExecutesRuntimeCommandsAndQueries(t *testing.T) {
 }
 
 func TestTodoProjectAPIPreservesIdempotency(t *testing.T) {
-	app, err := newTodoApp(nil)
+	app, err := newTodoApp()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +99,7 @@ func TestTodoProjectAPIPreservesIdempotency(t *testing.T) {
 }
 
 func TestTodoProjectAPIDoesNotExposeOperationalProtocolRoutes(t *testing.T) {
-	app, err := newTodoApp(nil)
+	app, err := newTodoApp()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -112,7 +111,6 @@ func TestTodoProjectAPIDoesNotExposeOperationalProtocolRoutes(t *testing.T) {
 		"/specter/v1/queries",
 		"/specter/v1/subscriptions",
 		"/specter/v1/reaction-tickets/ticket-1",
-		"/specter/v1/observations",
 	} {
 		request := httptest.NewRequest(http.MethodGet, path, nil)
 		response := httptest.NewRecorder()
@@ -124,7 +122,7 @@ func TestTodoProjectAPIDoesNotExposeOperationalProtocolRoutes(t *testing.T) {
 }
 
 func TestTodoProjectAPIRejectsUnknownInputFields(t *testing.T) {
-	app, err := newTodoApp(nil)
+	app, err := newTodoApp()
 	if err != nil {
 		t.Fatal(err)
 	}

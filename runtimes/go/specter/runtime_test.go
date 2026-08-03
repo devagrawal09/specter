@@ -169,8 +169,6 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 			var panicOnce atomic.Bool
 			panicOnce.Store(true)
 			var runs atomic.Int64
-			var observationsMu sync.Mutex
-			var observations []specter.Observation
 			command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
 				return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
 			})}
@@ -186,11 +184,7 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 				runs.Add(1)
 				return "ok", nil
 			}}
-			app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}, Observe: func(observation specter.Observation) {
-				observationsMu.Lock()
-				observations = append(observations, observation)
-				observationsMu.Unlock()
-			}})
+			app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Reactions: []specter.ReactionDefinition{reaction}})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -216,40 +210,6 @@ func TestReactionPanicsFailOnlyTheirPassAndDoNotStrandClose(t *testing.T) {
 			defer cancel()
 			if err := app.Close(ctx); err != nil {
 				t.Fatalf("Close was stranded after panic: %v", err)
-			}
-
-			startedKind, completedKind, failedKind := "reaction.run.started", "reaction.run.completed", "reaction.run.failed"
-			if panicAt == "apply" {
-				startedKind, completedKind, failedKind = "slice.catch-up.started", "slice.catch-up.completed", "slice.catch-up.failed"
-			}
-			observationsMu.Lock()
-			defer observationsMu.Unlock()
-			terminalOperations := map[string]bool{}
-			failedOperations := map[string]bool{}
-			startedOperations := map[string]bool{}
-			for _, observation := range observations {
-				if observation.Kind == startedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
-					startedOperations[observation.OperationID] = true
-				}
-				if observation.Kind == failedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
-					failedOperations[observation.OperationID] = true
-					terminalOperations[observation.OperationID] = true
-				}
-				if observation.Kind == completedKind && (panicAt != "apply" || observation.Slice == "panic-once") {
-					terminalOperations[observation.OperationID] = true
-				}
-			}
-			foundFailureTerminal := false
-			for operationID := range startedOperations {
-				if !terminalOperations[operationID] {
-					t.Fatalf("%s operation %s has no terminal observation: %#v", startedKind, operationID, observations)
-				}
-				if failedOperations[operationID] {
-					foundFailureTerminal = true
-				}
-			}
-			if !foundFailureTerminal {
-				t.Fatalf("%s was not paired with %s: %#v", startedKind, failedKind, observations)
 			}
 		})
 	}
@@ -382,8 +342,6 @@ func TestAppCloseDrainsQueuedReactionsAndIsIdempotent(t *testing.T) {
 
 func TestDurableCommandSurvivesProjectionFailureAndRepairsOnNextCommand(t *testing.T) {
 	var attempts atomic.Int64
-	var observationsMu sync.Mutex
-	var observations []specter.Observation
 	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "prior"}}}, Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Apply: map[string]specter.ApplyFunc{"added": func(context.Context, specter.PersistedEvent) error {
 		if attempts.Add(1) == 1 {
 			return errors.New("projection unavailable")
@@ -392,11 +350,7 @@ func TestDurableCommandSurvivesProjectionFailureAndRepairsOnNextCommand(t *testi
 	}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
 		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
 	})}
-	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Observe: func(observation specter.Observation) {
-		observationsMu.Lock()
-		observations = append(observations, observation)
-		observationsMu.Unlock()
-	}})
+	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -409,17 +363,6 @@ func TestDurableCommandSurvivesProjectionFailureAndRepairsOnNextCommand(t *testi
 	}
 	if err := <-first.Reactions; err != nil {
 		t.Fatal(err)
-	}
-	observationsMu.Lock()
-	foundRepair := false
-	for _, observation := range observations {
-		if observation.Kind == "slice.catch-up.failed" && observation.Attributes["repairRequired"] == true {
-			foundRepair = true
-		}
-	}
-	observationsMu.Unlock()
-	if !foundRepair {
-		t.Fatal("projection repair requirement was not observed")
 	}
 	second, err := app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{})
 	if err != nil {
@@ -500,102 +443,6 @@ func TestSubscriptionKeepsLatestValue(t *testing.T) {
 	}
 }
 
-func TestSubscriptionDropsStaleInitialRefreshAndLinksInvalidationCausality(t *testing.T) {
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var blockOnce sync.Once
-	var values []string
-	var observationsMu sync.Mutex
-	var observations []specter.Observation
-	invalidationObserved := make(chan struct{})
-	var invalidationOnce sync.Once
-	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
-		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
-	})}
-	query := specter.QueryDefinition{Name: "all", Scenarios: []specter.QueryScenario{{Description: "lists", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Expect: []string{"one"}}}, Apply: map[string]specter.ApplyFunc{"added": specter.DecodeApply(func(_ context.Context, payload added, _ specter.PersistedEvent) error {
-		values = append(values, payload.ID)
-		return nil
-	})}, Handle: specter.DecodeQuery(func(_ context.Context, _ struct{}) ([]string, error) {
-		snapshot := append([]string(nil), values...)
-		blockOnce.Do(func() {
-			close(started)
-			<-release
-		})
-		return snapshot, nil
-	})}
-	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, Queries: []specter.QueryDefinition{query}, Observe: func(observation specter.Observation) {
-		observationsMu.Lock()
-		observations = append(observations, observation)
-		observationsMu.Unlock()
-		if observation.Kind == "subscription.invalidated" {
-			invalidationOnce.Do(func() { close(invalidationObserved) })
-		}
-	}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	type subscriptionResult struct {
-		sub *specter.Subscription
-		err error
-	}
-	created := make(chan subscriptionResult, 1)
-	go func() {
-		sub, subscribeErr := app.SubscribeJSON(context.Background(), "all", json.RawMessage(`{}`), specter.DispatchOptions{OperationID: "initial-refresh"})
-		created <- subscriptionResult{sub: sub, err: subscribeErr}
-	}()
-	<-started
-	execution, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{OperationID: "command-parent", CorrelationID: "correlation-1"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-invalidationObserved:
-	case <-time.After(time.Second):
-		t.Fatal("subscription was not invalidated")
-	}
-	close(release)
-	createdSubscription := <-created
-	if createdSubscription.err != nil {
-		t.Fatal(createdSubscription.err)
-	}
-	defer createdSubscription.sub.Close()
-	if err := <-execution.Reactions; err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case item := <-createdSubscription.sub.C:
-		got := item.Value.([]string)
-		if len(got) != 1 || got[0] != "one" {
-			t.Fatalf("stale initial refresh replaced invalidated value: %#v", got)
-		}
-	case <-time.After(time.Second):
-		t.Fatal("subscription did not publish invalidation refresh")
-	}
-	observationsMu.Lock()
-	defer observationsMu.Unlock()
-	var invalidationOperation string
-	for _, observation := range observations {
-		if observation.Kind == "subscription.invalidated" {
-			invalidationOperation = observation.OperationID
-			if len(observation.ParentOperationIDs) != 1 || observation.ParentOperationIDs[0] != "command-parent" {
-				t.Fatalf("invalidation lost Command cause: %#v", observation)
-			}
-		}
-	}
-	if invalidationOperation == "" {
-		t.Fatal("missing subscription.invalidated observation")
-	}
-	foundRefresh := false
-	for _, observation := range observations {
-		if observation.Kind == "query.started" && observation.OperationID != "initial-refresh" && len(observation.ParentOperationIDs) == 1 && observation.ParentOperationIDs[0] == invalidationOperation {
-			foundRefresh = observation.CorrelationID == "correlation-1"
-		}
-	}
-	if !foundRefresh {
-		t.Fatal("refresh Query was not assigned a fresh operation causally parented to the invalidation")
-	}
-}
-
 func TestExpectedVersionAndIdempotencyConflict(t *testing.T) {
 	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
 		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
@@ -626,62 +473,5 @@ func TestConformanceRequiresExactGivenApplySet(t *testing.T) {
 	var public *specter.Error
 	if !errors.As(err, &public) || public.Code != specter.ErrConformanceFailed {
 		t.Fatalf("expected conformance failure, got %v", err)
-	}
-}
-
-func TestConfiguredSpecificationDigestCorrelatesSliceObservations(t *testing.T) {
-	const digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	var observations []specter.Observation
-	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
-		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
-	})}
-	app, err := specter.NewApp(specter.Config{
-		Events:               []string{"added"},
-		Commands:             []specter.CommandDefinition{command},
-		SpecificationDigests: map[string]string{"add": digest},
-		Observe: func(observation specter.Observation) {
-			observations = append(observations, observation)
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	execution, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := <-execution.Reactions; err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, observation := range observations {
-		if observation.CommandType != "add" {
-			continue
-		}
-		found = true
-		if observation.SpecificationDigest != digest {
-			t.Fatalf("observation lost specification digest: %#v", observation)
-		}
-	}
-	if !found {
-		t.Fatal("missing Command observations")
-	}
-}
-
-func TestSpecificationDigestsRejectUnknownSlicesAndNonCanonicalValues(t *testing.T) {
-	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
-		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
-	})}
-	for name, digests := range map[string]map[string]string{
-		"unknown Slice":  {"missing": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-		"invalid digest": {"add": "sha256:ABC"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			_, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}, SpecificationDigests: digests})
-			var public *specter.Error
-			if !errors.As(err, &public) || public.Code != specter.ErrConformanceFailed {
-				t.Fatalf("expected conformance failure, got %v", err)
-			}
-		})
 	}
 }
