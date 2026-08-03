@@ -4,7 +4,7 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const featureRoot = resolve(root, 'src/specs/reactivity')
+const featureRoot = resolve(root, 'src/features/reactivity')
 
 const paths = {
   createReactiveComputation:

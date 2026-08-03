@@ -4,10 +4,8 @@ These portable Slice specifications define the observable behavior shared by
 the synchronous in-memory Specter runtimes used with
 `milomg/js-reactivity-benchmark`.
 
-Until an implementation is added, the contracts live under `src/specs/` rather
-than `src/features/`. This keeps the specification-only phase from declaring
-incomplete runtime Slices while retaining normal TypeScript formatting and
-linting.
+The approved contracts live beside their fused implementations under
+`src/features/reactivity`.
 
 They do not define a durable Specter application. The Event sequence is an
 in-memory benchmark trace. A settlement buffers its Events and publishes the
@@ -79,8 +77,8 @@ The pinned upstream revision is recorded in `upstream.json`.
   framework correctness tests.
 - `read()` unwraps an `available` Query result and throws for every other
   status.
-- `cleanup()` disposes the active graph and drops its trace and callback
-  registry.
+- `cleanup()` disposes every graph owned by the adapter and drops the trace and
+  callback registries.
 
 All adapter methods are synchronous. An adapter built on the Promise-based
 standard Specter App API is not a conforming implementation of this benchmark
