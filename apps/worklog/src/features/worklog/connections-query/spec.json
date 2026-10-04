@@ -1,0 +1,57 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Lists current symmetric record connections.",
+  "formatVersion": 1,
+  "kind": "query",
+  "name": "connectionsQuery",
+  "scenarios": [
+    {
+      "description": "Returns connections with their current archival state.",
+      "expect": [
+        {
+          "archived": true,
+          "connectedAt": "2026-07-18T15:00:00.000Z",
+          "id": "connection-1",
+          "left": {
+            "id": "journal-1",
+            "kind": "journal"
+          },
+          "right": {
+            "id": "topic-1",
+            "kind": "topic"
+          }
+        }
+      ],
+      "given": [
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "journal-1",
+              "kind": "journal"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "includeArchived": true
+      }
+    }
+  ]
+}

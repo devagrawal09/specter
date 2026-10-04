@@ -1,0 +1,119 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Edits the name or description of a topic.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "editTopic",
+  "scenarios": [
+    {
+      "description": "Edits an active topic.",
+      "expect": [
+        {
+          "eventType": "topic-edited",
+          "examplePayload": {
+            "description": "Details",
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "name": "Final",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Draft",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "description": "Details",
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "name": "Final",
+        "topicId": "topic-1"
+      }
+    },
+    {
+      "description": "Edits a previously edited topic.",
+      "expect": [
+        {
+          "eventType": "topic-edited",
+          "examplePayload": {
+            "description": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "name": "Final",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Draft",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-edited",
+          "examplePayload": {
+            "description": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "name": "Middle",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "description": null,
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "name": "Final",
+        "topicId": "topic-1"
+      }
+    },
+    {
+      "description": "Rejects editing an archived topic.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Draft",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Topic not found"
+      },
+      "when": {
+        "description": null,
+        "editedAt": "2026-07-18T15:00:00.000Z",
+        "name": "Final",
+        "topicId": "topic-1"
+      }
+    }
+  ]
+}

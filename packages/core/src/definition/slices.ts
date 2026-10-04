@@ -1,4 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
+import type { SpecificationDigest } from '@specter-ts/spec'
 import type { Effect } from 'effect'
 
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
@@ -69,6 +70,7 @@ type SliceBase<
   readonly name: TName
   readonly description: string
   readonly scenarios: TScenarios
+  readonly specificationDigest: SpecificationDigest
   readonly eager: boolean
 }
 

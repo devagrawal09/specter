@@ -112,8 +112,17 @@ quiescent database so the single file is complete.
 
 ## Implementation contract
 
-Every feature uses the Specter `spec.ts`/`impl.ts` Slice boundary, exact
-executable Scenarios, kebab-case durable Events, runtime schemas at transport
-boundaries, and private event-derived decision/query projections. Domain IDs
-and timestamps originate in the web or CLI boundary and are included in Event
-payloads.
+Worklog is the committed-JSON pilot. Every feature stores its editable Slice
+contract in `spec.json`; `impl.ts` imports that file directly. There are no
+`spec.ts` sources or exporter steps in this app. Start the local visual editor
+from the repository root with:
+
+```sh
+pnpm --filter @specter-ts/spec-editor build
+node packages/spec-editor/dist/cli.js apps/worklog
+```
+
+The specifications retain exact executable Scenarios and kebab-case durable
+Events. Runtime schemas remain at transport boundaries, and decision/query
+projections remain private. Domain IDs and timestamps originate in the web or
+CLI boundary and are included in Event payloads.

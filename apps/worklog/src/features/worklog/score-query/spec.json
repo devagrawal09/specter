@@ -1,0 +1,74 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Returns the lifetime score and its auditable award ledger.",
+  "formatVersion": 1,
+  "kind": "query",
+  "name": "scoreQuery",
+  "scenarios": [
+    {
+      "description": "Sums permanent point awards in reverse chronological order.",
+      "expect": {
+        "awards": [
+          {
+            "awardKey": "task:task-1:first-completion",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-first-completed",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          {
+            "awardKey": "task:task-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-added",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          }
+        ],
+        "total": 2
+      },
+      "given": [
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "task:task-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-added",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "task:task-1:first-completion",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-first-completed",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "limit": 50
+      }
+    }
+  ]
+}

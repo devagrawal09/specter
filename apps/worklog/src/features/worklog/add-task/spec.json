@@ -1,0 +1,75 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Adds a one-off task.",
+  "formatVersion": 1,
+  "kind": "command",
+  "name": "addTask",
+  "scenarios": [
+    {
+      "description": "Adds a task and awards its creation point.",
+      "expect": [
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Ship Worklog"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "point-awarded",
+          "examplePayload": {
+            "awardKey": "task:task-1:created",
+            "awardedAt": "2026-07-18T15:00:00.000Z",
+            "points": 1,
+            "reason": "task-added",
+            "related": [],
+            "subject": {
+              "id": "task-1",
+              "kind": "task"
+            }
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "given": [],
+      "when": {
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "dueAt": null,
+        "notes": null,
+        "taskId": "task-1",
+        "title": "Ship Worklog"
+      }
+    },
+    {
+      "description": "Rejects a reused task identifier.",
+      "expect": [],
+      "given": [
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Existing"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "reject": {
+        "reason": "Task already exists"
+      },
+      "when": {
+        "createdAt": "2026-07-18T15:00:00.000Z",
+        "dueAt": null,
+        "notes": null,
+        "taskId": "task-1",
+        "title": "Duplicate"
+      }
+    }
+  ]
+}

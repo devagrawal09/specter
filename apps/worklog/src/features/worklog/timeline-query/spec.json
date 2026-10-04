@@ -1,0 +1,200 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Returns the activity-time-ordered Worklog timeline.",
+  "formatVersion": 1,
+  "kind": "query",
+  "name": "timelineQuery",
+  "scenarios": [
+    {
+      "description": "Projects current labels and archival state onto timeline activity.",
+      "expect": [
+        {
+          "activityAt": "2026-07-18T15:00:00.000Z",
+          "archived": true,
+          "detail": "Final task ↔ Final topic",
+          "eventType": "records-connected",
+          "id": "scenario-event-11",
+          "subject": null,
+          "title": "Records connected"
+        },
+        {
+          "activityAt": "2026-07-18T15:00:00.000Z",
+          "archived": true,
+          "detail": "Topic created",
+          "eventType": "topic-added",
+          "id": "scenario-event-8",
+          "subject": {
+            "id": "topic-1",
+            "kind": "topic"
+          },
+          "title": "Final topic"
+        },
+        {
+          "activityAt": "2026-07-18T15:00:00.000Z",
+          "archived": true,
+          "detail": "Task completed",
+          "eventType": "task-completion-changed",
+          "id": "scenario-event-6",
+          "subject": {
+            "id": "task-1",
+            "kind": "task"
+          },
+          "title": "Final task"
+        },
+        {
+          "activityAt": "2026-07-18T15:00:00.000Z",
+          "archived": true,
+          "detail": "Task created",
+          "eventType": "task-added",
+          "id": "scenario-event-4",
+          "subject": {
+            "id": "task-1",
+            "kind": "task"
+          },
+          "title": "Final task"
+        },
+        {
+          "activityAt": "2026-07-18T15:00:00.000Z",
+          "archived": true,
+          "detail": "Final entry",
+          "eventType": "journal-entry-added",
+          "id": "scenario-event-1",
+          "subject": {
+            "id": "journal-1",
+            "kind": "journal"
+          },
+          "title": "Journal"
+        }
+      ],
+      "given": [
+        {
+          "eventType": "journal-entry-added",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Draft",
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-edited",
+          "examplePayload": {
+            "activityAt": "2026-07-18T15:00:00.000Z",
+            "body": "Final entry",
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "journal-entry-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "journalEntryId": "journal-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Draft task"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-edited",
+          "examplePayload": {
+            "dueAt": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Final task"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Draft topic",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-edited",
+          "examplePayload": {
+            "description": null,
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "name": "Final topic",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "task-1",
+              "kind": "task"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": true,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "includeArchived": true,
+        "limit": 50
+      }
+    }
+  ]
+}

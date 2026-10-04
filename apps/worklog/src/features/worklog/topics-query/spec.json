@@ -1,0 +1,111 @@
+{
+  "$schema": "https://specter.dev/specification/v1/slice.schema.json",
+  "description": "Lists topics with connected-task completion progress.",
+  "formatVersion": 1,
+  "kind": "query",
+  "name": "topicsQuery",
+  "scenarios": [
+    {
+      "description": "Projects topic edits, archival, and active task progress.",
+      "expect": [
+        {
+          "archived": false,
+          "completedTaskCount": 1,
+          "createdAt": "2026-07-18T15:00:00.000Z",
+          "description": "Details",
+          "id": "topic-1",
+          "name": "Final",
+          "taskCount": 1
+        }
+      ],
+      "given": [
+        {
+          "eventType": "topic-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "description": null,
+            "name": "Draft",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-edited",
+          "examplePayload": {
+            "description": "Details",
+            "editedAt": "2026-07-18T15:00:00.000Z",
+            "name": "Final",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "topic-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "topicId": "topic-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-added",
+          "examplePayload": {
+            "createdAt": "2026-07-18T15:00:00.000Z",
+            "dueAt": null,
+            "notes": null,
+            "taskId": "task-1",
+            "title": "Task"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-completion-changed",
+          "examplePayload": {
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "completed": true,
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "task-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "taskId": "task-1"
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "records-connected",
+          "examplePayload": {
+            "connectedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1",
+            "left": {
+              "id": "task-1",
+              "kind": "task"
+            },
+            "right": {
+              "id": "topic-1",
+              "kind": "topic"
+            }
+          },
+          "kind": "scenario-event"
+        },
+        {
+          "eventType": "connection-archive-changed",
+          "examplePayload": {
+            "archived": false,
+            "changedAt": "2026-07-18T15:00:00.000Z",
+            "connectionId": "connection-1"
+          },
+          "kind": "scenario-event"
+        }
+      ],
+      "when": {
+        "includeArchived": false
+      }
+    }
+  ]
+}

@@ -17,8 +17,7 @@ Specter already provides the contract that the rest of this work can build on:
 - Runtime checks that operations and emitted Events were declared.
 - Event Log and Slice Store adapters that own persistence and consistency
   mechanics.
-- An independent Go reference runtime that validates portable specifications
-  and publishes observations through the same language-neutral formats.
+- An independent Go reference runtime that validates portable specifications.
 - Codemod packages for the JSON-spec migration and report-only, workspace-wide
   source analysis.
 
@@ -27,9 +26,9 @@ simpler guarantees than custom Specter machinery.
 
 ## Visual Slice Scenario Editor
 
-The dashboard already renders portable Slice specifications and their
-Given/When/Then lanes. It should add an authoring mode for creating and editing
-those same documents visually.
+`@specter-ts/spec-editor` now edits committed portable Slice specifications in
+a local three-column browser UI. It discovers `src/features/**/spec.json`,
+validates every save, and protects dirty drafts from disk conflicts.
 
 The editor should support:
 
@@ -42,23 +41,21 @@ The editor should support:
 - Importing an existing `spec.json` without losing information.
 - Showing schema errors, duplicate names, invalid Event names, and incomplete
   Scenarios while editing.
-- Previewing the same Given/When/Then view used by the read-only dashboard.
 - Exporting canonical `spec.json` with the same digest as the CLI and other
   language implementations.
 
-The visual editor and `spec.ts` should be two authoring tools for the same
-portable document. The editor must not add layout, comments, source locations,
-or dashboard state to `spec.json`.
+The visual editor and `spec.ts` remain two authoring tools for the same portable
+document during migration. Adjacent `spec.ts` makes generated JSON read-only.
+The editor must not add layout, comments, source locations, or UI state to
+`spec.json`.
 
 Round-trip tests should prove that importing and exporting a valid document
 does not change its meaning or digest. Structural validation must also remain
 separate from implementation verification: a well-formed Scenario is not proof
 that an implementation passes it.
 
-The existing observation collector and its application-facing APIs should stay
-read-only. A local editing mode can keep drafts in the browser and download
-files without giving the dashboard permission to change an observed
-application.
+Runtime analysis is separate. TypeScript core emits native Effect spans and
+applications choose their own OpenTelemetry exporter and trace backend.
 
 ## Collaborative Specification Workspaces
 
@@ -196,7 +193,7 @@ of the implementation language.
 
 The repository already contains an independent Go 1.24 reference runtime. It
 supports Commands, Queries, Reactions, subscriptions, exact Scenarios,
-expected-version checks, idempotency, and runtime observations. Its Event Log
+expected-version checks and idempotency. Its Event Log
 is currently in memory, and SQLite, Postgres, and durable Reaction delivery
 remain specific to the TypeScript runtime.
 
@@ -221,7 +218,7 @@ A shared parity suite should cover:
 - Command commit, rejection, expected-version, and idempotency behavior.
 - Query projection and latest-state subscription behavior.
 - Reaction delivery IDs, retries, cursor progress, and outbox recovery.
-- Structured errors and observation protocol output.
+- Structured errors.
 - Rejection of undeclared Events and non-conforming implementations.
 
 This lets teams use Specter in existing Go and Rust services without moving
@@ -272,8 +269,8 @@ The transport must define more than message shapes:
   lifecycle.
 
 The wire contract should be tested with shared fixtures so a browser client can
-talk to any supported runtime. It should stay separate from the
-observation-only protocol and should not turn Core into a network framework.
+talk to any supported runtime. It should stay separate from runtime tracing and
+should not turn Core into a network framework.
 The design will follow the two-way messaging model defined by
 [RFC 6455](https://www.rfc-editor.org/rfc/rfc6455).
 

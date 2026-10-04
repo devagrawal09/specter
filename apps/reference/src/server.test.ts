@@ -71,7 +71,6 @@ test('does not expose the removed language-neutral operational API', async () =>
     ['GET', '/specter/v1/capabilities'],
     ['POST', '/specter/v1/commands'],
     ['GET', '/specter/v1/reaction-tickets/ticket-1'],
-    ['DELETE', '/specter/v1/observations'],
   ] as const
 
   for (const [method, path] of routes) {
