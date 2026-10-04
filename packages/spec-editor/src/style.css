@@ -94,3 +94,12 @@ button.danger { color: var(--danger); }
 @media (max-width: 1050px) {
   .editor-shell { grid-template-columns: 250px 300px minmax(400px, 1fr); }
 }
+
+@media (max-width: 950px) {
+  .editor-shell { grid-template-columns: minmax(0, 1fr); }
+  .slice-column, .scenario-column, .detail-column { height: auto; overflow: visible; }
+  .slice-list { max-height: 240px; overflow: auto; }
+  .scenario-list { max-height: 240px; overflow: auto; }
+  .detail-column { padding: 18px; }
+  .brand small, .path, .digest, .detail-stack h1 { overflow-wrap: anywhere; }
+}

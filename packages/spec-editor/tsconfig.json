@@ -1,6 +1,6 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "browser/**/*.ts", "playwright.config.ts"],
   "exclude": ["src/**/*.test.ts", "dist"],
   "compilerOptions": {
     "jsxImportSource": "solid-js",

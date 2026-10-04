@@ -69,6 +69,7 @@ function SpecEditor() {
   const [search, setSearch] = createSignal('')
   const [status, setStatus] = createSignal('Loading specifications…')
   const [conflict, setConflict] = createSignal(false)
+  const [saving, setSaving] = createSignal(false)
   const [jsonErrors, setJsonErrors] = createSignal<Record<string, string>>({})
   const [adding, setAdding] = createSignal(false)
   const [newPath, setNewPath] = createSignal('')
@@ -87,10 +88,21 @@ function SpecEditor() {
     const current = draft()
     if (!current) return false
     if (current.isNew) return true
-    return (
-      JSON.stringify(current.document) !==
-      JSON.stringify(selectedFile()?.document)
+    if (Object.keys(jsonErrors()).length) return true
+    // Canonical saves can change property order without changing content.
+    const documents = [current.document, selectedFile()?.document].map(
+      (document) =>
+        JSON.stringify(document, (_key, value) =>
+          value && typeof value === 'object' && !Array.isArray(value)
+            ? Object.fromEntries(
+                Object.entries(value).sort(([left], [right]) =>
+                  left.localeCompare(right),
+                ),
+              )
+            : value,
+        ),
     )
+    return documents[0] !== documents[1]
   })
   const visibleFiles = createMemo(() => {
     const query = search().trim().toLowerCase()
@@ -133,6 +145,7 @@ function SpecEditor() {
       setStatus(`Filesystem watch failed: ${changed.message}`)
       return
     }
+    if (saving()) return
     const current = draft()
     const currentSource = current?.path.replace(/spec\.json$/, 'spec.ts')
     const selectedChanged =
@@ -148,10 +161,30 @@ function SpecEditor() {
   onCleanup(() => watch.close())
 
   async function loadFiles() {
+    const before = JSON.stringify(draft())
+    const errorsBefore = JSON.stringify(jsonErrors())
     try {
       const loaded = await request<SpecFile[]>('/api/specs')
       const currentPath = draft()?.path
       setFiles(loaded)
+      // A watch read may finish after the user has started a new edit.
+      if (
+        saving() ||
+        before !== JSON.stringify(draft()) ||
+        errorsBefore !== JSON.stringify(jsonErrors())
+      ) {
+        const current = draft()
+        if (
+          current &&
+          !current.isNew &&
+          loaded.find((file) => file.path === current.path)?.revision !==
+            current.revision
+        ) {
+          setConflict(true)
+          setStatus('A specification changed on disk. Reload before saving.')
+        }
+        return
+      }
       const next = loaded.find((file) => file.path === currentPath) ?? loaded[0]
       replaceDraft(next ? { ...clone(next), isNew: false } : undefined)
       setSelectedScenario(0)
@@ -283,11 +316,14 @@ function SpecEditor() {
     const current = draft()
     if (
       !current ||
+      saving() ||
       current.readOnly ||
       conflict() ||
       Object.keys(jsonErrors()).length
     )
       return
+    setSaving(true)
+    setStatus('Saving specification...')
     try {
       const saved = await request<SpecFile>('/api/specs', {
         method: current.isNew ? 'POST' : 'PUT',
@@ -300,12 +336,21 @@ function SpecEditor() {
       const loaded = await request<SpecFile[]>('/api/specs')
       setFiles(loaded)
       replaceDraft({ ...clone(saved), isNew: false })
-      setConflict(false)
-      setStatus(`Saved ${saved.path}`)
+      const changed =
+        loaded.find((file) => file.path === saved.path)?.revision !==
+        saved.revision
+      setConflict(changed)
+      setStatus(
+        changed
+          ? 'A specification changed on disk. Reload before saving.'
+          : `Saved ${saved.path}`,
+      )
       resetDetail()
     } catch (cause) {
       setStatus(errorMessage(cause))
       if (errorCode(cause) === 'REVISION_CONFLICT') setConflict(true)
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -339,7 +384,7 @@ function SpecEditor() {
   }
 
   return (
-    <main class="editor-shell">
+    <main class="editor-shell" inert={saving()}>
       <aside class="slice-column">
         <header class="brand">
           <span class="mark">S</span>

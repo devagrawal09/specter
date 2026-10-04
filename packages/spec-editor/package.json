@@ -21,6 +21,7 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run",
+    "test:browser": "pnpm build && playwright test",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -33,6 +34,7 @@
     "solid-js": "^1.9.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/node": "^24.10.1",
     "jsdom": "^28.1.0",
     "typescript": "^6.0.2",

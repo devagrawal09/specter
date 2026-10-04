@@ -1,5 +1,6 @@
 {
   "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["src/**/*.test.ts", "src/client.tsx", "dist"],
   "compilerOptions": {
     "noEmit": false,

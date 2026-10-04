@@ -22,3 +22,12 @@ The server accepts requests only for the exact local address
 `127.0.0.1:41739`. Browser mutation requests must come from that same origin,
 and all mutation requests must use `application/json`. CLI clients may omit the
 `Origin` header. The editor does not load runtime telemetry or Event schemas.
+Malformed on-disk specifications are reported with their path and must be
+repaired outside the editor before the workspace can be loaded.
+
+## Browser Tests
+
+Run `pnpm exec playwright install chromium firefox webkit` in this package once,
+then `pnpm test:browser`. The suite exercises the built editor in all three
+engines, including mobile layout, using isolated temporary projects. It owns
+the fixed editor port `41739`; stop any editor instance before running it.
