@@ -26,4 +26,5 @@ export {
   type ReactionOutboxWorker,
   type ReactionOutboxWorkerOptions,
   type ReactionOutboxServiceOptions,
+  type ReactionOutboxWaitOptions,
 } from './worker'

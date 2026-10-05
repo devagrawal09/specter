@@ -3,14 +3,11 @@ import {
   closeSync,
   fsyncSync,
   ftruncateSync,
-  mkdirSync,
   openSync,
   readFileSync,
-  rmSync,
   truncateSync,
-  writeSync,
 } from 'node:fs'
-import { dirname, resolve } from 'node:path'
+import { resolve } from 'node:path'
 
 import {
   EventLog,
@@ -25,6 +22,8 @@ import {
   type PersistedEvent,
 } from '@specter-ts/core'
 import { Effect, Layer } from 'effect'
+
+import { acquireLock, closeQuietly, writeAll } from './file-lock'
 
 export type JsonlEventLogOptions = {
   readonly path: string
@@ -41,9 +40,6 @@ export type JsonlEventLog = EventLogService & {
   readonly close: () => void
 }
 
-/** Absolute paths of logs open in this process. */
-const openPaths = new Set<string>()
-
 /**
  * Opens one append-only JSONL file as an Event Log. Each line is one complete
  * commit, so a line boundary is the atomic commit boundary. Opening takes an
@@ -55,7 +51,7 @@ export function createJsonlEventLog(
 ): JsonlEventLog {
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
-  const releaseLock = acquireLock(resolve(options.path))
+  const releaseLock = acquireLock(resolve(options.path), 'JSONL Event Log')
   let opened: ReturnType<typeof openFile>
   try {
     opened = openFile(options.path, options.fsync === true)
@@ -224,36 +220,6 @@ export function createJsonlEventLogLayer(
   )
 }
 
-function acquireLock(path: string) {
-  if (openPaths.has(path)) {
-    throw new Error(`JSONL Event Log ${path} is already open in this process`)
-  }
-  mkdirSync(dirname(path), { recursive: true })
-  const lockPath = `${path}.lock`
-  let fd: number
-  try {
-    fd = openSync(lockPath, 'wx')
-  } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === 'EEXIST') {
-      throw new Error(
-        `JSONL Event Log ${path} is locked by ${lockPath}. Another process has the log open, or a crashed process left the lock file behind; delete it only after confirming no process uses the log.`,
-        { cause },
-      )
-    }
-    throw cause
-  }
-  try {
-    writeAll(fd, Buffer.from(`${process.pid}\n`))
-  } finally {
-    closeSync(fd)
-  }
-  openPaths.add(path)
-  return () => {
-    openPaths.delete(path)
-    rmSync(lockPath, { force: true })
-  }
-}
-
 function openFile(path: string, fsync: boolean) {
   let content: Buffer
   try {
@@ -339,19 +305,4 @@ function parseCommit(line: string, previousVersion: number): EventLogCommit {
     )
   }
   return record
-}
-
-function closeQuietly(fd: number) {
-  try {
-    closeSync(fd)
-  } catch {
-    // The original failure is the one to report.
-  }
-}
-
-function writeAll(fd: number, buffer: Buffer) {
-  let offset = 0
-  while (offset < buffer.length) {
-    offset += writeSync(fd, buffer, offset)
-  }
 }

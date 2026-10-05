@@ -1,8 +1,9 @@
 # `@specter-ts/jsonl`
 
 File-backed persistence for Specter without a database: an append-only JSONL
-Event Log and a JSON file Slice Store. One directory can hold one app's data,
-so an application can keep a separate app per session, document, or tenant.
+Event Log, a JSON file Slice Store, and a JSONL Reaction outbox Store. One
+directory can hold one app's data, so an application can keep a separate app
+per session, document, or tenant.
 
 ```ts
 import {
@@ -139,11 +140,121 @@ session metadata, pending work. For large State that grows with the log, such
 as a full transcript, either use a memory Store, which rebuilds from the log on
 startup, or a database Store.
 
+## Reaction outbox Store
+
+`createJsonlReactionOutboxStore({ path })` returns a Store for
+`withReactionOutbox` from `@specter-ts/reaction-outbox`, with a `close()`
+method. Use one file per wrapped Reaction Plugin: each wrapper runs its own
+worker, and a worker claims every job in its Store.
+
+```ts
+import { createJsonlReactionOutboxStore } from '@specter-ts/jsonl'
+import {
+  type OutboxedReaction,
+  withReactionOutbox,
+} from '@specter-ts/reaction-outbox'
+
+const outbox = createJsonlReactionOutboxStore<OutboxedReaction<Reply>>({
+  path: `${directory}/outbox/sendReply.jsonl`,
+  fsync: true,
+})
+const sendReply = implementReaction(spec)
+  .plugin(withReactionOutbox(replyPlugin, { store: outbox }))
+  // …
+// After app.close():
+outbox.close()
+```
+
+### Format
+
+Each line is one job transition; only `enqueued` carries the payload:
+
+```json
+{"type":"enqueued","id":"sendReply:7","idempotencyKey":"sendReply:7","payload":{"output":{},"context":{}},"requestedAt":"…","availableAt":"…"}
+{"type":"claimed","id":"sendReply:7","attemptId":"sendReply:7:attempt:1","attemptCount":1,"leaseExpiresAt":"…"}
+{"type":"completed","id":"sendReply:7","attemptId":"sendReply:7:attempt:1","completedAt":"…"}
+```
+
+The other transitions are `renewed` (lease heartbeat), `failed` (rescheduled
+with backoff), `dead-lettered`, `released` (lease expired, or interrupted by a
+restart), and `retried` (dead-letter replay). Payloads must be
+JSON-serializable unless a `codec` maps them to a JSON value.
+
+### Behavior
+
+- Opening replays every line into an in-memory index of jobs and idempotency
+  keys; reads never touch the file. Each Store operation is synchronous and
+  appends its lines in one write, so operations in the process never
+  interleave and a claim is atomic.
+- Lock file, `fsync`, malformed-line, trailing-write, and failed-write
+  handling match the Event Log: one `<path>.lock` writer, opens that reject a
+  malformed journal without changing it, `discardedTrailingBytes` for an
+  interrupted last line, and a Store that refuses writes after a partial line
+  it could not truncate.
+- Attempts left `running` by an earlier open are released while opening,
+  without waiting for their lease, and listed in `releasedOnOpen`. The lock
+  means no other open of the file exists, so a crashed or closed owner can no
+  longer finish those attempts through it. Close the Store only after its
+  workers stop; an attempt still running after `close()` runs again after the
+  next open. The released attempt counts toward `maxAttempts`.
+- `subscribe` wakes this process's workers after an enqueue or a dead-letter
+  retry, so a job starts without waiting for `pollIntervalMs`. `renewLease`
+  lets the worker heartbeat a slow attempt.
+- Completed and dead-lettered jobs stay in the file, so a replayed enqueue of
+  the same idempotency key stays a no-op after any number of reopens.
+
+### Enqueue and the Reaction cursor
+
+SQL outbox Stores join the Slice Store transaction: the outbox row and the
+Reaction cursor commit or roll back together. Two files cannot commit
+together, so this Store makes the enqueue durable first. A Reaction Plugin
+runs inside the Slice transaction, `withReactionOutbox` enqueues as its last
+step, and the JSON Slice Store renames the cursor document only after the
+transaction body returns. Every crash therefore lands in one of these windows:
+
+1. Before the enqueue line is complete: no caller saw the enqueue succeed and
+   the cursor did not move. A torn line is removed on open, and the Reaction
+   runs again and enqueues.
+2. After the enqueue line, before the cursor document is renamed (including a
+   failed cursor write): the job survives without the cursor. The worker runs
+   it, and core reruns the Reaction for the same commit with the same
+   `deliveryId`, whose enqueue returns the existing job with `created: false`.
+   The first enqueued payload wins.
+3. After the rename: both are durable.
+
+No window loses a job whose cursor advanced. The difference from SQL Stores
+is window 2: a job can run before, or without, its Reaction's cursor write,
+and the Reaction transaction is retried until the cursor advances. The worker
+may also start a job as soon as it is enqueued, before the cursor is written.
+
+Ordering on disk needs `fsync: true` on the outbox. Without it, a process
+crash keeps both writes, but an operating-system crash can persist the cursor
+rename and lose the unsynced enqueue line, which is the lost job this design
+avoids. The Slice Store's own `fsync` decides whether the cursor survives, not
+the ordering.
+
+Recording the enqueue inside the Reaction's Slice document would make the two
+atomic, but the outbox would then have to scan Slice files on open and carry
+unjournaled entries forward across commits; the idempotent replay above gives
+the same no-loss guarantee without coupling the two adapters.
+
+### Growth
+
+The journal is never rewritten: it grows by about three lines per delivered
+job (`enqueued`, `claimed`, `completed`), plus one line per retry and one per
+heartbeat (every `heartbeatMs`, a third of `leaseMs` by default, while a
+handler runs). Open time and memory grow with it, and claiming scans every
+indexed job. Rewrite the file when it is large relative to its live jobs, with
+the Store closed: keep every `pending`, `running`, and `dead-letter` job, and
+keep the idempotency key of each completed job until no Reaction cursor can
+still replay its commit, or a replayed enqueue would run the job again.
+
 ## Not included
 
-- File-backed Reaction schedulers or outboxes.
+- File-backed Reaction schedulers.
+- Outbox journal compaction.
 - Incremental or per-key Slice State storage for large State.
-- Multi-writer access, compaction, snapshots, or log rotation.
+- Multi-writer access, Event Log compaction, snapshots, or log rotation.
 
 ## Open items
 

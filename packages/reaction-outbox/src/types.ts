@@ -75,6 +75,24 @@ export type ReactionOutboxStore<TPayload = unknown> = {
     jobId: string,
     availableAt: Date,
   ): Effect.Effect<void, unknown>
+  /**
+   * Optional. Moves an active attempt's lease to `leaseExpiresAt`. The worker
+   * calls it periodically while a handler runs so a slow attempt is not
+   * requeued. Fails with `ReactionOutboxLeaseLostError` when the attempt is no
+   * longer active. Without it, an attempt keeps the lease it was claimed with.
+   */
+  renewLease?(
+    jobId: string,
+    attemptId: string,
+    leaseExpiresAt: Date,
+  ): Effect.Effect<void, unknown>
+  /**
+   * Optional in-process wake-up. Calls `listener` after this Store instance
+   * makes new work claimable, so workers in the same process start it without
+   * waiting for their poll interval. Returns an unsubscribe function. Workers
+   * in other processes still find the work by polling.
+   */
+  subscribe?(listener: () => void): () => void
 }
 
 export type ReactionOutboxAttemptContext = {

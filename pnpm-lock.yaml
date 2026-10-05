@@ -726,6 +726,9 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../core
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../reaction-outbox
     devDependencies:
       '@specter-ts/memory':
         specifier: workspace:*
