@@ -8,6 +8,9 @@ allowBuilds:
   esbuild: true
   msgpackr-extract: true
 
+minimumReleaseAgeExclude:
+  - effect@4.0.1
+
 onlyBuiltDependencies:
   - esbuild
   - lightningcss

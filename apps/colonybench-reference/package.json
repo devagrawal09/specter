@@ -14,7 +14,7 @@
     "@specter-ts/spec": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@libsql/client": "^0.17.3",
-    "effect": "4.0.0-beta.78",
+    "effect": "4.0.1",
     "zod": "^4.4.3"
   },
   "devDependencies": {
