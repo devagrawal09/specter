@@ -22,6 +22,7 @@ process.
 | --- | --- |
 | `createJsonlEventLog` | Open one JSONL file as an Event Log service with `close()`. |
 | `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app. |
+| `createJsonlSliceStoreService` / `createJsonlSliceStoreLayer` | JSON file Store, one file per Slice. |
 
 The JSONL Event Log keeps one Event Log per file, one commit per line, so an
 app can open a separate log per session without a database. Opening reads the
@@ -31,8 +32,18 @@ idempotency receipts match the SQLite adapters. `fsync` is off by default, so a
 commit survives a process crash but not an operating-system failure; pass
 `fsync: true` when the file is the only durable record. An unterminated last
 line from an interrupted write is removed on open and reported as
-`discardedTrailingBytes`. Pair it with memory Slice Stores, which rebuild from
-the log on startup.
+`discardedTrailingBytes`.
+
+The JSON Slice Store keeps each Slice's State and cursor in
+`<directory>/<sliceName>.json`. It reads a Slice's file on first use and then
+serves reads from memory. A transaction that publishes a cursor writes the
+whole `{ cursor, state }` document to a temporary file and renames it over the
+Slice file; a failed transaction leaves the file unchanged. Reaction cursors
+therefore survive a restart, and reopening an app does not run Reactions again
+for handled commits. Because State is rewritten whole on every commit, use it
+for small State such as Reaction decisions and session metadata; for large
+State that grows with the log, use memory Slice Stores, which rebuild from the
+log on startup, or a database Store.
 
 ## SQLite
 

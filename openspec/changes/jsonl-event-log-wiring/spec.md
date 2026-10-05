@@ -17,7 +17,8 @@ and typecheck baseline, and list it in the persistence API reference.
 
 - `pnpm build`, `pnpm test`, and `pnpm typecheck` include `@specter-ts/jsonl`.
 - The persistence reference documents the JSONL exports, durability default,
-  single-writer rule, and trailing-line recovery.
+  single-writer rule, and trailing-line recovery, and the JSON Slice Store's
+  file-per-Slice layout, atomic replace, and small-State guidance.
 
 ## Tasks
 

@@ -1,7 +1,7 @@
 // Measures what one Specter app per session costs to construct, run, and
 // close. Not a test. Run with `pnpm --filter @specter-ts/jsonl bench` after
 // building @specter-ts/spec, @specter-ts/core, and @specter-ts/memory.
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readdirSync, rmSync, statSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
@@ -16,7 +16,10 @@ import { Effect, Exit, Layer, ManagedRuntime, Scope } from 'effect'
 
 // Source import: the conformance pass is not a public export.
 import { collectConformanceDiagnostics } from '../../core/src/definition/conformance.ts'
-import { createJsonlEventLogLayer } from '../src/index'
+import {
+  createJsonlEventLogLayer,
+  createJsonlSliceStoreLayer,
+} from '../src/index'
 import {
   createSessionState,
   sessionAppConfig,
@@ -26,23 +29,49 @@ import {
 type SessionApp = SpecterApp<typeof sessionAppConfig>
 
 const count = Number(process.env.APPS ?? 500)
+// STORE=memory replays every Slice and Reaction from the log on reopen;
+// STORE=jsonl (default) keeps each Slice's state and cursor in a JSON file.
+const store = process.env.STORE === 'memory' ? 'memory' : 'jsonl'
 const root = mkdtempSync(join(tmpdir(), 'specter-jsonl-bench-'))
-let logNumber = 0
-const nextLogPath = () => join(root, `session-${++logNumber}.jsonl`)
+let sessionNumber = 0
+// One directory per session: events.jsonl plus slices/<sliceName>.json.
+const nextSessionDirectory = () => join(root, `session-${++sessionNumber}`)
+const logPath = (directory: string) => join(directory, 'events.jsonl')
 
-function dependencies(path: string) {
+function dependencies(directory: string) {
   return Layer.mergeAll(
-    createJsonlEventLogLayer({ path }),
-    createMemorySliceStoreLayer(SessionStore, createSessionState),
+    createJsonlEventLogLayer({ path: logPath(directory) }),
+    store === 'memory'
+      ? createMemorySliceStoreLayer(SessionStore, createSessionState)
+      : createJsonlSliceStoreLayer(SessionStore, createSessionState, {
+          directory: join(directory, 'slices'),
+        }),
     createImmediateReactionSchedulerLayer(),
   )
 }
 
-async function open(path = nextLogPath()) {
+function files(directory: string): { count: number; bytes: number } {
+  let count = 0
+  let bytes = 0
+  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    const path = join(directory, entry.name)
+    if (entry.isDirectory()) {
+      const nested = files(path)
+      count += nested.count
+      bytes += nested.bytes
+    } else {
+      count += 1
+      bytes += statSync(path).size
+    }
+  }
+  return { count, bytes }
+}
+
+async function open(directory = nextSessionDirectory()) {
   const start = performance.now()
   const app: SessionApp = await createSpecterApp(
     sessionAppConfig,
-    dependencies(path),
+    dependencies(directory),
   )
   const created = performance.now()
   // createSpecterApp builds its Layer lazily; the first call waits for it.
@@ -104,7 +133,9 @@ async function runTurn(app: SessionApp, turn: number) {
 }
 
 async function main() {
-  console.log(`Node ${process.version}, ${count} apps, logs in ${root}`)
+  console.log(
+    `Node ${process.version}, ${count} apps, ${store} Slice Stores, sessions in ${root}`,
+  )
   if (!globalThis.gc) console.log('Run with --expose-gc for stable RSS.')
 
   const conformance = await time(() =>
@@ -142,7 +173,7 @@ async function main() {
   const lazy = await time(async () => {
     const app: SessionApp = await createSpecterApp(
       sessionAppConfig,
-      dependencies(nextLogPath()),
+      dependencies(nextSessionDirectory()),
     )
     await app.command({
       type: 'createSession',
@@ -179,7 +210,7 @@ async function main() {
     await shared.runPromise(
       Layer.buildWithScope(
         createSpecterAppLayer(sessionAppConfig).pipe(
-          Layer.provideMerge(dependencies(nextLogPath())),
+          Layer.provideMerge(dependencies(nextSessionDirectory())),
         ),
         scope,
       ),
@@ -193,13 +224,13 @@ async function main() {
   }
   await shared.dispose()
 
-  // Reopen cost grows with the log: memory Slice Stores and Reaction cursors
+  // With memory Slice Stores, reopen cost grows with the log: Reaction cursors
   // start at zero, so startup replays Reactions and the first read of each
-  // Slice replays its Events.
+  // Slice replays its Events. JSON Slice Stores resume from stored cursors.
   const replay: string[] = []
   for (const turns of [100, 1000]) {
-    const path = nextLogPath()
-    const writer = await open(path)
+    const directory = nextSessionDirectory()
+    const writer = await open(directory)
     await writer.app.command({
       type: 'createSession',
       payload: { sessionId: 'long', directory: '/work' },
@@ -210,7 +241,7 @@ async function main() {
     }
     const writeMs = performance.now() - writeStart
     await writer.app.close()
-    const reopened = await open(path)
+    const reopened = await open(directory)
     const transcript = await time(() =>
       reopened.app.query({ type: 'sessionTranscript', payload: {} }),
     )
@@ -229,13 +260,15 @@ async function main() {
         sessionAppConfig.slices
       const app = await createSpecterApp(
         { events: sessionAppConfig.events, slices },
-        dependencies(path),
+        dependencies(directory),
       )
       await app.query({ type: 'sessionSummary', payload: {} })
       await app.close()
     })
+    const session = files(directory)
     replay.push(
-      `${turns} turns, ${nextCommand.value.version - 1} events, ${kb(statSync(path).size)}: ` +
+      `${turns} turns, ${nextCommand.value.version - 1} events, log ${kb(statSync(logPath(directory)).size)}, ` +
+        `${session.count} files, ${kb(session.bytes)} total: ` +
         `write ${(writeMs / turns).toFixed(2)} ms/turn; reopen ready ${reopened.ready.toFixed(1)} ms ` +
         `(without Reactions ${withoutReactions.ms.toFixed(1)} ms); ` +
         `first transcript ${transcript.ms.toFixed(1)} ms (${transcript.value.length} msgs); ` +
