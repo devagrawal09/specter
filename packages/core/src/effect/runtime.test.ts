@@ -719,7 +719,9 @@ describe('Effect-native runtime', () => {
       'Reaction run failed for: publishRelevantValue',
     )
     expect(await cursor()).toBe(1)
+    counted.crash()
     await first.close()
+    counted.restart()
 
     // Commits that land while no runtime is running are found at startup.
     await Effect.runPromise(
@@ -744,7 +746,56 @@ describe('Effect-native runtime', () => {
     await second.close()
   })
 
-  it('publishes a long skipped tail once per pass', async () => {
+  it('publishes the skipped tail on graceful shutdown', async () => {
+    const fixture = makeRelevanceFixture()
+    const counted = countTransactions(makeStoreService())
+    const baseLog = makeEventLogService()
+    const reread: number[] = []
+    const eventLog: EventLogService = {
+      ...baseLog,
+      commitsAfter: (afterVersion) =>
+        baseLog.commitsAfter(afterVersion).pipe(
+          Effect.tap((commits) =>
+            Effect.sync(() => {
+              reread.push(...commits.map((commit) => commit.version))
+            }),
+          ),
+        ),
+    }
+    const dependencies = Layer.mergeAll(
+      Layer.succeed(EventLog, eventLog),
+      Layer.succeed(ValuesStore, counted.service),
+    )
+    const cursor = (name: string) =>
+      Effect.runPromise(
+        counted.service.read(name, (_state, current) =>
+          Effect.succeed(current),
+        ),
+      )
+
+    const first = await createSpecterApp(fixture.config, dependencies)
+    for (let version = 1; version <= 5; version += 1) {
+      await (await first.command({ type: 'recordOther', payload: version }))
+        .reactions
+    }
+    expect(counted.count('publishRelevantValue')).toBe(0)
+    expect(await cursor('publishRelevantValue')).toBe(0)
+    await first.close()
+
+    expect(counted.count('publishRelevantValue')).toBe(1)
+    expect(await cursor('publishRelevantValue')).toBe(5)
+    expect(await cursor('ignoreEverything')).toBe(5)
+
+    reread.length = 0
+    const second = await createSpecterApp(fixture.config, dependencies)
+    await (await second.command({ type: 'recordOther', payload: 6 })).reactions
+    expect(reread.filter((version) => version <= 5)).toEqual([])
+    expect(counted.count('publishRelevantValue')).toBe(1)
+    expect(fixture.deliveries).toEqual([])
+    await second.close()
+  })
+
+  it('publishes a skipped tail once it spans 256 orders', async () => {
     const fixture = makeRelevanceFixture()
     const counted = countTransactions(makeStoreService())
     const seeded = Array.from({ length: 300 }, (_, index) => ({
@@ -1874,17 +1925,26 @@ function makeRelevanceFixture() {
 
 function countTransactions(service: SliceStoreService<Readonly<State>, State>) {
   const counts = new Map<string, number>()
+  const control = { crashed: false }
   const counted: SliceStoreService<Readonly<State>, State> = {
     read: service.read,
     transaction: (name, run) =>
       Effect.suspend(() => {
         counts.set(name, (counts.get(name) ?? 0) + 1)
+        // A crashed process writes nothing more, not even on shutdown.
+        if (control.crashed) return Effect.fail(new Error('process crashed'))
         return service.transaction(name, run)
       }),
   }
   return {
     service: counted,
     count: (name: string) => counts.get(name) ?? 0,
+    crash: () => {
+      control.crashed = true
+    },
+    restart: () => {
+      control.crashed = false
+    },
   }
 }
 

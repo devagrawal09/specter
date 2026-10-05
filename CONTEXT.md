@@ -105,7 +105,7 @@ Interpreter for custom or external Reaction output. Without `.plugin`, output is
 _Avoid_: Second command handler, app registry import
 
 **Reaction Run**:
-A runtime pass where app advances each Reaction Slice through requested Event Log commit. Only relevant commits open a Store transaction, whose cursor also covers irrelevant commits skipped before it; a skipped tail is published once it spans 256 Event Log orders, so a restart re-reads at most that tail without side effects. App-scoped semaphore prevents local overlap; Store transaction provides cross-process exclusion. Nested Command commit requests another run after active one.
+A runtime pass where app advances each Reaction Slice through requested Event Log commit. Only relevant commits open a Store transaction, whose cursor also covers irrelevant commits skipped before it; a skipped run is published whenever it reaches 256 Event Log orders and on graceful shutdown, so only a crash leaves a tail of about 256 orders or fewer to re-read, without side effects. If a deploy adds an apply handler after such a crash, commits of that type inside the tail are delivered once. App-scoped semaphore prevents local overlap; Store transaction provides cross-process exclusion. Nested Command commit requests another run after active one.
 _Avoid_: Reaction queue, background job
 
 **Reaction Delivery**:

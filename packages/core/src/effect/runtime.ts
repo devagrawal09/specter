@@ -160,8 +160,9 @@ type AnyReaction = Extract<SliceRegistration, { readonly kind: 'reaction' }>
 type ReactionSkip = { readonly from: number; readonly through: number }
 
 /**
- * A Reaction pass publishes a cursor over skipped irrelevant commits only once
- * they span this many Event Log orders, bounding re-reads after a restart.
+ * A Reaction pass publishes a cursor over skipped irrelevant commits once they
+ * span this many Event Log orders, bounding re-reads after a crash. Graceful
+ * shutdown publishes any shorter remembered tail.
  */
 const reactionSkipFlushOrders = 256
 
@@ -231,6 +232,23 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     yield* Effect.forEach(reactions.values(), getReactionExec, {
       discard: true,
     })
+
+    // Registered before the scheduler binds, so it runs after Reaction work
+    // stops: a graceful shutdown leaves no skipped tail to re-read.
+    yield* Effect.addFinalizer(() =>
+      Effect.forEach(
+        [...reactionSkips],
+        ([name, skip]) => {
+          const reaction = reactions.get(name)
+          return reaction
+            ? flushReactionCursor(reaction, skip.from, skip.through).pipe(
+                Effect.ignore,
+              )
+            : Effect.void
+        },
+        { discard: true },
+      ),
+    )
 
     const reactionScheduler =
       reactions.size === 0
@@ -672,6 +690,10 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             if (commit.version > throughOrder) break
             if (!commit.events.some((event) => handlers?.has(event.type))) {
               scanned = commit.version
+              if (scanned - skippedFrom >= reactionSkipFlushOrders) {
+                yield* flushReactionCursor(reaction, skippedFrom, scanned)
+                skippedFrom = scanned
+              }
               continue
             }
             rememberReactionSkip(reaction, skippedFrom, scanned)

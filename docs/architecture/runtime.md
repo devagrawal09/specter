@@ -88,14 +88,24 @@ version.
 
 Irrelevant commits open no Slice Store transaction. The next relevant commit's
 cursor covers them, and core remembers the skipped range in process so later
-runs do not re-read it. Once a skipped tail spans 256 Event Log orders at the
-end of a run, such as a long startup catch-up, one transaction publishes the
-cursor to the last skipped commit. It never moves a cursor backwards, and it
-publishes nothing if the cursor is older than the skipped range. After a crash
-or restart, a Reaction may re-read that unflushed tail. Re-reading runs no handler, plugin, or transaction, so it has
-no side effects. A Reaction without apply handlers never runs `handle`, so every
-commit is irrelevant to it. Changing a Reaction's apply handlers can make
-commits in the unflushed tail relevant; reset or rename its Store instead.
+runs do not re-read it. Whenever a skipped run reaches 256 Event Log orders,
+including inside a long startup catch-up, one transaction publishes the cursor
+to the last skipped commit. Graceful shutdown publishes any shorter remembered
+tail, so a clean restart starts at the head. These publishes never move a
+cursor backwards and publish nothing if the cursor is older than the skipped
+range.
+
+After a crash, a Reaction re-reads the unpublished skipped tail: under 256
+Event Log orders of irrelevant commits, plus at most the commit that crossed
+that limit. Re-reading runs no handler, plugin, or transaction, so it has no
+side effects. A Reaction without apply handlers never runs `handle`, so every
+commit is irrelevant to it and its cursor moves only through these publishes.
+
+When a deploy adds an apply handler to an existing Reaction, commits before its
+cursor stay unapplied, as before. If the previous process crashed, commits of
+the newly applied type inside that unpublished tail become relevant and are
+delivered once with their usual `deliveryId`. Keep those deliveries idempotent,
+or shut the old process down cleanly first.
 
 The scheduler coordinates wakeups; it does not own Reaction correctness.
 Single-process apps use the default in-memory scheduler. Stateless or
