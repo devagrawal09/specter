@@ -304,8 +304,15 @@ if its holder is provably gone. The record must name this host
   or another path to the same file (such as a different spelling on a
   case-insensitive file system), holds it. Opens in one thread, across every
   copy of this package, are keyed by the real path of the file's directory,
-  so a symlinked alias of a file open in the same thread fails earlier, as
+  so opening the same file through a symlinked directory fails earlier, as
   already open.
+- The lock is `<path>.lock` for the path as given. A symlink or hard link to
+  the file itself gets its own lock file, so two writers become possible;
+  always open a JSONL file through one path.
+- A worker thread terminated without calling `close()` leaves a lock with
+  this process's pid and start time, which is refused as `held by this
+  process` until the process exits; close stores before terminating
+  workers.
 
 Otherwise the open fails and says why: a live holder (with its pid), this
 process, another host, another pid namespace, or content that is not a lock

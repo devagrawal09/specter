@@ -34,9 +34,10 @@ The lock records the opener's pid, hostname, random token, and on Linux its
 start time, pid namespace, and boot id. A lock whose holder ran on this host
 and has exited, such as after `SIGKILL` (or ran before the host's last boot),
 is taken over and reported as `recoveredStaleLock: { pid, hostname }`; a live
-holder, this same process (another worker thread or path alias), another
-host, another pid namespace, or unreadable content fails the open with the
-reason. Concurrent openers that find the same stale lock serialize the
+holder, this same process (another worker thread or a symlinked directory),
+another host, another pid namespace, or unreadable content fails the open with
+the reason. A symlink or hard link to the file itself gets its own lock file, so
+always open a JSONL file through one path. Concurrent openers that find the same stale lock serialize the
 takeover through an exclusive claim file, so at most one wins, and `close()`
 removes the lock only while it still holds its own token. Opening is
 synchronous and can block for about 100 ms while it retries a contended
