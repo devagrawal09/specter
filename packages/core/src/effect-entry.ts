@@ -8,6 +8,7 @@ export type {
   SpecterEffectApp,
   SpecterEffectCommandExecution,
   SpecterEffectError,
+  SpecterPluginRequirements,
   SpecterRuntimeService,
   SpecterRuntimeRequirements,
   SpecterStoreRequirements,

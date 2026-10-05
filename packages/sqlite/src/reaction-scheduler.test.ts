@@ -1,4 +1,9 @@
 import { createClient } from '@libsql/client'
+import {
+  ReactionRunFailure,
+  ReactionSchedulerFailure,
+  SpecterPluginQueryInTransactionError,
+} from '@specter-ts/core'
 import { Effect } from 'effect'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -54,6 +59,54 @@ describe('SQLite Reaction scheduler', () => {
       ),
     )
 
+    expect(executions).toBe(2)
+  })
+
+  it('stops retrying a permanent failure and fails waiters until rescheduled', async () => {
+    const { first } = await setup()
+    let executions = 0
+    let permanent = true
+    const failure = new ReactionRunFailure([
+      {
+        sliceName: 'inspectValues',
+        cause: new SpecterPluginQueryInTransactionError(
+          'inspectValues',
+          'values',
+        ),
+      },
+    ])
+    const results = await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const bound = yield* createSqliteReactionSchedulerService(first, {
+            pollIntervalMs: 1,
+            retryIntervalMs: 1,
+          }).bind({
+            execute: () =>
+              Effect.gen(function* () {
+                executions += 1
+                if (permanent) return yield* Effect.fail(failure)
+              }),
+          })
+          const failed = yield* Effect.result(yield* bound.schedule(4))
+          yield* Effect.sleep('20 millis')
+          const executionsAfterFailure = executions
+          permanent = false
+          const retried = yield* Effect.result(yield* bound.schedule(4))
+          return { failed, executionsAfterFailure, retried }
+        }),
+      ),
+    )
+
+    expect(results.failed._tag).toBe('Failure')
+    if (results.failed._tag === 'Failure') {
+      expect(results.failed.failure).toBeInstanceOf(ReactionSchedulerFailure)
+      expect(String(results.failed.failure.cause)).toContain(
+        'inspectValues: Reaction "inspectValues" Plugin queried "values"',
+      )
+    }
+    expect(results.executionsAfterFailure).toBe(1)
+    expect(results.retried._tag).toBe('Success')
     expect(executions).toBe(2)
   })
 

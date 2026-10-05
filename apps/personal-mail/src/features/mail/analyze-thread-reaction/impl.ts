@@ -46,8 +46,8 @@ export const analysisReactionThreads = sqliteTable(
   },
 )
 
-export function createAnalyzeThreadReaction(
-  plugin: ReactionPlugin<AnalyzeThreadOutput> = analyzeThreadPlugin,
+export function createAnalyzeThreadReaction<R>(
+  plugin: ReactionPlugin<AnalyzeThreadOutput, R>,
 ) {
   return implementReaction(specification)
     .outputSchema(
@@ -132,4 +132,5 @@ export function createAnalyzeThreadReaction(
     })
 }
 
-export const analyzeThreadReaction = createAnalyzeThreadReaction()
+export const analyzeThreadReaction =
+  createAnalyzeThreadReaction(analyzeThreadPlugin)

@@ -14,10 +14,13 @@ export class AiAnalyzer extends Context.Service<
   { analyze(effect: AnalyzeThreadEffect): Promise<ThreadAnalysis> }
 >()('@specter/personal-mail/AiAnalyzer') {}
 
-export const analyzeThreadPlugin: ReactionPlugin<{
-  type: 'analyzeThread'
-  payload: AnalyzeThreadEffect
-}> = (command) =>
+export const analyzeThreadPlugin: ReactionPlugin<
+  {
+    type: 'analyzeThread'
+    payload: AnalyzeThreadEffect
+  },
+  AiAnalyzer
+> = ({ command }) =>
   Effect.gen(function* () {
     const analyzer = yield* AiAnalyzer
     return (output, context) =>

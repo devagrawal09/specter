@@ -96,8 +96,11 @@ await execution.reactions
 - Subscriptions emit current state, fan out per subscriber, coalesce intermediate states for slow consumers, and retain the newest value.
 - A Reaction without an explicit Plugin must return a Command envelope; core dispatches it in the same app with `context.deliveryId` as the idempotency key. Explicit Plugins may define other effect values.
 - Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps. Retry-attempt identities belong to an optional outbox, not the core Reaction contract.
-- Same-app dispatch uses `dispatch(envelope, { idempotencyKey: context.deliveryId })`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
-- Keep Plugins Effect-native. Compose the supplied Command dispatcher directly; do not escape with `Effect.runPromise`, which loses active transaction context.
+- A Plugin factory receives `{ command, query }`. Same-app dispatch uses `command(envelope, { idempotencyKey: context.deliveryId })` and resolves to `{ events, version, duplicate }`; it does not wait for nested Reactions. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
+- `query(querySlice, input)` runs a registered Query in the same app with types from the Query Slice; pass the registered Slice value. Direct Plugins run inside the Reaction's Slice Store transaction and their Queries fail permanently with `SPECTER_PLUGIN_QUERY_IN_TRANSACTION` (the Reaction cursor stays blocked until the Plugin changes); wrap a Plugin that queries with `withReactionOutbox`. Never read the Event Log directly from a Plugin.
+- In a direct Plugin, a `command` receipt is not final until the Reaction commits; do not trigger external side effects on `!receipt.duplicate` there.
+- Annotate Plugins as `ReactionPlugin<Output, Services>` when the factory reads Effect services, so `createSpecterApp` fails to compile unless the dependency Layer provides them. Read services in the factory, not in the executor.
+- Keep Plugins Effect-native. Compose the supplied capabilities directly; do not escape with `Effect.runPromise`, which loses active transaction context.
 
 ## Determinism And Transport
 

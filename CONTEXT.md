@@ -101,7 +101,7 @@ Output of a Reaction Slice, interpreted by its Plugin. Failed direct Plugin work
 _Avoid_: Reaction command
 
 **Reaction Plugin**:
-Interpreter for custom or external Reaction output. Without `.plugin`, output is dispatched as idempotent same-app Command. Direct Plugin runs inside Slice transaction; `withReactionOutbox` moves slow execution outside.
+Interpreter for custom or external Reaction output. Without `.plugin`, output is dispatched as idempotent same-app Command. The Plugin factory receives same-app `command` (returning the commit receipt) and `query` capabilities, and declares the Effect services it reads so the app Layer must provide them. Direct Plugin runs inside Slice transaction and cannot query; `withReactionOutbox` moves slow or querying execution outside.
 _Avoid_: Second command handler, app registry import
 
 **Reaction Run**:

@@ -39,8 +39,8 @@ export const mailboxActionReactionStates = sqliteTable(
   },
 )
 
-export function createApplyMailboxActionReaction(
-  plugin: ReactionPlugin<ApplyMailboxActionOutput> = applyMailboxActionPlugin,
+export function createApplyMailboxActionReaction<R>(
+  plugin: ReactionPlugin<ApplyMailboxActionOutput, R>,
 ) {
   return implementReaction(specification)
     .outputSchema(
@@ -103,7 +103,9 @@ export function createApplyMailboxActionReaction(
     })
 }
 
-export const applyMailboxActionReaction = createApplyMailboxActionReaction()
+export const applyMailboxActionReaction = createApplyMailboxActionReaction(
+  applyMailboxActionPlugin,
+)
 
 function updateStatus(
   db: import('../../../db/specter-sqlite').SqliteDb,

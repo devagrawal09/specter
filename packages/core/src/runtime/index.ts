@@ -23,6 +23,7 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,

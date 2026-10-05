@@ -1,9 +1,15 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import type { SpecificationDigest } from '@specter-ts/spec'
-import type { Effect } from 'effect'
+import type { Effect, Scope } from 'effect'
 
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
-import type { Event, EventDefinition, EventDraft } from './events'
+import type { SpecterEffectError } from '../effect/runtime'
+import type {
+  Event,
+  EventDefinition,
+  EventDraft,
+  PersistedEvent,
+} from './events'
 import type {
   CommandScenario,
   NonEmptyScenarios,
@@ -165,10 +171,37 @@ export type CommandDispatchOptions = {
   readonly idempotencyKey?: string
 }
 
+/** Commit receipt returned to a Plugin. Nested Reactions are not awaited. */
+export type CommandReceipt = {
+  readonly events: readonly PersistedEvent[]
+  readonly version: number
+  /** True when the idempotency key matched an earlier commit. */
+  readonly duplicate: boolean
+}
+
 export type CommandDispatch = (
   command: CommandEnvelope,
   options?: CommandDispatchOptions,
-) => Effect.Effect<void, unknown>
+) => Effect.Effect<CommandReceipt, SpecterEffectError>
+
+type AnyQuerySlice = Extract<SliceRegistration, { readonly kind: 'query' }>
+
+/**
+ * Runs a registered Query in the same app. The Query Slice value supplies the
+ * name and types and must be the instance registered in the app. Queries fail
+ * permanently inside a direct Plugin's Reaction transaction; run them from an
+ * outboxed Plugin.
+ */
+export type QueryDispatch = <const TQuery extends AnyQuerySlice>(
+  query: TQuery,
+  input: QueryInputOf<TQuery>,
+) => Effect.Effect<QueryOutputOf<TQuery>, SpecterEffectError>
+
+/** Same-app capabilities supplied once to a Plugin factory. */
+export type ReactionPluginContext = {
+  readonly command: CommandDispatch
+  readonly query: QueryDispatch
+}
 
 export type ReactionDeliveryContext = {
   /** Stable for one Reaction Slice processing one Event Log commit. */
@@ -187,9 +220,32 @@ export type ReactionExec<TOutput = unknown> = (
   context: ReactionDeliveryContext,
 ) => Effect.Effect<void, unknown>
 
-export type ReactionPlugin<TOutput = unknown> = (
-  command: CommandDispatch,
-) => Effect.Effect<ReactionExec<TOutput>, unknown, unknown>
+/**
+ * Initializes once in the app scope. `R` lists the Effect services the factory
+ * reads; the app's dependency Layer must provide them. Scope is always
+ * available and is not an app requirement.
+ */
+export type ReactionPlugin<TOutput = unknown, R = never> = (
+  context: ReactionPluginContext,
+) => Effect.Effect<ReactionExec<TOutput>, unknown, R | Scope.Scope>
+
+/**
+ * Effect services a Reaction Plugin requires from the app, excluding Scope.
+ * An erased `unknown` (or `any`) requirement cannot name a service, so it maps
+ * to `never` rather than rejecting every Layer.
+ */
+export type ReactionPluginRequirements<TSlice> = TSlice extends {
+  readonly kind: 'reaction'
+  readonly plugin?: infer TPlugin
+}
+  ? NonNullable<TPlugin> extends (
+      context: ReactionPluginContext,
+    ) => Effect.Effect<infer _TExec, infer _TError, infer R>
+    ? unknown extends R
+      ? never
+      : Exclude<R, Scope.Scope>
+    : never
+  : never
 
 export type ReactionSlice<
   TName extends string = string,
@@ -206,12 +262,13 @@ export type ReactionSlice<
     unknown,
     SliceStoreService<TReadState, TWriteState, unknown>
   >,
+  TPluginRequirements = never,
 > = SliceBase<TName, TScenarios> & {
   readonly kind: 'reaction'
   readonly outputSchema?: StandardSchemaV1<TResult, TOutput>
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
-  readonly plugin?: ReactionPlugin<TOutput>
+  readonly plugin?: ReactionPlugin<TOutput, TPluginRequirements>
   readonly handle: (state: TReadState) => Promise<TResult | undefined>
 }
 
@@ -243,6 +300,7 @@ export type SliceRegistration =
     >
   | ReactionSlice<
       string,
+      ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,
       ErasedSliceType,

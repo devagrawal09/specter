@@ -18,10 +18,12 @@ export type {
   CommandDispatchOptions,
   CommandEnvelope,
   CommandInputOf,
+  CommandReceipt,
   CommandRef,
   CommandSlice,
   ConformanceDiagnostic,
   EventForDefinition,
+  QueryDispatch,
   QueryInputOf,
   QueryOutputOf,
   QueryRef,
@@ -29,6 +31,8 @@ export type {
   ReactionDeliveryContext,
   ReactionExec,
   ReactionPlugin,
+  ReactionPluginContext,
+  ReactionPluginRequirements,
   ReactionSlice,
   SliceRegistration,
   SliceStoreOptions,
@@ -45,6 +49,7 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,
@@ -90,3 +95,5 @@ export {
   ReactionScheduler,
   ReactionSchedulerFailure,
 } from './adapters'
+/** Failure channel of Plugin `command` and `query` capabilities. */
+export type { SpecterEffectError } from './effect/runtime'
