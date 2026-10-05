@@ -11,7 +11,7 @@ import {
   mailboxActionRequestedEvent,
   mailboxActionSchema,
 } from '../events'
-import { applyMailboxActionPlugin } from './plugin.server'
+import { applyMailboxActionPlugin, type GmailActions } from './plugin.server'
 import specification from './spec.json' with { type: 'json' }
 
 export type ApplyMailboxActionEffect = {
@@ -40,7 +40,10 @@ export const mailboxActionReactionStates = sqliteTable(
 )
 
 export function createApplyMailboxActionReaction(
-  plugin: ReactionPlugin<ApplyMailboxActionOutput> = applyMailboxActionPlugin,
+  plugin: ReactionPlugin<
+    ApplyMailboxActionOutput,
+    GmailActions
+  > = applyMailboxActionPlugin,
 ) {
   return implementReaction(specification)
     .outputSchema(

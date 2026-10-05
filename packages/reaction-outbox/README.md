@@ -21,7 +21,10 @@ const durableEmailPlugin = withReactionOutbox(emailPlugin, {
 per-Reaction `deliveryId`. Slice state and cursor commit after enqueue. A scoped
 worker runs wrapped Plugin outside Slice transaction, resumes pending or expired
 jobs after restart, retries with backoff, and moves exhausted jobs to
-dead-letter. `retryDeadLetter` replays one failed job.
+dead-letter. `retryDeadLetter` replays one failed job. The wrapped Plugin
+receives the same `{ command, query }` context and keeps its service
+requirement type; Queries are allowed because the worker runs outside the Slice
+transaction.
 
 Use Store from same SQLite or Postgres persistence context as Slice Store when
 enqueue and cursor must share transaction. Payload uses Store codec; bundled SQL

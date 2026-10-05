@@ -13,10 +13,12 @@ import {
 import { describe, expect, it } from 'vitest'
 
 import {
+  type CommandReceipt,
   EventLog,
   type EventLogCommit,
   EventLogFailure,
   type EventLogService,
+  type ReactionPluginContext,
   ReactionScheduler,
   ReactionSchedulerFailure,
   ReactionRunFailure,
@@ -988,6 +990,190 @@ describe('Effect-native runtime', () => {
     }).pipe(Effect.timeout('1 second'))
     await Effect.runPromise(Effect.scoped(Effect.provide(program, layer)))
     expect(appendCount).toBe(2)
+  })
+
+  it('returns Command receipts to Plugins and runs typed Queries outside transactions', async () => {
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const valuePublished = createEventDefinition(
+      'value-published',
+      numberSchema,
+    )
+    const receipts: CommandReceipt[] = []
+    let pluginContext: ReactionPluginContext | undefined
+    const recordValue = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 4,
+        expect: [event('value-recorded', 4)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const publishValue = createCommandSlice('publishValue')
+      .description('Publishes one value.')
+      .scenarios({
+        description: 'Publishes one value.',
+        given: [],
+        when: 4,
+        expect: [event('value-published', 4)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valuePublished.create(value)])
+    const publishedValues = createQuerySlice('publishedValues')
+      .description('Reads published values.')
+      .scenarios({
+        description: 'Reads one published value.',
+        given: [event('value-published', 4)],
+        when: {},
+        expect: [4],
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<readonly number[]>()
+      .store(ValuesStore)
+      .apply(valuePublished, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (_input, state) => state.values)
+    const reaction = createReactionSlice('publishRecordedValue')
+      .description('Publishes each recorded value once.')
+      .scenarios({
+        description: 'Publishes one value.',
+        given: [event('value-recorded', 4)],
+        expect: 4,
+      })
+      .outputSchema<number>()
+      .plugin((context) =>
+        Effect.sync(() => {
+          pluginContext = context
+          return (value: number, delivery) =>
+            Effect.gen(function* () {
+              for (let attempt = 0; attempt < 2; attempt += 1) {
+                receipts.push(
+                  yield* context.command(
+                    { type: 'publishValue', payload: value },
+                    { idempotencyKey: delivery.deliveryId },
+                  ),
+                )
+              }
+            })
+        }),
+      )
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => state.values.at(-1))
+    const app = await createSpecterApp(
+      {
+        events: [valueRecorded, valuePublished],
+        slices: {
+          recordValue,
+          publishValue,
+          publishedValues,
+          publishRecordedValue: reaction,
+        },
+      } as const,
+      Layer.mergeAll(storeLayer(), eventLogLayer()),
+    )
+
+    const execution = await app.command({ type: 'recordValue', payload: 4 })
+    await execution.reactions
+
+    expect(
+      receipts.map(({ version, duplicate }) => ({ version, duplicate })),
+    ).toEqual([
+      { version: 2, duplicate: false },
+      { version: 2, duplicate: true },
+    ])
+    expect(receipts[1]?.events).toEqual(receipts[0]?.events)
+    expect(receipts[0]?.events.map(({ type }) => type)).toEqual([
+      'value-published',
+    ])
+    expect(receipts[0]).not.toHaveProperty('reactions')
+    if (!pluginContext) throw new Error('Plugin was not initialized')
+    const published: readonly number[] = await Effect.runPromise(
+      pluginContext.query(publishedValues, {}),
+    )
+    expect(published).toEqual([4])
+    await app.close()
+  })
+
+  it('rejects Queries from a direct Plugin inside its Reaction transaction', async () => {
+    const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+    const store = makeStoreService()
+    const recordValue = createCommandSlice('recordValue')
+      .description('Records one value.')
+      .scenarios({
+        description: 'Records one value.',
+        given: [],
+        when: 1,
+        expect: [event('value-recorded', 1)],
+      })
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(async (value) => [valueRecorded.create(value)])
+    const values = createQuerySlice('values')
+      .description('Reads values.')
+      .scenarios({
+        description: 'Reads one value.',
+        given: [event('value-recorded', 1)],
+        when: {},
+        expect: [1],
+      })
+      .inputSchema<Record<string, never>>()
+      .outputSchema<readonly number[]>()
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (_input, state) => state.values)
+    const reaction = createReactionSlice('inspectValues')
+      .description('Inspects values while reacting.')
+      .scenarios({
+        description: 'Inspects one value.',
+        given: [event('value-recorded', 1)],
+        expect: 1,
+      })
+      .outputSchema<number>()
+      .plugin(({ query }) =>
+        Effect.succeed(() => query(values, {}).pipe(Effect.asVoid)),
+      )
+      .store(ValuesStore)
+      .apply(valueRecorded, async (applied, state) => {
+        state.values.push(applied.payload)
+      })
+      .handle(async (state) => state.values.at(-1))
+    const app = await createSpecterApp(
+      {
+        events: [valueRecorded],
+        slices: { recordValue, values, inspectValues: reaction },
+      } as const,
+      Layer.mergeAll(Layer.succeed(ValuesStore, store), eventLogLayer()),
+    )
+
+    const execution = await app.command({ type: 'recordValue', payload: 1 })
+    const failure = await execution.reactions.then(
+      () => undefined,
+      (cause: unknown) => cause,
+    )
+
+    expect(failure).toBeInstanceOf(ReactionRunFailure)
+    const [detail] = (failure as ReactionRunFailure).failures
+    expect(detail?.sliceName).toBe('inspectValues')
+    expect(detail?.cause).toBeInstanceOf(SpecterInfrastructureError)
+    expect((detail?.cause as Error).message).toContain('withReactionOutbox')
+    await expect(
+      Effect.runPromise(
+        store.read('inspectValues', (_state, cursor) => Effect.succeed(cursor)),
+      ),
+    ).resolves.toBe(0)
+    await expect(app.query({ type: 'values', payload: {} })).resolves.toEqual([
+      1,
+    ])
+    await app.close()
   })
 
   it('deduplicates same fingerprints across runtime restarts', async () => {

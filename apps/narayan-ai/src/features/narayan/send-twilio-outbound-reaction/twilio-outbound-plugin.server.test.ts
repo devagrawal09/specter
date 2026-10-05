@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { Effect } from 'effect'
-import type { ReactionExec } from '@specter-ts/core'
+import type {
+  CommandDispatch,
+  ReactionExec,
+  ReactionPluginContext,
+} from '@specter-ts/core'
 
 import type { TwilioDeliveryAttempt } from '../../../db/twilio-delivery-attempts'
 import {
@@ -38,6 +42,15 @@ const ambiguousAttempt: TwilioDeliveryAttempt = {
   lastError: 'connection reset after send',
 }
 
+const receipt = { events: [], version: 1, duplicate: false }
+
+function pluginContext(command: CommandDispatch): ReactionPluginContext {
+  return {
+    command,
+    query: () => Effect.die('The Twilio Plugin does not run Queries.'),
+  }
+}
+
 function attemptStore(existing: TwilioDeliveryAttempt | undefined) {
   return {
     get: vi.fn(async () => existing),
@@ -58,14 +71,17 @@ describe('Twilio outbound delivery reconciliation', () => {
         sentAt: '2026-07-16T11:59:50.500Z',
       })),
     }
-    const command = vi.fn(() => Effect.void)
+    const command = vi.fn(() => Effect.succeed(receipt))
     const plugin = createTwilioOutboundPlugin({
       provider,
       store: () => store as never,
       now: () => new Date('2026-07-16T12:00:00.000Z'),
     })
     const execute = await Effect.runPromise(
-      plugin(command) as Effect.Effect<ReactionExec<typeof effect>, unknown>,
+      plugin(pluginContext(command)) as Effect.Effect<
+        ReactionExec<typeof effect>,
+        unknown
+      >,
     )
 
     await Effect.runPromise(execute(effect, context))
@@ -101,10 +117,9 @@ describe('Twilio outbound delivery reconciliation', () => {
       reconciliationGraceMs: 60_000,
     })
     const execute = await Effect.runPromise(
-      plugin(vi.fn(() => Effect.void)) as Effect.Effect<
-        ReactionExec<typeof effect>,
-        unknown
-      >,
+      plugin(
+        pluginContext(vi.fn(() => Effect.succeed(receipt))),
+      ) as Effect.Effect<ReactionExec<typeof effect>, unknown>,
     )
 
     await expect(

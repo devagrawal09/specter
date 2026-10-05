@@ -43,14 +43,17 @@ export class TwilioDeliveryReconciliationPendingError extends Error {
 
 export function createTwilioOutboundPlugin(
   options: TwilioOutboundPluginOptions = {},
-): ReactionPlugin<{
-  type: 'sendTwilioOutbound'
-  payload: SendTwilioOutboundEffect
-}> {
+): ReactionPlugin<
+  {
+    type: 'sendTwilioOutbound'
+    payload: SendTwilioOutboundEffect
+  },
+  TwilioDeliveryAttempts
+> {
   const now = options.now ?? (() => new Date())
   const reconciliationGraceMs = options.reconciliationGraceMs ?? 60_000
 
-  return (command) =>
+  return ({ command }) =>
     Effect.gen(function* () {
       const configuredStore = options.store?.()
       const contextStore = configuredStore ?? (yield* TwilioDeliveryAttempts)

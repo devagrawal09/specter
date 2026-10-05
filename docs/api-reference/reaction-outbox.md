@@ -29,6 +29,9 @@ const durablePlugin = withReactionOutbox(emailPlugin, {
 Wrapper enqueues `OutboxedReaction<TOutput> = { output, context }` under stable
 `deliveryId`. Slice cursor commits after enqueue. Scoped worker executes wrapped
 Plugin outside Slice transaction and resumes unfinished jobs at app startup.
+`withReactionOutbox<TOutput, R>` passes the same `ReactionPluginContext` to the
+wrapped Plugin and preserves its service requirements `R`. Because the worker
+runs outside the Slice transaction, the wrapped Plugin may call `query`.
 
 `ReactionOutboxPluginOptions` accepts Store, worker retry/lease options, polling
 interval, and polling error callback. SQL Store codecs require JSON-compatible

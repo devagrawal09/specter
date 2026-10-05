@@ -75,9 +75,13 @@ network transport and no application database schema.
 | `CommandRef<T>` | Registry-oriented Command name and optional payload reference. |
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
 | `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
-| `CommandDispatch` | Reaction Plugin callback for dispatching a Command. |
+| `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. |
+| `CommandDispatch` | Plugin capability dispatching a same-app Command; resolves to `CommandReceipt`. |
+| `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; rejected inside a direct Plugin's Reaction transaction. |
+| `ReactionPluginContext` | `{ command, query }` passed once to a Plugin factory. |
 | `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
-| `ReactionPlugin` | Optional Effect factory for custom/external output; same-app `CommandEnvelope` output uses default dispatcher. |
+| `ReactionPlugin<TOutput, R>` | Optional Effect factory for custom/external output; `R` lists app services it reads. Same-app `CommandEnvelope` output uses default dispatcher. |
+| `ReactionPluginRequirements<T>` | Infers a Reaction Slice's Plugin service requirements, excluding `Scope`. |
 | `ConformanceDiagnostic` | Structured construction diagnostic with code, location, and remediation fields. |
 
 ## App and runtime types
@@ -103,8 +107,10 @@ network transport and no application database schema.
 
 `createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
 schemas, apply coverage, and selected implementations before exposing the app.
-`dependencies` is an Effect Layer providing `EventLog` and every Store Tag
-named by registered Slices.
+`dependencies` is an Effect Layer providing `EventLog`, every Store Tag named by
+registered Slices, and every service required by registered Reaction Plugins
+(`SpecterRuntimeRequirements<TConfig>`). A missing Plugin service is a compile
+error when the config keeps its literal Slice types.
 
 When Reactions are registered, construction catches each Reaction cursor up
 through current Event Log version. This recovers commits left unfinished by a
@@ -165,7 +171,7 @@ const program = Effect.gen(function* () {
 ```
 
 `makeSpecterRuntime(config)` is native interpreter and exposes exact Store,
-Event Log, Scope, and typed failure requirements. Slices keep plain
+Plugin service, Event Log, Scope, and typed failure requirements. Slices keep plain
 async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
 Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
 Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is

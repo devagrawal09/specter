@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { Effect } from 'effect'
+import type { ReactionPluginContext } from '@specter-ts/core'
+import { Context, Effect } from 'effect'
 
 import { createMemoryReactionOutboxStore } from './memory-store'
 import { withReactionOutbox, type OutboxedReaction } from './plugin'
@@ -281,13 +282,29 @@ describe('outbox Reaction Plugin', () => {
     const store =
       createMemoryReactionOutboxStore<OutboxedReaction<{ message: string }>>()
     const handled: string[] = []
+    const callerMarker = Context.Reference<string>('outbox-test/CallerMarker', {
+      defaultValue: () => 'worker',
+    })
+    const pluginContext: ReactionPluginContext = {
+      command: () =>
+        Effect.succeed({ events: [], version: 7, duplicate: false }),
+      query: () => Effect.die('This Plugin does not run Queries.'),
+    }
+    let receivedContext: ReactionPluginContext | undefined
     const plugin = withReactionOutbox(
-      () =>
-        Effect.succeed((output: { message: string }) =>
-          Effect.sync(() => {
-            handled.push(output.message)
-          }),
-        ),
+      (context) =>
+        Effect.sync(() => {
+          receivedContext = context
+          return (output: { message: string }) =>
+            Effect.gen(function* () {
+              const marker = yield* callerMarker
+              const receipt = yield* context.command({
+                type: 'recordDelivery',
+                payload: output.message,
+              })
+              handled.push(`${output.message}:${marker}:${receipt.version}`)
+            })
+        }),
       { store, pollIntervalMs: 1 },
     )
     const context = {
@@ -299,14 +316,17 @@ describe('outbox Reaction Plugin', () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const exec = yield* plugin(() => Effect.void)
-          yield* exec({ message: 'hello' }, context)
+          const exec = yield* plugin(pluginContext)
+          yield* exec({ message: 'hello' }, context).pipe(
+            Effect.provideService(callerMarker, 'caller'),
+          )
           yield* exec({ message: 'hello' }, context)
           yield* Effect.sleep('20 millis')
         }),
       ),
     )
-    expect(handled).toEqual(['hello'])
+    expect(receivedContext).toBe(pluginContext)
+    expect(handled).toEqual(['hello:worker:7'])
     expect(await Effect.runPromise(store.list())).toMatchObject([
       {
         id: context.deliveryId,

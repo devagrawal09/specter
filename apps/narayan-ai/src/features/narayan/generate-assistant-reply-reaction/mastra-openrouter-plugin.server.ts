@@ -9,7 +9,7 @@ const fallbackPrefix = 'Namaste from Narayan AI.'
 export const mastraOpenRouterPlugin: ReactionPlugin<{
   type: 'generateAssistantReply'
   payload: GenerateAssistantReplyEffect
-}> = (command) =>
+}> = ({ command }) =>
   Effect.succeed((output, context) =>
     Effect.gen(function* () {
       const effect = output.payload

@@ -54,7 +54,7 @@ const snapshotKey = (node: FilesystemNodeSnapshot) => JSON.stringify(node)
 
 const runRequestedFilesystemScan = implementReaction(specification)
   .outputSchema<RunWorkspaceFilesystemScanCommand>()
-  .plugin((command) =>
+  .plugin(({ command }) =>
     Effect.succeed((job, context) =>
       Effect.tryPromise({
         try: async () => {

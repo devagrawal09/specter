@@ -26,15 +26,16 @@ export type ReactionOutboxPluginOptions<TOutput> = {
 /**
  * Wraps any Reaction Plugin with durable enqueue. Slice processing waits only
  * for enqueue; a scoped worker executes the original Plugin outside the Slice
- * transaction and resumes unfinished deliveries after restart.
+ * transaction and resumes unfinished deliveries after restart. The wrapped
+ * Plugin receives the same context, and may run Queries from the worker.
  */
-export function withReactionOutbox<TOutput>(
-  plugin: ReactionPlugin<TOutput>,
+export function withReactionOutbox<TOutput, R = never>(
+  plugin: ReactionPlugin<TOutput, R>,
   options: ReactionOutboxPluginOptions<TOutput>,
-): ReactionPlugin<TOutput> {
-  return (command) =>
+): ReactionPlugin<TOutput, R> {
+  return (context) =>
     Effect.gen(function* () {
-      const execute = yield* plugin(command)
+      const execute = yield* plugin(context)
       const scope = yield* Effect.scope
       const controller = new AbortController()
       const worker = createReactionOutboxWorker({

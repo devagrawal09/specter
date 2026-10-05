@@ -1,9 +1,10 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Context } from 'effect'
+import { Context, Effect } from 'effect'
 
 import type { SliceStoreService } from '../adapters'
 import {
   type CommandInputOf,
+  type CommandReceipt,
   createCommandSlice,
   createEventDefinition,
   createQuerySlice,
@@ -12,6 +13,7 @@ import {
   type QueryInputOf,
   type QueryOutputOf,
   type ReactionPlugin,
+  type ReactionPluginRequirements,
 } from './index'
 
 type Equal<TLeft, TRight> =
@@ -188,3 +190,63 @@ const externalReactionStep = createReactionSlice('notifyAmount')
 
 // @ts-expect-error Non-Command output requires an explicit Plugin.
 externalReactionStep.store
+
+class AmountNotifier extends Context.Service<
+  AmountNotifier,
+  { notify(label: string): Effect.Effect<void> }
+>()('type-test/AmountNotifier') {}
+
+const notifyingReaction = externalReactionStep
+  .plugin(({ command, query }) =>
+    Effect.gen(function* () {
+      const notifier = yield* AmountNotifier
+      yield* Effect.addFinalizer(() => Effect.void)
+      return (output, context) =>
+        Effect.gen(function* () {
+          const read = query(queryImplementation, { id: '41' })
+          type _Read = Expect<
+            Equal<typeof read, Effect.Effect<{ label: string }, unknown>>
+          >
+          const readType: _Read = true
+          void readType
+          // @ts-expect-error Query input is typed by the Query Slice.
+          query(queryImplementation, { id: 41 })
+          const receipt = yield* command(
+            { type: 'recordAmount', payload: { text: output } },
+            { idempotencyKey: context.deliveryId },
+          )
+          type _Receipt = Expect<Equal<typeof receipt, CommandReceipt>>
+          const receiptType: _Receipt = true
+          void receiptType
+          if (!receipt.duplicate) yield* notifier.notify(output)
+        })
+    }),
+  )
+  .store(QueryStore)
+  .handle(async (state) => `Amount: ${state.amount}`)
+
+export type PluginRequirementCheck = Expect<
+  Equal<ReactionPluginRequirements<typeof notifyingReaction>, AmountNotifier>
+>
+export type DefaultPluginRequirementCheck = Expect<
+  Equal<ReactionPluginRequirements<typeof defaultCommandReaction>, never>
+>
+export type NonReactionPluginRequirementCheck = Expect<
+  Equal<ReactionPluginRequirements<typeof queryImplementation>, never>
+>
+
+export const undeclaredRequirementPlugin: ReactionPlugin<string> = () =>
+  // @ts-expect-error An annotated Plugin must declare the services it reads.
+  Effect.gen(function* () {
+    const notifier = yield* AmountNotifier
+    return (output: string) => notifier.notify(output)
+  })
+
+export const declaredRequirementPlugin: ReactionPlugin<
+  string,
+  AmountNotifier
+> = () =>
+  Effect.gen(function* () {
+    const notifier = yield* AmountNotifier
+    return (output: string) => notifier.notify(output)
+  })

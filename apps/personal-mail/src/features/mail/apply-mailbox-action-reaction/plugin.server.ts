@@ -18,10 +18,13 @@ export class GmailActions extends Context.Service<
   }
 >()('@specter/personal-mail/GmailActions') {}
 
-export const applyMailboxActionPlugin: ReactionPlugin<{
-  type: 'applyMailboxAction'
-  payload: ApplyMailboxActionEffect
-}> = (command) =>
+export const applyMailboxActionPlugin: ReactionPlugin<
+  {
+    type: 'applyMailboxAction'
+    payload: ApplyMailboxActionEffect
+  },
+  GmailActions
+> = ({ command }) =>
   Effect.gen(function* () {
     const gmail = yield* GmailActions
     return (output, context) =>

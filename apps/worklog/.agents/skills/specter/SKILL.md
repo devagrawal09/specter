@@ -88,7 +88,8 @@ await execution.reactions
 - Subscriptions emit current state, fan out per subscriber, coalesce intermediate states for slow consumers, and retain the newest value.
 - Reaction effects are arbitrary plugin-defined values. Dispatching another Command is one explicit plugin pattern.
 - Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps; `context.attemptId` changes for each attempt.
-- Same-app dispatch uses `dispatch(envelope, { idempotencyKey: context.deliveryId })`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
+- A Plugin factory receives `{ command, query }`. Same-app dispatch uses `command(envelope, { idempotencyKey: context.deliveryId })` and resolves to `{ events, version, duplicate }`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
+- `query(querySlice, input)` runs a registered Query in the same app; it is rejected inside a direct Plugin's Reaction transaction, so wrap querying Plugins with `withReactionOutbox`. Annotate Plugins as `ReactionPlugin<Output, Services>` when the factory reads Effect services.
 
 ## Determinism And Transport
 

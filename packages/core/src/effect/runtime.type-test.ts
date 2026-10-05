@@ -1,7 +1,17 @@
-import { Context, Layer } from 'effect'
+import { Context, Effect, Layer } from 'effect'
 
-import { EventLog, implementCommand, type SliceStoreService } from '..'
-import { createCommandSlice, event } from '@specter-ts/spec'
+import {
+  createSpecterApp,
+  EventLog,
+  implementCommand,
+  implementReaction,
+  type SliceStoreService,
+} from '..'
+import {
+  createCommandSlice,
+  createReactionSlice,
+  event,
+} from '@specter-ts/spec'
 import { createSpecterAppLayer } from './runtime'
 
 type Equal<TLeft, TRight> =
@@ -56,3 +66,58 @@ const provided = runtimeLayer.pipe(
 export type ProvidedRuntimeRequirement = Expect<
   Equal<Layer.Services<typeof provided>, never>
 >
+
+class ValueNotifier extends Context.Service<
+  ValueNotifier,
+  { notify(value: number): Effect.Effect<void> }
+>()('specter-type-test/ValueNotifier') {}
+
+const notifyValue = implementReaction(
+  JSON.stringify(
+    createReactionSlice('notifyValue')
+      .description('Notifies a recorded value.')
+      .scenarios({
+        description: 'Notifies one value.',
+        given: [event('value-recorded', 1)],
+        expect: [1],
+      }),
+  ),
+)
+  .outputSchema<number>()
+  .plugin(() =>
+    Effect.gen(function* () {
+      const notifier = yield* ValueNotifier
+      return (value) => notifier.notify(value)
+    }),
+  )
+  .store(RuntimeTypeStore)
+  .handle(async (state) => state.value)
+
+const pluginConfig = {
+  events: [],
+  slices: { command, notifyValue },
+} as const
+const pluginRuntimeLayer = createSpecterAppLayer(pluginConfig)
+
+export type PluginRuntimeRequirements = Expect<
+  Equal<
+    Layer.Services<typeof pluginRuntimeLayer>,
+    RuntimeTypeStore | ValueNotifier | EventLog
+  >
+>
+
+declare const notifierService: ValueNotifier['Service']
+const storeAndEventLog = Layer.mergeAll(
+  Layer.succeed(RuntimeTypeStore, storeService),
+  Layer.succeed(EventLog, eventLogService),
+)
+
+// @ts-expect-error The app Layer must provide every Plugin service.
+void createSpecterApp(pluginConfig, storeAndEventLog)
+void createSpecterApp(
+  pluginConfig,
+  Layer.mergeAll(
+    storeAndEventLog,
+    Layer.succeed(ValueNotifier, notifierService),
+  ),
+)
