@@ -17,6 +17,7 @@ import {
   runReactionOutboxWorker,
   withReactionOutbox,
 } from '@specter-ts/reaction-outbox'
+import type { ReactionPluginContext } from '@specter-ts/core'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
@@ -569,7 +570,10 @@ describe('JSONL Reaction outbox worker', () => {
     await run(
       Effect.scoped(
         Effect.gen(function* () {
-          const exec = yield* plugin(() => Effect.void)
+          const exec = yield* plugin({
+            command: () => Effect.die('This Plugin does not run Commands.'),
+            query: () => Effect.die('This Plugin does not run Queries.'),
+          } satisfies ReactionPluginContext)
           yield* exec(
             { task: 'reply' },
             {

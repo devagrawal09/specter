@@ -10,9 +10,12 @@ import { ReactionOutboxLeaseLostError } from './errors'
 import { Effect } from 'effect'
 
 export type MemoryReactionOutboxStore<TPayload> =
-  ReactionOutboxStore<TPayload> & {
-    reset(): void
-  }
+  ReactionOutboxStore<TPayload> &
+    Required<
+      Pick<ReactionOutboxStore<TPayload>, 'renewLease' | 'subscribe'>
+    > & {
+      reset(): void
+    }
 
 export function createMemoryReactionOutboxStore<
   TPayload,

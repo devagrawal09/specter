@@ -533,6 +533,12 @@ describe('Reaction outbox worker wake-up and lease renewal', () => {
   })
 })
 
+/** Context for wrapped Plugins that never run Commands or Queries. */
+const unusedPluginContext: ReactionPluginContext = {
+  command: () => Effect.die('This Plugin does not run Commands.'),
+  query: () => Effect.die('This Plugin does not run Queries.'),
+}
+
 describe('outbox Reaction Plugin', () => {
   it('deduplicates enqueue and runs wrapped Plugin outside caller Effect', async () => {
     const store =
@@ -609,7 +615,7 @@ describe('outbox Reaction Plugin', () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const exec = yield* plugin(() => Effect.void)
+          const exec = yield* plugin(unusedPluginContext)
           yield* Effect.sleep('5 millis')
           yield* exec(
             { message: 'hello' },
@@ -644,7 +650,7 @@ describe('outbox Reaction Plugin', () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const exec = yield* plugin(() => Effect.void)
+          const exec = yield* plugin(unusedPluginContext)
           yield* exec(
             { message: 'hello' },
             {
@@ -681,7 +687,7 @@ describe('outbox Reaction Plugin', () => {
     await Effect.runPromise(
       Effect.scoped(
         Effect.gen(function* () {
-          const exec = yield* plugin(() => Effect.void)
+          const exec = yield* plugin(unusedPluginContext)
           yield* exec(
             { message: 'slow' },
             {
