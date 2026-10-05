@@ -46,6 +46,7 @@ import {
 import type {
   CommandExecution,
   CommandExecutionOptions,
+  PreparedSpecterApp,
   SpecterApp,
   SpecterAppConfig,
   SpecterCommandEnvelope,
@@ -185,16 +186,183 @@ type ReactionSkip = { readonly from: number; readonly through: number }
  */
 const reactionSkipFlushOrders = 256
 
-/** Native Effect interpreter. Slice callbacks stay ordinary async functions. */
+/** Per-config work: everything derived from a conforming config alone. */
+type SpecterAppPlan = {
+  readonly slices: readonly SliceRegistration[]
+  readonly eagerSlices: readonly SliceRegistration[]
+  readonly eventDefinitions: ReadonlyMap<string, ApplyEventDefinition>
+  readonly commands: ReadonlyMap<string, AnyCommand>
+  readonly queries: ReadonlyMap<string, AnyQuery>
+  readonly reactions: ReadonlyMap<string, AnyReaction>
+  readonly applyBySlice: ReadonlyMap<
+    SliceRegistration,
+    ReadonlyMap<string, ApplyRegistration>
+  >
+  readonly allowedCommandEvents: ReadonlyMap<AnyCommand, ReadonlySet<string>>
+}
+
+type PendingPlan = Promise<Exit.Exit<SpecterAppPlan, SpecterConformanceError>>
+
+/** Only objects created by `prepareSpecterRuntime` are registered here. */
+const preparedPlans = new WeakMap<object, SpecterAppPlan>()
+
+/**
+ * Plans keyed by `config.events`, then `config.slices`. Identity is the only
+ * sound key: conformance checks EventDefinition identity, and Slices carry
+ * handler functions that no content digest covers. Keying the two inner
+ * objects instead of the outer config lets callers rebuild `{ events, slices }`
+ * per app and still hit. An entry holds the in-flight Promise so concurrent
+ * first use validates once, then the settled plan so later hits stay
+ * synchronous. Failed validations are evicted after every waiter has seen
+ * them.
+ */
+const planCache = new WeakMap<
+  object,
+  WeakMap<object, SpecterAppPlan | PendingPlan>
+>()
+
+/**
+ * Effect counterpart of `prepareSpecterApp`: runs (or reuses) conformance and
+ * lookup-structure construction for a config, without any Event Log or Store.
+ */
+export function prepareSpecterRuntime<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
+): Effect.Effect<PreparedSpecterApp<TConfig>, SpecterConformanceError> {
+  return Effect.suspend(() => {
+    if (preparedPlans.has(config)) {
+      return Effect.succeed(config as PreparedSpecterApp<TConfig>)
+    }
+    const raw = config as TConfig
+    return cachedPlan(raw).pipe(
+      Effect.map((plan) => {
+        const prepared: PreparedSpecterApp<TConfig> = Object.freeze({
+          _tag: 'PreparedSpecterApp',
+          config: raw,
+        })
+        preparedPlans.set(prepared, plan)
+        return prepared
+      }),
+    )
+  })
+}
+
+function resolvePlan(
+  config: SpecterAppConfig | PreparedSpecterApp,
+): Effect.Effect<SpecterAppPlan, SpecterConformanceError> {
+  return Effect.suspend(() => {
+    const prepared = preparedPlans.get(config)
+    return prepared
+      ? Effect.succeed(prepared)
+      : cachedPlan(config as SpecterAppConfig)
+  })
+}
+
+function cachedPlan(
+  config: SpecterAppConfig,
+): Effect.Effect<SpecterAppPlan, SpecterConformanceError> {
+  const { events, slices } = config
+  if (!isObject(events) || !isObject(slices)) return buildPlan(config)
+  let bySlices = planCache.get(events)
+  if (!bySlices) {
+    bySlices = new WeakMap()
+    planCache.set(events, bySlices)
+  }
+  const entries = bySlices
+  const cached = entries.get(slices)
+  if (cached && !(cached instanceof Promise)) return Effect.succeed(cached)
+  let pending = cached
+  if (!pending) {
+    const started = Effect.runPromiseExit(buildPlan({ events, slices }))
+    entries.set(slices, started)
+    void started.then((exit) => {
+      if (entries.get(slices) !== started) return
+      if (Exit.isSuccess(exit)) entries.set(slices, exit.value)
+      else entries.delete(slices)
+    })
+    pending = started
+  }
+  const settled = pending
+  return Effect.flatten(Effect.promise(() => settled))
+}
+
+function buildPlan(
+  config: SpecterAppConfig,
+): Effect.Effect<SpecterAppPlan, SpecterConformanceError> {
+  return assertConforms(config).pipe(
+    Effect.map(() => {
+      const slices = Object.values(config.slices)
+      const eventDefinitions = new Map<string, ApplyEventDefinition>()
+      const commands = new Map<string, AnyCommand>()
+      const queries = new Map<string, AnyQuery>()
+      const reactions = new Map<string, AnyReaction>()
+      const applyBySlice = new Map<
+        SliceRegistration,
+        ReadonlyMap<string, ApplyRegistration>
+      >()
+      const allowedCommandEvents = new Map<AnyCommand, ReadonlySet<string>>()
+
+      for (const eventDefinition of config.events) {
+        eventDefinitions.set(eventDefinition.type, eventDefinition)
+      }
+      for (const slice of slices) {
+        if (slice.kind === 'command') {
+          commands.set(slice.name, slice)
+          allowedCommandEvents.set(slice, commandScenarioEventTypes(slice))
+        } else if (slice.kind === 'query') {
+          queries.set(slice.name, slice)
+        } else {
+          reactions.set(slice.name, slice)
+        }
+        applyBySlice.set(
+          slice,
+          new Map(
+            slice.apply.map((apply) => [apply.event.type, apply] as const),
+          ),
+        )
+      }
+
+      return {
+        slices,
+        eagerSlices: slices.filter((slice) => slice.eager),
+        eventDefinitions,
+        commands,
+        queries,
+        reactions,
+        applyBySlice,
+        allowedCommandEvents,
+      }
+    }),
+  )
+}
+
+function isObject(value: unknown): value is object {
+  return typeof value === 'object' && value !== null
+}
+
+/**
+ * Native Effect interpreter. Slice callbacks stay ordinary async functions.
+ *
+ * Accepts a raw config (validated through the shared per-config cache) or a
+ * `PreparedSpecterApp`. Everything else here is per Event Log and Layer.
+ */
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
-  config: TConfig,
+  config: TConfig | PreparedSpecterApp<TConfig>,
 ): Effect.Effect<
   SpecterEffectApp<TConfig>,
   SpecterEffectError,
   SpecterRuntimeRequirements<TConfig> | import('effect').Scope.Scope
 > {
   return Effect.gen(function* () {
-    yield* assertConforms(config)
+    const {
+      slices,
+      eagerSlices,
+      eventDefinitions,
+      commands,
+      queries,
+      reactions,
+      applyBySlice,
+      allowedCommandEvents,
+    } = yield* resolvePlan(config)
 
     const eventLog = yield* EventLog
     const scheduler = yield* ReactionScheduler
@@ -202,37 +370,12 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     const services = yield* Effect.context<
       SpecterStoreRequirements<TConfig> | SpecterPluginRequirements<TConfig>
     >()
-    const eventDefinitions = new Map<string, ApplyEventDefinition>()
-    const commands = new Map<string, AnyCommand>()
-    const queries = new Map<string, AnyQuery>()
-    const reactions = new Map<string, AnyReaction>()
     const stores = new Map<SliceRegistration, ResolvedStore>()
-    const applyBySlice = new Map<
-      SliceRegistration,
-      ReadonlyMap<string, ApplyRegistration>
-    >()
-    const allowedCommandEvents = new Map<AnyCommand, ReadonlySet<string>>()
     const reactionExecs = new Map<string, ReactionExec>()
     const reactionSkips = new Map<string, ReactionSkip>()
     const subscriptions = new Set<Subscription>()
 
-    for (const eventDefinition of config.events) {
-      eventDefinitions.set(eventDefinition.type, eventDefinition)
-    }
-
-    for (const slice of Object.values(config.slices)) {
-      if (slice.kind === 'command') {
-        commands.set(slice.name, slice)
-        allowedCommandEvents.set(slice, commandScenarioEventTypes(slice))
-      } else if (slice.kind === 'query') {
-        queries.set(slice.name, slice)
-      } else {
-        reactions.set(slice.name, slice)
-      }
-      applyBySlice.set(
-        slice,
-        new Map(slice.apply.map((apply) => [apply.event.type, apply] as const)),
-      )
+    for (const slice of slices) {
       stores.set(slice, yield* resolveStore(slice, services))
     }
 
@@ -284,10 +427,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       yield* completion
     }
 
-    for (const slice of Object.values(config.slices)) {
-      if (slice.eager) {
-        yield* catchUpSlice(slice)
-      }
+    for (const slice of eagerSlices) {
+      yield* catchUpSlice(slice)
     }
 
     const runtime: SpecterRuntimeService = Object.freeze({
@@ -1063,7 +1204,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 }
 
 export function createSpecterAppLayer<const TConfig extends SpecterAppConfig>(
-  config: TConfig,
+  config: TConfig | PreparedSpecterApp<TConfig>,
 ): Layer.Layer<
   SpecterRuntime,
   SpecterEffectError,
@@ -1079,17 +1220,34 @@ export function createSpecterAppLayer<const TConfig extends SpecterAppConfig>(
   )
 }
 
-/** Sole Promise bridge, intended only for HTTP/WebSocket transport edges. */
+/**
+ * Sole Promise bridge, intended only for HTTP/WebSocket transport edges.
+ *
+ * Synchronous: runtime startup (validation for a raw config, then Store
+ * resolution and catch-up) begins immediately and its failure rejects every
+ * later operation. `createSpecterApp` awaits that startup instead.
+ */
 export function createSpecterPromiseApp<const TConfig extends SpecterAppConfig>(
-  config: TConfig,
+  config: TConfig | PreparedSpecterApp<TConfig>,
   dependencies: Layer.Layer<SpecterRuntimeRequirements<TConfig>>,
 ): SpecterApp<TConfig> {
+  return startSpecterPromiseApp(config, dependencies).app
+}
+
+/** Internal: the Promise app plus a Promise that settles with its startup. */
+export function startSpecterPromiseApp<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
+  dependencies: Layer.Layer<SpecterRuntimeRequirements<TConfig>>,
+): { readonly app: SpecterApp<TConfig>; readonly ready: Promise<unknown> } {
   const runtime = ManagedRuntime.make(
     createSpecterAppLayer(config).pipe(Layer.provideMerge(dependencies)),
   )
   const service = runtime.runPromise(Effect.service(SpecterRuntime))
+  // Startup failure is reported by each operation that awaits `service`; an
+  // app nobody calls must not crash the process with an unhandled rejection.
+  void service.catch(() => undefined)
   let closed = false
-  return Object.freeze({
+  const app = Object.freeze({
     command: async (command, options) => {
       const execution = await runtime.runPromise(
         (await service).command(command, options),
@@ -1131,6 +1289,7 @@ export function createSpecterPromiseApp<const TConfig extends SpecterAppConfig>(
       await runtime.dispose()
     },
   }) as SpecterApp<TConfig>
+  return { app, ready: service }
 }
 
 function resolveStore(

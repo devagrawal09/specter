@@ -18,7 +18,8 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
-| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. |
+| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
+| `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
 | `SpecterError` | Base class for structured runtime errors with a `code`. |
@@ -92,6 +93,7 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `SpecterAppConfig` | Pure configuration containing Events and Slices. |
+| `PreparedSpecterApp<TConfig>` | Validated config with derived lookup structures; accepted wherever a config is. |
 | `SpecterAppConfigOf<TApp>` | Infers the configuration carried by a typed app. |
 | `SpecterApp<TConfig>` | Typed `command`, `query`, `subscribe`, and idempotent `close` operations. |
 | `SpecterCommandEnvelope<TConfig>` | Union of all registered Command envelopes. |
@@ -109,16 +111,38 @@ network transport and no application database schema.
 ## Construction and operation order
 
 `createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
-schemas, apply coverage, and selected implementations before exposing the app.
-`dependencies` is an Effect Layer providing `EventLog`, every Store Tag named by
-registered Slices, and every service required by registered Reaction Plugins
+schemas, apply coverage, and selected implementations before it resolves. An
+invalid config rejects it with `SpecterConformanceError`. `dependencies` is an
+Effect Layer providing `EventLog`, every Store Tag named by registered Slices,
+and every service required by registered Reaction Plugins
 (`SpecterRuntimeRequirements<TConfig>`). A missing Plugin service is a compile
-error when the config keeps its literal Slice types.
+error when the config keeps its literal Slice types, including when it is
+passed as a `PreparedSpecterApp`.
 
-When Reactions are registered, construction catches each Reaction cursor up
-through current Event Log version. This recovers commits left unfinished by a
-previous process without unrelated Command. Startup Reaction failure rejects
-construction.
+Validation and the lookup maps derived from it are per config. They are cached
+by the identity of `config.events` and `config.slices`, so opening many apps
+from the same objects validates once, including under concurrent first use. A
+failed validation is reported to every waiting caller and is not cached. Do not
+mutate a config after first use.
+
+To validate once at startup and bind many Event Logs, prepare the config
+explicitly:
+
+```ts
+import { createSpecterApp, prepareSpecterApp } from '@specter-ts/core'
+
+const prepared = await prepareSpecterApp(config)
+const app = await createSpecterApp(prepared, dependenciesFor(sessionId))
+```
+
+Store resolution, Reaction scheduler binding, and Reaction and eager-Slice
+catch-up are per app, and `createSpecterApp` resolves only after they finish.
+When Reactions are registered, startup catches each Reaction cursor up through
+current Event Log version. This recovers commits left unfinished by a previous
+process without unrelated Command. A missing Store Layer, dependency Layer
+failure, Event Log failure, or startup Reaction failure rejects construction
+after the partially built runtime is disposed; it does not evict the validated
+config from the cache.
 
 ```ts
 import { EventLog, createSpecterApp } from '@specter-ts/core'
@@ -178,7 +202,24 @@ Plugin service, Event Log, Scope, and typed failure requirements. Slices keep pl
 async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
 Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
 Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is
-explicit Promise boundary used by `createSpecterApp`.
+synchronous Promise boundary: it does not wait for startup, so any
+construction failure, including a raw config's conformance failure, rejects
+its first and every later operation instead.
+
+`prepareSpecterRuntime(config)` is the Effect form of `prepareSpecterApp`. It
+fails with `SpecterConformanceError` and shares the same per-config cache. Each
+of `createSpecterAppLayer`, `makeSpecterRuntime`, and `createSpecterPromiseApp`
+accepts its `PreparedSpecterApp` in place of a config. With the Layer and
+interpreter, every construction failure, including conformance, fails the
+Layer or Effect.
+
+```ts
+const SessionLive = Layer.unwrap(
+  prepareSpecterRuntime(sessionConfig).pipe(
+    Effect.map((prepared) => createSpecterAppLayer(prepared)),
+  ),
+).pipe(Layer.provide(sessionDependencies))
+```
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent

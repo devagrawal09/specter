@@ -2,8 +2,8 @@
 
 Specter runtime assembles Event Definitions and one completed implementation
 per Slice into typed app. Effect Layer supplies Event Log, Reaction scheduler,
-and every Slice Store at runtime. Construction runs executable conformance
-checks before exposing app.
+and every Slice Store at runtime. Construction runs conformance checks once
+per config before exposing app.
 
 ## Construct the app
 
@@ -29,6 +29,56 @@ The `events` catalog must contain the Event Definitions used by Scenarios and
 apply handlers. `slices` contains completed Command, Query, and Reaction Slice
 implementations, not specifications. Infrastructure lives in supplied Layer,
 not registry.
+
+## Per-config and per-log work
+
+Construction has two halves:
+
+| Half | Work | Runs |
+| --- | --- | --- |
+| Per config | Conformance (names, uniqueness, Scenario examples against schemas, apply coverage, Event coverage) and the lookup maps derived from it | once per `events`/`slices` object pair |
+| Per log | Store resolution from the Layer, Reaction scheduler binding, Reaction catch-up, eager-Slice catch-up | once per app |
+
+The per-config half is cached by the identity of the `events` array and the
+`slices` record. Rebuilding the outer `{ events, slices }` object per app still
+hits the cache; rebuilding either inner object misses it. A content digest is
+not used: conformance checks EventDefinition identity, and Slices carry handler
+functions that no digest covers. Treat a config as immutable once it has been
+used. Concurrent first use shares one in-flight validation. A failed validation
+rejects every waiting caller and is not cached.
+
+Apps that open many logs from one config, such as one app per session, can
+validate explicitly at startup and bind the result many times:
+
+```ts
+const prepared = await prepareSpecterApp({
+  events: sessionEvents,
+  slices: sessionSlices,
+})
+
+// Later, per session. No conformance work runs here.
+const app = await createSpecterApp(prepared, sessionDependencies(sessionId))
+```
+
+The Effect API has the same split: `prepareSpecterRuntime(config)` returns the
+prepared value, which `createSpecterAppLayer` and `makeSpecterRuntime` accept in
+place of a config.
+
+## Where construction errors surface
+
+| Error | `prepareSpecterApp` / `prepareSpecterRuntime` | `createSpecterApp` | `createSpecterAppLayer` / `makeSpecterRuntime` | `createSpecterPromiseApp` |
+| --- | --- | --- | --- | --- |
+| `SpecterConformanceError` (invalid config) | rejects / fails | rejects | fails the Layer or Effect | first and every later operation rejects |
+| `SpecterStoreConfigurationError` (missing or malformed Store Layer) | not checked | rejects | fails the Layer or Effect | first and every later operation rejects |
+| Dependency Layer, `EventLogFailure`, scheduler, startup Reaction, or eager catch-up failure | not checked | rejects | fails the Layer or Effect | first and every later operation rejects |
+
+`createSpecterApp` resolves only after per-log startup has finished, so
+application code that starts its own database work afterwards (an outbox
+worker, for example) never overlaps startup catch-up. When startup fails it
+disposes the partially built runtime before rejecting. `createSpecterPromiseApp`
+returns synchronously; its startup failure is kept and rejects every
+operation, and an app that is never called does not produce an unhandled
+rejection.
 
 ## Command timeline
 
@@ -188,8 +238,9 @@ Schema at an untrusted boundary.
 - Trace export is application-owned and stays outside domain correctness.
 
 Expected contract failures use stable `SpecterError` codes. Unexpected adapter,
-schema, and scheduler failures become `SpecterInfrastructureError`. Construction
-failures use `SpecterConformanceError` with detailed diagnostics.
+schema, and scheduler failures become `SpecterInfrastructureError`. Invalid
+configs fail with `SpecterConformanceError` and detailed diagnostics; see
+[Where construction errors surface](#where-construction-errors-surface).
 
 ## Browser validation
 

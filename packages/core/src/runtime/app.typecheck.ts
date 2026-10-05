@@ -1,5 +1,8 @@
+import type { Layer } from 'effect'
+
 import type {
   CommandSlice,
+  PreparedSpecterApp,
   QuerySlice,
   ReactionSlice,
   SpecterApp,
@@ -9,6 +12,7 @@ import type {
   SpecterQueryEnvelope,
 } from '..'
 import * as core from '..'
+import type { SpecterRuntimeRequirements } from '../effect-entry'
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
@@ -104,4 +108,21 @@ export type SubscriptionResultCheck = Expect<
     >,
     IteratorResult<{ count: number }>
   >
+>
+
+declare const config: Config
+declare const dependencies: Layer.Layer<SpecterRuntimeRequirements<Config>>
+declare const preparedConfig: PreparedSpecterApp<Config>
+const prepared = core.prepareSpecterApp(config)
+const appFromConfig = core.createSpecterApp(config, dependencies)
+const appFromPrepared = core.createSpecterApp(preparedConfig, dependencies)
+
+export type PrepareCheck = Expect<
+  Equal<Awaited<typeof prepared>, PreparedSpecterApp<Config>>
+>
+export type AppFromConfigCheck = Expect<
+  Equal<Awaited<typeof appFromConfig>, SpecterApp<Config>>
+>
+export type AppFromPreparedCheck = Expect<
+  Equal<Awaited<typeof appFromPrepared>, SpecterApp<Config>>
 >
