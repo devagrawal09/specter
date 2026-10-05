@@ -1,7 +1,7 @@
 {
   "extends": "./tsconfig.json",
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "dist"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.fixture.ts", "dist"],
   "compilerOptions": {
     "noEmit": false,
     "emitDeclarationOnly": true,

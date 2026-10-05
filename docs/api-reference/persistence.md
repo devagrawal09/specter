@@ -29,8 +29,17 @@ The JSONL Event Log keeps one Event Log per file, one commit per line, so an
 app can open a separate log per session without a database. Opening reads the
 file once into an in-memory index; appends only add lines and are serialized in
 the process. Opening takes an exclusive `<path>.lock` file that `close()`
-removes, so a second open in the process or in another process fails; a lock
-left by a crashed process is reported with its path, never taken over.
+removes, so a second open in the process or in another live process fails.
+The lock records the opener's pid, hostname, start time (Linux), and a random
+token. A lock whose holder ran on this host and has exited, such as after
+`SIGKILL`, is taken over and reported as `recoveredStaleLock: { pid, hostname }`;
+a live holder, another host, or unreadable content fails the open with the
+reason. Concurrent openers that find the same stale lock serialize the
+takeover through an exclusive claim file, so at most one wins, and `close()`
+removes the lock only while it still holds its own token. A reused pid only
+makes the open refuse (on Linux the start time detects reuse). Locks use local
+process ids, so never share these files across hosts, over NFS, or between
+pid namespaces that report the same hostname.
 Expected versions and idempotency receipts match the SQLite adapters, and
 `query` returns Events with `order > afterOrder`. `fsync` is off by default, so
 a commit survives a process crash but not an operating-system failure; pass
@@ -66,7 +75,8 @@ rebuild a Slice whose cursor is ahead.
 
 The JSONL Reaction outbox Store appends one line per job transition and
 replays the file into an in-memory index on open. It takes the same
-`<path>.lock` writer lock and handles `fsync`, malformed lines, trailing
+`<path>.lock` writer lock, with the same stale-lock takeover and
+`recoveredStaleLock`, and handles `fsync`, malformed lines, trailing
 writes, and failed writes like the Event Log. Two files cannot share a
 transaction, so the enqueue line is written before the Slice Store renames the
 Reaction cursor document; after a crash between the two, the job survives and

@@ -202,16 +202,18 @@ describe('JSONL Event Log', () => {
     createJsonlEventLog({ path }).close()
   })
 
-  it('reports a stale lock file without taking it over', async () => {
+  it('refuses a lock file held by another live process', async () => {
     const path = temporaryLogPath()
     const first = createJsonlEventLog({ path })
     await Effect.runPromise(first.append([{ type: 'todo-added', payload: {} }]))
     first.close()
     const before = readFileSync(path)
-    writeFileSync(`${path}.lock`, '999999\n')
-    expect(() => createJsonlEventLog({ path })).toThrow(`${path}.lock`)
+    writeFileSync(`${path}.lock`, `${process.ppid}\n`)
+    expect(() => createJsonlEventLog({ path })).toThrow(
+      `${path}.lock: held by live process ${process.ppid}`,
+    )
     expect(readFileSync(path)).toEqual(before)
-    expect(readFileSync(`${path}.lock`, 'utf8')).toBe('999999\n')
+    expect(readFileSync(`${path}.lock`, 'utf8')).toBe(`${process.ppid}\n`)
   })
 
   it.each([

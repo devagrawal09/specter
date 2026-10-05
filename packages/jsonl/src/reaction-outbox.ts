@@ -20,7 +20,12 @@ import {
 } from '@specter-ts/reaction-outbox'
 import { Effect } from 'effect'
 
-import { acquireLock, closeQuietly, writeAll } from './file-lock'
+import {
+  acquireLock,
+  closeQuietly,
+  type JsonlStaleLock,
+  writeAll,
+} from './file-lock'
 
 export type JsonlReactionOutboxCodec<TPayload> = {
   /** Returns the JSON-serializable value written to the `enqueued` line. */
@@ -47,6 +52,8 @@ export type JsonlReactionOutboxStore<TPayload = unknown> =
       readonly discardedTrailingBytes: number
       /** Jobs a previous open left running, made claimable again on open. */
       readonly releasedOnOpen: readonly string[]
+      /** Holder of a lock file taken over while opening; it had exited. */
+      readonly recoveredStaleLock: JsonlStaleLock | undefined
       readonly close: () => void
     }
 
@@ -149,8 +156,9 @@ const reopenedError =
  * Opens one append-only JSONL file as a Reaction outbox Store. Each line is
  * one job transition, and opening replays the lines into an in-memory index.
  * Opening takes an exclusive `<path>.lock` file, released by `close()`, so
- * the opener is the file's only writer; attempts an earlier open left running
- * are released for a new attempt at once.
+ * the opener is the file's only writer; a lock left by an exited process on
+ * this host is taken over and reported as `recoveredStaleLock`. Attempts an
+ * earlier open left running are released for a new attempt at once.
  */
 export function createJsonlReactionOutboxStore<TPayload = unknown>(
   options: JsonlReactionOutboxStoreOptions<TPayload>,
@@ -164,7 +172,10 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
   const jobs = new Map<string, Entry>()
   const idsByIdempotencyKey = new Map<string, string>()
   const listeners = new Set<() => void>()
-  const releaseLock = acquireLock(resolve(path), 'JSONL Reaction outbox')
+  const { release: releaseLock, recoveredStaleLock } = acquireLock(
+    resolve(path),
+    'JSONL Reaction outbox',
+  )
   let fd: number | undefined
   let committedBytes = 0
   let discardedTrailingBytes = 0
@@ -461,6 +472,7 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
     path,
     discardedTrailingBytes,
     releasedOnOpen,
+    recoveredStaleLock,
 
     enqueue(input: EnqueueReactionInput<TPayload>) {
       return run((): EnqueueReactionResult<TPayload> => {
