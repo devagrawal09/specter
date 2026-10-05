@@ -1381,6 +1381,41 @@ describe('Effect-native runtime', () => {
     ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
   })
 
+  it('returns a duplicate when a same-key commit lands between the key lookup and the version check', async () => {
+    const base = makeEventLogService()
+    let raced = false
+    // The first lookup misses, then the winning writer commits the same key.
+    const racing: EventLogService = {
+      ...base,
+      findCommit: (key) =>
+        Effect.flatMap(base.findCommit(key), (found) =>
+          found || raced
+            ? Effect.succeed(found)
+            : Effect.sync(() => {
+                raced = true
+              }).pipe(
+                Effect.andThen(
+                  base.append([{ type: 'value-recorded', payload: 7 }], {
+                    idempotencyKey: key,
+                    fingerprint: 'v2:concurrent-winner',
+                  }),
+                ),
+                Effect.as(undefined),
+              ),
+        ),
+    }
+    const { runCommand, handled } = idempotencyHarness(racing)
+
+    const duplicate = await runCommand(1, {
+      expectedVersion: 0,
+      idempotencyKey: 'request-1',
+    })
+    expect(duplicate).toMatchObject({ duplicate: true, version: 1 })
+    expect(duplicate.events[0]?.payload).toBe(7)
+    expect(handled).toEqual([1])
+    await expect(Effect.runPromise(base.currentVersion)).resolves.toBe(1)
+  })
+
   it('returns a duplicate receipt before checking expectedVersion', async () => {
     const { runCommand } = idempotencyHarness()
     const first = await runCommand(1, {

@@ -627,6 +627,11 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       options: CommandExecutionOptions & { readonly fingerprint?: string },
     ): Effect.Effect<EventLogAppendResult, SpecterEffectError> {
       return Effect.gen(function* () {
+        // Read the version before the key lookup. A same-key commit that lands
+        // after this read is either found by findCommit or returned by the
+        // adapter's key check in append, so a duplicate never surfaces as a
+        // version conflict.
+        const version = yield* eventLog.currentVersion
         if (options.idempotencyKey) {
           const previous = yield* eventLog.findCommit(options.idempotencyKey)
           if (previous) {
@@ -637,7 +642,6 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           }
         }
 
-        const version = yield* eventLog.currentVersion
         if (
           options.expectedVersion !== undefined &&
           options.expectedVersion !== version

@@ -89,6 +89,7 @@ await execution.reactions
 - Reaction effects are arbitrary plugin-defined values. Dispatching another Command is one explicit plugin pattern.
 - Reaction Plugins receive a stable `context.deliveryId` and ISO `context.scheduledAt` across retries. Use them as downstream idempotency keys and retry-stable initiating timestamps; `context.attemptId` changes for each attempt.
 - A Plugin factory receives `{ command, query }`. Same-app dispatch uses `command(envelope, { idempotencyKey: context.deliveryId })` and resolves to `{ events, version, duplicate }`. Multiple follow-up Commands from one effect append a deterministic suffix per Command.
+- A repeated idempotency key returns the first commit with `duplicate: true` regardless of payload, so a retried effect that produces different output still keeps the first outcome; the receipt's `events` and `version` are that first commit's. Pass `idempotencyMode: 'exact'` only when a changed payload under the same key must fail with `SpecterIdempotencyConflictError`.
 - `query(querySlice, input)` runs a registered Query in the same app; it fails permanently (`SPECTER_PLUGIN_QUERY_IN_TRANSACTION`) inside a direct Plugin's Reaction transaction, so wrap querying Plugins with `withReactionOutbox`. In a direct Plugin, a `command` receipt is not final until the Reaction commits. Annotate Plugins as `ReactionPlugin<Output, Services>` when the factory reads Effect services.
 
 ## Determinism And Transport

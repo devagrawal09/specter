@@ -1,11 +1,8 @@
 import { SpecterVersionConflictError } from '@specter-ts/core'
-import { testEventLogService } from '@specter-ts/core/testing'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { createMemoryEventLog } from './event-log'
-
-testEventLogService('memory', () => createMemoryEventLog())
 
 describe('memory Event Log', () => {
   it('assigns deterministic metadata and returns ordered queries', async () => {

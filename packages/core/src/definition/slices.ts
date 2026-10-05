@@ -168,8 +168,9 @@ export type CommandRef<TRegistration> =
 
 /**
  * How a repeated idempotencyKey is matched. `first-wins` (default) returns the
- * first committed outcome for the key regardless of payload. `exact` also
- * requires the canonical payload fingerprint to match and otherwise fails with
+ * first committed outcome for the key regardless of payload or Command type.
+ * `exact` also requires the canonical fingerprint of the Command type and
+ * decoded payload to match and otherwise fails with
  * SpecterIdempotencyConflictError.
  */
 export type CommandIdempotencyMode = 'first-wins' | 'exact'

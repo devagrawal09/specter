@@ -2,9 +2,13 @@ import { createClient } from '@libsql/client/sqlite3'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { testEventLogService } from '@specter-ts/core/testing'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { prepareSpecterSqlite } from './specter-sqlite'
+import {
+  createSpecterCodeEventLogService,
+  prepareSpecterSqlite,
+} from './specter-sqlite'
 
 const readModelTables = [
   'specter_code_sessions',
@@ -26,6 +30,12 @@ beforeEach(async () => {
 
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true })
+})
+
+testEventLogService('specter-code SQLite', async () => {
+  const db = createClient({ url: `file:${join(tempDir, 'conformance.db')}` })
+  await prepareSpecterSqlite(db)
+  return createSpecterCodeEventLogService(db)
 })
 
 describe('prepareSpecterSqlite', () => {

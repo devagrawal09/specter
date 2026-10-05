@@ -19,6 +19,13 @@ unknown mode, fails with `SPECTER_INVALID_COMMAND_OPTIONS`. Go fingerprints the
 Command name and canonical raw JSON payload as unprefixed SHA-256 hex, so its
 fingerprints are not interchangeable with the TypeScript `v2:` fingerprints.
 
+Two ordering differences from the TypeScript runtime remain. Go validates
+`DispatchOptions` after the unknown-Command check, whereas TypeScript validates
+options first. Go fingerprints and looks up the key from the raw JSON payload
+without decoding it into the Command's input type, so well-formed JSON that would fail
+decoding still returns the duplicate when its key is known; TypeScript decodes
+input first and reports `SPECTER_INVALID_INPUT` instead.
+
 Commands, Queries, subscriptions, and Reaction tickets are runtime concepts,
 not language-neutral remote APIs. Go applications expose them through their own
 typed transports when remote access is needed.
