@@ -18,9 +18,10 @@ type ReactionExec<TOutput> = (
 ```
 
 Core initializes and caches executor during app construction. For each Event Log
-commit, Reaction Store transaction applies Events, runs handler, validates
-output, executes Plugin, then advances cursor. Failure rolls back State and
-cursor.
+commit containing an Event type the Reaction applies, Reaction Store transaction
+applies Events, runs handler, validates output, executes Plugin, then advances
+cursor. Failure rolls back State and cursor. Other commits run no handler or
+Plugin and open no transaction.
 
 ## Default Command Plugin
 
@@ -42,7 +43,7 @@ joins nested command work to active Reaction transaction.
 | Field | Meaning |
 | --- | --- |
 | `deliveryId` | Stable `reactionName:commitVersion`; use for idempotency. |
-| `throughOrder` | Event Log commit version being processed. |
+| `throughOrder` | Relevant Event Log commit version being processed. |
 | `scheduledAt` | Durable Event Log commit timestamp. |
 
 Core has no attempt IDs. Attempt metadata belongs to optional outbox worker.

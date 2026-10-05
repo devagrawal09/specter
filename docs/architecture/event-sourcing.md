@@ -94,6 +94,8 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 - Keep payloads JSON-compatible when Events use the bundled persistent
   adapters or cross a JSON transport.
 - Reaction commit retry is at least once; use stable delivery ID downstream.
+  Only commits with an Event type the Reaction applies are delivered; a
+  Reaction cursor may lag behind skipped irrelevant commits.
   Use outbox wrapper for slow work, leases, dead-letter, and replay.
 
 ## Related documentation

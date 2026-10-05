@@ -77,11 +77,35 @@ activation, every `next()`, cancellation, and cleanup.
 
 ## Reactions
 
-For each Reaction Slice, core reads Event Log commits after its cursor. It runs
-projection, handler, and plugin once per commit inside the Slice Store
-transaction, then advances the cursor. Failure rolls back state and cursor, so
-restart retries the same commit with the same `deliveryId`, derived from
-Reaction name and commit version.
+For each Reaction Slice, core reads Event Log commits after its cursor. A
+commit is relevant when it contains an Event type the Reaction applies; `handle`
+only sees State built by those apply handlers, so no other commit can change
+its output. For each relevant commit, core runs projection, handler, and plugin
+inside the Slice Store transaction, then advances the cursor to that commit
+version. Failure rolls back state and cursor, so restart retries the same
+commit with the same `deliveryId`, derived from Reaction name and commit
+version.
+
+Irrelevant commits open no Slice Store transaction. The next relevant commit's
+cursor covers them, and core remembers the skipped range in process so later
+runs do not re-read it. Whenever a skipped run reaches 256 Event Log orders,
+including inside a long startup catch-up, one transaction publishes the cursor
+to the last skipped commit. Graceful shutdown publishes any shorter remembered
+tail, so a clean restart starts at the head. These publishes never move a
+cursor backwards and publish nothing if the cursor is older than the skipped
+range.
+
+After a crash, a Reaction re-reads the unpublished skipped tail: under 256
+Event Log orders of irrelevant commits, plus at most the commit that crossed
+that limit. Re-reading runs no handler, plugin, or transaction, so it has no
+side effects. A Reaction without apply handlers never runs `handle`, so every
+commit is irrelevant to it and its cursor moves only through these publishes.
+
+When a deploy adds an apply handler to an existing Reaction, commits before its
+cursor stay unapplied, as before. If the previous process crashed, commits of
+the newly applied type inside that unpublished tail become relevant and are
+delivered once with their usual `deliveryId`. Keep those deliveries idempotent,
+or shut the old process down cleanly first.
 
 The scheduler coordinates wakeups; it does not own Reaction correctness.
 Single-process apps use the default in-memory scheduler. Stateless or
@@ -118,7 +142,9 @@ Slice catch-up. Applications choose and configure Effect's OpenTelemetry layer,
 exporter, endpoint, and backend; core does not send telemetry by itself.
 
 Span names are `specter.command <name>`, `specter.query <name>`,
-`specter.reaction <name>`, and `specter.slice.catch-up <name>`. Attributes carry
+`specter.reaction <name>` (one per relevant commit),
+`specter.reaction.cursor <name>` (a skipped-tail cursor publish), and
+`specter.slice.catch-up <name>`. Attributes carry
 the Slice name, kind, specification digest, outcome, Event types and orders,
 Event Log versions, cursor ranges, and safe error codes. Command, Event, Query,
 Reaction, and Scenario payload values are never added. Successful operations
