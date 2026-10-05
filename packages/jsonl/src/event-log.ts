@@ -35,6 +35,20 @@ export type JsonlEventLogOptions = {
   readonly fsync?: boolean
   readonly eventId?: () => string
   readonly now?: () => Date
+  /**
+   * Called once after a successful open with what the open recovered, so a
+   * Layer user can observe it too. If it throws, the log is closed and the
+   * open fails with that error.
+   */
+  readonly onOpen?: (info: JsonlEventLogOpenInfo) => void
+}
+
+/** What opening a JSONL Event Log recovered. */
+export type JsonlEventLogOpenInfo = {
+  /** Holder of a lock file taken over while opening; it had exited. */
+  readonly recoveredStaleLock: JsonlStaleLock | undefined
+  /** Bytes of an interrupted trailing write removed while opening. */
+  readonly discardedTrailingBytes: number
 }
 
 export type JsonlEventLog = EventLogService & {
@@ -51,7 +65,7 @@ export type JsonlEventLog = EventLogService & {
  * commit, so a line boundary is the atomic commit boundary. Opening takes an
  * exclusive `<path>.lock` file, released by `close()`, so the opener is the
  * file's only writer; a lock left by an exited process on this host is taken
- * over and reported as `recoveredStaleLock`.
+ * over and reported as `recoveredStaleLock`, on the log and to `onOpen`.
  */
 export function createJsonlEventLog(
   options: JsonlEventLogOptions,
@@ -162,7 +176,7 @@ export function createJsonlEventLog(
     return { ...copyCommit(commit), duplicate: false }
   }
 
-  return {
+  const eventLog: JsonlEventLog = {
     path: options.path,
     discardedTrailingBytes,
     recoveredStaleLock,
@@ -207,12 +221,22 @@ export function createJsonlEventLog(
       }
     },
   }
+  if (options.onOpen) {
+    try {
+      options.onOpen({ recoveredStaleLock, discardedTrailingBytes })
+    } catch (cause) {
+      eventLog.close()
+      throw cause
+    }
+  }
+  return eventLog
 }
 
 /**
  * Scoped Layer: opens the file on acquire and closes it on release. An open
  * failure is a defect, like the other file-backed adapter Layers, so the Layer
- * fits `createSpecterApp`.
+ * fits `createSpecterApp`. The Layer provides only `EventLog`; pass `onOpen`
+ * to observe `recoveredStaleLock` and `discardedTrailingBytes`.
  */
 export function createJsonlEventLogLayer(
   options: JsonlEventLogOptions,

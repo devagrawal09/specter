@@ -40,6 +40,21 @@ export type JsonlReactionOutboxStoreOptions<TPayload = unknown> = {
   readonly codec?: JsonlReactionOutboxCodec<TPayload>
   /** Clock used to release attempts a previous open left running. */
   readonly now?: () => Date
+  /**
+   * Called once after a successful open with what the open recovered. If it
+   * throws, the Store is closed and the open fails with that error.
+   */
+  readonly onOpen?: (info: JsonlReactionOutboxOpenInfo) => void
+}
+
+/** What opening a JSONL Reaction outbox Store recovered. */
+export type JsonlReactionOutboxOpenInfo = {
+  /** Holder of a lock file taken over while opening; it had exited. */
+  readonly recoveredStaleLock: JsonlStaleLock | undefined
+  /** Bytes of an interrupted trailing write removed while opening. */
+  readonly discardedTrailingBytes: number
+  /** Jobs a previous open left running, made claimable again on open. */
+  readonly releasedOnOpen: readonly string[]
 }
 
 export type JsonlReactionOutboxStore<TPayload = unknown> =
@@ -158,7 +173,8 @@ const reopenedError =
  * Opening takes an exclusive `<path>.lock` file, released by `close()`, so
  * the opener is the file's only writer; a lock left by an exited process on
  * this host is taken over and reported as `recoveredStaleLock`. Attempts an
- * earlier open left running are released for a new attempt at once.
+ * earlier open left running are released for a new attempt at once and listed
+ * in `releasedOnOpen`. Both are also passed to `onOpen`.
  */
 export function createJsonlReactionOutboxStore<TPayload = unknown>(
   options: JsonlReactionOutboxStoreOptions<TPayload>,
@@ -468,7 +484,7 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
     throw cause
   }
 
-  return {
+  const store: JsonlReactionOutboxStore<TPayload> = {
     path,
     discardedTrailingBytes,
     releasedOnOpen,
@@ -683,6 +699,19 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
       }
     },
   }
+  if (options.onOpen) {
+    try {
+      options.onOpen({
+        recoveredStaleLock,
+        discardedTrailingBytes,
+        releasedOnOpen,
+      })
+    } catch (cause) {
+      store.close()
+      throw cause
+    }
+  }
+  return store
 }
 
 const recordPrefix = '{"type":"'

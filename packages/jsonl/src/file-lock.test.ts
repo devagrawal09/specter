@@ -2,6 +2,8 @@ import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import {
+  appendFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
@@ -18,11 +20,19 @@ import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import { Worker } from 'node:worker_threads'
 
+import { EventLog } from '@specter-ts/core'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createJsonlEventLog } from './event-log'
-import { createJsonlReactionOutboxStore } from './reaction-outbox'
+import {
+  createJsonlEventLog,
+  createJsonlEventLogLayer,
+  type JsonlEventLogOpenInfo,
+} from './event-log'
+import {
+  createJsonlReactionOutboxStore,
+  type JsonlReactionOutboxOpenInfo,
+} from './reaction-outbox'
 
 const packageDirectory = fileURLToPath(new URL('..', import.meta.url))
 const fixture = fileURLToPath(
@@ -441,6 +451,98 @@ describe('JSONL lock takeover', () => {
     eventLog.close()
 
     expect(readFileSync(`${path}.lock`, 'utf8')).toBe(newHolder)
+  })
+})
+
+describe('JSONL onOpen', () => {
+  it('reports a takeover through the Event Log Layer', async () => {
+    const path = join(temporaryDirectory(), 'events.jsonl')
+    const opens: JsonlEventLogOpenInfo[] = []
+    const layer = createJsonlEventLogLayer({
+      path,
+      onOpen: (info) => opens.push(info),
+    })
+    const appendOne = Effect.gen(function* () {
+      const eventLog = yield* EventLog
+      yield* eventLog.append([{ type: 'todo-added', payload: {} }])
+    }).pipe(Effect.provide(layer))
+
+    await Effect.runPromise(appendOne)
+    expect(opens).toEqual([
+      { recoveredStaleLock: undefined, discardedTrailingBytes: 0 },
+    ])
+
+    const exited = exitedHolder()
+    writeFileSync(`${path}.lock`, lockRecord(exited))
+    const partial = '{"version":2,"committedAt":"2026-'
+    appendFileSync(path, partial)
+    await Effect.runPromise(appendOne)
+
+    expect(opens).toEqual([
+      { recoveredStaleLock: undefined, discardedTrailingBytes: 0 },
+      {
+        recoveredStaleLock: { pid: exited.pid, hostname: hostname() },
+        discardedTrailingBytes: partial.length,
+      },
+    ])
+    expect(readdirSync(dirname(path))).toEqual(['events.jsonl'])
+  })
+
+  it('passes the outbox recovery, including released attempts', async () => {
+    const path = join(temporaryDirectory(), 'outbox.jsonl')
+    const first = createJsonlReactionOutboxStore({ path })
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        yield* first.enqueue({
+          id: 'job-1',
+          idempotencyKey: 'job-1',
+          payload: {},
+          requestedAt: new Date(0),
+          availableAt: new Date(0),
+        })
+        yield* first.claimNext(new Date(0), new Date(60 * 60 * 1_000))
+      }),
+    )
+    first.close()
+    const exited = exitedHolder()
+    writeFileSync(`${path}.lock`, lockRecord(exited))
+    const opens: JsonlReactionOutboxOpenInfo[] = []
+
+    const reopened = createJsonlReactionOutboxStore({
+      path,
+      onOpen: (info) => opens.push(info),
+    })
+    closers.push(reopened.close)
+
+    expect(opens).toEqual([
+      {
+        recoveredStaleLock: { pid: exited.pid, hostname: hostname() },
+        discardedTrailingBytes: 0,
+        releasedOnOpen: ['job-1'],
+      },
+    ])
+  })
+
+  it('closes the file and fails the open when onOpen throws', () => {
+    const directory = temporaryDirectory()
+    const failure = new Error('observer failed')
+    const fail = () => {
+      throw failure
+    }
+    const eventLogPath = join(directory, 'events.jsonl')
+    const outboxPath = join(directory, 'outbox.jsonl')
+
+    expect(() =>
+      createJsonlEventLog({ path: eventLogPath, onOpen: fail }),
+    ).toThrow(failure)
+    expect(() =>
+      createJsonlReactionOutboxStore({ path: outboxPath, onOpen: fail }),
+    ).toThrow(failure)
+
+    expect(existsSync(`${eventLogPath}.lock`)).toBe(false)
+    expect(existsSync(`${outboxPath}.lock`)).toBe(false)
+    openEventLog(eventLogPath)
+    openOutbox(outboxPath)
   })
 })
 
