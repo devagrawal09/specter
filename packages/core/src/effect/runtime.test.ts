@@ -1186,11 +1186,11 @@ describe('Effect-native runtime', () => {
     await expect(later.reactions).rejects.toMatchObject({ permanent: true })
     await app.close()
 
-    const restarted = await createSpecterApp(config, dependencies)
-    await expect(
-      restarted.query({ type: 'values', payload: {} }),
-    ).rejects.toMatchObject({ permanent: true })
-    await restarted.close()
+    // Startup catch-up hits the same permanent failure; createSpecterApp
+    // awaits startup, so the restart itself rejects.
+    await expect(createSpecterApp(config, dependencies)).rejects.toMatchObject({
+      permanent: true,
+    })
   })
 
   it('rejects a Plugin Query Slice that is not the registered instance', async () => {

@@ -5,6 +5,8 @@ import {
   EventLog,
   implementCommand,
   implementReaction,
+  type PreparedSpecterApp,
+  prepareSpecterApp,
   type ReactionPlugin,
   type SliceStoreService,
 } from '..'
@@ -13,7 +15,7 @@ import {
   createReactionSlice,
   event,
 } from '@specter-ts/spec'
-import { createSpecterAppLayer } from './runtime'
+import { createSpecterAppLayer, prepareSpecterRuntime } from './runtime'
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
@@ -145,4 +147,49 @@ const erasedNotifyValue = implementReaction(
 void createSpecterApp(
   { events: [], slices: { command, notifyValue: erasedNotifyValue } } as const,
   storeAndEventLog,
+)
+
+const preparedLayer = Layer.unwrap(
+  prepareSpecterRuntime({ events: [], slices: { command } } as const).pipe(
+    Effect.map((prepared) => createSpecterAppLayer(prepared)),
+  ),
+)
+
+export type PreparedRuntimeRequirements = Expect<
+  Equal<Layer.Services<typeof preparedLayer>, RuntimeTypeStore | EventLog>
+>
+
+// Preparing a config must keep its Plugin requirements.
+const preparedPluginConfig = prepareSpecterApp(pluginConfig)
+
+export type PreparedPluginConfig = Expect<
+  Equal<
+    Awaited<typeof preparedPluginConfig>,
+    PreparedSpecterApp<typeof pluginConfig>
+  >
+>
+
+const preparedPluginLayer = Layer.unwrap(
+  prepareSpecterRuntime(pluginConfig).pipe(
+    Effect.map((prepared) => createSpecterAppLayer(prepared)),
+  ),
+)
+
+export type PreparedPluginRuntimeRequirements = Expect<
+  Equal<
+    Layer.Services<typeof preparedPluginLayer>,
+    RuntimeTypeStore | ValueNotifier | EventLog
+  >
+>
+
+declare const preparedPlugin: PreparedSpecterApp<typeof pluginConfig>
+
+// @ts-expect-error A prepared config still needs every Plugin service.
+void createSpecterApp(preparedPlugin, storeAndEventLog)
+void createSpecterApp(
+  preparedPlugin,
+  Layer.mergeAll(
+    storeAndEventLog,
+    Layer.succeed(ValueNotifier, notifierService),
+  ),
 )

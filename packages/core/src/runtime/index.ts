@@ -1,7 +1,8 @@
-export { createSpecterApp } from './app'
+export { createSpecterApp, prepareSpecterApp } from './app'
 export type {
   CommandExecution,
   CommandExecutionOptions,
+  PreparedSpecterApp,
   QuerySubscriptionOptions,
   SpecterApp,
   SpecterAppConfig,

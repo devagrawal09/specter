@@ -104,7 +104,8 @@ Reaction transaction with `SpecterPluginQueryInTransactionError`
 permanent failure: `ReactionRunFailure.permanent` is `true`, State and cursor
 roll back, and the cursor stays on that commit until the Plugin changes.
 `execution.reactions` for that and every later commit rejects, and app startup
-(the first operation of a Promise app) fails while the commit is pending. The
+(`createSpecterApp` itself, or the first operation of a
+`createSpecterPromiseApp` app) fails while the commit is pending. The
 SQLite scheduler stops retrying the boundary, records the error, and fails its
 waiters with `ReactionSchedulerFailure` instead of polling; rescheduling the
 boundary (for example on restart after a fix) runs it again.

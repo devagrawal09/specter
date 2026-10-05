@@ -75,7 +75,8 @@ async function open(directory = nextSessionDirectory()) {
     dependencies(directory),
   )
   const created = performance.now()
-  // createSpecterApp builds its Layer lazily; the first call waits for it.
+  // createSpecterApp resolves after validation and startup (Store resolution,
+  // Reaction and eager catch-up), so `create` and `ready` both include it.
   await app.query({ type: 'sessionSummary', payload: {} })
   const ready = performance.now()
   return { app, create: created - start, ready: ready - start }

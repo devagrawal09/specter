@@ -39,6 +39,7 @@ export type {
 } from './definition'
 export {
   createSpecterApp,
+  prepareSpecterApp,
   ReactionRunFailure,
   specterErrorCodes,
   SpecterCommandRejectedError,
@@ -61,6 +62,7 @@ export {
 export type {
   CommandExecution,
   CommandExecutionOptions,
+  PreparedSpecterApp,
   QuerySubscriptionOptions,
   ReactionRunFailureDetail,
   SpecterApp,

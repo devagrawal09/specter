@@ -1,4 +1,4 @@
-import type { Layer } from 'effect'
+import { Effect, type Layer } from 'effect'
 
 import type {
   ApplyEventDefinition,
@@ -9,13 +9,29 @@ import type {
   SliceRegistration,
 } from '../definition'
 import {
-  createSpecterPromiseApp,
+  startSpecterPromiseApp,
+  prepareSpecterRuntime,
   type SpecterRuntimeRequirements,
 } from '../effect/runtime'
 
 export type SpecterAppConfig = {
   readonly events: readonly ApplyEventDefinition[]
   readonly slices: Readonly<Record<string, SliceRegistration>>
+}
+
+declare const preparedSpecterApp: unique symbol
+
+/**
+ * A config that already passed conformance, with its lookup structures built.
+ * Accepted wherever a config is; bind it to any number of Event Logs. Only
+ * `prepareSpecterApp` / `prepareSpecterRuntime` create one.
+ */
+export type PreparedSpecterApp<
+  TConfig extends SpecterAppConfig = SpecterAppConfig,
+> = {
+  readonly _tag: 'PreparedSpecterApp'
+  readonly config: TConfig
+  readonly [preparedSpecterApp]: true
 }
 
 type SliceKeyOfKind<
@@ -142,10 +158,38 @@ export type SpecterApp<TConfig extends SpecterAppConfig> = {
 export type SpecterAppConfigOf<TApp> =
   TApp extends SpecterApp<infer TConfig> ? TConfig : never
 
-/** Promise transport edge. Runtime semantics remain in Effect interpreter. */
-export function createSpecterApp<const TConfig extends SpecterAppConfig>(
-  config: TConfig,
+/**
+ * Runs conformance once for a config and builds its lookup structures. The
+ * result is cached by the identity of `config.events` and `config.slices`, so
+ * calling this (or `createSpecterApp`) again with the same objects is free.
+ * Rejects with `SpecterConformanceError` for an invalid config.
+ */
+export function prepareSpecterApp<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
+): Promise<PreparedSpecterApp<TConfig>> {
+  return Effect.runPromise(prepareSpecterRuntime(config))
+}
+
+/**
+ * Promise transport edge. Runtime semantics remain in Effect interpreter.
+ *
+ * Validates the config (cached per config), then binds it to `dependencies`:
+ * Store resolution, scheduler binding, and Reaction and eager-Slice catch-up.
+ * Resolves once the app is ready; any construction failure rejects this
+ * Promise and releases the partially built runtime.
+ */
+export async function createSpecterApp<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
   dependencies: Layer.Layer<SpecterRuntimeRequirements<TConfig>>,
 ): Promise<SpecterApp<TConfig>> {
-  return Promise.resolve(createSpecterPromiseApp(config, dependencies))
+  const prepared = await prepareSpecterApp(config)
+  const { app, ready } = startSpecterPromiseApp(prepared, dependencies)
+  try {
+    await ready
+  } catch (cause) {
+    // A failing cleanup must not replace the startup failure.
+    await app.close().catch(() => undefined)
+    throw cause
+  }
+  return app
 }
