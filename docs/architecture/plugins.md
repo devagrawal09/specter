@@ -28,6 +28,10 @@ type ReactionExec<TOutput> = (
 ) => Effect<void, unknown>
 ```
 
+On a duplicate receipt, `events` and `version` are the first commit for that
+idempotency key. Under the default `first-wins` mode they may come from a
+different payload than the one this call dispatched.
+
 Core initializes and caches executor during app construction, inside the app
 scope. For each Event Log commit containing an Event type the Reaction applies,
 Reaction Store transaction applies Events, runs handler, validates output,

@@ -186,7 +186,11 @@ export type CommandDispatchOptions = {
 export type CommandReceipt = {
   readonly events: readonly PersistedEvent[]
   readonly version: number
-  /** True when the idempotency key matched an earlier commit. */
+  /**
+   * True when the idempotency key matched an earlier commit. `events` and
+   * `version` are then that first commit's, which under `first-wins` may come
+   * from a different payload than this call's.
+   */
   readonly duplicate: boolean
 }
 
