@@ -9,7 +9,7 @@ import {
   threadAnalyzedEvent,
   threadAnalysisRequestedEvent,
 } from '../events'
-import { type AiAnalyzer, analyzeThreadPlugin } from './plugin.server'
+import { analyzeThreadPlugin } from './plugin.server'
 import specification from './spec.json' with { type: 'json' }
 
 export type AnalyzeThreadEffect = {
@@ -46,8 +46,8 @@ export const analysisReactionThreads = sqliteTable(
   },
 )
 
-export function createAnalyzeThreadReaction(
-  plugin: ReactionPlugin<AnalyzeThreadOutput, AiAnalyzer> = analyzeThreadPlugin,
+export function createAnalyzeThreadReaction<R>(
+  plugin: ReactionPlugin<AnalyzeThreadOutput, R>,
 ) {
   return implementReaction(specification)
     .outputSchema(
@@ -132,4 +132,5 @@ export function createAnalyzeThreadReaction(
     })
 }
 
-export const analyzeThreadReaction = createAnalyzeThreadReaction()
+export const analyzeThreadReaction =
+  createAnalyzeThreadReaction(analyzeThreadPlugin)

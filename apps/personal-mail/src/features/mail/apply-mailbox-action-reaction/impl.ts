@@ -11,7 +11,7 @@ import {
   mailboxActionRequestedEvent,
   mailboxActionSchema,
 } from '../events'
-import { applyMailboxActionPlugin, type GmailActions } from './plugin.server'
+import { applyMailboxActionPlugin } from './plugin.server'
 import specification from './spec.json' with { type: 'json' }
 
 export type ApplyMailboxActionEffect = {
@@ -39,11 +39,8 @@ export const mailboxActionReactionStates = sqliteTable(
   },
 )
 
-export function createApplyMailboxActionReaction(
-  plugin: ReactionPlugin<
-    ApplyMailboxActionOutput,
-    GmailActions
-  > = applyMailboxActionPlugin,
+export function createApplyMailboxActionReaction<R>(
+  plugin: ReactionPlugin<ApplyMailboxActionOutput, R>,
 ) {
   return implementReaction(specification)
     .outputSchema(
@@ -106,7 +103,9 @@ export function createApplyMailboxActionReaction(
     })
 }
 
-export const applyMailboxActionReaction = createApplyMailboxActionReaction()
+export const applyMailboxActionReaction = createApplyMailboxActionReaction(
+  applyMailboxActionPlugin,
+)
 
 function updateStatus(
   db: import('../../../db/specter-sqlite').SqliteDb,

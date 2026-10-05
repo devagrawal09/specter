@@ -63,6 +63,7 @@ import {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   specterErrorCodes,
   SpecterStoreConfigurationError,
@@ -934,11 +935,23 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         )
       const query: QueryDispatch = (slice, input) =>
         Effect.gen(function* () {
-          if (yield* DirectReactionExecution) {
+          const registered = queries.get(slice.name)
+          if (!registered) {
+            return yield* Effect.fail(new SpecterUnknownQueryError(slice.name))
+          }
+          if (registered !== slice) {
             return yield* Effect.fail(
               new SpecterInfrastructureError(
-                `Reaction "${reaction.name}" Plugin queried "${slice.name}" inside its Slice Store transaction. Wrap the Plugin with withReactionOutbox to run Queries.`,
+                `Reaction "${reaction.name}" Plugin queried "${slice.name}" with a Query Slice that is not the one registered in this app. Pass the registered Query Slice value.`,
                 undefined,
+              ),
+            )
+          }
+          if (yield* DirectReactionExecution) {
+            return yield* Effect.fail(
+              new SpecterPluginQueryInTransactionError(
+                reaction.name,
+                slice.name,
               ),
             )
           }
@@ -1212,6 +1225,8 @@ const safeSpecterErrorMessages: Readonly<Record<string, string>> = {
   [specterErrorCodes.invalidCommandOptions]: 'Command options are invalid.',
   [specterErrorCodes.invalidInput]: 'Operation input is invalid.',
   [specterErrorCodes.invalidOutput]: 'Operation output is invalid.',
+  [specterErrorCodes.pluginQueryInTransaction]:
+    'Reaction Plugin queried inside its Slice transaction.',
   [specterErrorCodes.projectionFailed]: 'Slice projection failed.',
   [specterErrorCodes.reactionFailure]: 'One or more Reactions failed.',
   [specterErrorCodes.storeConfiguration]: 'Slice Store is not configured.',

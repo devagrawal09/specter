@@ -57,11 +57,18 @@ const agentTurnPlugin: ReactionPlugin<AgentTurn, AgentModel> = ({
 ```
 
 `command` returns the commit receipt. It does not wait for nested Reactions;
-joining them from inside a Reaction transaction could wait on itself.
+joining them from inside a Reaction transaction could wait on itself. Both
+capabilities fail with `SpecterEffectError`.
 
-`query` takes the Query Slice value for its name and types and runs the
-registered Query in the same app. Result reflects Event Log head when called,
-not the Reaction's commit.
+Inside a direct Plugin, the nested append joins the Reaction's transaction on
+shared SQLite/Postgres contexts, so the receipt is not final until the Reaction
+commits; a later failure rolls the append back with the cursor. Do not trigger
+external side effects on `!receipt.duplicate` from a direct Plugin. Outboxed
+Plugins receive receipts for already committed appends.
+
+`query` takes the registered Query Slice value for its name and types and runs
+that Query in the same app; a different Slice value with the same name fails.
+Result reflects Event Log head when called, not the Reaction's commit.
 
 ## Service requirements
 
@@ -73,7 +80,8 @@ includes every registered Plugin's `R`; `createSpecterApp(config, layer)` and
 service. `Scope` is always available and never an app requirement.
 
 Plugin `R` is tracked through literal Slice types. A config widened to
-`SpecterAppConfig`, or a Plugin cast to `any`, loses it. `ReactionExec` takes no
+`SpecterAppConfig`, or a Plugin typed with `R = unknown` or cast to `any`, loses
+it; an erased requirement counts as `never` instead of rejecting every Layer. `ReactionExec` takes no
 services; capture them in the factory.
 
 ## Queries and transactions
@@ -90,13 +98,32 @@ catches up its own Slice in a separate Store transaction:
   Reactions deadlock and abort. Separate contexts take a second pool
   connection and can exhaust the pool.
 
-Core therefore rejects `query` with `SpecterInfrastructureError` while a direct
-Plugin executes inside its Reaction transaction; the Reaction rolls back and
-retries. Fibers forked from the executor inherit this guard. Run Queries from a
-Plugin wrapped with `withReactionOutbox`: its worker executes outside any Slice
-transaction. The factory itself may query during startup. `command` stays
-available to direct Plugins and joins the active transaction on shared
-SQLite/Postgres contexts.
+Core therefore rejects `query` while a direct Plugin executes inside its
+Reaction transaction with `SpecterPluginQueryInTransactionError`
+(`SPECTER_PLUGIN_QUERY_IN_TRANSACTION`). Retrying cannot help, so it is a
+permanent failure: `ReactionRunFailure.permanent` is `true`, State and cursor
+roll back, and the cursor stays on that commit until the Plugin changes.
+`execution.reactions` for that and every later commit rejects, and app startup
+(the first operation of a Promise app) fails while the commit is pending. The
+SQLite scheduler stops retrying the boundary, records the error, and fails its
+waiters with `ReactionSchedulerFailure` instead of polling; rescheduling the
+boundary (for example on restart after a fix) runs it again.
+
+Fibers forked from the executor inherit this guard. Escaping with
+`Effect.runPromise` or `Effect.runFork` inside a direct Plugin bypasses it, and
+on SQLite a Query run that way waits for the database permit the Reaction
+transaction already holds, deadlocking in-process. Run Queries from a Plugin
+wrapped with `withReactionOutbox`: its worker executes outside any Slice
+transaction. The factory itself may query during startup.
+
+`command` stays available to direct Plugins and joins the active transaction on
+shared SQLite/Postgres contexts. It carries the same Postgres hazard as
+`query` (a nested Command holds its Slice lock and the Event Log append lock
+until the Reaction commits), but same-app Command dispatch is the default
+Plugin's whole job and an atomic append-with-cursor is valuable. Lock-order
+deadlocks across direct Plugins dispatching Commands remain a known risk;
+Postgres detects and aborts them and the Reaction retries. Prefer the outbox
+for Plugins that dispatch several Commands.
 
 ## Default Command Plugin
 

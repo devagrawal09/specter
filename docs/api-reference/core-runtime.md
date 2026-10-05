@@ -33,7 +33,8 @@ network transport and no application database schema.
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
 | `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
-| `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices. |
+| `SpecterPluginQueryInTransactionError` | A direct Reaction Plugin called `query` inside its Slice Store transaction; permanent until the Plugin changes. |
+| `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices; `permanent` is `true` when retrying cannot succeed. |
 
 `specterErrorCodes` contains:
 
@@ -47,6 +48,7 @@ network transport and no application database schema.
 | `invalidCommandOptions` | `SPECTER_INVALID_COMMAND_OPTIONS` |
 | `invalidInput` | `SPECTER_INVALID_INPUT` |
 | `invalidOutput` | `SPECTER_INVALID_OUTPUT` |
+| `pluginQueryInTransaction` | `SPECTER_PLUGIN_QUERY_IN_TRANSACTION` |
 | `reactionFailure` | `SPECTER_REACTION_FAILURE` |
 | `unknownCommand` | `SPECTER_UNKNOWN_COMMAND` |
 | `unknownEvent` | `SPECTER_UNKNOWN_EVENT` |
@@ -77,7 +79,8 @@ network transport and no application database schema.
 | `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
 | `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. |
 | `CommandDispatch` | Plugin capability dispatching a same-app Command; resolves to `CommandReceipt`. |
-| `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; rejected inside a direct Plugin's Reaction transaction. |
+| `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; the Slice must be the registered instance; rejected permanently inside a direct Plugin's Reaction transaction. |
+| `SpecterEffectError` | Union of public runtime failures; the error channel of Plugin `command` and `query`. |
 | `ReactionPluginContext` | `{ command, query }` passed once to a Plugin factory. |
 | `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
 | `ReactionPlugin<TOutput, R>` | Optional Effect factory for custom/external output; `R` lists app services it reads. Same-app `CommandEnvelope` output uses default dispatcher. |

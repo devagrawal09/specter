@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Context, Effect } from 'effect'
 
 import type { SliceStoreService } from '../adapters'
+import type { SpecterEffectError } from '../effect/runtime'
 import {
   type CommandInputOf,
   type CommandReceipt,
@@ -205,7 +206,10 @@ const notifyingReaction = externalReactionStep
         Effect.gen(function* () {
           const read = query(queryImplementation, { id: '41' })
           type _Read = Expect<
-            Equal<typeof read, Effect.Effect<{ label: string }, unknown>>
+            Equal<
+              typeof read,
+              Effect.Effect<{ label: string }, SpecterEffectError>
+            >
           >
           const readType: _Read = true
           void readType
@@ -233,6 +237,16 @@ export type DefaultPluginRequirementCheck = Expect<
 >
 export type NonReactionPluginRequirementCheck = Expect<
   Equal<ReactionPluginRequirements<typeof queryImplementation>, never>
+>
+
+export type ErasedPluginRequirementCheck = Expect<
+  Equal<
+    ReactionPluginRequirements<{
+      readonly kind: 'reaction'
+      readonly plugin?: ReactionPlugin<string, unknown>
+    }>,
+    never
+  >
 >
 
 export const undeclaredRequirementPlugin: ReactionPlugin<string> = () =>

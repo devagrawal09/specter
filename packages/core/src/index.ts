@@ -49,6 +49,7 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,
@@ -94,3 +95,5 @@ export {
   ReactionScheduler,
   ReactionSchedulerFailure,
 } from './adapters'
+/** Failure channel of Plugin `command` and `query` capabilities. */
+export type { SpecterEffectError } from './effect/runtime'

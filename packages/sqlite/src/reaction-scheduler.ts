@@ -210,6 +210,29 @@ export function createSqliteReactionSchedulerService(
     })
   }
 
+  /**
+   * Completes a boundary that can never succeed, keeping the error so waiters
+   * fail instead of polling forever. Reaction cursors stay on the failed commit;
+   * a later schedule of this boundary (e.g. app restart) retries it.
+   */
+  function failPermanently(
+    throughOrder: number,
+    token: string,
+    cause: unknown,
+  ) {
+    return attempt('run', async (connection) => {
+      const result = await connection.execute({
+        sql: `UPDATE specter_reaction_scheduler
+          SET status = 'completed', lease_expires_at = NULL,
+            claim_token = NULL, last_error = ?
+          WHERE through_order = ? AND status = 'running' AND claim_token = ?`,
+        args: [describeFailure(cause), throughOrder, token],
+      })
+      if (result.rowsAffected !== 1)
+        throw new Error(`Reaction scheduler lease was lost: ${throughOrder}`)
+    })
+  }
+
   function run<E>(
     throughOrder: number,
     execute: (context: ReactionScheduleContext) => Effect.Effect<void, E>,
@@ -230,6 +253,10 @@ export function createSqliteReactionSchedulerService(
         if (result._tag === 'Success') {
           yield* complete(throughOrder, next.token)
           return
+        }
+        if (isPermanentFailure(result.failure)) {
+          yield* failPermanently(throughOrder, next.token, result.failure)
+          return yield* Effect.fail(result.failure)
         }
         const availableAt = yield* reschedule(
           throughOrder,
@@ -263,9 +290,9 @@ export function createSqliteReactionSchedulerService(
   function waitFor(throughOrder: number) {
     return Effect.gen(function* () {
       for (;;) {
-        const status = yield* attempt('run', async (connection) => {
+        const row = yield* attempt('run', async (connection) => {
           const result = await connection.execute({
-            sql: `SELECT status FROM specter_reaction_scheduler
+            sql: `SELECT status, last_error FROM specter_reaction_scheduler
               WHERE through_order = ?`,
             args: [throughOrder],
           })
@@ -273,9 +300,19 @@ export function createSqliteReactionSchedulerService(
             throw new Error(
               `Unknown Reaction scheduler boundary: ${throughOrder}`,
             )
-          return requireString(result.rows[0].status, 'scheduler status')
+          return {
+            status: requireString(result.rows[0].status, 'scheduler status'),
+            lastError: result.rows[0].last_error,
+          }
         })
-        if (status === 'completed') return
+        if (row.status === 'completed') {
+          if (typeof row.lastError === 'string') {
+            return yield* Effect.fail(
+              new ReactionSchedulerFailure('run', new Error(row.lastError)),
+            )
+          }
+          return
+        }
         yield* Effect.sleep(`${pollIntervalMs} millis`)
       }
     })
@@ -306,6 +343,31 @@ export function createSqliteReactionSchedulerService(
         }
       }),
   }
+}
+
+function isPermanentFailure(cause: unknown) {
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    'permanent' in cause &&
+    cause.permanent === true
+  )
+}
+
+function describeFailure(cause: unknown) {
+  if (!(cause instanceof Error)) return String(cause)
+  const details =
+    'failures' in cause && Array.isArray(cause.failures)
+      ? cause.failures.map(
+          (failure: { sliceName?: unknown; cause?: unknown }) =>
+            `${String(failure.sliceName)}: ${
+              failure.cause instanceof Error
+                ? failure.cause.message
+                : String(failure.cause)
+            }`,
+        )
+      : []
+  return [cause.message, ...details].join('\n')
 }
 
 export function createSqliteReactionSchedulerLayer(

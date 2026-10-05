@@ -5,6 +5,7 @@ import {
   EventLog,
   implementCommand,
   implementReaction,
+  type ReactionPlugin,
   type SliceStoreService,
 } from '..'
 import {
@@ -120,4 +121,28 @@ void createSpecterApp(
     storeAndEventLog,
     Layer.succeed(ValueNotifier, notifierService),
   ),
+)
+
+declare const erasedPlugin: ReactionPlugin<number, unknown>
+const erasedNotifyValue = implementReaction(
+  JSON.stringify(
+    createReactionSlice('notifyValue')
+      .description('Notifies a recorded value.')
+      .scenarios({
+        description: 'Notifies one value.',
+        given: [event('value-recorded', 1)],
+        expect: [1],
+      }),
+  ),
+)
+  .outputSchema<number>()
+  .plugin(erasedPlugin)
+  .store(RuntimeTypeStore)
+  .handle(async (state) => state.value)
+
+// An erased `unknown` Plugin requirement cannot name a service; it must not
+// make every dependency Layer unacceptable.
+void createSpecterApp(
+  { events: [], slices: { command, notifyValue: erasedNotifyValue } } as const,
+  storeAndEventLog,
 )

@@ -3,6 +3,7 @@ import type { SpecificationDigest } from '@specter-ts/spec'
 import type { Effect, Scope } from 'effect'
 
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
+import type { SpecterEffectError } from '../effect/runtime'
 import type {
   Event,
   EventDefinition,
@@ -181,19 +182,20 @@ export type CommandReceipt = {
 export type CommandDispatch = (
   command: CommandEnvelope,
   options?: CommandDispatchOptions,
-) => Effect.Effect<CommandReceipt, unknown>
+) => Effect.Effect<CommandReceipt, SpecterEffectError>
 
 type AnyQuerySlice = Extract<SliceRegistration, { readonly kind: 'query' }>
 
 /**
  * Runs a registered Query in the same app. The Query Slice value supplies the
- * name and types; dispatch is by name. Queries fail inside a direct Plugin's
- * Reaction transaction; run them from an outboxed Plugin.
+ * name and types and must be the instance registered in the app. Queries fail
+ * permanently inside a direct Plugin's Reaction transaction; run them from an
+ * outboxed Plugin.
  */
 export type QueryDispatch = <const TQuery extends AnyQuerySlice>(
   query: TQuery,
   input: QueryInputOf<TQuery>,
-) => Effect.Effect<QueryOutputOf<TQuery>, unknown>
+) => Effect.Effect<QueryOutputOf<TQuery>, SpecterEffectError>
 
 /** Same-app capabilities supplied once to a Plugin factory. */
 export type ReactionPluginContext = {
@@ -227,7 +229,11 @@ export type ReactionPlugin<TOutput = unknown, R = never> = (
   context: ReactionPluginContext,
 ) => Effect.Effect<ReactionExec<TOutput>, unknown, R | Scope.Scope>
 
-/** Effect services a Reaction Plugin requires from the app, excluding Scope. */
+/**
+ * Effect services a Reaction Plugin requires from the app, excluding Scope.
+ * An erased `unknown` (or `any`) requirement cannot name a service, so it maps
+ * to `never` rather than rejecting every Layer.
+ */
 export type ReactionPluginRequirements<TSlice> = TSlice extends {
   readonly kind: 'reaction'
   readonly plugin?: infer TPlugin
@@ -235,7 +241,9 @@ export type ReactionPluginRequirements<TSlice> = TSlice extends {
   ? NonNullable<TPlugin> extends (
       context: ReactionPluginContext,
     ) => Effect.Effect<infer _TExec, infer _TError, infer R>
-    ? Exclude<R, Scope.Scope>
+    ? unknown extends R
+      ? never
+      : Exclude<R, Scope.Scope>
     : never
   : never
 
