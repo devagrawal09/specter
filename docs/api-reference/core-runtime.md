@@ -145,17 +145,19 @@ failure, Event Log failure, or startup Reaction failure rejects construction
 after the partially built runtime is disposed; it does not evict the validated
 config from the cache.
 
-Startup waits for the scheduler to report Reaction catch-up complete. The
-SQLite durable scheduler (`createSqliteReactionSchedulerLayer`) reschedules a
-failed Reaction pass every `retryIntervalMs` until it succeeds, so a startup
-Reaction that fails permanently makes `createSpecterApp` wait indefinitely
-instead of rejecting. Before this release the same wait happened on the first
-operation. Fix or remove the failing Reaction, or bound the wait yourself:
-with the Effect API, apply `Effect.timeout` to the Effect that builds
-`createSpecterAppLayer` or runs `makeSpecterRuntime`. A built-in bound would be a small addition: an
-optional `startupTimeout` accepted by `createSpecterApp` that races the
-startup Promise against a timer, disposes the app, and rejects with
-`SpecterInfrastructureError` on expiry. It is not implemented.
+Startup waits for the scheduler to report Reaction catch-up complete. A
+permanent failure (`ReactionRunFailure.permanent`) rejects `createSpecterApp`.
+The SQLite durable scheduler (`createSqliteReactionSchedulerLayer`) reschedules
+any other failed Reaction pass every `retryIntervalMs` until it succeeds, so a
+startup Reaction that keeps failing with a retryable error makes
+`createSpecterApp` wait indefinitely instead of rejecting. Before this release
+the same wait happened on the first operation. Fix the failing Reaction, or
+bound the wait yourself: with the Effect API, apply `Effect.timeout` to the
+Effect that builds `createSpecterAppLayer` or runs `makeSpecterRuntime`. A
+built-in bound would be a small addition: an optional `startupTimeout`
+accepted by `createSpecterApp` that races the startup Promise against a timer,
+disposes the app, and rejects with `SpecterInfrastructureError` on expiry. It
+is not implemented.
 
 ```ts
 import { EventLog, createSpecterApp } from '@specter-ts/core'
