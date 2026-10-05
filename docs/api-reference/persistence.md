@@ -1,6 +1,6 @@
 # Persistence API
 
-**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`,
+**Imports:** `@specter-ts/memory`, `@specter-ts/jsonl`, `@specter-ts/sqlite`,
 `@specter-ts/sqlite-node`, `@specter-ts/postgres`
 
 Event Log stores authoritative commits. Slice Stores own app-defined State,
@@ -15,6 +15,24 @@ cursor, ORM access, and transaction policy.
 
 Memory Store clones staged State and rolls failure back. Data disappears with
 process.
+
+## JSONL
+
+| Export | Purpose |
+| --- | --- |
+| `createJsonlEventLog` | Open one JSONL file as an Event Log service with `close()`. |
+| `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app. |
+
+The JSONL Event Log keeps one Event Log per file, one commit per line, so an
+app can open a separate log per session without a database. Opening reads the
+file once into an in-memory index; appends only add lines and are serialized in
+the process, which must be the file's only writer. Expected versions and
+idempotency receipts match the SQLite adapters. `fsync` is off by default, so a
+commit survives a process crash but not an operating-system failure; pass
+`fsync: true` when the file is the only durable record. An unterminated last
+line from an interrupted write is removed on open and reported as
+`discardedTrailingBytes`. Pair it with memory Slice Stores, which rebuild from
+the log on startup.
 
 ## SQLite
 
