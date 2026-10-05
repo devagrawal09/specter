@@ -119,6 +119,36 @@ A rejected Command appends nothing. A Reaction failure rejects
 `execution.reactions` but never reverses the commit. Retrying the Command solely
 because a Reaction failed can duplicate domain intent; use an idempotency key.
 
+## Idempotency
+
+An `idempotencyKey` names one Command outcome. By default the first commit for
+a key wins: a later call with the same key returns that commit's Events and
+version with `duplicate: true`, whatever payload or Command type it carries,
+and neither runs the handler nor appends. This is what at-least-once callers
+need, such as a Reaction Plugin that re-streams an LLM response after a crash
+under the same `deliveryId`.
+
+Pass `idempotencyMode: 'exact'` to also require the same Command. Specter
+compares a `v2:` fingerprint of the Command type and canonical decoded payload
+with the fingerprint stored on the first commit and raises
+`SpecterIdempotencyConflictError` when they differ. The fingerprint is recorded
+in both modes, so an exact retry can follow a first-wins commit.
+
+```ts
+await app.command(envelope, { idempotencyKey: requestId })
+await app.command(envelope, {
+  idempotencyKey: requestId,
+  idempotencyMode: 'exact',
+})
+```
+
+Input decoding and option validation run first, so an invalid payload or an
+`idempotencyMode` without `idempotencyKey` is still rejected. The key lookup
+then runs before the `expectedVersion` check: a duplicate never reports a
+version conflict. If a concurrent writer commits the same key between the
+lookup and the append, the adapter returns its commit as a duplicate and the
+same mode rules apply.
+
 ## Queries and subscriptions
 
 `app.query(envelope)` validates the input, catches up the Query's projection in

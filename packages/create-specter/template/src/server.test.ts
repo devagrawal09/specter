@@ -105,6 +105,69 @@ test('streams typed query updates and exposes Reaction completion separately', a
   await iterator.return?.()
 })
 
+test('keeps the first committed outcome for a reused idempotency key', async () => {
+  const transport = createSpecterBrowserTransport<TodoSpecterAppConfig>(
+    '/api',
+    {
+      fetch: ((input, init) =>
+        app.request(String(input), init)) as typeof fetch,
+    },
+  )
+  const first = await transport.command(
+    {
+      type: 'addTodo',
+      payload: { todoId: 'todo-once', title: 'First outcome' },
+    },
+    { idempotencyKey: 'add-todo-once' },
+  )
+  await first.reactions
+
+  const repeated = await transport.command(
+    {
+      type: 'addTodo',
+      payload: { todoId: 'todo-once', title: 'Re-streamed outcome' },
+    },
+    { idempotencyKey: 'add-todo-once' },
+  )
+  expect(repeated).toMatchObject({
+    duplicate: true,
+    version: first.version,
+    events: first.events,
+  })
+  await repeated.reactions
+
+  await expect(
+    transport.command(
+      {
+        type: 'addTodo',
+        payload: { todoId: 'todo-once', title: 'First outcome' },
+      },
+      { idempotencyKey: 'add-todo-once', idempotencyMode: 'exact' },
+    ),
+  ).resolves.toMatchObject({ duplicate: true, version: first.version })
+  await expect(
+    transport.command(
+      {
+        type: 'addTodo',
+        payload: { todoId: 'todo-once', title: 'Re-streamed outcome' },
+      },
+      { idempotencyKey: 'add-todo-once', idempotencyMode: 'exact' },
+    ),
+  ).rejects.toMatchObject({
+    code: 'SPECTER_IDEMPOTENCY_CONFLICT',
+    status: 409,
+    details: { idempotencyKey: 'add-todo-once' },
+  })
+
+  const todos = await transport.query({
+    type: 'todosQuery',
+    payload: { status: 'all' },
+  })
+  expect(todos.filter((todo) => todo.id === 'todo-once')).toEqual([
+    expect.objectContaining({ title: 'First outcome' }),
+  ])
+})
+
 function postJson(path: string, body: unknown) {
   return app.request(path, {
     method: 'POST',

@@ -126,9 +126,37 @@ type reactionPass struct {
 	result   chan<- error
 }
 
+// IdempotencyMode selects how a repeated IdempotencyKey is matched.
+type IdempotencyMode string
+
+const (
+	// IdempotencyFirstWins returns the first commit for a key regardless of
+	// payload. It is the default when IdempotencyMode is empty.
+	IdempotencyFirstWins IdempotencyMode = "first-wins"
+	// IdempotencyExact also requires the canonical Command fingerprint to match
+	// and otherwise fails with ErrIdempotencyConflict.
+	IdempotencyExact IdempotencyMode = "exact"
+)
+
 type DispatchOptions struct {
 	IdempotencyKey  string
 	ExpectedVersion *int64
+	// IdempotencyMode requires IdempotencyKey. Empty means IdempotencyFirstWins.
+	IdempotencyMode IdempotencyMode
+}
+
+func (o DispatchOptions) validate() error {
+	switch o.IdempotencyMode {
+	case "":
+		return nil
+	case IdempotencyFirstWins, IdempotencyExact:
+		if o.IdempotencyKey == "" {
+			return newError(ErrInvalidCommandOptions, "IdempotencyMode requires IdempotencyKey.", nil, nil)
+		}
+		return nil
+	default:
+		return newError(ErrInvalidCommandOptions, fmt.Sprintf("IdempotencyMode must be %q or %q.", IdempotencyFirstWins, IdempotencyExact), nil, nil)
+	}
 }
 
 type CommandExecution struct {
@@ -274,6 +302,9 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	if command == nil {
 		return CommandExecution{}, unknownCommand(name)
 	}
+	if err := options.validate(); err != nil {
+		return CommandExecution{}, err
+	}
 	a.log.transactionMu.Lock()
 	defer a.log.transactionMu.Unlock()
 	command.slice.mu.Lock()
@@ -287,7 +318,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	}
 	fingerprint := sha256.Sum256(fingerprintBytes)
 	fingerprintString := hex.EncodeToString(fingerprint[:])
-	commit, duplicate, lookupErr := a.log.findCommit(options.IdempotencyKey, fingerprintString)
+	commit, duplicate, lookupErr := a.log.findCommit(options.IdempotencyKey, fingerprintString, options.IdempotencyMode)
 	if lookupErr != nil {
 		return CommandExecution{}, lookupErr
 	}
@@ -319,7 +350,7 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 			}
 		}
 		var appendErr error
-		commit, appendErr = a.log.append(ctx, drafts, options.ExpectedVersion, options.IdempotencyKey, fingerprintString, ticketID)
+		commit, appendErr = a.log.append(ctx, drafts, options.ExpectedVersion, options.IdempotencyKey, fingerprintString, options.IdempotencyMode, ticketID)
 		if appendErr != nil {
 			return CommandExecution{}, appendErr
 		}

@@ -9,12 +9,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import {
-  EventLog,
-  EventLogFailure,
-  SpecterIdempotencyConflictError,
-  SpecterVersionConflictError,
-} from '@specter-ts/core'
+import { EventLog, SpecterVersionConflictError } from '@specter-ts/core'
 import { testEventLogService } from '@specter-ts/core/testing'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -136,7 +131,7 @@ describe('JSONL Event Log', () => {
     expect(() => createJsonlEventLog({ path })).toThrow(/malformed/)
   })
 
-  it('enforces expected versions and idempotency fingerprints', async () => {
+  it('enforces expected versions and returns the first commit for a reused key', async () => {
     const eventLog = createJsonlEventLog({ path: temporaryLogPath() })
     const append = () =>
       Effect.runPromise(
@@ -155,27 +150,21 @@ describe('JSONL Event Log', () => {
       }),
     })
 
-    await Effect.runPromise(
+    const first = await Effect.runPromise(
       eventLog.append([{ type: 'todo-added', payload: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-one',
       }),
     )
-    const conflict = await Effect.runPromise(
-      Effect.result(
-        eventLog.append([{ type: 'todo-added', payload: {} }], {
-          idempotencyKey: 'request-1',
-          fingerprint: 'fingerprint-two',
-        }),
-      ),
+    const changed = await Effect.runPromise(
+      eventLog.append([{ type: 'todo-changed', payload: {} }], {
+        idempotencyKey: 'request-1',
+        fingerprint: 'fingerprint-two',
+      }),
     )
-    expect(conflict._tag).toBe('Failure')
-    if (conflict._tag === 'Failure') {
-      expect(conflict.failure).toBeInstanceOf(EventLogFailure)
-      expect(conflict.failure.cause).toBeInstanceOf(
-        SpecterIdempotencyConflictError,
-      )
-    }
+    expect(changed).toEqual({ ...first, duplicate: true })
+    expect(changed.fingerprint).toBe('fingerprint-one')
+    expect(await Effect.runPromise(eventLog.currentVersion)).toBe(first.version)
     eventLog.close()
   })
 

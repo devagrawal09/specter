@@ -443,8 +443,10 @@ func TestSubscriptionKeepsLatestValue(t *testing.T) {
 	}
 }
 
-func TestExpectedVersionAndIdempotencyConflict(t *testing.T) {
+func TestExpectedVersionAndIdempotencyModes(t *testing.T) {
+	handled := 0
 	command := specter.CommandDefinition{Name: "add", Scenarios: []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
+		handled++
 		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
 	})}
 	app, err := specter.NewApp(specter.Config{Events: []string{"added"}, Commands: []specter.CommandDefinition{command}})
@@ -457,10 +459,38 @@ func TestExpectedVersionAndIdempotencyConflict(t *testing.T) {
 		t.Fatal(err)
 	}
 	<-execution.Reactions
-	_, err = app.Command(context.Background(), "add", addInput{ID: "different"}, specter.DispatchOptions{IdempotencyKey: "same"})
+
+	// First write wins by default, even with a different payload and a stale expected version.
+	firstWins, err := app.Command(context.Background(), "add", addInput{ID: "different"}, specter.DispatchOptions{ExpectedVersion: &zero, IdempotencyKey: "same"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !firstWins.Duplicate || firstWins.Version != execution.Version || string(firstWins.Events[0].Payload) != `{"id":"one"}` {
+		t.Fatalf("expected first commit as duplicate, got %#v", firstWins)
+	}
+	if err := <-firstWins.Reactions; err != nil {
+		t.Fatal(err)
+	}
+
+	exactSame, err := app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{IdempotencyKey: "same", IdempotencyMode: specter.IdempotencyExact})
+	if err != nil || !exactSame.Duplicate {
+		t.Fatalf("expected exact duplicate, got %#v, %v", exactSame, err)
+	}
 	var public *specter.Error
+	_, err = app.Command(context.Background(), "add", addInput{ID: "different"}, specter.DispatchOptions{IdempotencyKey: "same", IdempotencyMode: specter.IdempotencyExact})
 	if !errors.As(err, &public) || public.Code != specter.ErrIdempotencyConflict {
 		t.Fatalf("expected idempotency conflict, got %v", err)
+	}
+	_, err = app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{IdempotencyMode: specter.IdempotencyExact})
+	if !errors.As(err, &public) || public.Code != specter.ErrInvalidCommandOptions {
+		t.Fatalf("expected invalid command options, got %v", err)
+	}
+	_, err = app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{IdempotencyKey: "other", IdempotencyMode: "loose"})
+	if !errors.As(err, &public) || public.Code != specter.ErrInvalidCommandOptions {
+		t.Fatalf("expected invalid command options, got %v", err)
+	}
+	if handled != 1 || app.EventLog().Version() != 1 {
+		t.Fatalf("expected one handled Command and one Event, got %d and %d", handled, app.EventLog().Version())
 	}
 	_, err = app.Command(context.Background(), "add", addInput{ID: "two"}, specter.DispatchOptions{ExpectedVersion: &zero})
 	if !errors.As(err, &public) || public.Code != specter.ErrVersionConflict {

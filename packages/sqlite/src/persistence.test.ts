@@ -1,9 +1,5 @@
 import { createClient } from '@libsql/client'
-import {
-  EventLogFailure,
-  SpecterIdempotencyConflictError,
-  SpecterVersionConflictError,
-} from '@specter-ts/core'
+import { SpecterVersionConflictError } from '@specter-ts/core'
 import {
   eventLogConformance,
   sliceStoreConformance,
@@ -288,7 +284,7 @@ describe('Specter SQLite persistence', () => {
     expect(version).toBe(1)
   })
 
-  it('returns typed failures for version and idempotency conflicts', async () => {
+  it('returns first-commit receipts for reused keys and typed version conflicts', async () => {
     const { eventLog } = await setup()
     const first = await Effect.runPromise(
       eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
@@ -306,16 +302,14 @@ describe('Specter SQLite persistence', () => {
     )
     expect(duplicate).toEqual({ ...first, duplicate: true })
 
-    const idempotency = await Effect.runPromise(
-      Effect.flip(
-        eventLog.append([{ type: 'other', payload: {} }], {
-          idempotencyKey: 'request-1',
-          fingerprint: 'fingerprint-2',
-        }),
-      ),
+    const changed = await Effect.runPromise(
+      eventLog.append([{ type: 'other', payload: {} }], {
+        idempotencyKey: 'request-1',
+        fingerprint: 'fingerprint-2',
+      }),
     )
-    expect(idempotency).toBeInstanceOf(EventLogFailure)
-    expect(idempotency.cause).toBeInstanceOf(SpecterIdempotencyConflictError)
+    expect(changed).toEqual({ ...first, duplicate: true })
+    expect(changed.fingerprint).toBe('fingerprint-1')
 
     const version = await Effect.runPromise(
       Effect.flip(

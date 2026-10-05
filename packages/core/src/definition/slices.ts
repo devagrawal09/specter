@@ -166,16 +166,31 @@ export type CommandRef<TRegistration> =
     ? { name: TName; payload?: TInput }
     : never
 
+/**
+ * How a repeated idempotencyKey is matched. `first-wins` (default) returns the
+ * first committed outcome for the key regardless of payload or Command type.
+ * `exact` also requires the canonical fingerprint of the Command type and
+ * decoded payload to match and otherwise fails with
+ * SpecterIdempotencyConflictError.
+ */
+export type CommandIdempotencyMode = 'first-wins' | 'exact'
+
 export type CommandDispatchOptions = {
   readonly expectedVersion?: number
   readonly idempotencyKey?: string
+  /** Requires idempotencyKey. Defaults to `first-wins`. */
+  readonly idempotencyMode?: CommandIdempotencyMode
 }
 
 /** Commit receipt returned to a Plugin. Nested Reactions are not awaited. */
 export type CommandReceipt = {
   readonly events: readonly PersistedEvent[]
   readonly version: number
-  /** True when the idempotency key matched an earlier commit. */
+  /**
+   * True when the idempotency key matched an earlier commit. `events` and
+   * `version` are then that first commit's, which under `first-wins` may come
+   * from a different payload than this call's.
+   */
   readonly duplicate: boolean
 }
 

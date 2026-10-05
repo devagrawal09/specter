@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import {
   EventLog,
   EventLogFailure,
-  SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
   type EventLogAppendOptions,
@@ -154,11 +153,6 @@ export function createNodeSqliteEventLogService(
       ? findCommit(appendOptions.idempotencyKey)
       : undefined
     if (existing) {
-      if (existing.fingerprint !== appendOptions.fingerprint) {
-        throw new SpecterIdempotencyConflictError(
-          appendOptions.idempotencyKey as string,
-        )
-      }
       return { ...existing, duplicate: true as const }
     }
     if (drafts.length === 0) throw new Error('Event Log append requires Events')

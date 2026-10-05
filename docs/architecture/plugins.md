@@ -28,6 +28,10 @@ type ReactionExec<TOutput> = (
 ) => Effect<void, unknown>
 ```
 
+On a duplicate receipt, `events` and `version` are the first commit for that
+idempotency key. Under the default `first-wins` mode they may come from a
+different payload than the one this call dispatched.
+
 Core initializes and caches executor during app construction, inside the app
 scope. For each Event Log commit containing an Event type the Reaction applies,
 Reaction Store transaction applies Events, runs handler, validates output,
@@ -135,7 +139,10 @@ Without `.plugin`, handler output must be Command envelope:
 .store(TodoCheerStore)
 ```
 
-Default Plugin dispatches Command with `deliveryId` as idempotency key. It waits
+Default Plugin dispatches Command with `deliveryId` as idempotency key. A
+redelivery that produces different output (for example a re-streamed LLM
+response) returns the first committed Command as a duplicate, because the first
+commit for a key wins by default. It waits
 for nested Command commit, not nested Reactions. Shared SQLite/Postgres context
 joins nested command work to active Reaction transaction.
 

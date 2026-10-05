@@ -106,6 +106,15 @@ SSE, or WebSocket client/server. Project transport files own:
 - mapping structured Specter errors;
 - keeping request/database context alive for subscription iteration and cleanup.
 
+The starter HTTP transport forwards Command options unchanged and fills in a
+missing `idempotencyKey` with the request's fresh `reactionId`, which it also
+uses to recover pending Reaction tickets. A request that sends
+`idempotencyMode` without a key is therefore accepted over HTTP, unlike an
+in-process call, but the mode has no effect because the generated key is
+unique. Send an explicit `idempotencyKey` when a retry must deduplicate, and add
+`idempotencyMode: 'exact'` when a changed payload under that key must fail with
+HTTP 409 `SPECTER_IDEMPOTENCY_CONFLICT`.
+
 Browser code imports the project transport. It must not import server modules,
 database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 

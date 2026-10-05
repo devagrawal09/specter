@@ -30,7 +30,12 @@ import {
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
 } from '..'
-import { createEventDefinition, createSpecterApp } from '..'
+import {
+  type CommandExecutionOptions,
+  type CommandIdempotencyMode,
+  createEventDefinition,
+  createSpecterApp,
+} from '..'
 import {
   createCommandSlice,
   createQuerySlice,
@@ -1270,7 +1275,48 @@ describe('Effect-native runtime', () => {
     await app.close()
   })
 
-  it('deduplicates same fingerprints across runtime restarts', async () => {
+  it('returns the first commit for a reused key regardless of payload across runtime restarts', async () => {
+    const { runCommand, eventLog, handled } = idempotencyHarness()
+    const first = await runCommand(1, { idempotencyKey: 'request-1' })
+    const repeated = await runCommand(1, { idempotencyKey: 'request-1' })
+    const changed = await runCommand(2, { idempotencyKey: 'request-1' })
+
+    expect(first.duplicate).toBe(false)
+    expect(repeated.duplicate).toBe(true)
+    expect(changed.duplicate).toBe(true)
+    expect(changed.version).toBe(first.version)
+    expect(changed.events).toEqual(first.events)
+    expect(changed.events[0]?.payload).toBe(1)
+    expect(handled).toEqual([1])
+    await expect(Effect.runPromise(eventLog.currentVersion)).resolves.toBe(1)
+    const stored = await Effect.runPromise(eventLog.findCommit('request-1'))
+    expect(stored?.fingerprint).toMatch(/^v2:[0-9a-f]{64}$/)
+  })
+
+  it('rejects a changed payload only under exact idempotency', async () => {
+    const { runCommand, handled } = idempotencyHarness()
+    const exact: CommandExecutionOptions = {
+      idempotencyKey: 'request-1',
+      idempotencyMode: 'exact',
+    }
+    const first = await runCommand(1, { idempotencyKey: 'request-1' })
+    const repeated = await runCommand(1, exact)
+
+    expect(first.duplicate).toBe(false)
+    expect(repeated).toMatchObject({ duplicate: true, version: first.version })
+    await expect(runCommand(2, exact)).rejects.toBeInstanceOf(
+      SpecterIdempotencyConflictError,
+    )
+    await expect(
+      runCommand(2, {
+        idempotencyKey: 'request-1',
+        idempotencyMode: 'first-wins',
+      }),
+    ).resolves.toMatchObject({ duplicate: true, version: first.version })
+    expect(handled).toEqual([1])
+  })
+
+  it('applies the idempotency mode to the Promise facade', async () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
     const command = createCommandSlice('recordValue')
       .description('Records one value.')
@@ -1283,36 +1329,130 @@ describe('Effect-native runtime', () => {
       .inputSchema<number>()
       .store(ValuesStore)
       .handle(async (value) => [valueRecorded.create(value)])
-    const config = {
-      events: [valueRecorded],
-      slices: { recordValue: command },
-    } as const
-    const eventLog = makeEventLogService()
-    const runCommand = (payload: number) =>
-      Effect.runPromise(
-        Effect.scoped(
-          Effect.provide(
-            Effect.flatMap(SpecterRuntime, (app) =>
-              app.command(
-                { type: 'recordValue', payload },
-                { idempotencyKey: 'request-1' },
-              ),
-            ),
-            createSpecterAppLayer(config).pipe(
-              Layer.provide(
-                Layer.mergeAll(storeLayer(), Layer.succeed(EventLog, eventLog)),
-              ),
-            ),
-          ),
-        ),
-      )
-    const first = await runCommand(1)
-    const duplicate = await runCommand(1)
-    expect(first.duplicate).toBe(false)
-    expect(duplicate.duplicate).toBe(true)
-    await expect(runCommand(2)).rejects.toBeInstanceOf(
-      SpecterIdempotencyConflictError,
+    const app = await createSpecterApp(
+      { events: [valueRecorded], slices: { recordValue: command } } as const,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService()),
+        Layer.succeed(ValuesStore, makeStoreService()),
+      ),
     )
+    const first = await app.command(
+      { type: 'recordValue', payload: 1 },
+      { idempotencyKey: 'request-1' },
+    )
+    const changed = await app.command(
+      { type: 'recordValue', payload: 2 },
+      { idempotencyKey: 'request-1' },
+    )
+    expect(changed).toMatchObject({
+      duplicate: true,
+      version: first.version,
+      events: first.events,
+    })
+    await expect(
+      app.command(
+        { type: 'recordValue', payload: 2 },
+        { idempotencyKey: 'request-1', idempotencyMode: 'exact' },
+      ),
+    ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
+    await app.close()
+  })
+
+  it('applies the idempotency mode to a duplicate returned by a concurrent append', async () => {
+    const base = makeEventLogService()
+    await Effect.runPromise(
+      base.append([{ type: 'value-recorded', payload: 7 }], {
+        idempotencyKey: 'request-1',
+        fingerprint: 'v2:concurrent-winner',
+      }),
+    )
+    // findCommit misses, as if the winner committed after the lookup.
+    const racing: EventLogService = {
+      ...base,
+      findCommit: () => Effect.succeed(undefined),
+    }
+    const { runCommand } = idempotencyHarness(racing)
+
+    const duplicate = await runCommand(1, { idempotencyKey: 'request-1' })
+    expect(duplicate).toMatchObject({ duplicate: true, version: 1 })
+    expect(duplicate.events[0]?.payload).toBe(7)
+    await expect(
+      runCommand(1, { idempotencyKey: 'request-1', idempotencyMode: 'exact' }),
+    ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
+  })
+
+  it('returns a duplicate when a same-key commit lands between the key lookup and the version check', async () => {
+    const base = makeEventLogService()
+    let raced = false
+    // The first lookup misses, then the winning writer commits the same key.
+    const racing: EventLogService = {
+      ...base,
+      findCommit: (key) =>
+        Effect.flatMap(base.findCommit(key), (found) =>
+          found || raced
+            ? Effect.succeed(found)
+            : Effect.sync(() => {
+                raced = true
+              }).pipe(
+                Effect.andThen(
+                  base.append([{ type: 'value-recorded', payload: 7 }], {
+                    idempotencyKey: key,
+                    fingerprint: 'v2:concurrent-winner',
+                  }),
+                ),
+                Effect.as(undefined),
+              ),
+        ),
+    }
+    const { runCommand, handled } = idempotencyHarness(racing)
+
+    const duplicate = await runCommand(1, {
+      expectedVersion: 0,
+      idempotencyKey: 'request-1',
+    })
+    expect(duplicate).toMatchObject({ duplicate: true, version: 1 })
+    expect(duplicate.events[0]?.payload).toBe(7)
+    expect(handled).toEqual([1])
+    await expect(Effect.runPromise(base.currentVersion)).resolves.toBe(1)
+  })
+
+  it('returns a duplicate receipt before checking expectedVersion', async () => {
+    const { runCommand } = idempotencyHarness()
+    const first = await runCommand(1, {
+      expectedVersion: 0,
+      idempotencyKey: 'request-1',
+    })
+    await expect(
+      runCommand(2, { expectedVersion: 0, idempotencyKey: 'request-1' }),
+    ).resolves.toMatchObject({ duplicate: true, version: first.version })
+    await expect(
+      runCommand(1, {
+        expectedVersion: 0,
+        idempotencyKey: 'request-1',
+        idempotencyMode: 'exact',
+      }),
+    ).resolves.toMatchObject({ duplicate: true, version: first.version })
+    await expect(
+      runCommand(2, {
+        expectedVersion: 0,
+        idempotencyKey: 'request-1',
+        idempotencyMode: 'exact',
+      }),
+    ).rejects.toBeInstanceOf(SpecterIdempotencyConflictError)
+  })
+
+  it('rejects idempotencyMode without a key or with an unknown value', async () => {
+    const { runCommand, handled } = idempotencyHarness()
+    await expect(
+      runCommand(1, { idempotencyMode: 'exact' }),
+    ).rejects.toBeInstanceOf(SpecterInvalidCommandOptionsError)
+    await expect(
+      runCommand(1, {
+        idempotencyKey: 'request-1',
+        idempotencyMode: 'loose' as CommandIdempotencyMode,
+      }),
+    ).rejects.toBeInstanceOf(SpecterInvalidCommandOptionsError)
+    expect(handled).toEqual([])
   })
 
   it('rolls back partial apply State and cursor together', async () => {
@@ -2238,6 +2378,46 @@ function captureSpansTracer(spans: Tracer.NativeSpan[]) {
   })
 }
 
+function idempotencyHarness(eventLog: EventLogService = makeEventLogService()) {
+  const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+  const handled: number[] = []
+  const command = createCommandSlice('recordValue')
+    .description('Records one value.')
+    .scenarios({
+      description: 'Records one value.',
+      given: [],
+      when: 1,
+      expect: [event('value-recorded', 1)],
+    })
+    .inputSchema<number>()
+    .store(ValuesStore)
+    .handle(async (value) => {
+      handled.push(value)
+      return [valueRecorded.create(value)]
+    })
+  const config = {
+    events: [valueRecorded],
+    slices: { recordValue: command },
+  } as const
+  // Each call builds a fresh runtime over the shared Event Log, like a restart.
+  const runCommand = (payload: number, options: CommandExecutionOptions) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.provide(
+          Effect.flatMap(SpecterRuntime, (app) =>
+            app.command({ type: 'recordValue', payload }, options),
+          ),
+          createSpecterAppLayer(config).pipe(
+            Layer.provide(
+              Layer.mergeAll(storeLayer(), Layer.succeed(EventLog, eventLog)),
+            ),
+          ),
+        ),
+      ),
+    )
+  return { runCommand, eventLog, handled }
+}
+
 function storeLayer(
   options: { onTransaction?: (active: boolean) => void } = {},
 ) {
@@ -2339,14 +2519,7 @@ function makeEventLogService(
           const existing = options.idempotencyKey
             ? commits.get(options.idempotencyKey)
             : undefined
-          if (existing) {
-            if (existing.fingerprint !== options.fingerprint) {
-              throw new SpecterIdempotencyConflictError(
-                options.idempotencyKey as string,
-              )
-            }
-            return { ...existing, duplicate: true }
-          }
+          if (existing) return { ...existing, duplicate: true }
           if (
             options.expectedVersion !== undefined &&
             options.expectedVersion !== events.length

@@ -1,7 +1,6 @@
 import type { Client, Transaction } from '@libsql/client/sqlite3'
 import {
   EventLogFailure,
-  SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
   type EventLogAppendOptions,
@@ -298,9 +297,6 @@ async function appendEvents(
     ? await findEventLogCommit(db, options.idempotencyKey)
     : undefined
   if (existing) {
-    if (existing.fingerprint !== options.fingerprint) {
-      throw new SpecterIdempotencyConflictError(options.idempotencyKey ?? '')
-    }
     return { ...existing, duplicate: true }
   }
 

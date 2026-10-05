@@ -61,8 +61,12 @@ Application-owned HTTP, SSE, WebSocket, or other wiring that carries typed Spect
 _Avoid_: Specter Client, core transport
 
 **Command Execution**:
-The result returned after an accepted Command's Events commit. It proves durable Command acceptance and contains a `reactions` Promise that separately represents aggregate Reaction completion or failure. An idempotent duplicate returns the original commit with `duplicate: true`; its Reaction Promise requests or joins a fresh catch-up drain, including after a prior settled failure or process restart.
+The result returned after an accepted Command's Events commit. It proves durable Command acceptance and contains a `reactions` Promise that separately represents aggregate Reaction completion or failure. An idempotent duplicate returns the original commit with `duplicate: true`, even when its payload differs (first commit wins) unless the caller opts into `idempotencyMode: 'exact'`; its Reaction Promise requests or joins a fresh catch-up drain, including after a prior settled failure or process restart.
 _Avoid_: Reaction result, uncommitted command
+
+**Idempotency Key**:
+A caller-chosen name for one Command outcome. The first commit recorded under a key wins: a repeat returns that commit as a duplicate regardless of payload, which suits at-least-once Reaction redelivery under `deliveryId`. `idempotencyMode: 'exact'` opts into rejecting a repeat whose canonical Command fingerprint differs with `SpecterIdempotencyConflictError`.
+_Avoid_: request ID, deduplication hash
 
 **Query Subscription**:
 A typed latest-state stream for one Query envelope. It emits current state, fans out independently to every subscriber, coalesces intermediate values for a slow consumer, retains the newest value, supports `undefined`, and owns explicit activation, cancellation, and cleanup boundaries.

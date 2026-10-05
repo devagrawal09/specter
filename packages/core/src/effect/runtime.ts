@@ -29,6 +29,7 @@ import {
   type ApplyEventDefinition,
   type ApplyRegistration,
   type CommandEnvelope,
+  type CommandIdempotencyMode,
   type CommandReceipt,
   type EventDraft,
   type PersistedEvent,
@@ -626,19 +627,21 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       options: CommandExecutionOptions & { readonly fingerprint?: string },
     ): Effect.Effect<EventLogAppendResult, SpecterEffectError> {
       return Effect.gen(function* () {
+        // Read the version before the key lookup. A same-key commit that lands
+        // after this read is either found by findCommit or returned by the
+        // adapter's key check in append, so a duplicate never surfaces as a
+        // version conflict.
+        const version = yield* eventLog.currentVersion
         if (options.idempotencyKey) {
           const previous = yield* eventLog.findCommit(options.idempotencyKey)
           if (previous) {
-            if (previous.fingerprint !== options.fingerprint) {
-              return yield* Effect.fail(
-                new SpecterIdempotencyConflictError(options.idempotencyKey),
-              )
-            }
-            return { ...previous, duplicate: true }
+            return yield* acceptDuplicate(
+              { ...previous, duplicate: true },
+              options,
+            )
           }
         }
 
-        const version = yield* eventLog.currentVersion
         if (
           options.expectedVersion !== undefined &&
           options.expectedVersion !== version
@@ -679,12 +682,33 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           }
         }
         const decoded = yield* Effect.forEach(events, decodeEventDraft)
-        return yield* eventLog.append(decoded, {
+        const appended = yield* eventLog.append(decoded, {
           expectedVersion: version,
           idempotencyKey: options.idempotencyKey,
           fingerprint: options.fingerprint,
         })
+        // A concurrent writer may commit the same key between findCommit and
+        // append. Adapters return its commit, and the same mode rules apply.
+        return appended.duplicate
+          ? yield* acceptDuplicate(appended, options)
+          : appended
       })
+    }
+
+    /**
+     * The first commit for an idempotency key wins. Exact mode additionally
+     * requires the stored fingerprint to match the canonical decoded payload.
+     */
+    function acceptDuplicate(
+      commit: EventLogAppendResult,
+      options: CommandExecutionOptions & { readonly fingerprint?: string },
+    ): Effect.Effect<EventLogAppendResult, SpecterIdempotencyConflictError> {
+      return options.idempotencyMode === 'exact' &&
+        commit.fingerprint !== options.fingerprint
+        ? Effect.fail(
+            new SpecterIdempotencyConflictError(options.idempotencyKey ?? ''),
+          )
+        : Effect.succeed(commit)
     }
 
     function runQuery(
@@ -1519,6 +1543,9 @@ function preservePublicError(message: string) {
       : new SpecterInfrastructureError(message, cause)
 }
 
+const commandIdempotencyModes: ReadonlySet<string> =
+  new Set<CommandIdempotencyMode>(['first-wins', 'exact'])
+
 function validateCommandOptions(options: CommandExecutionOptions) {
   if (
     options.expectedVersion !== undefined &&
@@ -1536,6 +1563,18 @@ function validateCommandOptions(options: CommandExecutionOptions) {
     return new SpecterInvalidCommandOptionsError(
       'idempotencyKey must not be empty.',
     )
+  }
+  if (options.idempotencyMode !== undefined) {
+    if (!commandIdempotencyModes.has(options.idempotencyMode)) {
+      return new SpecterInvalidCommandOptionsError(
+        'idempotencyMode must be "first-wins" or "exact".',
+      )
+    }
+    if (options.idempotencyKey === undefined) {
+      return new SpecterInvalidCommandOptionsError(
+        'idempotencyMode requires idempotencyKey.',
+      )
+    }
   }
   return undefined
 }

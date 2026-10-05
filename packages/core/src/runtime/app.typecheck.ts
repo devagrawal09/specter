@@ -60,6 +60,16 @@ app.query({ type: 'todoCount', payload: { title: 'wrong' } })
 // @ts-expect-error Reaction names are not remotely dispatchable Queries.
 app.query({ type: 'notifyTodo', payload: undefined })
 
+app.command(
+  { type: 'addTodo', payload: { title: 'Ship it' } },
+  { idempotencyKey: 'request-1', idempotencyMode: 'exact' },
+)
+app.command(
+  { type: 'addTodo', payload: { title: 'Ship it' } },
+  // @ts-expect-error Idempotency modes are 'first-wins' or 'exact'.
+  { idempotencyKey: 'request-1', idempotencyMode: 'loose' },
+)
+
 // @ts-expect-error Specification builders are available only from @specter-ts/spec.
 core.createCommandSlice
 // @ts-expect-error Scenario event helpers are available only from @specter-ts/spec.

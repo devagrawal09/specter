@@ -17,6 +17,10 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 `append` atomically checks expected version, assigns Event orders, writes Events,
 and records commit boundary. Every append creates commit receipt, including
 commands without idempotency key. `findCommit(key)` resolves idempotency receipt.
+When `append` receives a known idempotency key, it appends nothing and returns
+the stored commit, including its original fingerprint, with `duplicate: true`
+whatever fingerprint was passed, even when `expectedVersion` is stale. The runtime decides whether a mismatch is a
+conflict (`idempotencyMode: 'exact'`).
 `commitsAfter(version)` returns complete commits ordered by commit version; core
 uses it as durable Reaction work stream.
 

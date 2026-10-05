@@ -76,7 +76,7 @@ func (l *MemoryEventLog) Query(after int64, types map[string]struct{}) []Persist
 	return out
 }
 
-func (l *MemoryEventLog) findCommit(key, fingerprint string) (Commit, bool, error) {
+func (l *MemoryEventLog) findCommit(key, fingerprint string, mode IdempotencyMode) (Commit, bool, error) {
 	if key == "" {
 		return Commit{}, false, nil
 	}
@@ -86,16 +86,26 @@ func (l *MemoryEventLog) findCommit(key, fingerprint string) (Commit, bool, erro
 	if !ok {
 		return Commit{}, false, nil
 	}
-	if prior.fingerprint != fingerprint {
-		return Commit{}, false, newError(ErrIdempotencyConflict, fmt.Sprintf("Idempotency key %q was already used for a different Command.", key), map[string]any{"idempotencyKey": key}, nil)
+	result, err := duplicateOf(prior, key, fingerprint, mode)
+	if err != nil {
+		return Commit{}, false, err
+	}
+	return result, true, nil
+}
+
+// duplicateOf returns the first commit for key. Only IdempotencyExact compares
+// the stored fingerprint; the fingerprint is recorded in every mode.
+func duplicateOf(prior storedCommit, key, fingerprint string, mode IdempotencyMode) (Commit, error) {
+	if mode == IdempotencyExact && prior.fingerprint != fingerprint {
+		return Commit{}, newError(ErrIdempotencyConflict, fmt.Sprintf("Idempotency key %q was already used for a different Command.", key), map[string]any{"idempotencyKey": key}, nil)
 	}
 	result := prior.Commit
 	result.Duplicate = true
 	result.Events = cloneEvents(result.Events)
-	return result, true, nil
+	return result, nil
 }
 
-func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expected *int64, key, fingerprint, reactionTicketID string) (Commit, error) {
+func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expected *int64, key, fingerprint string, mode IdempotencyMode, reactionTicketID string) (Commit, error) {
 	if err := ctx.Err(); err != nil {
 		return Commit{}, err
 	}
@@ -103,13 +113,7 @@ func (l *MemoryEventLog) append(ctx context.Context, drafts []EventDraft, expect
 	defer l.mu.Unlock()
 	if key != "" {
 		if prior, ok := l.commits[key]; ok {
-			if prior.fingerprint != fingerprint {
-				return Commit{}, newError(ErrIdempotencyConflict, fmt.Sprintf("Idempotency key %q was already used for a different Command.", key), map[string]any{"idempotencyKey": key}, nil)
-			}
-			result := prior.Commit
-			result.Duplicate = true
-			result.Events = cloneEvents(result.Events)
-			return result, nil
+			return duplicateOf(prior, key, fingerprint, mode)
 		}
 	}
 	version := int64(len(l.events))

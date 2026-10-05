@@ -65,12 +65,15 @@ await app.command(
 
 - `expectedVersion` rejects a decision made against any other Event Log
   version.
-- `idempotencyKey` stores a durable receipt bound to a fingerprint of the
-  Command envelope. Repeating the same Command returns the original commit with
-  `duplicate: true`; reusing the key for different input raises
+- `idempotencyKey` stores a durable receipt with a fingerprint of the
+  Command envelope. Repeating the key returns the first commit with
+  `duplicate: true`, even for different input. With
+  `idempotencyMode: 'exact'`, reusing the key for different input raises
   `SpecterIdempotencyConflictError`.
 
 The idempotency lookup and append must share the adapter's atomic append lock.
+Adapters return the stored commit for a known key and never decide conflicts;
+the runtime applies the mode.
 
 ## Determinism and schema evolution
 

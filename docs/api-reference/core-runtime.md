@@ -30,7 +30,7 @@ network transport and no application database schema.
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
 | `SpecterCommandRejectedError` | A Command handler rejected an intent or emitted no Events. |
 | `SpecterVersionConflictError` | `expectedVersion` or the runtime compare-and-swap did not match the Event Log version. |
-| `SpecterIdempotencyConflictError` | An idempotency key was reused for a different Command fingerprint. |
+| `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
 | `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
@@ -77,8 +77,9 @@ network transport and no application database schema.
 | `QueryOutputOf<T>` | Infers a Query Slice's decoded public output. |
 | `CommandRef<T>` | Registry-oriented Command name and optional payload reference. |
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
-| `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
-| `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. |
+| `CommandDispatchOptions` | Optional `expectedVersion`, `idempotencyKey`, and `idempotencyMode` (requires a key). |
+| `CommandIdempotencyMode` | `'first-wins'` (default) returns the first commit for a key regardless of payload; `'exact'` also requires a matching fingerprint. |
+| `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. On a duplicate, `events`/`version` are the first commit for the key and may differ from this call's payload. |
 | `CommandDispatch` | Plugin capability dispatching a same-app Command; resolves to `CommandReceipt`. |
 | `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; the Slice must be the registered instance; rejected permanently inside a direct Plugin's Reaction transaction. |
 | `SpecterEffectError` | Union of public runtime failures; the error channel of Plugin `command` and `query`. |
@@ -189,9 +190,23 @@ await execution.reactions
 await app.close()
 ```
 
+A repeated `idempotencyKey` returns the first commit for that key with
+`duplicate: true`, even when the payload differs. Pass
+`idempotencyMode: 'exact'` to raise `SpecterIdempotencyConflictError` instead
+when the payload or Command type differs:
+
+```ts
+await app.command(envelope, {
+  idempotencyKey: 'request-1',
+  idempotencyMode: 'exact',
+})
+```
+
 Command input schemas run before idempotency fingerprinting. Specter stores a
-versioned `v2:` fingerprint of the canonical decoded payload and passes that
-same decoded value to the handler.
+versioned `v2:` fingerprint of the Command type and canonical decoded payload
+in both modes and passes that same decoded value to the handler. The key lookup
+runs before the `expectedVersion` check, so a duplicate never reports a version
+conflict. See [Runtime](../architecture/runtime.md#idempotency).
 
 ## Effect runtime
 
@@ -238,8 +253,8 @@ const SessionLive = Layer.unwrap(
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent
-Command returns the original commit with `duplicate: true` and schedules
-Reaction catch-up again.
+Command returns the original commit with `duplicate: true` (first commit wins
+unless `idempotencyMode: 'exact'`) and schedules Reaction catch-up again.
 
 Subscriptions are latest-state streams:
 
