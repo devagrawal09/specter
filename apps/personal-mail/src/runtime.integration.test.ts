@@ -13,6 +13,14 @@ import { openApplicationDatabase } from './db/client.server'
 import * as schema from './db/schema'
 import { createPersonalMailRuntime } from './runtime.server'
 
+// These tests boot a real runtime (SQLite migrations plus a polling outbox
+// worker) and chain several waitFor calls of up to 5 s each, so Vitest's 5 s
+// default would expire before waitFor can name the condition that never held.
+// The worker options are already minimal (maxAttempts 1 or a 1 ms backoff), so
+// no backoff schedule inflates the dead-letter test; its cost is boot time and
+// polling under load.
+vi.setConfig({ testTimeout: 20_000 })
+
 const cleanup: (() => Promise<void> | void)[] = []
 
 afterEach(async () => {
@@ -75,24 +83,29 @@ test('delivers a Gmail action outside the Slice transaction and advances its cur
   )
   await execution.reactions
 
-  const activity = await waitFor(async () => {
+  // The activity row is created as `requested` as soon as the command is
+  // recorded, so wait for the terminal `applied` state, not for the row.
+  await waitFor('activity action:action-1 to be applied', async () => {
     const rows = await runtime.app.query({
       type: 'activityQuery',
       payload: { limit: 10 },
     })
-    return rows.find((row) => row.activityId === 'action:action-1')
+    return rows.find(
+      (row) => row.activityId === 'action:action-1' && row.status === 'applied',
+    )
   })
-  expect(activity.status).toBe('applied')
   expect(gmailFetch).toHaveBeenCalledOnce()
 
-  const completed = await Effect.runPromise(runtime.outbox.list('completed'))
-  expect(
-    completed.some(
+  // The worker marks the job completed only after its handler returns, which
+  // is after the `applied` result command, so wait for that too.
+  await waitFor('outbox job for action-1 to be completed', async () => {
+    const completed = await Effect.runPromise(runtime.outbox.list('completed'))
+    return completed.find(
       (job) =>
         job.payload.output.type === 'applyMailboxAction' &&
         job.payload.output.payload.actionId === 'action-1',
-    ),
-  ).toBe(true)
+    )
+  })
 
   const verification = createClient({ url: `file:${database.path}` })
   cleanup.push(() => verification.close())
@@ -152,14 +165,17 @@ test('dead-letters failed analysis, allows later work, and retries after restart
   )
   await analysis.reactions
 
-  const deadLetter = await waitFor(async () => {
-    const jobs = await Effect.runPromise(runtime.outbox.list('dead-letter'))
-    return jobs.find(
-      (job) =>
-        job.payload.output.type === 'analyzeThread' &&
-        job.payload.output.payload.analysisId === 'analysis-1',
-    )
-  })
+  const deadLetter = await waitFor(
+    'analysis-1 outbox job to dead-letter',
+    async () => {
+      const jobs = await Effect.runPromise(runtime.outbox.list('dead-letter'))
+      return jobs.find(
+        (job) =>
+          job.payload.output.type === 'analyzeThread' &&
+          job.payload.output.payload.analysisId === 'analysis-1',
+      )
+    },
+  )
 
   const action = await runtime.app.command(
     {
@@ -176,7 +192,7 @@ test('dead-letters failed analysis, allows later work, and retries after restart
     { idempotencyKey: 'action-after-failure' },
   )
   await action.reactions
-  await waitFor(async () => {
+  await waitFor('action-after-failure to be applied', async () => {
     const rows = await runtime.app.query({
       type: 'activityQuery',
       payload: { limit: 10 },
@@ -198,13 +214,16 @@ test('dead-letters failed analysis, allows later work, and retries after restart
   await Effect.runPromise(
     runtime.outbox.retryDeadLetter(deadLetter.id, new Date()),
   )
-  const thread = await waitFor(async () => {
-    const inbox = await runtime.app.query({
-      type: 'inboxQuery',
-      payload: { filter: 'all', search: '' },
-    })
-    return inbox[0]?.analysis ? inbox[0] : undefined
-  })
+  const thread = await waitFor(
+    'recovered analysis on the inbox thread',
+    async () => {
+      const inbox = await runtime.app.query({
+        type: 'inboxQuery',
+        payload: { filter: 'all', search: '' },
+      })
+      return inbox[0]?.analysis ? inbox[0] : undefined
+    },
+  )
   expect(thread.analysis?.summary).toBe('Recovered analysis.')
 })
 
@@ -267,16 +286,20 @@ test('revoking a rule prevents its queued action from reaching Gmail', async () 
     { idempotencyKey: 'disable-rule-1' },
   )
 
-  const failed = await waitFor(async () => {
-    const rows = await runtime.app.query({
-      type: 'activityQuery',
-      payload: { limit: 10 },
-    })
-    return rows.find(
-      (row) =>
-        row.activityId === 'action:rule-action-1' && row.status === 'failed',
-    )
-  }, 3_000)
+  const failed = await waitFor(
+    'rule-action-1 activity to fail',
+    async () => {
+      const rows = await runtime.app.query({
+        type: 'activityQuery',
+        payload: { limit: 10 },
+      })
+      return rows.find(
+        (row) =>
+          row.activityId === 'action:rule-action-1' && row.status === 'failed',
+      )
+    },
+    3_000,
+  )
   expect(failed.detail).toContain('Automation authority was revoked')
   expect(gmailFetch).not.toHaveBeenCalled()
 })
@@ -340,15 +363,24 @@ async function recordThread(
   await execution.reactions
 }
 
+/**
+ * Polls until `read` returns a value. Callers must make `read` return one
+ * only for the terminal state, not merely for an intermediate row.
+ */
 async function waitFor<T>(
+  description: string,
   read: () => Promise<T | undefined>,
-  timeoutMs = 2_000,
+  timeoutMs = 5_000,
 ): Promise<T> {
   const deadline = Date.now() + timeoutMs
   for (;;) {
     const value = await read()
     if (value !== undefined) return value
-    if (Date.now() >= deadline) throw new Error('Timed out waiting for state')
+    if (Date.now() >= deadline) {
+      throw new Error(
+        `Timed out after ${timeoutMs}ms waiting for ${description}`,
+      )
+    }
     await new Promise((resolve) => setTimeout(resolve, 10))
   }
 }
