@@ -29,6 +29,24 @@ const dependencies = Layer.mergeAll(
 `close()` method. `createJsonlEventLogLayer` opens the file when the Layer is
 built and closes it when the Layer scope ends, for example on `app.close()`.
 
+The Layer provides only `EventLog`, so pass `onOpen` to see what the open
+recovered. It is called once, synchronously, after each successful open, by
+both constructors:
+
+```ts
+createJsonlEventLogLayer({
+  path: `${directory}/events.jsonl`,
+  onOpen: ({ recoveredStaleLock, discardedTrailingBytes }) => {
+    if (recoveredStaleLock) log.warn('took over lock', recoveredStaleLock)
+    if (discardedTrailingBytes > 0) log.warn('removed torn write')
+  },
+})
+```
+
+`recoveredStaleLock` and `discardedTrailingBytes` match the fields of the
+same name on the opened log. If `onOpen` throws, the file is closed, its lock
+released, and the open fails with that error (a defect in the Layer).
+
 ### Format
 
 Each line is one commit:
@@ -197,6 +215,8 @@ JSON-serializable unless a `codec` maps them to a JSON value.
   malformed journal without changing it, `discardedTrailingBytes` for an
   interrupted last line, and a Store that refuses writes after a partial line
   it could not truncate.
+- `onOpen` works as for the Event Log and also receives `releasedOnOpen`:
+  `onOpen: ({ recoveredStaleLock, discardedTrailingBytes, releasedOnOpen }) => …`.
 - Attempts left `running` by an earlier open are released while opening,
   without waiting for their lease, and listed in `releasedOnOpen`. The lock
   means no other open of the file exists, so a crashed or closed owner can no
@@ -322,8 +342,9 @@ checks; a pid-only lock is read as a holder on this host with no start time.
 
 A takeover is reported on the opened Event Log or Store as
 `recoveredStaleLock: { pid, hostname }` (`hostname` is `undefined` for an
-old pid-only lock), and is `undefined` when the lock was free, so apps can log
-crash recoveries. The adapters' own recovery then applies: torn trailing
+old pid-only lock), and to `onOpen`, and is `undefined` when the lock was
+free, so apps can log crash recoveries, including through the Event Log
+Layer. The adapters' own recovery then applies: torn trailing
 writes are removed and outbox attempts left running are released.
 
 - **Concurrent openers.** Two processes can find the same stale lock at once.
@@ -333,6 +354,10 @@ writes are removed and outbox attempts left running are released.
   exclusively. A newer lock never matches, so at most one opener wins and the
   others fail as for a live holder. A claim whose creator has exited is
   recovered by the same rules.
+- **Identity reads.** This process's hostname, start time, pid namespace,
+  and boot id cannot change while it runs, so they are read on the first lock
+  and reused, shared by every copy of this package in the thread. A holder's
+  `/proc/<pid>/stat` is read on every check.
 - **Blocking.** Opening is synchronous. While another process holds a
   takeover claim, or a lock file is still empty, the open retries up to five
   times, sleeping 20 ms between tries, so it can block the event loop for

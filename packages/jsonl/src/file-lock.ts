@@ -38,11 +38,24 @@ type LockRecord = JsonlStaleLock & {
  * package in the thread shares it.
  */
 const registry = globalThis as {
-  [key: symbol]: Map<string, string> | undefined
+  [key: symbol]: Map<string, string> | ProcessIdentity | undefined
 }
 const openPathsKey = Symbol.for('@specter-ts/jsonl/open-paths')
 registry[openPathsKey] ??= new Map()
-const openPaths = registry[openPathsKey]
+const openPaths = registry[openPathsKey] as Map<string, string>
+
+/**
+ * This process's host, start time, pid namespace, and boot, which cannot
+ * change while it runs. Read on the first lock and kept on `globalThis`, so
+ * every copy of this package in the thread reads them once.
+ */
+type ProcessIdentity = {
+  readonly hostname: string
+  readonly startedAt?: string
+  readonly pidNamespace?: string
+  readonly bootId?: string
+}
+const processIdentityKey = Symbol.for('@specter-ts/jsonl/process-identity')
 
 const maxAttempts = 5
 const retryDelayMs = 20
@@ -146,10 +159,10 @@ function removeStale(target: string, content: string, depth: number) {
 function staleHolder(content: string): LockRecord | string {
   const record = parseLock(content)
   if (!record) return unreadable
-  if (record.hostname !== undefined && record.hostname !== hostname()) {
+  const own = processIdentity()
+  if (record.hostname !== undefined && record.hostname !== own.hostname) {
     return `held by process ${record.pid} on host ${record.hostname}`
   }
-  const own = linuxIdentity()
   // Every process of an earlier boot of this host has exited.
   if (record.bootId && own.bootId && record.bootId !== own.bootId) {
     return record
@@ -161,16 +174,21 @@ function staleHolder(content: string): LockRecord | string {
   ) {
     return `held by process ${record.pid} in pid namespace ${record.pidNamespace}, not this process's ${own.pidNamespace}`
   }
-  const holder = processStat(record.pid)
   if (record.pid === process.pid) {
     // Only a recorded start time other than ours shows that an earlier
     // process with this pid wrote it; otherwise another open in this process
     // (a worker thread, or a path alias) may hold it.
-    if (record.startedAt && holder && record.startedAt !== holder.startedAt) {
+    if (
+      record.startedAt &&
+      own.startedAt &&
+      record.startedAt !== own.startedAt
+    ) {
       return record
     }
     return `held by this process (${record.pid}), through another path to the file or from another thread`
   }
+  // Another process's state and start time are read on every check.
+  const holder = processStat(record.pid)
   if (!isAlive(record.pid) || holder?.state === 'Z') return record
   if (record.startedAt && holder && record.startedAt !== holder.startedAt) {
     return record
@@ -223,18 +241,17 @@ function optionalString(value: unknown): value is string | undefined {
 }
 
 function ownRecord() {
-  return {
-    pid: process.pid,
-    hostname: hostname(),
-    startedAt: processStat(process.pid)?.startedAt,
-    ...linuxIdentity(),
-    token: randomUUID(),
-  }
+  return { pid: process.pid, ...processIdentity(), token: randomUUID() }
 }
 
-/** This process's pid namespace and boot; empty where `/proc` is missing. */
-function linuxIdentity(): { pidNamespace?: string; bootId?: string } {
-  if (process.platform !== 'linux') return {}
+function processIdentity() {
+  registry[processIdentityKey] ??= readProcessIdentity()
+  return registry[processIdentityKey] as ProcessIdentity
+}
+
+/** Linux fields are left out where `/proc` is missing or unreadable. */
+function readProcessIdentity(): ProcessIdentity {
+  if (process.platform !== 'linux') return { hostname: hostname() }
   const read = (source: () => string) => {
     try {
       return source().trim() || undefined
@@ -243,6 +260,8 @@ function linuxIdentity(): { pidNamespace?: string; bootId?: string } {
     }
   }
   return {
+    hostname: hostname(),
+    startedAt: processStat(process.pid)?.startedAt,
     pidNamespace: read(() => readlinkSync('/proc/self/ns/pid')),
     bootId: read(() => readFileSync('/proc/sys/kernel/random/boot_id', 'utf8')),
   }

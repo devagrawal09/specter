@@ -21,7 +21,7 @@ process.
 | Export | Purpose |
 | --- | --- |
 | `createJsonlEventLog` | Open one JSONL file as an Event Log service with `close()`. |
-| `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app. |
+| `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app; `onOpen` reports what the open recovered. |
 | `createJsonlSliceStoreService` / `createJsonlSliceStoreLayer` | JSON file Store, one file per Slice. |
 | `createJsonlReactionOutboxStore` | Reaction outbox Store backed by a JSONL journal of job transitions. |
 
@@ -44,6 +44,10 @@ synchronous and can block for about 100 ms while it retries a contended
 takeover. A reused pid only makes the open refuse (on Linux the start time
 detects reuse). Locks use local process ids, so never share these files
 across hosts or over NFS.
+The `onOpen` option of both Event Log constructors and of
+`createJsonlReactionOutboxStore` is called once after a successful open with
+`recoveredStaleLock` and `discardedTrailingBytes` (and the outbox's
+`releasedOnOpen`), so apps using the Layer can log recoveries too.
 Expected versions and idempotency receipts match the SQLite adapters, and
 `query` returns Events with `order > afterOrder`. `fsync` is off by default, so
 a commit survives a process crash but not an operating-system failure; pass
