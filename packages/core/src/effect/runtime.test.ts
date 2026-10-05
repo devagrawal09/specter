@@ -2,6 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import {
   Cause,
   Context,
+  Deferred,
   Effect,
   Fiber,
   Layer,
@@ -574,7 +575,7 @@ describe('Effect-native runtime', () => {
     await app.close()
   })
 
-  it('advances past irrelevant commits without invoking the handler', async () => {
+  it('skips irrelevant commits without invoking the handler', async () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
     const otherRecorded = createEventDefinition('other-recorded', numberSchema)
     const store = makeStoreService()
@@ -641,12 +642,153 @@ describe('Effect-native runtime', () => {
           Effect.succeed(cursor),
         ),
       ),
-    ).resolves.toBe(1)
+    ).resolves.toBe(0)
     expect(handles).toBe(0)
 
     const relevant = await app.command({ type: 'recordValue', payload: 7 })
     await relevant.reactions
     expect(handles).toBe(1)
+    await expect(
+      Effect.runPromise(
+        store.read('publishRelevantValue', (_state, cursor) =>
+          Effect.succeed(cursor),
+        ),
+      ),
+    ).resolves.toBe(2)
+    await app.close()
+  })
+
+  it('opens no Reaction Store transaction for irrelevant commits', async () => {
+    const fixture = makeRelevanceFixture()
+    const counted = countTransactions(makeStoreService())
+    const app = await createSpecterApp(
+      fixture.config,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService()),
+        Layer.succeed(ValuesStore, counted.service),
+      ),
+    )
+
+    for (let version = 1; version <= 100; version += 1) {
+      const execution = await app.command(
+        version % 10 === 5
+          ? { type: 'recordValue', payload: version }
+          : { type: 'recordOther', payload: version },
+      )
+      await execution.reactions
+    }
+
+    expect(counted.count('publishRelevantValue')).toBe(10)
+    expect(fixture.deliveries).toEqual(
+      [5, 15, 25, 35, 45, 55, 65, 75, 85, 95].map(
+        (version) => `publishRelevantValue:${version}`,
+      ),
+    )
+    await expect(
+      Effect.runPromise(
+        counted.service.read('publishRelevantValue', (state, cursor) =>
+          Effect.succeed({ values: state.values.length, cursor }),
+        ),
+      ),
+    ).resolves.toEqual({ values: 10, cursor: 95 })
+    await app.close()
+  })
+
+  it('recovers relevant commits after a crash between skipped commits', async () => {
+    const fixture = makeRelevanceFixture()
+    const counted = countTransactions(makeStoreService())
+    const eventLog = makeEventLogService()
+    const dependencies = Layer.mergeAll(
+      Layer.succeed(EventLog, eventLog),
+      Layer.succeed(ValuesStore, counted.service),
+    )
+    const cursor = () =>
+      Effect.runPromise(
+        counted.service.read('publishRelevantValue', (_state, current) =>
+          Effect.succeed(current),
+        ),
+      )
+
+    const first = await createSpecterApp(fixture.config, dependencies)
+    await (await first.command({ type: 'recordValue', payload: 1 })).reactions
+    await (await first.command({ type: 'recordOther', payload: 2 })).reactions
+    await (await first.command({ type: 'recordOther', payload: 3 })).reactions
+    fixture.failNext = true
+    const failed = await first.command({ type: 'recordValue', payload: 4 })
+    await expect(failed.reactions).rejects.toThrow(
+      'Reaction run failed for: publishRelevantValue',
+    )
+    expect(await cursor()).toBe(1)
+    await first.close()
+
+    // Commits that land while no runtime is running are found at startup.
+    await Effect.runPromise(
+      eventLog.append([{ type: 'other-recorded', payload: 5 }]),
+    )
+    await Effect.runPromise(
+      eventLog.append([{ type: 'value-recorded', payload: 6 }]),
+    )
+    const before = counted.count('publishRelevantValue')
+    const second = await createSpecterApp(fixture.config, dependencies)
+    await (await second.command({ type: 'recordOther', payload: 7 })).reactions
+
+    expect(counted.count('publishRelevantValue') - before).toBe(2)
+    expect(fixture.deliveries).toEqual([
+      'publishRelevantValue:1',
+      'publishRelevantValue:4',
+      'publishRelevantValue:4',
+      'publishRelevantValue:6',
+    ])
+    expect(fixture.handled).toEqual([1, 4, 4, 6])
+    expect(await cursor()).toBe(6)
+    await second.close()
+  })
+
+  it('publishes a long skipped tail once per pass', async () => {
+    const fixture = makeRelevanceFixture()
+    const counted = countTransactions(makeStoreService())
+    const seeded = Array.from({ length: 300 }, (_, index) => ({
+      type: 'other-recorded',
+      payload: index,
+    }))
+    const app = await createSpecterApp(
+      fixture.config,
+      Layer.mergeAll(
+        Layer.succeed(EventLog, makeEventLogService(seeded)),
+        Layer.succeed(ValuesStore, counted.service),
+      ),
+    )
+    const cursor = (name: string) =>
+      Effect.runPromise(
+        counted.service.read(name, (_state, current) =>
+          Effect.succeed(current),
+        ),
+      )
+
+    // Startup catch-up skips one 300-order batch with one cursor write.
+    await (await app.command({ type: 'recordOther', payload: 0 })).reactions
+    expect(counted.count('publishRelevantValue')).toBe(1)
+    expect(counted.count('ignoreEverything')).toBe(1)
+    expect(await cursor('publishRelevantValue')).toBe(300)
+
+    for (let index = 0; index < 254; index += 1) {
+      await (await app.command({ type: 'recordOther', payload: index }))
+        .reactions
+    }
+    expect(counted.count('publishRelevantValue')).toBe(1)
+    expect(await cursor('publishRelevantValue')).toBe(300)
+
+    await (await app.command({ type: 'recordOther', payload: 0 })).reactions
+    expect(counted.count('publishRelevantValue')).toBe(2)
+    expect(await cursor('publishRelevantValue')).toBe(556)
+
+    await (await app.command({ type: 'recordValue', payload: 7 })).reactions
+    expect(counted.count('publishRelevantValue')).toBe(3)
+    expect(fixture.deliveries).toEqual(['publishRelevantValue:557'])
+    // A Reaction without apply handlers never handles and only flushes.
+    expect(counted.count('ignoreEverything')).toBe(2)
+    expect(await cursor('ignoreEverything')).toBe(556)
+    expect(fixture.ignoredHandles).toBe(0)
     await app.close()
   })
 
@@ -951,10 +1093,14 @@ describe('Effect-native runtime', () => {
     )
     const program = Effect.gen(function* () {
       const app = yield* SpecterRuntime
-      const fiber = yield* app
-        .subscribe({ type: 'values', payload: {} })
-        .pipe(Stream.take(2), Stream.runCollect, Effect.forkChild)
-      yield* Effect.sleep('10 millis')
+      const subscribed = yield* Deferred.make<void>()
+      const fiber = yield* app.subscribe({ type: 'values', payload: {} }).pipe(
+        Stream.tap(() => Deferred.succeed(subscribed, undefined)),
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      )
+      yield* Deferred.await(subscribed)
       yield* app.command({ type: 'recordValue', payload: 1 })
       return yield* Fiber.join(fiber)
     })
@@ -1642,6 +1788,104 @@ function assertSafeFailedSpan(
     .join('\n')
   expect(exportedFailure).toContain(safeMessage)
   expect(exportedFailure).not.toContain(secret)
+}
+
+function makeRelevanceFixture() {
+  const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+  const otherRecorded = createEventDefinition('other-recorded', numberSchema)
+  const fixture = {
+    deliveries: [] as string[],
+    handled: [] as number[],
+    ignoredHandles: 0,
+    failNext: false,
+  }
+  const recordValue = createCommandSlice('recordValue')
+    .description('Records a relevant value.')
+    .scenarios({
+      description: 'Records a relevant value.',
+      given: [],
+      when: 7,
+      expect: [event('value-recorded', 7)],
+    })
+    .inputSchema<number>()
+    .store(ValuesStore)
+    .handle(async (value) => [valueRecorded.create(value)])
+  const recordOther = createCommandSlice('recordOther')
+    .description('Records an unrelated value.')
+    .scenarios({
+      description: 'Records an unrelated value.',
+      given: [],
+      when: 9,
+      expect: [event('other-recorded', 9)],
+    })
+    .inputSchema<number>()
+    .store(ValuesStore)
+    .handle(async (value) => [otherRecorded.create(value)])
+  const publishRelevantValue = createReactionSlice('publishRelevantValue')
+    .description('Publishes relevant values.')
+    .scenarios({
+      description: 'Publishes one relevant value.',
+      given: [event('value-recorded', 7)],
+      expect: 7,
+    })
+    .outputSchema<number>()
+    .plugin(() =>
+      Effect.succeed((value, context) =>
+        Effect.suspend(() => {
+          fixture.deliveries.push(context.deliveryId)
+          fixture.handled.push(value)
+          if (!fixture.failNext) return Effect.void
+          fixture.failNext = false
+          return Effect.fail(new Error('provider down'))
+        }),
+      ),
+    )
+    .store(ValuesStore)
+    .apply(valueRecorded, async (applied, state) => {
+      state.values.push(applied.payload)
+    })
+    .handle(async (state) => state.values.at(-1))
+  const ignoreEverything = createReactionSlice('ignoreEverything')
+    .description('Never observes an Event.')
+    .scenarios({
+      description: 'Produces nothing without Events.',
+      given: [],
+      expect: undefined,
+    })
+    .outputSchema<undefined>()
+    .plugin(() => Effect.succeed(() => Effect.void))
+    .store(ValuesStore)
+    .handle(async () => {
+      fixture.ignoredHandles += 1
+      return undefined
+    })
+  return Object.assign(fixture, {
+    config: {
+      events: [valueRecorded, otherRecorded],
+      slices: {
+        recordValue,
+        recordOther,
+        publishRelevantValue,
+        ignoreEverything,
+      },
+    } as const,
+  })
+}
+
+function countTransactions(service: SliceStoreService<Readonly<State>, State>) {
+  const counts = new Map<string, number>()
+  const counted: SliceStoreService<Readonly<State>, State> = {
+    read: service.read,
+    transaction: (name, run) =>
+      Effect.suspend(() => {
+        counts.set(name, (counts.get(name) ?? 0) + 1)
+        return service.transaction(name, run)
+      }),
+  }
+  return {
+    service: counted,
+    count: (name: string) => counts.get(name) ?? 0,
+  }
 }
 
 function captureSpansTracer(spans: Tracer.NativeSpan[]) {

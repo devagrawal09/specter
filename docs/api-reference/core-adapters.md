@@ -80,7 +80,10 @@ originating runtime exits.
 `ReactionDeliveryContext` contains stable `deliveryId`, commit `throughOrder`,
 and durable `scheduledAt`. Attempt IDs belong only to an optional outbox worker.
 Runtime processing reads Event Log commits and uses the Reaction Slice cursor as
-the completion checkpoint.
+the completion checkpoint. Core opens a Reaction Slice Store transaction only
+for a commit containing an Event type that Reaction applies, plus at most one
+cursor publish per 256 skipped Event Log orders, so a Slice Store must not
+assume one transaction per commit.
 
 ## Invariants
 

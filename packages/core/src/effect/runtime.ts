@@ -152,6 +152,19 @@ type AnyCommand = Extract<SliceRegistration, { readonly kind: 'command' }>
 type AnyQuery = Extract<SliceRegistration, { readonly kind: 'query' }>
 type AnyReaction = Extract<SliceRegistration, { readonly kind: 'reaction' }>
 
+/**
+ * Process-local proof that every Event Log commit in `(from, through]` is
+ * irrelevant to one Reaction. It only saves re-reading those commits; the
+ * Slice Store cursor stays the durable truth.
+ */
+type ReactionSkip = { readonly from: number; readonly through: number }
+
+/**
+ * A Reaction pass publishes a cursor over skipped irrelevant commits only once
+ * they span this many Event Log orders, bounding re-reads after a restart.
+ */
+const reactionSkipFlushOrders = 256
+
 /** Native Effect interpreter. Slice callbacks stay ordinary async functions. */
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
   config: TConfig,
@@ -178,6 +191,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     >()
     const allowedCommandEvents = new Map<AnyCommand, ReadonlySet<string>>()
     const reactionExecs = new Map<string, ReactionExec>()
+    const reactionSkips = new Map<string, ReactionSkip>()
     const subscriptions = new Set<Subscription>()
 
     for (const eventDefinition of config.events) {
@@ -639,15 +653,108 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       throughOrder: number,
     ): Effect.Effect<void, SpecterEffectError> {
       return Effect.gen(function* () {
+        const handlers = applyBySlice.get(reaction)
         const cursor = yield* readStore(reaction, (_read, current) =>
           Effect.succeed(current),
         )
-        const commits = yield* eventLog.commitsAfter(cursor)
-        for (const commit of commits) {
-          if (commit.version > throughOrder) break
-          yield* runReactionCommit(reaction, commit)
+        // A remembered skip range applies only while the durable cursor sits
+        // inside it; any other cursor means the Store moved independently.
+        const remembered = reactionSkips.get(reaction.name)
+        let scanned =
+          remembered && remembered.from <= cursor && cursor < remembered.through
+            ? remembered.through
+            : cursor
+        // Every commit in (skippedFrom, scanned] is irrelevant.
+        let skippedFrom = cursor
+        if (scanned < throughOrder) {
+          const commits = yield* eventLog.commitsAfter(scanned)
+          for (const commit of commits) {
+            if (commit.version > throughOrder) break
+            if (!commit.events.some((event) => handlers?.has(event.type))) {
+              scanned = commit.version
+              continue
+            }
+            rememberReactionSkip(reaction, skippedFrom, scanned)
+            yield* runReactionCommit(reaction, commit)
+            skippedFrom = commit.version
+            scanned = commit.version
+          }
+        }
+        rememberReactionSkip(reaction, skippedFrom, scanned)
+        if (scanned - skippedFrom >= reactionSkipFlushOrders) {
+          yield* flushReactionCursor(reaction, skippedFrom, scanned)
         }
       })
+    }
+
+    function rememberReactionSkip(
+      reaction: AnyReaction,
+      from: number,
+      through: number,
+    ) {
+      if (through > from) reactionSkips.set(reaction.name, { from, through })
+    }
+
+    function flushReactionCursor(
+      reaction: AnyReaction,
+      from: number,
+      through: number,
+    ): Effect.Effect<void, SpecterEffectError> {
+      const resolved = stores.get(reaction)
+      if (!resolved) {
+        return Effect.fail(
+          new SpecterStoreConfigurationError(
+            reaction.name,
+            `Slice "${reaction.name}" has no Store binding.`,
+          ),
+        )
+      }
+      return Effect.gen(function* () {
+        const result = yield* Effect.result(
+          resolved.service
+            .transaction(
+              reaction.name,
+              (_write, _read, cursor, publishCursor) =>
+                // Publish only across the skipped range: never backwards,
+                // and never from a cursor older than that range.
+                cursor < from || cursor >= through
+                  ? Effect.succeed(undefined)
+                  : publishCursor(through).pipe(Effect.as(cursor)),
+            )
+            .pipe(
+              Effect.mapError((cause) =>
+                isPublicError(cause)
+                  ? cause
+                  : new SpecterStoreFailureError(
+                      reaction.name,
+                      'transaction',
+                      cause,
+                    ),
+              ),
+            ),
+        )
+        if (result._tag === 'Failure') {
+          yield* Effect.annotateCurrentSpan({
+            'specter.outcome': 'failed',
+            ...safeErrorAttributes(result.failure),
+          })
+          return yield* Effect.fail(result.failure)
+        }
+        const fromOrder = result.success
+        yield* Effect.annotateCurrentSpan({
+          'specter.outcome': fromOrder === undefined ? 'skipped' : 'completed',
+          ...(fromOrder === undefined
+            ? {}
+            : {
+                'specter.cursor.from': fromOrder,
+                'specter.cursor.to': through,
+              }),
+        })
+      }).pipe(
+        withSafeSpan(`specter.reaction.cursor ${reaction.name}`, {
+          attributes: sliceSpanAttributes('reaction', reaction.name, reaction),
+        }),
+      )
     }
 
     function runReactionCommit(

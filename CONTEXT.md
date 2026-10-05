@@ -85,7 +85,7 @@ The private event-derived state a Slice uses after catch-up. Command Slice state
 _Avoid_: Shared app state
 
 **Slice Cursor**:
-The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds, through the same runtime-provided store that owns the Slice State.
+The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds, through the same runtime-provided store that owns the Slice State. A Reaction Slice Cursor may lag behind irrelevant commits it has already skipped; it never lags behind a relevant commit that was delivered.
 _Avoid_: App-wide checkpoint
 
 **Command Slice**:
@@ -93,7 +93,7 @@ A Slice that defines exactly one Command and decides which Events should be emit
 _Avoid_: Stateless command handler, query reader
 
 **Reaction Slice**:
-A Slice that processes Event Log commits after Command commit and may produce zero or one Reaction Effect per commit. State, handler, Plugin, and cursor share one Store transaction. Failure rolls State and cursor back; retry uses same commit and delivery identity. `.plugin` is optional for same-app Command output.
+A Slice that processes Event Log commits after Command commit and may produce zero or one Reaction Effect per relevant commit. A commit is relevant when it contains an Event type the Reaction applies; other commits are skipped without a Store transaction. For a relevant commit, State, handler, Plugin, and cursor share one Store transaction. Failure rolls State and cursor back; retry uses same commit and delivery identity. `.plugin` is optional for same-app Command output.
 _Avoid_: Batch effect emitter
 
 **Reaction Effect**:
@@ -105,11 +105,11 @@ Interpreter for custom or external Reaction output. Without `.plugin`, output is
 _Avoid_: Second command handler, app registry import
 
 **Reaction Run**:
-A runtime pass where app advances each Reaction Slice through requested Event Log commit. App-scoped semaphore prevents local overlap; Store transaction provides cross-process exclusion. Nested Command commit requests another run after active one.
+A runtime pass where app advances each Reaction Slice through requested Event Log commit. Only relevant commits open a Store transaction, whose cursor also covers irrelevant commits skipped before it; a skipped tail is published once it spans 256 Event Log orders, so a restart re-reads at most that tail without side effects. App-scoped semaphore prevents local overlap; Store transaction provides cross-process exclusion. Nested Command commit requests another run after active one.
 _Avoid_: Reaction queue, background job
 
 **Reaction Delivery**:
-One at-least-once execution for Reaction name plus Event Log commit version. `deliveryId`, `throughOrder`, and ISO `scheduledAt` remain stable across retries. Core has no attempt identity; optional outbox worker owns attempt ID and number.
+One at-least-once execution for Reaction name plus relevant Event Log commit version. Irrelevant commits produce no Reaction Delivery. `deliveryId`, `throughOrder`, and ISO `scheduledAt` remain stable across retries. Core has no attempt identity; optional outbox worker owns attempt ID and number.
 _Avoid_: Exactly-once side effect
 
 **Reaction Run Failure**:
