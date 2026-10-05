@@ -49,13 +49,13 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       hono:
         specifier: 4.12.19
         version: 4.12.19
@@ -86,13 +86,13 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/colonybench-reference:
     dependencies:
@@ -109,8 +109,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/spec
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       zod:
         specifier: ^4.4.3
         version: 4.4.3
@@ -120,10 +120,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/harlan:
     dependencies:
@@ -142,13 +142,13 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/landing:
     dependencies:
@@ -164,10 +164,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/last-lantern:
     dependencies:
@@ -202,8 +202,8 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sqlite
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       hono:
         specifier: 4.12.19
         version: 4.12.19
@@ -231,13 +231,13 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/narayan-ai:
     dependencies:
@@ -264,25 +264,25 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/router-core':
         specifier: 1.168.8
         version: 1.168.8
       '@tanstack/router-plugin':
         specifier: 1.167.16
-        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/solid-router':
         specifier: 1.168.8
         version: 1.168.8(solid-js@1.9.13)
       '@tanstack/solid-start':
         specifier: 1.167.14
-        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       solid-js:
         specifier: ^1.9.12
         version: 1.9.13
@@ -304,13 +304,13 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/personal-mail:
     dependencies:
@@ -345,8 +345,8 @@ importers:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       hono:
         specifier: 4.12.19
         version: 4.12.19
@@ -368,10 +368,10 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/reference:
     dependencies:
@@ -404,13 +404,13 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       drizzle-orm:
         specifier: ^0.45.2
         version: 0.45.2(@libsql/client@0.17.3)(@types/pg@8.20.0)(pg@8.22.0)
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       hono:
         specifier: 4.12.19
         version: 4.12.19
@@ -441,13 +441,13 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/shipyard-benchmark:
     dependencies:
@@ -481,22 +481,22 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/router-core':
         specifier: 1.168.8
         version: 1.168.8
       '@tanstack/router-plugin':
         specifier: 1.167.16
-        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/solid-router':
         specifier: 1.168.8
         version: 1.168.8(solid-js@1.9.13)
       '@tanstack/solid-start':
         specifier: 1.167.14
-        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       solid-js:
         specifier: ^1.9.12
         version: 1.9.13
@@ -521,13 +521,13 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/threadplane-reference:
     dependencies:
@@ -548,22 +548,22 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/router-core':
         specifier: 1.168.8
         version: 1.168.8
       '@tanstack/router-plugin':
         specifier: 1.167.16
-        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/solid-router':
         specifier: 1.168.8
         version: 1.168.8(solid-js@1.9.13)
       '@tanstack/solid-start':
         specifier: 1.167.14
-        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       solid-js:
         specifier: ^1.9.12
         version: 1.9.13
@@ -588,13 +588,13 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   apps/worklog:
     dependencies:
@@ -627,10 +627,10 @@ importers:
         version: link:../../packages/sqlite
       '@tailwindcss/vite':
         specifier: ^4.1.18
-        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       hono:
         specifier: 4.12.19
         version: 4.12.19
@@ -661,13 +661,13 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: 3.0.0-next.5
-        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   codemods/function-usage-detector:
     devDependencies:
@@ -700,17 +700,17 @@ importers:
         specifier: ^24.10.1
         version: 24.12.4
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/create-specter:
     devDependencies:
@@ -728,17 +728,17 @@ importers:
         version: link:../core
     devDependencies:
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/postgres:
     dependencies:
@@ -759,8 +759,8 @@ importers:
         specifier: ^8.15.5
         version: 8.20.0
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       pg:
         specifier: ^8.16.3
         version: 8.22.0
@@ -769,10 +769,10 @@ importers:
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/reaction-outbox:
     dependencies:
@@ -784,17 +784,17 @@ importers:
         specifier: ^24.10.1
         version: 24.12.4
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/spec:
     dependencies:
@@ -810,10 +810,10 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/spec-editor:
     dependencies:
@@ -853,13 +853,13 @@ importers:
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vite-plugin-solid:
         specifier: ^2.11.12
-        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/sqlite:
     dependencies:
@@ -877,17 +877,17 @@ importers:
         specifier: ^24.10.1
         version: 24.12.4
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       typescript:
         specifier: ^6.0.2
         version: 6.0.3
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
   packages/sqlite-node:
     dependencies:
@@ -899,17 +899,17 @@ importers:
         specifier: ^24.10.1
         version: 24.12.4
       effect:
-        specifier: 4.0.0-beta.78
-        version: 4.0.0-beta.78
+        specifier: 4.0.1
+        version: 4.0.1
       typescript:
         specifier: ^6.0.2
         version: 6.0.2
       vite:
         specifier: ^8.0.0
-        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+        version: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       vitest:
         specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
 
 packages:
 
@@ -1835,36 +1835,6 @@ packages:
     peerDependenciesMeta:
       '@cfworker/json-schema':
         optional: true
-
-  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
-    resolution: {integrity: sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
-    resolution: {integrity: sha512-zExlW9zUJKZH/tOtVMttwjKa4Xm/3KcNjnE3dPN92uCktwavMxpgCA3MoJK/DOnTWsQgo224OaST27/mPNAf+w==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
-    resolution: {integrity: sha512-dgX0P/9wGPJeHFBG+ZmhgE6bmtMt7NP5CRBGyyktpopdk/mW4POnrpQsSLtKI1dwpc+pPLuXHDh6vvskyQE/sw==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
-    resolution: {integrity: sha512-Tg3yX65f5GbtXLkrYEHE5oibZG9epyYWas7FogTTEJeDEF9JlXJzKgXaNhT3UXlTOeA+AfZpYZYZ0uPj7Cfquw==}
-    cpu: [arm]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
-    resolution: {integrity: sha512-8TNXMEjJc3QEy7R/x1INhgiU+XakDAFUzBhaz7+Rbrs8NH5UQeHQxxmzsSBJGyV6I1jW79undiQm8tOI+D+8FQ==}
-    cpu: [x64]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
-    resolution: {integrity: sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ==}
-    cpu: [x64]
-    os: [win32]
 
   '@napi-rs/wasm-runtime@1.1.4':
     resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
@@ -2874,8 +2844,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  effect@4.0.0-beta.78:
-    resolution: {integrity: sha512-j79Rl9QpHwMz/ZJWLNpZoiVj9N7zHqiLKN5EcYd/A8J1oqejILWQLfc4HPlvqHqKC8SK55LJ+X4gy4ONJ+JpfQ==}
+  effect@4.0.1:
+    resolution: {integrity: sha512-b1VlQG9g8fwxE5QnIZuPoOP/0MsqHJSRKxUijjoM80E5q95FXrX5yWtY5XI8G+GJsBQAVSDbLS458z9a++uVvw==}
 
   electron-to-chromium@1.5.361:
     resolution: {integrity: sha512-Q6Hts7N9FnJc5LeGRINFvLhCI9xZmNtTDe5ZbcVezQz7cU4a8Aua3GH1b8J2XY8Al9PF+OCwYqhgsOOheMdvkA==}
@@ -3000,10 +2970,6 @@ packages:
   extend@3.0.2:
     resolution: {integrity: sha512-fjquC59cD7CyW6urNXK0FBufkZcoiGG80wTuPujX590cB5Ttln20E2UB4S/WARVqhXffZl2LNgS+gQdPIIim/g==}
 
-  fast-check@4.9.0:
-    resolution: {integrity: sha512-7ms6T7SybUev/PQITciI0yLM2pOSFy5zpG8Ty7tQofcVaQUvrMXp6CBwqF6fThLCLOrfBtuHAtwq6Yu4XPCllg==}
-    engines: {node: '>=12.17.0'}
-
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
@@ -3033,9 +2999,6 @@ packages:
   finalhandler@2.1.1:
     resolution: {integrity: sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==}
     engines: {node: '>= 18.0.0'}
-
-  find-my-way-ts@0.1.6:
-    resolution: {integrity: sha512-a85L9ZoXtNAey3Y6Z+eBWW658kO/MwR7zIafkIUPUMf3isZG0NCs2pjW2wtjxAKuJPxMAsHUIP4ZPGv0o5gyTA==}
 
   follow-redirects@1.16.0:
     resolution: {integrity: sha512-y5rN/uOsadFT/JfYwhxRS5R7Qce+g3zG97+JrtFZlC9klX/W5hD7iiLzScI4nZqUS7DNUdhPgw4xI8W2LuXlUw==}
@@ -3176,10 +3139,6 @@ packages:
   inherits@2.0.4:
     resolution: {integrity: sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ==}
 
-  ini@7.0.0:
-    resolution: {integrity: sha512-ifK0CgjALofS5bkrcTy4RaQ9Vx2Knf/eLeIO+NaswQEpH1UblrtTSCIvN71qQDMq0PeQ/SSPojvEJp9vvvfr+w==}
-    engines: {node: ^22.22.2 || ^24.15.0 || >=26.0.0}
-
   ip-address@10.2.0:
     resolution: {integrity: sha512-/+S6j4E9AHvW9SWMSEY9Xfy66O5PWvVEJ08O0y5JGyEKQpojb0K0GKpz/v5HJ/G0vi3D2sjGK78119oXZeE0qA==}
     engines: {node: '>= 12'}
@@ -3310,9 +3269,6 @@ packages:
   kind-of@6.0.3:
     resolution: {integrity: sha512-dcS1ul+9tmeD95T+x28/ehLgd9mENa3LsvDTtzm3vyBEO7RPptvAD+t44WVXaUjTBRcrpFeFlC8WCruUR456hw==}
     engines: {node: '>=0.10.0'}
-
-  kubernetes-types@1.30.0:
-    resolution: {integrity: sha512-Dew1okvhM/SQcIa2rcgujNndZwU8VnSapDgdxlYoB84ZlpAD43U6KLAFqYo17ykSFGHNPrg0qry0bP+GJd9v7Q==}
 
   libsql@0.5.29:
     resolution: {integrity: sha512-8lMP8iMgiBzzoNbAPQ59qdVcj6UaE/Vnm+fiwX4doX4Narook0a4GPKWBEv+CR8a1OwbfkgL18uBfBjWdF0Fzg==}
@@ -3593,16 +3549,6 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  msgpackr-extract@3.0.4:
-    resolution: {integrity: sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==}
-    hasBin: true
-
-  msgpackr@2.0.4:
-    resolution: {integrity: sha512-o1C5KRmuRt+apqMr1HuGSqWStZoRBUpEsCsl15uM9VdAF1qHLtvMOU2En747EnTyEl6c4pzPewRMFF31s1CNbA==}
-
-  multipasta@0.2.7:
-    resolution: {integrity: sha512-KPA58d68KgGil15oDqXjkUBEBYc00XvbPj5/X+dyzeo/lWm9Nc25pQRlf1D+gv4OpK7NM0J1odrbu9JNNGvynA==}
-
   nanoid@3.3.12:
     resolution: {integrity: sha512-ZB9RH/39qpq5Vu6Y+NmUaFhQR6pp+M2Xt76XBnEwDaGcVAqhlvxrl3B2bKS5D3NH3QR76v3aSrKaF/Kiy7lEtQ==}
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
@@ -3611,10 +3557,6 @@ packages:
   negotiator@1.0.0:
     resolution: {integrity: sha512-8Ofs/AUQh8MaEcrlq5xOX0CQ9ypTF5dl78mjlMNfOK08fzpgTHQRQPBxcPlEtIw0yRpws+Zo/3r+5WRby7u3Gg==}
     engines: {node: '>= 0.6'}
-
-  node-gyp-build-optional-packages@5.2.2:
-    resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
-    hasBin: true
 
   node-releases@2.0.46:
     resolution: {integrity: sha512-GYVXHE2KnrzAfsAjl4uP++evGFCrAU1jta4ubEjIG7YWt/64Gqv66a30yKwWczVjA6j3bM4nBwH7Pk1JmDHaxQ==}
@@ -3806,9 +3748,6 @@ packages:
   punycode@2.3.1:
     resolution: {integrity: sha512-vYt7UD1U9Wg6138shLtLOvdAu+8DsC/ilFtEVHcH+wydcSpNE20AfSOduf6MkRFahL5FY7X1oU7nKVZFtfq8Fg==}
     engines: {node: '>=6'}
-
-  pure-rand@8.4.2:
-    resolution: {integrity: sha512-vvuOGgcuPJAirlHvuQw1TrOiw7ptaIXXmIbNuiNOY6lNGJJH49PQ1Kj4nd783nPdQhQdicgOjVI2yI/9BD6/Ng==}
 
   qs@6.15.3:
     resolution: {integrity: sha512-O9gl3zCl5h5blw1KGUzQKhA5oUXSl8rwUIM5o0S3nCXMliSvy5Dzx7/DJcI+SwgICv+IneSZwhBh1oSyEHA71A==}
@@ -4068,10 +4007,6 @@ packages:
   tokenx@1.3.0:
     resolution: {integrity: sha512-NLdXTEZkKiO0gZuLtMoZKjCXTREXeZZt8nnnNeyoXtNZAfG/GKGSbQtLU5STspc0rMSwcA+UJfWZkbNU01iKmQ==}
 
-  toml@4.3.0:
-    resolution: {integrity: sha512-lVb8X9BsPVuH0M4BKeS91tXAmJvCjQ5UIyAbQFaxkKGyUFK2RPkhwaFSQH8vbpl1d23eu/IBH+dwVMHWaq9A5A==}
-    engines: {node: '>=20'}
-
   tough-cookie@6.0.1:
     resolution: {integrity: sha512-LktZQb3IeoUWB9lqR5EWTHgW/VTITCXg4D21M+lvybRVdylLrRMnqaIONLVb5mav8vM19m44HIcGq4qASeu2Qw==}
     engines: {node: '>=16'}
@@ -4154,10 +4089,6 @@ packages:
 
   uuid@11.1.1:
     resolution: {integrity: sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ==}
-    hasBin: true
-
-  uuid@14.0.1:
-    resolution: {integrity: sha512-6ZxzVpzDXDa3bJWaHilVayA+BH/1zmxCJoVgvmqJnid/gPoKHxUrS/aC/T6LGQtNHT+XHG9fXPJB4d+IrU30Ew==}
     hasBin: true
 
   validate-html-nesting@1.2.4:
@@ -4366,11 +4297,6 @@ packages:
 
   yallist@3.1.1:
     resolution: {integrity: sha512-a4UGQaWPH59mOXUYnAG2ewncQS4i4F43Tv3JoAM+s2VDAmS9NsK8GpDMLrCHPksFT7h3K6TOoUNn2pb7RoXx4g==}
-
-  yaml@2.9.0:
-    resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
-    engines: {node: '>= 14.6'}
-    hasBin: true
 
   yoctocolors@2.1.2:
     resolution: {integrity: sha512-CzhO+pFNo8ajLM2d2IW/R93ipy99LWjtwblvC1RsoSUMZgyLbYFr221TnSNT7GjGdYui6P459mw9JH/g/zW2ug==}
@@ -5167,24 +5093,6 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
-    optional: true
-
   '@napi-rs/wasm-runtime@1.1.4(@emnapi/core@1.10.0)(@emnapi/runtime@1.10.0)':
     dependencies:
       '@emnapi/core': 1.10.0
@@ -5481,12 +5389,12 @@ snapshots:
       '@tailwindcss/oxide-win32-arm64-msvc': 4.3.0
       '@tailwindcss/oxide-win32-x64-msvc': 4.3.0
 
-  '@tailwindcss/vite@4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@tailwindcss/vite@4.3.0(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@tailwindcss/node': 4.3.0
       '@tailwindcss/oxide': 4.3.0
       tailwindcss: 4.3.0
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
 
   '@tanstack/history@1.161.6': {}
 
@@ -5530,7 +5438,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.167.11(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@tanstack/router-plugin@1.167.11(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-syntax-jsx': 7.28.6(@babel/core@7.29.0)
@@ -5546,12 +5454,12 @@ snapshots:
       unplugin: 2.3.11
       zod: 3.25.76
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
-      vite-plugin-solid: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
+      vite-plugin-solid: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
     transitivePeerDependencies:
       - supports-color
 
-  '@tanstack/router-plugin@1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@tanstack/router-plugin@1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@babel/core': 7.29.0
       '@babel/plugin-syntax-jsx': 7.28.6(@babel/core@7.29.0)
@@ -5567,8 +5475,8 @@ snapshots:
       unplugin: 2.3.11
       zod: 3.25.76
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
-      vite-plugin-solid: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
+      vite-plugin-solid: 2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
     transitivePeerDependencies:
       - supports-color
 
@@ -5615,17 +5523,17 @@ snapshots:
     transitivePeerDependencies:
       - crossws
 
-  '@tanstack/solid-start@1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@tanstack/solid-start@1.167.14(solid-js@1.9.13)(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@tanstack/solid-router': 1.168.8(solid-js@1.9.13)
       '@tanstack/solid-start-client': 1.166.22(solid-js@1.9.13)
       '@tanstack/solid-start-server': 1.166.22(solid-js@1.9.13)
       '@tanstack/start-client-core': 1.167.8
-      '@tanstack/start-plugin-core': 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      '@tanstack/start-plugin-core': 1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/start-server-core': 1.167.8
       pathe: 2.0.3
       solid-js: 1.9.13
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
     transitivePeerDependencies:
       - '@rsbuild/core'
       - '@tanstack/react-router'
@@ -5643,7 +5551,7 @@ snapshots:
 
   '@tanstack/start-fn-stubs@1.161.6': {}
 
-  '@tanstack/start-plugin-core@1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@tanstack/start-plugin-core@1.167.16(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@babel/code-frame': 7.27.1
       '@babel/core': 7.29.0
@@ -5651,7 +5559,7 @@ snapshots:
       '@rolldown/pluginutils': 1.0.0-beta.40
       '@tanstack/router-core': 1.168.8
       '@tanstack/router-generator': 1.166.23
-      '@tanstack/router-plugin': 1.167.11(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      '@tanstack/router-plugin': 1.167.11(vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)))(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@tanstack/router-utils': 1.161.6
       '@tanstack/start-client-core': 1.167.8
       '@tanstack/start-server-core': 1.167.8
@@ -5663,8 +5571,8 @@ snapshots:
       srvx: 0.11.16
       tinyglobby: 0.2.16
       ufo: 1.6.4
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
-      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
+      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       xmlbuilder2: 4.0.3
       zod: 3.25.76
     transitivePeerDependencies:
@@ -5775,13 +5683,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.7(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))':
+  '@vitest/mocker@4.1.7(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))':
     dependencies:
       '@vitest/spy': 4.1.7
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
 
   '@vitest/pretty-format@4.1.7':
     dependencies:
@@ -6188,18 +6096,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  effect@4.0.0-beta.78:
-    dependencies:
-      '@standard-schema/spec': 1.1.0
-      fast-check: 4.9.0
-      find-my-way-ts: 0.1.6
-      ini: 7.0.0
-      kubernetes-types: 1.30.0
-      msgpackr: 2.0.4
-      multipasta: 0.2.7
-      toml: 4.3.0
-      uuid: 14.0.1
-      yaml: 2.9.0
+  effect@4.0.1: {}
 
   electron-to-chromium@1.5.361: {}
 
@@ -6406,10 +6303,6 @@ snapshots:
 
   extend@3.0.2: {}
 
-  fast-check@4.9.0:
-    dependencies:
-      pure-rand: 8.4.2
-
   fast-deep-equal@3.1.3: {}
 
   fast-uri@3.1.2: {}
@@ -6440,8 +6333,6 @@ snapshots:
       statuses: 2.0.2
     transitivePeerDependencies:
       - supports-color
-
-  find-my-way-ts@0.1.6: {}
 
   follow-redirects@1.16.0: {}
 
@@ -6584,8 +6475,6 @@ snapshots:
 
   inherits@2.0.4: {}
 
-  ini@7.0.0: {}
-
   ip-address@10.2.0: {}
 
   ipaddr.js@1.9.1: {}
@@ -6705,8 +6594,6 @@ snapshots:
       safe-buffer: 5.2.1
 
   kind-of@6.0.3: {}
-
-  kubernetes-types@1.30.0: {}
 
   libsql@0.5.29:
     dependencies:
@@ -7125,32 +7012,9 @@ snapshots:
 
   ms@2.1.3: {}
 
-  msgpackr-extract@3.0.4:
-    dependencies:
-      node-gyp-build-optional-packages: 5.2.2
-    optionalDependencies:
-      '@msgpackr-extract/msgpackr-extract-darwin-arm64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-darwin-x64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-arm': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-arm64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-x64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.4
-    optional: true
-
-  msgpackr@2.0.4:
-    optionalDependencies:
-      msgpackr-extract: 3.0.4
-
-  multipasta@0.2.7: {}
-
   nanoid@3.3.12: {}
 
   negotiator@1.0.0: {}
-
-  node-gyp-build-optional-packages@5.2.2:
-    dependencies:
-      detect-libc: 2.1.2
-    optional: true
 
   node-releases@2.0.46: {}
 
@@ -7307,8 +7171,6 @@ snapshots:
   proxy-from-env@2.1.0: {}
 
   punycode@2.3.1: {}
-
-  pure-rand@8.4.2: {}
 
   qs@6.15.3:
     dependencies:
@@ -7591,8 +7453,6 @@ snapshots:
 
   tokenx@1.3.0: {}
 
-  toml@4.3.0: {}
-
   tough-cookie@6.0.1:
     dependencies:
       tldts: 7.0.32
@@ -7688,8 +7548,6 @@ snapshots:
 
   uuid@11.1.1: {}
 
-  uuid@14.0.1: {}
-
   validate-html-nesting@1.2.4: {}
 
   vary@1.1.2: {}
@@ -7704,7 +7562,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
+  vite-plugin-solid@2.11.12(solid-js@1.9.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)):
     dependencies:
       '@babel/core': 7.29.0
       '@types/babel__core': 7.20.5
@@ -7712,12 +7570,12 @@ snapshots:
       merge-anything: 5.1.7
       solid-js: 1.9.13
       solid-refresh: 0.6.3(solid-js@1.9.13)
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
-      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
+      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
     transitivePeerDependencies:
       - supports-color
 
-  vite-plugin-solid@3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
+  vite-plugin-solid@3.0.0-next.5(@solidjs/web@2.0.0-beta.13(solid-js@2.0.0-beta.13))(solid-js@2.0.0-beta.13)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)):
     dependencies:
       '@babel/core': 7.29.0
       '@solidjs/web': 2.0.0-beta.13(solid-js@2.0.0-beta.13)
@@ -7726,12 +7584,12 @@ snapshots:
       merge-anything: 5.1.7
       solid-js: 2.0.0-beta.13
       solid-refresh: 0.8.0-next.7(solid-js@2.0.0-beta.13)
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
-      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
+      vitefu: 1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
     transitivePeerDependencies:
       - supports-color
 
-  vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0):
+  vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -7744,16 +7602,15 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.7.0
       tsx: 4.22.3
-      yaml: 2.9.0
 
-  vitefu@1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
+  vitefu@1.1.3(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)):
     optionalDependencies:
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
 
-  vitest@4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)):
+  vitest@4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)):
     dependencies:
       '@vitest/expect': 4.1.7
-      '@vitest/mocker': 4.1.7(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0))
+      '@vitest/mocker': 4.1.7(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
       '@vitest/pretty-format': 4.1.7
       '@vitest/runner': 4.1.7
       '@vitest/snapshot': 4.1.7
@@ -7770,7 +7627,7 @@ snapshots:
       tinyexec: 1.2.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)(yaml@2.9.0)
+      vite: 8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 24.12.4
@@ -7835,8 +7692,6 @@ snapshots:
   xxhash-wasm@1.1.0: {}
 
   yallist@3.1.1: {}
-
-  yaml@2.9.0: {}
 
   yoctocolors@2.1.2: {}
 
