@@ -23,6 +23,7 @@ process.
 | `createJsonlEventLog` | Open one JSONL file as an Event Log service with `close()`. |
 | `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app. |
 | `createJsonlSliceStoreService` / `createJsonlSliceStoreLayer` | JSON file Store, one file per Slice. |
+| `createJsonlReactionOutboxStore` | Reaction outbox Store backed by a JSONL journal of job transitions. |
 
 The JSONL Event Log keeps one Event Log per file, one commit per line, so an
 app can open a separate log per session without a database. Opening reads the
@@ -62,6 +63,18 @@ an unsynced log tail; new commits then reuse those orders and the Slice skips
 them. The Slice Store cannot see the Event Log, so apps that need the check
 compare each Slice cursor with `eventLog.currentVersion` after opening and
 rebuild a Slice whose cursor is ahead.
+
+The JSONL Reaction outbox Store appends one line per job transition and
+replays the file into an in-memory index on open. It takes the same
+`<path>.lock` writer lock and handles `fsync`, malformed lines, trailing
+writes, and failed writes like the Event Log. Two files cannot share a
+transaction, so the enqueue line is written before the Slice Store renames the
+Reaction cursor document; after a crash between the two, the job survives and
+core's retried Reaction re-enqueues the same `deliveryId` as a no-op. Use
+`fsync: true` on the outbox so an operating-system crash cannot keep the
+cursor and lose the enqueue. Attempts left running by an earlier open are
+released on open. The journal is not compacted. See the package README for
+the crash windows and when to rewrite the file.
 
 `@specter-ts/jsonl` is built, tested, and typechecked with the workspace but is
 not yet in the `release:*` scripts.

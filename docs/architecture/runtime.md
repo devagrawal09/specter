@@ -177,8 +177,10 @@ Scheduling acknowledges adapter acceptance before Command completion and
 returns a separate Effect used by `execution.reactions` to await processing.
 
 Direct plugins hold the Slice Store transaction open. Wrap slow external
-effects with `withReactionOutbox`; enqueue then commits atomically, while the
-outbox worker owns leases, retries, dead-lettering, and replay outside the Slice
+effects with `withReactionOutbox`; with SQL Stores the enqueue then commits
+atomically with the Reaction cursor, and the JSONL Store writes the enqueue
+before the cursor and treats a replayed `deliveryId` as a no-op. The outbox
+worker owns leases, retries, dead-lettering, and replay outside the Slice
 transaction. Plugin `query` is rejected inside a direct Plugin's transaction and
 runs normally from the outbox worker; see [Plugins](plugins.md).
 

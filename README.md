@@ -19,6 +19,7 @@ packages/memory/           deterministic test adapters and immediate scheduler
 packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
 packages/sqlite-node/      scoped native node:sqlite runtime bundle
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
+packages/jsonl/            file-backed JSONL Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
 packages/spec-editor/      local visual editor for committed spec.json files
 packages/create-specter/   create-specter initializer CLI

@@ -20,6 +20,13 @@ export type ReactionOutboxPluginOptions<TOutput> = {
     'store' | 'handle' | 'signal'
   >
   readonly pollIntervalMs?: number
+  /**
+   * When the Plugin's scope closes, the worker stops claiming and the
+   * finalizer waits up to this long for a running attempt to finish and
+   * record its outcome, so closing the Store afterwards does not make the job
+   * run again. Defaults to 30 seconds.
+   */
+  readonly shutdownTimeoutMs?: number
   readonly onError?: (cause: unknown) => Promise<void> | void
 }
 
@@ -36,7 +43,10 @@ export function withReactionOutbox<TOutput, R = never>(
   return (context) =>
     Effect.gen(function* () {
       const execute = yield* plugin(context)
-      const scope = yield* Effect.scope
+      const shutdownTimeoutMs = options.shutdownTimeoutMs ?? 30_000
+      if (!Number.isFinite(shutdownTimeoutMs) || shutdownTimeoutMs < 0) {
+        throw new Error('shutdownTimeoutMs must be non-negative')
+      }
       const controller = new AbortController()
       const worker = createReactionOutboxWorker({
         ...options.worker,
@@ -46,22 +56,26 @@ export function withReactionOutbox<TOutput, R = never>(
           Effect.runPromise(execute(delivery.output, delivery.context)),
       })
 
+      const running = runReactionOutboxWorker(worker, {
+        signal: controller.signal,
+        pollIntervalMs: options.pollIntervalMs,
+        onError: options.onError ?? (() => {}),
+      }).catch(() => {
+        // `onError` already saw every drain failure.
+      })
+
       yield* Effect.addFinalizer(() =>
-        Effect.sync(() => {
+        Effect.promise(async () => {
           controller.abort()
-        }),
-      )
-      yield* Effect.forkIn(
-        Effect.tryPromise({
-          try: () =>
-            runReactionOutboxWorker(worker, {
-              signal: controller.signal,
-              pollIntervalMs: options.pollIntervalMs,
-              onError: options.onError ?? (() => {}),
+          let timeout: ReturnType<typeof setTimeout> | undefined
+          await Promise.race([
+            running,
+            new Promise<void>((resolve) => {
+              timeout = setTimeout(resolve, shutdownTimeoutMs)
             }),
-          catch: (cause) => cause,
+          ])
+          clearTimeout(timeout)
         }),
-        scope,
       )
 
       return (output: TOutput, context: ReactionDeliveryContext) =>

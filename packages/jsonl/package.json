@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/jsonl",
   "version": "0.4.0",
-  "description": "Append-only JSONL file Event Log and JSON file Slice Store for Specter.",
+  "description": "Append-only JSONL file Event Log, JSON file Slice Store, and JSONL Reaction outbox Store for Specter.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -24,7 +24,8 @@
     "bench": "node --expose-gc --import tsx bench/app-construction.ts"
   },
   "dependencies": {
-    "@specter-ts/core": "workspace:*"
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*"
   },
   "peerDependencies": {
     "effect": "4.0.1"
