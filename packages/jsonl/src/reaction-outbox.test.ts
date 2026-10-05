@@ -499,13 +499,15 @@ describe('JSONL Reaction outbox lock', () => {
     open({ path })
   })
 
-  it('reports a stale lock file without taking it over', () => {
+  it('refuses a lock file held by another live process', () => {
     const path = temporaryOutboxPath()
     open({ path }).close()
-    writeFileSync(`${path}.lock`, '999999\n')
+    writeFileSync(`${path}.lock`, `${process.ppid}\n`)
 
-    expect(() => open({ path })).toThrow(`${path}.lock`)
-    expect(readFileSync(`${path}.lock`, 'utf8')).toBe('999999\n')
+    expect(() => open({ path })).toThrow(
+      `${path}.lock: held by live process ${process.ppid}`,
+    )
+    expect(readFileSync(`${path}.lock`, 'utf8')).toBe(`${process.ppid}\n`)
   })
 
   it('shares the Event Log lock, so one file cannot be opened as both', () => {

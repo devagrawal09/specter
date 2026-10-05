@@ -4,6 +4,7 @@ export {
   type JsonlEventLog,
   type JsonlEventLogOptions,
 } from './event-log'
+export type { JsonlStaleLock } from './file-lock'
 export {
   createJsonlReactionOutboxStore,
   type JsonlReactionOutboxCodec,

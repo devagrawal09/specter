@@ -52,11 +52,11 @@ reopen.
   SQLite adapters. A known idempotency key returns the stored commit, with its
   original fingerprint, as a duplicate; the runtime decides whether a changed
   fingerprint is a conflict (`idempotencyMode: 'exact'`).
-- One writer per file. Opening creates `<path>.lock` exclusively (it holds the
-  opener's process id) and `close()` removes it; a second open of the same
-  path in the process, or while the lock file exists, fails. A lock file left
-  by a crashed process is reported with its path and never taken over: delete
-  it only after confirming no process uses the log.
+- One writer per file. Opening creates `<path>.lock` exclusively and
+  `close()` removes it; a second open of the same path in the process, or
+  while another live process holds the lock, fails. A lock left by a process
+  on this host that has exited, for example after `SIGKILL`, is taken over and
+  reported as `recoveredStaleLock`; see [Lock files](#lock-files).
 - `fsync` is off by default. Without it, a commit survives a process crash but
   may be lost if the machine or operating system fails before the page cache
   is flushed. Use this default only when final facts are also recorded
@@ -192,7 +192,8 @@ JSON-serializable unless a `codec` maps them to a JSON value.
   appends its lines in one write, so operations in the process never
   interleave and a claim is atomic.
 - Lock file, `fsync`, malformed-line, trailing-write, and failed-write
-  handling match the Event Log: one `<path>.lock` writer, opens that reject a
+  handling match the Event Log: one `<path>.lock` writer whose stale lock is
+  taken over and reported as `recoveredStaleLock`, opens that reject a
   malformed journal without changing it, `discardedTrailingBytes` for an
   interrupted last line, and a Store that refuses writes after a partial line
   it could not truncate.
@@ -267,6 +268,97 @@ the journal small. Rewrite the file when it is large relative to its live jobs, 
 the Store closed: keep every `pending`, `running`, and `dead-letter` job, and
 keep the idempotency key of each completed job until no Reaction cursor can
 still replay its commit, or a replayed enqueue would run the job again.
+
+## Lock files
+
+The Event Log and the Reaction outbox Store make the opener the only writer of
+their file with `<path>.lock`, created exclusively on open. It holds one JSON
+record of the opener:
+
+```json
+{"pid":4242,"hostname":"build-7","startedAt":"1873561","pidNamespace":"pid:[4026531836]","bootId":"b240415d-…","token":"…"}
+```
+
+`startedAt` is the process start time from `/proc/<pid>/stat`, `pidNamespace`
+is `/proc/self/ns/pid`, and `bootId` is `/proc/sys/kernel/random/boot_id`;
+all three are recorded on Linux only and compared for equality. `token` is
+random per open. The JSON Slice Store takes no lock: the process that opens
+its directory must be its only writer.
+
+When the lock file already exists, the open reads it and takes it over only
+if its holder is provably gone. The record must name this host
+(`os.hostname()`), and then:
+
+- A different `bootId` means the holder ran before this host last booted, so
+  it has exited.
+- A different `pidNamespace` (same boot) means the holder's pid cannot be
+  checked from here, as with containers that share the host's hostname
+  (`--network host`, `hostNetwork`) and a volume; the open fails.
+- A pid that is not alive (`process.kill(pid, 0)` fails with `ESRCH`), or is
+  a zombie (state `Z`, Linux), has exited.
+- On Linux, a live pid that started at a different time than recorded was
+  reused, so the recorded holder has exited.
+- This process's own pid counts as stale only when the recorded start time
+  differs from this process's (an earlier process got the same pid).
+  Otherwise the open fails as `held by this process`: another worker thread,
+  or another path to the same file (such as a different spelling on a
+  case-insensitive file system), holds it. Opens in one thread, across every
+  copy of this package, are keyed by the real path of the file's directory,
+  so opening the same file through a symlinked directory fails earlier, as
+  already open.
+- The lock is `<path>.lock` for the path as given. A symlink or hard link to
+  the file itself gets its own lock file, so two writers become possible;
+  always open a JSONL file through one path.
+- A worker thread terminated without calling `close()` leaves a lock with
+  this process's pid and start time, which is refused as `held by this
+  process` until the process exits; close stores before terminating
+  workers.
+
+Otherwise the open fails and says why: a live holder (with its pid), this
+process, another host, another pid namespace, or content that is not a lock
+record. A lock without `bootId` and `pidNamespace` (written by another
+platform, or by an earlier version that recorded only a pid) skips those two
+checks; a pid-only lock is read as a holder on this host with no start time.
+
+A takeover is reported on the opened Event Log or Store as
+`recoveredStaleLock: { pid, hostname }` (`hostname` is `undefined` for an
+old pid-only lock), and is `undefined` when the lock was free, so apps can log
+crash recoveries. The adapters' own recovery then applies: torn trailing
+writes are removed and outbox attempts left running are released.
+
+- **Concurrent openers.** Two processes can find the same stale lock at once.
+  Removing it requires creating `<path>.lock.takeover-<hash of its content>`
+  exclusively; the claimer removes the lock only if it still holds the content
+  it judged stale, then removes the claim and creates its own lock
+  exclusively. A newer lock never matches, so at most one opener wins and the
+  others fail as for a live holder. A claim whose creator has exited is
+  recovered by the same rules.
+- **Blocking.** Opening is synchronous. While another process holds a
+  takeover claim, or a lock file is still empty, the open retries up to five
+  times, sleeping 20 ms between tries, so it can block the event loop for
+  about 100 ms before it reports contention.
+- **Release.** `close()` removes the lock only while it still holds the
+  opener's `token`, so a process whose lock was taken over cannot delete the
+  new holder's lock.
+- **Leftover files.** A process killed between creating the lock and writing
+  its record leaves an empty lock file. It is refused as `not a lock record`;
+  delete it after confirming no process uses the file. A process killed
+  mid-takeover can leave a `<path>.lock.takeover-*` claim file. The next open
+  recovers it once its creator has exited, but a claim whose lock was already
+  replaced is never looked at again; such files are safe to delete while no
+  process is opening the file.
+- **Pid reuse.** An exited holder's pid can be reused by an unrelated process.
+  On Linux the recorded start time tells them apart; elsewhere, and when
+  `/proc` is unreadable, the lock is kept and the open fails until the lock
+  file is deleted. A reused pid only causes a refusal, never a takeover of a
+  live holder's lock.
+- **One host.** Liveness is checked with local process ids. Never share these
+  files across machines (for example over NFS): a lock from another host is
+  never taken over, and two machines that report the same hostname have
+  different boot ids, so each would treat the other's lock as stale. A
+  recreated container usually has a new hostname, and a restarted one a new
+  pid namespace, so its first open reports the old container's lock, which
+  must be deleted by hand after confirming that container is gone.
 
 ## Not included
 

@@ -22,7 +22,12 @@ import {
 } from '@specter-ts/core'
 import { Effect, Layer } from 'effect'
 
-import { acquireLock, closeQuietly, writeAll } from './file-lock'
+import {
+  acquireLock,
+  closeQuietly,
+  type JsonlStaleLock,
+  writeAll,
+} from './file-lock'
 
 export type JsonlEventLogOptions = {
   readonly path: string
@@ -36,6 +41,8 @@ export type JsonlEventLog = EventLogService & {
   readonly path: string
   /** Bytes of an interrupted trailing write removed while opening. */
   readonly discardedTrailingBytes: number
+  /** Holder of a lock file taken over while opening; it had exited. */
+  readonly recoveredStaleLock: JsonlStaleLock | undefined
   readonly close: () => void
 }
 
@@ -43,14 +50,18 @@ export type JsonlEventLog = EventLogService & {
  * Opens one append-only JSONL file as an Event Log. Each line is one complete
  * commit, so a line boundary is the atomic commit boundary. Opening takes an
  * exclusive `<path>.lock` file, released by `close()`, so the opener is the
- * file's only writer.
+ * file's only writer; a lock left by an exited process on this host is taken
+ * over and reported as `recoveredStaleLock`.
  */
 export function createJsonlEventLog(
   options: JsonlEventLogOptions,
 ): JsonlEventLog {
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
-  const releaseLock = acquireLock(resolve(options.path), 'JSONL Event Log')
+  const { release: releaseLock, recoveredStaleLock } = acquireLock(
+    resolve(options.path),
+    'JSONL Event Log',
+  )
   let opened: ReturnType<typeof openFile>
   try {
     opened = openFile(options.path, options.fsync === true)
@@ -154,6 +165,7 @@ export function createJsonlEventLog(
   return {
     path: options.path,
     discardedTrailingBytes,
+    recoveredStaleLock,
     query: (afterOrder, eventTypes) =>
       Effect.sync(() =>
         events
