@@ -8,15 +8,19 @@ import {
   EventLog,
   type EventLogCommit,
   type EventLogService,
+  type PreparedSpecterApp,
   prepareSpecterApp,
+  ReactionRunFailure,
   type SliceStoreService,
   SpecterConformanceError,
+  SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
 } from '..'
 import {
   assertConforms,
   createCommandSlice,
   createQuerySlice,
+  createReactionSlice,
   event,
 } from '../definition'
 import {
@@ -236,6 +240,62 @@ describe('prepared Specter apps', () => {
     )
     expect(failure).toBeInstanceOf(SpecterConformanceError)
   })
+
+  it('revalidates a forged prepared wrapper instead of crashing', async () => {
+    const config = makeConfig()
+    // Hand-built (or from another copy of core): not registered, not branded.
+    const forged = {
+      _tag: 'PreparedSpecterApp',
+      config,
+    } as unknown as PreparedSpecterApp<typeof config>
+
+    const app = await createSpecterApp(forged, dependencies())
+    await expect(app.query({ type: 'values', payload: {} })).resolves.toEqual(
+      [],
+    )
+    await app.close()
+    const prepared = await prepareSpecterApp(forged)
+    expect(prepared).not.toBe(forged)
+    expect(prepared.config).toBe(config)
+    expect(validationsOf(config)).toBe(1)
+
+    const invalid = {
+      _tag: 'PreparedSpecterApp',
+      config: { events: [], slices: config.slices },
+    } as unknown as PreparedSpecterApp<typeof config>
+    await expect(
+      createSpecterApp(invalid, dependencies()),
+    ).rejects.toBeInstanceOf(SpecterConformanceError)
+  })
+
+  it('freezes a cached config so later mutation throws', async () => {
+    const config = makeConfig()
+    await prepareSpecterApp(config)
+    expect(Object.isFrozen(config.events)).toBe(true)
+    expect(Object.isFrozen(config.slices)).toBe(true)
+    expect(() => {
+      ;(config.events as unknown as unknown[]).push(config.events[0])
+    }).toThrow(TypeError)
+  })
+
+  it.each([
+    'reaction',
+    'eager',
+  ] as const)('disposes dependencies after a startup %s failure', async (kind) => {
+    const config = makeStartupFailureConfig(kind)
+    let released = 0
+    await expect(
+      createSpecterApp(
+        config,
+        trackedDependencies([1], () => {
+          released += 1
+        }) as never,
+      ),
+    ).rejects.toBeInstanceOf(
+      kind === 'reaction' ? ReactionRunFailure : SpecterProjectionFailedError,
+    )
+    expect(released).toBe(1)
+  })
 })
 
 function validationsOf(config: { readonly slices: object }) {
@@ -373,5 +433,72 @@ function makeEventLogService(): EventLogService {
         commits.push(commit)
         return { ...commit, duplicate: false }
       }),
+  }
+}
+
+function seededEventLogService(...payloads: number[]) {
+  const service = makeEventLogService()
+  Effect.runSync(
+    service.append(
+      payloads.map((payload) => ({ type: 'value-recorded', payload })),
+    ),
+  )
+  return service
+}
+
+/** Dependencies whose Event Log Layer records when its scope is released. */
+function trackedDependencies(seed: readonly number[], onRelease: () => void) {
+  return Layer.mergeAll(
+    Layer.effect(
+      EventLog,
+      Effect.acquireRelease(
+        Effect.sync(() => seededEventLogService(...seed)),
+        () => Effect.sync(onRelease),
+      ),
+    ),
+    Layer.succeed(PreparedStore, makeStoreService()),
+  )
+}
+
+/** makeConfig plus one Slice that fails during startup catch-up. */
+function makeStartupFailureConfig(kind: 'reaction' | 'eager') {
+  const { events, slices } = makeConfig()
+  const [valueRecorded] = events
+  const failing =
+    kind === 'reaction'
+      ? createReactionSlice('publishValue')
+          .description('Publishes the latest value.')
+          .scenarios({
+            description: 'Publishes one value.',
+            given: [event('value-recorded', 1)],
+            expect: 1,
+          })
+          .outputSchema<number>()
+          .plugin(() => Effect.succeed(() => Effect.void))
+          .store(PreparedStore)
+          .apply(valueRecorded, async (applied, state) => {
+            state.values.push(applied.payload)
+          })
+          .handle(async () => {
+            throw new Error('Reaction failed at startup')
+          })
+      : createQuerySlice('eagerValues')
+          .description('Warms values during startup.')
+          .scenarios({
+            description: 'Reads one value.',
+            given: [event('value-recorded', 1)],
+            when: {},
+            expect: [1],
+          })
+          .inputSchema<Record<string, never>>()
+          .outputSchema<readonly number[]>()
+          .store(PreparedStore, { eager: true })
+          .apply(valueRecorded, async () => {
+            throw new Error('Projection failed at startup')
+          })
+          .handle(async (_input, state) => [...state.values])
+  return {
+    events,
+    slices: { ...slices, [failing.name]: failing },
   }
 }

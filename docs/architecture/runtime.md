@@ -43,9 +43,18 @@ The per-config half is cached by the identity of the `events` array and the
 `slices` record. Rebuilding the outer `{ events, slices }` object per app still
 hits the cache; rebuilding either inner object misses it. A content digest is
 not used: conformance checks EventDefinition identity, and Slices carry handler
-functions that no digest covers. Treat a config as immutable once it has been
-used. Concurrent first use shares one in-flight validation. A failed validation
-rejects every waiting caller and is not cached.
+functions that no digest covers. Once a config validates, its `events` array
+and `slices` record are frozen, so adding or replacing an Event or Slice later
+throws a `TypeError` instead of being silently ignored by the cached plan;
+build a new array or record to change an app's registrations. Concurrent first
+use shares one in-flight validation, which runs detached from any single
+caller (it has no caller span parent). A failed validation rejects every
+waiting caller and is not cached.
+
+A `PreparedSpecterApp` is branded, so only `prepareSpecterApp` and
+`prepareSpecterRuntime` can create one in typed code. A look-alike wrapper that
+was not created by this copy of core (hand-built, or from a duplicated package)
+is unwrapped and its `config` validated through the same cache.
 
 Apps that open many logs from one config, such as one app per session, can
 validate explicitly at startup and bind the result many times:

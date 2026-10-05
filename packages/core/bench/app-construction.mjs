@@ -1,7 +1,7 @@
 // Micro-bench for per-session Specter app construction. Not a test.
 //
 // Usage (from packages/core, after `pnpm --filter @specter-ts/core build`):
-//   node scripts/bench-app-construction.mjs [count]
+//   node bench/app-construction.mjs [count]
 // Set SPECTER_CORE_ENTRY to a file URL of another build to compare versions.
 //
 // Every app shares one config object and gets its own Event Log and Store.

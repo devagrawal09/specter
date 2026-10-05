@@ -232,13 +232,13 @@ export function prepareSpecterRuntime<const TConfig extends SpecterAppConfig>(
     if (preparedPlans.has(config)) {
       return Effect.succeed(config as PreparedSpecterApp<TConfig>)
     }
-    const raw = config as TConfig
+    const raw = rawConfigOf(config) as TConfig
     return cachedPlan(raw).pipe(
       Effect.map((plan) => {
-        const prepared: PreparedSpecterApp<TConfig> = Object.freeze({
+        const prepared = Object.freeze({
           _tag: 'PreparedSpecterApp',
           config: raw,
-        })
+        }) as unknown as PreparedSpecterApp<TConfig>
         preparedPlans.set(prepared, plan)
         return prepared
       }),
@@ -251,10 +251,28 @@ function resolvePlan(
 ): Effect.Effect<SpecterAppPlan, SpecterConformanceError> {
   return Effect.suspend(() => {
     const prepared = preparedPlans.get(config)
-    return prepared
-      ? Effect.succeed(prepared)
-      : cachedPlan(config as SpecterAppConfig)
+    return prepared ? Effect.succeed(prepared) : cachedPlan(rawConfigOf(config))
   })
+}
+
+/**
+ * The config to validate for an input without a registered plan. A wrapper
+ * that looks prepared but was not created here (hand-built, or produced by
+ * another copy of this module) is unwrapped and revalidated through the cache.
+ */
+function rawConfigOf(
+  input: SpecterAppConfig | PreparedSpecterApp,
+): SpecterAppConfig {
+  if (
+    isObject(input) &&
+    '_tag' in input &&
+    input._tag === 'PreparedSpecterApp' &&
+    'config' in input &&
+    isObject(input.config)
+  ) {
+    return input.config
+  }
+  return input as SpecterAppConfig
 }
 
 function cachedPlan(
@@ -272,12 +290,21 @@ function cachedPlan(
   if (cached && !(cached instanceof Promise)) return Effect.succeed(cached)
   let pending = cached
   if (!pending) {
+    // Runs detached so concurrent callers share it; validation therefore has
+    // no caller span parent or fiber refs.
     const started = Effect.runPromiseExit(buildPlan({ events, slices }))
     entries.set(slices, started)
     void started.then((exit) => {
       if (entries.get(slices) !== started) return
-      if (Exit.isSuccess(exit)) entries.set(slices, exit.value)
-      else entries.delete(slices)
+      if (Exit.isSuccess(exit)) {
+        // The cached plan is only valid for these exact contents, so a later
+        // mutation must throw rather than be silently ignored.
+        Object.freeze(events)
+        Object.freeze(slices)
+        entries.set(slices, exit.value)
+      } else {
+        entries.delete(slices)
+      }
     })
     pending = started
   }

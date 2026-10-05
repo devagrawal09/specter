@@ -122,8 +122,9 @@ passed as a `PreparedSpecterApp`.
 Validation and the lookup maps derived from it are per config. They are cached
 by the identity of `config.events` and `config.slices`, so opening many apps
 from the same objects validates once, including under concurrent first use. A
-failed validation is reported to every waiting caller and is not cached. Do not
-mutate a config after first use.
+failed validation is reported to every waiting caller and is not cached. A
+validated config's `events` array and `slices` record are frozen; mutating
+them afterwards throws.
 
 To validate once at startup and bind many Event Logs, prepare the config
 explicitly:
@@ -143,6 +144,18 @@ process without unrelated Command. A missing Store Layer, dependency Layer
 failure, Event Log failure, or startup Reaction failure rejects construction
 after the partially built runtime is disposed; it does not evict the validated
 config from the cache.
+
+Startup waits for the scheduler to report Reaction catch-up complete. The
+SQLite durable scheduler (`createSqliteReactionSchedulerLayer`) reschedules a
+failed Reaction pass every `retryIntervalMs` until it succeeds, so a startup
+Reaction that fails permanently makes `createSpecterApp` wait indefinitely
+instead of rejecting. Before this release the same wait happened on the first
+operation. Fix or remove the failing Reaction, or bound the wait yourself:
+with the Effect API, apply `Effect.timeout` to the Effect that builds
+`createSpecterAppLayer` or runs `makeSpecterRuntime`. A built-in bound would be a small addition: an
+optional `startupTimeout` accepted by `createSpecterApp` that races the
+startup Promise against a timer, disposes the app, and rejects with
+`SpecterInfrastructureError` on expiry. It is not implemented.
 
 ```ts
 import { EventLog, createSpecterApp } from '@specter-ts/core'

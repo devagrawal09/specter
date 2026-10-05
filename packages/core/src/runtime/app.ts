@@ -19,15 +19,19 @@ export type SpecterAppConfig = {
   readonly slices: Readonly<Record<string, SliceRegistration>>
 }
 
+declare const preparedSpecterApp: unique symbol
+
 /**
  * A config that already passed conformance, with its lookup structures built.
- * Accepted wherever a config is; bind it to any number of Event Logs.
+ * Accepted wherever a config is; bind it to any number of Event Logs. Only
+ * `prepareSpecterApp` / `prepareSpecterRuntime` create one.
  */
 export type PreparedSpecterApp<
   TConfig extends SpecterAppConfig = SpecterAppConfig,
 > = {
   readonly _tag: 'PreparedSpecterApp'
   readonly config: TConfig
+  readonly [preparedSpecterApp]: true
 }
 
 type SliceKeyOfKind<
@@ -183,7 +187,8 @@ export async function createSpecterApp<const TConfig extends SpecterAppConfig>(
   try {
     await ready
   } catch (cause) {
-    await app.close()
+    // A failing cleanup must not replace the startup failure.
+    await app.close().catch(() => undefined)
     throw cause
   }
   return app
