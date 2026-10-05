@@ -7,9 +7,12 @@
  *   and reports the outcome; a winner keeps the log open.
  * - `crash <directory>`: opens an Event Log and a Reaction outbox, commits
  *   Events, claims a job, and waits to be killed.
+ * - `thread <path>`: run as a worker thread; tries to open an Event Log and
+ *   posts the outcome to the parent thread.
  */
 import { createInterface } from 'node:readline'
 import { join } from 'node:path'
+import { parentPort } from 'node:worker_threads'
 
 import { Effect } from 'effect'
 
@@ -18,22 +21,30 @@ import { createJsonlReactionOutboxStore } from './reaction-outbox'
 
 const [mode, target] = process.argv.slice(2)
 const closers: (() => void)[] = []
-const lines = createInterface({ input: process.stdin })
+const lines =
+  mode === 'thread' ? undefined : createInterface({ input: process.stdin })
 
 function report(message: unknown) {
   process.stdout.write(`${JSON.stringify(message)}\n`)
 }
 
-lines.on('close', () => {
+lines?.on('close', () => {
   for (const close of closers) close()
   process.exit(0)
 })
 
-if (mode === 'hold') {
+if (mode === 'thread') {
+  try {
+    createJsonlEventLog({ path: target }).close()
+    parentPort?.postMessage({ ok: true })
+  } catch (cause) {
+    parentPort?.postMessage({ ok: false, error: (cause as Error).message })
+  }
+} else if (mode === 'hold') {
   closers.push(createJsonlEventLog({ path: target }).close)
   report({ ready: true })
 } else if (mode === 'race') {
-  lines.once('line', () => {
+  lines?.once('line', () => {
     try {
       const eventLog = createJsonlEventLog({ path: target })
       closers.push(eventLog.close)

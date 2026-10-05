@@ -4,12 +4,14 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  readlinkSync,
+  realpathSync,
   rmSync,
   unlinkSync,
   writeSync,
 } from 'node:fs'
 import { hostname } from 'node:os'
-import { dirname } from 'node:path'
+import { basename, dirname, join } from 'node:path'
 
 /** The process a stale lock file named, reported after taking it over. */
 export type JsonlStaleLock = {
@@ -22,13 +24,18 @@ export type JsonlStaleLock = {
 type LockRecord = JsonlStaleLock & {
   /** Start time from `/proc/<pid>/stat`, compared only for equality. */
   readonly startedAt?: string
+  /** `/proc/self/ns/pid` of the holder (Linux). */
+  readonly pidNamespace?: string
+  /** `/proc/sys/kernel/random/boot_id` when the holder ran (Linux). */
+  readonly bootId?: string
   readonly token?: string
 }
 
 /**
- * Labels of the JSONL files open for writing in this process, by path. Kept
- * on `globalThis` so every copy of this package in the process shares it: a
- * lock naming this process's pid is stale only if no copy has the path open.
+ * Labels of the JSONL files open for writing in this process, keyed by the
+ * real path of their directory plus their name, so a symlinked alias of an
+ * open file is refused here. Kept on `globalThis` so every copy of this
+ * package in the thread shares it.
  */
 const registry = globalThis as {
   [key: symbol]: Map<string, string> | undefined
@@ -49,13 +56,15 @@ const unreadable = 'its content is not a lock record'
  * ran on this host and has exited; otherwise the open fails and says why.
  */
 export function acquireLock(path: string, label: string) {
-  const holder = openPaths.get(path)
+  mkdirSync(dirname(path), { recursive: true })
+  // The file may not exist yet, so resolve its directory.
+  const key = join(realpathSync.native(dirname(path)), basename(path))
+  const holder = openPaths.get(key)
   if (holder) {
     throw new Error(
       `${label} ${path} is already open in this process as a ${holder}`,
     )
   }
-  mkdirSync(dirname(path), { recursive: true })
   const lockPath = `${path}.lock`
   const own = ownRecord()
   const content = `${JSON.stringify(own)}\n`
@@ -77,7 +86,7 @@ export function acquireLock(path: string, label: string) {
     }
     if (typeof stale === 'string') {
       throw new Error(
-        `${label} ${path} is locked by ${lockPath}: ${stale}. A lock is taken over only when its process ran on this host and has exited; delete the lock file only after confirming no process uses the file.`,
+        `${label} ${path} is locked by ${lockPath}: ${stale}. A lock is taken over only when its process ran on this host, in this pid namespace, and has exited; delete the lock file only after confirming no process uses the file.`,
       )
     }
     if (removeStale(lockPath, existing, 0)) {
@@ -86,11 +95,11 @@ export function acquireLock(path: string, label: string) {
       sleep(retryDelayMs)
     }
   }
-  openPaths.set(path, label)
+  openPaths.set(key, label)
   return {
     recoveredStaleLock,
     release: () => {
-      openPaths.delete(path)
+      openPaths.delete(key)
       // A lock taken over from this process belongs to its new holder.
       const current = readIfExists(lockPath)
       if (current !== undefined && parseLock(current)?.token === own.token) {
@@ -140,12 +149,30 @@ function staleHolder(content: string): LockRecord | string {
   if (record.hostname !== undefined && record.hostname !== hostname()) {
     return `held by process ${record.pid} on host ${record.hostname}`
   }
-  // This process has no open of the path and runs one takeover at a time, so
-  // the record was left by an earlier process that had the same pid.
-  if (record.pid === process.pid) return record
-  if (!isAlive(record.pid)) return record
-  const startedAt = processStartTime(record.pid)
-  if (record.startedAt && startedAt && record.startedAt !== startedAt) {
+  const own = linuxIdentity()
+  // Every process of an earlier boot of this host has exited.
+  if (record.bootId && own.bootId && record.bootId !== own.bootId) {
+    return record
+  }
+  if (
+    record.pidNamespace &&
+    own.pidNamespace &&
+    record.pidNamespace !== own.pidNamespace
+  ) {
+    return `held by process ${record.pid} in pid namespace ${record.pidNamespace}, not this process's ${own.pidNamespace}`
+  }
+  const holder = processStat(record.pid)
+  if (record.pid === process.pid) {
+    // Only a recorded start time other than ours shows that an earlier
+    // process with this pid wrote it; otherwise another open in this process
+    // (a worker thread, or a path alias) may hold it.
+    if (record.startedAt && holder && record.startedAt !== holder.startedAt) {
+      return record
+    }
+    return `held by this process (${record.pid}), through another path to the file or from another thread`
+  }
+  if (!isAlive(record.pid) || holder?.state === 'Z') return record
+  if (record.startedAt && holder && record.startedAt !== holder.startedAt) {
     return record
   }
   return `held by live process ${record.pid}`
@@ -171,7 +198,9 @@ function parseLock(content: string): LockRecord | undefined {
     !validPid(record.pid) ||
     typeof record.hostname !== 'string' ||
     typeof record.token !== 'string' ||
-    (record.startedAt !== undefined && typeof record.startedAt !== 'string')
+    !optionalString(record.startedAt) ||
+    !optionalString(record.pidNamespace) ||
+    !optionalString(record.bootId)
   ) {
     return undefined
   }
@@ -179,6 +208,8 @@ function parseLock(content: string): LockRecord | undefined {
     pid: record.pid,
     hostname: record.hostname,
     startedAt: record.startedAt,
+    pidNamespace: record.pidNamespace,
+    bootId: record.bootId,
     token: record.token,
   }
 }
@@ -187,12 +218,33 @@ function validPid(pid: unknown): pid is number {
   return Number.isSafeInteger(pid) && (pid as number) > 0
 }
 
+function optionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === 'string'
+}
+
 function ownRecord() {
   return {
     pid: process.pid,
     hostname: hostname(),
-    startedAt: processStartTime(process.pid),
+    startedAt: processStat(process.pid)?.startedAt,
+    ...linuxIdentity(),
     token: randomUUID(),
+  }
+}
+
+/** This process's pid namespace and boot; empty where `/proc` is missing. */
+function linuxIdentity(): { pidNamespace?: string; bootId?: string } {
+  if (process.platform !== 'linux') return {}
+  const read = (source: () => string) => {
+    try {
+      return source().trim() || undefined
+    } catch {
+      return undefined
+    }
+  }
+  return {
+    pidNamespace: read(() => readlinkSync('/proc/self/ns/pid')),
+    bootId: read(() => readFileSync('/proc/sys/kernel/random/boot_id', 'utf8')),
   }
 }
 
@@ -207,17 +259,17 @@ function isAlive(pid: number) {
 }
 
 /**
- * Field 22 of `/proc/<pid>/stat`, the start time in clock ticks since boot,
- * which tells a reused pid apart from the recorded process. `undefined`
- * where `/proc` is not available.
+ * Fields 3 (state; `Z` is an exited, unreaped process) and 22 (start time in
+ * clock ticks since boot, which tells a reused pid apart from the recorded
+ * process) of `/proc/<pid>/stat`. `undefined` where `/proc` is not available.
  */
-function processStartTime(pid: number) {
+function processStat(pid: number) {
   if (process.platform !== 'linux') return undefined
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
     // The command name in field 2 may contain spaces and parentheses.
     const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ')
-    return fields[19] || undefined
+    return { state: fields[0], startedAt: fields[19] || undefined }
   } catch {
     return undefined
   }

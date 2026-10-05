@@ -30,16 +30,19 @@ app can open a separate log per session without a database. Opening reads the
 file once into an in-memory index; appends only add lines and are serialized in
 the process. Opening takes an exclusive `<path>.lock` file that `close()`
 removes, so a second open in the process or in another live process fails.
-The lock records the opener's pid, hostname, start time (Linux), and a random
-token. A lock whose holder ran on this host and has exited, such as after
-`SIGKILL`, is taken over and reported as `recoveredStaleLock: { pid, hostname }`;
-a live holder, another host, or unreadable content fails the open with the
+The lock records the opener's pid, hostname, random token, and on Linux its
+start time, pid namespace, and boot id. A lock whose holder ran on this host
+and has exited, such as after `SIGKILL` (or ran before the host's last boot),
+is taken over and reported as `recoveredStaleLock: { pid, hostname }`; a live
+holder, this same process (another worker thread or path alias), another
+host, another pid namespace, or unreadable content fails the open with the
 reason. Concurrent openers that find the same stale lock serialize the
 takeover through an exclusive claim file, so at most one wins, and `close()`
-removes the lock only while it still holds its own token. A reused pid only
-makes the open refuse (on Linux the start time detects reuse). Locks use local
-process ids, so never share these files across hosts, over NFS, or between
-pid namespaces that report the same hostname.
+removes the lock only while it still holds its own token. Opening is
+synchronous and can block for about 100 ms while it retries a contended
+takeover. A reused pid only makes the open refuse (on Linux the start time
+detects reuse). Locks use local process ids, so never share these files
+across hosts or over NFS.
 Expected versions and idempotency receipts match the SQLite adapters, and
 `query` returns Events with `order > afterOrder`. `fsync` is off by default, so
 a commit survives a process crash but not an operating-system failure; pass

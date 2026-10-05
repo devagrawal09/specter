@@ -2,16 +2,21 @@ import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { once } from 'node:events'
 import {
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { hostname, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
-import { fileURLToPath } from 'node:url'
+import { createRequire } from 'node:module'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import { Worker } from 'node:worker_threads'
 
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -53,17 +58,47 @@ function openOutbox(path: string) {
   return outbox
 }
 
-/** The pid of a child that has exited and been reaped. */
-function exitedPid() {
-  const { pid } = spawnSync(process.execPath, ['-e', ''])
-  if (pid === undefined) throw new Error('could not start a child process')
-  return pid
+const linux = process.platform === 'linux'
+
+/** Start time of `pid` as `/proc/<pid>/stat` field 22 reports it. */
+function startTime(pid: number | 'self') {
+  const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+  return stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19]
+}
+
+const ownIdentity = linux
+  ? {
+      pidNamespace: readlinkSync('/proc/self/ns/pid'),
+      bootId: readFileSync('/proc/sys/kernel/random/boot_id', 'utf8').trim(),
+    }
+  : {}
+
+/**
+ * A child that has exited and been reaped. On Linux it reports its start
+ * time, so a lock naming it stays stale even if the pid is reused.
+ */
+function exitedHolder(): { pid: number; startedAt?: string } {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    const { pid, stdout } = spawnSync(process.execPath, [
+      '-e',
+      `if (process.platform === 'linux') { const s = require('node:fs').readFileSync('/proc/self/stat', 'utf8'); process.stdout.write(s.slice(s.lastIndexOf(')') + 2).split(' ')[19]) }`,
+    ])
+    if (pid === undefined) throw new Error('could not start a child process')
+    try {
+      process.kill(pid, 0)
+    } catch {
+      return { pid, startedAt: stdout.toString() || undefined }
+    }
+  }
+  throw new Error('every exited child pid was reused at once')
 }
 
 function lockRecord(fields: {
   pid: number
   hostname?: string
   startedAt?: string
+  pidNamespace?: string
+  bootId?: string
 }) {
   return `${JSON.stringify({ hostname: hostname(), token: 'other-holder', ...fields })}\n`
 }
@@ -126,8 +161,9 @@ describe('JSONL lock takeover', () => {
     expect(first.recoveredStaleLock).toBeUndefined()
     await Effect.runPromise(first.append([{ type: 'todo-added', payload: {} }]))
     first.close()
-    const pid = exitedPid()
-    writeFileSync(`${path}.lock`, lockRecord({ pid }))
+    const exited = exitedHolder()
+    const { pid } = exited
+    writeFileSync(`${path}.lock`, lockRecord(exited))
 
     const reopened = openEventLog(path)
 
@@ -155,8 +191,9 @@ describe('JSONL lock takeover', () => {
       }),
     )
     first.close()
-    const pid = exitedPid()
-    writeFileSync(`${path}.lock`, lockRecord({ pid }))
+    const exited = exitedHolder()
+    const { pid } = exited
+    writeFileSync(`${path}.lock`, lockRecord(exited))
 
     const reopened = openOutbox(path)
 
@@ -169,7 +206,7 @@ describe('JSONL lock takeover', () => {
 
   it('takes over a legacy lock that holds only an exited pid', () => {
     const path = join(temporaryDirectory(), 'events.jsonl')
-    const pid = exitedPid()
+    const { pid } = exitedHolder()
     writeFileSync(`${path}.lock`, `${pid}\n`)
 
     expect(openEventLog(path).recoveredStaleLock).toEqual({
@@ -178,18 +215,139 @@ describe('JSONL lock takeover', () => {
     })
   })
 
-  it('takes over a lock naming this process when the path is not open here', () => {
+  it('refuses a lock naming this process unless it started at another time', () => {
     const path = join(temporaryDirectory(), 'events.jsonl')
-    writeFileSync(`${path}.lock`, lockRecord({ pid: process.pid }))
+    const own = lockRecord({ pid: process.pid, ...ownIdentity })
+    writeFileSync(`${path}.lock`, own)
 
-    expect(openEventLog(path).recoveredStaleLock).toEqual({
-      pid: process.pid,
-      hostname: hostname(),
-    })
-    expect(() => createJsonlEventLog({ path })).toThrow(/already open/)
+    expect(() => createJsonlEventLog({ path })).toThrow(
+      `held by this process (${process.pid})`,
+    )
+    expect(readFileSync(`${path}.lock`, 'utf8')).toBe(own)
   })
 
-  it.runIf(process.platform === 'linux')(
+  it.runIf(linux)(
+    'refuses a lock naming this process with its own start time',
+    () => {
+      const path = join(temporaryDirectory(), 'events.jsonl')
+      writeFileSync(
+        `${path}.lock`,
+        lockRecord({
+          pid: process.pid,
+          startedAt: startTime('self'),
+          ...ownIdentity,
+        }),
+      )
+
+      expect(() => createJsonlEventLog({ path })).toThrow(
+        `held by this process (${process.pid})`,
+      )
+    },
+  )
+
+  it.runIf(linux)(
+    'takes over a lock an earlier process with this pid left',
+    () => {
+      const path = join(temporaryDirectory(), 'events.jsonl')
+      writeFileSync(
+        `${path}.lock`,
+        lockRecord({ pid: process.pid, startedAt: '1', ...ownIdentity }),
+      )
+
+      expect(openEventLog(path).recoveredStaleLock).toEqual({
+        pid: process.pid,
+        hostname: hostname(),
+      })
+    },
+  )
+
+  it('refuses a second open of the file through a symlinked directory', () => {
+    const directory = temporaryDirectory()
+    mkdirSync(join(directory, 'data'))
+    symlinkSync(join(directory, 'data'), join(directory, 'alias'))
+    openEventLog(join(directory, 'data', 'events.jsonl'))
+
+    expect(() =>
+      createJsonlEventLog({ path: join(directory, 'alias', 'events.jsonl') }),
+    ).toThrow(/already open in this process as a JSONL Event Log/)
+  })
+
+  it('refuses an open from a worker thread while this thread holds the file', async () => {
+    const path = join(temporaryDirectory(), 'events.jsonl')
+    openEventLog(path)
+    // Load the TypeScript fixture through tsx inside the worker.
+    const tsx = pathToFileURL(
+      createRequire(import.meta.url).resolve('tsx/esm/api'),
+    ).href
+    const worker = new Worker(
+      `import(${JSON.stringify(tsx)}).then(({ register }) => { register(); return import(${JSON.stringify(pathToFileURL(fixture).href)}) })`,
+      { eval: true, argv: ['thread', path] },
+    )
+    const [outcome] = (await once(worker, 'message')) as [
+      { ok: boolean; error?: string },
+    ]
+
+    expect(outcome.ok).toBe(false)
+    expect(outcome.error).toContain(`held by this process (${process.pid})`)
+    await once(worker, 'exit')
+  }, 30_000)
+
+  it.runIf(linux)('refuses a lock from another pid namespace', () => {
+    const path = join(temporaryDirectory(), 'events.jsonl')
+    const content = lockRecord({
+      ...exitedHolder(),
+      ...ownIdentity,
+      pidNamespace: 'pid:[1]',
+    })
+    writeFileSync(`${path}.lock`, content)
+
+    expect(() => createJsonlEventLog({ path })).toThrow(
+      'in pid namespace pid:[1], not this process',
+    )
+    expect(readFileSync(`${path}.lock`, 'utf8')).toBe(content)
+  })
+
+  it.runIf(linux)('takes over a lock written during an earlier boot', () => {
+    const path = join(temporaryDirectory(), 'events.jsonl')
+    writeFileSync(
+      `${path}.lock`,
+      lockRecord({
+        pid: process.ppid,
+        ...ownIdentity,
+        pidNamespace: 'pid:[1]',
+        bootId: 'an-earlier-boot',
+      }),
+    )
+
+    expect(openEventLog(path).recoveredStaleLock).toEqual({
+      pid: process.ppid,
+      hostname: hostname(),
+    })
+  })
+
+  it.runIf(linux)('takes over a lock whose holder is a zombie', async () => {
+    const path = join(temporaryDirectory(), 'events.jsonl')
+    // `sleep 30` inherits the exited background child and never reaps it.
+    const parent = spawn('sh', ['-c', 'sleep 0 & echo $!; exec sleep 30'])
+    children.push(parent)
+    const [line] = (await once(parent.stdout, 'data')) as [Buffer]
+    const zombie = Number(line.toString().trim())
+    const deadline = Date.now() + 5_000
+    while (
+      readFileSync(`/proc/${zombie}/stat`, 'utf8').split(') ')[1][0] !== 'Z'
+    ) {
+      if (Date.now() > deadline) throw new Error('child did not exit')
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    writeFileSync(`${path}.lock`, lockRecord({ pid: zombie, ...ownIdentity }))
+
+    expect(openEventLog(path).recoveredStaleLock).toEqual({
+      pid: zombie,
+      hostname: hostname(),
+    })
+  })
+
+  it.runIf(linux)(
     'takes over a lock whose live pid started after the recorded holder',
     () => {
       const path = join(temporaryDirectory(), 'events.jsonl')
@@ -221,7 +379,7 @@ describe('JSONL lock takeover', () => {
   it('refuses a lock written on another host, even for a pid exited here', () => {
     const path = join(temporaryDirectory(), 'outbox.jsonl')
     const content = lockRecord({
-      pid: exitedPid(),
+      ...exitedHolder(),
       hostname: 'elsewhere.example',
     })
     writeFileSync(`${path}.lock`, content)
@@ -251,11 +409,11 @@ describe('JSONL lock takeover', () => {
 
   it('recovers a takeover claim left by a process that exited mid-takeover', () => {
     const path = join(temporaryDirectory(), 'events.jsonl')
-    const content = lockRecord({ pid: exitedPid() })
+    const content = lockRecord(exitedHolder())
     writeFileSync(`${path}.lock`, content)
     writeFileSync(
       claimPath(`${path}.lock`, content),
-      lockRecord({ pid: exitedPid() }),
+      lockRecord(exitedHolder()),
     )
 
     expect(openEventLog(path).recoveredStaleLock).toBeDefined()
@@ -264,7 +422,7 @@ describe('JSONL lock takeover', () => {
 
   it('waits out a takeover claim held by a live process, then fails', () => {
     const path = join(temporaryDirectory(), 'events.jsonl')
-    const content = lockRecord({ pid: exitedPid() })
+    const content = lockRecord(exitedHolder())
     const claim = claimPath(`${path}.lock`, content)
     writeFileSync(`${path}.lock`, content)
     writeFileSync(claim, lockRecord({ pid: process.ppid }))
@@ -306,8 +464,9 @@ describe('JSONL lock takeover across processes', () => {
   it('lets exactly one of several racing processes take over', async () => {
     for (let round = 0; round < 3; round++) {
       const path = join(temporaryDirectory(), 'events.jsonl')
-      const stalePid = exitedPid()
-      writeFileSync(`${path}.lock`, lockRecord({ pid: stalePid }))
+      const stale = exitedHolder()
+      const stalePid = stale.pid
+      writeFileSync(`${path}.lock`, lockRecord(stale))
       const racers = Array.from({ length: 4 }, () => startChild('race', path))
       for (const racer of racers) {
         expect(await racer.next()).toEqual({ ready: true })
