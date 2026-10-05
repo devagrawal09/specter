@@ -48,8 +48,10 @@ reopen.
   commits, and idempotency keys. Reads never touch the file; appends only add
   lines. Memory use grows with the log.
 - A missing file is an empty log. Parent directories are created.
-- Appends are serialized in the process. Expected versions and idempotency
-  fingerprints behave like the SQLite adapters.
+- Appends are serialized in the process. Expected versions behave like the
+  SQLite adapters. A known idempotency key returns the stored commit, with its
+  original fingerprint, as a duplicate; the runtime decides whether a changed
+  fingerprint is a conflict (`idempotencyMode: 'exact'`).
 - One writer per file. Opening creates `<path>.lock` exclusively (it holds the
   opener's process id) and `close()` removes it; a second open of the same
   path in the process, or while the lock file exists, fails. A lock file left

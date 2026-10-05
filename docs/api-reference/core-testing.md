@@ -16,7 +16,7 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
-| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, idempotency, and filtered queries. |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, and filtered queries. |
 | `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, and one-shot callbacks. |
 | `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
 | `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |

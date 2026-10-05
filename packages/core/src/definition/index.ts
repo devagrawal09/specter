@@ -51,6 +51,7 @@ export type {
   ApplyRegistration,
   CommandDispatch,
   CommandDispatchOptions,
+  CommandIdempotencyMode,
   CommandEnvelope,
   CommandInputOf,
   CommandReceipt,

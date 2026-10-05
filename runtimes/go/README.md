@@ -9,6 +9,16 @@ This Go 1.24 module is an independent, standard-library-only Specter runtime. It
 - latest-value/coalescing Query subscriptions;
 - structured Specter errors.
 
+`DispatchOptions.IdempotencyKey` follows the TypeScript runtime's default: the
+first commit for a key wins, and a repeat returns that commit with
+`Duplicate: true` and its original Reaction ticket regardless of payload, before
+any `ExpectedVersion` check. Set `IdempotencyMode: specter.IdempotencyExact` to
+fail a repeat whose Command fingerprint differs with
+`SPECTER_IDEMPOTENCY_CONFLICT`. An `IdempotencyMode` without a key, or an
+unknown mode, fails with `SPECTER_INVALID_COMMAND_OPTIONS`. Go fingerprints the
+Command name and canonical raw JSON payload as unprefixed SHA-256 hex, so its
+fingerprints are not interchangeable with the TypeScript `v2:` fingerprints.
+
 Commands, Queries, subscriptions, and Reaction tickets are runtime concepts,
 not language-neutral remote APIs. Go applications expose them through their own
 typed transports when remote access is needed.

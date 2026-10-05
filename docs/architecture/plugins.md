@@ -135,7 +135,10 @@ Without `.plugin`, handler output must be Command envelope:
 .store(TodoCheerStore)
 ```
 
-Default Plugin dispatches Command with `deliveryId` as idempotency key. It waits
+Default Plugin dispatches Command with `deliveryId` as idempotency key. A
+redelivery that produces different output (for example a re-streamed LLM
+response) returns the first committed Command as a duplicate, because the first
+commit for a key wins by default. It waits
 for nested Command commit, not nested Reactions. Shared SQLite/Postgres context
 joins nested command work to active Reaction transaction.
 

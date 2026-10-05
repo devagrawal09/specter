@@ -12,7 +12,6 @@ import { resolve } from 'node:path'
 import {
   EventLog,
   EventLogFailure,
-  SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
   type EventLogAppendOptions,
@@ -88,11 +87,6 @@ export function createJsonlEventLog(
       ? commitsByIdempotencyKey.get(appendOptions.idempotencyKey)
       : undefined
     if (existing) {
-      if (existing.fingerprint !== appendOptions.fingerprint) {
-        throw new SpecterIdempotencyConflictError(
-          appendOptions.idempotencyKey as string,
-        )
-      }
       return { ...copyCommit(existing), duplicate: true }
     }
     if (drafts.length === 0) {

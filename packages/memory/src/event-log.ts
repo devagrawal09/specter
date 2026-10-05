@@ -1,7 +1,6 @@
 import {
   EventLog,
   EventLogFailure,
-  SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
   type EventLogCommit,
@@ -64,11 +63,6 @@ export function createMemoryEventLog(
             ? commitsByIdempotencyKey.get(appendOptions.idempotencyKey)
             : undefined
           if (existing) {
-            if (existing.fingerprint !== appendOptions.fingerprint) {
-              throw new SpecterIdempotencyConflictError(
-                appendOptions.idempotencyKey as string,
-              )
-            }
             return { ...copyCommit(existing), duplicate: true }
           }
           if (drafts.length === 0) {

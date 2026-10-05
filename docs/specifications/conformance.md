@@ -88,12 +88,12 @@ These checks keep each Slice's declared history and projection code in lockstep.
 Construction cannot execute arbitrary handlers or predict adapter behavior. The runtime therefore guards the live path:
 
 - **Envelope routing:** unknown Command and Query types throw `SpecterUnknownCommandError` and `SpecterUnknownQueryError`.
-- **Command options:** `expectedVersion` must be a non-negative safe integer; an idempotency key must be non-blank; idempotent Command payloads must be structurally serializable.
+- **Command options:** `expectedVersion` must be a non-negative safe integer; an idempotency key must be non-blank; `idempotencyMode` must be `first-wins` or `exact` and requires an idempotency key; idempotent Command payloads must be structurally serializable.
 - **Input and output schemas:** Command and Query inputs are decoded before their handlers; Query and Reaction outputs are decoded afterward. Failures become the corresponding public input or output error.
 - **Persisted Event decoding:** emitted and replayed payloads must pass the registered Event schema without transformation. Unknown Event types fail closed.
 - **Event Log order:** query results must have unique, strictly increasing safe-integer orders greater than the requested cursor.
 - **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Append compares against the exact version used for the decision, even if the caller did not provide `expectedVersion`.
-- **Idempotency:** a repeated key with the same canonical Command envelope returns the earlier commit with `duplicate: true`; using that key for a different envelope throws `SpecterIdempotencyConflictError`.
+- **Idempotency:** a repeated key returns the earlier commit with `duplicate: true`, even for a different envelope. With `idempotencyMode: 'exact'`, using that key for a different canonical envelope throws `SpecterIdempotencyConflictError`.
 - **Command outcomes:** a Command that returns no Events is rejected. Every emitted Event type must appear in at least one accepted Scenario outcome for that Command.
 - **Projection publication:** Slice State changes remain staged until the cursor advances. Failed projections are disposable and replayable from the authoritative Event Log.
 - **Reaction effects:** a Reaction cursor advances only after its Plugin executor succeeds. Independent Reaction failures are collected in `ReactionRunFailure` after the pass settles.

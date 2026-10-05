@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import {
   EventLog,
   EventLogFailure,
-  SpecterIdempotencyConflictError,
   SpecterVersionConflictError,
   type EventDraft,
   type EventLogAppendOptions,
@@ -170,11 +169,6 @@ export function createPostgresEventLogService(
       ? await findCommit(connection, appendOptions.idempotencyKey)
       : undefined
     if (existing) {
-      if (existing.fingerprint !== appendOptions.fingerprint) {
-        throw new SpecterIdempotencyConflictError(
-          appendOptions.idempotencyKey as string,
-        )
-      }
       return { ...existing, duplicate: true }
     }
     if (drafts.length === 0) {
