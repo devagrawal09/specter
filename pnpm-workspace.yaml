@@ -6,7 +6,6 @@ packages:
 allowBuilds:
   '@parcel/watcher': true
   esbuild: true
-  msgpackr-extract: true
 
 minimumReleaseAgeExclude:
   - effect@4.0.1
