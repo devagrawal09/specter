@@ -4,6 +4,7 @@ import {
   ftruncateSync,
   openSync,
   readFileSync,
+  readSync,
   truncateSync,
 } from 'node:fs'
 import { resolve } from 'node:path'
@@ -127,8 +128,18 @@ const recordFields: Record<
   retried: { availableAt: 'date' },
 }
 
-/** A job as indexed in memory; the payload stays encoded JSON text. */
-type Entry = Omit<ReactionOutboxJob, 'payload'> & { readonly payload: string }
+/** Byte range of a job's `enqueued` line in the file. */
+type LineLocation = { readonly offset: number; readonly length: number }
+
+/**
+ * A job as indexed in memory. The payload stays encoded JSON text until the
+ * job completes; then only the location of its `enqueued` line is kept, and
+ * reads load the payload from the file.
+ */
+type Entry = Omit<ReactionOutboxJob, 'payload'> & {
+  readonly payload?: string
+  readonly enqueuedLine: LineLocation
+}
 
 const leaseExpiredError = 'Reaction attempt lease expired'
 const reopenedError =
@@ -162,7 +173,7 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
   let poisoned: AggregateError | undefined
   const releasedOnOpen: string[] = []
 
-  function apply(record: OutboxRecord) {
+  function apply(record: OutboxRecord, line: LineLocation) {
     if (record.type === 'enqueued') {
       if (
         jobs.has(record.id) ||
@@ -174,6 +185,7 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
         id: record.id,
         idempotencyKey: record.idempotencyKey,
         payload: JSON.stringify(record.payload),
+        enqueuedLine: line,
         status: 'pending',
         requestedAt: new Date(record.requestedAt),
         availableAt: new Date(record.availableAt),
@@ -234,6 +246,7 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
       case 'completed':
         jobs.set(record.id, {
           ...settled,
+          payload: undefined,
           status: 'completed',
           completedAt: new Date(record.completedAt),
           lastError: undefined,
@@ -259,9 +272,9 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
     }
   }
 
-  function replay(text: string, lineNumber: number) {
+  function replay(text: string, lineNumber: number, line: LineLocation) {
     try {
-      apply(parseRecord(text))
+      apply(parseRecord(text), line)
     } catch (cause) {
       throw new Error(
         `JSONL Reaction outbox ${path} line ${lineNumber} is malformed: ${cause instanceof Error ? cause.message : String(cause)}`,
@@ -297,14 +310,58 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
       }
       throw cause
     }
+    let offset = committedBytes
     committedBytes += bytes.length
-    for (const record of decoded) apply(record)
+    decoded.forEach((record, index) => {
+      const length = Buffer.byteLength(lines[index] as string)
+      apply(record, { offset, length })
+      offset += length + 1
+    })
+  }
+
+  /** Reads a completed job's payload back from its `enqueued` line. */
+  function readPayload(entry: Entry): unknown {
+    const { offset, length } = entry.enqueuedLine
+    const buffer = Buffer.alloc(length)
+    const reader = openSync(path, 'r')
+    try {
+      let read = 0
+      while (read < length) {
+        const count = readSync(
+          reader,
+          buffer,
+          read,
+          length - read,
+          offset + read,
+        )
+        if (count === 0) break
+        read += count
+      }
+    } finally {
+      closeSync(reader)
+    }
+    const record = parseRecord(buffer.toString('utf8'))
+    if (record.type !== 'enqueued' || record.id !== entry.id) {
+      throw new Error(
+        `JSONL Reaction outbox ${path} changed under job ${entry.id}; reopen it`,
+      )
+    }
+    return record.payload
   }
 
   function toJob(entry: Entry): ReactionOutboxJob<TPayload> {
     return {
-      ...entry,
-      payload: codec.decode(JSON.parse(entry.payload)),
+      id: entry.id,
+      idempotencyKey: entry.idempotencyKey,
+      status: entry.status,
+      attemptCount: entry.attemptCount,
+      activeAttemptId: entry.activeAttemptId,
+      lastError: entry.lastError,
+      payload: codec.decode(
+        entry.payload === undefined
+          ? readPayload(entry)
+          : JSON.parse(entry.payload),
+      ),
       requestedAt: new Date(entry.requestedAt),
       availableAt: new Date(entry.availableAt),
       leaseExpiresAt: entry.leaseExpiresAt
@@ -346,8 +403,11 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
     }
     const complete = content.lastIndexOf(0x0a) + 1
     const lines = content.subarray(0, complete).toString('utf8').split('\n')
+    let offset = 0
     lines.forEach((line, index) => {
-      if (line) replay(line, index + 1)
+      const length = Buffer.byteLength(line)
+      if (line) replay(line, index + 1, { offset, length })
+      offset += length + 1
     })
     // Bytes after the last newline are either a whole transition whose
     // newline was lost, or a write interrupted by a crash that no caller saw
@@ -356,7 +416,10 @@ export function createJsonlReactionOutboxStore<TPayload = unknown>(
     let terminateTail = false
     committedBytes = complete
     if (tail && parsesAsJson(tail)) {
-      replay(tail, lines.length)
+      replay(tail, lines.length, {
+        offset: complete,
+        length: content.length - complete,
+      })
       committedBytes = content.length + 1
       terminateTail = true
     } else if (tail && isTornRecord(tail)) {

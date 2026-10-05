@@ -11,9 +11,11 @@ import { join } from 'node:path'
 
 import {
   createReactionOutboxWorker,
+  type OutboxedReaction,
   ReactionOutboxDrainFailure,
   ReactionOutboxLeaseLostError,
   runReactionOutboxWorker,
+  withReactionOutbox,
 } from '@specter-ts/reaction-outbox'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -327,6 +329,38 @@ describe('JSONL Reaction outbox file', () => {
     )
   })
 
+  it('reads a completed job payload back from its enqueued line', async () => {
+    const path = temporaryOutboxPath()
+    const store = open<{ task: string }>({ path })
+    // Multi-byte text checks that line locations count bytes.
+    await run(store.enqueue({ ...job('é-1'), payload: { task: 'héllo ✓' } }))
+    await run(store.enqueue({ ...job('job-2'), payload: { task: 'ünïcode' } }))
+    for (let index = 0; index < 2; index += 1) {
+      const claim = await run(store.claimNext(new Date(0), new Date(10)))
+      await run(
+        store.complete(
+          claim?.id ?? '',
+          claim?.activeAttemptId ?? '',
+          new Date(1),
+        ),
+      )
+    }
+
+    const expected = [
+      { id: 'é-1', status: 'completed', payload: { task: 'héllo ✓' } },
+      { id: 'job-2', status: 'completed', payload: { task: 'ünïcode' } },
+    ]
+    expect(await run(store.list())).toMatchObject(expected)
+    expect(await run(store.enqueue(job('job-2')))).toMatchObject({
+      created: false,
+      job: { payload: { task: 'ünïcode' } },
+    })
+    store.close()
+    expect(await run(open<{ task: string }>({ path }).list())).toMatchObject(
+      expected,
+    )
+  })
+
   it('releases attempts a previous open left running', async () => {
     const path = temporaryOutboxPath()
     const store = open({ path })
@@ -477,7 +511,9 @@ describe('JSONL Reaction outbox lock', () => {
     const path = temporaryOutboxPath()
     const eventLog = createJsonlEventLog({ path })
     try {
-      expect(() => open({ path })).toThrow(/already open/)
+      expect(() => open({ path })).toThrow(
+        /already open in this process as a JSONL Event Log/,
+      )
     } finally {
       eventLog.close()
     }
@@ -490,7 +526,73 @@ describe('JSONL Reaction outbox lock', () => {
   })
 })
 
-describe('JSONL Reaction outbox worker wake-up', () => {
+describe('JSONL Reaction outbox worker', () => {
+  it('writes no lease renewal after the attempt completes', async () => {
+    const path = temporaryOutboxPath()
+    const store = open({ path })
+    const worker = createReactionOutboxWorker({
+      store,
+      leaseMs: 1_000,
+      heartbeatMs: 5,
+      idFactory: () => 'job-1',
+      handle: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 40))
+      },
+    })
+    await worker.enqueue({ task: 'slow' })
+    await worker.drain()
+    await new Promise((resolve) => setTimeout(resolve, 30))
+
+    const types = readFileSync(path, 'utf8')
+      .trimEnd()
+      .split('\n')
+      .map((line) => JSON.parse(line).type)
+    expect(types).toContain('renewed')
+    expect(types.at(-1)).toBe('completed')
+    worker.close()
+  })
+
+  it('records a running delivery before the Plugin scope closes', async () => {
+    const path = temporaryOutboxPath()
+    const store = open<OutboxedReaction<{ task: string }>>({ path })
+    const handled: string[] = []
+    const plugin = withReactionOutbox(
+      () =>
+        Effect.succeed((output: { task: string }) =>
+          Effect.promise(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            handled.push(output.task)
+          }),
+        ),
+      { store },
+    )
+    await run(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(() => Effect.void)
+          yield* exec(
+            { task: 'reply' },
+            {
+              deliveryId: 'reply:1',
+              throughOrder: 1,
+              scheduledAt: new Date().toISOString(),
+            },
+          )
+          yield* Effect.sleep('10 millis')
+        }),
+      ),
+    )
+    // As after app.close(): the Store closes once the worker stopped.
+    store.close()
+
+    const reopened = open<OutboxedReaction<{ task: string }>>({ path })
+    expect(handled).toEqual(['reply'])
+    expect(reopened.releasedOnOpen).toEqual([])
+    expect(await run(reopened.get('reply:1'))).toMatchObject({
+      status: 'completed',
+    })
+  })
+
   it('starts an enqueued job without waiting for the poll interval', async () => {
     const store = open({ path: temporaryOutboxPath() })
     const handled: string[] = []

@@ -416,15 +416,120 @@ describe('Reaction outbox worker wake-up and lease renewal', () => {
     expect(attempts).toEqual(['job-1:attempt:1', 'job-1:attempt:2'])
   })
 
-  it('rejects a heartbeat that is not shorter than the lease', () => {
-    expect(() =>
-      createReactionOutboxWorker({
-        store: createMemoryReactionOutboxStore(),
-        leaseMs: 10,
-        heartbeatMs: 10,
-        handle: async () => {},
-      }),
-    ).toThrow('heartbeatMs must be positive and shorter than leaseMs')
+  it('rejects a heartbeat longer than the lease or a timer allows', () => {
+    for (const [leaseMs, heartbeatMs] of [
+      [10, 10],
+      [10, 0],
+      [Number.MAX_SAFE_INTEGER, 2_147_483_648],
+    ]) {
+      expect(() =>
+        createReactionOutboxWorker({
+          store: createMemoryReactionOutboxStore(),
+          leaseMs,
+          heartbeatMs,
+          handle: async () => {},
+        }),
+      ).toThrow('heartbeatMs must be positive, shorter than leaseMs')
+    }
+    // A default heartbeat for a very long lease is capped, not rejected.
+    createReactionOutboxWorker({
+      store: createMemoryReactionOutboxStore(),
+      leaseMs: Number.MAX_SAFE_INTEGER,
+      handle: async () => {},
+    }).close()
+  })
+
+  it('stops heartbeats after the lease is lost and reports it', async () => {
+    const memory = createMemoryReactionOutboxStore<{ message: string }>()
+    const renewals: string[] = []
+    const store = {
+      ...memory,
+      renewLease: (jobId: string, attemptId: string, leaseExpiresAt: Date) => {
+        renewals.push(attemptId)
+        return memory.renewLease(jobId, attemptId, leaseExpiresAt)
+      },
+    }
+    const transitions: string[] = []
+    const worker = createReactionOutboxWorker({
+      store,
+      leaseMs: 1_000,
+      heartbeatMs: 5,
+      idFactory: () => 'job-1',
+      onTransition: (transition) => {
+        if (transition.type === 'lease-renewal-failed') {
+          transitions.push(`${transition.type}:${transition.leaseLost}`)
+        }
+      },
+      handle: async (_payload, context) => {
+        if (context.attemptNumber > 1) return
+        // Another worker takes the job over and finishes it while this
+        // attempt still runs.
+        const later = new Date(8.64e15)
+        await Effect.runPromise(store.requeueExpired(later))
+        const takeover = await Effect.runPromise(store.claimNext(later, later))
+        await Effect.runPromise(
+          store.complete('job-1', takeover?.activeAttemptId ?? '', later),
+        )
+        await new Promise((resolve) => setTimeout(resolve, 60))
+      },
+    })
+    await worker.enqueue({ message: 'slow' })
+    await worker.drain()
+
+    expect(transitions).toEqual(['lease-renewal-failed:true'])
+    expect(renewals.filter((id) => id === 'job-1:attempt:1')).toHaveLength(1)
+  })
+
+  it('reports other renewal failures and keeps renewing', async () => {
+    const memory = createMemoryReactionOutboxStore<{ message: string }>()
+    const store = {
+      ...memory,
+      renewLease: () => Effect.fail(new Error('disk unavailable')),
+    }
+    const errors: string[] = []
+    const worker = createReactionOutboxWorker({
+      store,
+      leaseMs: 1_000,
+      heartbeatMs: 5,
+      onTransition: (transition) => {
+        if (transition.type === 'lease-renewal-failed') {
+          errors.push(transition.error)
+        }
+      },
+      handle: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 60))
+      },
+    })
+    await worker.enqueue({ message: 'slow' })
+    await worker.drain()
+
+    expect(errors.length).toBeGreaterThan(1)
+    expect(new Set(errors)).toEqual(new Set(['disk unavailable']))
+  })
+
+  it('unsubscribes from the Store and stops its service on close', async () => {
+    const memory = createMemoryReactionOutboxStore<{ message: string }>()
+    let subscribed = 0
+    const store = {
+      ...memory,
+      subscribe: (listener: () => void) => {
+        subscribed += 1
+        const unsubscribe = memory.subscribe(listener)
+        return () => {
+          subscribed -= 1
+          unsubscribe()
+        }
+      },
+    }
+    const worker = createReactionOutboxWorker({ store, handle: async () => {} })
+    expect(subscribed).toBe(1)
+    const running = runReactionOutboxWorker(worker, { pollIntervalMs: 60_000 })
+    await new Promise((resolve) => setTimeout(resolve, 5))
+
+    worker.close()
+    await running
+    expect(subscribed).toBe(0)
+    expect(worker.signal.aborted).toBe(true)
   })
 })
 
@@ -519,5 +624,80 @@ describe('outbox Reaction Plugin', () => {
       ),
     )
     expect(handled).toEqual(['hello'])
+  })
+
+  it('lets a running delivery record completion before its scope closes', async () => {
+    const store =
+      createMemoryReactionOutboxStore<OutboxedReaction<{ message: string }>>()
+    const handled: string[] = []
+    const plugin = withReactionOutbox(
+      () =>
+        Effect.succeed((output: { message: string }) =>
+          Effect.promise(async () => {
+            await new Promise((resolve) => setTimeout(resolve, 50))
+            handled.push(output.message)
+          }),
+        ),
+      { store },
+    )
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(() => Effect.void)
+          yield* exec(
+            { message: 'hello' },
+            {
+              deliveryId: 'sendEmail:1',
+              throughOrder: 1,
+              scheduledAt: new Date().toISOString(),
+            },
+          )
+          yield* Effect.sleep('10 millis')
+        }),
+      ),
+    )
+
+    expect(handled).toEqual(['hello'])
+    expect(await Effect.runPromise(store.get('sendEmail:1'))).toMatchObject({
+      status: 'completed',
+    })
+  })
+
+  it('bounds the shutdown wait with shutdownTimeoutMs', async () => {
+    const store =
+      createMemoryReactionOutboxStore<OutboxedReaction<{ message: string }>>()
+    const plugin = withReactionOutbox(
+      () =>
+        Effect.succeed(() =>
+          Effect.promise(
+            () => new Promise<void>((resolve) => setTimeout(resolve, 200)),
+          ),
+        ),
+      { store, shutdownTimeoutMs: 5 },
+    )
+    const started = Date.now()
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(() => Effect.void)
+          yield* exec(
+            { message: 'slow' },
+            {
+              deliveryId: 'sendEmail:1',
+              throughOrder: 1,
+              scheduledAt: new Date().toISOString(),
+            },
+          )
+          yield* Effect.sleep('10 millis')
+        }),
+      ),
+    )
+
+    expect(Date.now() - started).toBeLessThan(150)
+    expect(await Effect.runPromise(store.get('sendEmail:1'))).toMatchObject({
+      status: 'running',
+    })
   })
 })

@@ -34,7 +34,10 @@ wrapped Plugin and preserves its service requirements `R`. Because the worker
 runs outside the Slice transaction, the wrapped Plugin may call `query`.
 
 `ReactionOutboxPluginOptions` accepts Store, worker retry/lease/heartbeat
-options, polling interval, and polling error callback. SQL and JSONL Store
+options, polling interval, shutdown timeout, and polling error callback. When
+the Plugin scope closes, the worker stops claiming and the finalizer waits up
+to `shutdownTimeoutMs` (default 30 seconds) for a running attempt to record
+its outcome before Stores are closed. SQL and JSONL Store
 codecs require JSON-compatible output and context by default.
 
 Stores:
@@ -81,7 +84,14 @@ Optional Store capabilities:
   it; SQL Stores keep the lease set at claim.
 
 `worker.waitForWork(ms, { sleep, signal })` is the interruptible wait used by
-`drain` and `runReactionOutboxWorker`.
+`drain` and `runReactionOutboxWorker`. Waits share one wake-up, so another
+caller of `waitForWork` can take a wake-up meant for `drain`; the job then
+starts on the next poll or backoff wait, at worst one poll interval later.
+`worker.close()` stops a worker like aborting its `signal`: it unsubscribes
+from the Store, ends waits, and stops `runReactionOutboxWorker`; a worker
+created without a `signal` stays subscribed until closed. Renewal failures
+reach `onTransition` as `lease-renewal-failed` with `leaseLost`.
+`heartbeatMs` must also be at most 2,147,483,647, the largest timer delay.
 
 Attempt metadata belongs to worker, not core Reaction context. Use stable job ID
 or Reaction `deliveryId` for provider deduplication, never attempt ID.

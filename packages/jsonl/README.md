@@ -183,7 +183,10 @@ JSON-serializable unless a `codec` maps them to a JSON value.
 ### Behavior
 
 - Opening replays every line into an in-memory index of jobs and idempotency
-  keys; reads never touch the file. Each Store operation is synchronous and
+  keys. Pending, running, and dead-lettered jobs keep their payload in memory;
+  a completed job keeps only its id, key, state, and the location of its
+  `enqueued` line, so reading a completed job's payload reads that line from
+  the file. Each Store operation is synchronous and
   appends its lines in one write, so operations in the process never
   interleave and a claim is atomic.
 - Lock file, `fsync`, malformed-line, trailing-write, and failed-write
@@ -195,8 +198,11 @@ JSON-serializable unless a `codec` maps them to a JSON value.
   without waiting for their lease, and listed in `releasedOnOpen`. The lock
   means no other open of the file exists, so a crashed or closed owner can no
   longer finish those attempts through it. Close the Store only after its
-  workers stop; an attempt still running after `close()` runs again after the
-  next open. The released attempt counts toward `maxAttempts`.
+  workers stop: `withReactionOutbox` waits for a running attempt when its
+  scope closes (`shutdownTimeoutMs`, 30 seconds by default), so close the
+  Store after `app.close()`. An attempt still running after `close()` runs
+  again after the next open. The released attempt counts toward
+  `maxAttempts`.
 - `subscribe` wakes this process's workers after an enqueue or a dead-letter
   retry, so a job starts without waiting for `pollIntervalMs`. `renewLease`
   lets the worker heartbeat a slow attempt.
@@ -222,6 +228,12 @@ transaction body returns. Every crash therefore lands in one of these windows:
    The first enqueued payload wins.
 3. After the rename: both are durable.
 
+Delivery itself stays at least once, as with every Store: a crash after the
+handler's external effect but before the `completed` line is complete (or
+with a torn `completed` line, which opening removes) leaves the attempt
+`running`, so the next open releases it and the job runs again. Use the
+`deliveryId` as the provider's idempotency key.
+
 No window loses a job whose cursor advanced. The difference from SQL Stores
 is window 2: a job can run before, or without, its Reaction's cursor write,
 and the Reaction transaction is retried until the cursor advances. The worker
@@ -243,8 +255,13 @@ the same no-loss guarantee without coupling the two adapters.
 The journal is never rewritten: it grows by about three lines per delivered
 job (`enqueued`, `claimed`, `completed`), plus one line per retry and one per
 heartbeat (every `heartbeatMs`, a third of `leaseMs` by default, while a
-handler runs). Open time and memory grow with it, and claiming scans every
-indexed job. Rewrite the file when it is large relative to its live jobs, with
+handler runs). Open time grows with it, memory grows with the number of jobs
+(payloads only for jobs not yet completed), and claiming scans every indexed
+job. Heartbeats rarely protect anything here: one process owns the file, and
+its worker never reclaims its own running attempt, so they mainly add lines.
+They matter for multi-worker Stores, and the SQL Stores do not renew leases
+yet. Pass a `heartbeatMs` close to `leaseMs`, or a long `leaseMs`, to keep
+the journal small. Rewrite the file when it is large relative to its live jobs, with
 the Store closed: keep every `pending`, `running`, and `dead-letter` job, and
 keep the idempotency key of each completed job until no Reaction cursor can
 still replay its commit, or a replayed enqueue would run the job again.

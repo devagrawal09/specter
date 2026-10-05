@@ -131,6 +131,16 @@ export type ReactionOutboxTransition<TPayload = unknown> =
       readonly error: string
     }
   | {
+      /**
+       * A heartbeat could not renew the attempt's lease. A lost lease stops
+       * heartbeats; other failures retry on the next beat.
+       */
+      readonly type: 'lease-renewal-failed'
+      readonly claim: ReactionOutboxClaim<TPayload>
+      readonly leaseLost: boolean
+      readonly error: string
+    }
+  | {
       readonly type: 'dead-letter-retried'
       readonly jobId: string
       readonly availableAt: Date

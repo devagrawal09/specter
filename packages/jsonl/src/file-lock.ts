@@ -1,8 +1,8 @@
 import { closeSync, mkdirSync, openSync, rmSync, writeSync } from 'node:fs'
 import { dirname } from 'node:path'
 
-/** Absolute paths of JSONL files open for writing in this process. */
-const openPaths = new Set<string>()
+/** Labels of the JSONL files open for writing in this process, by path. */
+const openPaths = new Map<string, string>()
 
 /**
  * Makes the caller the only writer of `path`: creates `<path>.lock`
@@ -10,8 +10,11 @@ const openPaths = new Set<string>()
  * it. A lock file left by a crashed process is reported, never taken over.
  */
 export function acquireLock(path: string, label: string) {
-  if (openPaths.has(path)) {
-    throw new Error(`${label} ${path} is already open in this process`)
+  const holder = openPaths.get(path)
+  if (holder) {
+    throw new Error(
+      `${label} ${path} is already open in this process as a ${holder}`,
+    )
   }
   mkdirSync(dirname(path), { recursive: true })
   const lockPath = `${path}.lock`
@@ -32,7 +35,7 @@ export function acquireLock(path: string, label: string) {
   } finally {
     closeSync(fd)
   }
-  openPaths.add(path)
+  openPaths.set(path, label)
   return () => {
     openPaths.delete(path)
     rmSync(lockPath, { force: true })
