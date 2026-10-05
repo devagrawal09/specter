@@ -1,4 +1,11 @@
-import { appendFileSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import {
+  appendFileSync,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -181,6 +188,97 @@ describe('JSONL Event Log', () => {
     )
     expect(result._tag).toBe('Failure')
     expect(await Effect.runPromise(eventLog.currentVersion)).toBe(0)
+    eventLog.close()
+  })
+
+  it('closes idempotently and releases the lock', async () => {
+    const path = temporaryLogPath()
+    const eventLog = createJsonlEventLog({ path })
+    expect(existsSync(`${path}.lock`)).toBe(true)
+    eventLog.close()
+    eventLog.close()
+    expect(existsSync(`${path}.lock`)).toBe(false)
+    const result = await Effect.runPromise(
+      Effect.result(eventLog.append([{ type: 'todo-added', payload: {} }])),
+    )
+    expect(result._tag).toBe('Failure')
+    createJsonlEventLog({ path }).close()
+  })
+
+  it('rejects a second open of the same file', () => {
+    const path = temporaryLogPath()
+    const eventLog = createJsonlEventLog({ path })
+    expect(() => createJsonlEventLog({ path })).toThrow(/already open/)
+    eventLog.close()
+    createJsonlEventLog({ path }).close()
+  })
+
+  it('reports a stale lock file without taking it over', async () => {
+    const path = temporaryLogPath()
+    const first = createJsonlEventLog({ path })
+    await Effect.runPromise(first.append([{ type: 'todo-added', payload: {} }]))
+    first.close()
+    const before = readFileSync(path)
+    writeFileSync(`${path}.lock`, '999999\n')
+    expect(() => createJsonlEventLog({ path })).toThrow(`${path}.lock`)
+    expect(readFileSync(path)).toEqual(before)
+    expect(readFileSync(`${path}.lock`, 'utf8')).toBe('999999\n')
+  })
+
+  it.each([
+    ['a JSON document', '{"name":"not a log","items":[1,2]}'],
+    ['a text file', 'hello\nworld'],
+    [
+      'a malformed line before a torn tail',
+      '{"version":1}\n{"version":2,"comm',
+    ],
+  ])('leaves %s byte-identical when the open fails', (_name, content) => {
+    const path = temporaryLogPath()
+    createJsonlEventLog({ path }).close()
+    writeFileSync(path, content)
+    expect(() => createJsonlEventLog({ path })).toThrow()
+    expect(readFileSync(path, 'utf8')).toBe(content)
+    expect(existsSync(`${path}.lock`)).toBe(false)
+  })
+
+  it('keeps a complete last commit whose newline was lost', async () => {
+    const path = temporaryLogPath()
+    const first = createJsonlEventLog({ path })
+    for (const todoId of ['todo-1', 'todo-2']) {
+      await Effect.runPromise(
+        first.append([{ type: 'todo-added', payload: { todoId } }]),
+      )
+    }
+    first.close()
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n$/, ''))
+
+    const reopened = createJsonlEventLog({ path })
+    expect(reopened.discardedTrailingBytes).toBe(0)
+    expect(await Effect.runPromise(reopened.currentVersion)).toBe(2)
+    await Effect.runPromise(
+      reopened.append([{ type: 'todo-added', payload: { todoId: 'todo-3' } }]),
+    )
+    reopened.close()
+    const again = createJsonlEventLog({ path })
+    expect(
+      (await Effect.runPromise(again.query(0, ['todo-added']))).map(
+        (event) => event.order,
+      ),
+    ).toEqual([1, 2, 3])
+    again.close()
+  })
+
+  it('matches no Events for a NaN cursor', async () => {
+    const eventLog = createJsonlEventLog({ path: temporaryLogPath() })
+    await Effect.runPromise(
+      eventLog.append([{ type: 'todo-added', payload: {} }]),
+    )
+    expect(
+      await Effect.runPromise(eventLog.query(Number.NaN, ['todo-added'])),
+    ).toEqual([])
+    expect(
+      await Effect.runPromise(eventLog.query(0.5, ['todo-added'])),
+    ).toHaveLength(1)
     eventLog.close()
   })
 })

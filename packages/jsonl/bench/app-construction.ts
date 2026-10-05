@@ -14,7 +14,8 @@ import {
 } from '@specter-ts/memory'
 import { Effect, Exit, Layer, ManagedRuntime, Scope } from 'effect'
 
-// Source import: the conformance pass is not a public export.
+// Source import: the conformance pass is not a public export, so `bench/` is
+// left out of the package typecheck; tsx runs it without type checking.
 import { collectConformanceDiagnostics } from '../../core/src/definition/conformance.ts'
 import {
   createJsonlEventLogLayer,

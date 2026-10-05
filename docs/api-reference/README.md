@@ -13,7 +13,7 @@ Public package entrypoints are the source of truth. Import only the names docume
 | `@specter-ts/spec` | Specification builders, Scenario Event helper, and specification types | [Core specification API](./spec.md) |
 | `@specter-ts/core/testing` | Scenario runners, replay, focused Event catalogs, and Event propagation analysis | [Core testing API](./core-testing.md) |
 | `@specter-ts/memory` | In-memory Event Log, Slice Store, and immediate Reaction scheduler | [Persistence API](./persistence.md) |
-| `@specter-ts/jsonl` | Append-only JSONL file Event Log, one log per file | [Persistence API](./persistence.md) |
+| `@specter-ts/jsonl` | Append-only JSONL file Event Log and JSON file Slice Store, no database | [Persistence API](./persistence.md) |
 | `@specter-ts/sqlite` | libSQL/SQLite Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
 | `@specter-ts/sqlite-node` | Native `node:sqlite` adapters and scoped Effect runtime bundle | [Persistence API](./persistence.md) |
 | `@specter-ts/postgres` | Postgres Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |

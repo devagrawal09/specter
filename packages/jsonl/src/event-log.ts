@@ -6,10 +6,11 @@ import {
   mkdirSync,
   openSync,
   readFileSync,
+  rmSync,
   truncateSync,
   writeSync,
 } from 'node:fs'
-import { dirname } from 'node:path'
+import { dirname, resolve } from 'node:path'
 
 import {
   EventLog,
@@ -23,7 +24,7 @@ import {
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
-import { Effect, Layer, Semaphore } from 'effect'
+import { Effect, Layer } from 'effect'
 
 export type JsonlEventLogOptions = {
   readonly path: string
@@ -35,23 +36,39 @@ export type JsonlEventLogOptions = {
 
 export type JsonlEventLog = EventLogService & {
   readonly path: string
-  /** Bytes of an unterminated trailing line removed while opening. */
+  /** Bytes of an interrupted trailing write removed while opening. */
   readonly discardedTrailingBytes: number
   readonly close: () => void
 }
 
+/** Absolute paths of logs open in this process. */
+const openPaths = new Set<string>()
+
 /**
  * Opens one append-only JSONL file as an Event Log. Each line is one complete
- * commit, so a line boundary is the atomic commit boundary. The process that
- * opens the file must be its only writer.
+ * commit, so a line boundary is the atomic commit boundary. Opening takes an
+ * exclusive `<path>.lock` file, released by `close()`, so the opener is the
+ * file's only writer.
  */
 export function createJsonlEventLog(
   options: JsonlEventLogOptions,
 ): JsonlEventLog {
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
-  const { commits, size, discardedTrailingBytes } = readCommits(options.path)
-  let committedBytes = size
+  const releaseLock = acquireLock(resolve(options.path))
+  let opened: ReturnType<typeof openFile>
+  try {
+    opened = openFile(options.path, options.fsync === true)
+  } catch (cause) {
+    releaseLock()
+    throw cause
+  }
+  const { commits, discardedTrailingBytes } = opened
+  let fd: number | undefined = opened.fd
+  let committedBytes = opened.size
+  let closed = false
+  /** Set when a failed write could not be undone; every later append fails. */
+  let poisoned: AggregateError | undefined
   const events: PersistedEvent[] = commits.flatMap((commit) => commit.events)
   const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
   for (const commit of commits) {
@@ -59,8 +76,6 @@ export function createJsonlEventLog(
       commitsByIdempotencyKey.set(commit.idempotencyKey, commit)
     }
   }
-  let fd: number | undefined = openSync(options.path, 'a')
-  const semaphore = Semaphore.makeUnsafe(1)
   const copyEvent = (event: PersistedEvent): PersistedEvent => ({ ...event })
   const copyCommit = (commit: EventLogCommit): EventLogCommit => ({
     ...commit,
@@ -71,6 +86,7 @@ export function createJsonlEventLog(
     drafts: readonly EventDraft[],
     appendOptions: EventLogAppendOptions = {},
   ): EventLogAppendResult {
+    if (poisoned) throw poisoned
     if (fd === undefined) throw new Error('JSONL Event Log is closed')
     const existing = appendOptions.idempotencyKey
       ? commitsByIdempotencyKey.get(appendOptions.idempotencyKey)
@@ -96,37 +112,47 @@ export function createJsonlEventLog(
         version,
       )
     }
-    const persisted = drafts.map((draft, index) => {
-      if (JSON.stringify(draft.payload) === undefined) {
-        throw new Error('JSONL Event payload must be JSON-serializable')
-      }
-      return {
+    const line = JSON.stringify({
+      version: version + drafts.length,
+      committedAt: now().toISOString(),
+      idempotencyKey: appendOptions.idempotencyKey,
+      fingerprint: appendOptions.fingerprint,
+      events: drafts.map((draft, index) => ({
         id: eventId(),
         order: version + index + 1,
         type: draft.type,
         payload: draft.payload,
         recordedAt: now().toISOString(),
-      }
+      })),
     })
-    const line = JSON.stringify({
-      version: version + persisted.length,
-      committedAt: now().toISOString(),
-      idempotencyKey: appendOptions.idempotencyKey,
-      fingerprint: appendOptions.fingerprint,
-      events: persisted,
-    })
+    // Index the decoded line so live reads match what a reopen returns.
+    const commit = parseCommit(line, version)
+    // JSON.stringify drops a payload it cannot represent, such as a function.
+    if (commit.events.some((event) => !('payload' in event))) {
+      throw new Error('JSONL Event payload must be JSON-serializable')
+    }
     const bytes = Buffer.from(`${line}\n`)
     try {
       writeAll(fd, bytes)
       if (options.fsync) fsyncSync(fd)
     } catch (cause) {
       // Drop a partial line so the next append starts on a line boundary.
-      ftruncateSync(fd, committedBytes)
+      try {
+        ftruncateSync(fd, committedBytes)
+      } catch (truncateCause) {
+        // A partial line may remain, so no further append may reuse its
+        // orders. Reopening removes or keeps the line as recovery does.
+        poisoned = new AggregateError(
+          [cause, truncateCause],
+          'JSONL Event Log write failed and the partial line could not be removed; close and reopen the log',
+        )
+        closeQuietly(fd)
+        fd = undefined
+        throw poisoned
+      }
       throw cause
     }
     committedBytes += bytes.length
-    // Index the decoded line so live reads match what a reopen returns.
-    const commit = parseCommit(line, version)
     events.push(...commit.events)
     commits.push(commit)
     if (commit.idempotencyKey) {
@@ -141,8 +167,13 @@ export function createJsonlEventLog(
     query: (afterOrder, eventTypes) =>
       Effect.sync(() =>
         events
-          .slice(Math.max(0, afterOrder))
-          .filter((event) => eventTypes.includes(event.type))
+          // `order` is index + 1, so slicing skips most earlier Events; the
+          // filter keeps `order > afterOrder` exact, including for NaN.
+          .slice(Math.max(0, Math.floor(afterOrder) || 0))
+          .filter(
+            (event) =>
+              event.order > afterOrder && eventTypes.includes(event.type),
+          )
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.length),
@@ -157,17 +188,21 @@ export function createJsonlEventLog(
         const commit = commitsByIdempotencyKey.get(key)
         return commit ? copyCommit(commit) : undefined
       }),
+    // `append` is synchronous, so appends cannot interleave and need no lock.
     append: (drafts, appendOptions) =>
-      semaphore.withPermit(
-        Effect.try({
-          try: () => append(drafts, appendOptions),
-          catch: (cause) => new EventLogFailure('append', cause),
-        }),
-      ),
+      Effect.try({
+        try: () => append(drafts, appendOptions),
+        catch: (cause) => new EventLogFailure('append', cause),
+      }),
     close: () => {
-      if (fd === undefined) return
-      closeSync(fd)
-      fd = undefined
+      if (closed) return
+      closed = true
+      try {
+        if (fd !== undefined) closeSync(fd)
+      } finally {
+        fd = undefined
+        releaseLock()
+      }
     },
   }
 }
@@ -189,22 +224,45 @@ export function createJsonlEventLogLayer(
   )
 }
 
-function readCommits(path: string) {
+function acquireLock(path: string) {
+  if (openPaths.has(path)) {
+    throw new Error(`JSONL Event Log ${path} is already open in this process`)
+  }
   mkdirSync(dirname(path), { recursive: true })
+  const lockPath = `${path}.lock`
+  let fd: number
+  try {
+    fd = openSync(lockPath, 'wx')
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(
+        `JSONL Event Log ${path} is locked by ${lockPath}. Another process has the log open, or a crashed process left the lock file behind; delete it only after confirming no process uses the log.`,
+        { cause },
+      )
+    }
+    throw cause
+  }
+  try {
+    writeAll(fd, Buffer.from(`${process.pid}\n`))
+  } finally {
+    closeSync(fd)
+  }
+  openPaths.add(path)
+  return () => {
+    openPaths.delete(path)
+    rmSync(lockPath, { force: true })
+  }
+}
+
+function openFile(path: string, fsync: boolean) {
   let content: Buffer
   try {
     content = readFileSync(path)
   } catch (cause) {
-    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
-      return { commits: [], size: 0, discardedTrailingBytes: 0 }
-    }
-    throw cause
+    if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
+    content = Buffer.alloc(0)
   }
-  // Appends write `line\n` in one call. Bytes after the last newline are a
-  // write interrupted by a crash; no caller saw that commit succeed.
   const complete = content.lastIndexOf(0x0a) + 1
-  const discardedTrailingBytes = content.length - complete
-  if (discardedTrailingBytes > 0) truncateSync(path, complete)
   const commits: EventLogCommit[] = []
   let version = 0
   for (const line of content
@@ -216,12 +274,59 @@ function readCommits(path: string) {
     commits.push(commit)
     version = commit.version
   }
-  return { commits, size: complete, discardedTrailingBytes }
+  // Every complete line is valid, so the file is a log. Appends write
+  // `line\n` in one call; bytes after the last newline are either a whole
+  // commit whose newline was lost, or a write interrupted by a crash that no
+  // caller saw succeed.
+  const tail = content.subarray(complete).toString('utf8')
+  let size = complete
+  let discardedTrailingBytes = 0
+  let terminateTail = false
+  if (tail && parsesAsJson(tail)) {
+    commits.push(parseCommit(tail, version))
+    size = content.length + 1
+    terminateTail = true
+  } else if (tail && isTornCommit(tail)) {
+    discardedTrailingBytes = content.length - complete
+  } else if (tail) {
+    throw new Error(
+      `JSONL Event Log ${path} ends with a line that is not a commit`,
+    )
+  }
+  if (discardedTrailingBytes > 0) truncateSync(path, complete)
+  const fd = openSync(path, 'a')
+  if (terminateTail) {
+    try {
+      writeAll(fd, Buffer.from('\n'))
+      if (fsync) fsyncSync(fd)
+    } catch (cause) {
+      closeQuietly(fd)
+      throw cause
+    }
+  }
+  return { commits, size, discardedTrailingBytes, fd }
+}
+
+const commitPrefix = '{"version":'
+
+function parsesAsJson(text: string) {
+  try {
+    JSON.parse(text)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function isTornCommit(tail: string) {
+  return tail.startsWith(commitPrefix) || commitPrefix.startsWith(tail)
 }
 
 function parseCommit(line: string, previousVersion: number): EventLogCommit {
   const record = JSON.parse(line) as EventLogCommit
   const contiguous =
+    typeof record === 'object' &&
+    record !== null &&
     Array.isArray(record.events) &&
     record.events.length > 0 &&
     record.events.every(
@@ -234,6 +339,14 @@ function parseCommit(line: string, previousVersion: number): EventLogCommit {
     )
   }
   return record
+}
+
+function closeQuietly(fd: number) {
+  try {
+    closeSync(fd)
+  } catch {
+    // The original failure is the one to report.
+  }
 }
 
 function writeAll(fd: number, buffer: Buffer) {

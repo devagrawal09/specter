@@ -48,16 +48,29 @@ reopen.
   lines. Memory use grows with the log.
 - A missing file is an empty log. Parent directories are created.
 - Appends are serialized in the process. Expected versions and idempotency
-  fingerprints behave like the SQLite adapters. The opening process must be
-  the only writer of the file; there is no cross-process lock.
+  fingerprints behave like the SQLite adapters.
+- One writer per file. Opening creates `<path>.lock` exclusively (it holds the
+  opener's process id) and `close()` removes it; a second open of the same
+  path in the process, or while the lock file exists, fails. A lock file left
+  by a crashed process is reported with its path and never taken over: delete
+  it only after confirming no process uses the log.
 - `fsync` is off by default. Without it, a commit survives a process crash but
   may be lost if the machine or operating system fails before the page cache
   is flushed. Use this default only when final facts are also recorded
   somewhere authoritative. Pass `fsync: true` to flush every append.
-- An unterminated last line is a write interrupted by a crash; no caller saw
-  that commit succeed. Opening removes it and reports the removed byte count
-  as `discardedTrailingBytes`. Any other malformed or non-contiguous line
-  fails the open.
+- Opening validates every complete line before changing anything; a malformed
+  or non-contiguous line fails the open and leaves the file untouched. Bytes
+  after the last newline are then either a whole valid commit whose newline
+  was lost, which is kept and terminated, or a write interrupted by a crash
+  (the start of a commit line that is not valid JSON) that no caller saw
+  succeed, which is removed and reported as `discardedTrailingBytes`. Any
+  other trailing text fails the open without modifying the file.
+- A failed write truncates its partial line so the next append starts on a
+  line boundary. If that truncate also fails, the log refuses every later
+  append with an `EventLogFailure('append')` whose cause is an
+  `AggregateError` holding both errors; close and reopen it to recover.
+- `query(afterOrder, …)` returns Events with `order > afterOrder`, like the
+  other adapters, so `NaN` matches nothing.
 
 ## Slice Store
 
@@ -85,14 +98,56 @@ data/sessions/<id>/slices/autoApproveReadTools.json
   Reactions again for commits they already handled. A Reaction Plugin runs
   inside the transaction, before the write: if the process dies between the
   two, that commit's Reaction runs again on the next open.
+- Cursors must not move backwards; a malformed Slice file fails the read with
+  `JsonlSliceStoreFailure`. A leftover `<sliceName>.json.tmp` from a crash is
+  overwritten by the next write.
 - State must be JSON-serializable and is returned as decoded JSON, both before
-  and after a reopen. Slice names must match `[A-Za-z0-9_-]+`.
+  and after a reopen. A `Map` or `Set` anywhere in State fails the write
+  instead of being stored as `{}`; use plain objects or arrays. Slice names
+  must match `[A-Za-z0-9_-]+`.
 - `fsync` is off by default. Pass `fsync: true` to flush the file and its
   directory on every commit.
 - The process that opens the directory must be its only writer.
 
+### Durability with the Event Log
+
+A Slice cursor is only as durable as the Event Log commits it points at. With
+`fsync: true` on the Slice Store but not on the Event Log, an operating-system
+crash can keep a synced cursor while losing the unsynced log tail. New commits
+then reuse those orders, and the Slice skips them as already applied. Enable
+`fsync: true` on both, or on neither when a process crash is the only failure
+you need to survive.
+
+The Slice Store cannot see the Event Log, so the check belongs to the app:
+after opening, a cursor greater than the log's `currentVersion` means the two
+diverged and the Slice file must be rebuilt or removed.
+
+```ts
+const version = yield* eventLog.currentVersion
+const cursor = yield* store.read('autoApproveReadTools', (_state, cursor) =>
+  Effect.succeed(cursor),
+)
+if (cursor > version) throw new Error('Slice is ahead of the Event Log')
+```
+
+### Cost
+
 The whole State is rewritten on every commit, and Reactions publish a cursor
-for every commit, so each Command costs one small file write per Reaction.
-This suits small State: Reaction decisions, session metadata, pending work.
-For large State that grows with the log, such as a full transcript, either use
-a memory Store, which rebuilds from the log on startup, or a database Store.
+for every commit, even one with no Events they apply, so each Command costs
+one small file write per Reaction. This suits small State: Reaction decisions,
+session metadata, pending work. For large State that grows with the log, such
+as a full transcript, either use a memory Store, which rebuilds from the log on
+startup, or a database Store.
+
+## Not included
+
+- File-backed Reaction schedulers or outboxes.
+- Incremental or per-key Slice State storage for large State.
+- Multi-writer access, compaction, snapshots, or log rotation.
+
+## Open items
+
+- The package is built, tested, and typechecked with the workspace but is not
+  yet part of the `release:*` scripts, so it is not published.
+- Whether Reaction cursor writes for commits with no relevant Events get a
+  cheaper path (core batching or an append-based Store) is undecided.

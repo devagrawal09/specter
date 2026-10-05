@@ -236,4 +236,49 @@ describe('JSON file Slice Store', () => {
       ),
     ).toEqual({ state: { todos: ['one'] }, cursor: 1 })
   })
+
+  it('overwrites a stale temporary file left by a crashed write', async () => {
+    const service = createJsonlSliceStoreService(createTodoState, {
+      directory: temporaryDirectory(),
+    })
+    await addTodo(service, 'one', 1)
+    const path = service.pathFor('todosQuery')
+    writeFileSync(
+      `${path}.tmp`,
+      '{"cursor":99,"state":{"todos":["stale", "longer than the new document"]}}\n',
+    )
+    await addTodo(service, 'two', 2)
+    expect(existsSync(`${path}.tmp`)).toBe(false)
+    expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
+      cursor: 2,
+      state: { todos: ['one', 'two'] },
+    })
+  })
+
+  it('rejects Map and Set State instead of writing {}', async () => {
+    const service = createJsonlSliceStoreService(
+      (): { value: unknown } => ({ value: 1 }),
+      { directory: temporaryDirectory() },
+    )
+    for (const value of [new Map([['a', 1]]), new Set([1])]) {
+      const result = await Effect.runPromise(
+        Effect.result(
+          service.transaction('valueQuery', (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.value = value
+              yield* publish(1)
+            }),
+          ),
+        ),
+      )
+      expect(result._tag).toBe('Failure')
+      if (result._tag === 'Failure') {
+        expect(result.failure).toMatchObject({ operation: 'write' })
+        expect(String((result.failure.cause as Error).message)).toMatch(
+          /cannot contain a (Map|Set)/,
+        )
+      }
+    }
+    expect(existsSync(service.pathFor('valueQuery'))).toBe(false)
+  })
 })

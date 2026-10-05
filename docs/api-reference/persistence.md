@@ -27,12 +27,21 @@ process.
 The JSONL Event Log keeps one Event Log per file, one commit per line, so an
 app can open a separate log per session without a database. Opening reads the
 file once into an in-memory index; appends only add lines and are serialized in
-the process, which must be the file's only writer. Expected versions and
-idempotency receipts match the SQLite adapters. `fsync` is off by default, so a
-commit survives a process crash but not an operating-system failure; pass
-`fsync: true` when the file is the only durable record. An unterminated last
-line from an interrupted write is removed on open and reported as
-`discardedTrailingBytes`.
+the process. Opening takes an exclusive `<path>.lock` file that `close()`
+removes, so a second open in the process or in another process fails; a lock
+left by a crashed process is reported with its path, never taken over.
+Expected versions and idempotency receipts match the SQLite adapters, and
+`query` returns Events with `order > afterOrder`. `fsync` is off by default, so
+a commit survives a process crash but not an operating-system failure; pass
+`fsync: true` when the file is the only durable record.
+
+Opening validates every complete line before changing the file, and a
+malformed line fails the open without modifying it. A valid last commit whose
+newline was lost is kept; an unterminated, unparsable start of a commit line
+from an interrupted write is removed and reported as `discardedTrailingBytes`;
+other trailing text fails the open. A failed append truncates its partial line;
+if that truncate fails too, every later append fails with an
+`EventLogFailure('append')` carrying both errors until the log is reopened.
 
 The JSON Slice Store keeps each Slice's State and cursor in
 `<directory>/<sliceName>.json`. It reads a Slice's file on first use and then
@@ -40,10 +49,22 @@ serves reads from memory. A transaction that publishes a cursor writes the
 whole `{ cursor, state }` document to a temporary file and renames it over the
 Slice file; a failed transaction leaves the file unchanged. Reaction cursors
 therefore survive a restart, and reopening an app does not run Reactions again
-for handled commits. Because State is rewritten whole on every commit, use it
+for handled commits. State must be JSON-serializable; `Map` and `Set` values
+fail the write instead of being stored as `{}`. Because State is rewritten
+whole on every commit, and Reactions publish a cursor for every commit, use it
 for small State such as Reaction decisions and session metadata; for large
 State that grows with the log, use memory Slice Stores, which rebuild from the
 log on startup, or a database Store.
+
+The Slice Store's durability only holds when the Event Log uses `fsync: true`
+as well. After an operating-system crash, a synced Slice cursor can point past
+an unsynced log tail; new commits then reuse those orders and the Slice skips
+them. The Slice Store cannot see the Event Log, so apps that need the check
+compare each Slice cursor with `eventLog.currentVersion` after opening and
+rebuild a Slice whose cursor is ahead.
+
+`@specter-ts/jsonl` is built, tested, and typechecked with the workspace but is
+not yet in the `release:*` scripts.
 
 ## SQLite
 

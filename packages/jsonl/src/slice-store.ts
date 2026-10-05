@@ -209,11 +209,21 @@ export function createJsonlSliceStoreLayer<
 }
 
 function encodeState(state: unknown) {
-  const json = JSON.stringify(state)
+  const json = JSON.stringify(state, rejectMapsAndSets)
   if (json === undefined) {
     throw new Error('JSON Slice State must be JSON-serializable')
   }
   return json
+}
+
+/** JSON.stringify would silently write a Map or Set as `{}`. */
+function rejectMapsAndSets(key: string, value: unknown) {
+  if (value instanceof Map || value instanceof Set) {
+    throw new Error(
+      `JSON Slice State cannot contain a ${value instanceof Map ? 'Map' : 'Set'} (at key "${key}"); use plain objects or arrays`,
+    )
+  }
+  return value
 }
 
 function decodeFile<TState>(content: string, path: string): SliceEntry<TState> {
