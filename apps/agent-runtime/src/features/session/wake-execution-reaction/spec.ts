@@ -97,6 +97,70 @@ export const wakeExecutionSpec = createReactionSlice('wakeExecution')
       ],
       expect: [],
     },
+    {
+      description:
+        'Different Sessions run concurrently: two Sessions that enqueue before either starts both need a wake; the lowest Session ID is requested first (one output per commit).',
+      given: [enqueued('ses_2', 'msg_1'), enqueued('ses_1', 'msg_1')],
+      expect: [start('ses_1')],
+    },
+    {
+      description:
+        'The second Session is woken on the following commit: once ses_1 starts, the re-run requests ses_2.',
+      given: [
+        enqueued('ses_2', 'msg_1'),
+        enqueued('ses_1', 'msg_1'),
+        started('ses_1'),
+      ],
+      expect: [start('ses_2')],
+    },
+    {
+      description:
+        'Both Sessions started: nothing is left to wake after the follow-up commit.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        enqueued('ses_2', 'msg_1'),
+        started('ses_1'),
+        started('ses_2'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'An inbox item cancelled before any wake is no longer pending input: nothing to wake.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+        }),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'A delivered item is consumed from the inbox: once the execution settles, the Session has no pending input and is not woken again.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        event('session-inbox-delivered', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+        }),
+        started('ses_1'),
+        succeeded('ses_1'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'Repeated wakes coalesce into one follow-up drain: input enqueued during an execution is still pending when it settles, so exactly one follow-up start is requested.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        started('ses_1'),
+        enqueued('ses_1', 'msg_2'),
+        succeeded('ses_1'),
+      ],
+      expect: [start('ses_1')],
+    },
   )
 
 export default wakeExecutionSpec
