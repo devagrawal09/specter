@@ -85,7 +85,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 1. **Fork / branch-at-sequence** in the Event Log and Slice Store: a new session whose history is the parent's events up to `boundary`. Likely a core primitive plus adapter support in sqlite/jsonl.
 2. **Step-boundary queries from inside an outboxed plugin**: confirm `{ query }` inside `withReactionOutbox` reads committed state at the boundary without racing the next delivery. Add a scenario harness for outboxed plugins if `@specter-ts/core/testing` lacks one.
 3. **Orphan reconciliation hook**: a documented way to run a Reaction once at process start over 'jobs leased by a dead process'. May already fall out of outbox resume; verify, then document in `docs/architecture/plugins.md`.
-4. **Event payload schemas from Effect Schema**: OC++ events are `effect/Schema`; Specter specs use Zod. Decide one (AGENTS.md says do not share Zod schemas casually). Proposal: author Specter event definitions from `@ocpp/schema` via a small adapter so names and payloads cannot drift.
+4. **Event payload schemas** — decided 2026-10-08: Specter validates through Standard Schema (`@standard-schema/spec`), and Effect Schema implements it, so `apps/agent-runtime` imports event definitions from `@ocpp/schema` (pinned commit) directly. No adapter, no Zod port, no Specter change. Verify at M2 that `effect`'s Standard Schema export is identical between OC++'s `4.0.0-rc.112` and Specter's `4.0.1`.
 5. **Ephemeral events**: OC++ distinguishes durable from ephemeral (`reasoning.delta`). Specter subscriptions are over query results, not raw events. Decide whether deltas are (a) query results of a streaming slice, or (b) a transport-only side channel. Proposal: (b) for M1-M3, revisit in M4.
 
 ## Risks
@@ -98,7 +98,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 ## First tasks (M1, week 1)
 
 1. `pnpm create specter` -> `apps/agent-runtime`; register in root scripts; OpenSpec root for the app.
-2. Copy the ~45 durable `session.*` event names and payload shapes from `~/opencode/packages/schema/src/session-event.ts` into `src/events.ts` (hand-ported first; adapter in Specter work item 4 later).
+2. Depend on `@ocpp/schema` (git dependency pinned to `e23e7cd2`) and build `src/events.ts` from `SessionEvent.DurableDefinitions` via Standard Schema; no hand-porting.
 3. Write `next-deliverable-query/spec.ts` scenarios straight from the delivery paragraphs of `session.md` before any impl.
 4. Write `enqueue-input/spec.ts` with the idempotency and type-mismatch rejections.
 5. Implement, run, iterate; record which Specter rough edges appear in `docs/notes/agent-runtime-findings.md`.
