@@ -103,8 +103,8 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 
 ## First tasks (M1, week 1)
 
-1. `pnpm create specter` -> `apps/agent-runtime`; register in root scripts; OpenSpec root for the app.
-2. Depend on `@ocpp/schema` (git dependency pinned to `e23e7cd2`) and build `src/events.ts` from `SessionEvent.DurableDefinitions` via Standard Schema; no hand-porting.
+1. Hand-scaffold `apps/agent-runtime` (no Vite/Playwright/client; the `create-specter` template is a web app): `package.json` (`@specter/agent-runtime`; scripts `spec:build`, `test` via vitest, `typecheck`), `tsconfig.json` extending the base, `src/features/session/`, `src/events.ts`, `openspec/config.yaml` modeled on `apps/reference/openspec/config.yaml`. Register in root `build`/`test`/`typecheck` filters and `spec:build` export paths.
+2. Depend on `@ocpp/schema` — for M1 as `file:../../../opencode/packages/schema` (local link; it has only `effect` + `@standard-schema/spec` as deps and a self-contained `src/`); switch to a git dependency pinned to `e23e7cd2` before M2. Build `src/events.ts` from `SessionEvent.DurableDefinitions` via Standard Schema; no hand-porting.
 3. Write `next-deliverable-query/spec.ts` scenarios straight from the delivery paragraphs of `session.md` before any impl.
 4. Write `enqueue-input/spec.ts` with the idempotency and type-mismatch rejections.
 5. Implement, run, iterate; record which Specter rough edges appear in `docs/notes/agent-runtime-findings.md`.
