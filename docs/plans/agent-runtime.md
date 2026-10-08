@@ -70,6 +70,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - Done when `pnpm test` passes all scenarios and the three laws below hold in scenario form: (a) steers deliver in enqueue order at the next boundary and never cross a control item; (b) repeated wakes coalesce; (c) interrupt never deletes pending input.
 
 ### M2 - Real model and Code Mode (target: +2 weeks)
+- Sizing 2026-10-08: `@ocpp/ai` (108 files) and `@ocpp/codemode` (35 files) depend on no other `@ocpp/*` package (dependency law holds) but import `effect/unstable/{http,socket,encoding/Sse}` in 14 + 3 files. Those paths moved to stable names in 4.0.1 and `Socket` changed, so no dual-compatible import exists — unlike `@ocpp/schema`. Consuming the real packages on 4.0.1 requires the full OC++ effect upgrade (the M4 prerequisite), an out-of-process step worker on rc.112, or vendoring.
 - Swap in `@ocpp/ai` provider layer and `@ocpp/codemode` as the step plugin's tools; port rule groups 4, 5 (attempts/retry, tool-call durability: each local tool call durable before side effects, outcomes serialized).
 - Done when a real provider completes a multi-step session with Code Mode executions, and the `session.tool.*` / `session.codemode.*` events match OC++'s payloads byte-for-byte on a recorded fixture (use `@ocpp/http-recorder`).
 
