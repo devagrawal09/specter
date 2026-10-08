@@ -9,13 +9,7 @@ const transportFiles = [
   'specter-protocol.ts',
   'specter-reaction-tickets-sqlite.server.ts',
 ]
-const targetRoots = [
-  'apps/booking-reference/src/transport',
-  'apps/narayan-ai/src/transport',
-  'apps/reference/src/transport',
-  'apps/specter-code/src/transport',
-  'apps/threadplane-reference/src/transport',
-]
+const targetRoots = ['apps/reference/src/transport']
 const sourceRoot = resolve(
   repositoryRoot,
   'packages/create-specter/template/src/transport',

@@ -27,8 +27,6 @@ protocol/                  normative schemas, behavior, and golden fixtures
 runtimes/go/               independent Go 1.24 runtime and Todo reference app
 codemods/specter-json-specs/ deterministic 0.3-to-0.4 JSON-spec migration
 apps/reference/            Todo Reference application used as the starter template
-apps/booking-reference/    Meeting-room booking Reference application
-apps/threadplane-reference/ Threadplane-style workspace Reference application
 ```
 
 ## Published Stable Release
@@ -72,13 +70,10 @@ pnpm test
 pnpm verify:codemod
 pnpm verify:starter
 pnpm dev
-pnpm dev:booking
-pnpm dev:threadplane
 ```
 
-The Todo and Booking Reference applications use fixed port `41731`; the
-Threadplane Reference uses `41732`, Personal Mail uses `41738`, the
-observability collector uses `41739`, and the Go Todo reference uses `41737`.
+The Todo Reference application uses fixed port `41731`, the observability
+collector uses `41739`, and the Go Todo reference uses `41737`.
 
 Workspace apps resolve `@specter-ts/core` and `@specter-ts/core/testing` to
 local source through `tsconfig.base.json`. Root build, test, and typecheck

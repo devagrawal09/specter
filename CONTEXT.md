@@ -21,8 +21,8 @@ A user-owned application created to build with Specter. A Specter Project depend
 _Avoid_: Specter framework, reference application
 
 **Starter Template**:
-The template copied by the Project Initializer to create a new Specter Project. The Starter Template should demonstrate Specter through a Reference application without including Product Site or Waitlist Signup concerns.
-_Avoid_: Product Site, blank project
+The template copied by the Project Initializer to create a new Specter Project. The Starter Template should demonstrate Specter through a Reference application.
+_Avoid_: blank project
 
 **Agent Skill**:
 Instructional material included with a Specter Project to teach coding agents how to work with Specter's domain model, file boundaries, and development workflows. An Agent Skill is guidance for collaborators, not runtime application code.
@@ -31,26 +31,6 @@ _Avoid_: Framework API, generated app feature
 **Reference application**:
 An executable application used to prove Specter's canonical framework API and demonstrate intended usage. Multiple Reference applications may coexist to exercise different Specter capabilities; a Reference application should not lag behind the intended Specter API and is not automatically the Starter Template.
 _Avoid_: Product app, primary app
-
-**Threadplane Reference app**:
-The canonical Reference application that models collaborative Workspaces with messages, agents, participants, workspace files, and Agent Runs. The app name is Threadplane Reference app, not Threadplace.
-_Avoid_: Threadplace, primary product
-
-**Workspace**:
-In the Threadplane Reference app, a conversation and work surface that owns messages, agents, participants, workspace files, and Agent Runs. Multiple Workspaces may coexist, but a Workspace is not a container for separate channels or workstreams; those concepts should not exist independently in this app.
-_Avoid_: Channel, Workstream, Project
-
-**Agent Run**:
-A durable domain concept for a single agent execution requested by a Workspace, user, or system event and observed through lifecycle facts. The current lifecycle fact vocabulary is run requested, run started, run streamed, run completed, run failed, tool call started, tool call completed, and tool call failed.
-_Avoid_: Agent job, transient plugin invocation
-
-**Product Site**:
-The public-facing site for presenting Specter itself and collecting interest from prospective users. A Product Site is distinct from a Reference application, even when it dogfoods Specter concepts.
-_Avoid_: Reference application, todo app
-
-**Waitlist Signup**:
-A unique email registration from a prospective Specter user on the Product Site, including the Product Site variation that originated it. A Waitlist Signup is not a repeated interest signal; duplicate email registration is rejected.
-_Avoid_: Lead event, repeated signup
 
 **Specter App**:
 The runtime composition of Event Definitions and one selected implementation of each Slice Specification for a user-defined application scope. Specter App construction is asynchronous and validates specification/implementation conformance without executing handlers, stores, or plugins. A Specter App owns exactly one Event Log, exposes typed `command`, `query`, and `subscribe` envelope operations, and runs Reactions. Separate Specter Apps do not share Event Logs and communicate only through Commands and side effects.

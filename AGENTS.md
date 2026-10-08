@@ -5,7 +5,7 @@ This file is public project guidance for coding agents and agent-assisted contri
 ## Project Runtime
 
 - Dev and preview servers use fixed five-digit ports.
-- The Todo and Booking reference apps use port `41731`; Threadplane Reference uses port `41732`.
+- The Todo reference app uses port `41731`.
 - `vite.config.ts` sets `server.strictPort` and `preview.strictPort` to `true`, so Vite must fail instead of falling back to another port if its fixed port is occupied.
 - If a fixed port is already in use, treat that as a conflict to investigate. Do not choose a replacement port unless the user explicitly asks for one.
 

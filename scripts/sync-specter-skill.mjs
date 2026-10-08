@@ -8,11 +8,7 @@ const canonicalSkill = resolve(
   '.agents/skills/specter/SKILL.md',
 )
 const targets = [
-  'apps/booking-reference/.agents/skills/specter/SKILL.md',
-  'apps/narayan-ai/.agents/skills/specter/SKILL.md',
   'apps/reference/.agents/skills/specter/SKILL.md',
-  'apps/specter-code/.agents/skills/specter/SKILL.md',
-  'apps/threadplane-reference/.agents/skills/specter/SKILL.md',
   'packages/create-specter/template/.agents/skills/specter/SKILL.md',
 ]
 
