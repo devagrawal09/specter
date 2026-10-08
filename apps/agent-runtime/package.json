@@ -12,12 +12,15 @@
     "@ocpp/schema": "link:../../../opencode-effect-bump/packages/schema",
     "@standard-schema/spec": "^1.1.0",
     "@specter-ts/core": "workspace:*",
+    "@specter-ts/jsonl": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/spec": "workspace:*",
     "effect": "4.0.1"
   },
   "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.22.3",
     "typescript": "^6.0.2",
     "vitest": "^4.1.5"
   }

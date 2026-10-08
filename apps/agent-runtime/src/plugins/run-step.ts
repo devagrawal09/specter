@@ -2,6 +2,7 @@ import {
   type ReactionPlugin,
   SpecterCommandRejectedError,
 } from '@specter-ts/core'
+import type { SessionID } from '@ocpp/schema/session-id'
 import { Effect, PubSub } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
@@ -23,6 +24,53 @@ const unlessRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     ),
   )
 
+// Orphan reconciliation (session.md: Execution Is Process-Local): fail the
+// step the dead process left in flight, then schedule its retry. The retry's
+// state-derived request starts the next physical attempt of the same step id;
+// this job does not run the model.
+const reconcileOrphan = (
+  { command }: Pick<Parameters<ReactionPlugin<RunStepRequest>>[0], 'command'>,
+  orphan: {
+    sessionID: SessionID
+    assistantMessageID: string
+    deliveryId: string
+  },
+) =>
+  Effect.gen(function* () {
+    const { sessionID, assistantMessageID, deliveryId } = orphan
+    const error = {
+      type: 'orphaned',
+      message: 'Step was in flight when its process stopped',
+    }
+    const failed = yield* unlessRejected(
+      command(
+        {
+          type: 'recordStepFailed',
+          payload: { sessionID, assistantMessageID, error },
+        },
+        { idempotencyKey: `${deliveryId}:orphaned` },
+      ),
+    )
+    if (!failed) return
+    const retried = yield* unlessRejected(
+      command(
+        {
+          type: 'scheduleRetry',
+          payload: { sessionID, assistantMessageID, at: Date.now() },
+        },
+        { idempotencyKey: `${deliveryId}:orphan-retry` },
+      ),
+    )
+    if (retried) return
+    // Retry budget spent (or the world moved on): settle the execution.
+    yield* unlessRejected(
+      command(
+        { type: 'finishExecution', payload: { sessionID, error } },
+        { idempotencyKey: `${deliveryId}:orphan-finished` },
+      ),
+    )
+  })
+
 // One job = one safe-step boundary: deliver, run one step, maybe finish.
 export const runStepPlugin: ReactionPlugin<
   RunStepRequest,
@@ -38,7 +86,26 @@ export const runStepPlugin: ReactionPlugin<
         // Requests are derived from state, so a duplicate or stale one can be
         // queued behind the job that already ran this boundary.
         const status = yield* query(stepStatus, { sessionID })
-        if (!status.active || status.stepInFlight) return
+        if (!status.active) return
+        // A step still in flight when a job starts belongs to a dead attempt:
+        // the outbox worker runs one job at a time, so no live handler can own
+        // it. The outbox does not tell the handler that its job was claimed
+        // before, so the slice state is the evidence.
+        if (status.stepInFlight) {
+          if (
+            status.inFlightStepID !== undefined &&
+            ordinal === status.stepsStarted - 1
+          )
+            yield* reconcileOrphan(
+              { command },
+              {
+                sessionID,
+                assistantMessageID: status.inFlightStepID,
+                deliveryId: delivery.deliveryId,
+              },
+            )
+          return
+        }
         // A request for a retry repeats the ordinal of the step that failed.
         const expected = status.lastFailure
           ? status.stepsStarted - 1

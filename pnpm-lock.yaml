@@ -26,6 +26,9 @@ importers:
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@specter-ts/jsonl':
+        specifier: workspace:*
+        version: link:../../packages/jsonl
       '@specter-ts/memory':
         specifier: workspace:*
         version: link:../../packages/memory
@@ -42,6 +45,12 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
     devDependencies:
+      '@types/node':
+        specifier: ^24.10.1
+        version: 24.12.4
+      tsx:
+        specifier: ^4.22.3
+        version: 4.22.3
       typescript:
         specifier: ^6.0.2
         version: 6.0.2

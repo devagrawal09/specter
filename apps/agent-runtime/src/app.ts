@@ -2,9 +2,11 @@ import { createMemorySliceStoreLayer } from '@specter-ts/memory'
 import {
   createMemoryReactionOutboxStore,
   type OutboxedReaction,
+  type ReactionOutboxPluginOptions,
   type ReactionOutboxStore,
   withReactionOutbox,
 } from '@specter-ts/reaction-outbox'
+import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
 import { Layer } from 'effect'
 
 import { sessionEventDefinitions } from './events.ts'
@@ -34,6 +36,16 @@ import {
   scheduleRetry,
   scheduleRetryStore,
 } from './features/session/schedule-retry/impl.ts'
+import {
+  createForkSessionState,
+  forkSession,
+  forkSessionStore,
+} from './features/session/fork-session/impl.ts'
+import {
+  createSessionHistoryState,
+  sessionHistory,
+  sessionHistoryStore,
+} from './features/session/session-history-query/impl.ts'
 import {
   createRunStep,
   createRunStepState,
@@ -90,9 +102,19 @@ export type RunStepOutboxStore = ReactionOutboxStore<
   OutboxedReaction<RunStepRequest>
 >
 
+// Worker tuning (lease, heartbeat, backoff, shutdown wait) for the step
+// Plugin's outbox; defaults are the outbox's own.
+export type RunStepOutboxOptions = Omit<
+  ReactionOutboxPluginOptions<RunStepRequest>,
+  'store'
+>
+
 // The step Reaction's Plugin is outboxed, so the composing app supplies the
 // outbox store (memory in tests; a persistent store when the Event Log is).
-export const createSessionAppConfig = (runStepOutbox: RunStepOutboxStore) =>
+export const createSessionAppConfig = (
+  runStepOutbox: RunStepOutboxStore,
+  outboxOptions: RunStepOutboxOptions = {},
+) =>
   ({
     events: sessionEventDefinitions,
     slices: {
@@ -110,8 +132,13 @@ export const createSessionAppConfig = (runStepOutbox: RunStepOutboxStore) =>
       scheduleRetry,
       finishExecution,
       stepStatus,
+      forkSession,
+      sessionHistory,
       runStep: createRunStep(
-        withReactionOutbox(runStepPlugin, { store: runStepOutbox }),
+        withReactionOutbox(runStepPlugin, {
+          ...outboxOptions,
+          store: runStepOutbox,
+        }),
       ),
     },
   }) as const
@@ -123,33 +150,38 @@ export const sessionAppConfig = createSessionAppConfig(
 )
 export const sessionRegistrations = sessionAppConfig.slices
 
-// Each slice owns its own in-memory projection; fresh state per Layer scope.
-export const memorySliceStoreLayer = Layer.mergeAll(
-  createMemorySliceStoreLayer(enqueueInputStore, createEnqueueInputState),
-  createMemorySliceStoreLayer(cancelInboxItemStore, createCancelInboxItemState),
-  createMemorySliceStoreLayer(nextDeliverableStore, createNextDeliverableState),
-  createMemorySliceStoreLayer(
-    deliverInboxItemStore,
-    createDeliverInboxItemState,
-  ),
-  createMemorySliceStoreLayer(startExecutionStore, createStartExecutionState),
-  createMemorySliceStoreLayer(
-    interruptExecutionStore,
-    createInterruptExecutionState,
-  ),
-  createMemorySliceStoreLayer(wakeExecutionStore, createWakeExecutionState),
-  createMemorySliceStoreLayer(executionStatusStore, createExecutionStatusState),
-  createMemorySliceStoreLayer(
-    recordStepStartedStore,
-    createRecordStepStartedState,
-  ),
-  createMemorySliceStoreLayer(recordStepEndedStore, createRecordStepEndedState),
-  createMemorySliceStoreLayer(
-    recordStepFailedStore,
-    createRecordStepFailedState,
-  ),
-  createMemorySliceStoreLayer(scheduleRetryStore, createScheduleRetryState),
-  createMemorySliceStoreLayer(finishExecutionStore, createFinishExecutionState),
-  createMemorySliceStoreLayer(stepStatusStore, createStepStatusState),
-  createMemorySliceStoreLayer(runStepStore, createRunStepState),
+// Every Slice owns its own projection store; an adapter composition supplies
+// how one store is provided (memory here, JSONL in app.jsonl.ts).
+export type ProvideSliceStore = <TIdentifier, TWriteState, TReadState>(
+  tag: SliceStoreTag<
+    TIdentifier,
+    SliceStoreService<TReadState, TWriteState, unknown>
+  >,
+  createState: () => TWriteState,
+) => Layer.Layer<TIdentifier>
+
+export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
+  Layer.mergeAll(
+    provide(enqueueInputStore, createEnqueueInputState),
+    provide(cancelInboxItemStore, createCancelInboxItemState),
+    provide(nextDeliverableStore, createNextDeliverableState),
+    provide(deliverInboxItemStore, createDeliverInboxItemState),
+    provide(startExecutionStore, createStartExecutionState),
+    provide(interruptExecutionStore, createInterruptExecutionState),
+    provide(wakeExecutionStore, createWakeExecutionState),
+    provide(executionStatusStore, createExecutionStatusState),
+    provide(recordStepStartedStore, createRecordStepStartedState),
+    provide(recordStepEndedStore, createRecordStepEndedState),
+    provide(recordStepFailedStore, createRecordStepFailedState),
+    provide(scheduleRetryStore, createScheduleRetryState),
+    provide(finishExecutionStore, createFinishExecutionState),
+    provide(stepStatusStore, createStepStatusState),
+    provide(forkSessionStore, createForkSessionState),
+    provide(sessionHistoryStore, createSessionHistoryState),
+    provide(runStepStore, createRunStepState),
+  )
+
+// Fresh in-memory state per Layer scope.
+export const memorySliceStoreLayer = createSliceStoreLayer(
+  createMemorySliceStoreLayer,
 )

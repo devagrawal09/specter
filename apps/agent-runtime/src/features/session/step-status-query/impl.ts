@@ -59,6 +59,9 @@ export const stepStatus = implementQuery(specification)
   .outputSchema<{
     active: boolean
     stepInFlight: boolean
+    // The assistant message ID of the step in flight: what orphan
+    // reconciliation fails.
+    inFlightStepID?: string
     stepsStarted: number
     attempts: number
     lastFailure?: { type: string; message: string; status?: number }
@@ -108,6 +111,9 @@ export const stepStatus = implementQuery(specification)
     return {
       active: session?.active ?? false,
       stepInFlight: session?.inFlight != null,
+      ...(session?.inFlight == null
+        ? {}
+        : { inFlightStepID: session.inFlight }),
       stepsStarted: session?.stepsStarted ?? 0,
       attempts: session?.attempts ?? 0,
       ...(session?.lastFailure === undefined

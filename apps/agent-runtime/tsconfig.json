@@ -3,7 +3,7 @@
   "include": ["**/*.ts", "**/*.d.ts"],
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vitest"],
+    "types": ["vitest", "node"],
     // @ocpp/schema is linked; resolve its effect imports from this app, not
     // from OC++'s node_modules, so one effect version is seen everywhere.
     "preserveSymlinks": true,

@@ -43,7 +43,7 @@ const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
 
 export const stepStatusSpec = createQuerySlice('stepStatus')
   .description(
-    'Reports whether a Session has an active execution, a step in flight, how many steps it has started, and the physical attempts and last failure of its latest step.',
+    'Reports whether a Session has an active execution, a step in flight (and which), how many steps it has started, and the physical attempts and last failure of its latest step.',
   )
   .scenarios(
     {
@@ -75,6 +75,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       expect: {
         active: true,
         stepInFlight: true,
+        inFlightStepID: 'msg_1',
         stepsStarted: 1,
         attempts: 1,
       },
@@ -191,6 +192,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       expect: {
         active: true,
         stepInFlight: true,
+        inFlightStepID: 'msg_1',
         stepsStarted: 1,
         attempts: 2,
       },
@@ -229,6 +231,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       expect: {
         active: true,
         stepInFlight: true,
+        inFlightStepID: 'msg_2',
         stepsStarted: 2,
         attempts: 1,
       },
