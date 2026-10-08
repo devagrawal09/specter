@@ -42,6 +42,11 @@ import {
   sessionHistoryStore,
 } from './features/session/session-history-query/impl.ts'
 import {
+  createModelTranscriptState,
+  modelTranscript,
+  modelTranscriptStore,
+} from './features/session/model-transcript-query/impl.ts'
+import {
   createRunStep,
   createRunStepState,
   runStepStore,
@@ -148,6 +153,7 @@ export const createSessionAppConfig = (
       stepStatus,
       forkSession,
       sessionHistory,
+      modelTranscript,
       stageRevert,
       clearRevert,
       commitRevert,
@@ -195,6 +201,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(stepStatusStore, createStepStatusState),
     provide(forkSessionStore, createForkSessionState),
     provide(sessionHistoryStore, createSessionHistoryState),
+    provide(modelTranscriptStore, createModelTranscriptState),
     provide(stageRevertStore, createStageRevertState),
     provide(clearRevertStore, createClearRevertState),
     provide(commitRevertStore, createCommitRevertState),

@@ -4,13 +4,14 @@ import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
 import { sessionEvent } from '../../../events.ts'
+import { forkCut, revertCut } from '../history-fold.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection: known Sessions, each Session's history as an ordered
 // list of message IDs (delivered inbox items and assistant messages), and each
 // fork's parent. A fork copies the parent's list up to the boundary, as the
-// OC++ projector copies message rows. Duplicated from session-history-query
-// on purpose.
+// OC++ projector copies message rows. Cut rules are shared in
+// ../history-fold.ts.
 export type ForkSessionState = {
   sessions: Record<string, true>
   history: Record<string, string[]>
@@ -45,15 +46,10 @@ const input = Schema.toStandardSchemaV1(
 const messages = (state: ForkSessionState, sessionID: string) =>
   (state.history[sessionID] ??= [])
 
-// Position of the boundary message in a history list, or -1.
 const cut = (
   history: readonly string[],
   boundary: { type: 'before' | 'through'; messageID: string },
-) => {
-  const index = history.indexOf(boundary.messageID)
-  if (index === -1) return -1
-  return boundary.type === 'before' ? index : index + 1
-}
+) => forkCut(history, boundary, (id) => id)
 
 export const forkSession = implementCommand(specification)
   .inputSchema(input)
@@ -83,9 +79,8 @@ export const forkSession = implementCommand(specification)
   // fork copies only the post-revert history.
   .apply(revertCommitted, async (event, state) => {
     const { sessionID, to } = event.payload
-    const history = messages(state, sessionID)
-    const index = history.indexOf(to)
-    if (index !== -1) state.history[sessionID] = history.slice(0, index + 1)
+    const kept = revertCut(messages(state, sessionID), to, (id) => id)
+    if (kept) state.history[sessionID] = kept
   })
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')

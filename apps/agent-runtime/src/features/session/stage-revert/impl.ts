@@ -4,12 +4,13 @@ import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
 import { sessionEvent } from '../../../events.ts'
+import { forkCut, revertCut } from '../history-fold.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection: known Sessions, each Session's history as an ordered
 // list of message IDs (delivered inbox items and assistant messages, cut at a
 // committed revert and copied through a fork), and whether an execution is
-// active. Duplicated from session-history-query on purpose.
+// active. Cut rules are shared in ../history-fold.ts.
 export type StageRevertState = {
   sessions: Record<string, true>
   history: Record<string, string[]>
@@ -66,12 +67,9 @@ export const stageRevert = implementCommand(specification)
   .apply(sessionForked, async (event, state) => {
     const { sessionID, parentID, boundary } = event.payload
     const parent = messages(state, parentID)
-    const index = parent.indexOf(boundary.messageID)
-    if (index === -1) return
-    state.history[sessionID] = parent.slice(
-      0,
-      boundary.type === 'before' ? index : index + 1,
-    )
+    const end = forkCut(parent, boundary, (id) => id)
+    if (end === -1) return
+    state.history[sessionID] = parent.slice(0, end)
   })
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
@@ -90,9 +88,8 @@ export const stageRevert = implementCommand(specification)
   // Committed revert: history ends at the boundary message (inclusive).
   .apply(revertCommitted, async (event, state) => {
     const { sessionID, to } = event.payload
-    const history = messages(state, sessionID)
-    const index = history.indexOf(to)
-    if (index !== -1) state.history[sessionID] = history.slice(0, index + 1)
+    const kept = revertCut(messages(state, sessionID), to, (id) => id)
+    if (kept) state.history[sessionID] = kept
   })
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')

@@ -3,12 +3,13 @@ import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
 import { sessionEvent } from '../../../events.ts'
+import { forkCut, revertCut } from '../history-fold.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection of Session history. A fork copies the parent's items
 // up to the boundary when session.forked is folded (as the OC++ projector
-// copies message rows), so the copy is frozen at the fork. Duplicated from
-// fork-session on purpose.
+// copies message rows), so the copy is frozen at the fork. The cut rules live
+// in ../history-fold.ts, shared by the four history projections.
 type Item = {
   messageID: string
   // The Session that recorded the message.
@@ -96,11 +97,8 @@ export const sessionHistory = implementQuery(specification)
   .apply(sessionForked, async (event, state) => {
     const { sessionID, parentID, boundary } = event.payload
     const parent = items(state, parentID)
-    const index = parent.findIndex(
-      (item) => item.messageID === boundary.messageID,
-    )
-    if (index === -1) return
-    const end = boundary.type === 'before' ? index : index + 1
+    const end = forkCut(parent, boundary, (item) => item.messageID)
+    if (end === -1) return
     state.history[sessionID] = parent.slice(0, end).map((item) => ({ ...item }))
   })
   // A staged revert is not yet history: only the commit changes it.
@@ -110,9 +108,12 @@ export const sessionHistory = implementQuery(specification)
   // history and revert.ts does not mention them, so they stay pending.
   .apply(revertCommitted, async (event, state) => {
     const { sessionID, to } = event.payload
-    const history = items(state, sessionID)
-    const index = history.findIndex((item) => item.messageID === to)
-    if (index !== -1) state.history[sessionID] = history.slice(0, index + 1)
+    const kept = revertCut(
+      items(state, sessionID),
+      to,
+      (item) => item.messageID,
+    )
+    if (kept) state.history[sessionID] = kept
   })
   .handle(async (query, state) => ({
     items: state.history[query.sessionID] ?? [],
