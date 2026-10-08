@@ -74,7 +74,9 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - Swap in `@ocpp/ai` provider layer and `@ocpp/codemode` as the step plugin's tools; port rule groups 4, 5 (attempts/retry, tool-call durability: each local tool call durable before side effects, outcomes serialized).
 - Done when a real provider completes a multi-step session with Code Mode executions, and the `session.tool.*` / `session.codemode.*` events match OC++'s payloads byte-for-byte on a recorded fixture (use `@ocpp/http-recorder`).
 
-### M3 - Crash, restart, fork (target: +2 weeks)
+### M3 - Crash, restart, fork (target: +2 weeks) — status 2026-10-08: core done
+- Landed: JSONL persistence composition; recovery test with a SIGKILL'd child process (exact resumed sequence asserted; one execution, one delivery); orphan reconciliation in the step plugin; fork-session + session-history-query as a projection (16 + scenarios).
+- Deferred: revert stage/clear/commit; lease-expiry-driven reclaim (JSONL releases dead attempts on open instead; SQLite/Postgres path untested); scenario-level crash harness (process-level only).
 - Kill the process mid-step; on restart the outbox resumes the step and orphan reconciliation fails tool calls still projected as running (rule group 9).
 - Implement `session.forked{parentID, boundary}` and revert stage/clear/commit (rule group 9).
 - Done when the crash scenario is a scenario-tested, repeatable test, and fork/revert pass their scenarios.
