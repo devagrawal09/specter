@@ -1,19 +1,21 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["**/*.ts", "**/*.d.ts"],
+  "include": [
+    "**/*.ts",
+    "**/*.d.ts"
+  ],
   "compilerOptions": {
     "noEmit": true,
-    "types": ["vitest", "node"],
-    // @ocpp/schema is linked; resolve its effect imports from this app, not
-    // from OC++'s node_modules, so one effect version is seen everywhere.
-    "preserveSymlinks": true,
+    "types": [
+      "vitest",
+      "node"
+    ],
     "paths": {
-      "@specter-ts/core": ["../../packages/core/src/index.ts"],
-      "@specter-ts/core/testing": ["../../packages/core/src/testing-entry.ts"],
-      "effect": ["./node_modules/effect/dist/index.d.ts"],
-      "effect/*": [
-        "./node_modules/effect/dist/*.d.ts",
-        "./node_modules/effect/dist/*/index.d.ts"
+      "@specter-ts/core": [
+        "../../packages/core/src/index.ts"
+      ],
+      "@specter-ts/core/testing": [
+        "../../packages/core/src/testing-entry.ts"
       ]
     }
   }

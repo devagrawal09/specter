@@ -9,7 +9,9 @@
     "typecheck": "npm run spec:build && tsc --noEmit"
   },
   "dependencies": {
-    "@ocpp/schema": "link:../../../opencode-effect-bump/packages/schema",
+    "@ocpp/schema": "link:../../../opencode-effect-upgrade/packages/schema",
+    "@ocpp/ai": "link:../../../opencode-effect-upgrade/packages/ai",
+    "@ocpp/codemode": "link:../../../opencode-effect-upgrade/packages/codemode",
     "@standard-schema/spec": "^1.1.0",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/jsonl": "workspace:*",

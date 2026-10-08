@@ -20,9 +20,15 @@ importers:
 
   apps/agent-runtime:
     dependencies:
+      '@ocpp/ai':
+        specifier: link:../../../opencode-effect-upgrade/packages/ai
+        version: link:../../../opencode-effect-upgrade/packages/ai
+      '@ocpp/codemode':
+        specifier: link:../../../opencode-effect-upgrade/packages/codemode
+        version: link:../../../opencode-effect-upgrade/packages/codemode
       '@ocpp/schema':
-        specifier: link:../../../opencode-effect-bump/packages/schema
-        version: link:../../../opencode-effect-bump/packages/schema
+        specifier: link:../../../opencode-effect-upgrade/packages/schema
+        version: link:../../../opencode-effect-upgrade/packages/schema
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
