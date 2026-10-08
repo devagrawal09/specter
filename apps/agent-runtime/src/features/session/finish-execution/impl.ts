@@ -28,14 +28,7 @@ const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 
-const input = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    sessionID: SessionID,
-    error: Schema.optional(
-      Schema.Struct({ type: Schema.String, message: Schema.String }),
-    ),
-  }),
-)
+const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
 const settle = (state: FinishExecutionState, sessionID: string) => {
   delete state.active[sessionID]
@@ -69,13 +62,6 @@ export const finishExecution = implementCommand(specification)
   .handle(async (command, state) => {
     if (!state.active[command.sessionID])
       throw new Error('Execution not active')
-    if (command.error)
-      return [
-        executionFailed.create({
-          sessionID: command.sessionID,
-          error: command.error,
-        }),
-      ]
     if (state.inFlight[command.sessionID]) throw new Error('Step in flight')
     return [executionSucceeded.create({ sessionID: command.sessionID })]
   })

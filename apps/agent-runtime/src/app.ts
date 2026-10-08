@@ -32,11 +32,6 @@ import {
   recordStepFailedStore,
 } from './features/session/record-step-failed/impl.ts'
 import {
-  createScheduleRetryState,
-  scheduleRetry,
-  scheduleRetryStore,
-} from './features/session/schedule-retry/impl.ts'
-import {
   createForkSessionState,
   forkSession,
   forkSessionStore,
@@ -129,7 +124,6 @@ export const createSessionAppConfig = (
       recordStepStarted,
       recordStepEnded,
       recordStepFailed,
-      scheduleRetry,
       finishExecution,
       stepStatus,
       forkSession,
@@ -173,7 +167,6 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(recordStepStartedStore, createRecordStepStartedState),
     provide(recordStepEndedStore, createRecordStepEndedState),
     provide(recordStepFailedStore, createRecordStepFailedState),
-    provide(scheduleRetryStore, createScheduleRetryState),
     provide(finishExecutionStore, createFinishExecutionState),
     provide(stepStatusStore, createStepStatusState),
     provide(forkSessionStore, createForkSessionState),

@@ -1,4 +1,5 @@
 import { Money } from '@ocpp/schema/money'
+import { NonNegativeInt } from '@ocpp/schema/schema'
 import { SessionError } from '@ocpp/schema/session-error'
 import { SessionID } from '@ocpp/schema/session-id'
 import { SessionMessage } from '@ocpp/schema/session-message'
@@ -9,14 +10,20 @@ import { Context, Schema } from 'effect'
 import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
-// Rebuildable projection: active executions and each step's status. Duplicated
-// from record-step-ended on purpose. A step id is reused by retried attempts,
-// so a new step-started puts it back to 'started'.
+const DEFAULT_LIMIT = 3
+
+// Rebuildable projection: active executions and, per step, its status and how
+// many retries were scheduled. A step id is reused by retried attempts, so a
+// new step-started puts it back to 'started' and keeps the retry count.
 export type RecordStepFailedState = {
   active: Record<string, true>
   steps: Record<
     string,
-    { sessionID: string; status: 'started' | 'ended' | 'failed' | 'retrying' }
+    {
+      sessionID: string
+      status: 'started' | 'ended' | 'failed' | 'retrying'
+      retries: number
+    }
   >
 }
 
@@ -47,6 +54,11 @@ const input = Schema.toStandardSchemaV1(
     rawFinish: Schema.optional(Schema.String),
     cost: Schema.optional(Money.USD),
     tokens: Schema.optional(TokenUsage.Info),
+    // Retry classification is the caller's; the budget and the outcome are
+    // this Command's.
+    retryable: Schema.Boolean,
+    limit: Schema.optional(NonNegativeInt),
+    at: NonNegativeInt,
   }),
 )
 
@@ -71,7 +83,14 @@ export const recordStepFailed = implementCommand(specification)
   })
   .apply(stepStarted, async (event, state) => {
     const { sessionID, assistantMessageID } = event.payload
-    state.steps[assistantMessageID] = { sessionID, status: 'started' }
+    const step = state.steps[assistantMessageID]
+    if (step) step.status = 'started'
+    else
+      state.steps[assistantMessageID] = {
+        sessionID,
+        status: 'started',
+        retries: 0,
+      }
   })
   .apply(stepEnded, async (event, state) => {
     const step = state.steps[event.payload.assistantMessageID]
@@ -83,7 +102,9 @@ export const recordStepFailed = implementCommand(specification)
   })
   .apply(retryScheduled, async (event, state) => {
     const step = state.steps[event.payload.assistantMessageID]
-    if (step) step.status = 'retrying'
+    if (!step) return
+    step.status = 'retrying'
+    step.retries += 1
   })
   .handle(async (command, state) => {
     if (!state.active[command.sessionID])
@@ -94,7 +115,7 @@ export const recordStepFailed = implementCommand(specification)
     if (step.status === 'ended') throw new Error('Step already ended')
     if (step.status === 'failed' || step.status === 'retrying')
       throw new Error('Step already failed')
-    return [
+    const failure = [
       stepFailed.create({
         sessionID: command.sessionID,
         assistantMessageID: command.assistantMessageID,
@@ -105,6 +126,26 @@ export const recordStepFailed = implementCommand(specification)
           : { rawFinish: command.rawFinish }),
         ...(command.cost === undefined ? {} : { cost: command.cost }),
         ...(command.tokens === undefined ? {} : { tokens: command.tokens }),
+      }),
+    ]
+    // One commit, one outcome: the failure and its consequence cannot be torn
+    // apart by a crash.
+    if (command.retryable && step.retries < (command.limit ?? DEFAULT_LIMIT))
+      return [
+        ...failure,
+        retryScheduled.create({
+          sessionID: command.sessionID,
+          assistantMessageID: command.assistantMessageID,
+          attempt: step.retries + 1,
+          at: command.at,
+          error: command.error,
+        }),
+      ]
+    return [
+      ...failure,
+      executionFailed.create({
+        sessionID: command.sessionID,
+        error: command.error,
       }),
     ]
   })

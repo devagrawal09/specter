@@ -25,9 +25,10 @@ const unlessRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
   )
 
 // Orphan reconciliation (session.md: Execution Is Process-Local): fail the
-// step the dead process left in flight, then schedule its retry. The retry's
-// state-derived request starts the next physical attempt of the same step id;
-// this job does not run the model.
+// step the dead process left in flight. One Command records the failure and
+// its outcome atomically: a scheduled retry, or the execution failing when the
+// budget is spent. The retry's state-derived request starts the next physical
+// attempt of the same step id; this job does not run the model.
 const reconcileOrphan = (
   { command }: Pick<Parameters<ReactionPlugin<RunStepRequest>>[0], 'command'>,
   orphan: {
@@ -38,35 +39,22 @@ const reconcileOrphan = (
 ) =>
   Effect.gen(function* () {
     const { sessionID, assistantMessageID, deliveryId } = orphan
-    const error = {
-      type: 'orphaned',
-      message: 'Step was in flight when its process stopped',
-    }
-    const failed = yield* unlessRejected(
+    yield* unlessRejected(
       command(
         {
           type: 'recordStepFailed',
-          payload: { sessionID, assistantMessageID, error },
+          payload: {
+            sessionID,
+            assistantMessageID,
+            error: {
+              type: 'orphaned',
+              message: 'Step was in flight when its process stopped',
+            },
+            retryable: true,
+            at: Date.now(),
+          },
         },
         { idempotencyKey: `${deliveryId}:orphaned` },
-      ),
-    )
-    if (!failed) return
-    const retried = yield* unlessRejected(
-      command(
-        {
-          type: 'scheduleRetry',
-          payload: { sessionID, assistantMessageID, at: Date.now() },
-        },
-        { idempotencyKey: `${deliveryId}:orphan-retry` },
-      ),
-    )
-    if (retried) return
-    // Retry budget spent (or the world moved on): settle the execution.
-    yield* unlessRejected(
-      command(
-        { type: 'finishExecution', payload: { sessionID, error } },
-        { idempotencyKey: `${deliveryId}:orphan-finished` },
       ),
     )
   })
@@ -160,7 +148,11 @@ export const runStepPlugin: ReactionPlugin<
           })
 
         if (outcome.finish === 'error') {
-          const failed = yield* unlessRejected(
+          // Retry is narrow: the Plugin classifies, the Command owns the
+          // budget and records either the scheduled retry or the failed
+          // execution in the same commit as the step failure. A retry is
+          // requested by the Reaction from that fact, not by this job.
+          yield* unlessRejected(
             command(
               {
                 type: 'recordStepFailed',
@@ -168,40 +160,13 @@ export const runStepPlugin: ReactionPlugin<
                   sessionID,
                   assistantMessageID,
                   error: outcome.error,
+                  retryable: outcome.retryable,
+                  // Backoff is recorded, not waited on: the scripted model
+                  // has nothing to wait for.
+                  at: Date.now(),
                 },
               },
               { idempotencyKey: `${delivery.deliveryId}:failed` },
-            ),
-          )
-          if (!failed) return
-          // Retry is narrow: only a retryable failure, within the Command's
-          // budget. The next attempt is requested by the Reaction from the
-          // scheduled-retry fact, not by this job.
-          const retried =
-            outcome.retryable &&
-            (yield* unlessRejected(
-              command(
-                {
-                  type: 'scheduleRetry',
-                  payload: {
-                    sessionID,
-                    assistantMessageID,
-                    // Backoff is recorded, not waited on: the scripted model
-                    // has nothing to wait for.
-                    at: Date.now(),
-                  },
-                },
-                { idempotencyKey: `${delivery.deliveryId}:retry` },
-              ),
-            ))
-          if (retried) return
-          yield* unlessRejected(
-            command(
-              {
-                type: 'finishExecution',
-                payload: { sessionID, error: outcome.error },
-              },
-              { idempotencyKey: `${delivery.deliveryId}:finished` },
             ),
           )
           return

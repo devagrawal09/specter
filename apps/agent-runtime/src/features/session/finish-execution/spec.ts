@@ -30,7 +30,7 @@ const stepEnded = (assistantMessageID: string) =>
 
 export const finishExecutionSpec = createCommandSlice('finishExecution')
   .description(
-    'Ends the busy period: success once no step is in flight, failure with a structured error (session.md: Execution Is Process-Local).',
+    'Ends the busy period successfully once no step is in flight (session.md: Execution Is Process-Local). Failure is not recorded here: recordStepFailed owns the failure outcome.',
   )
   .scenarios(
     {
@@ -38,35 +38,6 @@ export const finishExecutionSpec = createCommandSlice('finishExecution')
       given: [started(), stepStarted('msg_1'), stepEnded('msg_1')],
       when: { sessionID: 'ses_1' },
       expect: [succeeded()],
-    },
-    {
-      description: 'A failure carries the structured error.',
-      given: [started(), stepStarted('msg_1'), stepEnded('msg_1')],
-      when: {
-        sessionID: 'ses_1',
-        error: { type: 'provider', message: 'boom' },
-      },
-      expect: [
-        event('session-execution-failed', {
-          sessionID: 'ses_1',
-          error: { type: 'provider', message: 'boom' },
-        }),
-      ],
-    },
-    {
-      description:
-        'An execution that crashed mid-step may fail while the step is in flight.',
-      given: [started(), stepStarted('msg_1')],
-      when: {
-        sessionID: 'ses_1',
-        error: { type: 'provider', message: 'boom' },
-      },
-      expect: [
-        event('session-execution-failed', {
-          sessionID: 'ses_1',
-          error: { type: 'provider', message: 'boom' },
-        }),
-      ],
     },
     {
       description: 'Success cannot be recorded while a step is in flight.',
