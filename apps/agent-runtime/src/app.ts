@@ -88,6 +88,26 @@ import {
   startExecutionStore,
 } from './features/session/start-execution/impl.ts'
 import {
+  createStageRevertState,
+  stageRevert,
+  stageRevertStore,
+} from './features/session/stage-revert/impl.ts'
+import {
+  createClearRevertState,
+  clearRevert,
+  clearRevertStore,
+} from './features/session/clear-revert/impl.ts'
+import {
+  createCommitRevertState,
+  commitRevert,
+  commitRevertStore,
+} from './features/session/commit-revert/impl.ts'
+import {
+  createRevertStatusState,
+  revertStatus,
+  revertStatusStore,
+} from './features/session/revert-status-query/impl.ts'
+import {
   createWakeExecutionState,
   wakeExecution,
   wakeExecutionStore,
@@ -128,6 +148,10 @@ export const createSessionAppConfig = (
       stepStatus,
       forkSession,
       sessionHistory,
+      stageRevert,
+      clearRevert,
+      commitRevert,
+      revertStatus,
       runStep: createRunStep(
         withReactionOutbox(runStepPlugin, {
           ...outboxOptions,
@@ -171,6 +195,10 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(stepStatusStore, createStepStatusState),
     provide(forkSessionStore, createForkSessionState),
     provide(sessionHistoryStore, createSessionHistoryState),
+    provide(stageRevertStore, createStageRevertState),
+    provide(clearRevertStore, createClearRevertState),
+    provide(commitRevertStore, createCommitRevertState),
+    provide(revertStatusStore, createRevertStatusState),
     provide(runStepStore, createRunStepState),
   )
 

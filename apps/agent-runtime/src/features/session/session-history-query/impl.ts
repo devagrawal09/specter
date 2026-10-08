@@ -40,6 +40,8 @@ const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 const stepFailed = sessionEvent('session-step-failed')
 const sessionForked = sessionEvent('session-forked')
+const revertStaged = sessionEvent('session-revert-staged')
+const revertCommitted = sessionEvent('session-revert-committed')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -100,6 +102,17 @@ export const sessionHistory = implementQuery(specification)
     if (index === -1) return
     const end = boundary.type === 'before' ? index : index + 1
     state.history[sessionID] = parent.slice(0, end).map((item) => ({ ...item }))
+  })
+  // A staged revert is not yet history: only the commit changes it.
+  .apply(revertStaged, async () => {})
+  // Committed revert: history ends at the boundary message (inclusive). A
+  // projection only; the Event Log is untouched. Pending inbox items are not
+  // history and revert.ts does not mention them, so they stay pending.
+  .apply(revertCommitted, async (event, state) => {
+    const { sessionID, to } = event.payload
+    const history = items(state, sessionID)
+    const index = history.findIndex((item) => item.messageID === to)
+    if (index !== -1) state.history[sessionID] = history.slice(0, index + 1)
   })
   .handle(async (query, state) => ({
     items: state.history[query.sessionID] ?? [],

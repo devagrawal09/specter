@@ -32,6 +32,7 @@ const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
 const sessionForked = sessionEvent('session-forked')
+const revertCommitted = sessionEvent('session-revert-committed')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -77,6 +78,14 @@ export const forkSession = implementCommand(specification)
     const parent = messages(state, parentID)
     state.history[sessionID] = parent.slice(0, cut(parent, boundary))
     state.parents[sessionID] = parentID
+  })
+  // Committed revert: history ends at the boundary (inclusive), so a later
+  // fork copies only the post-revert history.
+  .apply(revertCommitted, async (event, state) => {
+    const { sessionID, to } = event.payload
+    const history = messages(state, sessionID)
+    const index = history.indexOf(to)
+    if (index !== -1) state.history[sessionID] = history.slice(0, index + 1)
   })
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')

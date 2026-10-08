@@ -185,6 +185,21 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       reject: { reason: 'Inbox item belongs to a different session' },
     },
     {
+      description:
+        'Admission after a committed revert works normally: the revert changes history, not the inbox.',
+      given: [
+        created('ses_1'),
+        event('session-revert-committed', { sessionID: 'ses_1', to: 'msg_1' }),
+      ],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_2',
+        type: 'user',
+        payload: { text: 'try again' },
+      },
+      expect: [enqueued('ses_1', 'msg_2', userItem('try again'))],
+    },
+    {
       description: 'Admission to an unknown Session fails.',
       given: [],
       when: {

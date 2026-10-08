@@ -54,6 +54,10 @@ const forked = (
     parentID,
     boundary: { type, messageID },
   })
+const staged = (messageID: string, sessionID = 'ses_1') =>
+  event('session-revert-staged', { sessionID, revert: { messageID } })
+const committed = (to: string, sessionID = 'ses_1') =>
+  event('session-revert-committed', { sessionID, to })
 const user = (messageID: string, sessionID = 'ses_1') => ({
   messageID,
   sessionID,
@@ -220,6 +224,104 @@ export const sessionHistorySpec = createQuerySlice('sessionHistory')
       ],
       when: { sessionID: 'ses_3' },
       expect: { items: [user('msg_1'), assistant('msg_2', 'ended')] },
+    },
+    {
+      description: 'A staged (uncommitted) revert does not change history.',
+      given: [...parentHistory, staged('msg_1')],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        items: [user('msg_1'), assistant('msg_2', 'ended'), user('msg_3')],
+      },
+    },
+    {
+      description:
+        'A committed revert ends history at the boundary message, inclusive (projection only; the Event Log is untouched).',
+      given: [...parentHistory, staged('msg_1'), committed('msg_1')],
+      when: { sessionID: 'ses_1' },
+      expect: { items: [user('msg_1')] },
+    },
+    {
+      description: 'An assistant message is a valid commit boundary.',
+      given: [...parentHistory, staged('msg_2'), committed('msg_2')],
+      when: { sessionID: 'ses_1' },
+      expect: { items: [user('msg_1'), assistant('msg_2', 'ended')] },
+    },
+    {
+      description:
+        'Messages recorded after a committed revert append after the boundary.',
+      given: [
+        ...parentHistory,
+        staged('msg_1'),
+        committed('msg_1'),
+        enqueued('msg_4'),
+        delivered('msg_4'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { items: [user('msg_1'), user('msg_4')] },
+    },
+    {
+      description:
+        'Pending inbox items are untouched by a commit (revert.ts does not mention them): one enqueued before the commit is still delivered into the reverted history afterwards.',
+      given: [
+        ...parentHistory,
+        enqueued('msg_4'),
+        staged('msg_1'),
+        committed('msg_1'),
+        delivered('msg_4'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { items: [user('msg_1'), user('msg_4')] },
+    },
+    {
+      description:
+        'A second commit at an earlier boundary shortens history again.',
+      given: [
+        ...parentHistory,
+        staged('msg_2'),
+        committed('msg_2'),
+        staged('msg_1'),
+        committed('msg_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { items: [user('msg_1')] },
+    },
+    {
+      description: 'A commit reverts only its own Session.',
+      given: [
+        ...parentHistory,
+        enqueued('msg_9', 'ses_2'),
+        delivered('msg_9', 'ses_2'),
+        staged('msg_1'),
+        committed('msg_1'),
+      ],
+      when: { sessionID: 'ses_2' },
+      expect: { items: [user('msg_9', 'ses_2')] },
+    },
+    {
+      description:
+        'A fork after a committed revert copies only the post-revert history.',
+      given: [
+        ...parentHistory,
+        staged('msg_2'),
+        committed('msg_2'),
+        forked('ses_2', 'ses_1', 'through', 'msg_2'),
+      ],
+      when: { sessionID: 'ses_2' },
+      expect: { items: [user('msg_1'), assistant('msg_2', 'ended')] },
+    },
+    {
+      description:
+        'A fork taken before a commit is a frozen copy: reverting the parent later does not change the child.',
+      given: [
+        ...parentHistory,
+        forked('ses_2', 'ses_1', 'through', 'msg_3'),
+        staged('msg_1'),
+        committed('msg_1'),
+      ],
+      when: { sessionID: 'ses_2' },
+      expect: {
+        items: [user('msg_1'), assistant('msg_2', 'ended'), user('msg_3')],
+      },
     },
   )
 

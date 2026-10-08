@@ -26,6 +26,7 @@ export const createEnqueueInputState = (): EnqueueInputState => ({
 
 const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
+const revertCommitted = sessionEvent('session-revert-committed')
 
 const base = {
   sessionID: SessionID,
@@ -62,6 +63,9 @@ export const enqueueInput = implementCommand(specification)
     const { sessionID, inboxID, item } = event.payload
     state.items[inboxID] ??= { sessionID, type: item.type }
   })
+  // Deliberately a no-op: a committed revert does not affect admission; the
+  // scenario puts it in Given to prove admission works normally afterwards.
+  .apply(revertCommitted, async () => {})
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')
 

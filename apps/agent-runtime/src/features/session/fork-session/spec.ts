@@ -45,6 +45,9 @@ const fork = (
   parentID = 'ses_1',
 ) => ({ sessionID, parentID, boundary: { type, messageID } })
 
+const committed = (to: string, sessionID = 'ses_1') =>
+  event('session-revert-committed', { sessionID, to })
+
 // ses_1 history: msg_1 (user), msg_2 (assistant), msg_3 (user).
 const parentHistory = [
   created('ses_1'),
@@ -94,6 +97,28 @@ export const forkSessionSpec = createCommandSlice('forkSession')
       given: [...parentHistory, stepStarted('msg_4')],
       when: fork('through', 'msg_1'),
       expect: [forked('ses_2', 'ses_1', 'through', 'msg_1')],
+    },
+    {
+      description:
+        'After a committed revert the boundary itself is still a valid fork point.',
+      given: [...parentHistory, committed('msg_2')],
+      when: fork('through', 'msg_2'),
+      expect: [forked('ses_2', 'ses_1', 'through', 'msg_2')],
+    },
+    {
+      description:
+        'After a committed revert, a message past the revert boundary is gone from the parent history: forking through it is rejected.',
+      given: [...parentHistory, committed('msg_1')],
+      when: fork('through', 'msg_3'),
+      expect: [],
+      reject: { reason: 'Boundary message not found in parent history' },
+    },
+    {
+      description:
+        'After a committed revert, forking before the reverted boundary still works.',
+      given: [...parentHistory, committed('msg_2')],
+      when: fork('before', 'msg_2'),
+      expect: [forked('ses_2', 'ses_1', 'before', 'msg_2')],
     },
     {
       description:
