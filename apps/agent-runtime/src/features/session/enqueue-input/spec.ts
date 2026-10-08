@@ -112,10 +112,7 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
     {
       description:
         'Reusing a Session ID adopts the existing Session: a second input to the same Session is admitted.',
-      given: [
-        created('ses_1'),
-        enqueued('ses_1', 'inb_1', userItem('first')),
-      ],
+      given: [created('ses_1'), enqueued('ses_1', 'inb_1', userItem('first'))],
       when: {
         sessionID: 'ses_1',
         inboxID: 'inb_2',
@@ -134,10 +131,7 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
     {
       description:
         'Cross-type reuse fails: an existing inbox item ID cannot be reused with a different type.',
-      given: [
-        created('ses_1'),
-        enqueued('ses_1', 'inb_1', userItem('first')),
-      ],
+      given: [created('ses_1'), enqueued('ses_1', 'inb_1', userItem('first'))],
       when: {
         sessionID: 'ses_1',
         inboxID: 'inb_1',

@@ -82,6 +82,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - One event stream: a Specter -> `Bus` bridge forwards session events from `app.subscribe` into `Bus.publish`, using Specter's per-session sequence as the Bus `seq` via the existing `Bus.reserveSequence(aggregateID, seq)` (`seq = max(existing, seq)`) so ordering stays monotonic. SSE feed, projector consumers, and recovery readers are untouched.
 - One database: Specter's sqlite adapter (`@specter-ts/sqlite-node`) uses OC++'s existing SQLite file with its own tables.
 - Dependency law holds: `@ocpp/core` -> `@specter-ts/core` + the runtime app; the runtime app imports only `@ocpp/schema`, never `@ocpp/core`.
+- Event names — decided 2026-10-08: Specter's normative spec format requires kebab-case event types, so the app derives its names from OC++'s by `type.replaceAll('.', '-')` (`session.inbox.enqueued` -> `session-inbox-enqueued`) and the bridge inverts the mapping when publishing to `Bus`. Payload schemas stay OC++'s. Specter's rule is unchanged.
 - Done when `packages/app` runs a full session (prompt, stream, tool calls, steer, interrupt, fork) with no app or protocol changes, and `session/inbox.ts`, `execution.ts`, `run-coordinator.ts`, `runner/*`, and the session parts of `projector.ts` (~2.5k LOC) are deleted from OC++ on the branch.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)

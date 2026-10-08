@@ -30,7 +30,11 @@ const delivered = (inboxID: string) =>
 const cancelled = (inboxID: string) =>
   event('session-inbox-cancelled', { sessionID: 'ses_1', inboxID })
 const changed = (inboxID: string, delivery: 'steer' | 'queue') =>
-  event('session-inbox-delivery-changed', { sessionID: 'ses_1', inboxID, delivery })
+  event('session-inbox-delivery-changed', {
+    sessionID: 'ses_1',
+    inboxID,
+    delivery,
+  })
 
 export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
   .description(
@@ -45,8 +49,7 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       expect: { item: null, reason: 'nothing-pending' },
     },
     {
-      description:
-        'A steer delivers at the next Safe Step Boundary.',
+      description: 'A steer delivers at the next Safe Step Boundary.',
       given: [enqueued('inb_1', user('Fix it', 'steer'))],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
@@ -231,18 +234,13 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       },
     },
     {
-      description:
-        'Cancelled items never deliver.',
-      given: [
-        enqueued('inb_1', user('Oops', 'steer')),
-        cancelled('inb_1'),
-      ],
+      description: 'Cancelled items never deliver.',
+      given: [enqueued('inb_1', user('Oops', 'steer')), cancelled('inb_1')],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: { item: null, reason: 'nothing-pending' },
     },
     {
-      description:
-        'A cancelled control item no longer forms a boundary.',
+      description: 'A cancelled control item no longer forms a boundary.',
       given: [
         enqueued('inb_1', compaction('queue')),
         enqueued('inb_2', user('After compaction', 'steer')),
@@ -255,12 +253,8 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       },
     },
     {
-      description:
-        'Delivered items never deliver twice.',
-      given: [
-        enqueued('inb_1', user('Once', 'steer')),
-        delivered('inb_1'),
-      ],
+      description: 'Delivered items never deliver twice.',
+      given: [enqueued('inb_1', user('Once', 'steer')), delivered('inb_1')],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: { item: null, reason: 'nothing-pending' },
     },

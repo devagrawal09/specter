@@ -10,6 +10,8 @@ test('every durable OC++ session event becomes a Specter event definition', asyn
 })
 
 test('payload decoding goes through the Standard Schema', async () => {
-  const definition = sessionEventDefinitions.find((d) => d.type === 'session.inbox.enqueued')!
+  const definition = sessionEventDefinitions.find(
+    (d) => d.type === 'session.inbox.enqueued',
+  )!
   await expect(definition.decode({})).rejects.toBeDefined()
 })
