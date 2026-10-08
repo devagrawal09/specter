@@ -1,7 +1,40 @@
 import { createMemorySliceStoreLayer } from '@specter-ts/memory'
+import {
+  createMemoryReactionOutboxStore,
+  type OutboxedReaction,
+  type ReactionOutboxStore,
+  withReactionOutbox,
+} from '@specter-ts/reaction-outbox'
 import { Layer } from 'effect'
 
 import { sessionEventDefinitions } from './events.ts'
+import { runStepPlugin } from './plugins/run-step.ts'
+import {
+  createFinishExecutionState,
+  finishExecution,
+  finishExecutionStore,
+} from './features/session/finish-execution/impl.ts'
+import {
+  createRecordStepEndedState,
+  recordStepEnded,
+  recordStepEndedStore,
+} from './features/session/record-step-ended/impl.ts'
+import {
+  createRecordStepStartedState,
+  recordStepStarted,
+  recordStepStartedStore,
+} from './features/session/record-step-started/impl.ts'
+import {
+  createRunStep,
+  createRunStepState,
+  runStepStore,
+  type RunStepRequest,
+} from './features/session/run-step-reaction/impl.ts'
+import {
+  createStepStatusState,
+  stepStatus,
+  stepStatusStore,
+} from './features/session/step-status-query/impl.ts'
 import {
   cancelInboxItem,
   cancelInboxItemStore,
@@ -43,21 +76,40 @@ import {
   wakeExecutionStore,
 } from './features/session/wake-execution-reaction/impl.ts'
 
-export const sessionRegistrations = {
-  enqueueInput,
-  cancelInboxItem,
-  nextDeliverable,
-  deliverInboxItem,
-  startExecution,
-  interruptExecution,
-  wakeExecution,
-  executionStatus,
-} as const
+export type RunStepOutboxStore = ReactionOutboxStore<
+  OutboxedReaction<RunStepRequest>
+>
 
-export const sessionAppConfig = {
-  events: sessionEventDefinitions,
-  slices: sessionRegistrations,
-} as const
+// The step Reaction's Plugin is outboxed, so the composing app supplies the
+// outbox store (memory in tests; a persistent store when the Event Log is).
+export const createSessionAppConfig = (runStepOutbox: RunStepOutboxStore) =>
+  ({
+    events: sessionEventDefinitions,
+    slices: {
+      enqueueInput,
+      cancelInboxItem,
+      nextDeliverable,
+      deliverInboxItem,
+      startExecution,
+      interruptExecution,
+      wakeExecution,
+      executionStatus,
+      recordStepStarted,
+      recordStepEnded,
+      finishExecution,
+      stepStatus,
+      runStep: createRunStep(
+        withReactionOutbox(runStepPlugin, { store: runStepOutbox }),
+      ),
+    },
+  }) as const
+
+// Used by the per-Slice scenario tests, which never run Plugins; the
+// integration test builds its own config around an outbox store it inspects.
+export const sessionAppConfig = createSessionAppConfig(
+  createMemoryReactionOutboxStore(),
+)
+export const sessionRegistrations = sessionAppConfig.slices
 
 // Each slice owns its own in-memory projection; fresh state per Layer scope.
 export const memorySliceStoreLayer = Layer.mergeAll(
@@ -75,4 +127,12 @@ export const memorySliceStoreLayer = Layer.mergeAll(
   ),
   createMemorySliceStoreLayer(wakeExecutionStore, createWakeExecutionState),
   createMemorySliceStoreLayer(executionStatusStore, createExecutionStatusState),
+  createMemorySliceStoreLayer(
+    recordStepStartedStore,
+    createRecordStepStartedState,
+  ),
+  createMemorySliceStoreLayer(recordStepEndedStore, createRecordStepEndedState),
+  createMemorySliceStoreLayer(finishExecutionStore, createFinishExecutionState),
+  createMemorySliceStoreLayer(stepStatusStore, createStepStatusState),
+  createMemorySliceStoreLayer(runStepStore, createRunStepState),
 )

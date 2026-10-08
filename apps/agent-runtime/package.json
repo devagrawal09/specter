@@ -12,6 +12,7 @@
     "@ocpp/schema": "link:../../../opencode/packages/schema",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
+    "@specter-ts/reaction-outbox": "workspace:*",
     "@specter-ts/spec": "workspace:*",
     "effect": "4.0.1"
   },

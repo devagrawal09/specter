@@ -29,6 +29,9 @@ importers:
       '@specter-ts/memory':
         specifier: workspace:*
         version: link:../../packages/memory
+      '@specter-ts/reaction-outbox':
+        specifier: workspace:*
+        version: link:../../packages/reaction-outbox
       '@specter-ts/spec':
         specifier: workspace:*
         version: link:../../packages/spec
