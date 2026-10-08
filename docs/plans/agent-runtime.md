@@ -77,7 +77,8 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 
 ### M3 - Crash, restart, fork (target: +2 weeks) — status 2026-10-08: core done
 - Landed: JSONL persistence composition; recovery test with a SIGKILL'd child process (exact resumed sequence asserted; one execution, one delivery); orphan reconciliation in the step plugin; fork-session + session-history-query as a projection (16 + scenarios).
-- Deferred: revert stage/clear/commit; lease-expiry-driven reclaim (JSONL releases dead attempts on open instead; SQLite/Postgres path untested); scenario-level crash harness (process-level only).
+- Revert stage/clear/commit landed later the same day as session facts (history cut is a projection; Snapshot file restoration deferred to tool-call work). The history fold is now duplicated in stage-revert, fork-session, and session-history-query — three copies is the signal to extract one history projection next.
+- Deferred: lease-expiry-driven reclaim (JSONL releases dead attempts on open instead; SQLite/Postgres path untested); scenario-level crash harness (process-level only).
 - Kill the process mid-step; on restart the outbox resumes the step and orphan reconciliation fails tool calls still projected as running (rule group 9).
 - Implement `session.forked{parentID, boundary}` and revert stage/clear/commit (rule group 9).
 - Done when the crash scenario is a scenario-tested, repeatable test, and fork/revert pass their scenarios.
