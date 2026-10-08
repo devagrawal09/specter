@@ -18,15 +18,17 @@ import {
 } from './app.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
-import { ScriptedModel } from './plugins/scripted-model.ts'
+import { Model } from './plugins/model.ts'
+import type { RunStepOptions } from './plugins/run-step.ts'
 
 export type JsonlSessionAppOptions = {
   // Everything durable lives here: events.jsonl, outbox.jsonl, slices/*.json.
   readonly directory: string
-  readonly model: ScriptedModel['Service']
+  readonly model: Model['Service']
   readonly deltas?: PubSub.PubSub<Delta>
   // Lease, heartbeat, backoff and shutdown wait of the step Plugin's outbox.
   readonly outbox?: RunStepOutboxOptions
+  readonly step?: RunStepOptions
 }
 
 // The persistent twin of the memory composition used by scenario tests: the
@@ -44,7 +46,7 @@ export const openJsonlSessionApp = async (options: JsonlSessionAppOptions) => {
     path: join(options.directory, 'outbox.jsonl'),
   })
   try {
-    const full = createSessionAppConfig(outbox, options.outbox)
+    const full = createSessionAppConfig(outbox, options.outbox, options.step)
     // As in the integration test: register the events the registered Slices
     // use, since most of the 49-event catalog is not ported yet.
     const events = [
@@ -65,7 +67,7 @@ export const openJsonlSessionApp = async (options: JsonlSessionAppOptions) => {
           }),
         ),
         createImmediateReactionSchedulerLayer(),
-        Layer.succeed(ScriptedModel, options.model),
+        Layer.succeed(Model, options.model),
         Layer.succeed(DeltaChannel, { pubsub }),
       ),
     )

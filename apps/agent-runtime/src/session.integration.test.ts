@@ -18,11 +18,12 @@ import { createSessionAppConfig, memorySliceStoreLayer } from './app.ts'
 import { sessionEvent } from './events.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
-import { makeScriptedModel, ScriptedModel } from './plugins/scripted-model.ts'
+import { Model } from './plugins/model.ts'
+import { makeScriptedModel } from './plugins/scripted-model.ts'
 
 // The real app, in process: memory Event Log, memory Slice stores, immediate
 // Reaction scheduler, memory outbox store for the step Plugin, and the
-// ScriptedModel + delta channel services the Plugin reads.
+// Model (scripted) + delta channel services the Plugin reads.
 const boot = async () => {
   const log = createMemoryEventLog()
   await Effect.runPromise(
@@ -62,7 +63,7 @@ const boot = async () => {
       Layer.succeed(EventLog, log),
       memorySliceStoreLayer,
       createImmediateReactionSchedulerLayer(),
-      Layer.succeed(ScriptedModel, model),
+      Layer.succeed(Model, model),
       Layer.succeed(DeltaChannel, { pubsub }),
     ),
   )
@@ -150,8 +151,12 @@ describe('step loop with a scripted model', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
+      'session-text-started', // scripted text is durable now
+      'session-text-ended',
       'session-step-ended',
       'session-step-started',
+      'session-text-started',
+      'session-text-ended',
       'session-step-ended',
       'session-execution-succeeded',
     ])
@@ -277,6 +282,8 @@ describe('step loop with a scripted model', () => {
         'session-step-failed',
         'session-retry-scheduled',
         'session-step-started',
+        'session-text-started',
+        'session-text-ended',
         'session-step-ended',
         'session-execution-succeeded',
       ])

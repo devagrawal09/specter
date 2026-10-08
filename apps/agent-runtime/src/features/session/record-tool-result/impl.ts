@@ -1,0 +1,148 @@
+import { SessionError } from '@ocpp/schema/session-error'
+import { SessionID } from '@ocpp/schema/session-id'
+import { SessionMessage } from '@ocpp/schema/session-message'
+import { Tool } from '@ocpp/schema/tool'
+import { implementCommand, type SliceStoreService } from '@specter-ts/core'
+import { Context, Schema } from 'effect'
+
+import { sessionEvent } from '../../../events.ts'
+import specification from './spec.json' with { type: 'json' }
+
+// Rebuildable projection: active executions, the in-flight step per Session
+// and its recorded calls with whether each has settled. Duplicated on purpose.
+export type RecordToolResultState = {
+  active: Record<string, true>
+  inFlight: Record<
+    string,
+    { assistantMessageID: string; calls: Record<string, { settled: boolean }> }
+  >
+}
+
+export const recordToolResultStore = Context.Service<
+  SliceStoreService<RecordToolResultState, RecordToolResultState, unknown>
+>('@specter/agent-runtime/RecordToolResultStore')
+
+export const createRecordToolResultState = (): RecordToolResultState => ({
+  active: {},
+  inFlight: {},
+})
+
+const executionStarted = sessionEvent('session-execution-started')
+const executionSucceeded = sessionEvent('session-execution-succeeded')
+const executionFailed = sessionEvent('session-execution-failed')
+const executionInterrupted = sessionEvent('session-execution-interrupted')
+const stepStarted = sessionEvent('session-step-started')
+const stepEnded = sessionEvent('session-step-ended')
+const stepFailed = sessionEvent('session-step-failed')
+const retryScheduled = sessionEvent('session-retry-scheduled')
+const inputStarted = sessionEvent('session-tool-input-started')
+const inputEnded = sessionEvent('session-tool-input-ended')
+const toolCalled = sessionEvent('session-tool-called')
+const toolSuccess = sessionEvent('session-tool-success')
+const toolFailed = sessionEvent('session-tool-failed')
+
+const input = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    sessionID: SessionID,
+    assistantMessageID: SessionMessage.ID,
+    id: Schema.String,
+    // An error settles the call as failed; otherwise content settles it as
+    // success.
+    error: Schema.optional(SessionError.Error),
+    content: Schema.optional(Schema.NonEmptyArray(Tool.Content)),
+  }),
+)
+
+const settle = (state: RecordToolResultState, sessionID: string) => {
+  delete state.active[sessionID]
+  delete state.inFlight[sessionID]
+}
+
+const closeStep = (
+  state: RecordToolResultState,
+  sessionID: string,
+  assistantMessageID: string,
+) => {
+  if (state.inFlight[sessionID]?.assistantMessageID === assistantMessageID)
+    delete state.inFlight[sessionID]
+}
+
+const settleCall = (
+  state: RecordToolResultState,
+  payload: { sessionID: string; assistantMessageID: string; id: string },
+) => {
+  const call = state.inFlight[payload.sessionID]?.calls[payload.id]
+  if (
+    call &&
+    state.inFlight[payload.sessionID]?.assistantMessageID ===
+      payload.assistantMessageID
+  )
+    call.settled = true
+}
+
+export const recordToolResult = implementCommand(specification)
+  .inputSchema(input)
+  .store(recordToolResultStore)
+  .apply(executionStarted, async (event, state) => {
+    state.active[event.payload.sessionID] = true
+  })
+  .apply(executionSucceeded, async (event, state) => {
+    settle(state, event.payload.sessionID)
+  })
+  .apply(executionFailed, async (event, state) => {
+    settle(state, event.payload.sessionID)
+  })
+  .apply(executionInterrupted, async (event, state) => {
+    settle(state, event.payload.sessionID)
+  })
+  .apply(stepStarted, async (event, state) => {
+    const { sessionID, assistantMessageID } = event.payload
+    state.inFlight[sessionID] = { assistantMessageID, calls: {} }
+  })
+  .apply(stepEnded, async (event, state) => {
+    closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
+  })
+  .apply(stepFailed, async (event, state) => {
+    closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
+  })
+  .apply(retryScheduled, async () => {})
+  .apply(inputStarted, async () => {})
+  .apply(inputEnded, async () => {})
+  .apply(toolCalled, async (event, state) => {
+    const { sessionID, assistantMessageID, id } = event.payload
+    const step = state.inFlight[sessionID]
+    if (step?.assistantMessageID === assistantMessageID)
+      step.calls[id] = { settled: false }
+  })
+  .apply(toolSuccess, async (event, state) => {
+    settleCall(state, event.payload)
+  })
+  .apply(toolFailed, async (event, state) => {
+    settleCall(state, event.payload)
+  })
+  .handle(async (command, state) => {
+    if (!state.active[command.sessionID])
+      throw new Error('Execution not active')
+    const step = state.inFlight[command.sessionID]
+    if (step?.assistantMessageID !== command.assistantMessageID)
+      throw new Error('Step not in flight')
+    const call = step.calls[command.id]
+    if (!call) throw new Error('Tool call not recorded')
+    if (call.settled) throw new Error('Tool call already settled')
+    const base = {
+      sessionID: command.sessionID,
+      assistantMessageID: command.assistantMessageID,
+      id: command.id,
+      executed: false,
+    }
+    if (command.error)
+      return [
+        toolFailed.create({
+          ...base,
+          error: command.error,
+          ...(command.content ? { content: command.content } : {}),
+        }),
+      ]
+    if (!command.content) throw new Error('Success needs content')
+    return [toolSuccess.create({ ...base, content: command.content })]
+  })

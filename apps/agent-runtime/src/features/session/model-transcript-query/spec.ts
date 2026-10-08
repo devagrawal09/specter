@@ -119,6 +119,57 @@ const forked = (
 const committed = (to: string) =>
   event('session-revert-committed', { sessionID: 'ses_1', to })
 
+const toolStarted = (
+  assistantMessageID: string,
+  id: string,
+  name = 'execute',
+) =>
+  event('session-tool-input-started', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    name,
+  })
+const toolInputEnded = (
+  assistantMessageID: string,
+  id: string,
+  input: string,
+) =>
+  event('session-tool-input-ended', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    text: input,
+  })
+const toolCalled = (
+  assistantMessageID: string,
+  id: string,
+  input: Record<string, string>,
+) =>
+  event('session-tool-called', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    input,
+    executed: false,
+  })
+const toolSucceeded = (assistantMessageID: string, id: string, value: string) =>
+  event('session-tool-success', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    content: [{ type: 'text', text: value }],
+    executed: false,
+  })
+const toolFailed = (assistantMessageID: string, id: string, message: string) =>
+  event('session-tool-failed', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    error: { type: 'tool.execution', message },
+    executed: false,
+  })
+
 const text = (value: string) => ({ type: 'text', text: value })
 const userMessage = (id: string, value: string) => ({
   id,
@@ -304,6 +355,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...conversation,
         stepStarted('msg_4'),
+        textStarted('msg_4'),
         textEnded('msg_4', 'again'),
         stepEnded('msg_4'),
       ],
@@ -319,12 +371,14 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A step with several text blocks keeps them in ordinal order within one assistant message.',
+        'A step with several text blocks keeps them in the order they started within one assistant message (projector: text.started pushes a block, text.ended sets the latest one).',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textEnded('msg_2', 'second', 1),
+        textStarted('msg_2', 0),
         textEnded('msg_2', 'first', 0),
+        textStarted('msg_2', 1),
+        textEnded('msg_2', 'second', 1),
         stepEnded('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -359,6 +413,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
+        textStarted('msg_2'),
         textEnded('msg_2', 'partial'),
         stepFailed('msg_2'),
       ],
@@ -379,14 +434,41 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A failed step then its retry is one assistant message under the same id: the new attempt replaces the failed attempt output.',
+        'A failed step then its retry is one assistant message under the same id; the projector keeps the failed attempt content (step.started on an existing message resets status only), so the new attempt output follows it.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
+        textStarted('msg_2'),
         textEnded('msg_2', 'partial'),
         stepFailed('msg_2'),
         retryScheduled('msg_2'),
         stepStarted('msg_2'),
+        textStarted('msg_2'),
+        textEnded('msg_2', 'complete'),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [text('partial'), text('complete')],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A retry after a failure that left no content is a plain message with the new attempt output.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        stepFailed('msg_2'),
+        retryScheduled('msg_2'),
+        stepStarted('msg_2'),
+        textStarted('msg_2'),
         textEnded('msg_2', 'complete'),
         stepEnded('msg_2'),
       ],
@@ -400,10 +482,42 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
+        'text.ended without a started block changes nothing (the projector finds no text block to set), whatever its ordinal.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        textEnded('msg_2', 'orphan', 3),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { messages: [userMessage('msg_1', 'hello')] },
+    },
+    {
+      description:
+        'text.ended sets the latest text block, not the block whose ordinal it names.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        textStarted('msg_2', 0),
+        textStarted('msg_2', 1),
+        textEnded('msg_2', 'lands on the latest', 0),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          assistantMessage('msg_2', 'lands on the latest'),
+        ],
+      },
+    },
+    {
+      description:
         'session.message.content.updated replaces the assistant message content with the edited text parts.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
+        textStarted('msg_2'),
         textEnded('msg_2', 'draft'),
         stepEnded('msg_2'),
         contentUpdated('msg_2', ['edited one', 'edited two']),
@@ -426,6 +540,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
+        textStarted('msg_2'),
         textEnded('msg_2', 'draft'),
         stepEnded('msg_2'),
         contentUpdated('msg_2', []),
@@ -584,6 +699,301 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
           {
             role: 'user',
             content: [text(checkpoint('second summary', 'r2'))],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A settled tool call is a tool-call part in the assistant message (after its text) followed by a tool message with the result: text content becomes { type: "text", value }.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        textStarted('msg_2'),
+        textEnded('msg_2', 'running it'),
+        toolStarted('msg_2', 'call_1'),
+        toolInputEnded('msg_2', 'call_1', '{"code":"1+1"}'),
+        toolCalled('msg_2', 'call_1', { code: '1+1' }),
+        toolSucceeded('msg_2', 'call_1', '2'),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              text('running it'),
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: '1+1' },
+                providerExecuted: false,
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                id: 'call_1',
+                name: 'execute',
+                result: { type: 'text', value: '2' },
+                providerExecuted: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A failed tool call becomes an error result carrying the error and its (empty) content.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: 'boom()' }),
+        toolFailed('msg_2', 'call_1', 'boom is not defined'),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: 'boom()' },
+                providerExecuted: false,
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                id: 'call_1',
+                name: 'execute',
+                result: {
+                  type: 'error',
+                  value: {
+                    error: {
+                      type: 'tool.execution',
+                      message: 'boom is not defined',
+                    },
+                    content: [],
+                  },
+                },
+                providerExecuted: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A call that has not settled (running) is replayed as a tool-call with no result message.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: '1' }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: '1' },
+                providerExecuted: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A tool call whose input is still streaming is replayed with its decoded raw input.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolInputEnded('msg_2', 'call_1', '{"code":"2"}'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: '2' },
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'Several settled calls in one step give one tool message each, in call order, after the single assistant message.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: 'a' }),
+        toolStarted('msg_2', 'call_2'),
+        toolCalled('msg_2', 'call_2', { code: 'b' }),
+        toolSucceeded('msg_2', 'call_2', 'B'),
+        toolSucceeded('msg_2', 'call_1', 'A'),
+        stepEnded('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: 'a' },
+                providerExecuted: false,
+              },
+              {
+                type: 'tool-call',
+                id: 'call_2',
+                name: 'execute',
+                input: { code: 'b' },
+                providerExecuted: false,
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                id: 'call_1',
+                name: 'execute',
+                result: { type: 'text', value: 'A' },
+                providerExecuted: false,
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                id: 'call_2',
+                name: 'execute',
+                result: { type: 'text', value: 'B' },
+                providerExecuted: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A tool success for a call that never ran (no tool.called) is ignored by the projector, so the call stays unsettled.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolSucceeded('msg_2', 'call_1', 'too early'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: '',
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'A tool.called with no tool.input.started finds no tool part, so nothing is projected for it.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolCalled('msg_2', 'call_1', { code: '1' }),
+        toolSucceeded('msg_2', 'call_1', '1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { messages: [userMessage('msg_1', 'hello')] },
+    },
+    {
+      description:
+        'A tool call inside content updated is replaced along with the rest of the content: updating to text only drops the call and its result.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: '1' }),
+        toolSucceeded('msg_2', 'call_1', '1'),
+        stepEnded('msg_2'),
+        contentUpdated('msg_2', ['summary']),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          assistantMessage('msg_2', 'summary'),
+        ],
+      },
+    },
+    {
+      description:
+        'A compaction that ends with no matching started still produces a completed checkpoint (projector appends a completed compaction message when none is running).',
+      given: [...conversation, compactionEnded('We greeted.', 'msg_3: more')],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          {
+            role: 'user',
+            content: [text(checkpoint('We greeted.', 'msg_3: more'))],
           },
         ],
       },

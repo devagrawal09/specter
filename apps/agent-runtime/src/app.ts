@@ -10,7 +10,7 @@ import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
 import { Layer } from 'effect'
 
 import { sessionEventDefinitions } from './events.ts'
-import { runStepPlugin } from './plugins/run-step.ts'
+import { makeRunStepPlugin, type RunStepOptions } from './plugins/run-step.ts'
 import {
   createFinishExecutionState,
   finishExecution,
@@ -26,6 +26,21 @@ import {
   recordStepStarted,
   recordStepStartedStore,
 } from './features/session/record-step-started/impl.ts'
+import {
+  createRecordTextState,
+  recordText,
+  recordTextStore,
+} from './features/session/record-text/impl.ts'
+import {
+  createRecordToolCallState,
+  recordToolCall,
+  recordToolCallStore,
+} from './features/session/record-tool-call/impl.ts'
+import {
+  createRecordToolResultState,
+  recordToolResult,
+  recordToolResultStore,
+} from './features/session/record-tool-result/impl.ts'
 import {
   createRecordStepFailedState,
   recordStepFailed,
@@ -134,6 +149,7 @@ export type RunStepOutboxOptions = Omit<
 export const createSessionAppConfig = (
   runStepOutbox: RunStepOutboxStore,
   outboxOptions: RunStepOutboxOptions = {},
+  stepOptions: RunStepOptions = {},
 ) =>
   ({
     events: sessionEventDefinitions,
@@ -149,6 +165,9 @@ export const createSessionAppConfig = (
       recordStepStarted,
       recordStepEnded,
       recordStepFailed,
+      recordText,
+      recordToolCall,
+      recordToolResult,
       finishExecution,
       stepStatus,
       forkSession,
@@ -159,7 +178,7 @@ export const createSessionAppConfig = (
       commitRevert,
       revertStatus,
       runStep: createRunStep(
-        withReactionOutbox(runStepPlugin, {
+        withReactionOutbox(makeRunStepPlugin(stepOptions), {
           ...outboxOptions,
           store: runStepOutbox,
         }),
@@ -197,6 +216,9 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(recordStepStartedStore, createRecordStepStartedState),
     provide(recordStepEndedStore, createRecordStepEndedState),
     provide(recordStepFailedStore, createRecordStepFailedState),
+    provide(recordTextStore, createRecordTextState),
+    provide(recordToolCallStore, createRecordToolCallState),
+    provide(recordToolResultStore, createRecordToolResultState),
     provide(finishExecutionStore, createFinishExecutionState),
     provide(stepStatusStore, createStepStatusState),
     provide(forkSessionStore, createForkSessionState),

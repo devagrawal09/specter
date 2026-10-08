@@ -1,45 +1,37 @@
-import { Context, Effect, Layer } from 'effect'
+import { Effect } from 'effect'
 
-// M1 stand-in for a provider: a per-Session queue of fixed outcomes. 'stop'
-// means the execution is done after this step; 'tool-calls' means another step
-// follows. No LLM, no @ocpp/ai.
-export type ScriptedOutcome = {
-  text?: string
+import type { Model, ModelInput, Outcome } from './model.ts'
+
+// M1 stand-in for a provider and one implementation of the Model service: a
+// per-Session queue of fixed outcomes. 'stop' means the execution is done
+// after this step; 'tool-calls' means another step follows. No LLM, no
+// @ocpp/ai.
+export type ScriptedOutcome = Outcome & {
   // Test hook: the step stays in flight until this settles.
   gate?: Promise<void>
-} & (
-  | { finish: 'tool-calls' | 'stop' }
-  // A failed physical attempt. Whether it is worth retrying is the model
-  // adapter's classification (session.md: Retry Is Narrow And Observable).
-  | {
-      finish: 'error'
-      retryable: boolean
-      error: { type: string; message: string }
-    }
-)
+}
 
-export class ScriptedModel extends Context.Service<
-  ScriptedModel,
-  {
-    script(sessionID: string, outcomes: readonly ScriptedOutcome[]): void
-    next(sessionID: string): Effect.Effect<ScriptedOutcome>
-  }
->()('@specter/agent-runtime/ScriptedModel') {}
+export type ScriptedModel = Model['Service'] & {
+  script(sessionID: string, outcomes: readonly ScriptedOutcome[]): void
+}
 
-export const makeScriptedModel = (): ScriptedModel['Service'] => {
+export const makeScriptedModel = (): ScriptedModel => {
   const queues = new Map<string, ScriptedOutcome[]>()
   return {
+    ref: { id: 'scripted', providerID: 'test' },
     script: (sessionID, outcomes) => {
       queues.set(sessionID, [...(queues.get(sessionID) ?? []), ...outcomes])
     },
     // An exhausted script ends the execution rather than looping forever.
-    next: (sessionID) =>
-      Effect.promise(async () => {
-        const outcome = queues.get(sessionID)?.shift() ?? { finish: 'stop' }
-        if (outcome.gate) await outcome.gate
+    nextOutcome: (input: ModelInput) =>
+      Effect.gen(function* () {
+        const { gate, ...outcome }: ScriptedOutcome = queues
+          .get(input.sessionID)
+          ?.shift() ?? { finish: 'stop' }
+        if (gate) yield* Effect.promise(() => gate)
+        // The scripted text arrives as one delta, after the gate.
+        if (outcome.text !== undefined) yield* input.onText(outcome.text)
         return outcome
       }),
   }
 }
-
-export const scriptedModelLayer = Layer.sync(ScriptedModel, makeScriptedModel)

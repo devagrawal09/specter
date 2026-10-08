@@ -117,6 +117,8 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-step-failed', // orphan reconciliation
       'session-retry-scheduled',
       'session-step-started', // B: a new physical attempt
+      'session-text-started', // the scripted text is now durable
+      'session-text-ended',
       'session-step-ended',
       'session-execution-succeeded',
     ])

@@ -1,0 +1,249 @@
+import { createCommandSlice, event } from '@specter-ts/spec'
+
+// session.md: tool outcomes are serialized after the call is durable. A
+// recorded call settles exactly once, as tool.success (non-empty content) or
+// tool.failed (an error); both are self-contained terminal facts.
+const model = { id: 'scripted', providerID: 'test' }
+const started = (sessionID = 'ses_1') =>
+  event('session-execution-started', { sessionID })
+const executionFailed = (sessionID = 'ses_1') =>
+  event('session-execution-failed', {
+    sessionID,
+    error: { type: 'provider', message: 'boom' },
+  })
+const executionSucceeded = (sessionID = 'ses_1') =>
+  event('session-execution-succeeded', { sessionID })
+const interrupted = (sessionID = 'ses_1') =>
+  event('session-execution-interrupted', { sessionID, reason: 'user' })
+const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-started', {
+    sessionID,
+    assistantMessageID,
+    agent: 'build',
+    model,
+  })
+const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-ended', {
+    sessionID,
+    assistantMessageID,
+    finish: 'tool-calls',
+    cost: 0,
+    tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
+  })
+const boom = { type: 'transport', message: 'connection reset' }
+const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
+const retryScheduled = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-retry-scheduled', {
+    sessionID,
+    assistantMessageID,
+    attempt: 1,
+    at: 1000,
+    error: boom,
+  })
+const toolCall = (
+  assistantMessageID: string,
+  id: string,
+  sessionID = 'ses_1',
+) => [
+  event('session-tool-input-started', {
+    sessionID,
+    assistantMessageID,
+    id,
+    name: 'execute',
+  }),
+  event('session-tool-input-ended', {
+    sessionID,
+    assistantMessageID,
+    id,
+    text: '{"code":"1"}',
+  }),
+  event('session-tool-called', {
+    sessionID,
+    assistantMessageID,
+    id,
+    input: { code: '1' },
+    executed: false,
+  }),
+]
+const succeeded = (
+  assistantMessageID: string,
+  id: string,
+  value: string,
+  sessionID = 'ses_1',
+) =>
+  event('session-tool-success', {
+    sessionID,
+    assistantMessageID,
+    id,
+    content: [{ type: 'text', text: value }],
+    executed: false,
+  })
+const failedTool = (
+  assistantMessageID: string,
+  id: string,
+  sessionID = 'ses_1',
+) =>
+  event('session-tool-failed', {
+    sessionID,
+    assistantMessageID,
+    id,
+    error: { type: 'tool.execution', message: 'boom' },
+    executed: false,
+  })
+const success = (
+  assistantMessageID: string,
+  id: string,
+  value: string,
+  sessionID = 'ses_1',
+) => ({
+  sessionID,
+  assistantMessageID,
+  id,
+  content: [{ type: 'text', text: value }],
+})
+const failure = (
+  assistantMessageID: string,
+  id: string,
+  sessionID = 'ses_1',
+) => ({
+  sessionID,
+  assistantMessageID,
+  id,
+  error: { type: 'tool.execution', message: 'boom' },
+})
+const open = [started(), stepStarted('msg_1'), ...toolCall('msg_1', 'call_1')]
+
+export const recordToolResultSpec = createCommandSlice('recordToolResult')
+  .description(
+    'Settles a recorded tool call of the in-flight step with its content or its error (session.md: tool outcomes after durable calls).',
+  )
+  .scenarios(
+    {
+      description: 'A recorded call settles as tool.success with its content.',
+      given: open,
+      when: success('msg_1', 'call_1', '2'),
+      expect: [succeeded('msg_1', 'call_1', '2')],
+    },
+    {
+      description: 'A recorded call settles as tool.failed with its error.',
+      given: open,
+      when: failure('msg_1', 'call_1'),
+      expect: [failedTool('msg_1', 'call_1')],
+    },
+    {
+      description:
+        'A failure may carry the partial content the tool produced before failing.',
+      given: open,
+      when: {
+        ...failure('msg_1', 'call_1'),
+        content: [{ type: 'text', text: 'partial' }],
+      },
+      expect: [
+        event('session-tool-failed', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          id: 'call_1',
+          error: { type: 'tool.execution', message: 'boom' },
+          content: [{ type: 'text', text: 'partial' }],
+          executed: false,
+        }),
+      ],
+    },
+    {
+      description:
+        'Calls settle independently and in any order: the second call settles while the first is still open.',
+      given: [...open, ...toolCall('msg_1', 'call_2')],
+      when: success('msg_1', 'call_2', 'B'),
+      expect: [succeeded('msg_1', 'call_2', 'B')],
+    },
+    {
+      description:
+        'A success needs non-empty content (the terminal fact is one non-empty model representation).',
+      given: open,
+      when: { sessionID: 'ses_1', assistantMessageID: 'msg_1', id: 'call_1' },
+      expect: [],
+      reject: { reason: 'Success needs content' },
+    },
+    {
+      description:
+        'A call settles once: a second outcome is rejected, which makes a duplicate request harmless.',
+      given: [...open, succeeded('msg_1', 'call_1', '2')],
+      when: success('msg_1', 'call_1', '3'),
+      expect: [],
+      reject: { reason: 'Tool call already settled' },
+    },
+    {
+      description: 'A failed call cannot then succeed.',
+      given: [...open, failedTool('msg_1', 'call_1')],
+      when: success('msg_1', 'call_1', '3'),
+      expect: [],
+      reject: { reason: 'Tool call already settled' },
+    },
+    {
+      description:
+        'A call that was never recorded has no outcome: durability comes first.',
+      given: [started(), stepStarted('msg_1')],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Tool call not recorded' },
+    },
+    {
+      description:
+        'A retried attempt forgets the failed attempt calls: its call ids are unknown until recorded again.',
+      given: [
+        ...open,
+        stepFailed('msg_1'),
+        retryScheduled('msg_1'),
+        stepStarted('msg_1'),
+      ],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Tool call not recorded' },
+    },
+    {
+      description: 'An outcome needs an active execution.',
+      given: [],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Execution not active' },
+    },
+    {
+      description:
+        'An interrupted execution records no further outcomes: a running tool settles nothing after the interrupt.',
+      given: [...open, interrupted()],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Execution not active' },
+    },
+    {
+      description: 'An outcome after the execution failed is rejected.',
+      given: [...open, executionFailed()],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Execution not active' },
+    },
+    {
+      description: 'An outcome after the execution succeeded is rejected.',
+      given: [...open, stepEnded('msg_1'), executionSucceeded()],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Execution not active' },
+    },
+    {
+      description: 'An outcome after the step ended is rejected.',
+      given: [...open, stepEnded('msg_1')],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Step not in flight' },
+    },
+    {
+      description: 'An outcome after the attempt failed is rejected.',
+      given: [...open, stepFailed('msg_1')],
+      when: success('msg_1', 'call_1', '2'),
+      expect: [],
+      reject: { reason: 'Step not in flight' },
+    },
+  )
+
+export default recordToolResultSpec
