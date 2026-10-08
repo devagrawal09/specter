@@ -1,0 +1,22 @@
+{
+  "name": "@specter/agent-runtime",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "spec:build": "if ls src/features/*/*/spec.ts >/dev/null 2>&1; then node ../../packages/spec/dist/cli.js export src/features; fi",
+    "test": "npm run spec:build && vitest run --passWithNoTests",
+    "typecheck": "npm run spec:build && tsc --noEmit"
+  },
+  "dependencies": {
+    "@ocpp/schema": "link:../../../opencode/packages/schema",
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
+    "effect": "4.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5"
+  }
+}
