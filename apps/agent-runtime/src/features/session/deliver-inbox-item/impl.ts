@@ -6,10 +6,11 @@ import { Context, Schema } from 'effect'
 import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
-// Rebuildable projection: known Sessions and each inbox item's status.
+// Rebuildable projection: known Sessions, active executions, and each inbox item's status.
 // Duplicated from cancel-inbox-item on purpose.
 export type DeliverInboxItemState = {
   sessions: Record<string, true>
+  active: Record<string, true>
   items: Record<
     string,
     { sessionID: string; status: 'pending' | 'delivered' | 'cancelled' }
@@ -22,11 +23,16 @@ export const deliverInboxItemStore = Context.Service<
 
 export const createDeliverInboxItemState = (): DeliverInboxItemState => ({
   sessions: {},
+  active: {},
   items: {},
 })
 
 const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
+const executionStarted = sessionEvent('session-execution-started')
+const executionSucceeded = sessionEvent('session-execution-succeeded')
+const executionFailed = sessionEvent('session-execution-failed')
+const executionInterrupted = sessionEvent('session-execution-interrupted')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
 
@@ -45,6 +51,18 @@ export const deliverInboxItem = implementCommand(specification)
     const { sessionID, inboxID } = event.payload
     state.items[inboxID] ??= { sessionID, status: 'pending' }
   })
+  .apply(executionStarted, async (event, state) => {
+    state.active[event.payload.sessionID] = true
+  })
+  .apply(executionSucceeded, async (event, state) => {
+    delete state.active[event.payload.sessionID]
+  })
+  .apply(executionFailed, async (event, state) => {
+    delete state.active[event.payload.sessionID]
+  })
+  .apply(executionInterrupted, async (event, state) => {
+    delete state.active[event.payload.sessionID]
+  })
   .apply(inboxDelivered, async (event, state) => {
     const item = state.items[event.payload.inboxID]
     if (item) item.status = 'delivered'
@@ -55,6 +73,9 @@ export const deliverInboxItem = implementCommand(specification)
   })
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')
+    // Delivery is runner-owned: it cannot happen without an active execution.
+    if (!state.active[command.sessionID])
+      throw new Error('Execution not active')
 
     const item = state.items[command.inboxID]
     if (!item || item.sessionID !== command.sessionID)
