@@ -7,12 +7,19 @@ import { Schema } from 'effect'
 // Standard Schema; the cast only bridges the type skew (revisit at M2).
 type SpecterSchema = Parameters<typeof Schema.toStandardSchemaV1>[0]
 
-// One Specter event definition per OC++ durable session event: same event
-// name, payload schema passed through as a Standard Schema (no hand-copying).
+// Specter's spec format requires kebab-case event types; OC++ uses dotted
+// names. The mapping is mechanical and inverted by the OC++ bridge (M4).
+export const toSpecterEventType = (ocppType: string) =>
+  ocppType.replaceAll('.', '-')
+export const toOcppEventType = (specterType: string) =>
+  specterType.replaceAll('-', '.')
+
+// One Specter event definition per OC++ durable session event: mapped name,
+// payload schema passed through as a Standard Schema (no hand-copying).
 export const sessionEventDefinitions = SessionEvent.DurableDefinitions.map(
   (definition) =>
     createEventDefinition(
-      definition.type,
+      toSpecterEventType(definition.type),
       Schema.toStandardSchemaV1(definition.data as unknown as SpecterSchema),
     ),
 )
