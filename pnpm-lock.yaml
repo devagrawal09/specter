@@ -21,8 +21,8 @@ importers:
   apps/agent-runtime:
     dependencies:
       '@ocpp/schema':
-        specifier: link:../../../opencode/packages/schema
-        version: link:../../../opencode/packages/schema
+        specifier: link:../../../opencode-effect-bump/packages/schema
+        version: link:../../../opencode-effect-bump/packages/schema
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -35,6 +35,9 @@ importers:
       '@specter-ts/spec':
         specifier: workspace:*
         version: link:../../packages/spec
+      '@standard-schema/spec':
+        specifier: ^1.1.0
+        version: 1.1.0
       effect:
         specifier: 4.0.1
         version: 4.0.1

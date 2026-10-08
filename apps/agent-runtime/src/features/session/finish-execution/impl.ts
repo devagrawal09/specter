@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -27,12 +28,9 @@ const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 
-type SessionRef = { sessionID: string }
-type StepRef = { sessionID: string; assistantMessageID: string }
-
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
-    sessionID: Schema.String,
+    sessionID: SessionID,
     error: Schema.optional(
       Schema.Struct({ type: Schema.String, message: Schema.String }),
     ),
@@ -48,23 +46,23 @@ export const finishExecution = implementCommand(specification)
   .inputSchema(input)
   .store(finishExecutionStore)
   .apply(executionStarted, async (event, state) => {
-    state.active[(event.payload as SessionRef).sessionID] = true
+    state.active[event.payload.sessionID] = true
   })
   .apply(executionSucceeded, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionFailed, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionInterrupted, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     state.inFlight[sessionID] = assistantMessageID
   })
   .apply(stepEnded, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]
   })

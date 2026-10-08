@@ -1,3 +1,6 @@
+import { SessionID } from '@ocpp/schema/session-id'
+import { SessionInbox } from '@ocpp/schema/session-inbox'
+import { SessionMessage } from '@ocpp/schema/session-message'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -24,30 +27,39 @@ export const createEnqueueInputState = (): EnqueueInputState => ({
 const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 
+const base = {
+  sessionID: SessionID,
+  inboxID: SessionMessage.ID,
+  delivery: Schema.optional(SessionInbox.Delivery),
+  resume: Schema.optional(Schema.Boolean),
+}
+
+// The flat Command input, discriminated on `type` so the payload reaches the
+// event as OC++'s own Session.Inbox.Item without a cast.
 const input = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    sessionID: Schema.String,
-    inboxID: Schema.String,
-    type: Schema.Literals(['user', 'synthetic']),
-    payload: Schema.Record(Schema.String, Schema.Unknown),
-    delivery: Schema.optional(Schema.Literals(['steer', 'queue'])),
-    resume: Schema.optional(Schema.Boolean),
-  }),
+  Schema.Union([
+    Schema.Struct({
+      ...base,
+      type: Schema.Literal('user'),
+      payload: SessionInbox.UserPayload,
+    }),
+    Schema.Struct({
+      ...base,
+      type: Schema.Literal('synthetic'),
+      payload: SessionInbox.SyntheticPayload,
+    }),
+  ]),
 )
 
 export const enqueueInput = implementCommand(specification)
   .inputSchema(input)
   .store(enqueueInputStore)
   .apply(sessionCreated, async (event, state) => {
-    const { sessionID } = event.payload as { sessionID: string }
+    const { sessionID } = event.payload
     state.sessions[sessionID] = true
   })
   .apply(inboxEnqueued, async (event, state) => {
-    const { sessionID, inboxID, item } = event.payload as {
-      sessionID: string
-      inboxID: string
-      item: { type: string }
-    }
+    const { sessionID, inboxID, item } = event.payload
     state.items[inboxID] ??= { sessionID, type: item.type }
   })
   .handle(async (command, state) => {
@@ -68,11 +80,18 @@ export const enqueueInput = implementCommand(specification)
       inboxEnqueued.create({
         sessionID: command.sessionID,
         inboxID: command.inboxID,
-        item: {
-          type: command.type,
-          payload: command.payload,
-          delivery: command.delivery ?? 'steer',
-        },
+        item:
+          command.type === 'user'
+            ? {
+                type: 'user',
+                payload: command.payload,
+                delivery: command.delivery ?? 'steer',
+              }
+            : {
+                type: 'synthetic',
+                payload: command.payload,
+                delivery: command.delivery ?? 'steer',
+              },
       }),
     ]
   })

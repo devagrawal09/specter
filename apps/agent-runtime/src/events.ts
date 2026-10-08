@@ -1,11 +1,6 @@
-import { createEventDefinition } from '@specter-ts/core'
+import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
 import { SessionEvent } from '@ocpp/schema/session-event'
 import { Schema } from 'effect'
-
-// @ocpp/schema is built against effect 4.0.0-rc.112, Specter against 4.0.1, so
-// the two Schema types do not unify. Runtime behavior is identical for
-// Standard Schema; the cast only bridges the type skew (revisit at M2).
-type SpecterSchema = Parameters<typeof Schema.toStandardSchemaV1>[0]
 
 // Specter's spec format requires kebab-case event types; OC++ uses dotted
 // names. The mapping is mechanical and inverted by the OC++ bridge (M4).
@@ -20,14 +15,31 @@ export const sessionEventDefinitions = SessionEvent.DurableDefinitions.map(
   (definition) =>
     createEventDefinition(
       toSpecterEventType(definition.type),
-      Schema.toStandardSchemaV1(definition.data as unknown as SpecterSchema),
+      Schema.toStandardSchemaV1(definition.data),
     ),
 )
 
-export const sessionEvent = (specterType: string) => {
+// Type-level twin of toSpecterEventType: keeps the event name a literal.
+type Dashed<S extends string> = S extends `${infer A}.${infer B}`
+  ? `${A}-${Dashed<B>}`
+  : S
+
+type Definitions = (typeof SessionEvent.DurableDefinitions)[number]
+
+export type SessionEventPayloads = {
+  [D in Definitions as Dashed<D['type']>]: Schema.Schema.Type<D['data']>
+}
+
+export const sessionEvent = <K extends keyof SessionEventPayloads>(
+  specterType: K,
+): EventDefinition<K, SessionEventPayloads[K]> => {
   const definition = sessionEventDefinitions.find(
     (candidate) => candidate.type === specterType,
   )
   if (!definition) throw new Error(`Unknown session event: ${specterType}`)
-  return definition
+  // Single cast (via unknown: create() is contravariant in the payload, so TS
+  // sees no overlap between the wide and the narrowed definition). The runtime array is built from the same DurableDefinitions (names mapped
+  // by toSpecterEventType) that SessionEventPayloads is derived from at the
+  // type level, so K and the payload type always correspond.
+  return definition as unknown as EventDefinition<K, SessionEventPayloads[K]>
 }

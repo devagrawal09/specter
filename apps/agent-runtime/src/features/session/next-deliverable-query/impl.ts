@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -32,15 +33,15 @@ const inboxDeliveryChanged = sessionEvent('session-inbox-delivery-changed')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
-    sessionID: Schema.String,
+    sessionID: SessionID,
     boundary: Schema.Literals(['step', 'idle']),
   }),
 )
 
-type InboxRef = { sessionID: string; inboxID: string }
-
-const find = (state: NextDeliverableState, ref: InboxRef) =>
-  state.sessions[ref.sessionID]?.find((item) => item.inboxID === ref.inboxID)
+const find = (
+  state: NextDeliverableState,
+  ref: { sessionID: string; inboxID: string },
+) => state.sessions[ref.sessionID]?.find((item) => item.inboxID === ref.inboxID)
 
 // Control items form a delivery boundary that later items never cross.
 const controlTypes = new Set(['compaction', 'move'])
@@ -58,9 +59,7 @@ export const nextDeliverable = implementQuery(specification)
   }>()
   .store(nextDeliverableStore)
   .apply(inboxEnqueued, async (event, state) => {
-    const { sessionID, inboxID, item } = event.payload as InboxRef & {
-      item: { type: string; delivery: 'steer' | 'queue' }
-    }
+    const { sessionID, inboxID, item } = event.payload
     const items = state.sessions[sessionID] ?? []
     state.sessions[sessionID] = items
     if (items.some((existing) => existing.inboxID === inboxID)) return
@@ -72,17 +71,15 @@ export const nextDeliverable = implementQuery(specification)
     })
   })
   .apply(inboxDelivered, async (event, state) => {
-    const item = find(state, event.payload as InboxRef)
+    const item = find(state, event.payload)
     if (item?.status === 'pending') item.status = 'delivered'
   })
   .apply(inboxCancelled, async (event, state) => {
-    const item = find(state, event.payload as InboxRef)
+    const item = find(state, event.payload)
     if (item?.status === 'pending') item.status = 'cancelled'
   })
   .apply(inboxDeliveryChanged, async (event, state) => {
-    const payload = event.payload as InboxRef & {
-      delivery: 'steer' | 'queue'
-    }
+    const payload = event.payload
     const item = find(state, payload)
     if (item?.status === 'pending') item.delivery = payload.delivery
   })

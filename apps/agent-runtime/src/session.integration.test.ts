@@ -1,3 +1,6 @@
+import { ProjectID } from '@ocpp/schema/project-id'
+import { SessionID } from '@ocpp/schema/session-id'
+import { AbsolutePath } from '@ocpp/schema/schema'
 import { createSpecterApp, EventLog } from '@specter-ts/core'
 import { eventsFor } from '@specter-ts/core/testing'
 import {
@@ -25,9 +28,9 @@ const boot = async () => {
   await Effect.runPromise(
     log.append([
       sessionEvent('session-created').create({
-        sessionID: 'ses_1',
-        projectID: 'prj_1',
-        location: { directory: '/tmp/ws' },
+        sessionID: SessionID.make('ses_1'),
+        projectID: ProjectID.make('prj_1'),
+        location: { directory: AbsolutePath.make('/tmp/ws') },
         slug: 'brave-otter',
         version: '2',
       }),

@@ -1,3 +1,8 @@
+import { Agent } from '@ocpp/schema/agent'
+import { Model } from '@ocpp/schema/model'
+import { Snapshot } from '@ocpp/schema/snapshot'
+import { SessionID } from '@ocpp/schema/session-id'
+import { SessionMessage } from '@ocpp/schema/session-message'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -30,20 +35,13 @@ const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 
-type SessionRef = { sessionID: string }
-type StepRef = { sessionID: string; assistantMessageID: string }
-
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
-    sessionID: Schema.String,
-    assistantMessageID: Schema.String,
-    agent: Schema.String,
-    model: Schema.Struct({
-      id: Schema.String,
-      providerID: Schema.String,
-      variant: Schema.optional(Schema.String),
-    }),
-    snapshot: Schema.optional(Schema.String),
+    sessionID: SessionID,
+    assistantMessageID: SessionMessage.ID,
+    agent: Agent.ID,
+    model: Model.Ref,
+    snapshot: Schema.optional(Snapshot.ID),
   }),
 )
 
@@ -58,24 +56,24 @@ export const recordStepStarted = implementCommand(specification)
   .inputSchema(input)
   .store(recordStepStartedStore)
   .apply(executionStarted, async (event, state) => {
-    state.active[(event.payload as SessionRef).sessionID] = true
+    state.active[event.payload.sessionID] = true
   })
   .apply(executionSucceeded, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionFailed, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionInterrupted, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     state.steps[assistantMessageID] = { sessionID }
     state.inFlight[sessionID] = assistantMessageID
   })
   .apply(stepEnded, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]
   })

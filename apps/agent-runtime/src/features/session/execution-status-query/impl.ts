@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -27,11 +28,7 @@ const executionSucceeded = sessionEvent('session-execution-succeeded')
 const executionFailed = sessionEvent('session-execution-failed')
 const executionInterrupted = sessionEvent('session-execution-interrupted')
 
-const input = Schema.toStandardSchemaV1(
-  Schema.Struct({ sessionID: Schema.String }),
-)
-
-type SessionRef = { sessionID: string }
+const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
 const entry = (state: ExecutionStatusState, sessionID: string) =>
   (state.sessions[sessionID] ??= {
@@ -59,18 +56,18 @@ export const executionStatus = implementQuery(specification)
   }>()
   .store(executionStatusStore)
   .apply(executionStarted, async (event, state) => {
-    const session = entry(state, (event.payload as SessionRef).sessionID)
+    const session = entry(state, event.payload.sessionID)
     session.active = true
     session.executions += 1
   })
   .apply(executionSucceeded, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID, 'succeeded')
+    end(state, event.payload.sessionID, 'succeeded')
   })
   .apply(executionFailed, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID, 'failed')
+    end(state, event.payload.sessionID, 'failed')
   })
   .apply(executionInterrupted, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID, 'interrupted')
+    end(state, event.payload.sessionID, 'interrupted')
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID]

@@ -1,3 +1,8 @@
+import { LLM } from '@ocpp/schema/llm'
+import { Money } from '@ocpp/schema/money'
+import { SessionID } from '@ocpp/schema/session-id'
+import { SessionMessage } from '@ocpp/schema/session-message'
+import { TokenUsage } from '@ocpp/schema/token-usage'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -27,30 +32,13 @@ const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 
-type SessionRef = { sessionID: string }
-type StepRef = { sessionID: string; assistantMessageID: string }
-
-const tokens = Schema.Struct({
-  input: Schema.Number,
-  output: Schema.Number,
-  reasoning: Schema.Number,
-  cache: Schema.Struct({ read: Schema.Number, write: Schema.Number }),
-})
-
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
-    sessionID: Schema.String,
-    assistantMessageID: Schema.String,
-    finish: Schema.Literals([
-      'stop',
-      'length',
-      'tool-calls',
-      'content-filter',
-      'error',
-      'unknown',
-    ]),
-    cost: Schema.optional(Schema.Number),
-    tokens: Schema.optional(tokens),
+    sessionID: SessionID,
+    assistantMessageID: SessionMessage.ID,
+    finish: LLM.FinishReason,
+    cost: Schema.optional(Money.USD),
+    tokens: Schema.optional(TokenUsage.Info),
   }),
 )
 
@@ -62,23 +50,23 @@ export const recordStepEnded = implementCommand(specification)
   .inputSchema(input)
   .store(recordStepEndedStore)
   .apply(executionStarted, async (event, state) => {
-    state.active[(event.payload as SessionRef).sessionID] = true
+    state.active[event.payload.sessionID] = true
   })
   .apply(executionSucceeded, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID)
+    end(state, event.payload.sessionID)
   })
   .apply(executionFailed, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID)
+    end(state, event.payload.sessionID)
   })
   .apply(executionInterrupted, async (event, state) => {
-    end(state, (event.payload as SessionRef).sessionID)
+    end(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     state.steps[assistantMessageID] = { sessionID, status: 'started' }
   })
   .apply(stepEnded, async (event, state) => {
-    const step = state.steps[(event.payload as StepRef).assistantMessageID]
+    const step = state.steps[event.payload.assistantMessageID]
     if (step) step.status = 'ended'
   })
   .handle(async (command, state) => {
@@ -93,7 +81,7 @@ export const recordStepEnded = implementCommand(specification)
         sessionID: command.sessionID,
         assistantMessageID: command.assistantMessageID,
         finish: command.finish,
-        cost: command.cost ?? 0,
+        cost: command.cost ?? Money.USD.make(0),
         tokens: command.tokens ?? {
           input: 0,
           output: 0,

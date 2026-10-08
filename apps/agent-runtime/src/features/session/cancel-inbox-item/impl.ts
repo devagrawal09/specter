@@ -1,3 +1,5 @@
+import { SessionID } from '@ocpp/schema/session-id'
+import { SessionMessage } from '@ocpp/schema/session-message'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -29,29 +31,27 @@ const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
 
 const input = Schema.toStandardSchemaV1(
-  Schema.Struct({ sessionID: Schema.String, inboxID: Schema.String }),
+  Schema.Struct({ sessionID: SessionID, inboxID: SessionMessage.ID }),
 )
-
-type InboxRef = { sessionID: string; inboxID: string }
 
 export const cancelInboxItem = implementCommand(specification)
   .inputSchema(input)
   .store(cancelInboxItemStore)
   .apply(sessionCreated, async (event, state) => {
-    const { sessionID } = event.payload as { sessionID: string }
+    const { sessionID } = event.payload
     state.sessions[sessionID] = true
   })
   .apply(inboxEnqueued, async (event, state) => {
-    const { sessionID, inboxID } = event.payload as InboxRef
+    const { sessionID, inboxID } = event.payload
     state.items[inboxID] ??= { sessionID, status: 'pending' }
   })
   .apply(inboxDelivered, async (event, state) => {
-    const { inboxID } = event.payload as InboxRef
+    const { inboxID } = event.payload
     const item = state.items[inboxID]
     if (item) item.status = 'delivered'
   })
   .apply(inboxCancelled, async (event, state) => {
-    const { inboxID } = event.payload as InboxRef
+    const { inboxID } = event.payload
     const item = state.items[inboxID]
     if (item) item.status = 'cancelled'
   })

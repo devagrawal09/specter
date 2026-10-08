@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementReaction, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -36,12 +37,10 @@ const executionSucceeded = sessionEvent('session-execution-succeeded')
 const executionFailed = sessionEvent('session-execution-failed')
 const executionInterrupted = sessionEvent('session-execution-interrupted')
 
-type SessionRef = { sessionID: string }
-
 const startExecutionRequest = Schema.toStandardSchemaV1(
   Schema.Struct({
     type: Schema.Literal('startExecution'),
-    payload: Schema.Struct({ sessionID: Schema.String }),
+    payload: Schema.Struct({ sessionID: SessionID }),
   }),
 )
 
@@ -65,29 +64,29 @@ export const wakeExecution = implementReaction(specification)
   .outputSchema(startExecutionRequest)
   .store(wakeExecutionStore)
   .apply(inboxEnqueued, async (event, state) => {
-    const session = entry(state, (event.payload as SessionRef).sessionID)
+    const session = entry(state, event.payload.sessionID)
     session.pending += 1
     session.interrupted = false
   })
   .apply(inboxDelivered, async (event, state) => {
-    consumed(state, (event.payload as SessionRef).sessionID)
+    consumed(state, event.payload.sessionID)
   })
   .apply(inboxCancelled, async (event, state) => {
-    consumed(state, (event.payload as SessionRef).sessionID)
+    consumed(state, event.payload.sessionID)
   })
   .apply(executionStarted, async (event, state) => {
-    const session = entry(state, (event.payload as SessionRef).sessionID)
+    const session = entry(state, event.payload.sessionID)
     session.active = true
     session.interrupted = false
   })
   .apply(executionSucceeded, async (event, state) => {
-    ended(state, (event.payload as SessionRef).sessionID)
+    ended(state, event.payload.sessionID)
   })
   .apply(executionFailed, async (event, state) => {
-    ended(state, (event.payload as SessionRef).sessionID)
+    ended(state, event.payload.sessionID)
   })
   .apply(executionInterrupted, async (event, state) => {
-    const sessionID = (event.payload as SessionRef).sessionID
+    const sessionID = event.payload.sessionID
     ended(state, sessionID)
     entry(state, sessionID).interrupted = true
   })

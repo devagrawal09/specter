@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -27,29 +28,25 @@ const executionSucceeded = sessionEvent('session-execution-succeeded')
 const executionFailed = sessionEvent('session-execution-failed')
 const executionInterrupted = sessionEvent('session-execution-interrupted')
 
-type SessionRef = { sessionID: string }
-
-const input = Schema.toStandardSchemaV1(
-  Schema.Struct({ sessionID: Schema.String }),
-)
+const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
 export const startExecution = implementCommand(specification)
   .inputSchema(input)
   .store(startExecutionStore)
   .apply(sessionCreated, async (event, state) => {
-    state.sessions[(event.payload as SessionRef).sessionID] = true
+    state.sessions[event.payload.sessionID] = true
   })
   .apply(executionStarted, async (event, state) => {
-    state.active[(event.payload as SessionRef).sessionID] = true
+    state.active[event.payload.sessionID] = true
   })
   .apply(executionSucceeded, async (event, state) => {
-    delete state.active[(event.payload as SessionRef).sessionID]
+    delete state.active[event.payload.sessionID]
   })
   .apply(executionFailed, async (event, state) => {
-    delete state.active[(event.payload as SessionRef).sessionID]
+    delete state.active[event.payload.sessionID]
   })
   .apply(executionInterrupted, async (event, state) => {
-    delete state.active[(event.payload as SessionRef).sessionID]
+    delete state.active[event.payload.sessionID]
   })
   .handle(async (command, state) => {
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')

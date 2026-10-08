@@ -9,7 +9,8 @@
     "typecheck": "npm run spec:build && tsc --noEmit"
   },
   "dependencies": {
-    "@ocpp/schema": "link:../../../opencode/packages/schema",
+    "@ocpp/schema": "link:../../../opencode-effect-bump/packages/schema",
+    "@standard-schema/spec": "^1.1.0",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/memory": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*",

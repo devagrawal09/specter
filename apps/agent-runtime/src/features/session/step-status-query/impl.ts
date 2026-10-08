@@ -1,3 +1,4 @@
+import { SessionID } from '@ocpp/schema/session-id'
 import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
 
@@ -23,12 +24,7 @@ const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 
-type SessionRef = { sessionID: string }
-type StepRef = { sessionID: string; assistantMessageID: string }
-
-const input = Schema.toStandardSchemaV1(
-  Schema.Struct({ sessionID: Schema.String }),
-)
+const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
 const entry = (state: StepStatusState, sessionID: string) =>
   (state.sessions[sessionID] ??= {
@@ -52,25 +48,25 @@ export const stepStatus = implementQuery(specification)
   }>()
   .store(stepStatusStore)
   .apply(executionStarted, async (event, state) => {
-    entry(state, (event.payload as SessionRef).sessionID).active = true
+    entry(state, event.payload.sessionID).active = true
   })
   .apply(executionSucceeded, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionFailed, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(executionInterrupted, async (event, state) => {
-    settle(state, (event.payload as SessionRef).sessionID)
+    settle(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     const session = entry(state, sessionID)
     session.inFlight = assistantMessageID
     session.stepsStarted += 1
   })
   .apply(stepEnded, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload as StepRef
+    const { sessionID, assistantMessageID } = event.payload
     const session = entry(state, sessionID)
     if (session.inFlight === assistantMessageID) session.inFlight = null
   })
