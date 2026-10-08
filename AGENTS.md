@@ -16,12 +16,22 @@ This file is public project guidance for coding agents and agent-assisted contri
 - Keep Specter examples small, explicit, and scenario-tested.
 - Prefer changes that are easy for app developers and coding agents to inspect feature-by-feature.
 
-## Architecture Changes
+## Architecture Simplicity
 
-- Backward compatibility is not a default constraint. Prefer coherent breaking changes over legacy shims when old APIs conflict with a simpler design.
-- Start from existing durable truth before adding coordination state. Make derived indexes rebuildable whenever possible.
-- Keep core semantics smaller than adapter mechanics. Put locking, leases, retries, and persistence strategy behind adapter contracts.
-- Keep optional guarantees optional. For example, wrap slow Reaction plugins with an outbox instead of forcing outbox machinery into every Reaction.
+- Derive architecture from required invariants and existing sources of truth, not from current implementation shapes. Existing code is evidence, not a constraint.
+- Before adding a queue, cursor, checkpoint, registry, service, or adapter, identify which durable fact it would own and verify that no existing component already owns that fact. Make derived indexes rebuildable whenever possible.
+- Avoid duplicate completion markers and overlapping durability mechanisms. One fact should have one authoritative owner.
+- Put complexity at the boundary that needs it. Keep core semantics smaller than adapter mechanics, and keep the default path small. Offer slow I/O, retries, leases, outboxes, multiprocess coordination, and similar concerns as explicit opt-ins unless every application requires them.
+- Prefer the smallest complete ownership model. For example: the Event Log records work, a Slice cursor records completed processing, a scheduler wakes and serializes processing, and an optional Plugin wrapper durably delivers slow external effects.
+- Re-evaluate assumptions whenever a design needs compensating machinery. Extra coordination state often means an earlier lifecycle or ownership boundary is wrong.
+- Test a proposed design by explaining its durable facts, owners, and failure behavior in a few sentences. If that explanation needs several overlapping state machines, step back and simplify before implementing.
+- Do not pre-solve hypothetical scale, compatibility, or exactly-once requirements. State current guarantees precisely, implement the simplest correct model, and add complexity only for a demonstrated requirement.
+
+## Compatibility
+
+- Specter has no meaningful external adoption yet. Do not preserve backward compatibility by default.
+- Prefer clean architecture and intentional breaking changes over compatibility wrappers, deprecated aliases, migration shims, or retained legacy implementations.
+- Remove superseded APIs and code when a new design replaces them. Preserve compatibility only when the maintainer explicitly requests it for a specific change.
 
 ## OpenSpec Scope
 
