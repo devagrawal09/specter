@@ -4,7 +4,7 @@ const created = (sessionID: string) =>
   event('session-created', {
     sessionID,
     projectID: 'prj_1',
-    location: { type: 'local' },
+    location: { directory: '/tmp/ws' },
     slug: 'brave-otter',
     version: '2',
   })
@@ -32,12 +32,12 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'Inspect the failing tests' },
       },
       expect: [
-        enqueued('ses_1', 'inb_1', userItem('Inspect the failing tests')),
+        enqueued('ses_1', 'msg_1', userItem('Inspect the failing tests')),
       ],
     },
     {
@@ -46,23 +46,23 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'hello' },
       },
-      expect: [enqueued('ses_1', 'inb_1', userItem('hello', 'steer'))],
+      expect: [enqueued('ses_1', 'msg_1', userItem('hello', 'steer'))],
     },
     {
       description: 'Delivery queue is recorded when requested.',
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'later' },
         delivery: 'queue',
       },
-      expect: [enqueued('ses_1', 'inb_1', userItem('later', 'queue'))],
+      expect: [enqueued('ses_1', 'msg_1', userItem('later', 'queue'))],
     },
     {
       description:
@@ -70,13 +70,13 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_2',
+        inboxID: 'msg_2',
         type: 'synthetic',
         payload: { text: 'Shell command finished' },
         resume: false,
       },
       expect: [
-        enqueued('ses_1', 'inb_2', {
+        enqueued('ses_1', 'msg_2', {
           type: 'synthetic',
           payload: { text: 'Shell command finished' },
           delivery: 'steer',
@@ -89,12 +89,12 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'record only' },
         resume: false,
       },
-      expect: [enqueued('ses_1', 'inb_1', userItem('record only'))],
+      expect: [enqueued('ses_1', 'msg_1', userItem('record only'))],
     },
     {
       description:
@@ -102,39 +102,65 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'record and wake' },
         resume: true,
       },
-      expect: [enqueued('ses_1', 'inb_1', userItem('record and wake'))],
+      expect: [enqueued('ses_1', 'msg_1', userItem('record and wake'))],
     },
     {
       description:
         'Reusing a Session ID adopts the existing Session: a second input to the same Session is admitted.',
-      given: [created('ses_1'), enqueued('ses_1', 'inb_1', userItem('first'))],
+      given: [created('ses_1'), enqueued('ses_1', 'msg_1', userItem('first'))],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_2',
+        inboxID: 'msg_2',
         type: 'user',
         payload: { text: 'second' },
       },
-      expect: [enqueued('ses_1', 'inb_2', userItem('second'))],
+      expect: [enqueued('ses_1', 'msg_2', userItem('second'))],
     },
-    // NOT EXPRESSIBLE (Specter validation: empty `expect` requires `reject`):
-    // - Reusing a user inbox item ID is idempotent when Session and type match:
-    //   first admission wins; retried payload, metadata, delivery are ignored.
-    // - Same for a synthetic inbox item ID.
-    // - After delivery, retry reconciliation uses the projected message and does
-    //   not require enqueue history.
-    // Each must emit no event; add scenarios once Specter supports no-op results.
+    {
+      description:
+        'Reusing a user inbox item ID for the same Session and type is rejected as already admitted.',
+      given: [created('ses_1'), enqueued('ses_1', 'msg_1', userItem('first'))],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_1',
+        type: 'user',
+        payload: { text: 'retry' },
+      },
+      expect: [],
+      reject: { reason: 'Inbox item already admitted' },
+    },
+    {
+      description:
+        'Reusing a synthetic inbox item ID for the same Session and type is rejected as already admitted.',
+      given: [
+        created('ses_1'),
+        enqueued('ses_1', 'msg_2', {
+          type: 'synthetic',
+          payload: { text: 'Shell command finished' },
+          delivery: 'steer',
+        }),
+      ],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_2',
+        type: 'synthetic',
+        payload: { text: 'Shell command finished' },
+      },
+      expect: [],
+      reject: { reason: 'Inbox item already admitted' },
+    },
     {
       description:
         'Cross-type reuse fails: an existing inbox item ID cannot be reused with a different type.',
-      given: [created('ses_1'), enqueued('ses_1', 'inb_1', userItem('first'))],
+      given: [created('ses_1'), enqueued('ses_1', 'msg_1', userItem('first'))],
       when: {
         sessionID: 'ses_1',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'synthetic',
         payload: { text: 'not a user prompt' },
       },
@@ -147,11 +173,11 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [
         created('ses_1'),
         created('ses_2'),
-        enqueued('ses_1', 'inb_1', userItem('first')),
+        enqueued('ses_1', 'msg_1', userItem('first')),
       ],
       when: {
         sessionID: 'ses_2',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'steal' },
       },
@@ -163,7 +189,7 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
       given: [],
       when: {
         sessionID: 'ses_missing',
-        inboxID: 'inb_1',
+        inboxID: 'msg_1',
         type: 'user',
         payload: { text: 'hello' },
       },

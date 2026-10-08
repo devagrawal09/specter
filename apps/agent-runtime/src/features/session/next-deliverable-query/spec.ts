@@ -20,7 +20,7 @@ const compaction = (delivery: 'steer' | 'queue') => ({
 })
 const move = (delivery: 'steer' | 'queue') => ({
   type: 'move',
-  payload: { location: { type: 'local' }, projectID: 'prj_1' },
+  payload: { location: { directory: '/tmp/ws' }, projectID: 'prj_1' },
   delivery,
 })
 const enqueued = (inboxID: string, item: JsonObject) =>
@@ -50,22 +50,22 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
     },
     {
       description: 'A steer delivers at the next Safe Step Boundary.',
-      given: [enqueued('inb_1', user('Fix it', 'steer'))],
+      given: [enqueued('msg_1', user('Fix it', 'steer'))],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_1', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
     {
       description: 'Steers deliver in enqueue order.',
       given: [
-        enqueued('inb_1', user('First', 'steer')),
-        enqueued('inb_2', user('Second', 'steer')),
+        enqueued('msg_1', user('First', 'steer')),
+        enqueued('msg_2', user('Second', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_1', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -73,20 +73,20 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'Steers deliver in enqueue order: once the first is delivered the second is next.',
       given: [
-        enqueued('inb_1', user('First', 'steer')),
-        enqueued('inb_2', user('Second', 'steer')),
-        delivered('inb_1'),
+        enqueued('msg_1', user('First', 'steer')),
+        enqueued('msg_2', user('Second', 'steer')),
+        delivered('msg_1'),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_2', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
     {
       description:
         'A queue item remains pending while the Session can continue (step boundary).',
-      given: [enqueued('inb_1', user('Later', 'queue'))],
+      given: [enqueued('msg_1', user('Later', 'queue'))],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: { item: null, reason: 'queue-waits-for-idle' },
     },
@@ -94,12 +94,12 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'A queue item remains pending while the Session can continue: a later steer still delivers at a step boundary.',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        enqueued('inb_2', user('Now', 'steer')),
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', user('Now', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_2', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -107,12 +107,12 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'At an idle boundary, steers still take priority over an earlier queue item.',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        enqueued('inb_2', user('Now', 'steer')),
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', user('Now', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {
-        item: { inboxID: 'inb_2', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -120,12 +120,12 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'At an idle boundary with no steers, one queued item delivers (the earliest).',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        enqueued('inb_2', user('Even later', 'queue')),
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', user('Even later', 'queue')),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'user', delivery: 'queue' },
+        item: { inboxID: 'msg_1', type: 'user', delivery: 'queue' },
         reason: 'idle-queued',
       },
     },
@@ -133,14 +133,14 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'After a queued item delivers, steers that arrived during delivery are followed before another queued item.',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        enqueued('inb_2', user('Even later', 'queue')),
-        delivered('inb_1'),
-        enqueued('inb_3', user('Arrived during delivery', 'steer')),
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', user('Even later', 'queue')),
+        delivered('msg_1'),
+        enqueued('msg_3', user('Arrived during delivery', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {
-        item: { inboxID: 'inb_3', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_3', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -148,15 +148,15 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'After the arrived steers deliver, the next queued item delivers at the idle boundary.',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        enqueued('inb_2', user('Even later', 'queue')),
-        delivered('inb_1'),
-        enqueued('inb_3', user('Arrived during delivery', 'steer')),
-        delivered('inb_3'),
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', user('Even later', 'queue')),
+        delivered('msg_1'),
+        enqueued('msg_3', user('Arrived during delivery', 'steer')),
+        delivered('msg_3'),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {
-        item: { inboxID: 'inb_2', type: 'user', delivery: 'queue' },
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'queue' },
         reason: 'idle-queued',
       },
     },
@@ -164,8 +164,8 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'Delivery stops before a compaction or move control item: a steer behind a compaction does not cross it.',
       given: [
-        enqueued('inb_1', compaction('queue')),
-        enqueued('inb_2', user('After compaction', 'steer')),
+        enqueued('msg_1', compaction('queue')),
+        enqueued('msg_2', user('After compaction', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: { item: null, reason: 'blocked-by-control-boundary' },
@@ -174,8 +174,8 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'Delivery stops before a compaction or move control item: a steer behind a move does not cross it.',
       given: [
-        enqueued('inb_1', move('queue')),
-        enqueued('inb_2', user('After move', 'steer')),
+        enqueued('msg_1', move('queue')),
+        enqueued('msg_2', user('After move', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: { item: null, reason: 'blocked-by-control-boundary' },
@@ -184,13 +184,13 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'Steers ahead of a control item deliver first; the control item forms a boundary for later steers.',
       given: [
-        enqueued('inb_1', user('Before compaction', 'steer')),
-        enqueued('inb_2', compaction('steer')),
-        enqueued('inb_3', user('After compaction', 'steer')),
+        enqueued('msg_1', user('Before compaction', 'steer')),
+        enqueued('msg_2', compaction('steer')),
+        enqueued('msg_3', user('After compaction', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_1', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -198,12 +198,12 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'A control item forms a delivery boundary so later steers do not cross it: with a steer control item at the head it delivers alone before later steers.',
       given: [
-        enqueued('inb_1', compaction('steer')),
-        enqueued('inb_2', user('After compaction', 'steer')),
+        enqueued('msg_1', compaction('steer')),
+        enqueued('msg_2', user('After compaction', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'compaction', delivery: 'steer' },
+        item: { inboxID: 'msg_1', type: 'compaction', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
@@ -211,12 +211,12 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'A queued control item is the next idle delivery even when a later steer is pending: steers do not cross it.',
       given: [
-        enqueued('inb_1', move('queue')),
-        enqueued('inb_2', user('After move', 'steer')),
+        enqueued('msg_1', move('queue')),
+        enqueued('msg_2', user('After move', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'move', delivery: 'queue' },
+        item: { inboxID: 'msg_1', type: 'move', delivery: 'queue' },
         reason: 'idle-queued',
       },
     },
@@ -224,37 +224,37 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
       description:
         'Each request has its own delivery mode: changing a queued item to steer makes it deliverable at a step boundary.',
       given: [
-        enqueued('inb_1', user('Later', 'queue')),
-        changed('inb_1', 'steer'),
+        enqueued('msg_1', user('Later', 'queue')),
+        changed('msg_1', 'steer'),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_1', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_1', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
     {
       description: 'Cancelled items never deliver.',
-      given: [enqueued('inb_1', user('Oops', 'steer')), cancelled('inb_1')],
+      given: [enqueued('msg_1', user('Oops', 'steer')), cancelled('msg_1')],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: { item: null, reason: 'nothing-pending' },
     },
     {
       description: 'A cancelled control item no longer forms a boundary.',
       given: [
-        enqueued('inb_1', compaction('queue')),
-        enqueued('inb_2', user('After compaction', 'steer')),
-        cancelled('inb_1'),
+        enqueued('msg_1', compaction('queue')),
+        enqueued('msg_2', user('After compaction', 'steer')),
+        cancelled('msg_1'),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
       expect: {
-        item: { inboxID: 'inb_2', type: 'user', delivery: 'steer' },
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
         reason: 'steer-in-order',
       },
     },
     {
       description: 'Delivered items never deliver twice.',
-      given: [enqueued('inb_1', user('Once', 'steer')), delivered('inb_1')],
+      given: [enqueued('msg_1', user('Once', 'steer')), delivered('msg_1')],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: { item: null, reason: 'nothing-pending' },
     },

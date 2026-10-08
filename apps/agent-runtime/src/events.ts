@@ -23,3 +23,11 @@ export const sessionEventDefinitions = SessionEvent.DurableDefinitions.map(
       Schema.toStandardSchemaV1(definition.data as unknown as SpecterSchema),
     ),
 )
+
+export const sessionEvent = (specterType: string) => {
+  const definition = sessionEventDefinitions.find(
+    (candidate) => candidate.type === specterType,
+  )
+  if (!definition) throw new Error(`Unknown session event: ${specterType}`)
+  return definition
+}

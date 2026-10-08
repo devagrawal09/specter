@@ -3,14 +3,14 @@ import { createCommandSlice, event } from '@specter-ts/spec'
 const created = event('session-created', {
   sessionID: 'ses_1',
   projectID: 'prj_1',
-  location: { type: 'local' },
+  location: { directory: '/tmp/ws' },
   slug: 'brave-otter',
   version: '2',
 })
 
 const enqueued = event('session-inbox-enqueued', {
   sessionID: 'ses_1',
-  inboxID: 'inb_1',
+  inboxID: 'msg_1',
   item: { type: 'user', payload: { text: 'hello' }, delivery: 'queue' },
 })
 
@@ -22,11 +22,11 @@ export const cancelInboxItemSpec = createCommandSlice('cancelInboxItem')
     {
       description: 'Cancels an inbox item that is still pending.',
       given: [created, enqueued],
-      when: { sessionID: 'ses_1', inboxID: 'inb_1' },
+      when: { sessionID: 'ses_1', inboxID: 'msg_1' },
       expect: [
         event('session-inbox-cancelled', {
           sessionID: 'ses_1',
-          inboxID: 'inb_1',
+          inboxID: 'msg_1',
         }),
       ],
     },
@@ -38,24 +38,38 @@ export const cancelInboxItemSpec = createCommandSlice('cancelInboxItem')
         enqueued,
         event('session-inbox-delivered', {
           sessionID: 'ses_1',
-          inboxID: 'inb_1',
+          inboxID: 'msg_1',
         }),
       ],
-      when: { sessionID: 'ses_1', inboxID: 'inb_1' },
+      when: { sessionID: 'ses_1', inboxID: 'msg_1' },
       expect: [],
       reject: { reason: 'Inbox item already delivered' },
     },
     {
+      description: 'Cancelling an already cancelled item is rejected',
+      given: [
+        created,
+        enqueued,
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+        }),
+      ],
+      when: { sessionID: 'ses_1', inboxID: 'msg_1' },
+      expect: [],
+      reject: { reason: 'Inbox item already cancelled' },
+    },
+    {
       description: 'Cancelling an unknown inbox item fails.',
       given: [created],
-      when: { sessionID: 'ses_1', inboxID: 'inb_missing' },
+      when: { sessionID: 'ses_1', inboxID: 'msg_missing' },
       expect: [],
       reject: { reason: 'Inbox item not found' },
     },
     {
       description: 'Cancelling in an unknown Session fails.',
       given: [],
-      when: { sessionID: 'ses_missing', inboxID: 'inb_1' },
+      when: { sessionID: 'ses_missing', inboxID: 'msg_1' },
       expect: [],
       reject: { reason: 'Session not found' },
     },
