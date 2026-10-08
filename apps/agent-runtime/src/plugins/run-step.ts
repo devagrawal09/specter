@@ -26,9 +26,9 @@ const unlessRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     ),
   )
 
-// Orphan reconciliation (session.md: Execution Is Process-Local): fail the
-// step the dead process left in flight. One Command records the failure and
-// its outcome atomically: a scheduled retry, or the execution failing when the
+// Orphan reconciliation (session.md: Execution Is Process-Local): settle the
+// open tool calls as aborted, then fail the step the dead process left in
+// flight. One Command records the failure and its outcome atomically: a scheduled retry, or the execution failing when the
 // budget is spent. The retry's state-derived request starts the next physical
 // attempt of the same step id; this job does not run the model.
 const reconcileOrphan = (
@@ -37,10 +37,41 @@ const reconcileOrphan = (
     sessionID: SessionID
     assistantMessageID: string
     deliveryId: string
+    openCalls: readonly {
+      assistantMessageID: string
+      id: string
+      name: string
+      executed: boolean
+    }[]
   },
 ) =>
   Effect.gen(function* () {
-    const { sessionID, assistantMessageID, deliveryId } = orphan
+    const { sessionID, assistantMessageID, deliveryId, openCalls } = orphan
+    // First settle every call the dead attempt left open, so the retried
+    // attempt never replays a tool call without a result (OC++
+    // settleStaleToolCalls: tool.failed { aborted }). A settle is a single
+    // recorded fact, so a crash in this loop resumes with fewer open calls.
+    for (const call of openCalls) {
+      const settled = yield* unlessRejected(
+        command(
+          {
+            type: 'recordToolResult',
+            payload: {
+              sessionID,
+              assistantMessageID: call.assistantMessageID,
+              id: call.id,
+              executed: call.executed,
+              error: {
+                type: 'aborted',
+                message: `Tool execution interrupted: ${call.name}`,
+              },
+            },
+          },
+          { idempotencyKey: `${deliveryId}:abort:${call.id}` },
+        ),
+      )
+      if (!settled) return
+    }
     yield* unlessRejected(
       command(
         {
@@ -102,6 +133,7 @@ export const makeRunStepPlugin =
                   sessionID,
                   assistantMessageID: status.inFlightStepID,
                   deliveryId: delivery.deliveryId,
+                  openCalls: status.openCalls ?? [],
                 },
               )
             return

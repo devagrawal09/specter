@@ -231,6 +231,9 @@ const toMessages = (entry: Entry): ModelMessage[] => {
           if (part.text !== '') content.push({ type: 'text', text: part.text })
           continue
         }
+        // A provider never gets a tool call without its result: an open call
+        // (streaming or running) is not replayed until it is settled.
+        if (part.status === 'streaming' || part.status === 'running') continue
         content.push({
           type: 'tool-call',
           id: part.id,

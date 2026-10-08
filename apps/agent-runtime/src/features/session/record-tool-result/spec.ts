@@ -112,6 +112,28 @@ const failure = (
   id,
   error: { type: 'tool.execution', message: 'boom' },
 })
+const abortError = {
+  type: 'aborted',
+  message: 'Tool execution interrupted: execute',
+}
+const abort = (
+  assistantMessageID: string,
+  id: string,
+  sessionID = 'ses_1',
+) => ({ sessionID, assistantMessageID, id, error: abortError })
+const aborted = (
+  assistantMessageID: string,
+  id: string,
+  executed = false,
+  sessionID = 'ses_1',
+) =>
+  event('session-tool-failed', {
+    sessionID,
+    assistantMessageID,
+    id,
+    error: abortError,
+    executed,
+  })
 const open = [started(), stepStarted('msg_1'), ...toolCall('msg_1', 'call_1')]
 
 export const recordToolResultSpec = createCommandSlice('recordToolResult')
@@ -243,6 +265,35 @@ export const recordToolResultSpec = createCommandSlice('recordToolResult')
       when: success('msg_1', 'call_1', '2'),
       expect: [],
       reject: { reason: 'Step not in flight' },
+    },
+    {
+      description:
+        'An open call is aborted with the type "aborted": tool.failed carries that error (orphan reconciliation and interrupt settle calls this way).',
+      given: open,
+      when: abort('msg_1', 'call_1'),
+      expect: [aborted('msg_1', 'call_1')],
+    },
+    {
+      description:
+        "The executed flag of the outcome is the caller's: an aborted call whose execution had begun says so.",
+      given: open,
+      when: { ...abort('msg_1', 'call_1'), executed: true },
+      expect: [aborted('msg_1', 'call_1', true)],
+    },
+    {
+      description:
+        'A call already settled cannot be aborted: a stale reconciliation is harmless.',
+      given: [...open, succeeded('msg_1', 'call_1', '2')],
+      when: abort('msg_1', 'call_1'),
+      expect: [],
+      reject: { reason: 'Tool call already settled' },
+    },
+    {
+      description: 'A call already aborted cannot be aborted again.',
+      given: [...open, aborted('msg_1', 'call_1')],
+      when: abort('msg_1', 'call_1'),
+      expect: [],
+      reject: { reason: 'Tool call already settled' },
     },
   )
 

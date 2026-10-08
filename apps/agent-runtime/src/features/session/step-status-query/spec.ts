@@ -41,6 +41,49 @@ const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 
+const toolCalled = (
+  assistantMessageID: string,
+  id: string,
+  executed = false,
+  sessionID = 'ses_1',
+) => [
+  event('session-tool-input-started', {
+    sessionID,
+    assistantMessageID,
+    id,
+    name: 'execute',
+  }),
+  event('session-tool-called', {
+    sessionID,
+    assistantMessageID,
+    id,
+    input: { code: '1' },
+    executed,
+  }),
+]
+const toolSucceeded = (assistantMessageID: string, id: string) =>
+  event('session-tool-success', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    content: [{ type: 'text', text: '2' }],
+    executed: false,
+  })
+const toolFailed = (assistantMessageID: string, id: string) =>
+  event('session-tool-failed', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    error: { type: 'aborted', message: 'Tool execution interrupted: execute' },
+    executed: false,
+  })
+const open = (assistantMessageID: string, id: string, executed = false) => ({
+  assistantMessageID,
+  id,
+  name: 'execute',
+  executed,
+})
+
 export const stepStatusSpec = createQuerySlice('stepStatus')
   .description(
     'Reports whether a Session has an active execution, a step in flight (and which), how many steps it has started, and the physical attempts and last failure of its latest step.',
@@ -244,6 +287,102 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         stepStarted('msg_1'),
         stepFailed('msg_1'),
         event('session-execution-failed', { sessionID: 'ses_1', error: boom }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
+    },
+    {
+      description:
+        'A recorded call with no outcome is open, with its name and executed flag.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        inFlightStepID: 'msg_1',
+        stepsStarted: 1,
+        attempts: 1,
+        openCalls: [open('msg_1', 'call_1')],
+      },
+    },
+    {
+      description:
+        'Open calls keep call order, and a settled one (success or failure) leaves the list.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+        ...toolCalled('msg_1', 'call_2', true),
+        ...toolCalled('msg_1', 'call_3'),
+        toolSucceeded('msg_1', 'call_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        inFlightStepID: 'msg_1',
+        stepsStarted: 1,
+        attempts: 1,
+        openCalls: [open('msg_1', 'call_2', true), open('msg_1', 'call_3')],
+      },
+    },
+    {
+      description:
+        'When every call is settled the field is omitted, whatever the outcome.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+        ...toolCalled('msg_1', 'call_2'),
+        toolSucceeded('msg_1', 'call_1'),
+        toolFailed('msg_1', 'call_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        inFlightStepID: 'msg_1',
+        stepsStarted: 1,
+        attempts: 1,
+      },
+    },
+    {
+      description:
+        'A new attempt of the same step starts with a clean call table: calls the failed attempt left open are not reported.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1', 1),
+        stepStarted('msg_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        inFlightStepID: 'msg_1',
+        stepsStarted: 1,
+        attempts: 2,
+      },
+    },
+    {
+      description:
+        'A terminal execution event drops open calls: an interrupted execution has nothing left to settle.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+        interrupted(),
       ],
       when: { sessionID: 'ses_1' },
       expect: {

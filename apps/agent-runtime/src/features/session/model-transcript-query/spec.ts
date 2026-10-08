@@ -804,12 +804,93 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A call that has not settled (running) is replayed as a tool-call with no result message.',
+        'An open call (running, no result yet) is omitted: a provider never receives a tool call without its result.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
         toolStarted('msg_2', 'call_1'),
         toolCalled('msg_2', 'call_1', { code: '1' }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { messages: [userMessage('msg_1', 'hello')] },
+    },
+    {
+      description:
+        'A call whose input is still streaming is open too, and omitted.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolInputEnded('msg_2', 'call_1', '{"code":"2"}'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { messages: [userMessage('msg_1', 'hello')] },
+    },
+    {
+      description:
+        'An open call is omitted but the settled call and the text of the same message stay, each settled call keeping its result.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        textStarted('msg_2'),
+        textEnded('msg_2', 'working'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: 'a' }),
+        toolStarted('msg_2', 'call_2'),
+        toolCalled('msg_2', 'call_2', { code: 'b' }),
+        toolSucceeded('msg_2', 'call_1', 'A'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        messages: [
+          userMessage('msg_1', 'hello'),
+          {
+            id: 'msg_2',
+            role: 'assistant',
+            content: [
+              text('working'),
+              {
+                type: 'tool-call',
+                id: 'call_1',
+                name: 'execute',
+                input: { code: 'a' },
+                providerExecuted: false,
+              },
+            ],
+          },
+          {
+            role: 'tool',
+            content: [
+              {
+                type: 'tool-result',
+                id: 'call_1',
+                name: 'execute',
+                result: { type: 'text', value: 'A' },
+                providerExecuted: false,
+              },
+            ],
+          },
+        ],
+      },
+    },
+    {
+      description:
+        'An aborted call (tool.failed with type "aborted", as settled for an orphaned or interrupted call) is an error tool result carrying the error and an empty content.',
+      given: [
+        ...prompted,
+        stepStarted('msg_2'),
+        toolStarted('msg_2', 'call_1'),
+        toolCalled('msg_2', 'call_1', { code: '1' }),
+        event('session-tool-failed', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_2',
+          id: 'call_1',
+          error: {
+            type: 'aborted',
+            message: 'Tool execution interrupted: execute',
+          },
+          executed: false,
+        }),
       ],
       when: { sessionID: 'ses_1' },
       expect: {
@@ -828,31 +909,24 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
               },
             ],
           },
-        ],
-      },
-    },
-    {
-      description:
-        'A tool call whose input is still streaming is replayed with its decoded raw input.',
-      given: [
-        ...prompted,
-        stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolInputEnded('msg_2', 'call_1', '{"code":"2"}'),
-      ],
-      when: { sessionID: 'ses_1' },
-      expect: {
-        messages: [
-          userMessage('msg_1', 'hello'),
           {
-            id: 'msg_2',
-            role: 'assistant',
+            role: 'tool',
             content: [
               {
-                type: 'tool-call',
+                type: 'tool-result',
                 id: 'call_1',
                 name: 'execute',
-                input: { code: '2' },
+                result: {
+                  type: 'error',
+                  value: {
+                    error: {
+                      type: 'aborted',
+                      message: 'Tool execution interrupted: execute',
+                    },
+                    content: [],
+                  },
+                },
+                providerExecuted: false,
               },
             ],
           },
@@ -926,7 +1000,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A tool success for a call that never ran (no tool.called) is ignored by the projector, so the call stays unsettled.',
+        'A tool success for a call that never ran (no tool.called) is ignored by the projector, so the call stays open and is omitted.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
@@ -934,23 +1008,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
         toolSucceeded('msg_2', 'call_1', 'too early'),
       ],
       when: { sessionID: 'ses_1' },
-      expect: {
-        messages: [
-          userMessage('msg_1', 'hello'),
-          {
-            id: 'msg_2',
-            role: 'assistant',
-            content: [
-              {
-                type: 'tool-call',
-                id: 'call_1',
-                name: 'execute',
-                input: '',
-              },
-            ],
-          },
-        ],
-      },
+      expect: { messages: [userMessage('msg_1', 'hello')] },
     },
     {
       description:

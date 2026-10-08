@@ -31,7 +31,7 @@ afterEach(async () => {
 })
 
 // Starts app A in a child process and resolves once its step is in flight.
-const startAppA = async (directory: string) => {
+const startAppA = async (directory: string, mode = 'step') => {
   const child = spawn(
     process.execPath,
     [
@@ -41,6 +41,7 @@ const startAppA = async (directory: string) => {
       './src/single-effect.mjs',
       'src/recovery.child.ts',
       directory,
+      mode,
     ],
     {
       cwd: root,
@@ -181,6 +182,98 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     await new Promise((resolve) => setTimeout(resolve, 200))
     expect(events(c.log)).toHaveLength(count)
     expect(c.outbox.releasedOnOpen).toEqual([])
+  })
+
+  it('settles a tool call that was running when its process died as aborted, before failing the step, and the retry sees the result', async () => {
+    const directory = mkdtempSync(join(tmpdir(), 'agent-runtime-recovery-'))
+    directories.push(directory)
+
+    const a = await startAppA(directory, 'tool')
+    await a.kill()
+
+    // App B: records what the retried attempt sends the provider.
+    const scripted = makeScriptedModel()
+    scripted.script('ses_1', [{ finish: 'stop', text: 'done' }])
+    const sent: unknown[] = []
+    const model = {
+      ...scripted,
+      nextOutcome: (input: Parameters<typeof scripted.nextOutcome>[0]) => {
+        sent.push(input.messages)
+        return scripted.nextOutcome(input)
+      },
+    }
+    const b = await openJsonlSessionApp({ directory, model })
+    running.push(b)
+    const types = () => events(b.log).map((event) => event.type)
+    await waitFor(
+      () => types().includes('session-execution-succeeded'),
+      () => `events: ${types().join(', ')}`,
+    )
+
+    expect(types()).toEqual([
+      'session-created',
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-step-started', // A
+      'session-tool-input-started',
+      'session-tool-input-ended',
+      'session-tool-called', // A died here: the call is running
+      'session-tool-failed', // reconciliation settles the call first
+      'session-step-failed',
+      'session-retry-scheduled',
+      'session-step-started', // B: a new physical attempt
+      'session-text-started',
+      'session-text-ended',
+      'session-step-ended',
+      'session-execution-succeeded',
+    ])
+    const of = (type: string) =>
+      events(b.log)
+        .filter((event) => event.type === type)
+        .map((event) => event.payload as Record<string, unknown>)
+    expect(of('session-tool-failed')).toEqual([
+      expect.objectContaining({
+        id: 'call_1',
+        error: {
+          type: 'aborted',
+          message: 'Tool execution interrupted: execute',
+        },
+        executed: false,
+      }),
+    ])
+    expect(of('session-step-failed')[0]).toMatchObject({
+      error: { type: 'orphaned' },
+    })
+
+    // The retried attempt sent the call together with its aborted result.
+    expect(sent).toHaveLength(1)
+    expect(sent[0]).toEqual([
+      expect.objectContaining({ role: 'user' }),
+      expect.objectContaining({
+        role: 'assistant',
+        content: [expect.objectContaining({ type: 'tool-call', id: 'call_1' })],
+      }),
+      {
+        role: 'tool',
+        content: [
+          expect.objectContaining({
+            type: 'tool-result',
+            id: 'call_1',
+            result: {
+              type: 'error',
+              value: {
+                error: {
+                  type: 'aborted',
+                  message: 'Tool execution interrupted: execute',
+                },
+                content: [],
+              },
+            },
+          }),
+        ],
+      },
+    ])
   })
 
   it('fails the execution when orphaned attempts exhaust the retry budget', async () => {

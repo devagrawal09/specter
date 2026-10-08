@@ -46,6 +46,8 @@ const input = Schema.toStandardSchemaV1(
     sessionID: SessionID,
     assistantMessageID: SessionMessage.ID,
     id: Schema.String,
+    // Whether execution had begun (the schema's own flag; false by default).
+    executed: Schema.optional(Schema.Boolean),
     // An error settles the call as failed; otherwise content settles it as
     // success.
     error: Schema.optional(SessionError.Error),
@@ -133,7 +135,7 @@ export const recordToolResult = implementCommand(specification)
       sessionID: command.sessionID,
       assistantMessageID: command.assistantMessageID,
       id: command.id,
-      executed: false,
+      executed: command.executed ?? false,
     }
     if (command.error)
       return [

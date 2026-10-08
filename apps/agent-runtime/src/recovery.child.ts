@@ -12,11 +12,30 @@ import { sessionEvent } from './events.ts'
 import { makeScriptedModel } from './plugins/scripted-model.ts'
 
 const directory = process.argv[2]
-if (!directory) throw new Error('usage: recovery.child.ts <directory>')
+// Mode `tool`: the step records an `execute` call whose program never settles,
+// so the process dies with a running tool call in durable history.
+const mode = process.argv[3] ?? 'step'
+if (!directory) throw new Error('usage: recovery.child.ts <directory> [tool]')
 
 const model = makeScriptedModel()
 // The first outcome blocks forever: the step stays in flight.
-model.script('ses_1', [{ finish: 'tool-calls', gate: new Promise(() => {}) }])
+model.script(
+  'ses_1',
+  mode === 'tool'
+    ? [
+        {
+          finish: 'tool-calls',
+          toolCalls: [
+            {
+              id: 'call_1',
+              name: 'execute',
+              input: { code: 'await new Promise(() => {})' },
+            },
+          ],
+        },
+      ]
+    : [{ finish: 'tool-calls', gate: new Promise(() => {}) }],
+)
 
 const { app, log } = await openJsonlSessionApp({
   directory,
@@ -24,7 +43,11 @@ const { app, log } = await openJsonlSessionApp({
   outbox: { worker: { leaseMs: 300 } },
 })
 const stepStarts = () =>
-  Effect.runSync(log.query(0, ['session-step-started'])).length
+  Effect.runSync(
+    log.query(0, [
+      mode === 'tool' ? 'session-tool-called' : 'session-step-started',
+    ]),
+  ).length
 // A restarted child (same directory) resumes the work of the one before it:
 // it reports only once a further step has started.
 const before = stepStarts()
