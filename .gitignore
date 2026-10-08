@@ -38,3 +38,7 @@ test-results/
 .DS_Store
 .reference
 __unconfig*
+
+# Local agent scratch
+.repos/
+.codex-worktrees/
