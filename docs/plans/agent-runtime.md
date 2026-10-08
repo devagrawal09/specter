@@ -62,7 +62,9 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 
 ## Milestones
 
-### M1 - Semantics with a scripted model (target: 2 weeks)
+### M1 - Semantics with a scripted model (target: 2 weeks) — status 2026-10-08: substantially complete in one day
+- Landed: 13 slices (enqueue-input, cancel-inbox-item, deliver-inbox-item, start-execution, interrupt-execution, record-step-started, record-step-ended, finish-execution; next-deliverable, execution-status, step-status queries; wake-execution and run-step reactions), ~130 scenarios, an outboxed scripted-model step plugin with a delta side-channel, and three in-process integration cases (two-step run; steer delivered at the boundary; interrupt mid-step preserving pending input). Typed OC++ payloads enforced by the compiler.
+- Deferred: `resume: false` (not a durable fact in OC++ either), physical-attempt retries / `retry.scheduled`, crash-mid-step recovery (M3).
 - Port `specs/v2/session.md` rule groups 1, 2, 3 (admission, delivery order, process-local execution) into Given/When/Then scenarios. Every rule sentence becomes at least one scenario; rejections (`LifecycleConflict`, unknown session, idle interrupt no-op) are exact-reason scenarios.
 - Implement slices; `run-step-reaction` driven by a scripted model that returns a fixed sequence of text/tool-call/finish outcomes.
 - Done when `pnpm test` passes all scenarios and the three laws below hold in scenario form: (a) steers deliver in enqueue order at the next boundary and never cross a control item; (b) repeated wakes coalesce; (c) interrupt never deletes pending input.
