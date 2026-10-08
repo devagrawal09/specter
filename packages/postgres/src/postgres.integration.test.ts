@@ -142,7 +142,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
           {
             expectedVersion: 1,
             idempotencyKey: 'request-one',
-            fingerprint: 'same-command',
+            fingerprint: 'changed-command',
           },
         ),
       ),
@@ -151,6 +151,8 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       false,
       true,
     ])
+    expect(idempotent[0]?.version).toBe(idempotent[1]?.version)
+    expect(idempotent[0]?.fingerprint).toBe(idempotent[1]?.fingerprint)
     expect(await run(firstLog.currentVersion)).toBe(2)
 
     const context = createPostgresDatabaseContext(pool)

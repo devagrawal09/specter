@@ -1,4 +1,5 @@
 import { createClient } from '@libsql/client/sqlite3'
+import { SpecterIdempotencyConflictError } from '@specter-ts/core'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -176,5 +177,78 @@ describe('durable Reaction completion tickets', () => {
       client.close()
       rmSync(directory, { recursive: true, force: true })
     }
+  })
+})
+
+describe('Command idempotency options', () => {
+  it('forwards idempotencyMode from the browser client and defaults the key on the server', async () => {
+    const command = vi.fn(async () => ({
+      events: [],
+      version: 1,
+      duplicate: false,
+      reactions: Promise.resolve(),
+    }))
+    const handler = createSpecterHttpHandler({
+      app: { command, query: vi.fn(), subscribe: vi.fn() } as never,
+      basePath: '/api',
+    })
+    const fetch = vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+      handler(new Request(new URL(String(input), 'http://specter.test'), init)),
+    )
+    const transport = createSpecterBrowserTransport('/api', {
+      fetch: fetch as typeof globalThis.fetch,
+    })
+    const envelope = { type: 'addTodo', payload: { todoId: 'todo-1' } }
+
+    await transport.command(envelope as never, {
+      idempotencyKey: 'client-key',
+      idempotencyMode: 'exact',
+    })
+    await transport.command(envelope as never, { idempotencyMode: 'exact' })
+
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      envelope,
+      options: { idempotencyKey: 'client-key', idempotencyMode: 'exact' },
+    })
+    expect(command).toHaveBeenNthCalledWith(1, envelope, {
+      idempotencyKey: 'client-key',
+      idempotencyMode: 'exact',
+    })
+    expect(command).toHaveBeenNthCalledWith(2, envelope, {
+      idempotencyKey: expect.any(String),
+      idempotencyMode: 'exact',
+    })
+  })
+
+  it('maps an exact-mode idempotency conflict to HTTP 409 with the key', async () => {
+    const handler = createSpecterHttpHandler({
+      app: {
+        command: vi.fn(async () => {
+          throw new SpecterIdempotencyConflictError('client-key')
+        }),
+        query: vi.fn(),
+        subscribe: vi.fn(),
+      } as never,
+      basePath: '/api',
+    })
+
+    const response = await handler(
+      new Request('http://specter.test/api/command', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          envelope: { type: 'addTodo', payload: { todoId: 'todo-2' } },
+          options: { idempotencyKey: 'client-key', idempotencyMode: 'exact' },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: 'SPECTER_IDEMPOTENCY_CONFLICT',
+        details: { idempotencyKey: 'client-key' },
+      },
+    })
   })
 })

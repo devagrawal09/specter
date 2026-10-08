@@ -7,17 +7,28 @@ This Go 1.24 module is an independent, standard-library-only Specter runtime. It
 - event-derived per-Slice projections;
 - immediate Reactions with separately observable completion tickets;
 - latest-value/coalescing Query subscriptions;
-- structured Specter errors and causal runtime observations;
-- a protocol-v1 client for observation ingestion and specification publication;
-- a bounded, non-blocking, best-effort telemetry producer.
+- structured Specter errors.
+
+`DispatchOptions.IdempotencyKey` follows the TypeScript runtime's default: the
+first commit for a key wins, and a repeat returns that commit with
+`Duplicate: true` and its original Reaction ticket regardless of payload, before
+any `ExpectedVersion` check. Set `IdempotencyMode: specter.IdempotencyExact` to
+fail a repeat whose Command fingerprint differs with
+`SPECTER_IDEMPOTENCY_CONFLICT`. An `IdempotencyMode` without a key, or an
+unknown mode, fails with `SPECTER_INVALID_COMMAND_OPTIONS`. Go fingerprints the
+Command name and canonical raw JSON payload as unprefixed SHA-256 hex, so its
+fingerprints are not interchangeable with the TypeScript `v2:` fingerprints.
+
+Two ordering differences from the TypeScript runtime remain. Go validates
+`DispatchOptions` after the unknown-Command check, whereas TypeScript validates
+options first. Go fingerprints and looks up the key from the raw JSON payload
+without decoding it into the Command's input type, so well-formed JSON that would fail
+decoding still returns the duplicate when its key is known; TypeScript decodes
+input first and reports `SPECTER_INVALID_INPUT` instead.
 
 Commands, Queries, subscriptions, and Reaction tickets are runtime concepts,
 not language-neutral remote APIs. Go applications expose them through their own
 typed transports when remote access is needed.
-
-The telemetry producer retries an immutable batch for up to 48 hours by default,
-matching the collector's deduplication horizon. Use `NewProducerWithOptions` to
-configure `ProducerOptions.RetryWindow` when the collector uses another value.
 
 Run the reference app with Go 1.24:
 
@@ -31,17 +42,10 @@ It binds strictly to `127.0.0.1:41737` and exposes a project-owned Todo API:
 - `GET /todos` executes its `todosQuery`; and
 - `GET /healthz` reports process health.
 
-The reference app does not expose `/specter/v1` routes. It sends runtime
-observations outward to `http://127.0.0.1:41739/specter/v1/observations` by
-default. The protocol client also validates and can publish portable Slice
-documents to `/specter/v1/specifications`; the Go specification package shares
-the TypeScript digest and strict-validation vectors. Pass those published
-digests through `specter.Config.SpecificationDigests`; the runtime then attaches
-the matching digest to every Command, Query, Reaction, and Slice observation.
-Set
-`SPECTER_COLLECTOR_URL` to another collector root URL. The protocol performs no
-capability negotiation; SQLite,
-Postgres, and durable Reaction-outbox support remain runtime-specific concerns.
+The reference app does not expose `/specter/v1` routes. Go tracing is not part
+of this change. Applications can add their preferred tracing library at their
+own transport and runtime boundaries. SQLite, Postgres, and durable
+Reaction-outbox support remain runtime-specific concerns.
 
 Validate the module with:
 

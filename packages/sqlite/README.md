@@ -23,3 +23,9 @@ The Event Log enforces expected versions and stores durable idempotency
 receipts in the same transaction as its Events. The Reaction outbox uses atomic
 claims, deterministic attempt IDs, leases, retries, dead letters, and replay.
 Event payloads, Slice State, and outbox payloads must be JSON-serializable.
+
+The Event Log can also open the earlier commit table whose primary key is
+`idempotency_key` and which has no `commit_version` column. It detects that
+shape without migrating or rebuilding the table, and uses `last_event_order`
+as the ordered commit boundary. New databases continue to use the current
+`commit_version` table.

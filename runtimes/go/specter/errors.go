@@ -10,6 +10,7 @@ const (
 	ErrConformanceFailed       ErrorCode = "SPECTER_CONFORMANCE_FAILED"
 	ErrIdempotencyConflict     ErrorCode = "SPECTER_IDEMPOTENCY_CONFLICT"
 	ErrInfrastructure          ErrorCode = "SPECTER_INFRASTRUCTURE_FAILURE"
+	ErrInvalidCommandOptions   ErrorCode = "SPECTER_INVALID_COMMAND_OPTIONS"
 	ErrInvalidInput            ErrorCode = "SPECTER_INVALID_INPUT"
 	ErrInvalidOutput           ErrorCode = "SPECTER_INVALID_OUTPUT"
 	ErrReactionFailure         ErrorCode = "SPECTER_REACTION_FAILURE"

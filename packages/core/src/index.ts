@@ -16,12 +16,15 @@ export type {
   ApplyRegistration,
   CommandDispatch,
   CommandDispatchOptions,
+  CommandIdempotencyMode,
   CommandEnvelope,
   CommandInputOf,
+  CommandReceipt,
   CommandRef,
   CommandSlice,
   ConformanceDiagnostic,
   EventForDefinition,
+  QueryDispatch,
   QueryInputOf,
   QueryOutputOf,
   QueryRef,
@@ -29,12 +32,15 @@ export type {
   ReactionDeliveryContext,
   ReactionExec,
   ReactionPlugin,
+  ReactionPluginContext,
+  ReactionPluginRequirements,
   ReactionSlice,
   SliceRegistration,
   SliceStoreOptions,
 } from './definition'
 export {
   createSpecterApp,
+  prepareSpecterApp,
   ReactionRunFailure,
   specterErrorCodes,
   SpecterCommandRejectedError,
@@ -45,6 +51,7 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,
@@ -56,6 +63,7 @@ export {
 export type {
   CommandExecution,
   CommandExecutionOptions,
+  PreparedSpecterApp,
   QuerySubscriptionOptions,
   ReactionRunFailureDetail,
   SpecterApp,
@@ -90,16 +98,5 @@ export {
   ReactionScheduler,
   ReactionSchedulerFailure,
 } from './adapters'
-export {
-  createPrettyConsoleSpecterObserver,
-  SpecterIds,
-  SpecterObserver,
-} from './effect/observability'
-export type {
-  SpecterCausality,
-  SpecterEventReference,
-  SpecterIdService,
-  SpecterObservation,
-  SpecterObservationDetails,
-  SpecterObserverService,
-} from './effect/observability'
+/** Failure channel of Plugin `command` and `query` capabilities. */
+export type { SpecterEffectError } from './effect/runtime'

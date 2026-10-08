@@ -65,12 +65,15 @@ await app.command(
 
 - `expectedVersion` rejects a decision made against any other Event Log
   version.
-- `idempotencyKey` stores a durable receipt bound to a fingerprint of the
-  Command envelope. Repeating the same Command returns the original commit with
-  `duplicate: true`; reusing the key for different input raises
+- `idempotencyKey` stores a durable receipt with a fingerprint of the
+  Command envelope. Repeating the key returns the first commit with
+  `duplicate: true`, even for different input. With
+  `idempotencyMode: 'exact'`, reusing the key for different input raises
   `SpecterIdempotencyConflictError`.
 
 The idempotency lookup and append must share the adapter's atomic append lock.
+Adapters return the stored commit for a known key and never decide conflicts;
+the runtime applies the mode.
 
 ## Determinism and schema evolution
 
@@ -94,6 +97,8 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 - Keep payloads JSON-compatible when Events use the bundled persistent
   adapters or cross a JSON transport.
 - Reaction commit retry is at least once; use stable delivery ID downstream.
+  Only commits with an Event type the Reaction applies are delivered; a
+  Reaction cursor may lag behind skipped irrelevant commits.
   Use outbox wrapper for slow work, leases, dead-letter, and replay.
 
 ## Related documentation

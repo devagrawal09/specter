@@ -1,8 +1,5 @@
-import {
-  EventLogFailure,
-  SpecterIdempotencyConflictError,
-  SpecterVersionConflictError,
-} from '@specter-ts/core'
+import { EventLogFailure, SpecterVersionConflictError } from '@specter-ts/core'
+import { testEventLogService } from '@specter-ts/core/testing'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -51,6 +48,10 @@ type OutboxRow = {
   completed_at: Date | null
   last_error: string | null
 }
+
+testEventLogService('Postgres (fake pool)', () =>
+  createPostgresEventLogService(new FakePostgresPool()),
+)
 
 class FakePostgresPool implements PostgresPool {
   readonly statements: string[] = []
@@ -293,16 +294,15 @@ describe('Postgres Event Log adapter', () => {
     expect(await Effect.runPromise(eventLog.findCommit('request-1'))).toEqual(
       commit,
     )
-    const conflict = await Effect.runPromise(
-      Effect.flip(
-        eventLog.append([{ type: 'changed', payload: {} }], {
-          idempotencyKey: 'request-1',
-          fingerprint: 'fingerprint-2',
-        }),
-      ),
+    const changed = await Effect.runPromise(
+      eventLog.append([{ type: 'changed', payload: {} }], {
+        idempotencyKey: 'request-1',
+        fingerprint: 'fingerprint-2',
+      }),
     )
-    expect(conflict).toBeInstanceOf(EventLogFailure)
-    expect(conflict.cause).toBeInstanceOf(SpecterIdempotencyConflictError)
+    expect(changed).toEqual({ ...first, duplicate: true })
+    expect(changed.fingerprint).toBe('fingerprint-1')
+    expect(pool.events).toHaveLength(1)
   })
 
   it('preserves top-level JSON-compatible primitives returned by a structural driver', async () => {

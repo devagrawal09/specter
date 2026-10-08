@@ -26,7 +26,7 @@ CLI, strict validation, canonical serialization, and SHA-256 digests.
 | `event(type, payload)` | Creates an exact Scenario Event example for `given` or a Command `expect`. |
 | `parseSpecification(value)` | Strictly validates portable JSON data and rejects unknown or non-JSON values. |
 | `serializeSpecification(value)` | Produces deterministic sorted-key JSON. |
-| `digestSpecification(value)` | Produces the canonical `sha256:` digest used by runtimes and observability. |
+| `digestSpecification(value)` | Produces the canonical `sha256:` digest used by runtimes and the spec editor. |
 
 ## Type exports
 

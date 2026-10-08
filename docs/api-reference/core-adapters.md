@@ -17,6 +17,10 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 `append` atomically checks expected version, assigns Event orders, writes Events,
 and records commit boundary. Every append creates commit receipt, including
 commands without idempotency key. `findCommit(key)` resolves idempotency receipt.
+When `append` receives a known idempotency key, it appends nothing and returns
+the stored commit, including its original fingerprint, with `duplicate: true`
+whatever fingerprint was passed, even when `expectedVersion` is stale. The runtime decides whether a mismatch is a
+conflict (`idempotencyMode: 'exact'`).
 `commitsAfter(version)` returns complete commits ordered by commit version; core
 uses it as durable Reaction work stream.
 
@@ -80,7 +84,10 @@ originating runtime exits.
 `ReactionDeliveryContext` contains stable `deliveryId`, commit `throughOrder`,
 and durable `scheduledAt`. Attempt IDs belong only to an optional outbox worker.
 Runtime processing reads Event Log commits and uses the Reaction Slice cursor as
-the completion checkpoint.
+the completion checkpoint. Core opens a Reaction Slice Store transaction only
+for a commit containing an Event type that Reaction applies, plus one cursor
+publish per 256 skipped Event Log orders and one on graceful shutdown, so a
+Slice Store must not assume one transaction per commit.
 
 ## Invariants
 

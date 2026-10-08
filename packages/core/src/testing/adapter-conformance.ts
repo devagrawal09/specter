@@ -64,6 +64,33 @@ export function eventLogConformance<TCreateError, TRequirements>(
         duplicate.committedAt === first.committedAt,
       duplicate,
     )
+    const changed = yield* service.append(
+      [{ type: 'first-recorded', payload: { value: 99 } }],
+      {
+        idempotencyKey: 'event-log-conformance',
+        fingerprint: 'v2:changed-payload',
+      },
+    )
+    const versionAfterChanged = yield* service.currentVersion
+    yield* requireInvariant(
+      'event-log',
+      'first commit wins for a reused key with its stored fingerprint',
+      changed.duplicate &&
+        changed.version === first.version &&
+        changed.events.length === 2 &&
+        changed.events[0]?.order === 1 &&
+        changed.fingerprint === 'v2:event-log-conformance' &&
+        versionAfterChanged === first.version,
+      { changed, versionAfterChanged },
+    )
+    const found = yield* service.findCommit('event-log-conformance')
+    yield* requireInvariant(
+      'event-log',
+      'stored commit lookup keeps the first fingerprint',
+      found?.version === first.version &&
+        found.fingerprint === 'v2:event-log-conformance',
+      found,
+    )
     const queried = yield* service.query(1, ['second-recorded'])
     yield* requireInvariant(
       'event-log',

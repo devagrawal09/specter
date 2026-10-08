@@ -37,14 +37,13 @@ Go, and tooling. Choose a path based on what you need to do next.
 ## Operate and integrate
 
 - [Runtime architecture](architecture/runtime.md)
-- [Language-neutral runtime-observability protocol](../protocol/README.md)
+- [Visual Spec Editor](../packages/spec-editor/README.md)
 - [Event sourcing](architecture/event-sourcing.md)
 - [Plugins](architecture/plugins.md)
 - [Core runtime API](api-reference/core-runtime.md)
 - [Core adapters API](api-reference/core-adapters.md)
 - [Persistence APIs](api-reference/persistence.md)
 - [Reaction outbox API](api-reference/reaction-outbox.md)
-- [Unified specification and telemetry dashboard](api-reference/observability.md)
 
 ## API reference
 
@@ -55,8 +54,7 @@ Go, and tooling. Choose a path based on what you need to do next.
 - [`@specter-ts/core/testing`](api-reference/core-testing.md)
 - [Persistence packages](api-reference/persistence.md)
 - [`@specter-ts/reaction-outbox`](api-reference/reaction-outbox.md)
-- [`@specter-ts/protocol`](../packages/protocol/README.md)
-- [`@specter-ts/observability`](api-reference/observability.md)
+- [`@specter-ts/spec-editor`](../packages/spec-editor/README.md)
 - [`create-specter`](api-reference/create-specter.md)
 
 The [repository README](../README.md) covers workspace commands and release

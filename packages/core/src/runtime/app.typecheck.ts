@@ -1,5 +1,8 @@
+import type { Layer } from 'effect'
+
 import type {
   CommandSlice,
+  PreparedSpecterApp,
   QuerySlice,
   ReactionSlice,
   SpecterApp,
@@ -9,6 +12,7 @@ import type {
   SpecterQueryEnvelope,
 } from '..'
 import * as core from '..'
+import type { SpecterRuntimeRequirements } from '../effect-entry'
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
@@ -56,6 +60,16 @@ app.query({ type: 'todoCount', payload: { title: 'wrong' } })
 // @ts-expect-error Reaction names are not remotely dispatchable Queries.
 app.query({ type: 'notifyTodo', payload: undefined })
 
+app.command(
+  { type: 'addTodo', payload: { title: 'Ship it' } },
+  { idempotencyKey: 'request-1', idempotencyMode: 'exact' },
+)
+app.command(
+  { type: 'addTodo', payload: { title: 'Ship it' } },
+  // @ts-expect-error Idempotency modes are 'first-wins' or 'exact'.
+  { idempotencyKey: 'request-1', idempotencyMode: 'loose' },
+)
+
 // @ts-expect-error Specification builders are available only from @specter-ts/spec.
 core.createCommandSlice
 // @ts-expect-error Scenario event helpers are available only from @specter-ts/spec.
@@ -85,7 +99,6 @@ export type CommandExecutionCheck = Expect<
   Equal<
     Awaited<typeof execution>,
     {
-      readonly operationId?: string
       readonly events: readonly import('../definition').PersistedEvent[]
       readonly version: number
       readonly duplicate: boolean
@@ -105,4 +118,21 @@ export type SubscriptionResultCheck = Expect<
     >,
     IteratorResult<{ count: number }>
   >
+>
+
+declare const config: Config
+declare const dependencies: Layer.Layer<SpecterRuntimeRequirements<Config>>
+declare const preparedConfig: PreparedSpecterApp<Config>
+const prepared = core.prepareSpecterApp(config)
+const appFromConfig = core.createSpecterApp(config, dependencies)
+const appFromPrepared = core.createSpecterApp(preparedConfig, dependencies)
+
+export type PrepareCheck = Expect<
+  Equal<Awaited<typeof prepared>, PreparedSpecterApp<Config>>
+>
+export type AppFromConfigCheck = Expect<
+  Equal<Awaited<typeof appFromConfig>, SpecterApp<Config>>
+>
+export type AppFromPreparedCheck = Expect<
+  Equal<Awaited<typeof appFromPrepared>, SpecterApp<Config>>
 >

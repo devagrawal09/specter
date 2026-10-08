@@ -18,7 +18,8 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
-| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. |
+| `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
+| `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
 | `SpecterError` | Base class for structured runtime errors with a `code`. |
@@ -29,11 +30,12 @@ network transport and no application database schema.
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
 | `SpecterCommandRejectedError` | A Command handler rejected an intent or emitted no Events. |
 | `SpecterVersionConflictError` | `expectedVersion` or the runtime compare-and-swap did not match the Event Log version. |
-| `SpecterIdempotencyConflictError` | An idempotency key was reused for a different Command fingerprint. |
+| `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
 | `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
-| `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices. |
+| `SpecterPluginQueryInTransactionError` | A direct Reaction Plugin called `query` inside its Slice Store transaction; permanent until the Plugin changes. |
+| `ReactionRunFailure` | Aggregate failure for one or more independently run Reaction Slices; `permanent` is `true` when retrying cannot succeed. |
 
 `specterErrorCodes` contains:
 
@@ -47,6 +49,7 @@ network transport and no application database schema.
 | `invalidCommandOptions` | `SPECTER_INVALID_COMMAND_OPTIONS` |
 | `invalidInput` | `SPECTER_INVALID_INPUT` |
 | `invalidOutput` | `SPECTER_INVALID_OUTPUT` |
+| `pluginQueryInTransaction` | `SPECTER_PLUGIN_QUERY_IN_TRANSACTION` |
 | `reactionFailure` | `SPECTER_REACTION_FAILURE` |
 | `unknownCommand` | `SPECTER_UNKNOWN_COMMAND` |
 | `unknownEvent` | `SPECTER_UNKNOWN_EVENT` |
@@ -74,10 +77,16 @@ network transport and no application database schema.
 | `QueryOutputOf<T>` | Infers a Query Slice's decoded public output. |
 | `CommandRef<T>` | Registry-oriented Command name and optional payload reference. |
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
-| `CommandDispatchOptions` | `expectedVersion` and optional `idempotencyKey`. |
-| `CommandDispatch` | Reaction Plugin callback for dispatching a Command. |
+| `CommandDispatchOptions` | Optional `expectedVersion`, `idempotencyKey`, and `idempotencyMode` (requires a key). |
+| `CommandIdempotencyMode` | `'first-wins'` (default) returns the first commit for a key regardless of payload; `'exact'` also requires a matching fingerprint. |
+| `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. On a duplicate, `events`/`version` are the first commit for the key and may differ from this call's payload. |
+| `CommandDispatch` | Plugin capability dispatching a same-app Command; resolves to `CommandReceipt`. |
+| `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; the Slice must be the registered instance; rejected permanently inside a direct Plugin's Reaction transaction. |
+| `SpecterEffectError` | Union of public runtime failures; the error channel of Plugin `command` and `query`. |
+| `ReactionPluginContext` | `{ command, query }` passed once to a Plugin factory. |
 | `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
-| `ReactionPlugin` | Optional Effect factory for custom/external output; same-app `CommandEnvelope` output uses default dispatcher. |
+| `ReactionPlugin<TOutput, R>` | Optional Effect factory for custom/external output; `R` lists app services it reads. Same-app `CommandEnvelope` output uses default dispatcher. |
+| `ReactionPluginRequirements<T>` | Infers a Reaction Slice's Plugin service requirements, excluding `Scope`. |
 | `ConformanceDiagnostic` | Structured construction diagnostic with code, location, and remediation fields. |
 
 ## App and runtime types
@@ -85,6 +94,7 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `SpecterAppConfig` | Pure configuration containing Events and Slices. |
+| `PreparedSpecterApp<TConfig>` | Validated config with derived lookup structures; accepted wherever a config is. |
 | `SpecterAppConfigOf<TApp>` | Infers the configuration carried by a typed app. |
 | `SpecterApp<TConfig>` | Typed `command`, `query`, `subscribe`, and idempotent `close` operations. |
 | `SpecterCommandEnvelope<TConfig>` | Union of all registered Command envelopes. |
@@ -102,14 +112,53 @@ network transport and no application database schema.
 ## Construction and operation order
 
 `createSpecterApp(config, dependencies)` validates the Event catalog, Scenarios,
-schemas, apply coverage, and selected implementations before exposing the app.
-`dependencies` is an Effect Layer providing `EventLog` and every Store Tag
-named by registered Slices.
+schemas, apply coverage, and selected implementations before it resolves. An
+invalid config rejects it with `SpecterConformanceError`. `dependencies` is an
+Effect Layer providing `EventLog`, every Store Tag named by registered Slices,
+and every service required by registered Reaction Plugins
+(`SpecterRuntimeRequirements<TConfig>`). A missing Plugin service is a compile
+error when the config keeps its literal Slice types, including when it is
+passed as a `PreparedSpecterApp`.
 
-When Reactions are registered, construction catches each Reaction cursor up
-through current Event Log version. This recovers commits left unfinished by a
-previous process without unrelated Command. Startup Reaction failure rejects
-construction.
+Validation and the lookup maps derived from it are per config. They are cached
+by the identity of `config.events` and `config.slices`, so opening many apps
+from the same objects validates once, including under concurrent first use. A
+failed validation is reported to every waiting caller and is not cached. A
+validated config's `events` array and `slices` record are frozen; mutating
+them afterwards throws.
+
+To validate once at startup and bind many Event Logs, prepare the config
+explicitly:
+
+```ts
+import { createSpecterApp, prepareSpecterApp } from '@specter-ts/core'
+
+const prepared = await prepareSpecterApp(config)
+const app = await createSpecterApp(prepared, dependenciesFor(sessionId))
+```
+
+Store resolution, Reaction scheduler binding, and Reaction and eager-Slice
+catch-up are per app, and `createSpecterApp` resolves only after they finish.
+When Reactions are registered, startup catches each Reaction cursor up through
+current Event Log version. This recovers commits left unfinished by a previous
+process without unrelated Command. A missing Store Layer, dependency Layer
+failure, Event Log failure, or startup Reaction failure rejects construction
+after the partially built runtime is disposed; it does not evict the validated
+config from the cache.
+
+Startup waits for the scheduler to report Reaction catch-up complete. A
+permanent failure (`ReactionRunFailure.permanent`) rejects `createSpecterApp`.
+The SQLite durable scheduler (`createSqliteReactionSchedulerLayer`) reschedules
+any other failed Reaction pass every `retryIntervalMs` until it succeeds, so a
+startup Reaction that keeps failing with a retryable error makes
+`createSpecterApp` wait indefinitely instead of rejecting. Before this release
+the same wait happened on the first operation. Fix the failing Reaction, or
+bound the wait yourself: with the Effect API, apply `Effect.timeout` to the
+Effect that builds `createSpecterAppLayer` or runs `makeSpecterRuntime`. A
+built-in bound would be a small addition: an optional `startupTimeout`
+accepted by `createSpecterApp` that races the startup Promise against a timer,
+disposes the app, and rejects with `SpecterInfrastructureError` on expiry. It
+is not implemented.
 
 ```ts
 import { EventLog, createSpecterApp } from '@specter-ts/core'
@@ -141,9 +190,23 @@ await execution.reactions
 await app.close()
 ```
 
+A repeated `idempotencyKey` returns the first commit for that key with
+`duplicate: true`, even when the payload differs. Pass
+`idempotencyMode: 'exact'` to raise `SpecterIdempotencyConflictError` instead
+when the payload or Command type differs:
+
+```ts
+await app.command(envelope, {
+  idempotencyKey: 'request-1',
+  idempotencyMode: 'exact',
+})
+```
+
 Command input schemas run before idempotency fingerprinting. Specter stores a
-versioned `v2:` fingerprint of the canonical decoded payload and passes that
-same decoded value to the handler.
+versioned `v2:` fingerprint of the Command type and canonical decoded payload
+in both modes and passes that same decoded value to the handler. The key lookup
+runs before the `expectedVersion` check, so a duplicate never reports a version
+conflict. See [Runtime](../architecture/runtime.md#idempotency).
 
 ## Effect runtime
 
@@ -165,16 +228,33 @@ const program = Effect.gen(function* () {
 ```
 
 `makeSpecterRuntime(config)` is native interpreter and exposes exact Store,
-Event Log, Scope, and typed failure requirements. Slices keep plain
+Plugin service, Event Log, Scope, and typed failure requirements. Slices keep plain
 async apply/handle functions. `createSpecterAppLayer(config)` acquires runtime in
 Scope and exposes `SpecterRuntime` through Context. Query subscriptions are
 Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is
-explicit Promise boundary used by `createSpecterApp`.
+synchronous Promise boundary: it does not wait for startup, so any
+construction failure, including a raw config's conformance failure, rejects
+its first and every later operation instead.
+
+`prepareSpecterRuntime(config)` is the Effect form of `prepareSpecterApp`. It
+fails with `SpecterConformanceError` and shares the same per-config cache. Each
+of `createSpecterAppLayer`, `makeSpecterRuntime`, and `createSpecterPromiseApp`
+accepts its `PreparedSpecterApp` in place of a config. With the Layer and
+interpreter, every construction failure, including conformance, fails the
+Layer or Effect.
+
+```ts
+const SessionLive = Layer.unwrap(
+  prepareSpecterRuntime(sessionConfig).pipe(
+    Effect.map((prepared) => createSpecterAppLayer(prepared)),
+  ),
+).pipe(Layer.provide(sessionDependencies))
+```
 
 `execution.reactions` is deliberately separate from the Command commit. A
 Reaction failure cannot roll back durable Events. A duplicate idempotent
-Command returns the original commit with `duplicate: true` and schedules
-Reaction catch-up again.
+Command returns the original commit with `duplicate: true` (first commit wins
+unless `idempotencyMode: 'exact'`) and schedules Reaction catch-up again.
 
 Subscriptions are latest-state streams:
 

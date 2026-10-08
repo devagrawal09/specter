@@ -1,8 +1,4 @@
-import {
-  EventLogFailure,
-  SpecterIdempotencyConflictError,
-  SpecterVersionConflictError,
-} from '@specter-ts/core'
+import { SpecterVersionConflictError } from '@specter-ts/core'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -56,7 +52,7 @@ describe('memory Event Log', () => {
     })
   })
 
-  it('returns durable receipt and rejects changed fingerprint', async () => {
+  it('returns the first commit for a reused key regardless of fingerprint', async () => {
     const eventLog = createMemoryEventLog()
     const first = await Effect.runPromise(
       eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
@@ -71,20 +67,14 @@ describe('memory Event Log', () => {
       }),
     )
     expect(duplicate).toEqual({ ...first, duplicate: true })
-    const conflict = await Effect.runPromise(
-      Effect.result(
-        eventLog.append([{ type: 'ignored', payload: {} }], {
-          idempotencyKey: 'request-1',
-          fingerprint: 'fingerprint-two',
-        }),
-      ),
+    const changed = await Effect.runPromise(
+      eventLog.append([{ type: 'ignored', payload: {} }], {
+        idempotencyKey: 'request-1',
+        fingerprint: 'fingerprint-two',
+      }),
     )
-    expect(conflict._tag).toBe('Failure')
-    if (conflict._tag === 'Failure') {
-      expect(conflict.failure).toBeInstanceOf(EventLogFailure)
-      expect(conflict.failure.cause).toBeInstanceOf(
-        SpecterIdempotencyConflictError,
-      )
-    }
+    expect(changed).toEqual({ ...first, duplicate: true })
+    expect(changed.fingerprint).toBe('fingerprint-one')
+    expect(eventLog.inspect()).toHaveLength(1)
   })
 })

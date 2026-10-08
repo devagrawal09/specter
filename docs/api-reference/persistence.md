@@ -1,6 +1,6 @@
 # Persistence API
 
-**Imports:** `@specter-ts/memory`, `@specter-ts/sqlite`,
+**Imports:** `@specter-ts/memory`, `@specter-ts/jsonl`, `@specter-ts/sqlite`,
 `@specter-ts/sqlite-node`, `@specter-ts/postgres`
 
 Event Log stores authoritative commits. Slice Stores own app-defined State,
@@ -15,6 +15,87 @@ cursor, ORM access, and transaction policy.
 
 Memory Store clones staged State and rolls failure back. Data disappears with
 process.
+
+## JSONL
+
+| Export | Purpose |
+| --- | --- |
+| `createJsonlEventLog` | Open one JSONL file as an Event Log service with `close()`. |
+| `createJsonlEventLogLayer` | Scoped Event Log Layer that closes the file with the app; `onOpen` reports what the open recovered. |
+| `createJsonlSliceStoreService` / `createJsonlSliceStoreLayer` | JSON file Store, one file per Slice. |
+| `createJsonlReactionOutboxStore` | Reaction outbox Store backed by a JSONL journal of job transitions. |
+
+The JSONL Event Log keeps one Event Log per file, one commit per line, so an
+app can open a separate log per session without a database. Opening reads the
+file once into an in-memory index; appends only add lines and are serialized in
+the process. Opening takes an exclusive `<path>.lock` file that `close()`
+removes, so a second open in the process or in another live process fails.
+The lock records the opener's pid, hostname, random token, and on Linux its
+start time, pid namespace, and boot id. A lock whose holder ran on this host
+and has exited, such as after `SIGKILL` (or ran before the host's last boot),
+is taken over and reported as `recoveredStaleLock: { pid, hostname }`; a live
+holder, this same process (another worker thread or a symlinked directory),
+another host, another pid namespace, or unreadable content fails the open with
+the reason. A symlink or hard link to the file itself gets its own lock file, so
+always open a JSONL file through one path. Concurrent openers that find the same stale lock serialize the
+takeover through an exclusive claim file, so at most one wins, and `close()`
+removes the lock only while it still holds its own token. Opening is
+synchronous and can block for about 100 ms while it retries a contended
+takeover. A reused pid only makes the open refuse (on Linux the start time
+detects reuse). Locks use local process ids, so never share these files
+across hosts or over NFS.
+The `onOpen` option of both Event Log constructors and of
+`createJsonlReactionOutboxStore` is called once after a successful open with
+`recoveredStaleLock` and `discardedTrailingBytes` (and the outbox's
+`releasedOnOpen`), so apps using the Layer can log recoveries too.
+Expected versions and idempotency receipts match the SQLite adapters, and
+`query` returns Events with `order > afterOrder`. `fsync` is off by default, so
+a commit survives a process crash but not an operating-system failure; pass
+`fsync: true` when the file is the only durable record.
+
+Opening validates every complete line before changing the file, and a
+malformed line fails the open without modifying it. A valid last commit whose
+newline was lost is kept; an unterminated, unparsable start of a commit line
+from an interrupted write is removed and reported as `discardedTrailingBytes`;
+other trailing text fails the open. A failed append truncates its partial line;
+if that truncate fails too, every later append fails with an
+`EventLogFailure('append')` carrying both errors until the log is reopened.
+
+The JSON Slice Store keeps each Slice's State and cursor in
+`<directory>/<sliceName>.json`. It reads a Slice's file on first use and then
+serves reads from memory. A transaction that publishes a cursor writes the
+whole `{ cursor, state }` document to a temporary file and renames it over the
+Slice file; a failed transaction leaves the file unchanged. Reaction cursors
+therefore survive a restart, and reopening an app does not run Reactions again
+for handled commits. State must be JSON-serializable; `Map` and `Set` values
+fail the write instead of being stored as `{}`. Because State is rewritten
+whole on every commit, and Reactions publish a cursor for every commit, use it
+for small State such as Reaction decisions and session metadata; for large
+State that grows with the log, use memory Slice Stores, which rebuild from the
+log on startup, or a database Store.
+
+The Slice Store's durability only holds when the Event Log uses `fsync: true`
+as well. After an operating-system crash, a synced Slice cursor can point past
+an unsynced log tail; new commits then reuse those orders and the Slice skips
+them. The Slice Store cannot see the Event Log, so apps that need the check
+compare each Slice cursor with `eventLog.currentVersion` after opening and
+rebuild a Slice whose cursor is ahead.
+
+The JSONL Reaction outbox Store appends one line per job transition and
+replays the file into an in-memory index on open. It takes the same
+`<path>.lock` writer lock, with the same stale-lock takeover and
+`recoveredStaleLock`, and handles `fsync`, malformed lines, trailing
+writes, and failed writes like the Event Log. Two files cannot share a
+transaction, so the enqueue line is written before the Slice Store renames the
+Reaction cursor document; after a crash between the two, the job survives and
+core's retried Reaction re-enqueues the same `deliveryId` as a no-op. Use
+`fsync: true` on the outbox so an operating-system crash cannot keep the
+cursor and lose the enqueue. Attempts left running by an earlier open are
+released on open. The journal is not compacted. See the package README for
+the crash windows and when to rewrite the file.
+
+`@specter-ts/jsonl` is built, tested, and typechecked with the workspace but is
+not yet in the `release:*` scripts.
 
 ## SQLite
 

@@ -7,6 +7,7 @@ export const specterErrorCodes = {
   invalidCommandOptions: 'SPECTER_INVALID_COMMAND_OPTIONS',
   invalidInput: 'SPECTER_INVALID_INPUT',
   invalidOutput: 'SPECTER_INVALID_OUTPUT',
+  pluginQueryInTransaction: 'SPECTER_PLUGIN_QUERY_IN_TRANSACTION',
   projectionFailed: 'SPECTER_PROJECTION_FAILED',
   reactionFailure: 'SPECTER_REACTION_FAILURE',
   storeConfiguration: 'SPECTER_STORE_CONFIGURATION',
@@ -224,6 +225,26 @@ export class SpecterInfrastructureError extends SpecterError {
   }
 }
 
+/**
+ * A direct Reaction Plugin called `query` inside its Slice Store transaction.
+ * Retrying cannot succeed, so the Reaction run fails permanently and its cursor
+ * stays on the commit until the Plugin changes.
+ */
+export class SpecterPluginQueryInTransactionError extends SpecterError {
+  readonly reactionName: string
+  readonly queryName: string
+
+  constructor(reactionName: string, queryName: string) {
+    super(
+      specterErrorCodes.pluginQueryInTransaction,
+      `Reaction "${reactionName}" Plugin queried "${queryName}" inside its Slice Store transaction. Wrap the Plugin with withReactionOutbox to run Queries.`,
+    )
+    this.name = 'SpecterPluginQueryInTransactionError'
+    this.reactionName = reactionName
+    this.queryName = queryName
+  }
+}
+
 export type ReactionRunFailureDetail = {
   readonly sliceName: string
   readonly cause: unknown
@@ -232,6 +253,11 @@ export type ReactionRunFailureDetail = {
 export class ReactionRunFailure extends AggregateError {
   readonly code = specterErrorCodes.reactionFailure
   readonly failures: readonly ReactionRunFailureDetail[]
+  /**
+   * True when a failure cannot succeed on retry. The commit boundary can never
+   * complete, so schedulers stop retrying and report the failure instead.
+   */
+  readonly permanent: boolean
 
   constructor(failures: readonly ReactionRunFailureDetail[]) {
     super(
@@ -240,7 +266,17 @@ export class ReactionRunFailure extends AggregateError {
     )
     this.name = 'ReactionRunFailure'
     this.failures = failures
+    this.permanent = failures.some(({ cause }) => isPermanentCause(cause))
   }
+}
+
+function isPermanentCause(cause: unknown): boolean {
+  for (let current = cause, depth = 0; depth < 8; depth += 1) {
+    if (current instanceof SpecterPluginQueryInTransactionError) return true
+    if (!(current instanceof Error)) return false
+    current = current.cause
+  }
+  return false
 }
 
 function reactionRunFailureMessage(

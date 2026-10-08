@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"log"
 	"mime"
@@ -13,13 +12,10 @@ import (
 	"os/signal"
 	"sort"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/devagrawal09/specter/runtimes/go/protocol"
 	"github.com/devagrawal09/specter/runtimes/go/specter"
-	"github.com/devagrawal09/specter/runtimes/go/telemetry"
 )
 
 const address = "127.0.0.1:41737"
@@ -37,20 +33,8 @@ type todo struct {
 	Title  string `json:"title"`
 }
 
-var apiOperationCounter atomic.Uint64
-
 func main() {
-	collectorURL := os.Getenv("SPECTER_COLLECTOR_URL")
-	if collectorURL == "" {
-		collectorURL = "http://127.0.0.1:41739"
-	}
-	producer := telemetry.NewProducer(&protocol.ObservationClient{CollectorURL: collectorURL}, protocol.RuntimeSource{Application: "go-todo-reference", Environment: environment(), RuntimeLanguage: "go", RuntimeVersion: "0.1.0", InstanceID: fmt.Sprintf("go-todo-%d", time.Now().UnixNano()), EventLogID: "go-todo-memory"}, telemetry.DefaultQueueCapacity)
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-		_ = producer.Close(ctx)
-	}()
-	app, err := newTodoApp(producer.Observe)
+	app, err := newTodoApp()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -86,8 +70,6 @@ func newTodoHandler(app *specter.App) http.Handler {
 			return
 		}
 		execution, err := app.Command(request.Context(), "addTodo", input, specter.DispatchOptions{
-			OperationID:    operationID(request),
-			CorrelationID:  request.Header.Get("X-Correlation-ID"),
 			IdempotencyKey: request.Header.Get("Idempotency-Key"),
 		})
 		if err != nil {
@@ -102,9 +84,8 @@ func newTodoHandler(app *specter.App) http.Handler {
 			outcome = "duplicate"
 		}
 		writeJSON(writer, status, map[string]any{
-			"operationId": execution.OperationID,
-			"status":      outcome,
-			"version":     execution.Version,
+			"status":  outcome,
+			"version": execution.Version,
 		})
 	})
 	mux.HandleFunc("GET /todos", func(writer http.ResponseWriter, request *http.Request) {
@@ -134,13 +115,6 @@ func decodeJSON(writer http.ResponseWriter, request *http.Request, output any) e
 	return nil
 }
 
-func operationID(request *http.Request) string {
-	if value := request.Header.Get("X-Specter-Operation-ID"); value != "" {
-		return value
-	}
-	return fmt.Sprintf("http_%d_%d", time.Now().UTC().UnixNano(), apiOperationCounter.Add(1))
-}
-
 func publicAPIError(err error) (int, string, string) {
 	var failure *specter.Error
 	if !errors.As(err, &failure) {
@@ -166,14 +140,7 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 	_ = json.NewEncoder(writer).Encode(value)
 }
 
-func environment() string {
-	if value := os.Getenv("SPECTER_ENVIRONMENT"); value != "" {
-		return value
-	}
-	return "development"
-}
-
-func newTodoApp(observe specter.Observer) (*specter.App, error) {
+func newTodoApp() (*specter.App, error) {
 	var commandMu sync.Mutex
 	commandTodos := map[string]todo{}
 	commandApply := map[string]specter.ApplyFunc{"todo-added": specter.DecodeApply(func(_ context.Context, payload todoAdded, _ specter.PersistedEvent) error {
@@ -212,5 +179,5 @@ func newTodoApp(observe specter.Observer) (*specter.App, error) {
 		sort.Slice(result, func(i, j int) bool { return result[i].TodoID < result[j].TodoID })
 		return result, nil
 	})}
-	return specter.NewApp(specter.Config{Events: []string{"todo-added"}, EventLog: specter.NewMemoryEventLog(), Commands: []specter.CommandDefinition{command}, Queries: []specter.QueryDefinition{query}, Observe: observe})
+	return specter.NewApp(specter.Config{Events: []string{"todo-added"}, EventLog: specter.NewMemoryEventLog(), Commands: []specter.CommandDefinition{command}, Queries: []specter.QueryDefinition{query}})
 }

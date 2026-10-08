@@ -1,6 +1,6 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["src/**/*.test.ts", "dist"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.type-test.ts", "dist"],
   "compilerOptions": {
     "noEmit": false,
     "emitDeclarationOnly": true,

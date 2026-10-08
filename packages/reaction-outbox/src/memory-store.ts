@@ -10,15 +10,29 @@ import { ReactionOutboxLeaseLostError } from './errors'
 import { Effect } from 'effect'
 
 export type MemoryReactionOutboxStore<TPayload> =
-  ReactionOutboxStore<TPayload> & {
-    reset(): void
-  }
+  ReactionOutboxStore<TPayload> &
+    Required<
+      Pick<ReactionOutboxStore<TPayload>, 'renewLease' | 'subscribe'>
+    > & {
+      reset(): void
+    }
 
 export function createMemoryReactionOutboxStore<
   TPayload,
 >(): MemoryReactionOutboxStore<TPayload> {
   const jobs = new Map<string, ReactionOutboxJob<TPayload>>()
   const idsByIdempotencyKey = new Map<string, string>()
+  const listeners = new Set<() => void>()
+
+  function notifyListeners() {
+    for (const listener of [...listeners]) {
+      try {
+        listener()
+      } catch {
+        // A wake-up is a hint; the job is already stored.
+      }
+    }
+  }
 
   function copyJob<TJob extends ReactionOutboxJob<TPayload>>(job: TJob): TJob {
     return {
@@ -64,6 +78,7 @@ export function createMemoryReactionOutboxStore<
         }
         jobs.set(job.id, job)
         idsByIdempotencyKey.set(job.idempotencyKey, job.id)
+        notifyListeners()
         return { job: copyJob(job), created: true }
       })
     },
@@ -136,6 +151,13 @@ export function createMemoryReactionOutboxStore<
           completedAt: failedAt,
           lastError: error,
         })
+      })
+    },
+
+    renewLease(jobId, attemptId, leaseExpiresAt) {
+      return Effect.sync(() => {
+        const job = requireActiveAttempt(jobId, attemptId)
+        jobs.set(jobId, { ...job, leaseExpiresAt })
       })
     },
 
@@ -213,7 +235,15 @@ export function createMemoryReactionOutboxStore<
           completedAt: undefined,
           lastError: undefined,
         })
+        notifyListeners()
       })
+    },
+
+    subscribe(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
     },
 
     reset() {

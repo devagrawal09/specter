@@ -1,7 +1,8 @@
-export { createSpecterApp } from './app'
+export { createSpecterApp, prepareSpecterApp } from './app'
 export type {
   CommandExecution,
   CommandExecutionOptions,
+  PreparedSpecterApp,
   QuerySubscriptionOptions,
   SpecterApp,
   SpecterAppConfig,
@@ -23,6 +24,7 @@ export {
   SpecterInvalidCommandOptionsError,
   SpecterInvalidInputError,
   SpecterInvalidOutputError,
+  SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
   SpecterStoreFailureError,

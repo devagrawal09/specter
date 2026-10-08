@@ -47,9 +47,16 @@ export type EventLogService = {
   readonly commitsAfter: (
     afterVersion: number,
   ) => Effect.Effect<readonly EventLogCommit[], EventLogFailure>
+  /** Returns the stored commit for a key, including its stored fingerprint. */
   readonly findCommit: (
     idempotencyKey: string,
   ) => Effect.Effect<EventLogCommit | undefined, EventLogFailure>
+  /**
+   * Atomically appends one commit. When idempotencyKey already exists, returns
+   * the stored commit (with its original fingerprint) as `duplicate: true` and
+   * appends nothing, whatever fingerprint was passed. The runtime decides
+   * whether a fingerprint mismatch is a conflict.
+   */
   readonly append: (
     events: readonly EventDraft[],
     options?: EventLogAppendOptions,

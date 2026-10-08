@@ -3,6 +3,7 @@ import { Effect } from 'effect'
 
 import type {
   ReactionOutboxAttemptContext,
+  ReactionOutboxClaim,
   ReactionOutboxStore,
   ReactionOutboxTransitionListener,
 } from './types'
@@ -46,6 +47,12 @@ export type ReactionOutboxWorkerOptions<TPayload> = {
   readonly maxAttempts?: number
   readonly backoffMs?: (attemptNumber: number) => number
   readonly leaseMs?: number
+  /**
+   * How often a running attempt renews its lease when the Store implements
+   * `renewLease`. Must be shorter than `leaseMs` and at most 2,147,483,647
+   * (the largest timer delay); defaults to a third of `leaseMs`, capped there.
+   */
+  readonly heartbeatMs?: number
   readonly now?: () => Date
   readonly sleep?: (milliseconds: number) => Promise<void>
   readonly signal?: AbortSignal
@@ -60,6 +67,32 @@ export type ReactionOutboxWorker<TPayload> = {
   ): Promise<{ readonly jobId: string; readonly created: boolean }>
   drain(): Promise<void>
   retryDeadLetter(jobId: string, availableAt?: Date): Promise<void>
+  /**
+   * Resolves after `milliseconds`, when either lifecycle signal aborts, or as
+   * soon as this worker's Store reports new work in this process. A wake-up
+   * that arrives while no wait is in progress ends the next wait at once.
+   * Waits share one wake-up: a caller waiting here alongside `drain` can take
+   * a wake-up meant for it, which then finds the work on its next poll or
+   * backoff wait.
+   */
+  waitForWork(
+    milliseconds: number,
+    options?: ReactionOutboxWaitOptions,
+  ): Promise<void>
+  /**
+   * Stops the worker like aborting its `signal`: unsubscribes from the Store,
+   * ends waits, and lets a running drain finish its current attempt and stop.
+   * A worker without a `signal` stays subscribed to its Store until closed.
+   */
+  close(): void
+  /** Aborted once the worker is closed or its `signal` aborts. */
+  readonly signal: AbortSignal
+}
+
+export type ReactionOutboxWaitOptions = {
+  /** Replaces the timer; a wake-up or abort still ends the wait early. */
+  readonly sleep?: (milliseconds: number) => Promise<void>
+  readonly signal?: AbortSignal
 }
 
 export type ReactionOutboxServiceOptions = {
@@ -68,6 +101,9 @@ export type ReactionOutboxServiceOptions = {
   readonly sleep?: (milliseconds: number) => Promise<void>
   readonly onError?: (cause: unknown) => Promise<void> | void
 }
+
+/** Node clamps larger timer delays to 1 ms. */
+const maxTimerMs = 2_147_483_647
 
 const defaultSleep = (milliseconds: number, signal?: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -93,19 +129,137 @@ export function createReactionOutboxWorker<TPayload>(
   const backoffMs =
     options.backoffMs ?? ((attemptNumber) => 1_000 * 2 ** (attemptNumber - 1))
   const now = options.now ?? (() => new Date())
-  const sleep =
-    options.sleep ??
-    ((milliseconds: number) => defaultSleep(milliseconds, options.signal))
+  const heartbeatMs = options.heartbeatMs ?? Math.min(leaseMs / 3, maxTimerMs)
   const idFactory = options.idFactory ?? randomUUID
   const onTransition = options.onTransition ?? (() => {})
   let activeDrain: Promise<void> | undefined
   let drainRequested = false
+  /** Interrupts for waits in progress. */
+  const wakers = new Set<() => void>()
+  /** A wake-up arrived while no wait was in progress. */
+  let wakePending = false
+  /** Aborted by `close()` or by `options.signal`. */
+  const lifecycle = new AbortController()
+  const signal = lifecycle.signal
 
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
     throw new Error('maxAttempts must be a positive integer')
   }
   if (!Number.isFinite(leaseMs) || leaseMs <= 0) {
     throw new Error('leaseMs must be positive')
+  }
+  if (
+    !Number.isFinite(heartbeatMs) ||
+    heartbeatMs <= 0 ||
+    heartbeatMs >= leaseMs ||
+    heartbeatMs > maxTimerMs
+  ) {
+    throw new Error(
+      `heartbeatMs must be positive, shorter than leaseMs, and at most ${maxTimerMs}`,
+    )
+  }
+  if (options.signal?.aborted) lifecycle.abort()
+  else {
+    options.signal?.addEventListener('abort', () => lifecycle.abort(), {
+      once: true,
+    })
+  }
+  if (options.store.subscribe && !signal.aborted) {
+    const unsubscribe = options.store.subscribe(wake)
+    signal.addEventListener('abort', unsubscribe, { once: true })
+  }
+
+  function wake() {
+    if (wakers.size === 0) {
+      wakePending = true
+      return
+    }
+    for (const interrupt of [...wakers]) interrupt()
+  }
+
+  function waitForWork(
+    milliseconds: number,
+    waitOptions: ReactionOutboxWaitOptions = {},
+  ): Promise<void> {
+    const signals = [signal, waitOptions.signal].filter(
+      (candidate) => candidate !== undefined,
+    )
+    if (signals.some((candidate) => candidate.aborted)) {
+      return Promise.resolve()
+    }
+    if (wakePending) {
+      wakePending = false
+      return Promise.resolve()
+    }
+    const controller = new AbortController()
+    const interrupt = () => controller.abort()
+    for (const candidate of signals) {
+      candidate.addEventListener('abort', interrupt, { once: true })
+    }
+    wakers.add(interrupt)
+    const slept = waitOptions.sleep
+      ? Promise.race([
+          waitOptions.sleep(milliseconds),
+          new Promise<void>((resolve) => {
+            controller.signal.addEventListener('abort', () => resolve(), {
+              once: true,
+            })
+          }),
+        ])
+      : defaultSleep(milliseconds, controller.signal)
+    return slept.finally(() => {
+      wakers.delete(interrupt)
+      for (const candidate of signals) {
+        candidate.removeEventListener('abort', interrupt)
+      }
+    })
+  }
+
+  /** Runs the handler while renewing the attempt lease, if the Store can. */
+  async function handleWithHeartbeat(
+    claim: ReactionOutboxClaim<TPayload>,
+    context: ReactionOutboxAttemptContext,
+  ) {
+    const { store } = options
+    if (!store.renewLease) {
+      await options.handle(claim.payload, context)
+      return
+    }
+    let renewal: Promise<void> | undefined
+    const timer = setInterval(() => {
+      if (renewal) return
+      const renew = store.renewLease?.(
+        claim.id,
+        claim.activeAttemptId,
+        new Date(now().getTime() + leaseMs),
+      )
+      if (!renew) return
+      renewal = Effect.runPromise(renew)
+        .then(
+          () => {},
+          async (cause) => {
+            // A lost attempt stops renewing; completion then reports the
+            // loss. Other failures retry on the next beat.
+            const leaseLost = cause instanceof ReactionOutboxLeaseLostError
+            if (leaseLost) clearInterval(timer)
+            await notify({
+              type: 'lease-renewal-failed',
+              claim,
+              leaseLost,
+              error: errorSummary(cause),
+            })
+          },
+        )
+        .finally(() => {
+          renewal = undefined
+        })
+    }, heartbeatMs)
+    try {
+      await options.handle(claim.payload, context)
+    } finally {
+      clearInterval(timer)
+      await renewal
+    }
   }
 
   async function notify(
@@ -134,6 +288,7 @@ export function createReactionOutboxWorker<TPayload>(
       }),
     )
     await notify({ type: 'enqueued', ...result })
+    if (result.created) wake()
     return { jobId: result.job.id, created: result.created }
   }
 
@@ -141,7 +296,7 @@ export function createReactionOutboxWorker<TPayload>(
     const failures: ReactionOutboxFailure[] = []
 
     for (;;) {
-      if (options.signal?.aborted) break
+      if (signal.aborted) break
       const claimTime = now()
       await Effect.runPromise(options.store.requeueExpired(claimTime))
       const claim = await Effect.runPromise(
@@ -155,8 +310,8 @@ export function createReactionOutboxWorker<TPayload>(
         const nextWorkAt = await Effect.runPromise(options.store.nextWorkAt())
         if (!nextWorkAt) break
         const delay = Math.max(0, nextWorkAt.getTime() - now().getTime())
-        if (delay > 0) await sleep(delay)
-        if (options.signal?.aborted) break
+        if (delay > 0) await waitForWork(delay, { sleep: options.sleep })
+        if (signal.aborted) break
         continue
       }
 
@@ -170,7 +325,7 @@ export function createReactionOutboxWorker<TPayload>(
       }
 
       try {
-        await options.handle(claim.payload, context)
+        await handleWithHeartbeat(claim, context)
         const completedAt = now()
         await Effect.runPromise(
           options.store.complete(claim.id, claim.activeAttemptId, completedAt),
@@ -274,11 +429,21 @@ export function createReactionOutboxWorker<TPayload>(
     async retryDeadLetter(jobId, availableAt = now()) {
       await Effect.runPromise(options.store.retryDeadLetter(jobId, availableAt))
       await notify({ type: 'dead-letter-retried', jobId, availableAt })
+      wake()
     },
+    waitForWork,
+    close() {
+      lifecycle.abort()
+    },
+    signal,
   }
 }
 
-/** Runs drain passes until aborted, polling for effects enqueued by other processes. */
+/**
+ * Runs drain passes until aborted. Between passes it waits `pollIntervalMs`
+ * for work enqueued by other processes, or less when the Store reports new
+ * work in this process.
+ */
 export async function runReactionOutboxWorker<TPayload>(
   worker: ReactionOutboxWorker<TPayload>,
   options: ReactionOutboxServiceOptions = {},
@@ -287,18 +452,18 @@ export async function runReactionOutboxWorker<TPayload>(
   if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
     throw new Error('pollIntervalMs must be positive')
   }
-  const sleep =
-    options.sleep ??
-    ((milliseconds: number) => defaultSleep(milliseconds, options.signal))
-
-  while (!options.signal?.aborted) {
+  const stopped = () => options.signal?.aborted || worker.signal.aborted
+  while (!stopped()) {
     try {
       await worker.drain()
     } catch (cause) {
       if (!options.onError) throw cause
       await options.onError(cause)
     }
-    if (options.signal?.aborted) break
-    await sleep(pollIntervalMs)
+    if (stopped()) break
+    await worker.waitForWork(pollIntervalMs, {
+      sleep: options.sleep,
+      signal: options.signal,
+    })
   }
 }
