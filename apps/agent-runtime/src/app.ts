@@ -25,6 +25,16 @@ import {
   recordStepStartedStore,
 } from './features/session/record-step-started/impl.ts'
 import {
+  createRecordStepFailedState,
+  recordStepFailed,
+  recordStepFailedStore,
+} from './features/session/record-step-failed/impl.ts'
+import {
+  createScheduleRetryState,
+  scheduleRetry,
+  scheduleRetryStore,
+} from './features/session/schedule-retry/impl.ts'
+import {
   createRunStep,
   createRunStepState,
   runStepStore,
@@ -96,6 +106,8 @@ export const createSessionAppConfig = (runStepOutbox: RunStepOutboxStore) =>
       executionStatus,
       recordStepStarted,
       recordStepEnded,
+      recordStepFailed,
+      scheduleRetry,
       finishExecution,
       stepStatus,
       runStep: createRunStep(
@@ -132,6 +144,11 @@ export const memorySliceStoreLayer = Layer.mergeAll(
     createRecordStepStartedState,
   ),
   createMemorySliceStoreLayer(recordStepEndedStore, createRecordStepEndedState),
+  createMemorySliceStoreLayer(
+    recordStepFailedStore,
+    createRecordStepFailedState,
+  ),
+  createMemorySliceStoreLayer(scheduleRetryStore, createScheduleRetryState),
   createMemorySliceStoreLayer(finishExecutionStore, createFinishExecutionState),
   createMemorySliceStoreLayer(stepStatusStore, createStepStatusState),
   createMemorySliceStoreLayer(runStepStore, createRunStepState),

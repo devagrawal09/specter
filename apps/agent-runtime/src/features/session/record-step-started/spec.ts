@@ -30,6 +30,17 @@ const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
+const boom = { type: 'transport', message: 'connection reset' }
+const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
+const retryScheduled = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-retry-scheduled', {
+    sessionID,
+    assistantMessageID,
+    attempt: 1,
+    at: 1000,
+    error: boom,
+  })
 const step = (assistantMessageID: string, sessionID = 'ses_1') => ({
   sessionID,
   assistantMessageID,
@@ -123,6 +134,47 @@ export const recordStepStartedSpec = createCommandSlice('recordStepStarted')
       when: step('msg_1'),
       expect: [],
       reject: { reason: 'Execution not active' },
+    },
+    {
+      description:
+        'A scheduled retry starts another physical attempt of the same step: the assistant message ID is reused.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1'),
+      ],
+      when: step('msg_1'),
+      expect: [stepStarted('msg_1')],
+    },
+    {
+      description:
+        'A failed step without a scheduled retry cannot start again: the id stays taken.',
+      given: [started(), stepStarted('msg_1'), stepFailed('msg_1')],
+      when: step('msg_1'),
+      expect: [],
+      reject: { reason: 'Step already started' },
+    },
+    {
+      description:
+        'A failed attempt is over: the next step can start without waiting for the failed one to end.',
+      given: [started(), stepStarted('msg_1'), stepFailed('msg_1')],
+      when: step('msg_2'),
+      expect: [stepStarted('msg_2')],
+    },
+    {
+      description:
+        'A scheduled retry is spent by the attempt it starts: the same step cannot start a third time without another retry.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1'),
+        stepStarted('msg_1'),
+      ],
+      when: step('msg_1'),
+      expect: [],
+      reject: { reason: 'Step already started' },
     },
   )
 

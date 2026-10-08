@@ -14,7 +14,13 @@ import specification from './spec.json' with { type: 'json' }
 export type RunStepState = {
   sessions: Record<
     string,
-    { active: boolean; inFlight: string | null; stepsStarted: number }
+    {
+      active: boolean
+      inFlight: string | null
+      stepsStarted: number
+      awaitingRetry: boolean
+      retrying: boolean
+    }
   >
 }
 
@@ -30,6 +36,8 @@ const executionFailed = sessionEvent('session-execution-failed')
 const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
+const stepFailed = sessionEvent('session-step-failed')
+const retryScheduled = sessionEvent('session-retry-scheduled')
 
 const runStepRequest = Schema.Struct({
   type: Schema.Literal('runStep'),
@@ -42,12 +50,16 @@ const entry = (state: RunStepState, sessionID: string) =>
     active: false,
     inFlight: null,
     stepsStarted: 0,
+    awaitingRetry: false,
+    retrying: false,
   })
 
 const settle = (state: RunStepState, sessionID: string) => {
   const session = entry(state, sessionID)
   session.active = false
   session.inFlight = null
+  session.awaitingRetry = false
+  session.retrying = false
 }
 
 // The Plugin is injected: it reads Query Slices, and Slices may not import
@@ -74,12 +86,28 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
       const { sessionID, assistantMessageID } = event.payload
       const session = entry(state, sessionID)
       session.inFlight = assistantMessageID
-      session.stepsStarted += 1
+      // The attempt after a scheduled retry re-runs the same step.
+      if (!session.retrying) session.stepsStarted += 1
+      session.awaitingRetry = false
+      session.retrying = false
     })
     .apply(stepEnded, async (event, state) => {
       const { sessionID, assistantMessageID } = event.payload
       const session = entry(state, sessionID)
       if (session.inFlight === assistantMessageID) session.inFlight = null
+    })
+    // A failed step needs nothing until a retry is scheduled; without one,
+    // only the execution failing follows.
+    .apply(stepFailed, async (event, state) => {
+      const { sessionID, assistantMessageID } = event.payload
+      const session = entry(state, sessionID)
+      if (session.inFlight === assistantMessageID) session.inFlight = null
+      session.awaitingRetry = true
+    })
+    .apply(retryScheduled, async (event, state) => {
+      const session = entry(state, event.payload.sessionID)
+      session.awaitingRetry = false
+      session.retrying = true
     })
     .handle(async (state) => {
       // One output per commit: request the lowest Session needing a step; the
@@ -88,14 +116,19 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
         .sort()
         .find((id) => {
           const session = state.sessions[id]
-          return session?.active && !session.inFlight
+          return session?.active && !session.inFlight && !session.awaitingRetry
         })
       if (sessionID === undefined) return
+      const session = state.sessions[sessionID]
+      if (!session) return
       return {
         type: 'runStep' as const,
         payload: {
           sessionID,
-          ordinal: state.sessions[sessionID]?.stepsStarted ?? 0,
+          // A retried step is the same step: its ordinal is the one just run.
+          ordinal: session.retrying
+            ? session.stepsStarted - 1
+            : session.stepsStarted,
         },
       }
     })

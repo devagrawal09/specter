@@ -39,7 +39,11 @@ export const runStepPlugin: ReactionPlugin<
         // queued behind the job that already ran this boundary.
         const status = yield* query(stepStatus, { sessionID })
         if (!status.active || status.stepInFlight) return
-        if (status.stepsStarted !== ordinal) return
+        // A request for a retry repeats the ordinal of the step that failed.
+        const expected = status.lastFailure
+          ? status.stepsStarted - 1
+          : status.stepsStarted
+        if (expected !== ordinal) return
 
         // Delivery law: steers (and, only at idle, queued items) enter history
         // at the safe-step boundary, before the next step starts.
@@ -87,6 +91,54 @@ export const runStepPlugin: ReactionPlugin<
             type: 'session.text.delta' as const,
             text: outcome.text,
           })
+
+        if (outcome.finish === 'error') {
+          const failed = yield* unlessRejected(
+            command(
+              {
+                type: 'recordStepFailed',
+                payload: {
+                  sessionID,
+                  assistantMessageID,
+                  error: outcome.error,
+                },
+              },
+              { idempotencyKey: `${delivery.deliveryId}:failed` },
+            ),
+          )
+          if (!failed) return
+          // Retry is narrow: only a retryable failure, within the Command's
+          // budget. The next attempt is requested by the Reaction from the
+          // scheduled-retry fact, not by this job.
+          const retried =
+            outcome.retryable &&
+            (yield* unlessRejected(
+              command(
+                {
+                  type: 'scheduleRetry',
+                  payload: {
+                    sessionID,
+                    assistantMessageID,
+                    // Backoff is recorded, not waited on: the scripted model
+                    // has nothing to wait for.
+                    at: Date.now(),
+                  },
+                },
+                { idempotencyKey: `${delivery.deliveryId}:retry` },
+              ),
+            ))
+          if (retried) return
+          yield* unlessRejected(
+            command(
+              {
+                type: 'finishExecution',
+                payload: { sessionID, error: outcome.error },
+              },
+              { idempotencyKey: `${delivery.deliveryId}:finished` },
+            ),
+          )
+          return
+        }
 
         const ended = yield* unlessRejected(
           command(

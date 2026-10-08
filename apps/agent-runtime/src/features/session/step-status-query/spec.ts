@@ -2,6 +2,7 @@ import { createQuerySlice, event } from '@specter-ts/spec'
 
 // Folded from execution and step events. The step plugin reads it at the safe
 // step boundary to decide whether a (possibly stale) step request still applies.
+const boom = { type: 'transport', message: 'connection reset' }
 const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
@@ -21,6 +22,16 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     agent: 'build',
     model,
   })
+const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
+const retryScheduled = (assistantMessageID: string, attempt: number) =>
+  event('session-retry-scheduled', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    attempt,
+    at: 1000,
+    error: boom,
+  })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
   event('session-step-ended', {
     sessionID,
@@ -32,39 +43,64 @@ const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
 
 export const stepStatusSpec = createQuerySlice('stepStatus')
   .description(
-    'Reports whether a Session has an active execution, a step in flight, and how many steps it has started.',
+    'Reports whether a Session has an active execution, a step in flight, how many steps it has started, and the physical attempts and last failure of its latest step.',
   )
   .scenarios(
     {
       description: 'A Session with no events has nothing active.',
       given: [],
       when: { sessionID: 'ses_1' },
-      expect: { active: false, stepInFlight: false, stepsStarted: 0 },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 0,
+        attempts: 0,
+      },
     },
     {
       description: 'A started execution with no step is active, between steps.',
       given: [started()],
       when: { sessionID: 'ses_1' },
-      expect: { active: true, stepInFlight: false, stepsStarted: 0 },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 0,
+        attempts: 0,
+      },
     },
     {
       description: 'A started, unended step is in flight.',
       given: [started(), stepStarted('msg_1')],
       when: { sessionID: 'ses_1' },
-      expect: { active: true, stepInFlight: true, stepsStarted: 1 },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        stepsStarted: 1,
+        attempts: 1,
+      },
     },
     {
       description: 'An ended step is no longer in flight but stays counted.',
       given: [started(), stepStarted('msg_1'), stepEnded('msg_1')],
       when: { sessionID: 'ses_1' },
-      expect: { active: true, stepInFlight: false, stepsStarted: 1 },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
     },
     {
       description:
         'Interruption clears the in-flight step and the active flag; the count stays.',
       given: [started(), stepStarted('msg_1'), interrupted()],
       when: { sessionID: 'ses_1' },
-      expect: { active: false, stepInFlight: false, stepsStarted: 1 },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
     },
     {
       description: 'The step count spans executions of one Session.',
@@ -76,7 +112,12 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         started(),
       ],
       when: { sessionID: 'ses_1' },
-      expect: { active: true, stepInFlight: false, stepsStarted: 1 },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
     },
     {
       description: 'Sessions are independent.',
@@ -86,14 +127,128 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         stepStarted('msg_1', 'ses_2'),
       ],
       when: { sessionID: 'ses_1' },
-      expect: { active: true, stepInFlight: false, stepsStarted: 0 },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 0,
+        attempts: 0,
+      },
     },
     {
       description:
         'A failed execution is no longer active; the step count stays.',
       given: [started(), stepStarted('msg_1'), stepEnded('msg_1'), failed()],
       when: { sessionID: 'ses_1' },
-      expect: { active: false, stepInFlight: false, stepsStarted: 1 },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
+    },
+    {
+      description:
+        'A failed attempt is no longer in flight and exposes its failure; the attempt still counts.',
+      given: [started(), stepStarted('msg_1'), stepFailed('msg_1')],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+        lastFailure: boom,
+      },
+    },
+    {
+      description:
+        'A scheduled retry keeps the failure visible until the next attempt starts.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1', 1),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+        lastFailure: boom,
+      },
+    },
+    {
+      description:
+        'The retried attempt is the same step with a second physical attempt: the step count does not grow and the failure clears.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1', 1),
+        stepStarted('msg_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        stepsStarted: 1,
+        attempts: 2,
+      },
+    },
+    {
+      description:
+        'A retried step that then ends reports every attempt it took.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1', 1),
+        stepStarted('msg_1'),
+        stepEnded('msg_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 2,
+      },
+    },
+    {
+      description: 'The next step starts counting its attempts from one.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        retryScheduled('msg_1', 1),
+        stepStarted('msg_1'),
+        stepEnded('msg_1'),
+        stepStarted('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: true,
+        stepInFlight: true,
+        stepsStarted: 2,
+        attempts: 1,
+      },
+    },
+    {
+      description:
+        'A terminal execution event clears the projected failure; the counts stay.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1'),
+        event('session-execution-failed', { sessionID: 'ses_1', error: boom }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
     },
   )
 

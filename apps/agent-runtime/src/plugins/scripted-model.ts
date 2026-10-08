@@ -4,11 +4,19 @@ import { Context, Effect, Layer } from 'effect'
 // means the execution is done after this step; 'tool-calls' means another step
 // follows. No LLM, no @ocpp/ai.
 export type ScriptedOutcome = {
-  finish: 'tool-calls' | 'stop'
   text?: string
   // Test hook: the step stays in flight until this settles.
   gate?: Promise<void>
-}
+} & (
+  | { finish: 'tool-calls' | 'stop' }
+  // A failed physical attempt. Whether it is worth retrying is the model
+  // adapter's classification (session.md: Retry Is Narrow And Observable).
+  | {
+      finish: 'error'
+      retryable: boolean
+      error: { type: string; message: string }
+    }
+)
 
 export class ScriptedModel extends Context.Service<
   ScriptedModel,

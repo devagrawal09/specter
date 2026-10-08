@@ -14,7 +14,7 @@ import specification from './spec.json' with { type: 'json' }
 // and finish-execution on purpose.
 export type RecordStepStartedState = {
   active: Record<string, true>
-  steps: Record<string, { sessionID: string }>
+  steps: Record<string, { sessionID: string; retryScheduled: boolean }>
   inFlight: Record<string, string>
 }
 
@@ -34,6 +34,8 @@ const executionFailed = sessionEvent('session-execution-failed')
 const executionInterrupted = sessionEvent('session-execution-interrupted')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
+const stepFailed = sessionEvent('session-step-failed')
+const retryScheduled = sessionEvent('session-retry-scheduled')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -69,7 +71,7 @@ export const recordStepStarted = implementCommand(specification)
   })
   .apply(stepStarted, async (event, state) => {
     const { sessionID, assistantMessageID } = event.payload
-    state.steps[assistantMessageID] = { sessionID }
+    state.steps[assistantMessageID] = { sessionID, retryScheduled: false }
     state.inFlight[sessionID] = assistantMessageID
   })
   .apply(stepEnded, async (event, state) => {
@@ -77,10 +79,22 @@ export const recordStepStarted = implementCommand(specification)
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]
   })
+  // A failed attempt is over; the step id stays taken until a retry is scheduled.
+  .apply(stepFailed, async (event, state) => {
+    const { sessionID, assistantMessageID } = event.payload
+    if (state.inFlight[sessionID] === assistantMessageID)
+      delete state.inFlight[sessionID]
+  })
+  .apply(retryScheduled, async (event, state) => {
+    const step = state.steps[event.payload.assistantMessageID]
+    if (step) step.retryScheduled = true
+  })
   .handle(async (command, state) => {
     if (!state.active[command.sessionID])
       throw new Error('Execution not active')
-    if (state.steps[command.assistantMessageID])
+    // A scheduled retry is the only way to start the same step again.
+    const existing = state.steps[command.assistantMessageID]
+    if (existing && !existing.retryScheduled)
       throw new Error('Step already started')
     if (state.inFlight[command.sessionID])
       throw new Error('Step already in flight')

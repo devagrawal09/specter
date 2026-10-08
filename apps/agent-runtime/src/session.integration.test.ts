@@ -246,4 +246,109 @@ describe('step loop with a scripted model', () => {
     })
     expect(pending.item).toMatchObject({ inboxID: 'msg_c' })
   })
+
+  describe('physical attempts and retry', () => {
+    const transport = { type: 'transport', message: 'connection reset' }
+    const retryable = (text?: string) => ({
+      finish: 'error' as const,
+      retryable: true,
+      error: transport,
+      ...(text === undefined ? {} : { text }),
+    })
+    const payloads = (t: Awaited<ReturnType<typeof boot>>, type: string) =>
+      t.log
+        .inspect()
+        .filter((event) => event.type === type)
+        .map((event) => event.payload as Record<string, unknown>)
+
+    it('retries a retryable failure as the same step and continues to stop', async () => {
+      const t = await start()
+      t.model.script('ses_1', [retryable(), { finish: 'stop', text: 'done' }])
+
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+      await t.outboxSettled()
+
+      expect(t.types()).toEqual([
+        'session-inbox-enqueued',
+        'session-execution-started',
+        'session-inbox-delivered',
+        'session-step-started',
+        'session-step-failed',
+        'session-retry-scheduled',
+        'session-step-started',
+        'session-step-ended',
+        'session-execution-succeeded',
+      ])
+      const retries = payloads(t, 'session-retry-scheduled')
+      expect(retries).toHaveLength(1)
+      expect(retries[0]).toMatchObject({ attempt: 1, error: transport })
+      const starts = payloads(t, 'session-step-started')
+      expect(starts).toHaveLength(2)
+      expect(starts[1]?.assistantMessageID).toBe(starts[0]?.assistantMessageID)
+      expect(retries[0]?.assistantMessageID).toBe(starts[0]?.assistantMessageID)
+      expect(
+        await t.app.query({
+          type: 'stepStatus',
+          payload: { sessionID: 'ses_1' },
+        }),
+      ).toEqual({
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 2,
+      })
+    })
+
+    it('fails the execution on a non-retryable failure, with no retry event', async () => {
+      const t = await start()
+      const error = { type: 'auth', message: 'bad key' }
+      t.model.script('ses_1', [{ finish: 'error', retryable: false, error }])
+
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-failed'))
+      await t.outboxSettled()
+
+      expect(t.types()).toEqual([
+        'session-inbox-enqueued',
+        'session-execution-started',
+        'session-inbox-delivered',
+        'session-step-started',
+        'session-step-failed',
+        'session-execution-failed',
+      ])
+      expect(payloads(t, 'session-execution-failed')[0]).toMatchObject({
+        error,
+      })
+      expect(
+        await t.app.query({
+          type: 'executionStatus',
+          payload: { sessionID: 'ses_1' },
+        }),
+      ).toEqual({ status: 'settled', executions: 1, lastOutcome: 'failed' })
+    })
+
+    it('fails the execution once retryable failures exceed the limit', async () => {
+      const t = await start()
+      const limit = 3
+      // The initial attempt plus <limit> retries all fail.
+      t.model.script(
+        'ses_1',
+        Array.from({ length: limit + 1 }, () => retryable()),
+      )
+
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-failed'))
+      await t.outboxSettled()
+
+      const retries = payloads(t, 'session-retry-scheduled')
+      expect(retries.map((retry) => retry.attempt)).toEqual([1, 2, 3])
+      expect(payloads(t, 'session-step-started')).toHaveLength(limit + 1)
+      expect(payloads(t, 'session-step-failed')).toHaveLength(limit + 1)
+      expect(t.types().at(-1)).toBe('session-execution-failed')
+      expect(payloads(t, 'session-execution-failed')[0]).toMatchObject({
+        error: transport,
+      })
+    })
+  })
 })

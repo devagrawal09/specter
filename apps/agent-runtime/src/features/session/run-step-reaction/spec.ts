@@ -32,6 +32,20 @@ const stepEnded = (sessionID: string, assistantMessageID: string) =>
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
+const stepFailed = (sessionID: string, assistantMessageID: string) =>
+  event('session-step-failed', {
+    sessionID,
+    assistantMessageID,
+    error: { type: 'transport', message: 'connection reset' },
+  })
+const retryScheduled = (sessionID: string, assistantMessageID: string) =>
+  event('session-retry-scheduled', {
+    sessionID,
+    assistantMessageID,
+    attempt: 1,
+    at: 1000,
+    error: { type: 'transport', message: 'connection reset' },
+  })
 const run = (sessionID: string, ordinal: number) => ({
   type: 'runStep',
   payload: { sessionID, ordinal },
@@ -107,6 +121,64 @@ export const runStepSpec = createReactionSlice('runStep')
         stepStarted('ses_1', 'msg_1'),
       ],
       expect: [run('ses_2', 0)],
+    },
+    {
+      description:
+        'A failed step with no retry scheduled needs nothing: it still holds the boundary until the execution fails.',
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepFailed('ses_1', 'msg_1'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'A failed step whose retry was scheduled needs another attempt of the same step: the ordinal repeats.',
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepFailed('ses_1', 'msg_1'),
+        retryScheduled('ses_1', 'msg_1'),
+      ],
+      expect: [run('ses_1', 0)],
+    },
+    {
+      description:
+        "A retry of a later step repeats that step's ordinal, not the next one.",
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepEnded('ses_1', 'msg_1'),
+        stepStarted('ses_1', 'msg_2'),
+        stepFailed('ses_1', 'msg_2'),
+        retryScheduled('ses_1', 'msg_2'),
+      ],
+      expect: [run('ses_1', 1)],
+    },
+    {
+      description:
+        'A retried attempt in flight needs nothing, and ending it moves on to the next ordinal.',
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepFailed('ses_1', 'msg_1'),
+        retryScheduled('ses_1', 'msg_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepEnded('ses_1', 'msg_1'),
+      ],
+      expect: [run('ses_1', 1)],
+    },
+    {
+      description:
+        'A failed step whose execution then failed (retries exhausted) is settled: nothing to run.',
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepFailed('ses_1', 'msg_1'),
+        failed('ses_1'),
+      ],
+      expect: [],
     },
   )
 
