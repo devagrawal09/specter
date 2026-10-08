@@ -101,7 +101,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - 165k LOC of `app`/`ui` are untouched by design; M4 proves the runtime boundary, not a UI rewrite.
 - M4 lives on an OC++ branch that must track a fast-moving `v2`; rebase per week, keep the mount surface (`Session` facade + bridge) small so rebases stay mechanical.
 - Double-write window in the bridge: Specter commits, then Bus publishes. A crash between the two must be recoverable by replaying from Specter's log into Bus on startup (idempotent via `reserveSequence`). Scenario-test it in M3's crash harness.
-- `effect` version skew between OC++ (`4.0.0-rc.112`) and Specter (`4.0.1`): check at M2 before importing `@ocpp/ai`.
+- `effect` version skew between OC++ (`4.0.0-rc.112`) and Specter (`4.0.1`): resolved for `@ocpp/schema` by the OC++ branch `schema-effect-compat` (dual-compatible). Importing `@ocpp/ai`/`@ocpp/codemode` at M2 and embedding at M4 require OC++ on stable effect — file "upgrade to effect 4.0.2" in OC++ as an M4 prerequisite (it is a real migration: `effect/unstable/*` paths, `Socket` redesign, CLI renames).
 
 ## First tasks (M1, week 1)
 
