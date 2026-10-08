@@ -1,0 +1,104 @@
+# Plan: OC++ Session Execution on Specter (`apps/agent-runtime`)
+
+Date: 2026-10-08. Status: proposal. Decision owner: dev@codemod.com.
+
+## Goal
+
+Rebuild OC++'s Session Execution aggregate (inbox -> step -> steer/interrupt -> wake -> recovery) as a Specter application, spec-first, until OC++'s existing web app (`packages/app`) runs against it. This dogfoods Specter on a hard real domain, produces the first executable Slice Specifications for OC++ behavior, and decides whether the rest of OC++ core should move to Specter.
+
+It is a new app in the Specter repo, not a change to OC++. OC++ (`~/opencode`, branch `v2`) is the behavioral oracle and the source of reusable packages.
+
+## Findings that shape the plan
+
+- OC++ core already hand-rolls event sourcing: `Bus` (908 LOC) is a per-aggregate Event Log (`EventTable` + `EventSequenceTable`, versioned event types); `session/projector.ts` (872 LOC) folds durable facts into `session_inbox` / `session_external` rows; `Session.prompt` publishes one fact whose projection inserts one row, then wakes execution. This is Specter's Command -> Event -> Slice -> Reaction loop, bespoke.
+- `packages/schema` defines ~71 named events, ~45 durable `session.*` events with typed payloads (`inbox.enqueued{item}`, `step.started{assistantMessageID, agent, model, snapshot}`, `step.ended{finish, cost, tokens, files}`, `execution.interrupted`, `forked{parentID, boundary}`, ...). This is the Event Definition vocabulary; reuse the names and payload schemas verbatim.
+- The behavior to port is small: `session/inbox.ts` (543), `session/execution.ts` (232), `session/run-coordinator.ts`, `session/runner/*` (step.ts 291) — about 2.5k LOC — and it is already specified in prose in `specs/v2/session.md` (nine rule groups).
+- OC++ is Effect 4 (rc.112); Specter is Effect 4.0.1 after the Oct 6 merge. `@ocpp/ai`, `@ocpp/codemode`, `@ocpp/schema` are Effect services and can be consumed as plugin dependencies without modification.
+- OC++ protocol: 138 `HttpApiEndpoint`s in 30 groups; the `session` group has 47 and `packages/app` reaches the runtime almost entirely through `sdk.api.session.*` and `sdk.event.on`. Serving `session.*` + the event feed is sufficient to drive the UI; everything else can be proxied to a stock OC++ server.
+- Specter already has what the hard part needs: `withReactionOutbox` (leased, restart-resumable, retried, dead-lettered worker) whose plugin receives a typed `{ command, query }` context (#44, #47). A long-lived agent loop becomes one durable step job per safe-step boundary.
+
+## Concept mapping
+
+| OC++ (`specs/v2/session.md`) | Specter |
+|---|---|
+| Durable `session.*` events in `schema` | Event Definitions (same names, same payloads) |
+| `Bus` + `EventTable` keyed by `aggregate_id` | Event Log (sqlite in dev/test, jsonl or postgres later); aggregate = session |
+| `projector.ts`, `store.ts`, `session_inbox` rows | Slice State + Query Slices |
+| `Session.prompt`, `inbox.steer/queue/cancel`, `interrupt`, `fork`, `switchAgent/Model` | Command Slices |
+| Steer-vs-queue delivery order, control-item boundaries | Query Slice `nextDeliverable` (pure fold over events) |
+| `SessionExecution.wake`, `SessionRunCoordinator` (coalesced wakes, per-session serialization) | Reaction on `session.inbox.delivered` / `session.step.ended`; Specter's per-slice scheduler gives coalescing and serialization |
+| Write-ahead claim surviving crash; orphan reconciliation at drain start | Reaction outbox lease is the claim; outbox resume on restart is reconciliation |
+| One Step, several Physical Attempts; `session.retry.scheduled` | Outbox retries; the step plugin emits `retry.scheduled` via `command` |
+| Instructions as value deltas; compaction rebuilds history | Query Slices folding `instructions.updated` / `compaction.*` events |
+| `session.reasoning.delta`, `codemode.progress` (ephemeral) + SSE feed | Query Subscription (`app.subscribe`); transport stays project-owned |
+| `session.forked{boundary}`, `revert.stage/clear/commit` | **Gap.** Specter has no fork/branch-at-sequence primitive. See Specter work below. |
+
+## Architecture of `apps/agent-runtime`
+
+```
+apps/agent-runtime/
+  src/features/session/
+    create-session/            spec.ts impl.ts
+    enqueue-input/             (prompt, synthetic, steer, queue; idempotent item IDs)
+    cancel-inbox-item/
+    change-delivery/
+    deliver-next-input/        (reaction: picks per steer/queue law, emits inbox.delivered)
+    interrupt-execution/
+    select-agent/ select-model/ rename/
+    next-deliverable-query/    (pure delivery-order projection; most scenarios live here)
+    inbox-query/ history-query/ active-query/ context-query/
+    run-step-reaction/         (outboxed plugin: one LLM step per job, checks interrupt/steer at boundary)
+    reconcile-orphans-reaction/
+    fork-session/              (M3; needs Specter fork primitive)
+  src/plugins/
+    scripted-model.ts          (M1: deterministic fake provider)
+    ocpp-ai-model.ts           (M2: @ocpp/ai)
+    ocpp-codemode.ts           (M2: @ocpp/codemode execute)
+  src/transport/
+    ocpp-protocol.server.ts    (M4: serves OC++ session.* HttpApi + event feed; proxies the rest)
+```
+
+Rules: one fact, one owner. The Event Log owns what happened; slice cursors own what has been processed; the outbox lease owns who is running a step. No separate claim table, no separate wake queue.
+
+## Milestones
+
+### M1 - Semantics with a scripted model (target: 2 weeks)
+- Port `specs/v2/session.md` rule groups 1, 2, 3 (admission, delivery order, process-local execution) into Given/When/Then scenarios. Every rule sentence becomes at least one scenario; rejections (`LifecycleConflict`, unknown session, idle interrupt no-op) are exact-reason scenarios.
+- Implement slices; `run-step-reaction` driven by a scripted model that returns a fixed sequence of text/tool-call/finish outcomes.
+- Done when `pnpm test` passes all scenarios and the three laws below hold in scenario form: (a) steers deliver in enqueue order at the next boundary and never cross a control item; (b) repeated wakes coalesce; (c) interrupt never deletes pending input.
+
+### M2 - Real model and Code Mode (target: +2 weeks)
+- Swap in `@ocpp/ai` provider layer and `@ocpp/codemode` as the step plugin's tools; port rule groups 4, 5 (attempts/retry, tool-call durability: each local tool call durable before side effects, outcomes serialized).
+- Done when a real provider completes a multi-step session with Code Mode executions, and the `session.tool.*` / `session.codemode.*` events match OC++'s payloads byte-for-byte on a recorded fixture (use `@ocpp/http-recorder`).
+
+### M3 - Crash, restart, fork (target: +2 weeks)
+- Kill the process mid-step; on restart the outbox resumes the step and orphan reconciliation fails tool calls still projected as running (rule group 9).
+- Implement `session.forked{parentID, boundary}` and revert stage/clear/commit (rule group 9).
+- Done when the crash scenario is a scenario-tested, repeatable test, and fork/revert pass their scenarios.
+
+### M4 - Drive it from OC++'s UI (target: +3 weeks)
+- `ocpp-protocol.server.ts` implements the 47 `session.*` endpoints and the event feed (`event-stream-architecture.md` delivery law) on top of `app.command/query/subscribe`; all other groups proxy to a stock OC++ server on another port.
+- Done when `packages/app` runs a full session (prompt, stream, tool calls, steer, interrupt, fork) against the Specter runtime with no app changes, and the generated client's contract tests pass against the adapter.
+
+## Specter work this will force (own it as Specter features, not app workarounds)
+
+1. **Fork / branch-at-sequence** in the Event Log and Slice Store: a new session whose history is the parent's events up to `boundary`. Likely a core primitive plus adapter support in sqlite/jsonl.
+2. **Step-boundary queries from inside an outboxed plugin**: confirm `{ query }` inside `withReactionOutbox` reads committed state at the boundary without racing the next delivery. Add a scenario harness for outboxed plugins if `@specter-ts/core/testing` lacks one.
+3. **Orphan reconciliation hook**: a documented way to run a Reaction once at process start over 'jobs leased by a dead process'. May already fall out of outbox resume; verify, then document in `docs/architecture/plugins.md`.
+4. **Event payload schemas from Effect Schema**: OC++ events are `effect/Schema`; Specter specs use Zod. Decide one (AGENTS.md says do not share Zod schemas casually). Proposal: author Specter event definitions from `@ocpp/schema` via a small adapter so names and payloads cannot drift.
+5. **Ephemeral events**: OC++ distinguishes durable from ephemeral (`reasoning.delta`). Specter subscriptions are over query results, not raw events. Decide whether deltas are (a) query results of a streaming slice, or (b) a transport-only side channel. Proposal: (b) for M1-M3, revisit in M4.
+
+## Risks
+
+- OC++ `v2` moves daily; pin a commit (current: `e23e7cd2`) for the oracle and fixtures, re-pin per milestone.
+- Specter is pre-1.0 with 'no backward compat' policy; the app will break on Specter changes. Acceptable: this app is the reason to change Specter.
+- 165k LOC of `app`/`ui` are untouched by design; M4 proves the runtime boundary, not a UI rewrite.
+- `effect` version skew between OC++ (`4.0.0-rc.112`) and Specter (`4.0.1`): check at M2 before importing `@ocpp/ai`.
+
+## First tasks (M1, week 1)
+
+1. `pnpm create specter` -> `apps/agent-runtime`; register in root scripts; OpenSpec root for the app.
+2. Copy the ~45 durable `session.*` event names and payload shapes from `~/opencode/packages/schema/src/session-event.ts` into `src/events.ts` (hand-ported first; adapter in Specter work item 4 later).
+3. Write `next-deliverable-query/spec.ts` scenarios straight from the delivery paragraphs of `session.md` before any impl.
+4. Write `enqueue-input/spec.ts` with the idempotency and type-mismatch rejections.
+5. Implement, run, iterate; record which Specter rough edges appear in `docs/notes/agent-runtime-findings.md`.
