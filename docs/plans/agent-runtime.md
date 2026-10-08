@@ -55,7 +55,7 @@ apps/agent-runtime/
     ocpp-ai-model.ts           (M2: @ocpp/ai)
     ocpp-codemode.ts           (M2: @ocpp/codemode execute)
   src/transport/
-    ocpp-protocol.server.ts    (M4: serves OC++ session.* HttpApi + event feed; proxies the rest)
+    specter-http.server.ts     (dev/test only; M4 has no transport of its own - OC++ hosts the app in-process)
 ```
 
 Rules: one fact, one owner. The Event Log owns what happened; slice cursors own what has been processed; the outbox lease owns who is running a step. No separate claim table, no separate wake queue.
@@ -76,9 +76,13 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - Implement `session.forked{parentID, boundary}` and revert stage/clear/commit (rule group 9).
 - Done when the crash scenario is a scenario-tested, repeatable test, and fork/revert pass their scenarios.
 
-### M4 - Drive it from OC++'s UI (target: +3 weeks)
-- `ocpp-protocol.server.ts` implements the 47 `session.*` endpoints and the event feed (`event-stream-architecture.md` delivery law) on top of `app.command/query/subscribe`; all other groups proxy to a stock OC++ server on another port.
-- Done when `packages/app` runs a full session (prompt, stream, tool calls, steer, interrupt, fork) against the Specter runtime with no app changes, and the generated client's contract tests pass against the adapter.
+### M4 - Embed the Specter runtime inside OC++ (target: +3 weeks)
+- Decided 2026-10-08: OC++ keeps its server, protocol, and UI. The Specter app becomes the implementation behind OC++'s unchanged `session.*` handlers. Work happens in the OC++ repo on a branch off `v2`.
+- Mount point: OC++'s ID-bound `Session` facade (`core/src/session/session.ts`, 523 LOC). Its operations (`prompt`, inbox `steer/queue/cancel`, `interrupt`, `fork`, `switchAgent/Model`, `rename`, ...) call the Specter app's `command`/`query`; the 47 HTTP handlers and `packages/app` do not change.
+- One event stream: a Specter -> `Bus` bridge forwards session events from `app.subscribe` into `Bus.publish`, using Specter's per-session sequence as the Bus `seq` via the existing `Bus.reserveSequence(aggregateID, seq)` (`seq = max(existing, seq)`) so ordering stays monotonic. SSE feed, projector consumers, and recovery readers are untouched.
+- One database: Specter's sqlite adapter (`@specter-ts/sqlite-node`) uses OC++'s existing SQLite file with its own tables.
+- Dependency law holds: `@ocpp/core` -> `@specter-ts/core` + the runtime app; the runtime app imports only `@ocpp/schema`, never `@ocpp/core`.
+- Done when `packages/app` runs a full session (prompt, stream, tool calls, steer, interrupt, fork) with no app or protocol changes, and `session/inbox.ts`, `execution.ts`, `run-coordinator.ts`, `runner/*`, and the session parts of `projector.ts` (~2.5k LOC) are deleted from OC++ on the branch.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
@@ -93,6 +97,8 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - OC++ `v2` moves daily; pin a commit (current: `e23e7cd2`) for the oracle and fixtures, re-pin per milestone.
 - Specter is pre-1.0 with 'no backward compat' policy; the app will break on Specter changes. Acceptable: this app is the reason to change Specter.
 - 165k LOC of `app`/`ui` are untouched by design; M4 proves the runtime boundary, not a UI rewrite.
+- M4 lives on an OC++ branch that must track a fast-moving `v2`; rebase per week, keep the mount surface (`Session` facade + bridge) small so rebases stay mechanical.
+- Double-write window in the bridge: Specter commits, then Bus publishes. A crash between the two must be recoverable by replaying from Specter's log into Bus on startup (idempotent via `reserveSequence`). Scenario-test it in M3's crash harness.
 - `effect` version skew between OC++ (`4.0.0-rc.112`) and Specter (`4.0.1`): check at M2 before importing `@ocpp/ai`.
 
 ## First tasks (M1, week 1)
