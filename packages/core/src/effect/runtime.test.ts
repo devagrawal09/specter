@@ -63,7 +63,10 @@ const numberSchema: StandardSchemaV1<number> = {
 }
 
 describe('Effect-native runtime', () => {
-  it('catches up only Slices whose Store binding is eager', async () => {
+  it.each([
+    ['eager', 1],
+    ['all', 3],
+  ] as const)('catches up at startup with catchUp %s: %i Slice transactions', async (catchUp, expected) => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
     let transactions = 0
     const command = createCommandSlice('recordValue')
@@ -107,10 +110,13 @@ describe('Effect-native runtime', () => {
         state.values.push(applied.payload)
       })
       .handle(async (_input, state) => state.values)
-    const layer = createSpecterAppLayer({
-      events: [valueRecorded],
-      slices: { recordValue: command, eagerValues, lazyValues },
-    } as const).pipe(
+    const layer = createSpecterAppLayer(
+      {
+        events: [valueRecorded],
+        slices: { recordValue: command, eagerValues, lazyValues },
+      } as const,
+      { catchUp },
+    ).pipe(
       Layer.provideMerge(
         Layer.mergeAll(
           storeLayer({
@@ -126,7 +132,9 @@ describe('Effect-native runtime', () => {
     await Effect.runPromise(
       Effect.scoped(Effect.provide(Effect.service(SpecterRuntime), layer)),
     )
-    expect(transactions).toBe(1)
+    // `eager` catches up the eager Query only; `all` every Command and Query
+    // Slice: the lazy Query and the Command as well.
+    expect(transactions).toBe(expected)
   })
 
   it('fails startup for malformed dynamic Store service', async () => {

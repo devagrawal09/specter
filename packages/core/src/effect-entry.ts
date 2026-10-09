@@ -11,6 +11,7 @@ export type {
   SpecterEffectError,
   SpecterPluginRequirements,
   SpecterRuntimeService,
+  SpecterRuntimeOptions,
   SpecterRuntimeRequirements,
   SpecterStoreRequirements,
 } from './effect/runtime'

@@ -37,6 +37,10 @@ export type EmbeddedSessionRuntimeOptions = {
     readonly runStep?: RunStepOutboxStore
     readonly drive?: DriveExecutionOutboxStore
   }
+  // Catch every Slice up to the log at boot, instead of each Command and
+  // Query Slice when it is first used. Slices then hold the log's state as soon as the runtime is
+  // up, which a host that saves them can check against a fold of the log.
+  readonly catchUp?: boolean
 }
 
 // Requires the EventLog and StepHost services and a Scope. The host supplies the
@@ -60,7 +64,10 @@ export const makeEmbeddedSessionRuntime = (
         .map((definition) => [definition.type, definition]),
     ).values(),
   ]
-  return makeSpecterRuntime({ ...config, events }).pipe(
+  return makeSpecterRuntime(
+    { ...config, events },
+    options.catchUp ? { catchUp: 'all' } : {},
+  ).pipe(
     Effect.provide(
       Layer.mergeAll(
         options.stores?.slices

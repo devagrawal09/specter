@@ -376,8 +376,19 @@ function isObject(value: unknown): value is object {
  * Accepts a raw config (validated through the shared per-config cache) or a
  * `PreparedSpecterApp`. Everything else here is per Event Log and Layer.
  */
+/** Per-runtime options; the app's plan stays shared across runtimes. */
+export type SpecterRuntimeOptions = {
+  /**
+   * `"all"` catches every Command and Query Slice up to the log at startup,
+   * as an eager Slice is, instead of each when it is first used. Reactions
+   * always catch up at startup.
+   */
+  readonly catchUp?: 'eager' | 'all'
+}
+
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
   config: TConfig | PreparedSpecterApp<TConfig>,
+  options: SpecterRuntimeOptions = {},
 ): Effect.Effect<
   SpecterEffectApp<TConfig>,
   SpecterEffectError,
@@ -458,7 +469,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       yield* completion
     }
 
-    for (const slice of eagerSlices) {
+    for (const slice of options.catchUp === 'all'
+      ? slices.filter((slice) => slice.kind !== 'reaction')
+      : eagerSlices) {
       yield* catchUpSlice(slice)
     }
 
@@ -1275,6 +1288,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
 export function createSpecterAppLayer<const TConfig extends SpecterAppConfig>(
   config: TConfig | PreparedSpecterApp<TConfig>,
+  options: SpecterRuntimeOptions = {},
 ): Layer.Layer<
   SpecterRuntime,
   SpecterEffectError,
@@ -1282,7 +1296,7 @@ export function createSpecterAppLayer<const TConfig extends SpecterAppConfig>(
 > {
   return Layer.effect(
     SpecterRuntime,
-    makeSpecterRuntime(config) as Effect.Effect<
+    makeSpecterRuntime(config, options) as Effect.Effect<
       SpecterRuntimeService,
       SpecterEffectError,
       SpecterRuntimeRequirements<TConfig> | import('effect').Scope.Scope
