@@ -1,5 +1,6 @@
 import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
 import { SessionError } from '@ocpp/schema/session-error'
+import { ExternalSession } from '@ocpp/schema/external-session'
 import { SessionEvent } from '@ocpp/schema/session-event'
 import { SessionID } from '@ocpp/schema/session-id'
 import { SessionMessage } from '@ocpp/schema/session-message'
@@ -133,10 +134,17 @@ const runtimeEventSchemas = {
   }),
 } as const
 
-// One Specter event definition per OC++ durable session event (mapped name,
+// Every durable fact OC++ records about a Session: its Session events and the
+// facts an external agent's Session keeps (vendor binding and checkpoints).
+const durableDefinitions = [
+  ...SessionEvent.DurableDefinitions,
+  ...ExternalSession.Definitions,
+] as const
+
+// One Specter event definition per OC++ durable session fact (mapped name,
 // OC++'s payload schema as a Standard Schema), then the runtime's own facts.
 export const sessionEventDefinitions = [
-  ...SessionEvent.DurableDefinitions.map((definition) =>
+  ...durableDefinitions.map((definition) =>
     createEventDefinition(
       toSpecterEventType(definition.type),
       Schema.toStandardSchemaV1(definition.data),
@@ -152,7 +160,7 @@ type Dashed<S extends string> = S extends `${infer A}.${infer B}`
   ? `${A}-${Dashed<B>}`
   : S
 
-type Definitions = (typeof SessionEvent.DurableDefinitions)[number]
+type Definitions = (typeof durableDefinitions)[number]
 
 export type SessionEventPayloads = {
   [D in Definitions as Dashed<D['type']>]: Schema.Schema.Type<D['data']>

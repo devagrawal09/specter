@@ -353,4 +353,18 @@ export const sessionFacts = {
       },
     },
   },
+  'session-external-bound': {
+    sessionID: 'ses_1',
+    provider: 'claude',
+    directory: '/a',
+  },
+  'session-external-linked': {
+    sessionID: 'ses_1',
+    vendorSessionID: 'vendor_1',
+  },
+  'session-external-checkpointed': {
+    sessionID: 'ses_1',
+    checkpoint: 'checkpoint_1',
+    historyHash: 'hash_1',
+  },
 } as const
