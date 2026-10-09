@@ -113,6 +113,50 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
     },
     {
       description:
+        'A manual compaction is admitted as a control item; nothing behind it crosses it.',
+      given: [created('ses_1')],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_1',
+        type: 'compaction',
+        payload: {},
+        delivery: 'queue',
+      },
+      expect: [
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: { type: 'compaction', payload: {}, delivery: 'queue' },
+        }),
+      ],
+    },
+    {
+      description:
+        'A move to another Location is admitted as a control item with its destination.',
+      given: [created('ses_1')],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_1',
+        type: 'move',
+        payload: { location: { directory: '/tmp/other' }, projectID: 'prj_2' },
+      },
+      expect: [
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: {
+            type: 'move',
+            payload: {
+              location: { directory: '/tmp/other' },
+              projectID: 'prj_2',
+            },
+            delivery: 'steer',
+          },
+        }),
+      ],
+    },
+    {
+      description:
         'Delivery is explicit: steer is the default when delivery is omitted.',
       given: [created('ses_1')],
       when: {

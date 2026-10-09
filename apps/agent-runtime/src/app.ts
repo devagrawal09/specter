@@ -12,6 +12,11 @@ import { Layer } from 'effect'
 import { sessionEventDefinitions } from './events.ts'
 import { makeRunStepPlugin, type RunStepOptions } from './plugins/run-step.ts'
 import {
+  createFailExecutionState,
+  failExecution,
+  failExecutionStore,
+} from './features/session/fail-execution/impl.ts'
+import {
   createFinishExecutionState,
   finishExecution,
   finishExecutionStore,
@@ -188,6 +193,7 @@ export const createSessionAppConfig = (
       recordToolCall,
       settleToolCall,
       finishExecution,
+      failExecution,
       stepStatus,
       stepBoundary,
       forkSession,
@@ -243,6 +249,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(recordToolCallStore, createRecordToolCallState),
     provide(settleToolCallStore, createSettleToolCallState),
     provide(finishExecutionStore, createFinishExecutionState),
+    provide(failExecutionStore, createFailExecutionState),
     provide(stepStatusStore, createStepStatusState),
     provide(stepBoundaryStore, createStepBoundaryState),
     provide(forkSessionStore, createForkSessionState),

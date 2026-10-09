@@ -81,6 +81,17 @@ export type AttemptOutcome =
   // A record was rejected: nothing more is recorded for this attempt.
   | { readonly outcome: 'stopped' }
 
+// How a compaction the host ran ended. Its own facts (started, ended or
+// failed, usage) are the host's; the runtime decides when it runs.
+export type CompactionOutcome =
+  | { readonly outcome: 'completed' }
+  | { readonly outcome: 'failed'; readonly error: SessionError.Error }
+  // The execution moved on while it ran.
+  | { readonly outcome: 'stopped' }
+
+// The history no longer fits the model: compact before the step.
+export type CompactFirst = { readonly compact: true }
+
 // One step, as the host prepares it: what step.started records, and the
 // attempt itself.
 export type StepPlan = {
@@ -107,7 +118,14 @@ export class StepHost extends Context.Service<
         { readonly messages: ModelMessage[] },
         RecordFailure
       >
-    }) => Effect.Effect<StepPlan>
+    }) => Effect.Effect<StepPlan | CompactFirst>
+    // Compacts the Session's history: manually, for a delivered compaction
+    // item, or automatically, when begin asked for it.
+    readonly compact: (input: {
+      readonly sessionID: string
+      readonly reason: 'auto' | 'manual'
+      readonly inputID?: string
+    }) => Effect.Effect<CompactionOutcome>
   }
 >()('@specter/agent-runtime/StepHost') {}
 
@@ -135,6 +153,15 @@ export const modelStepHostLayer = (options: ModelStepHostOptions = {}) =>
       const deltas = yield* DeltaChannel
       const system = options.system ?? DEFAULT_SYSTEM_PROMPT
       return StepHost.of({
+        // The runtime's own model has no compaction.
+        compact: () =>
+          Effect.succeed({
+            outcome: 'failed',
+            error: {
+              type: 'compaction.unavailable',
+              message: 'This runtime cannot compact a Session',
+            },
+          } as const),
         begin: ({ sessionID, transcript }) =>
           Effect.gen(function* () {
             const agent = options.agent

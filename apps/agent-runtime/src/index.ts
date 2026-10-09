@@ -62,6 +62,8 @@ export type { RunStepOptions } from './plugins/run-step.ts'
 export {
   type AttemptOutcome,
   type AttemptRecorder,
+  type CompactFirst,
+  type CompactionOutcome,
   DEFAULT_SYSTEM_PROMPT,
   type ModelStepHostOptions,
   modelStepHostLayer,

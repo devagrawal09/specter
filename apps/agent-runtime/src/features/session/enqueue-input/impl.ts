@@ -43,20 +43,47 @@ const base = {
 
 // The flat Command input, discriminated on `type` so the payload reaches the
 // event as OC++'s own Session.Inbox.Item without a cast.
-const input = Schema.toStandardSchemaV1(
-  Schema.Union([
-    Schema.Struct({
-      ...base,
-      type: Schema.Literal('user'),
-      payload: SessionInbox.UserPayload,
-    }),
-    Schema.Struct({
-      ...base,
-      type: Schema.Literal('synthetic'),
-      payload: SessionInbox.SyntheticPayload,
-    }),
-  ]),
-)
+const commandSchema = Schema.Union([
+  Schema.Struct({
+    ...base,
+    type: Schema.Literal('user'),
+    payload: SessionInbox.UserPayload,
+  }),
+  Schema.Struct({
+    ...base,
+    type: Schema.Literal('synthetic'),
+    payload: SessionInbox.SyntheticPayload,
+  }),
+  // Control items: a manual compaction, and a move to another Location.
+  Schema.Struct({
+    ...base,
+    type: Schema.Literal('compaction'),
+    payload: SessionInbox.CompactionPayload,
+  }),
+  Schema.Struct({
+    ...base,
+    type: Schema.Literal('move'),
+    payload: SessionInbox.MovePayload,
+  }),
+])
+type Command = typeof commandSchema.Type
+const input = Schema.toStandardSchemaV1(commandSchema)
+
+// The admitted item as OC++'s Session.Inbox.Item, with steer as the default
+// delivery.
+const item = (command: Command) => {
+  const delivery = command.delivery ?? 'steer'
+  switch (command.type) {
+    case 'user':
+      return { type: 'user' as const, payload: command.payload, delivery }
+    case 'synthetic':
+      return { type: 'synthetic' as const, payload: command.payload, delivery }
+    case 'compaction':
+      return { type: 'compaction' as const, payload: command.payload, delivery }
+    case 'move':
+      return { type: 'move' as const, payload: command.payload, delivery }
+  }
+}
 
 export const enqueueInput = implementCommand(specification)
   .inputSchema(input)
@@ -110,18 +137,7 @@ export const enqueueInput = implementCommand(specification)
       inboxEnqueued.create({
         sessionID: command.sessionID,
         inboxID: command.inboxID,
-        item:
-          command.type === 'user'
-            ? {
-                type: 'user',
-                payload: command.payload,
-                delivery: command.delivery ?? 'steer',
-              }
-            : {
-                type: 'synthetic',
-                payload: command.payload,
-                delivery: command.delivery ?? 'steer',
-              },
+        item: item(command),
       }),
     ]
   })

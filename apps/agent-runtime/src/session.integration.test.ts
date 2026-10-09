@@ -19,13 +19,21 @@ import { sessionEvent } from './events.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
-import { modelStepHostLayer } from './plugins/step-host.ts'
+import { modelStepHostLayer, StepHost } from './plugins/step-host.ts'
 import { makeScriptedModel } from './plugins/scripted-model.ts'
 
 // The real app, in process: memory Event Log, memory Slice stores, immediate
 // Reaction scheduler, memory outbox store for the step Plugin, and the
 // Model (scripted) + delta channel services the Plugin reads.
-const boot = async (options: { readonly concurrency?: number } = {}) => {
+const boot = async (
+  options: {
+    readonly concurrency?: number
+    // The host's compaction: the runtime's own model host has none.
+    readonly compact?: StepHost['Service']['compact']
+    // How many times the host asks to compact before a step.
+    readonly compactFirst?: number
+  } = {},
+) => {
   const log = createMemoryEventLog()
   await Effect.runPromise(
     log.append(
@@ -71,11 +79,27 @@ const boot = async (options: { readonly concurrency?: number } = {}) => {
       Layer.succeed(EventLog, log),
       memorySliceStoreLayer,
       createImmediateReactionSchedulerLayer(),
-      modelStepHostLayer().pipe(
+      Layer.effect(
+        StepHost,
+        Effect.map(StepHost, (host) => {
+          let compactFirst = options.compactFirst ?? 0
+          return StepHost.of({
+            compact: options.compact ?? host.compact,
+            begin: (input) =>
+              compactFirst-- > 0
+                ? Effect.succeed({ compact: true } as const)
+                : host.begin(input),
+          })
+        }),
+      ).pipe(
         Layer.provide(
-          Layer.mergeAll(
-            Layer.succeed(Model, model),
-            Layer.succeed(DeltaChannel, { pubsub }),
+          modelStepHostLayer().pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(Model, model),
+                Layer.succeed(DeltaChannel, { pubsub }),
+              ),
+            ),
           ),
         ),
       ),
@@ -134,6 +158,16 @@ const gate = () => {
   })
   return { promise, open }
 }
+
+const compactionItem = (inboxID: string) => ({
+  type: 'enqueueInput' as const,
+  payload: {
+    sessionID: 'ses_1',
+    inboxID,
+    type: 'compaction' as const,
+    payload: {},
+  },
+})
 
 const enqueue = (
   inboxID: string,
@@ -270,6 +304,78 @@ describe('step loop with a scripted model', () => {
       'session-step-settled',
       'session-execution-settled',
     ])
+  })
+
+  it('compacts when a compaction item is delivered, and finishes when nothing else waits', async () => {
+    const compactions: unknown[] = []
+    const t = await start({
+      compact: (input) =>
+        Effect.sync(() => {
+          compactions.push(input)
+          return { outcome: 'completed' } as const
+        }),
+    })
+
+    await t.app.command(compactionItem('msg_c'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(compactions).toEqual([
+      { sessionID: 'ses_1', reason: 'manual', inputID: 'msg_c' },
+    ])
+    expect(t.types()).toEqual([
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-execution-settled',
+    ])
+    expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+      outcome: 'succeeded',
+    })
+  })
+
+  it('compacts before a step when the host asks, then runs the step', async () => {
+    const compactions: unknown[] = []
+    const t = await start({
+      compactFirst: 1,
+      compact: (input) =>
+        Effect.sync(() => {
+          compactions.push(input)
+          return { outcome: 'completed' } as const
+        }),
+    })
+    t.model.script('ses_1', [{ finish: 'stop', text: 'after' }])
+
+    await t.app.command(enqueue('msg_a'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(compactions).toEqual([{ sessionID: 'ses_1', reason: 'auto' }])
+    expect(t.types()).toEqual([
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-step-started',
+      'session-block-recorded',
+      'session-step-settled',
+      'session-execution-settled',
+    ])
+  })
+
+  it('fails the execution when a compaction fails', async () => {
+    const error = { type: 'compaction.failed', message: 'no summary' }
+    const t = await start({
+      compact: () => Effect.succeed({ outcome: 'failed', error } as const),
+    })
+
+    await t.app.command(compactionItem('msg_c'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+      outcome: 'failed',
+      error,
+    })
   })
 
   it('delivers a steer enqueued mid-step at the next boundary, before the next step', async () => {

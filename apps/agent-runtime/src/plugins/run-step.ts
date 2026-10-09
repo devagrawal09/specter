@@ -112,6 +112,31 @@ export const makeRunStepPlugin =
       return (request, delivery) =>
         Effect.gen(function* () {
           const { sessionID, ordinal } = request.payload
+          // A failure outside a step fails the execution.
+          const fail = (
+            error: { readonly type: string; readonly message: string },
+            idempotencyKey: string,
+          ) =>
+            unlessRejected(
+              command(
+                { type: 'failExecution', payload: { sessionID, error } },
+                { idempotencyKey },
+              ),
+            )
+          // Runs a compaction the host owns; false when the job should stop.
+          const compact = (
+            input: Parameters<typeof host.compact>[0],
+            key: string,
+          ) =>
+            Effect.gen(function* () {
+              const outcome = yield* host.compact(input)
+              if (outcome.outcome === 'stopped') return false
+              if (outcome.outcome === 'failed') {
+                yield* fail(outcome.error, `${key}:failed`)
+                return false
+              }
+              return true
+            })
 
           // Requests are derived from state, so a duplicate or stale one can be
           // queued behind the job that already ran this boundary.
@@ -152,6 +177,7 @@ export const makeRunStepPlugin =
           })
           let scope = boundary
           let delivered = 0
+          let compacted = false
           for (;;) {
             const next = yield* query(nextDeliverable, {
               sessionID,
@@ -170,11 +196,26 @@ export const makeRunStepPlugin =
               ),
             )
             if (!accepted) return
+            // A delivered compaction item compacts the history now; what
+            // follows it is delivered after.
+            if (next.item.type === 'compaction') {
+              const settled = yield* compact(
+                { sessionID, reason: 'manual', inputID: next.item.inboxID },
+                `${delivery.deliveryId}:compaction:${next.item.inboxID}`,
+              )
+              if (!settled) return
+              compacted = true
+              continue
+            }
             delivered += 1
             if (next.item.delivery === 'queue') scope = 'step'
           }
           // An idle execution with nothing left to deliver is done.
-          if (boundary === 'idle' && stepsInExecution > 0 && delivered === 0) {
+          if (
+            boundary === 'idle' &&
+            (stepsInExecution > 0 || compacted) &&
+            delivered === 0
+          ) {
             yield* unlessRejected(
               command(
                 { type: 'finishExecution', payload: { sessionID } },
@@ -187,12 +228,36 @@ export const makeRunStepPlugin =
           const assistantMessageID =
             options.assistantMessageID?.({ sessionID, ordinal }) ??
             `msg_${sessionID}_${ordinal}`
-          const plan = yield* host.begin({
+          // The host compacts first when the history no longer fits.
+          let plan = yield* host.begin({
             sessionID,
             assistantMessageID,
             ordinal,
             transcript: query(modelTranscript, { sessionID }),
           })
+          for (let attempt = 1; 'compact' in plan; attempt++) {
+            if (attempt > 2) {
+              yield* fail(
+                {
+                  type: 'compaction.ineffective',
+                  message: 'The history still does not fit after compacting',
+                },
+                `${delivery.deliveryId}:compaction-failed`,
+              )
+              return
+            }
+            const settled = yield* compact(
+              { sessionID, reason: 'auto' },
+              `${delivery.deliveryId}:compaction:auto:${attempt}`,
+            )
+            if (!settled) return
+            plan = yield* host.begin({
+              sessionID,
+              assistantMessageID,
+              ordinal,
+              transcript: query(modelTranscript, { sessionID }),
+            })
+          }
           const started = yield* unlessRejected(
             command(
               {
