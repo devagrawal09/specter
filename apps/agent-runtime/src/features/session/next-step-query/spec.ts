@@ -29,24 +29,26 @@ const succeeded = (assistantMessageID: string, continues = false) =>
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
-const retried = (assistantMessageID: string, at = 1000) =>
+const retried = (assistantMessageID: string, at = 1000, fresh = false) =>
   event('session-step-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
     outcome: 'failed',
     error: { type: 'transport', message: 'reset' },
-    retry: { attempt: 1, at },
+    retry: { attempt: 1, at, ...(fresh ? { fresh: true } : {}) },
   })
 const next = (
   boundary: string,
   stepsInExecution: number,
   stepsSinceInput: number,
   retryAt?: number,
+  attempt = 1,
 ) => ({
   boundary,
   stepsInExecution,
   stepsSinceInput,
   ...(retryAt === undefined ? {} : { retryAt }),
+  attempt,
 })
 
 export const nextStepSpec = createQuerySlice('nextStep')
@@ -128,7 +130,7 @@ export const nextStepSpec = createQuerySlice('nextStep')
         'A retried step is retried at a step boundary when it is due, and keeps its number.',
       given: [started(), stepStarted('msg_1'), retried('msg_1', 5000)],
       when: { sessionID: 'ses_1' },
-      expect: next('step', 1, 1, 5000),
+      expect: next('step', 1, 1, 5000, 2),
     },
     {
       description:
@@ -140,7 +142,19 @@ export const nextStepSpec = createQuerySlice('nextStep')
         stepStarted('msg_1'),
       ],
       when: { sessionID: 'ses_1' },
-      expect: next('step', 2, 1),
+      expect: next('step', 2, 1, undefined, 2),
+    },
+    {
+      description:
+        "A fresh retry runs as the next step: it keeps the step's number and counts as its next attempt.",
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        retried('msg_1', 1000, true),
+        stepStarted('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: next('step', 2, 1, undefined, 2),
     },
     {
       description: 'A new execution starts idle with no steps.',

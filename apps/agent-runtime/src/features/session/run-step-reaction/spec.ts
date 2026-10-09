@@ -64,6 +64,28 @@ export const runStepSpec = createReactionSlice('runStep')
   )
   .scenarios(
     {
+      description:
+        "A fresh retry runs as the next step, because the failed attempt's output stands: the next ordinal is requested.",
+      given: [
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_step_0'),
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_step_0',
+          outcome: 'failed',
+          error: { type: 'transport', message: 'connection reset' },
+          retry: { attempt: 1, at: 1000, fresh: true },
+        }),
+      ],
+      expect: [run('ses_1', 1)],
+    },
+    {
+      description:
+        'A step still in flight when an execution starts belongs to a process that is gone: its ordinal is requested again, so a job reconciles it.',
+      given: [stepStarted('ses_1', 'msg_step_0'), started('ses_1')],
+      expect: [run('ses_1', 0)],
+    },
+    {
       description: 'A started execution needs its first step.',
       given: [started('ses_1')],
       expect: [run('ses_1', 0)],

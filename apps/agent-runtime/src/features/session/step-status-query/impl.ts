@@ -83,6 +83,8 @@ export const stepStatus = implementQuery(specification)
     inFlightStepID?: string
     stepsStarted: number
     attempts: number
+    // The next attempt runs the last step again.
+    retrying?: true
     lastFailure?: { type: string; message: string; status?: number }
     // Requested calls that have not settled, in call order; omitted when
     // none. What orphan reconciliation settles as aborted.
@@ -130,7 +132,9 @@ export const stepStatus = implementQuery(specification)
     if (session.inFlight === assistantMessageID) session.inFlight = null
     if (event.payload.outcome !== 'failed') return
     session.lastFailure = event.payload.error
-    if (event.payload.retry) session.retrying = true
+    // A fresh retry runs as the next step.
+    if (event.payload.retry && !event.payload.retry.fresh)
+      session.retrying = true
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID]
@@ -142,6 +146,7 @@ export const stepStatus = implementQuery(specification)
         : { inFlightStepID: session.inFlight }),
       stepsStarted: session?.stepsStarted ?? 0,
       attempts: session?.attempts ?? 0,
+      ...(session?.retrying ? { retrying: true as const } : {}),
       ...(session === undefined || session.openCalls.length === 0
         ? {}
         : { openCalls: session.openCalls }),

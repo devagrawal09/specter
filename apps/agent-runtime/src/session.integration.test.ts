@@ -395,19 +395,24 @@ describe('step loop with a scripted model', () => {
     ])
   })
 
-  it('fails the execution when a compaction fails', async () => {
+  it("goes on after a manual compaction fails: the failure is the item's own", async () => {
     const error = { type: 'compaction.failed', message: 'no summary' }
     const t = await start({
       compact: () => Effect.succeed({ outcome: 'failed', error } as const),
     })
+    t.model.script('ses_1', [{ finish: 'stop', text: 'Still here' }])
 
     await t.app.command(compactionItem('msg_c'))
+    await t.app.command(enqueue('msg_a', 'queue'))
     await t.waitFor(() => t.types().includes('session-execution-settled'))
     await t.outboxSettled()
 
+    // The queued input behind the compaction still runs.
+    expect(
+      t.types().filter((type) => type === 'session-step-settled'),
+    ).toHaveLength(1)
     expect(t.log.inspect().at(-1)?.payload).toMatchObject({
-      outcome: 'failed',
-      error,
+      outcome: 'succeeded',
     })
   })
 
@@ -478,7 +483,12 @@ describe('step loop with a scripted model', () => {
         type: 'executionStatus',
         payload: { sessionID: 'ses_1' },
       }),
-    ).toEqual({ status: 'settled', executions: 1, lastOutcome: 'interrupted' })
+    ).toEqual({
+      status: 'settled',
+      executions: 1,
+      lastOutcome: 'interrupted',
+      reason: 'user',
+    })
     const pending = await t.app.query({
       type: 'nextDeliverable',
       payload: { sessionID: 'ses_1', boundary: 'idle' },
@@ -571,7 +581,12 @@ describe('step loop with a scripted model', () => {
           type: 'executionStatus',
           payload: { sessionID: 'ses_1' },
         }),
-      ).toEqual({ status: 'settled', executions: 1, lastOutcome: 'failed' })
+      ).toMatchObject({
+        status: 'settled',
+        executions: 1,
+        lastOutcome: 'failed',
+        error: { type: expect.any(String) },
+      })
     })
 
     it('fails the execution once retryable failures exceed the limit', async () => {

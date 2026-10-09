@@ -221,6 +221,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         stepInFlight: false,
         stepsStarted: 1,
         attempts: 1,
+        retrying: true,
         lastFailure: boom,
       },
     },

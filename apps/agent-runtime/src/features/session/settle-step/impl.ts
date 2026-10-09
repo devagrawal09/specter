@@ -19,6 +19,8 @@ const DEFAULT_LIMIT = 3
 // attempts, so a new step-started puts it back in flight and keeps the count.
 export type SettleStepState = {
   active: Record<string, true>
+  // Retries a fresh retry carries into the Session's next step.
+  carried: Record<string, number>
   steps: Record<
     string,
     { sessionID: string; status: 'started' | 'settled'; retries: number }
@@ -31,6 +33,7 @@ export const settleStepStore = Context.Service<
 
 export const createSettleStepState = (): SettleStepState => ({
   active: {},
+  carried: {},
   steps: {},
 })
 
@@ -70,6 +73,8 @@ const input = Schema.toStandardSchemaV1(
       // Retry classification is the caller's; the budget and the outcome are
       // this Command's.
       retryable: Schema.Boolean,
+      // Retry as a new step: this attempt's output stands.
+      fresh: Schema.optional(Schema.Boolean),
       limit: Schema.optional(NonNegativeInt),
       at: NonNegativeInt,
     }),
@@ -95,6 +100,7 @@ export const settleStep = implementCommand(specification)
   })
   .apply(executionSettled, async (event, state) => {
     delete state.active[event.payload.sessionID]
+    delete state.carried[event.payload.sessionID]
   })
   .apply(stepStarted, async (event, state) => {
     const { sessionID, assistantMessageID } = event.payload
@@ -104,15 +110,18 @@ export const settleStep = implementCommand(specification)
       state.steps[assistantMessageID] = {
         sessionID,
         status: 'started',
-        retries: 0,
+        retries: state.carried[sessionID] ?? 0,
       }
+    delete state.carried[sessionID]
   })
   .apply(stepSettled, async (event, state) => {
     const step = state.steps[event.payload.assistantMessageID]
     if (!step) return
     step.status = 'settled'
-    if (event.payload.outcome === 'failed' && event.payload.retry)
-      step.retries += 1
+    if (event.payload.outcome !== 'failed' || !event.payload.retry) return
+    step.retries += 1
+    if (event.payload.retry.fresh)
+      state.carried[event.payload.sessionID] = step.retries
   })
   .handle(async (command, state) => {
     if (!state.active[command.sessionID])
@@ -157,7 +166,11 @@ export const settleStep = implementCommand(specification)
       return [
         stepSettled.create({
           ...failure,
-          retry: { attempt: step.retries + 1, at: command.at },
+          retry: {
+            attempt: step.retries + 1,
+            at: command.at,
+            ...(command.fresh ? { fresh: true as const } : {}),
+          },
         }),
       ]
     return [

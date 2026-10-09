@@ -50,8 +50,15 @@ const runtimeEventSchemas = {
     Schema.Struct({
       ...SessionEvent.Step.Failed.data.fields,
       outcome: Schema.Literal('failed'),
+      // The next attempt of the same step, due at `at`. A fresh one runs as a
+      // new step, because this attempt's output stands; it keeps the step's
+      // number and retry budget.
       retry: optional(
-        Schema.Struct({ attempt: PositiveInt, at: NonNegativeInt }),
+        Schema.Struct({
+          attempt: PositiveInt,
+          at: NonNegativeInt,
+          fresh: optional(Schema.Literal(true)),
+        }),
       ),
     }),
   ]),
@@ -84,6 +91,26 @@ const runtimeEventSchemas = {
     Schema.Struct({
       ...SessionEvent.Tool.Failed.data.fields,
       outcome: Schema.Literal('failed'),
+    }),
+  ]),
+  // An execution the host ran itself (an external agent's), not this
+  // runtime: its own started and settled facts, so no Slice takes it for one
+  // the runtime runs.
+  'session-external-execution-started': Schema.Struct({ sessionID: SessionID }),
+  'session-external-execution-settled': Schema.Union([
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('succeeded'),
+    }),
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('failed'),
+      error: SessionError.Error,
+    }),
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('interrupted'),
+      reason: Schema.Literals(['user', 'shutdown', 'superseded']),
     }),
   ]),
   // An admitted input that waits for the next wake instead of waking the

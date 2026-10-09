@@ -64,6 +64,7 @@ export {
   type AttemptRecorder,
   type CompactFirst,
   type CompactionOutcome,
+  type PrepareOutcome,
   DEFAULT_SYSTEM_PROMPT,
   type ModelStepHostOptions,
   modelStepHostLayer,

@@ -16,6 +16,8 @@ type Entry = {
   stepsInExecution: number
   stepsSinceInput: number
   retryAt?: number
+  // The attempt the next step is of its logical step, after a retry.
+  attempt?: number
 }
 
 export type NextStepState = {
@@ -63,6 +65,9 @@ export const nextStep = implementQuery(specification)
     stepsSinceInput: number
     // When the step being retried is due (epoch milliseconds).
     retryAt?: number
+    // Which attempt of its logical step the next step is, from 1: retries,
+    // fresh ones included, share the step's number and budget.
+    attempt: number
   }>()
   .store(nextStepStore)
   .apply(executionStarted, async (event, state) => {
@@ -91,8 +96,11 @@ export const nextStep = implementQuery(specification)
     const session = entry(state, event.payload.sessionID)
     const { payload } = event
     session.idle = payload.outcome === 'succeeded' && payload.continues !== true
-    if (payload.outcome === 'failed' && payload.retry)
+    delete session.attempt
+    if (payload.outcome === 'failed' && payload.retry) {
       session.retryAt = payload.retry.at
+      session.attempt = payload.retry.attempt + 1
+    }
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID] ?? fresh()
@@ -101,5 +109,6 @@ export const nextStep = implementQuery(specification)
       stepsInExecution: session.stepsInExecution,
       stepsSinceInput: session.stepsSinceInput,
       ...(session.retryAt === undefined ? {} : { retryAt: session.retryAt }),
+      attempt: session.attempt ?? 1,
     }
   })

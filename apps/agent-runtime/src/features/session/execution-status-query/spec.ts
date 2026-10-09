@@ -46,20 +46,27 @@ export const executionStatusSpec = createQuerySlice('executionStatus')
       expect: { status: 'settled', executions: 1, lastOutcome: 'succeeded' },
     },
     {
-      description: 'Failure releases the claim: the Session is settled.',
+      description:
+        'Failure releases the claim: the Session is settled, with the error that failed it.',
       given: [started(), failed()],
       when: { sessionID: 'ses_1' },
-      expect: { status: 'settled', executions: 1, lastOutcome: 'failed' },
+      expect: {
+        status: 'settled',
+        executions: 1,
+        lastOutcome: 'failed',
+        error: { type: 'provider', message: 'boom' },
+      },
     },
     {
       description:
-        'Interruption ends the busy period: the Session is settled with outcome interrupted.',
+        'Interruption ends the busy period: the Session is settled with outcome interrupted and its reason.',
       given: [started(), interrupted()],
       when: { sessionID: 'ses_1' },
       expect: {
         status: 'settled',
         executions: 1,
         lastOutcome: 'interrupted',
+        reason: 'user',
       },
     },
     {

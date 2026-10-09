@@ -1,3 +1,4 @@
+import type { SessionError } from '@ocpp/schema/session-error'
 import { SessionID } from '@ocpp/schema/session-id'
 import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
@@ -7,10 +8,14 @@ import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection folded from execution events, keyed by Session.
 type Outcome = 'succeeded' | 'failed' | 'interrupted'
+type Reason = 'user' | 'shutdown' | 'superseded'
 type Execution = {
   active: boolean
   executions: number
   lastOutcome: Outcome | null
+  // Why the last execution failed or was interrupted.
+  error?: SessionError.Error
+  reason?: Reason
 }
 
 export type ExecutionStatusState = { sessions: Record<string, Execution> }
@@ -38,11 +43,19 @@ const entry = (state: ExecutionStatusState, sessionID: string) =>
 const end = (
   state: ExecutionStatusState,
   sessionID: string,
-  outcome: Outcome,
+  settled: {
+    readonly outcome: Outcome
+    readonly error?: SessionError.Error
+    readonly reason?: Reason
+  },
 ) => {
   const session = entry(state, sessionID)
   session.active = false
-  session.lastOutcome = outcome
+  session.lastOutcome = settled.outcome
+  delete session.error
+  delete session.reason
+  if (settled.error) session.error = settled.error
+  if (settled.reason) session.reason = settled.reason
 }
 
 export const executionStatus = implementQuery(specification)
@@ -51,6 +64,8 @@ export const executionStatus = implementQuery(specification)
     status: 'idle' | 'active' | 'settled'
     executions: number
     lastOutcome: Outcome | null
+    error?: SessionError.Error
+    reason?: Reason
   }>()
   .store(executionStatusStore)
   .apply(executionStarted, async (event, state) => {
@@ -59,7 +74,7 @@ export const executionStatus = implementQuery(specification)
     session.executions += 1
   })
   .apply(executionSettled, async (event, state) => {
-    end(state, event.payload.sessionID, event.payload.outcome)
+    end(state, event.payload.sessionID, event.payload)
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID]
@@ -69,5 +84,7 @@ export const executionStatus = implementQuery(specification)
       status: session.active ? ('active' as const) : ('settled' as const),
       executions: session.executions,
       lastOutcome: session.lastOutcome,
+      ...(session.error ? { error: session.error } : {}),
+      ...(session.reason ? { reason: session.reason } : {}),
     }
   })

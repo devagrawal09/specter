@@ -17,6 +17,9 @@ export type RunStepState = {
     {
       active: boolean
       inFlight: string | null
+      // The step in flight began before this execution started: its process
+      // is gone, and a job reconciles it.
+      stale?: true
       stepsStarted: number
       awaitingRetry: boolean
       retrying: boolean
@@ -67,7 +70,9 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
     .plugin(plugin)
     .store(runStepStore)
     .apply(executionStarted, async (event, state) => {
-      entry(state, event.payload.sessionID).active = true
+      const session = entry(state, event.payload.sessionID)
+      session.active = true
+      if (session.inFlight) session.stale = true
     })
     .apply(executionSettled, async (event, state) => {
       settle(state, event.payload.sessionID)
@@ -76,6 +81,7 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
       const { sessionID, assistantMessageID } = event.payload
       const session = entry(state, sessionID)
       session.inFlight = assistantMessageID
+      delete session.stale
       // The attempt after a scheduled retry re-runs the same step.
       if (!session.retrying) session.stepsStarted += 1
       session.awaitingRetry = false
@@ -86,10 +92,14 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
     .apply(stepSettled, async (event, state) => {
       const { sessionID, assistantMessageID } = event.payload
       const session = entry(state, sessionID)
-      if (session.inFlight === assistantMessageID) session.inFlight = null
+      if (session.inFlight === assistantMessageID) {
+        session.inFlight = null
+        delete session.stale
+      }
       if (event.payload.outcome !== 'failed') return
-      if (event.payload.retry) session.retrying = true
-      else session.awaitingRetry = true
+      // A fresh retry runs as the next step.
+      if (!event.payload.retry) session.awaitingRetry = true
+      else if (!event.payload.retry.fresh) session.retrying = true
     })
     .handle(async (state) => {
       // One output per commit: request the lowest Session needing a step; the
@@ -98,7 +108,11 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
         .sort()
         .find((id) => {
           const session = state.sessions[id]
-          return session?.active && !session.inFlight && !session.awaitingRetry
+          return (
+            session?.active &&
+            (!session.inFlight || session.stale) &&
+            !session.awaitingRetry
+          )
         })
       if (sessionID === undefined) return
       const session = state.sessions[sessionID]
@@ -107,10 +121,12 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
         type: 'runStep' as const,
         payload: {
           sessionID,
-          // A retried step is the same step: its ordinal is the one just run.
-          ordinal: session.retrying
-            ? session.stepsStarted - 1
-            : session.stepsStarted,
+          // A retried or stale step is the same step: its ordinal is the one
+          // already started.
+          ordinal:
+            session.retrying || session.stale
+              ? session.stepsStarted - 1
+              : session.stepsStarted,
         },
       }
     })

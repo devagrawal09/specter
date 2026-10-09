@@ -21,6 +21,11 @@ export type RecordFailure = SpecterEffectError
 // the runtime rejected it: the world moved on (the execution was interrupted
 // or settled), and the attempt should stop.
 export type AttemptRecorder = {
+  // Records the step as started, with the plan's agent, model and snapshot:
+  // the attempt has begun producing. Recording a block or a call starts it
+  // too, and so does a failure. An attempt that succeeds without starting
+  // produced nothing, and records no step.
+  readonly started: () => Effect.Effect<boolean, RecordFailure>
   readonly block: (block: {
     readonly kind: 'text' | 'reasoning'
     readonly ordinal: number
@@ -76,6 +81,11 @@ export type AttemptOutcome =
       readonly retryable: boolean
       // How long a retry should wait (milliseconds); recorded as its due time.
       readonly retryDelay?: number
+      // The retry runs as a new step: this attempt's output stands.
+      readonly fresh?: true
+      // The most retries the step may have, when the host's policy bounds
+      // them itself.
+      readonly limit?: number
       readonly finish?: 'content-filter'
     })
   // A record was rejected: nothing more is recorded for this attempt.
@@ -88,6 +98,11 @@ export type CompactionOutcome =
   | { readonly outcome: 'failed'; readonly error: SessionError.Error }
   // The execution moved on while it ran.
   | { readonly outcome: 'stopped' }
+
+// Whether the Session is ready for input to be delivered.
+export type PrepareOutcome =
+  | { readonly outcome: 'ready' }
+  | { readonly outcome: 'failed'; readonly error: SessionError.Error }
 
 // The history no longer fits the model: compact before the step.
 export type CompactFirst = { readonly compact: true }
@@ -115,12 +130,18 @@ export class StepHost extends Context.Service<
       readonly ordinal: number
       // The step's number since input was last delivered, from 1.
       readonly step: number
+      // Which attempt of that step this is, from 1.
+      readonly attempt: number
       // The runtime's model transcript at the moment the attempt runs.
       readonly transcript: Effect.Effect<
         { readonly messages: ModelMessage[] },
         RecordFailure
       >
     }) => Effect.Effect<StepPlan | CompactFirst>
+    // Called before input is delivered, so what the host records about the
+    // Session's context (OC++'s instruction changes) precedes that input in
+    // history. A failure fails the execution and leaves the input pending.
+    readonly prepare?: (sessionID: string) => Effect.Effect<PrepareOutcome>
     // Called before a move item is delivered, so the host can release what
     // it holds for the Session's current Location.
     readonly moving?: (sessionID: string) => Effect.Effect<void>
@@ -180,6 +201,8 @@ export const modelStepHostLayer = (options: ModelStepHostOptions = {}) =>
               model: { id: ref.id, providerID: ref.providerID },
               run: (record) =>
                 Effect.gen(function* () {
+                  // Every model call of this runtime is a step.
+                  if (!(yield* record.started())) return { outcome: 'stopped' }
                   // The model sees durable history only: the transcript Query
                   // is the single source of the request messages.
                   const { messages } = yield* transcript

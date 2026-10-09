@@ -44,7 +44,7 @@ const stepSucceeded = (assistantMessageID: string, finish = 'stop') =>
   })
 const stepFailed = (
   assistantMessageID: string,
-  retry?: { attempt: number; at: number },
+  retry?: { attempt: number; at: number; fresh?: true },
 ) =>
   event('session-step-settled', {
     sessionID: 'ses_1',
@@ -81,6 +81,26 @@ export const settleStepSpec = createCommandSlice('settleStep')
     'Records the single terminal fact of one physical attempt of an in-flight step (session.md: One Step May Have Several Physical Attempts: "Every local and hosted call reaches durable success or failure before the Step publishes its single terminal ended or failed event"). A success records its finish reason and usage. A failure records, in the same fact, whether the step is retried; which failures are retryable is the caller\'s classification, while this Command owns the budget (limit, default 3) and fails the execution in the same commit once it is spent.',
   )
   .scenarios(
+    {
+      description:
+        "A fresh retry runs as a new step because the failed attempt's output stands; the new step keeps the retry budget the first one spent.",
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        stepFailed('msg_1', { attempt: 1, at: 1000, fresh: true }),
+        stepStarted('msg_2'),
+      ],
+      when: failure({ assistantMessageID: 'msg_2', fresh: true }),
+      expect: [
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_2',
+          outcome: 'failed',
+          error: boom,
+          retry: { attempt: 2, at: 2000, fresh: true },
+        }),
+      ],
+    },
     {
       description:
         'A started step succeeds with its finish reason; cost and tokens default to zero.',
