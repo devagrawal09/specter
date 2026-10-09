@@ -24,9 +24,7 @@ export const createExecutionStatusState = (): ExecutionStatusState => ({
 })
 
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -60,14 +58,8 @@ export const executionStatus = implementQuery(specification)
     session.active = true
     session.executions += 1
   })
-  .apply(executionSucceeded, async (event, state) => {
-    end(state, event.payload.sessionID, 'succeeded')
-  })
-  .apply(executionFailed, async (event, state) => {
-    end(state, event.payload.sessionID, 'failed')
-  })
-  .apply(executionInterrupted, async (event, state) => {
-    end(state, event.payload.sessionID, 'interrupted')
+  .apply(executionSettled, async (event, state) => {
+    end(state, event.payload.sessionID, event.payload.outcome)
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID]

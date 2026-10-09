@@ -30,9 +30,7 @@ export const createDeliverInboxItemState = (): DeliverInboxItemState => ({
 const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
 
@@ -54,13 +52,7 @@ export const deliverInboxItem = implementCommand(specification)
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
   })
-  .apply(executionSucceeded, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionFailed, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionInterrupted, async (event, state) => {
+  .apply(executionSettled, async (event, state) => {
     delete state.active[event.payload.sessionID]
   })
   .apply(inboxDelivered, async (event, state) => {

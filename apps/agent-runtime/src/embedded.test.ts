@@ -1,4 +1,5 @@
-import type { PersistedEvent } from '@specter-ts/core'
+import { EventLog } from '@specter-ts/core'
+import { createMemoryEventLog } from '@specter-ts/memory'
 import { Effect, Layer, PubSub, type Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
@@ -7,15 +8,15 @@ import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
 import { makeScriptedModel } from './plugins/scripted-model.ts'
 
-// The runtime as a host embeds it: the host sees every commit in log order,
-// with the event IDs and assistant message IDs it supplied.
+// The runtime as a host embeds it: over the host's Event Log, with the
+// assistant message IDs and agent the host supplies.
 const boot = Effect.gen(function* () {
-  const committed: PersistedEvent[] = []
   let next = 0
+  const log = createMemoryEventLog({
+    eventId: () => `evt_${String(++next).padStart(4, '0')}`,
+  })
   const model = makeScriptedModel()
   const runtime = yield* makeEmbeddedSessionRuntime({
-    onCommit: (events) => Effect.sync(() => committed.push(...events)),
-    eventId: () => `evt_${String(++next).padStart(4, '0')}`,
     step: {
       assistantMessageID: ({ sessionID, ordinal }) =>
         `msg_boot_${sessionID}_${ordinal}`,
@@ -24,6 +25,7 @@ const boot = Effect.gen(function* () {
   }).pipe(
     Effect.provide(
       Layer.mergeAll(
+        Layer.succeed(EventLog, log),
         Layer.succeed(Model, model),
         Layer.effect(
           DeltaChannel,
@@ -32,7 +34,7 @@ const boot = Effect.gen(function* () {
       ),
     ),
   )
-  return { runtime, model, committed }
+  return { runtime, model, recorded: () => log.inspect() }
 })
 
 const waitFor = (condition: () => boolean) =>
@@ -45,22 +47,24 @@ const waitFor = (condition: () => boolean) =>
 const run = <A>(program: Effect.Effect<A, unknown, Scope.Scope>) =>
   Effect.runPromise(Effect.scoped(program))
 
+const registration = {
+  type: 'registerSession' as const,
+  payload: {
+    sessionID: 'ses_1',
+    projectID: 'prj_1',
+    location: { directory: '/tmp/ws' },
+    slug: 'brave-otter',
+    version: '2',
+  },
+}
+
 describe('embedded runtime', () => {
-  it('hands the host every commit of a session run, in order', () =>
+  it('runs a session over the host Event Log', () =>
     run(
       Effect.gen(function* () {
-        const { runtime, model, committed } = yield* boot
+        const { runtime, model, recorded } = yield* boot
         model.script('ses_1', [{ finish: 'stop', text: 'Hello' }])
-        yield* runtime.command({
-          type: 'registerSession',
-          payload: {
-            sessionID: 'ses_1',
-            projectID: 'prj_1',
-            location: { directory: '/tmp/ws' },
-            slug: 'brave-otter',
-            version: '2',
-          },
-        })
+        yield* runtime.command(registration)
         yield* runtime.command({
           type: 'enqueueInput',
           payload: {
@@ -71,12 +75,12 @@ describe('embedded runtime', () => {
           },
         })
         yield* waitFor(() =>
-          committed.some(
-            (event) => event.type === 'session-execution-succeeded',
+          recorded().some(
+            (event) => event.type === 'session-execution-settled',
           ),
         )
 
-        expect(committed.map((event) => event.type)).toEqual([
+        expect(recorded().map((event) => event.type)).toEqual([
           'session-created',
           'session-inbox-enqueued',
           'session-execution-started',
@@ -85,17 +89,18 @@ describe('embedded runtime', () => {
           'session-text-started',
           'session-text-ended',
           'session-step-ended',
-          'session-execution-succeeded',
+          'session-execution-settled',
         ])
-        expect(committed.map((event) => event.id)).toEqual(
-          committed.map(
+        expect(recorded().map((event) => event.id)).toEqual(
+          recorded().map(
             (_, index) => `evt_${String(index + 1).padStart(4, '0')}`,
           ),
         )
-        expect(committed.map((event) => event.order)).toEqual(
-          committed.map((_, index) => index + 1),
-        )
-        const step = committed.find(
+        expect(recorded().at(-1)?.payload).toEqual({
+          sessionID: 'ses_1',
+          outcome: 'succeeded',
+        })
+        const step = recorded().find(
           (event) => event.type === 'session-step-started',
         )
         expect(step?.payload).toMatchObject({
@@ -109,16 +114,6 @@ describe('embedded runtime', () => {
     run(
       Effect.gen(function* () {
         const { runtime } = yield* boot
-        const registration = {
-          type: 'registerSession' as const,
-          payload: {
-            sessionID: 'ses_1',
-            projectID: 'prj_1',
-            location: { directory: '/tmp/ws' },
-            slug: 'brave-otter',
-            version: '2',
-          },
-        }
         yield* runtime.command(registration)
         const second = yield* Effect.flip(runtime.command(registration))
         expect(String(second)).toContain('Session already registered')

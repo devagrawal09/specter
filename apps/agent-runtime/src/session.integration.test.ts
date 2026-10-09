@@ -143,7 +143,7 @@ describe('step loop with a scripted model', () => {
     ])
 
     await t.app.command(enqueue('msg_a'))
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
     const jobs = await t.outboxSettled()
 
     expect(t.types()).toEqual([
@@ -158,7 +158,7 @@ describe('step loop with a scripted model', () => {
       'session-text-started',
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     expect(
       await t.app.query({
@@ -189,7 +189,7 @@ describe('step loop with a scripted model', () => {
     await t.waitFor(() => t.types().includes('session-step-started'))
     await t.app.command(enqueue('msg_b', 'steer'))
     hold.open()
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
     await t.outboxSettled()
 
     expect(t.types()).toEqual([
@@ -202,7 +202,7 @@ describe('step loop with a scripted model', () => {
       'session-inbox-delivered', // B, at the boundary, before step 2
       'session-step-started',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     const delivered = t.log
       .inspect()
@@ -237,7 +237,7 @@ describe('step loop with a scripted model', () => {
       'session-inbox-delivered',
       'session-step-started',
       'session-inbox-enqueued', // C
-      'session-execution-interrupted',
+      'session-execution-settled',
     ])
     expect(
       await t.app.query({
@@ -271,7 +271,7 @@ describe('step loop with a scripted model', () => {
       t.model.script('ses_1', [retryable(), { finish: 'stop', text: 'done' }])
 
       await t.app.command(enqueue('msg_a'))
-      await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
       await t.outboxSettled()
 
       expect(t.types()).toEqual([
@@ -285,7 +285,7 @@ describe('step loop with a scripted model', () => {
         'session-text-started',
         'session-text-ended',
         'session-step-ended',
-        'session-execution-succeeded',
+        'session-execution-settled',
       ])
       const retries = payloads(t, 'session-retry-scheduled')
       expect(retries).toHaveLength(1)
@@ -313,7 +313,7 @@ describe('step loop with a scripted model', () => {
       t.model.script('ses_1', [{ finish: 'error', retryable: false, error }])
 
       await t.app.command(enqueue('msg_a'))
-      await t.waitFor(() => t.types().includes('session-execution-failed'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
       await t.outboxSettled()
 
       expect(t.types()).toEqual([
@@ -322,9 +322,10 @@ describe('step loop with a scripted model', () => {
         'session-inbox-delivered',
         'session-step-started',
         'session-step-failed',
-        'session-execution-failed',
+        'session-execution-settled',
       ])
-      expect(payloads(t, 'session-execution-failed')[0]).toMatchObject({
+      expect(payloads(t, 'session-execution-settled')[0]).toMatchObject({
+        outcome: 'failed',
         error,
       })
       expect(
@@ -345,15 +346,16 @@ describe('step loop with a scripted model', () => {
       )
 
       await t.app.command(enqueue('msg_a'))
-      await t.waitFor(() => t.types().includes('session-execution-failed'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
       await t.outboxSettled()
 
       const retries = payloads(t, 'session-retry-scheduled')
       expect(retries.map((retry) => retry.attempt)).toEqual([1, 2, 3])
       expect(payloads(t, 'session-step-started')).toHaveLength(limit + 1)
       expect(payloads(t, 'session-step-failed')).toHaveLength(limit + 1)
-      expect(t.types().at(-1)).toBe('session-execution-failed')
-      expect(payloads(t, 'session-execution-failed')[0]).toMatchObject({
+      expect(t.types().at(-1)).toBe('session-execution-settled')
+      expect(payloads(t, 'session-execution-settled')[0]).toMatchObject({
+        outcome: 'failed',
         error: transport,
       })
     })

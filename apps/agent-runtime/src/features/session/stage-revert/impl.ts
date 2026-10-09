@@ -33,9 +33,7 @@ const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
 const sessionForked = sessionEvent('session-forked')
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 const revertStaged = sessionEvent('session-revert-staged')
 const revertCommitted = sessionEvent('session-revert-committed')
 
@@ -74,13 +72,7 @@ export const stageRevert = implementCommand(specification)
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
   })
-  .apply(executionSucceeded, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionFailed, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionInterrupted, async (event, state) => {
+  .apply(executionSettled, async (event, state) => {
     delete state.active[event.payload.sessionID]
   })
   // Staging changes nothing this Command needs; it is in Given for realism.

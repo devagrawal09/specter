@@ -207,7 +207,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     )
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.types()).toEqual([
       'session-inbox-enqueued',
@@ -217,7 +217,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-text-started',
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     expect(t.deltas().map((delta) => delta.text)).toEqual(['Hel', 'lo'])
     expect(t.payloads('session-text-ended')[0]).toMatchObject({
@@ -261,7 +261,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     )
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.types()).toEqual([
       'session-inbox-enqueued',
@@ -279,7 +279,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-text-started',
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     // Durable call strictly before its result.
     expect(t.types().indexOf('session-tool-called')).toBeLessThan(
@@ -331,7 +331,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     )
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.types().filter((type) => type.startsWith('session-tool'))).toEqual(
       [
@@ -365,7 +365,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     )
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.payloads('session-tool-failed')[0]).toMatchObject({
       error: { type: 'tool.unknown', message: 'Unknown tool: shell' },
@@ -384,7 +384,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     )
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-succeeded'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.types()).toEqual([
       'session-inbox-enqueued',
@@ -397,7 +397,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-text-started',
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     expect(t.payloads('session-step-failed')[0]).toMatchObject({
       error: { type: 'provider.RateLimit', message: 'slow down' },
@@ -415,7 +415,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     })
 
     await t.app.command(prompt)
-    await t.waitFor(() => t.types().includes('session-execution-failed'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.payloads('session-step-failed')[0]).toMatchObject({
       error: { type: 'auth.credential-expired' },
@@ -464,7 +464,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-tool-input-ended',
       'session-tool-called',
       'session-tool-failed',
-      'session-execution-interrupted',
+      'session-execution-settled',
     ]
     expect(t.types()).toEqual(expected)
     expect(t.payloads('session-tool-failed')[0]).toMatchObject({

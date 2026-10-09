@@ -11,7 +11,11 @@ const created = (sessionID = 'ses_1') =>
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const interrupted = (sessionID = 'ses_1', reason = 'user') =>
-  event('session-execution-interrupted', { sessionID, reason })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason,
+  })
 
 const model = { id: 'scripted', providerID: 'test' }
 const stepStarted = (assistantMessageID = 'msg_1', sessionID = 'ses_1') =>
@@ -166,7 +170,10 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
       given: [
         created(),
         started(),
-        event('session-execution-succeeded', { sessionID: 'ses_1' }),
+        event('session-execution-settled', {
+          sessionID: 'ses_1',
+          outcome: 'succeeded',
+        }),
       ],
       when: { sessionID: 'ses_1' },
       expect: [],
@@ -178,8 +185,9 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
       given: [
         created(),
         started(),
-        event('session-execution-failed', {
+        event('session-execution-settled', {
           sessionID: 'ses_1',
+          outcome: 'failed',
           error: { type: 'provider', message: 'boom' },
         }),
       ],

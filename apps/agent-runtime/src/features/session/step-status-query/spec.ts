@@ -7,14 +7,19 @@ const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const succeeded = (sessionID = 'ses_1') =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const failed = (sessionID = 'ses_1') =>
-  event('session-execution-failed', {
+  event('session-execution-settled', {
     sessionID,
+    outcome: 'failed',
     error: { type: 'provider', message: 'boom' },
   })
 const interrupted = (sessionID = 'ses_1') =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
   event('session-step-started', {
     sessionID,
@@ -286,7 +291,11 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         started(),
         stepStarted('msg_1'),
         stepFailed('msg_1'),
-        event('session-execution-failed', { sessionID: 'ses_1', error: boom }),
+        event('session-execution-settled', {
+          sessionID: 'ses_1',
+          outcome: 'failed',
+          error: boom,
+        }),
       ],
       when: { sessionID: 'ses_1' },
       expect: {

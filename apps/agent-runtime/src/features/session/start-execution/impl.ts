@@ -24,9 +24,7 @@ export const createStartExecutionState = (): StartExecutionState => ({
 
 const sessionCreated = sessionEvent('session-created')
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -39,13 +37,7 @@ export const startExecution = implementCommand(specification)
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
   })
-  .apply(executionSucceeded, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionFailed, async (event, state) => {
-    delete state.active[event.payload.sessionID]
-  })
-  .apply(executionInterrupted, async (event, state) => {
+  .apply(executionSettled, async (event, state) => {
     delete state.active[event.payload.sessionID]
   })
   .handle(async (command, state) => {

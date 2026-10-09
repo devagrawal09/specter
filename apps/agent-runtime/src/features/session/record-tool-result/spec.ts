@@ -7,14 +7,19 @@ const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const executionFailed = (sessionID = 'ses_1') =>
-  event('session-execution-failed', {
+  event('session-execution-settled', {
     sessionID,
+    outcome: 'failed',
     error: { type: 'provider', message: 'boom' },
   })
 const executionSucceeded = (sessionID = 'ses_1') =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const interrupted = (sessionID = 'ses_1') =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
   event('session-step-started', {
     sessionID,

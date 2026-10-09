@@ -13,14 +13,19 @@ const created = (sessionID = 'ses_1') =>
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const succeeded = (sessionID = 'ses_1') =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const failed = (sessionID = 'ses_1') =>
-  event('session-execution-failed', {
+  event('session-execution-settled', {
     sessionID,
+    outcome: 'failed',
     error: { type: 'provider', message: 'boom' },
   })
 const interrupted = (sessionID = 'ses_1') =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 
 export const startExecutionSpec = createCommandSlice('startExecution')
   .description(

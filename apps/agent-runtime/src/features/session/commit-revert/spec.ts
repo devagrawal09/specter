@@ -16,14 +16,19 @@ const created = (sessionID: string) =>
 const execStarted = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const execSucceeded = (sessionID = 'ses_1') =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const execFailed = (sessionID = 'ses_1') =>
-  event('session-execution-failed', {
+  event('session-execution-settled', {
     sessionID,
+    outcome: 'failed',
     error: { type: 'provider', message: 'boom' },
   })
 const execInterrupted = (sessionID = 'ses_1') =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 const staged = (messageID: string, sessionID = 'ses_1') =>
   event('session-revert-staged', { sessionID, revert: { messageID } })
 const cleared = (sessionID = 'ses_1') =>

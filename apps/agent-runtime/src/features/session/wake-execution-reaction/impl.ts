@@ -33,9 +33,7 @@ const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 
 const startExecutionRequest = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -79,16 +77,11 @@ export const wakeExecution = implementReaction(specification)
     session.active = true
     session.interrupted = false
   })
-  .apply(executionSucceeded, async (event, state) => {
-    ended(state, event.payload.sessionID)
-  })
-  .apply(executionFailed, async (event, state) => {
-    ended(state, event.payload.sessionID)
-  })
-  .apply(executionInterrupted, async (event, state) => {
+  .apply(executionSettled, async (event, state) => {
     const sessionID = event.payload.sessionID
     ended(state, sessionID)
-    entry(state, sessionID).interrupted = true
+    if (event.payload.outcome === 'interrupted')
+      entry(state, sessionID).interrupted = true
   })
   .handle(async (state) => {
     // A Reaction commit yields zero or one output (docs/architecture/

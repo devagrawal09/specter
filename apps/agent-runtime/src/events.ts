@@ -1,5 +1,7 @@
 import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
+import { SessionError } from '@ocpp/schema/session-error'
 import { SessionEvent } from '@ocpp/schema/session-event'
+import { SessionID } from '@ocpp/schema/session-id'
 import { Schema } from 'effect'
 
 // Specter's spec format requires kebab-case event types; OC++ uses dotted
@@ -9,15 +11,44 @@ export const toSpecterEventType = (ocppType: string) =>
 export const toOcppEventType = (specterType: string) =>
   specterType.replaceAll('-', '.')
 
-// One Specter event definition per OC++ durable session event: mapped name,
-// payload schema passed through as a Standard Schema (no hand-copying).
-export const sessionEventDefinitions = SessionEvent.DurableDefinitions.map(
-  (definition) =>
+// Session Execution facts the runtime owns, in the consolidated catalog. A
+// lifecycle has a started event and one settled event that carries its outcome.
+// A fact whose shape differs from OC++'s gets a new name, so one name never
+// carries two shapes in the log; OC++ receives its own events by translation.
+const runtimeEventSchemas = {
+  // One terminal per busy period (replaces OC++'s execution succeeded, failed
+  // and interrupted).
+  'session-execution-settled': Schema.Union([
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('succeeded'),
+    }),
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('failed'),
+      error: SessionError.Error,
+    }),
+    Schema.Struct({
+      sessionID: SessionID,
+      outcome: Schema.Literal('interrupted'),
+      reason: Schema.Literals(['user', 'shutdown', 'superseded']),
+    }),
+  ]),
+} as const
+
+// One Specter event definition per OC++ durable session event (mapped name,
+// OC++'s payload schema as a Standard Schema), then the runtime's own facts.
+export const sessionEventDefinitions = [
+  ...SessionEvent.DurableDefinitions.map((definition) =>
     createEventDefinition(
       toSpecterEventType(definition.type),
       Schema.toStandardSchemaV1(definition.data),
     ),
-)
+  ),
+  ...Object.entries(runtimeEventSchemas).map(([type, schema]) =>
+    createEventDefinition(type, Schema.toStandardSchemaV1(schema)),
+  ),
+]
 
 // Type-level twin of toSpecterEventType: keeps the event name a literal.
 type Dashed<S extends string> = S extends `${infer A}.${infer B}`
@@ -28,6 +59,10 @@ type Definitions = (typeof SessionEvent.DurableDefinitions)[number]
 
 export type SessionEventPayloads = {
   [D in Definitions as Dashed<D['type']>]: Schema.Schema.Type<D['data']>
+} & {
+  [K in keyof typeof runtimeEventSchemas]: Schema.Schema.Type<
+    (typeof runtimeEventSchemas)[K]
+  >
 }
 
 export const sessionEvent = <K extends keyof SessionEventPayloads>(

@@ -11,11 +11,19 @@ const boom = { type: 'transport', message: 'connection reset' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
 const executionFailed = (sessionID = 'ses_1') =>
-  event('session-execution-failed', { sessionID, error: boom })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'failed',
+    error: boom,
+  })
 const succeeded = (sessionID = 'ses_1') =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const interrupted = (sessionID = 'ses_1') =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
   event('session-step-started', {
     sessionID,
@@ -51,7 +59,12 @@ const retryScheduled = (
   })
 const failedExecution = (
   error: { type: string; message: string; status?: number } = boom,
-) => event('session-execution-failed', { sessionID: 'ses_1', error })
+) =>
+  event('session-execution-settled', {
+    sessionID: 'ses_1',
+    outcome: 'failed',
+    error,
+  })
 const call = (extra: Record<string, unknown> = {}) => ({
   sessionID: 'ses_1',
   assistantMessageID: 'msg_1',

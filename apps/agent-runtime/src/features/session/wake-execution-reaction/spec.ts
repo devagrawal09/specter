@@ -13,14 +13,19 @@ const enqueued = (sessionID: string, inboxID: string) =>
 const started = (sessionID: string) =>
   event('session-execution-started', { sessionID })
 const succeeded = (sessionID: string) =>
-  event('session-execution-succeeded', { sessionID })
+  event('session-execution-settled', { sessionID, outcome: 'succeeded' })
 const failed = (sessionID: string) =>
-  event('session-execution-failed', {
+  event('session-execution-settled', {
     sessionID,
+    outcome: 'failed',
     error: { type: 'provider', message: 'boom' },
   })
 const interrupted = (sessionID: string) =>
-  event('session-execution-interrupted', { sessionID, reason: 'user' })
+  event('session-execution-settled', {
+    sessionID,
+    outcome: 'interrupted',
+    reason: 'user',
+  })
 const start = (sessionID: string) => ({
   type: 'startExecution',
   payload: { sessionID },

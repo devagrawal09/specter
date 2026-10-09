@@ -37,9 +37,7 @@ export const createRecordStepFailedState = (): RecordStepFailedState => ({
 })
 
 const executionStarted = sessionEvent('session-execution-started')
-const executionSucceeded = sessionEvent('session-execution-succeeded')
-const executionFailed = sessionEvent('session-execution-failed')
-const executionInterrupted = sessionEvent('session-execution-interrupted')
+const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
 const stepEnded = sessionEvent('session-step-ended')
 const stepFailed = sessionEvent('session-step-failed')
@@ -72,13 +70,7 @@ export const recordStepFailed = implementCommand(specification)
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
   })
-  .apply(executionSucceeded, async (event, state) => {
-    end(state, event.payload.sessionID)
-  })
-  .apply(executionFailed, async (event, state) => {
-    end(state, event.payload.sessionID)
-  })
-  .apply(executionInterrupted, async (event, state) => {
+  .apply(executionSettled, async (event, state) => {
     end(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
@@ -143,8 +135,9 @@ export const recordStepFailed = implementCommand(specification)
       ]
     return [
       ...failure,
-      executionFailed.create({
+      executionSettled.create({
         sessionID: command.sessionID,
+        outcome: 'failed',
         error: command.error,
       }),
     ]

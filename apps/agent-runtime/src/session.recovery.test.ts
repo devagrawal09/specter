@@ -100,7 +100,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     running.push(b)
     const types = () => events(b.log).map((event) => event.type)
     await waitFor(
-      () => types().includes('session-execution-succeeded'),
+      () => types().includes('session-execution-settled'),
       () => `events: ${types().join(', ')}`,
     )
 
@@ -121,7 +121,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-text-started', // the scripted text is now durable
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     const of = (type: string) =>
       events(b.log)
@@ -206,7 +206,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     running.push(b)
     const types = () => events(b.log).map((event) => event.type)
     await waitFor(
-      () => types().includes('session-execution-succeeded'),
+      () => types().includes('session-execution-settled'),
       () => `events: ${types().join(', ')}`,
     )
 
@@ -226,7 +226,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-text-started',
       'session-text-ended',
       'session-step-ended',
-      'session-execution-succeeded',
+      'session-execution-settled',
     ])
     const of = (type: string) =>
       events(b.log)
@@ -298,15 +298,15 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     running.push(b)
     const types = () => events(b.log).map((event) => event.type)
     await waitFor(
-      () => types().includes('session-execution-failed'),
+      () => types().includes('session-execution-settled'),
       () => `events: ${types().join(', ')}`,
     )
     expect(
       types().filter((type) => type === 'session-retry-scheduled'),
     ).toHaveLength(3)
     expect(
-      events(b.log).find((event) => event.type === 'session-execution-failed')
+      events(b.log).find((event) => event.type === 'session-execution-settled')
         ?.payload,
-    ).toMatchObject({ error: { type: 'orphaned' } })
+    ).toMatchObject({ outcome: 'failed', error: { type: 'orphaned' } })
   })
 })

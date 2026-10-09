@@ -111,8 +111,9 @@ export const deliverInboxItemSpec = createCommandSlice('deliverInboxItem')
         created,
         started(),
         enqueued('msg_1'),
-        event('session-execution-interrupted', {
+        event('session-execution-settled', {
           sessionID: 'ses_1',
+          outcome: 'interrupted',
           reason: 'user',
         }),
       ],
@@ -127,7 +128,10 @@ export const deliverInboxItemSpec = createCommandSlice('deliverInboxItem')
         created,
         started(),
         enqueued('msg_1'),
-        event('session-execution-succeeded', { sessionID: 'ses_1' }),
+        event('session-execution-settled', {
+          sessionID: 'ses_1',
+          outcome: 'succeeded',
+        }),
       ],
       when: ref('msg_1'),
       expect: [],
@@ -140,8 +144,9 @@ export const deliverInboxItemSpec = createCommandSlice('deliverInboxItem')
         created,
         started(),
         enqueued('msg_1'),
-        event('session-execution-failed', {
+        event('session-execution-settled', {
           sessionID: 'ses_1',
+          outcome: 'failed',
           error: { type: 'provider', message: 'boom' },
         }),
       ],
