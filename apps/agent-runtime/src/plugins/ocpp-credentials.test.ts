@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { Effect } from 'effect'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
+  accountIDFromToken,
   credentialFor,
   isExpired,
   OcppCredentials,
@@ -126,5 +127,98 @@ describe('ocpp credentials', () => {
     )
     expect(outcome).toMatchObject({ _tag: 'not-found', reason: 'no-database' })
     expect(credentialFor(outcome, 'anthropic')).toBeUndefined()
+  })
+})
+
+// Synthetic, unsigned JWT: header.payload.signature with a fake payload.
+const jwt = (payload: unknown) =>
+  [
+    Buffer.from('{"alg":"none"}').toString('base64url'),
+    Buffer.from(JSON.stringify(payload)).toString('base64url'),
+    'sig',
+  ].join('.')
+
+describe('accountIDFromToken (OC++ claim())', () => {
+  it('reads the top-level chatgpt_account_id first', () => {
+    expect(
+      accountIDFromToken(
+        jwt({
+          chatgpt_account_id: 'acct_top',
+          'https://api.openai.com/auth': { chatgpt_account_id: 'acct_ns' },
+          organizations: [{ id: 'org_1' }],
+        }),
+      ),
+    ).toBe('acct_top')
+  })
+  it('falls back to the https://api.openai.com/auth namespace', () => {
+    expect(
+      accountIDFromToken(
+        jwt({
+          'https://api.openai.com/auth': {
+            chatgpt_account_id: 'acct_ns',
+            chatgpt_plan_type: 'prolite',
+          },
+          organizations: [{ id: 'org_1' }],
+        }),
+      ),
+    ).toBe('acct_ns')
+  })
+  it('falls back to organizations[0].id', () => {
+    expect(
+      accountIDFromToken(
+        jwt({ organizations: [{ id: 'org_1' }, { id: 'o2' }] }),
+      ),
+    ).toBe('org_1')
+  })
+  it('is undefined with no claim or an undecodable token', () => {
+    expect(accountIDFromToken(jwt({ sub: 'user' }))).toBeUndefined()
+    expect(accountIDFromToken(jwt({ organizations: [] }))).toBeUndefined()
+    expect(accountIDFromToken(jwt('text'))).toBeUndefined()
+    expect(accountIDFromToken('opaque-token')).toBeUndefined()
+    expect(accountIDFromToken('a.%%%.c')).toBeUndefined()
+  })
+
+  it('prefers the token claim over metadata and falls back to metadata', () => {
+    const writer = seed()
+    const insert = writer.prepare(
+      'insert into credential values (?, ?, ?, ?, null, null, ?, ?, ?)',
+    )
+    const oauth = (access: string, metadata: unknown) =>
+      JSON.stringify({
+        type: 'oauth',
+        methodID: 'chatgpt-browser',
+        refresh: 'r',
+        access,
+        expires: 5000,
+        metadata,
+      })
+    insert.run(
+      'cred_4',
+      'jwt',
+      'a',
+      oauth(jwt({ chatgpt_account_id: 'acct_jwt' }), {
+        accountID: 'acct_meta',
+      }),
+      1,
+      4,
+      4,
+    )
+    insert.run(
+      'cred_5',
+      'meta',
+      'b',
+      oauth('opaque', { accountID: 'acct_meta' }),
+      1,
+      5,
+      5,
+    )
+    const outcome = readCredentials(join(dir, 'ocpp-local.db'))
+    writer.close()
+    expect(credentialFor(outcome, 'jwt')).toMatchObject({
+      accountID: 'acct_jwt',
+    })
+    expect(credentialFor(outcome, 'meta')).toMatchObject({
+      accountID: 'acct_meta',
+    })
   })
 })

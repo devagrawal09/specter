@@ -39,7 +39,10 @@ export class ModelCredentialError extends Data.TaggedError(
 }
 
 // OC++ plugin/provider/openai.ts: ChatGPT-plan (browser login) tokens are
-// routed to the Codex backend and only authorize codex-eligible models.
+// routed to the Codex backend. OC++'s allow table is stale for some plans (the
+// backend accepts gpt-5.5 and rejects gpt-5.4 on "prolite"), so here it is
+// advisory: only `codexDisallowed` models are refused locally; any other model
+// is sent and the backend decides.
 export const codexBaseURL = 'https://chatgpt.com/backend-api/codex'
 const browserMethodID = 'chatgpt-browser'
 const codexAllowed = new Set([
@@ -59,6 +62,10 @@ export const codexEligible = (modelID: string): boolean => {
     Number.parseFloat(version) > 5.4
   )
 }
+
+// The local refusal: models OC++ itself never offers on a ChatGPT login.
+export const codexRefused = (modelID: string): boolean =>
+  codexDisallowed.has(modelID)
 
 export const isChatgptCredential = (credential: OcppCredential) =>
   credential.type === 'oauth' && credential.methodID === browserMethodID
@@ -124,7 +131,7 @@ const resolveModel = (
     if (
       selection.providerID === 'openai' &&
       isChatgptCredential(credential) &&
-      !codexEligible(selection.modelID)
+      codexRefused(selection.modelID)
     )
       return yield* new ModelNotEligibleError({ modelID: selection.modelID })
     return languageModel(selection, credential, sessionID)
@@ -136,6 +143,27 @@ export class ModelNotEligibleError extends Data.TaggedError(
   override get message() {
     return `Model ${this.modelID} is not available with a ChatGPT-plan login`
   }
+}
+
+// The Codex backend explains a 400 as {"detail": "..."}. @ocpp/ai keeps the raw
+// response body on `reason.body`, but its own message only reads error.message
+// or message, so the detail is added here.
+const providerDetail = (error: AIError): string | undefined => {
+  const body = error.reason.body
+  if (body === undefined) return undefined
+  try {
+    const detail: unknown = JSON.parse(body)?.detail
+    return typeof detail === 'string' && detail !== '' ? detail : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const providerMessage = (error: AIError) => {
+  const detail = providerDetail(error)
+  return detail === undefined || error.message.includes(detail)
+    ? error.message
+    : `${error.message}: ${detail}`
 }
 
 // OC++ SessionUsage.tokens, minus cost (no price tables here).
@@ -284,7 +312,7 @@ export const ocppAiModelLayer = (selection: ProviderSelection) =>
               Effect.succeed(
                 failed(
                   `provider.${error.reason._tag}`,
-                  error.message,
+                  providerMessage(error),
                   retryable(error),
                 ),
               ),

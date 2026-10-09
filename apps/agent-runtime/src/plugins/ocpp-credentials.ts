@@ -25,7 +25,7 @@ export type OcppCredential =
       // Epoch milliseconds, as OC++ core compares it (integration.ts: `expires > now + 5min`).
       readonly expires: number
       readonly methodID: string
-      // metadata.accountID, present on ChatGPT-plan logins.
+      // From the access token's JWT claims, else metadata.accountID.
       readonly accountID?: string
     }
 
@@ -57,6 +57,43 @@ export const isExpired = (credential: OcppCredential, now: number): boolean =>
 
 const decodeValue = Schema.decodeUnknownSync(Credential.Value)
 
+const asObject = (value: unknown): Record<string, unknown> | undefined =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined
+
+const nonEmptyString = (value: unknown): string | undefined =>
+  typeof value === 'string' && value !== '' ? value : undefined
+
+// ChatGPT account id from the access token's JWT payload, as OC++'s claim()
+// derives it: chatgpt_account_id, then the "https://api.openai.com/auth"
+// namespace's chatgpt_account_id, then organizations[0].id. The token is
+// decoded, not verified (the backend verifies it). Neither the token nor the
+// payload is logged or returned; only the id leaves.
+export const accountIDFromToken = (access: string): string | undefined => {
+  const part = access.split('.')[1]
+  if (!part) return undefined
+  try {
+    const claims = asObject(
+      JSON.parse(Buffer.from(part, 'base64url').toString('utf8')),
+    )
+    if (!claims) return undefined
+    const organizations = claims.organizations
+    return (
+      nonEmptyString(claims.chatgpt_account_id) ??
+      nonEmptyString(
+        asObject(claims['https://api.openai.com/auth'])?.chatgpt_account_id,
+      ) ??
+      nonEmptyString(
+        asObject(Array.isArray(organizations) ? organizations[0] : undefined)
+          ?.id,
+      )
+    )
+  } catch {
+    return undefined
+  }
+}
+
 type Row = { integration_id: string | null; label: string; value: string }
 
 export const readCredentials = (path: string): CredentialsOutcome => {
@@ -82,6 +119,13 @@ export const readCredentials = (path: string): CredentialsOutcome => {
           // Skip an undecodable row without echoing its contents.
           continue
         }
+        const accountID =
+          value.type === 'oauth'
+            ? (accountIDFromToken(value.access) ??
+              (typeof value.metadata?.accountID === 'string'
+                ? value.metadata.accountID
+                : undefined))
+            : undefined
         credentials.push(
           value.type === 'key'
             ? {
@@ -97,9 +141,7 @@ export const readCredentials = (path: string): CredentialsOutcome => {
                 access: value.access,
                 expires: value.expires,
                 methodID: value.methodID,
-                ...(typeof value.metadata?.accountID === 'string'
-                  ? { accountID: value.metadata.accountID }
-                  : {}),
+                ...(accountID === undefined ? {} : { accountID }),
               },
         )
       }
