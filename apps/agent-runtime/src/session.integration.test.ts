@@ -33,6 +33,14 @@ const boot = async (
     // How many times the host asks to compact before a step.
     readonly compactFirst?: number
     readonly moving?: StepHost['Service']['moving']
+    readonly recover?: StepHost['Service']['recover']
+    // Wraps the model host's begin.
+    readonly begin?: (
+      input: Parameters<StepHost['Service']['begin']>[0],
+      begin: StepHost['Service']['begin'],
+    ) => ReturnType<StepHost['Service']['begin']>
+    // The outbox's wait before it retries a job that failed.
+    readonly backoffMs?: (attempt: number) => number
   } = {},
 ) => {
   const log = createMemoryEventLog()
@@ -58,12 +66,16 @@ const boot = async (
   const outbox =
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>()
 
-  const full = createSessionAppConfig(
-    outbox,
-    options.concurrency === undefined
-      ? {}
-      : { worker: { concurrency: options.concurrency } },
-  )
+  const full = createSessionAppConfig(outbox, {
+    worker: {
+      ...(options.concurrency === undefined
+        ? {}
+        : { concurrency: options.concurrency }),
+      ...(options.backoffMs === undefined
+        ? {}
+        : { backoffMs: options.backoffMs }),
+    },
+  })
   // Conformance wants every registered Event covered by a scenario, and the
   // 49-event catalog is mostly not ported yet: register the events the
   // registered Slices use (the union of their eventsFor).
@@ -86,11 +98,14 @@ const boot = async (
           let compactFirst = options.compactFirst ?? 0
           return StepHost.of({
             ...(options.moving ? { moving: options.moving } : {}),
+            ...(options.recover ? { recover: options.recover } : {}),
             compact: options.compact ?? host.compact,
             begin: (input) =>
               compactFirst-- > 0
                 ? Effect.succeed({ compact: true } as const)
-                : host.begin(input),
+                : options.begin
+                  ? options.begin(input, host.begin)
+                  : host.begin(input),
           })
         }),
       ).pipe(
@@ -414,6 +429,125 @@ describe('step loop with a scripted model', () => {
     expect(t.log.inspect().at(-1)?.payload).toMatchObject({
       outcome: 'succeeded',
     })
+  })
+
+  it('lets the host settle what a dead attempt left open before the runtime settles the rest', async () => {
+    let died = false
+    let app: Awaited<ReturnType<typeof boot>>['app'] | undefined
+    const recovered: string[] = []
+    const t = await start({
+      backoffMs: () => 0,
+      // The first attempt opens two calls and dies without settling them.
+      begin: (input, begin) =>
+        died
+          ? begin(input)
+          : Effect.succeed({
+              agent: 'build',
+              model: { id: 'scripted', providerID: 'test' },
+              run: (record) =>
+                Effect.gen(function* () {
+                  died = true
+                  for (const id of ['call_child', 'call_other'])
+                    yield* record.toolRequested({
+                      id,
+                      name: 'execute',
+                      input: {},
+                    })
+                  return yield* Effect.die(new Error('process died'))
+                }),
+            }),
+      // The host knows more about one of them.
+      recover: (sessionID) =>
+        Effect.promise(async () => {
+          recovered.push(sessionID)
+          const step = t.log
+            .inspect()
+            .find((event) => event.type === 'session-step-started')
+          await app?.command({
+            type: 'settleToolCall',
+            payload: {
+              sessionID,
+              assistantMessageID: (
+                step?.payload as { assistantMessageID: string }
+              ).assistantMessageID,
+              id: 'call_child',
+              executed: false,
+              error: {
+                type: 'aborted',
+                message: 'Tool execution interrupted: execute (child)',
+              },
+            },
+          })
+        }),
+    })
+    app = t.app
+    t.model.script('ses_1', [{ finish: 'stop', text: 'done' }])
+
+    await t.app.command(enqueue('msg_a'))
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(recovered).toEqual(['ses_1'])
+    expect(
+      t.log
+        .inspect()
+        .filter((event) => event.type === 'session-tool-settled')
+        .map((event) => event.payload),
+    ).toEqual([
+      expect.objectContaining({
+        id: 'call_child',
+        error: expect.objectContaining({
+          message: 'Tool execution interrupted: execute (child)',
+        }),
+      }),
+      expect.objectContaining({
+        id: 'call_other',
+        error: expect.objectContaining({
+          message: 'Tool execution interrupted: execute',
+        }),
+      }),
+    ])
+    expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+      outcome: 'succeeded',
+    })
+  })
+
+  it('fails the execution when a manual compaction breaks', async () => {
+    const error = { type: 'compaction.failed', message: 'resolution died' }
+    const t = await start({
+      compact: () =>
+        Effect.succeed({ outcome: 'failed', error, fatal: true } as const),
+    })
+    t.model.script('ses_1', [{ finish: 'stop', text: 'Next time' }])
+
+    await t.app.command(compactionItem('msg_c'))
+    await t.app.command(enqueue('msg_a', 'queue'))
+    await t.waitFor(
+      () =>
+        t.types().filter((type) => type === 'session-execution-settled')
+          .length === 2,
+    )
+    await t.outboxSettled()
+
+    // The queued input behind it runs in the next execution.
+    expect(t.types()).toEqual([
+      'session-inbox-enqueued',
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered', // the compaction
+      'session-execution-settled',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-step-started',
+      'session-block-recorded',
+      'session-step-settled',
+      'session-execution-settled',
+    ])
+    const settled = t.log
+      .inspect()
+      .filter((event) => event.type === 'session-execution-settled')
+      .map((event) => event.payload)
+    expect(settled[0]).toMatchObject({ outcome: 'failed', error })
   })
 
   it('delivers a steer enqueued mid-step at the next boundary, before the next step', async () => {

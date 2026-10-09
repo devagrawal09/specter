@@ -135,8 +135,12 @@ export const makeRunStepPlugin =
               if (outcome.outcome === 'stopped') return false
               // A manual compaction that failed is recorded on its own item:
               // the execution goes on. The history must fit for a step, so an
-              // automatic one that failed fails the execution.
-              if (outcome.outcome === 'failed' && input.reason === 'auto') {
+              // automatic one that failed fails the execution, and so does
+              // one that broke.
+              if (
+                outcome.outcome === 'failed' &&
+                (input.reason === 'auto' || outcome.fatal)
+              ) {
                 yield* fail(outcome.error, `${key}:failed`)
                 return false
               }
@@ -155,16 +159,25 @@ export const makeRunStepPlugin =
             if (
               status.inFlightStepID !== undefined &&
               ordinal === status.stepsStarted - 1
-            )
+            ) {
+              // The host settles what it knows more about first; the runtime
+              // settles the calls still open after it.
+              const recovered =
+                host.recover === undefined
+                  ? status
+                  : yield* host
+                      .recover(sessionID)
+                      .pipe(Effect.andThen(query(stepStatus, { sessionID })))
               yield* reconcileOrphan(
                 { command },
                 {
                   sessionID,
                   assistantMessageID: status.inFlightStepID,
                   deliveryId: delivery.deliveryId,
-                  openCalls: status.openCalls ?? [],
+                  openCalls: recovered.openCalls ?? [],
                 },
               )
+            }
             return
           }
           // A request for a retry repeats the ordinal of the step that failed.

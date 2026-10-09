@@ -109,7 +109,13 @@ export type AttemptOutcome =
 // failed, usage) are the host's; the runtime decides when it runs.
 export type CompactionOutcome =
   | { readonly outcome: 'completed' }
-  | { readonly outcome: 'failed'; readonly error: SessionError.Error }
+  // `fatal`: the compaction itself broke (not an outcome it records), so even
+  // a manual one fails the execution.
+  | {
+      readonly outcome: 'failed'
+      readonly error: SessionError.Error
+      readonly fatal?: true
+    }
   // The execution moved on while it ran.
   | { readonly outcome: 'stopped' }
 
@@ -159,6 +165,10 @@ export class StepHost extends Context.Service<
     // Called before a move item is delivered, so the host can release what
     // it holds for the Session's current Location.
     readonly moving?: (sessionID: string) => Effect.Effect<void>
+    // Called when a step was left in flight by an attempt that died, before
+    // the runtime settles what it left open: the host settles the tool calls
+    // it knows more about (OC++'s delegated child Sessions) first.
+    readonly recover?: (sessionID: string) => Effect.Effect<void>
     // Compacts the Session's history: manually, for a delivered compaction
     // item, or automatically, when begin asked for it.
     readonly compact: (input: {
