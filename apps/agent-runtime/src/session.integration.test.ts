@@ -151,12 +151,10 @@ describe('step loop with a scripted model', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
-      'session-text-started', // scripted text is durable now
-      'session-text-ended',
+      'session-block-recorded', // scripted text is durable now
       'session-step-settled',
       'session-step-started',
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-step-settled',
       'session-execution-settled',
     ])
@@ -281,8 +279,7 @@ describe('step loop with a scripted model', () => {
         'session-step-started',
         'session-step-settled',
         'session-step-started',
-        'session-text-started',
-        'session-text-ended',
+        'session-block-recorded',
         'session-step-settled',
         'session-execution-settled',
       ])

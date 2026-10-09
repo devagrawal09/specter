@@ -252,10 +252,11 @@ export const makeRunStepPlugin =
             const recorded = yield* unlessRejected(
               command(
                 {
-                  type: 'recordText',
+                  type: 'recordBlock',
                   payload: {
                     sessionID,
                     assistantMessageID,
+                    kind: 'text',
                     ordinal: 0,
                     text: outcome.text,
                   },

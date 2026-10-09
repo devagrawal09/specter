@@ -1,8 +1,8 @@
 import { createCommandSlice, event } from '@specter-ts/spec'
 
-// session.md: assistant output is durable as the step produces it. A text
-// block is recorded as OC++ publishes it: text.started then text.ended with
-// the block's ordinal and final text. Deltas are ephemeral and never recorded.
+// session.md: assistant output is durable as the step produces it. A finished
+// text or reasoning block is one fact with its kind, ordinal and final text.
+// Deltas are ephemeral and never recorded.
 const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
@@ -52,61 +52,60 @@ const stepRetried = (assistantMessageID: string, sessionID = 'ses_1') =>
     error: boom,
     retry: { attempt: 1, at: 1000 },
   })
-const textStarted = (
-  assistantMessageID: string,
-  ordinal: number,
-  sessionID = 'ses_1',
-) => event('session-text-started', { sessionID, assistantMessageID, ordinal })
-const textEnded = (
+const recorded = (
   assistantMessageID: string,
   ordinal: number,
   text: string,
-  sessionID = 'ses_1',
+  kind = 'text',
 ) =>
-  event('session-text-ended', { sessionID, assistantMessageID, ordinal, text })
+  event('session-block-recorded', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    ordinal,
+    text,
+    kind,
+  })
 const text = (
   assistantMessageID: string,
   ordinal: number,
   value: string,
   sessionID = 'ses_1',
-) => ({ sessionID, assistantMessageID, ordinal, text: value })
+  kind = 'text',
+) => ({ sessionID, assistantMessageID, kind, ordinal, text: value })
 
-export const recordTextSpec = createCommandSlice('recordText')
+export const recordBlockSpec = createCommandSlice('recordBlock')
   .description(
-    'Records one finished text block of the in-flight step as text.started and text.ended (session.md: durable assistant output; deltas stay ephemeral).',
+    'Records one finished text or reasoning block of the in-flight step (session.md: durable assistant output; deltas stay ephemeral).',
   )
   .scenarios(
     {
       description:
-        'The in-flight step gets a text block: started and ended with its ordinal and text, in one commit.',
+        'The in-flight step gets a text block with its ordinal and text.',
       given: [started(), stepStarted('msg_1')],
       when: text('msg_1', 0, 'hello'),
-      expect: [textStarted('msg_1', 0), textEnded('msg_1', 0, 'hello')],
+      expect: [recorded('msg_1', 0, 'hello')],
     },
     {
       description:
         'A second block with the next ordinal is recorded after the first.',
-      given: [
-        started(),
-        stepStarted('msg_1'),
-        textStarted('msg_1', 0),
-        textEnded('msg_1', 0, 'one'),
-      ],
+      given: [started(), stepStarted('msg_1'), recorded('msg_1', 0, 'one')],
       when: text('msg_1', 1, 'two'),
-      expect: [textStarted('msg_1', 1), textEnded('msg_1', 1, 'two')],
+      expect: [recorded('msg_1', 1, 'two')],
+    },
+    {
+      description:
+        'A reasoning block counts its ordinals apart from text: reasoning 0 is recorded after text 0.',
+      given: [started(), stepStarted('msg_1'), recorded('msg_1', 0, 'one')],
+      when: text('msg_1', 0, 'thinking', 'ses_1', 'reasoning'),
+      expect: [recorded('msg_1', 0, 'thinking', 'reasoning')],
     },
     {
       description:
         'A block ordinal is used once per attempt: recording it again is rejected, which makes a duplicate request harmless.',
-      given: [
-        started(),
-        stepStarted('msg_1'),
-        textStarted('msg_1', 0),
-        textEnded('msg_1', 0, 'one'),
-      ],
+      given: [started(), stepStarted('msg_1'), recorded('msg_1', 0, 'one')],
       when: text('msg_1', 0, 'one again'),
       expect: [],
-      reject: { reason: 'Text already recorded' },
+      reject: { reason: 'Block already recorded' },
     },
     {
       description:
@@ -114,20 +113,19 @@ export const recordTextSpec = createCommandSlice('recordText')
       given: [
         started(),
         stepStarted('msg_1'),
-        textStarted('msg_1', 0),
-        textEnded('msg_1', 0, 'partial'),
+        recorded('msg_1', 0, 'partial'),
         stepRetried('msg_1'),
         stepStarted('msg_1'),
       ],
       when: text('msg_1', 0, 'complete'),
-      expect: [textStarted('msg_1', 0), textEnded('msg_1', 0, 'complete')],
+      expect: [recorded('msg_1', 0, 'complete')],
     },
     {
-      description: 'Empty text is not a block.',
+      description: 'An empty block is not recorded.',
       given: [started(), stepStarted('msg_1')],
       when: text('msg_1', 0, ''),
       expect: [],
-      reject: { reason: 'Text is empty' },
+      reject: { reason: 'Block is empty' },
     },
     {
       description: 'Text needs an active execution.',
@@ -202,4 +200,4 @@ export const recordTextSpec = createCommandSlice('recordText')
     },
   )
 
-export default recordTextSpec
+export default recordBlockSpec

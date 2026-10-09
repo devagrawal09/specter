@@ -214,13 +214,12 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-step-settled',
       'session-execution-settled',
     ])
     expect(t.deltas().map((delta) => delta.text)).toEqual(['Hel', 'lo'])
-    expect(t.payloads('session-text-ended')[0]).toMatchObject({
+    expect(t.payloads('session-block-recorded')[0]).toMatchObject({
       ordinal: 0,
       text: 'Hello',
     })
@@ -269,14 +268,12 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-tool-requested',
       'session-tool-settled',
       'session-step-settled',
       'session-step-started',
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-step-settled',
       'session-execution-settled',
     ])
@@ -387,8 +384,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-step-started',
       'session-step-settled',
       'session-step-started',
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-step-settled',
       'session-execution-settled',
     ])

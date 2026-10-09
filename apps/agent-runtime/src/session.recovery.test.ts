@@ -117,8 +117,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-step-started', // A
       'session-step-settled', // orphan reconciliation
       'session-step-started', // B: a new physical attempt
-      'session-text-started', // the scripted text is now durable
-      'session-text-ended',
+      'session-block-recorded', // the scripted text is now durable
       'session-step-settled',
       'session-execution-settled',
     ])
@@ -217,8 +216,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-tool-settled', // reconciliation settles the call first
       'session-step-settled',
       'session-step-started', // B: a new physical attempt
-      'session-text-started',
-      'session-text-ended',
+      'session-block-recorded',
       'session-step-settled',
       'session-execution-settled',
     ])

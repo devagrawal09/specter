@@ -98,8 +98,7 @@ const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
-const textStarted = sessionEvent('session-text-started')
-const textEnded = sessionEvent('session-text-ended')
+const blockRecorded = sessionEvent('session-block-recorded')
 const toolRequested = sessionEvent('session-tool-requested')
 const toolSettled = sessionEvent('session-tool-settled')
 const contentUpdated = sessionEvent('session-message-content-updated')
@@ -315,20 +314,14 @@ export const modelTranscript = implementQuery(specification)
         parts: [],
       })
   })
-  // text.started pushes an empty text block; text.ended sets the LATEST text
-  // block (the ordinal is not used for lookup), and does nothing without one.
-  .apply(textStarted, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload
+  // A text block is appended in recording order; reasoning is not projected.
+  .apply(blockRecorded, async (event, state) => {
+    if (event.payload.kind !== 'text') return
+    const { sessionID, assistantMessageID, text } = event.payload
     assistantOf(state, sessionID, assistantMessageID)?.parts.push({
       kind: 'text',
-      text: '',
+      text,
     })
-  })
-  .apply(textEnded, async (event, state) => {
-    const { sessionID, assistantMessageID, text } = event.payload
-    const parts = assistantOf(state, sessionID, assistantMessageID)?.parts
-    const latest = lastOf(parts ?? [], (part) => part.kind === 'text')
-    if (latest?.kind === 'text') latest.text = text
   })
   .apply(toolRequested, async (event, state) => {
     const { sessionID, assistantMessageID, id, name, input, executed } =

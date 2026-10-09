@@ -51,6 +51,18 @@ const runtimeEventSchemas = {
       ),
     }),
   ]),
+  // A finished content block of an attempt (replaces OC++'s text and
+  // reasoning started and ended). Ordinals count per kind, as in OC++.
+  'session-block-recorded': Schema.Union([
+    Schema.Struct({
+      ...SessionEvent.Text.Ended.data.fields,
+      kind: Schema.Literal('text'),
+    }),
+    Schema.Struct({
+      ...SessionEvent.Reasoning.Ended.data.fields,
+      kind: Schema.Literal('reasoning'),
+    }),
+  ]),
   // A complete tool call the model requested, durable before any side effect
   // (replaces OC++'s tool input started, input ended and called). The raw
   // input text is derivable from the input, so it is not recorded.

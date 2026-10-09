@@ -22,10 +22,10 @@ import {
   recordStepStartedStore,
 } from './features/session/record-step-started/impl.ts'
 import {
-  createRecordTextState,
-  recordText,
-  recordTextStore,
-} from './features/session/record-text/impl.ts'
+  createRecordBlockState,
+  recordBlock,
+  recordBlockStore,
+} from './features/session/record-block/impl.ts'
 import {
   createRecordToolCallState,
   recordToolCall,
@@ -171,7 +171,7 @@ export const createSessionAppConfig = (
       executionStatus,
       recordStepStarted,
       settleStep,
-      recordText,
+      recordBlock,
       recordToolCall,
       settleToolCall,
       finishExecution,
@@ -223,7 +223,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(executionStatusStore, createExecutionStatusState),
     provide(recordStepStartedStore, createRecordStepStartedState),
     provide(settleStepStore, createSettleStepState),
-    provide(recordTextStore, createRecordTextState),
+    provide(recordBlockStore, createRecordBlockState),
     provide(recordToolCallStore, createRecordToolCallState),
     provide(settleToolCallStore, createSettleToolCallState),
     provide(finishExecutionStore, createFinishExecutionState),

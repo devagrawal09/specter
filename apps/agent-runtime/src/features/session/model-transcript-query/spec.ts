@@ -41,18 +41,19 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     agent: 'build',
     model: { id: 'scripted', providerID: 'test' },
   })
-const textStarted = (
-  assistantMessageID: string,
-  ordinal = 0,
-  sessionID = 'ses_1',
-) => event('session-text-started', { sessionID, assistantMessageID, ordinal })
-const textEnded = (
+const blockRecorded = (
   assistantMessageID: string,
   text: string,
   ordinal = 0,
   sessionID = 'ses_1',
 ) =>
-  event('session-text-ended', { sessionID, assistantMessageID, ordinal, text })
+  event('session-block-recorded', {
+    sessionID,
+    assistantMessageID,
+    kind: 'text',
+    ordinal,
+    text,
+  })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
   event('session-step-settled', {
     sessionID,
@@ -177,8 +178,7 @@ const prompted = [
 const conversation = [
   ...prompted,
   stepStarted('msg_2'),
-  textStarted('msg_2'),
-  textEnded('msg_2', 'hi'),
+  blockRecorded('msg_2', 'hi'),
   stepEnded('msg_2'),
   enqueued('msg_3', 'more'),
   delivered('msg_3'),
@@ -321,8 +321,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'hi'),
+        blockRecorded('msg_2', 'hi'),
         stepEnded('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -339,8 +338,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...conversation,
         stepStarted('msg_4'),
-        textStarted('msg_4'),
-        textEnded('msg_4', 'again'),
+        blockRecorded('msg_4', 'again'),
         stepEnded('msg_4'),
       ],
       when: { sessionID: 'ses_1' },
@@ -355,14 +353,12 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A step with several text blocks keeps them in the order they started within one assistant message (projector: text.started pushes a block, text.ended sets the latest one).',
+        'A step with several text blocks keeps them in recording order within one assistant message.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2', 0),
-        textEnded('msg_2', 'first', 0),
-        textStarted('msg_2', 1),
-        textEnded('msg_2', 'second', 1),
+        blockRecorded('msg_2', 'first', 0),
+        blockRecorded('msg_2', 'second', 1),
         stepEnded('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -386,19 +382,11 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'Empty text is not meaningful (part.text !== ""): a started-but-unfinished text block adds nothing.',
-      given: [...prompted, stepStarted('msg_2'), textStarted('msg_2')],
-      when: { sessionID: 'ses_1' },
-      expect: { messages: [userMessage('msg_1', 'hello')] },
-    },
-    {
-      description:
         'A failed attempt that left durable text is still replayed as an assistant message (assistant() keeps messages with message.error).',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'partial'),
+        blockRecorded('msg_2', 'partial'),
         stepFailed('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -422,12 +410,10 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'partial'),
+        blockRecorded('msg_2', 'partial'),
         stepRetried('msg_2'),
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'complete'),
+        blockRecorded('msg_2', 'complete'),
         stepEnded('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -450,8 +436,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
         stepStarted('msg_2'),
         stepRetried('msg_2'),
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'complete'),
+        blockRecorded('msg_2', 'complete'),
         stepEnded('msg_2'),
       ],
       when: { sessionID: 'ses_1' },
@@ -464,43 +449,11 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'text.ended without a started block changes nothing (the projector finds no text block to set), whatever its ordinal.',
-      given: [
-        ...prompted,
-        stepStarted('msg_2'),
-        textEnded('msg_2', 'orphan', 3),
-        stepEnded('msg_2'),
-      ],
-      when: { sessionID: 'ses_1' },
-      expect: { messages: [userMessage('msg_1', 'hello')] },
-    },
-    {
-      description:
-        'text.ended sets the latest text block, not the block whose ordinal it names.',
-      given: [
-        ...prompted,
-        stepStarted('msg_2'),
-        textStarted('msg_2', 0),
-        textStarted('msg_2', 1),
-        textEnded('msg_2', 'lands on the latest', 0),
-        stepEnded('msg_2'),
-      ],
-      when: { sessionID: 'ses_1' },
-      expect: {
-        messages: [
-          userMessage('msg_1', 'hello'),
-          assistantMessage('msg_2', 'lands on the latest'),
-        ],
-      },
-    },
-    {
-      description:
         'session.message.content.updated replaces the assistant message content with the edited text parts.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'draft'),
+        blockRecorded('msg_2', 'draft'),
         stepEnded('msg_2'),
         contentUpdated('msg_2', ['edited one', 'edited two']),
       ],
@@ -522,8 +475,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'draft'),
+        blockRecorded('msg_2', 'draft'),
         stepEnded('msg_2'),
         contentUpdated('msg_2', []),
       ],
@@ -691,8 +643,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'running it'),
+        blockRecorded('msg_2', 'running it'),
         toolRequested('msg_2', 'call_1', { code: '1+1' }),
         toolSucceeded('msg_2', 'call_1', '2'),
         stepEnded('msg_2'),
@@ -798,8 +749,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        textStarted('msg_2'),
-        textEnded('msg_2', 'working'),
+        blockRecorded('msg_2', 'working'),
         toolRequested('msg_2', 'call_1', { code: 'a' }),
         toolRequested('msg_2', 'call_2', { code: 'b' }),
         toolSucceeded('msg_2', 'call_1', 'A'),

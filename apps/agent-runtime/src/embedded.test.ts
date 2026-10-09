@@ -86,8 +86,7 @@ describe('embedded runtime', () => {
           'session-execution-started',
           'session-inbox-delivered',
           'session-step-started',
-          'session-text-started',
-          'session-text-ended',
+          'session-block-recorded',
           'session-step-settled',
           'session-execution-settled',
         ])
