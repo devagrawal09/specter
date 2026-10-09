@@ -113,6 +113,8 @@ export class StepHost extends Context.Service<
       readonly sessionID: string
       readonly assistantMessageID: string
       readonly ordinal: number
+      // The step's number since input was last delivered, from 1.
+      readonly step: number
       // The runtime's model transcript at the moment the attempt runs.
       readonly transcript: Effect.Effect<
         { readonly messages: ModelMessage[] },

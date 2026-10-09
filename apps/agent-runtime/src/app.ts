@@ -68,10 +68,10 @@ import {
   type RunStepRequest,
 } from './features/session/run-step-reaction/impl.ts'
 import {
-  createStepBoundaryState,
-  stepBoundary,
-  stepBoundaryStore,
-} from './features/session/step-boundary-query/impl.ts'
+  createNextStepState,
+  nextStep,
+  nextStepStore,
+} from './features/session/next-step-query/impl.ts'
 import {
   createStepStatusState,
   stepStatus,
@@ -195,7 +195,7 @@ export const createSessionAppConfig = (
       finishExecution,
       failExecution,
       stepStatus,
-      stepBoundary,
+      nextStep,
       forkSession,
       sessionHistory,
       modelTranscript,
@@ -251,7 +251,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(finishExecutionStore, createFinishExecutionState),
     provide(failExecutionStore, createFailExecutionState),
     provide(stepStatusStore, createStepStatusState),
-    provide(stepBoundaryStore, createStepBoundaryState),
+    provide(nextStepStore, createNextStepState),
     provide(forkSessionStore, createForkSessionState),
     provide(sessionHistoryStore, createSessionHistoryState),
     provide(modelTranscriptStore, createModelTranscriptState),

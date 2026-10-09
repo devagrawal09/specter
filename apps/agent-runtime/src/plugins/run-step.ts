@@ -6,7 +6,7 @@ import type { SessionID } from '@ocpp/schema/session-id'
 import { Effect } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
-import { stepBoundary } from '../features/session/step-boundary-query/impl.ts'
+import { nextStep } from '../features/session/next-step-query/impl.ts'
 import type { RunStepRequest } from '../features/session/run-step-reaction/impl.ts'
 import { stepStatus } from '../features/session/step-status-query/impl.ts'
 import { modelTranscript } from '../features/session/model-transcript-query/impl.ts'
@@ -172,9 +172,12 @@ export const makeRunStepPlugin =
           // before the next step; at an idle boundary (the execution's start,
           // or after a step that needed no continuation) one queued item may
           // enter too, with the steers that arrive behind it.
-          const { boundary, stepsInExecution } = yield* query(stepBoundary, {
-            sessionID,
-          })
+          const { boundary, stepsInExecution, stepsSinceInput, retryAt } =
+            yield* query(nextStep, { sessionID })
+          // A retried step waits until it is due: backoff is recorded with the
+          // failure and honored here, one Session's job at a time.
+          if (retryAt !== undefined && retryAt > Date.now())
+            yield* Effect.sleep(retryAt - Date.now())
           let scope = boundary
           let delivered = 0
           // A delivered control item (compaction, move) is not input for a step.
@@ -237,11 +240,21 @@ export const makeRunStepPlugin =
           const assistantMessageID =
             options.assistantMessageID?.({ sessionID, ordinal }) ??
             `msg_${sessionID}_${ordinal}`
+          // The step's number since input was last delivered (the agent's step
+          // limit counts these): delivered input starts again at 1, a retried
+          // step keeps its number.
+          const step =
+            delivered > 0
+              ? 1
+              : retryAt !== undefined
+                ? stepsSinceInput
+                : stepsSinceInput + 1
           // The host compacts first when the history no longer fits.
           let plan = yield* host.begin({
             sessionID,
             assistantMessageID,
             ordinal,
+            step,
             transcript: query(modelTranscript, { sessionID }),
           })
           for (let attempt = 1; 'compact' in plan; attempt++) {
@@ -264,6 +277,7 @@ export const makeRunStepPlugin =
               sessionID,
               assistantMessageID,
               ordinal,
+              step,
               transcript: query(modelTranscript, { sessionID }),
             })
           }
