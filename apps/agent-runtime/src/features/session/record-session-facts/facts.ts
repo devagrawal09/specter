@@ -567,6 +567,7 @@ export const sessionFacts = {
     integrationID: 'anthropic',
     credentialID: 'cred_1',
     label: 'default',
+    secret: { iv: 'aXY=', data: 'c2VhbGVk' },
   },
   'credential-activated': {
     integrationID: 'anthropic',
@@ -580,6 +581,7 @@ export const sessionFacts = {
   'credential-rotated': {
     integrationID: 'anthropic',
     credentialID: 'cred_1',
+    secret: { iv: 'aXYy', data: 'cm90YXRlZA==' },
   },
   'credential-removed': {
     integrationID: 'anthropic',
