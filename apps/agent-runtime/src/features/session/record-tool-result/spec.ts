@@ -28,23 +28,29 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     model,
   })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'tool-calls',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 const boom = { type: 'transport', message: 'connection reset' }
 const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
-const retryScheduled = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-retry-scheduled', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
-    attempt: 1,
-    at: 1000,
+    outcome: 'failed',
     error: boom,
+  })
+const stepRetried = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-settled', {
+    sessionID,
+    assistantMessageID,
+    outcome: 'failed',
+    error: boom,
+    retry: { attempt: 1, at: 1000 },
   })
 const toolCall = (
   assistantMessageID: string,
@@ -218,12 +224,7 @@ export const recordToolResultSpec = createCommandSlice('recordToolResult')
     {
       description:
         'A retried attempt forgets the failed attempt calls: its call ids are unknown until recorded again.',
-      given: [
-        ...open,
-        stepFailed('msg_1'),
-        retryScheduled('msg_1'),
-        stepStarted('msg_1'),
-      ],
+      given: [...open, stepRetried('msg_1'), stepStarted('msg_1')],
       when: success('msg_1', 'call_1', '2'),
       expect: [],
       reject: { reason: 'Tool call not recorded' },

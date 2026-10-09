@@ -216,7 +216,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-step-started',
       'session-text-started',
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     expect(t.deltas().map((delta) => delta.text)).toEqual(['Hel', 'lo'])
@@ -227,7 +227,8 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     expect(t.payloads('session-step-started')[0]).toMatchObject({
       model: { id: 'gpt-test', providerID: 'openai' },
     })
-    expect(t.payloads('session-step-ended')[0]).toMatchObject({
+    expect(t.payloads('session-step-settled')[0]).toMatchObject({
+      outcome: 'succeeded',
       finish: 'stop',
       tokens: {
         input: 7,
@@ -274,11 +275,11 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-tool-input-ended',
       'session-tool-called',
       'session-tool-success',
-      'session-step-ended',
+      'session-step-settled',
       'session-step-started',
       'session-text-started',
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     // Durable call strictly before its result.
@@ -294,7 +295,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       id: 'call_1',
       content: [{ type: 'text', text: '{"text":"pong"}' }],
     })
-    const ends = t.payloads('session-step-ended')
+    const ends = t.payloads('session-step-settled')
     expect(ends.map((end) => end.finish)).toEqual(['tool-calls', 'stop'])
     expect(ends.map((end) => (end.tokens as { input: number }).input)).toEqual([
       10, 20,
@@ -391,15 +392,15 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
-      'session-step-failed',
-      'session-retry-scheduled',
+      'session-step-settled',
       'session-step-started',
       'session-text-started',
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
-    expect(t.payloads('session-step-failed')[0]).toMatchObject({
+    expect(t.payloads('session-step-settled')[0]).toMatchObject({
+      outcome: 'failed',
       error: { type: 'provider.RateLimit', message: 'slow down' },
     })
   })
@@ -417,7 +418,8 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     await t.app.command(prompt)
     await t.waitFor(() => t.types().includes('session-execution-settled'))
 
-    expect(t.payloads('session-step-failed')[0]).toMatchObject({
+    expect(t.payloads('session-step-settled')[0]).toMatchObject({
+      outcome: 'failed',
       error: { type: 'auth.credential-expired' },
     })
     expect(await t.requests()).toEqual([])

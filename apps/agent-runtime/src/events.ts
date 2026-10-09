@@ -2,6 +2,7 @@ import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
 import { SessionError } from '@ocpp/schema/session-error'
 import { SessionEvent } from '@ocpp/schema/session-event'
 import { SessionID } from '@ocpp/schema/session-id'
+import { NonNegativeInt, optional, PositiveInt } from '@ocpp/schema/schema'
 import { Schema } from 'effect'
 
 // Specter's spec format requires kebab-case event types; OC++ uses dotted
@@ -32,6 +33,22 @@ const runtimeEventSchemas = {
       sessionID: SessionID,
       outcome: Schema.Literal('interrupted'),
       reason: Schema.Literals(['user', 'shutdown', 'superseded']),
+    }),
+  ]),
+  // One terminal per physical attempt of a step (replaces OC++'s step ended,
+  // step failed and retry scheduled). A failure that is retried carries the
+  // retry: the next attempt of the same step follows.
+  'session-step-settled': Schema.Union([
+    Schema.Struct({
+      ...SessionEvent.Step.Ended.data.fields,
+      outcome: Schema.Literal('succeeded'),
+    }),
+    Schema.Struct({
+      ...SessionEvent.Step.Failed.data.fields,
+      outcome: Schema.Literal('failed'),
+      retry: optional(
+        Schema.Struct({ attempt: PositiveInt, at: NonNegativeInt }),
+      ),
     }),
   ]),
 } as const

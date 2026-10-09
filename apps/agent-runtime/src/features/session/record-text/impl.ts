@@ -27,9 +27,7 @@ export const createRecordTextState = (): RecordTextState => ({
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 const textStarted = sessionEvent('session-text-started')
 const textEnded = sessionEvent('session-text-ended')
 
@@ -70,13 +68,9 @@ export const recordText = implementCommand(specification)
     const { sessionID, assistantMessageID } = event.payload
     state.inFlight[sessionID] = { assistantMessageID, ordinals: [] }
   })
-  .apply(stepEnded, async (event, state) => {
+  .apply(stepSettled, async (event, state) => {
     closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
   })
-  .apply(stepFailed, async (event, state) => {
-    closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
-  })
-  .apply(retryScheduled, async () => {})
   .apply(textStarted, async () => {})
   .apply(textEnded, async (event, state) => {
     const { sessionID, assistantMessageID, ordinal } = event.payload

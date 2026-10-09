@@ -76,10 +76,11 @@ const reconcileOrphan = (
     yield* unlessRejected(
       command(
         {
-          type: 'recordStepFailed',
+          type: 'settleStep',
           payload: {
             sessionID,
             assistantMessageID,
+            outcome: 'failed',
             error: {
               type: 'orphaned',
               message: 'Step was in flight when its process stopped',
@@ -230,10 +231,11 @@ export const makeRunStepPlugin =
             yield* unlessRejected(
               command(
                 {
-                  type: 'recordStepFailed',
+                  type: 'settleStep',
                   payload: {
                     sessionID,
                     assistantMessageID,
+                    outcome: 'failed',
                     error: outcome.error,
                     retryable: outcome.retryable,
                     // Backoff is recorded, not waited on.
@@ -313,10 +315,11 @@ export const makeRunStepPlugin =
           const ended = yield* unlessRejected(
             command(
               {
-                type: 'recordStepEnded',
+                type: 'settleStep',
                 payload: {
                   sessionID,
                   assistantMessageID,
+                  outcome: 'succeeded',
                   finish: outcome.finish,
                   ...(outcome.usage ? { tokens: outcome.usage } : {}),
                 },

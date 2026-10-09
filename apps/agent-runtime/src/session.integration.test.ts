@@ -153,11 +153,11 @@ describe('step loop with a scripted model', () => {
       'session-step-started',
       'session-text-started', // scripted text is durable now
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-step-started',
       'session-text-started',
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     expect(
@@ -198,10 +198,10 @@ describe('step loop with a scripted model', () => {
       'session-inbox-delivered', // A, before step 1
       'session-step-started',
       'session-inbox-enqueued', // B arrives while step 1 is in flight
-      'session-step-ended',
+      'session-step-settled',
       'session-inbox-delivered', // B, at the boundary, before step 2
       'session-step-started',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     const delivered = t.log
@@ -279,17 +279,22 @@ describe('step loop with a scripted model', () => {
         'session-execution-started',
         'session-inbox-delivered',
         'session-step-started',
-        'session-step-failed',
-        'session-retry-scheduled',
+        'session-step-settled',
         'session-step-started',
         'session-text-started',
         'session-text-ended',
-        'session-step-ended',
+        'session-step-settled',
         'session-execution-settled',
       ])
-      const retries = payloads(t, 'session-retry-scheduled')
+      const retries = payloads(t, 'session-step-settled').filter(
+        (settled) => settled.retry !== undefined,
+      )
       expect(retries).toHaveLength(1)
-      expect(retries[0]).toMatchObject({ attempt: 1, error: transport })
+      expect(retries[0]).toMatchObject({
+        outcome: 'failed',
+        error: transport,
+        retry: { attempt: 1 },
+      })
       const starts = payloads(t, 'session-step-started')
       expect(starts).toHaveLength(2)
       expect(starts[1]?.assistantMessageID).toBe(starts[0]?.assistantMessageID)
@@ -321,7 +326,7 @@ describe('step loop with a scripted model', () => {
         'session-execution-started',
         'session-inbox-delivered',
         'session-step-started',
-        'session-step-failed',
+        'session-step-settled',
         'session-execution-settled',
       ])
       expect(payloads(t, 'session-execution-settled')[0]).toMatchObject({
@@ -349,10 +354,17 @@ describe('step loop with a scripted model', () => {
       await t.waitFor(() => t.types().includes('session-execution-settled'))
       await t.outboxSettled()
 
-      const retries = payloads(t, 'session-retry-scheduled')
-      expect(retries.map((retry) => retry.attempt)).toEqual([1, 2, 3])
+      const failures = payloads(t, 'session-step-settled')
+      expect(
+        failures.map(
+          (failure) =>
+            (failure.retry as { attempt: number } | undefined)?.attempt,
+        ),
+      ).toEqual([1, 2, 3, undefined])
       expect(payloads(t, 'session-step-started')).toHaveLength(limit + 1)
-      expect(payloads(t, 'session-step-failed')).toHaveLength(limit + 1)
+      expect(failures.map((failure) => failure.outcome)).toEqual(
+        Array.from({ length: limit + 1 }, () => 'failed'),
+      )
       expect(t.types().at(-1)).toBe('session-execution-settled')
       expect(payloads(t, 'session-execution-settled')[0]).toMatchObject({
         outcome: 'failed',

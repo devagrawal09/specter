@@ -10,7 +10,7 @@ import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection: which Sessions have an active execution, which step
-// IDs were used, and which step is in flight. Duplicated from record-step-ended
+// IDs were used, and which step is in flight. Duplicated from settle-step
 // and finish-execution on purpose.
 export type RecordStepStartedState = {
   active: Record<string, true>
@@ -31,9 +31,7 @@ export const createRecordStepStartedState = (): RecordStepStartedState => ({
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -66,20 +64,15 @@ export const recordStepStarted = implementCommand(specification)
     state.steps[assistantMessageID] = { sessionID, retryScheduled: false }
     state.inFlight[sessionID] = assistantMessageID
   })
-  .apply(stepEnded, async (event, state) => {
+  // A settled attempt is over; the step id stays taken unless its failure is
+  // retried.
+  .apply(stepSettled, async (event, state) => {
     const { sessionID, assistantMessageID } = event.payload
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]
-  })
-  // A failed attempt is over; the step id stays taken until a retry is scheduled.
-  .apply(stepFailed, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload
-    if (state.inFlight[sessionID] === assistantMessageID)
-      delete state.inFlight[sessionID]
-  })
-  .apply(retryScheduled, async (event, state) => {
-    const step = state.steps[event.payload.assistantMessageID]
-    if (step) step.retryScheduled = true
+    const step = state.steps[assistantMessageID]
+    if (step && event.payload.outcome === 'failed' && event.payload.retry)
+      step.retryScheduled = true
   })
   .handle(async (command, state) => {
     if (!state.active[command.sessionID])

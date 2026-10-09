@@ -54,26 +54,28 @@ const textEnded = (
 ) =>
   event('session-text-ended', { sessionID, assistantMessageID, ordinal, text })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'stop',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-failed', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'failed',
     error: { type: 'transport', message: 'connection reset' },
   })
-const retryScheduled = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-retry-scheduled', {
+const stepRetried = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
-    attempt: 1,
-    at: 1,
+    outcome: 'failed',
     error: { type: 'transport', message: 'connection reset' },
+    retry: { attempt: 1, at: 1 },
   })
 const contentUpdated = (
   messageID: string,
@@ -440,8 +442,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
         stepStarted('msg_2'),
         textStarted('msg_2'),
         textEnded('msg_2', 'partial'),
-        stepFailed('msg_2'),
-        retryScheduled('msg_2'),
+        stepRetried('msg_2'),
         stepStarted('msg_2'),
         textStarted('msg_2'),
         textEnded('msg_2', 'complete'),
@@ -465,8 +466,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        stepFailed('msg_2'),
-        retryScheduled('msg_2'),
+        stepRetried('msg_2'),
         stepStarted('msg_2'),
         textStarted('msg_2'),
         textEnded('msg_2', 'complete'),

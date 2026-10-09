@@ -115,12 +115,11 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started', // A
-      'session-step-failed', // orphan reconciliation
-      'session-retry-scheduled',
+      'session-step-settled', // orphan reconciliation
       'session-step-started', // B: a new physical attempt
       'session-text-started', // the scripted text is now durable
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     const of = (type: string) =>
@@ -130,13 +129,11 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     const starts = of('session-step-started')
     expect(starts).toHaveLength(2)
     expect(starts[1]?.assistantMessageID).toBe(starts[0]?.assistantMessageID)
-    expect(of('session-step-failed')[0]).toMatchObject({
+    expect(of('session-step-settled')[0]).toMatchObject({
       assistantMessageID: starts[0]?.assistantMessageID,
+      outcome: 'failed',
       error: { type: 'orphaned' },
-    })
-    expect(of('session-retry-scheduled')[0]).toMatchObject({
-      attempt: 1,
-      assistantMessageID: starts[0]?.assistantMessageID,
+      retry: { attempt: 1 },
     })
     // One execution, and the inbox item was delivered exactly once.
     expect(of('session-execution-started')).toHaveLength(1)
@@ -220,12 +217,11 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-tool-input-ended',
       'session-tool-called', // A died here: the call is running
       'session-tool-failed', // reconciliation settles the call first
-      'session-step-failed',
-      'session-retry-scheduled',
+      'session-step-settled',
       'session-step-started', // B: a new physical attempt
       'session-text-started',
       'session-text-ended',
-      'session-step-ended',
+      'session-step-settled',
       'session-execution-settled',
     ])
     const of = (type: string) =>
@@ -242,7 +238,8 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
         executed: false,
       }),
     ])
-    expect(of('session-step-failed')[0]).toMatchObject({
+    expect(of('session-step-settled')[0]).toMatchObject({
+      outcome: 'failed',
       error: { type: 'orphaned' },
     })
 
@@ -302,7 +299,11 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       () => `events: ${types().join(', ')}`,
     )
     expect(
-      types().filter((type) => type === 'session-retry-scheduled'),
+      events(b.log).filter(
+        (event) =>
+          event.type === 'session-step-settled' &&
+          (event.payload as { retry?: unknown }).retry !== undefined,
+      ),
     ).toHaveLength(3)
     expect(
       events(b.log).find((event) => event.type === 'session-execution-settled')

@@ -97,9 +97,7 @@ const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 const textStarted = sessionEvent('session-text-started')
 const textEnded = sessionEvent('session-text-ended')
 const toolInputStarted = sessionEvent('session-tool-input-started')
@@ -411,9 +409,7 @@ export const modelTranscript = implementQuery(specification)
       ]
     })
   })
-  .apply(stepEnded, async () => {})
-  .apply(stepFailed, async () => {})
-  .apply(retryScheduled, async () => {})
+  .apply(stepSettled, async () => {})
   .apply(compactionStarted, async (event, state) => {
     const { sessionID, inputID, recent } = event.payload
     entries(state, sessionID).push({

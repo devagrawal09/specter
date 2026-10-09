@@ -17,11 +17,6 @@ import {
   finishExecutionStore,
 } from './features/session/finish-execution/impl.ts'
 import {
-  createRecordStepEndedState,
-  recordStepEnded,
-  recordStepEndedStore,
-} from './features/session/record-step-ended/impl.ts'
-import {
   createRecordStepStartedState,
   recordStepStarted,
   recordStepStartedStore,
@@ -42,10 +37,10 @@ import {
   recordToolResultStore,
 } from './features/session/record-tool-result/impl.ts'
 import {
-  createRecordStepFailedState,
-  recordStepFailed,
-  recordStepFailedStore,
-} from './features/session/record-step-failed/impl.ts'
+  createSettleStepState,
+  settleStep,
+  settleStepStore,
+} from './features/session/settle-step/impl.ts'
 import {
   createForkSessionState,
   forkSession,
@@ -175,8 +170,7 @@ export const createSessionAppConfig = (
       wakeExecution,
       executionStatus,
       recordStepStarted,
-      recordStepEnded,
-      recordStepFailed,
+      settleStep,
       recordText,
       recordToolCall,
       recordToolResult,
@@ -228,8 +222,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(wakeExecutionStore, createWakeExecutionState),
     provide(executionStatusStore, createExecutionStatusState),
     provide(recordStepStartedStore, createRecordStepStartedState),
-    provide(recordStepEndedStore, createRecordStepEndedState),
-    provide(recordStepFailedStore, createRecordStepFailedState),
+    provide(settleStepStore, createSettleStepState),
     provide(recordTextStore, createRecordTextState),
     provide(recordToolCallStore, createRecordToolCallState),
     provide(recordToolResultStore, createRecordToolResultState),

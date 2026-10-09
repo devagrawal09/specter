@@ -28,23 +28,29 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     model,
   })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'tool-calls',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 const boom = { type: 'transport', message: 'connection reset' }
 const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
-const retryScheduled = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-retry-scheduled', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
-    attempt: 1,
-    at: 1000,
+    outcome: 'failed',
     error: boom,
+  })
+const stepRetried = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-settled', {
+    sessionID,
+    assistantMessageID,
+    outcome: 'failed',
+    error: boom,
+    retry: { attempt: 1, at: 1000 },
   })
 const step = (assistantMessageID: string, sessionID = 'ses_1') => ({
   sessionID,
@@ -143,12 +149,7 @@ export const recordStepStartedSpec = createCommandSlice('recordStepStarted')
     {
       description:
         'A scheduled retry starts another physical attempt of the same step: the assistant message ID is reused.',
-      given: [
-        started(),
-        stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1'),
-      ],
+      given: [started(), stepStarted('msg_1'), stepRetried('msg_1')],
       when: step('msg_1'),
       expect: [stepStarted('msg_1')],
     },
@@ -173,8 +174,7 @@ export const recordStepStartedSpec = createCommandSlice('recordStepStarted')
       given: [
         started(),
         stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1'),
+        stepRetried('msg_1'),
         stepStarted('msg_1'),
       ],
       when: step('msg_1'),

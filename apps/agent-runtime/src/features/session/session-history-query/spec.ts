@@ -30,17 +30,19 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     model: { id: 'scripted', providerID: 'test' },
   })
 const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'stop',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-failed', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'failed',
     error: { type: 'transport', message: 'connection reset' },
   })
 const forked = (

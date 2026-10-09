@@ -28,19 +28,25 @@ const stepStarted = (assistantMessageID: string, sessionID = 'ses_1') =>
     model,
   })
 const stepFailed = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-failed', { sessionID, assistantMessageID, error: boom })
-const retryScheduled = (assistantMessageID: string, attempt: number) =>
-  event('session-retry-scheduled', {
-    sessionID: 'ses_1',
-    assistantMessageID,
-    attempt,
-    at: 1000,
-    error: boom,
-  })
-const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'failed',
+    error: boom,
+  })
+const stepRetried = (assistantMessageID: string, attempt: number) =>
+  event('session-step-settled', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    outcome: 'failed',
+    error: boom,
+    retry: { attempt, at: 1000 },
+  })
+const stepEnded = (assistantMessageID: string, sessionID = 'ses_1') =>
+  event('session-step-settled', {
+    sessionID,
+    assistantMessageID,
+    outcome: 'succeeded',
     finish: 'stop',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -211,12 +217,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
     {
       description:
         'A scheduled retry keeps the failure visible until the next attempt starts.',
-      given: [
-        started(),
-        stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1', 1),
-      ],
+      given: [started(), stepStarted('msg_1'), stepRetried('msg_1', 1)],
       when: { sessionID: 'ses_1' },
       expect: {
         active: true,
@@ -232,8 +233,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       given: [
         started(),
         stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1', 1),
+        stepRetried('msg_1', 1),
         stepStarted('msg_1'),
       ],
       when: { sessionID: 'ses_1' },
@@ -251,8 +251,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       given: [
         started(),
         stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1', 1),
+        stepRetried('msg_1', 1),
         stepStarted('msg_1'),
         stepEnded('msg_1'),
       ],
@@ -269,8 +268,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
       given: [
         started(),
         stepStarted('msg_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1', 1),
+        stepRetried('msg_1', 1),
         stepStarted('msg_1'),
         stepEnded('msg_1'),
         stepStarted('msg_2'),
@@ -371,8 +369,7 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         started(),
         stepStarted('msg_1'),
         ...toolCalled('msg_1', 'call_1'),
-        stepFailed('msg_1'),
-        retryScheduled('msg_1', 1),
+        stepRetried('msg_1', 1),
         stepStarted('msg_1'),
       ],
       when: { sessionID: 'ses_1' },

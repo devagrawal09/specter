@@ -24,7 +24,7 @@ export const createFinishExecutionState = (): FinishExecutionState => ({
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
+const stepSettled = sessionEvent('session-step-settled')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -46,7 +46,10 @@ export const finishExecution = implementCommand(specification)
     const { sessionID, assistantMessageID } = event.payload
     state.inFlight[sessionID] = assistantMessageID
   })
-  .apply(stepEnded, async (event, state) => {
+  // A step whose failure is retried stays in flight until a later attempt
+  // settles it.
+  .apply(stepSettled, async (event, state) => {
+    if (event.payload.outcome === 'failed' && event.payload.retry) return
     const { sessionID, assistantMessageID } = event.payload
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]

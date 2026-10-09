@@ -25,9 +25,7 @@ export const createRecordToolCallState = (): RecordToolCallState => ({
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 const inputStarted = sessionEvent('session-tool-input-started')
 const inputEnded = sessionEvent('session-tool-input-ended')
 const toolCalled = sessionEvent('session-tool-called')
@@ -69,13 +67,9 @@ export const recordToolCall = implementCommand(specification)
     const { sessionID, assistantMessageID } = event.payload
     state.inFlight[sessionID] = { assistantMessageID, calls: [] }
   })
-  .apply(stepEnded, async (event, state) => {
+  .apply(stepSettled, async (event, state) => {
     closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
   })
-  .apply(stepFailed, async (event, state) => {
-    closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
-  })
-  .apply(retryScheduled, async () => {})
   .apply(inputStarted, async () => {})
   .apply(inputEnded, async () => {})
   .apply(toolCalled, async (event, state) => {

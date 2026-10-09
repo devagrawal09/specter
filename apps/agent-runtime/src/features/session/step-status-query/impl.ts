@@ -39,9 +39,7 @@ export const createStepStatusState = (): StepStatusState => ({ sessions: {} })
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 const toolInputStarted = sessionEvent('session-tool-input-started')
 const toolCalled = sessionEvent('session-tool-called')
 const toolSuccess = sessionEvent('session-tool-success')
@@ -141,19 +139,13 @@ export const stepStatus = implementQuery(specification)
   .apply(toolFailed, async (event, state) => {
     closeCall(entry(state, event.payload.sessionID), event.payload)
   })
-  .apply(stepEnded, async (event, state) => {
+  .apply(stepSettled, async (event, state) => {
     const { sessionID, assistantMessageID } = event.payload
     const session = entry(state, sessionID)
     if (session.inFlight === assistantMessageID) session.inFlight = null
-  })
-  .apply(stepFailed, async (event, state) => {
-    const { sessionID, assistantMessageID, error } = event.payload
-    const session = entry(state, sessionID)
-    if (session.inFlight === assistantMessageID) session.inFlight = null
-    session.lastFailure = error
-  })
-  .apply(retryScheduled, async (event, state) => {
-    entry(state, event.payload.sessionID).retrying = true
+    if (event.payload.outcome !== 'failed') return
+    session.lastFailure = event.payload.error
+    if (event.payload.retry) session.retrying = true
   })
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID]

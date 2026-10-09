@@ -88,7 +88,7 @@ describe('embedded runtime', () => {
           'session-step-started',
           'session-text-started',
           'session-text-ended',
-          'session-step-ended',
+          'session-step-settled',
           'session-execution-settled',
         ])
         expect(recorded().map((event) => event.id)).toEqual(

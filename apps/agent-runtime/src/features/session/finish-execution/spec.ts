@@ -25,9 +25,10 @@ const stepStarted = (assistantMessageID: string) =>
     model,
   })
 const stepEnded = (assistantMessageID: string) =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'stop',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
@@ -35,7 +36,7 @@ const stepEnded = (assistantMessageID: string) =>
 
 export const finishExecutionSpec = createCommandSlice('finishExecution')
   .description(
-    'Ends the busy period successfully once no step is in flight (session.md: Execution Is Process-Local). Failure is not recorded here: recordStepFailed owns the failure outcome.',
+    'Ends the busy period successfully once no step is in flight (session.md: Execution Is Process-Local). Failure is not recorded here: settleStep owns the failure outcome.',
   )
   .scenarios(
     {

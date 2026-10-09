@@ -30,26 +30,28 @@ const stepStarted = (sessionID: string, assistantMessageID: string) =>
     model,
   })
 const stepEnded = (sessionID: string, assistantMessageID: string) =>
-  event('session-step-ended', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'succeeded',
     finish: 'tool-calls',
     cost: 0,
     tokens: { input: 0, output: 0, reasoning: 0, cache: { read: 0, write: 0 } },
   })
 const stepFailed = (sessionID: string, assistantMessageID: string) =>
-  event('session-step-failed', {
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
+    outcome: 'failed',
     error: { type: 'transport', message: 'connection reset' },
   })
-const retryScheduled = (sessionID: string, assistantMessageID: string) =>
-  event('session-retry-scheduled', {
+const stepRetried = (sessionID: string, assistantMessageID: string) =>
+  event('session-step-settled', {
     sessionID,
     assistantMessageID,
-    attempt: 1,
-    at: 1000,
+    outcome: 'failed',
     error: { type: 'transport', message: 'connection reset' },
+    retry: { attempt: 1, at: 1000 },
   })
 const run = (sessionID: string, ordinal: number) => ({
   type: 'runStep',
@@ -143,8 +145,7 @@ export const runStepSpec = createReactionSlice('runStep')
       given: [
         started('ses_1'),
         stepStarted('ses_1', 'msg_1'),
-        stepFailed('ses_1', 'msg_1'),
-        retryScheduled('ses_1', 'msg_1'),
+        stepRetried('ses_1', 'msg_1'),
       ],
       expect: [run('ses_1', 0)],
     },
@@ -156,8 +157,7 @@ export const runStepSpec = createReactionSlice('runStep')
         stepStarted('ses_1', 'msg_1'),
         stepEnded('ses_1', 'msg_1'),
         stepStarted('ses_1', 'msg_2'),
-        stepFailed('ses_1', 'msg_2'),
-        retryScheduled('ses_1', 'msg_2'),
+        stepRetried('ses_1', 'msg_2'),
       ],
       expect: [run('ses_1', 1)],
     },
@@ -167,8 +167,7 @@ export const runStepSpec = createReactionSlice('runStep')
       given: [
         started('ses_1'),
         stepStarted('ses_1', 'msg_1'),
-        stepFailed('ses_1', 'msg_1'),
-        retryScheduled('ses_1', 'msg_1'),
+        stepRetried('ses_1', 'msg_1'),
         stepStarted('ses_1', 'msg_1'),
         stepEnded('ses_1', 'msg_1'),
       ],

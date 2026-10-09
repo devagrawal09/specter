@@ -38,8 +38,7 @@ const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
+const stepSettled = sessionEvent('session-step-settled')
 const sessionForked = sessionEvent('session-forked')
 const revertStaged = sessionEvent('session-revert-staged')
 const revertCommitted = sessionEvent('session-revert-committed')
@@ -86,13 +85,14 @@ export const sessionHistory = implementQuery(specification)
     const { sessionID, assistantMessageID } = event.payload
     mark(state, sessionID, assistantMessageID, 'started')
   })
-  .apply(stepEnded, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload
-    mark(state, sessionID, assistantMessageID, 'ended')
-  })
-  .apply(stepFailed, async (event, state) => {
-    const { sessionID, assistantMessageID } = event.payload
-    mark(state, sessionID, assistantMessageID, 'failed')
+  .apply(stepSettled, async (event, state) => {
+    const { sessionID, assistantMessageID, outcome } = event.payload
+    mark(
+      state,
+      sessionID,
+      assistantMessageID,
+      outcome === 'succeeded' ? 'ended' : 'failed',
+    )
   })
   .apply(sessionForked, async (event, state) => {
     const { sessionID, parentID, boundary } = event.payload

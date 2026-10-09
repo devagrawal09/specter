@@ -33,9 +33,7 @@ export const createRunStepState = (): RunStepState => ({ sessions: {} })
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
-const stepEnded = sessionEvent('session-step-ended')
-const stepFailed = sessionEvent('session-step-failed')
-const retryScheduled = sessionEvent('session-retry-scheduled')
+const stepSettled = sessionEvent('session-step-settled')
 
 const runStepRequest = Schema.Struct({
   type: Schema.Literal('runStep'),
@@ -83,23 +81,15 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
       session.awaitingRetry = false
       session.retrying = false
     })
-    .apply(stepEnded, async (event, state) => {
+    // A failed step without a retry needs nothing: only the execution failing
+    // follows, in the same commit.
+    .apply(stepSettled, async (event, state) => {
       const { sessionID, assistantMessageID } = event.payload
       const session = entry(state, sessionID)
       if (session.inFlight === assistantMessageID) session.inFlight = null
-    })
-    // A failed step needs nothing until a retry is scheduled; without one,
-    // only the execution failing follows.
-    .apply(stepFailed, async (event, state) => {
-      const { sessionID, assistantMessageID } = event.payload
-      const session = entry(state, sessionID)
-      if (session.inFlight === assistantMessageID) session.inFlight = null
-      session.awaitingRetry = true
-    })
-    .apply(retryScheduled, async (event, state) => {
-      const session = entry(state, event.payload.sessionID)
-      session.awaitingRetry = false
-      session.retrying = true
+      if (event.payload.outcome !== 'failed') return
+      if (event.payload.retry) session.retrying = true
+      else session.awaitingRetry = true
     })
     .handle(async (state) => {
       // One output per commit: request the lowest Session needing a step; the
