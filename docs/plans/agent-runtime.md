@@ -164,9 +164,17 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - A steer cancelled during preparation delivers the queued input at once, with no extra step on unchanged history.
       - A moved Session runs its next input in its new Location; nothing is stranded in the old one.
       - Event lists include the execution lifecycle around each run.
+  - **Phase 4 in progress: nothing about a Session's execution is left outside Specter.**
+    - **Every durable fact is in Specter's log.** The Bus now records an external agent's Session facts too (`session.external.bound`, `linked` and `checkpointed`), so no durable fact bypasses the log.
+    - **External agents run on the runtime.** Executions of a Session whose model selects a vendor agent (Claude, Codex, Pi) are woken, started, settled and interrupted by the runtime. The `driveExecution` Reaction requests one outboxed job per such execution; the driver is latched when the execution starts. Its Plugin has the host drive the whole execution through `StepHost.drive`. OC++ drives it with its external agent harness, continuing in a new Location after a move. The step Reaction leaves these executions alone: their steps are the agent's facts.
+    - **The runtime owns restart continuity.** It resumes the executions a stopped process left running from its own log, bounded by its retry budget for a step that keeps dying. OC++'s execution claims, its claimed-Session restart sweep and its resume budget are gone, along with the run coordinator and `SessionExecution.make()`. OC++'s restart recovery now covers background work only (shells, Code Mode runs, subagents). When the runtime drives an external agent's execution that the current process did not start, the agent is told the server restarted.
+    - **Intentional differences from OC++'s restart recovery.**
+      - An OC++-run Session that stopped mid-step retries that step from the same history, so the model gets no restart notice. The dead attempt's partial output does not stand.
+      - A turn that keeps dying is bounded by the runtime's per-step retry budget, not by a count of boots.
     - **Still to do.**
       - One `session-status` Query in place of the four status Queries.
-      - The remaining aggregates (worktree, Code Mode bindings, CRUD) on Specter.
+      - OC++'s native inbox implementation, still used by the external agent harness and by tests that run without the runtime.
+      - The remaining non-Session state (worktree, Code Mode bindings, project and workspace records) on Specter.
       - A persistent outbox store next to the persistent log.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
