@@ -172,10 +172,9 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - An OC++-run Session that stopped mid-step retries that step from the same history, so the model gets no restart notice. The dead attempt's partial output does not stand.
       - A turn that keeps dying is bounded by the runtime's per-step retry budget, not by a count of boots.
     - **One status Query.** `sessionStatus` replaces `executionStatus`, `stepStatus` and `nextStep`. It reports a Session's executions, its steps and what its next step starts from, as one fold. The step Plugin reads one snapshot at each boundary instead of several Queries that another commit could land between. `revertStatus` stays separate: a staged revert is the UI's concern, and a part in `sessionStatus` would add it to every status scenario.
-    - **Still to do.**
-      - OC++'s native inbox implementation, still used by the external agent harness and by tests that run without the runtime.
-      - The remaining non-Session state (worktree, Code Mode bindings, project and workspace records) on Specter.
-      - A persistent outbox store next to the persistent log.
+    - **The runtime is the only thing that delivers input.** `StepHost.drive` hands the host the runtime's inbox for the execution (what delivers next at a boundary, and delivering an item), so an external agent's turn takes input by the runtime's delivery law and `deliverInboxItem`, as an OC++-run Session's does. OC++'s own promotion moved to a test fixture. OC++'s inbox service stays as the inbox for compositions without the runtime (tests); its facts go to Specter's log like any other.
+    - **What stays outside Specter, by design.** OC++'s read models (`session_message`, `session_inbox` and the rest) are projections of Specter's log, built in the append transaction. Project, workspace and worktree records, credentials, settings and Code Mode's working storage (notebook bindings, reservations, its replay journal) are configuration and working state with ephemeral notifications, not domain facts.
+    - **Known cost.** The embedded runtime keeps its Slice and outbox stores in memory. Every boot folds the whole log and replays each Reaction over it. Replayed Commands carry their original idempotency keys, so nothing happens twice, and settled Sessions start nothing. But the no-op jobs and the fold grow with the log. Persistent Slice snapshots and a persistent outbox would make boot proportional to what changed.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
