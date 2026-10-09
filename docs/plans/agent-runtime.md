@@ -217,6 +217,18 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - The v1 importer adopts each Session it converts, and its own progress, before moving on.
       - A test upgrades a database that held its project, Session, messages and plugin state as rows, rebuilds every projection from the log, and the Session carries on.
 
+  - **Phase 10 done: the runtime's saved state is the log's, and every suite passes.**
+    - **A boot can catch every Slice up.** `makeSpecterRuntime(config, { catchUp: "all" })` catches every Command and Query Slice up to the log at startup, as an eager Slice is; Reactions always do. The embedded runtime's `catchUp` option uses it, and OC++ turns it on: from saved snapshots, a boot only folds the log's tail.
+    - **Saved runtime state equals a fold of the log.** Slice snapshots and outbox jobs exist only to save work.
+      - A Specter test runs a Session, saves its Slices, and boots twice more: once from the snapshots and once from the log alone. Both hold every Slice with the same cursor and state, and neither records a fact.
+      - The same test runs in OC++ over its database. After the runtime's tables are wiped, a boot from the log saves the same snapshots for every Slice that a boot from snapshots saves. It records nothing and leaves no pending job: the outbox holds only work the log still asks for.
+    - **Every test failure is gone.** The baseline failures were upstream test drift:
+      - an SDK test still expected a direct `shell` tool, which the model now reaches through Code Mode;
+      - client tests still expected authentication and Code Mode's old `output` field, both removed upstream;
+      - a server helper failed on hosts without IPv6.
+
+      The two lock-permission tests fail only as root, as their premise is a directory root can still write. They pass as an ordinary user.
+
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
 1. **Fork** — decided 2026-10-08: no Event Log primitive. OC++'s fork is a projection: the `session.forked` projector copies message rows up to the boundary into the child; the child's event log starts at `session.forked{parentID, boundary}`. Mirror that: `fork-session` Command emits the fact; a Reaction materializes the child's history slice from the parent's slice state up to the boundary (rebuildable derived index). Only requirement on Specter: a Reaction/Query may read another aggregate's slice state via `{ query }` — verify in M1.

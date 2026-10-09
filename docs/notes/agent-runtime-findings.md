@@ -288,3 +288,9 @@ Added: `Model` service (`plugins/model.ts`), `ocpp-ai-model.ts` (`@ocpp/ai`), `c
 - **Adopt after the write, record progress after the adoption.** The importer keeps its conversion transactional and adopts what the transaction wrote. Its progress comes last, so a stop anywhere repeats a Session's conversion and adoption, never skips them.
 - **A sequence must never move back.** The importer used to set a Session's sequence to its imported messages' watermark after clearing the old event table. With the events kept in the log, that could reuse a sequence number, so the watermark is now a floor.
 
+## 2026-10-09 — the runtime's saved state, and a clean baseline (Phase 10)
+
+- **Saved Slices are comparable only once every Slice is caught up.** A Slice's snapshot sits at the last event it used, so two boots compare only once each has folded the whole log. Command and Query Slices catch up lazily, so the runtime gained a startup option to catch them all up. Marking copies of the Slices eager does not work: Plugins find Slices by identity.
+- **With every Slice caught up, a snapshot is a cache like any projection.** From saved snapshots or from the log alone, a boot reaches the same cursor and state for every Slice. A test checks that equality in Specter and in OC++, as the projection rebuild test does for OC++'s tables.
+- **A failing baseline hides drift, not just environment.** Two of the "main also fails" groups were tests that upstream changes had overtaken: Code Mode now fronts every tool, and authentication and Code Mode's `output` field were removed. One had kept a whole client test file from loading. Only the lock-permission tests depend on the environment: root can write a directory whose mode forbids it.
+
