@@ -7,7 +7,11 @@ import {
 } from '@specter-ts/reaction-outbox'
 import { Effect, Layer } from 'effect'
 
-import { createSessionAppConfig, memorySliceStoreLayer } from './app.ts'
+import {
+  createSessionAppConfig,
+  memorySliceStoreLayer,
+  type RunStepOutboxOptions,
+} from './app.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import type { RunStepOptions } from './plugins/run-step.ts'
 
@@ -17,6 +21,8 @@ import type { RunStepOptions } from './plugins/run-step.ts'
 // own events in the same transaction).
 export type EmbeddedSessionRuntimeOptions = {
   readonly step?: RunStepOptions
+  // The step outbox's worker, including how many Sessions run steps at once.
+  readonly outbox?: RunStepOutboxOptions
 }
 
 // Requires the EventLog and StepHost services and a Scope. The host supplies the
@@ -26,7 +32,7 @@ export const makeEmbeddedSessionRuntime = (
 ) => {
   const config = createSessionAppConfig(
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>(),
-    {},
+    options.outbox,
     options.step,
   )
   // Conformance wants every registered Event covered by a scenario, and most

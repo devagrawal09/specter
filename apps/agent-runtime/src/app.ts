@@ -142,11 +142,13 @@ export type RunStepOutboxStore = ReactionOutboxStore<
   OutboxedReaction<RunStepRequest>
 >
 
-// Worker tuning (lease, heartbeat, backoff, shutdown wait) for the step
-// Plugin's outbox; defaults are the outbox's own.
+// Worker tuning (concurrency, lease, heartbeat, backoff, shutdown wait) for the
+// step Plugin's outbox; defaults are the outbox's own. Steps are keyed by
+// Session: one Session runs one step at a time, and with a worker concurrency
+// above 1, different Sessions run at once.
 export type RunStepOutboxOptions = Omit<
   ReactionOutboxPluginOptions<RunStepRequest>,
-  'store'
+  'store' | 'concurrencyKey'
 >
 
 // The step Reaction's Plugin is outboxed, so the composing app supplies the
@@ -187,6 +189,7 @@ export const createSessionAppConfig = (
         withReactionOutbox(makeRunStepPlugin(stepOptions), {
           ...outboxOptions,
           store: runStepOutbox,
+          concurrencyKey: (request) => request.payload.sessionID,
         }),
       ),
     },

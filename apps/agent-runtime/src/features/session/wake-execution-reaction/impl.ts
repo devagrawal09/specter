@@ -1,6 +1,11 @@
 import { SessionID } from '@ocpp/schema/session-id'
-import { implementReaction, type SliceStoreService } from '@specter-ts/core'
-import { Context, Schema } from 'effect'
+import {
+  implementReaction,
+  type ReactionPlugin,
+  type SliceStoreService,
+  SpecterCommandRejectedError,
+} from '@specter-ts/core'
+import { Context, Effect, Schema } from 'effect'
 
 import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
@@ -58,8 +63,27 @@ const ended = (state: WakeExecutionState, sessionID: string) => {
   entry(state, sessionID).active = false
 }
 
+// The request is derived from the state as of its commit, so it can be stale
+// by the time it runs: a start the runtime rejects (already active, nothing
+// left to deliver) means the world moved on, and a later commit wakes whatever
+// still needs waking. A rejection must not stop the Reaction.
+const startUnlessMovedOn: ReactionPlugin<{
+  readonly type: 'startExecution'
+  readonly payload: { readonly sessionID: string }
+}> = ({ command }) =>
+  Effect.succeed((output, context) =>
+    command(output, { idempotencyKey: context.deliveryId }).pipe(
+      Effect.asVoid,
+      Effect.catchIf(
+        (error) => error instanceof SpecterCommandRejectedError,
+        () => Effect.void,
+      ),
+    ),
+  )
+
 export const wakeExecution = implementReaction(specification)
   .outputSchema(startExecutionRequest)
+  .plugin(startUnlessMovedOn)
   .store(wakeExecutionStore)
   .apply(inboxEnqueued, async (event, state) => {
     const session = entry(state, event.payload.sessionID)

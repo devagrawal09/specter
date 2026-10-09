@@ -25,18 +25,20 @@ import { makeScriptedModel } from './plugins/scripted-model.ts'
 // The real app, in process: memory Event Log, memory Slice stores, immediate
 // Reaction scheduler, memory outbox store for the step Plugin, and the
 // Model (scripted) + delta channel services the Plugin reads.
-const boot = async () => {
+const boot = async (options: { readonly concurrency?: number } = {}) => {
   const log = createMemoryEventLog()
   await Effect.runPromise(
-    log.append([
-      sessionEvent('session-created').create({
-        sessionID: SessionID.make('ses_1'),
-        projectID: ProjectID.make('prj_1'),
-        location: { directory: AbsolutePath.make('/tmp/ws') },
-        slug: 'brave-otter',
-        version: '2',
-      }),
-    ]),
+    log.append(
+      ['ses_1', 'ses_2'].map((id) =>
+        sessionEvent('session-created').create({
+          sessionID: SessionID.make(id),
+          projectID: ProjectID.make('prj_1'),
+          location: { directory: AbsolutePath.make('/tmp/ws') },
+          slug: `slug-${id}`,
+          version: '2',
+        }),
+      ),
+    ),
   )
   const model = makeScriptedModel()
   const pubsub = Effect.runSync(PubSub.unbounded<Delta>())
@@ -47,7 +49,12 @@ const boot = async () => {
   const outbox =
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>()
 
-  const full = createSessionAppConfig(outbox)
+  const full = createSessionAppConfig(
+    outbox,
+    options.concurrency === undefined
+      ? {}
+      : { worker: { concurrency: options.concurrency } },
+  )
   // Conformance wants every registered Event covered by a scenario, and the
   // 49-event catalog is mostly not ported yet: register the events the
   // registered Slices use (the union of their eventsFor).
@@ -84,7 +91,15 @@ const boot = async () => {
     const deadline = Date.now() + 2000
     while (!(await condition())) {
       if (Date.now() > deadline)
-        throw new Error(`Timed out; events: ${types().join(', ')}`)
+        throw new Error(
+          `Timed out; events: ${log
+            .inspect()
+            .map(
+              (event) =>
+                `${event.type}:${(event.payload as { sessionID?: string }).sessionID}`,
+            )
+            .join(', ')}`,
+        )
       await new Promise((resolve) => setTimeout(resolve, 5))
     }
   }
@@ -120,10 +135,14 @@ const gate = () => {
   return { promise, open }
 }
 
-const enqueue = (inboxID: string, delivery?: 'steer' | 'queue') => ({
+const enqueue = (
+  inboxID: string,
+  delivery?: 'steer' | 'queue',
+  sessionID = 'ses_1',
+) => ({
   type: 'enqueueInput' as const,
   payload: {
-    sessionID: 'ses_1',
+    sessionID,
     inboxID,
     type: 'user' as const,
     payload: { text: `prompt ${inboxID}` },
@@ -132,8 +151,8 @@ const enqueue = (inboxID: string, delivery?: 'steer' | 'queue') => ({
 })
 
 let running: Awaited<ReturnType<typeof boot>> | undefined
-const start = async () => {
-  running = await boot()
+const start = async (options?: Parameters<typeof boot>[0]) => {
+  running = await boot(options)
   return running
 }
 afterEach(async () => {
@@ -180,6 +199,46 @@ describe('step loop with a scripted model', () => {
       { sessionID: 'ses_1', type: 'session.text.delta', text: 'done' },
     ])
     expect(t.types().some((type) => type.includes('delta'))).toBe(false)
+  })
+
+  it('runs steps of different Sessions at once, one step per Session at a time', async () => {
+    const t = await start({ concurrency: 2 })
+    const first = gate()
+    const second = gate()
+    t.model.script('ses_1', [
+      { finish: 'stop', text: 'one', gate: first.promise },
+    ])
+    t.model.script('ses_2', [
+      { finish: 'stop', text: 'two', gate: second.promise },
+    ])
+
+    await t.app.command(enqueue('msg_a'))
+    await t.app.command(enqueue('msg_b', undefined, 'ses_2'))
+    // Both steps are in flight before either model call returns.
+    await t.waitFor(
+      () =>
+        t.log.inspect().filter((event) => event.type === 'session-step-started')
+          .length === 2,
+    )
+    second.open()
+    await t.waitFor(() =>
+      t.log
+        .inspect()
+        .some(
+          (event) =>
+            event.type === 'session-execution-settled' &&
+            (event.payload as { sessionID: string }).sessionID === 'ses_2',
+        ),
+    )
+    first.open()
+    await t.waitFor(
+      () =>
+        t.log
+          .inspect()
+          .filter((event) => event.type === 'session-execution-settled')
+          .length === 2,
+    )
+    await t.outboxSettled()
   })
 
   it('delivers a steer enqueued mid-step at the next boundary, before the next step', async () => {
