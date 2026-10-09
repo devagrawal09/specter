@@ -56,7 +56,7 @@ const reconcileOrphan = (
       const settled = yield* unlessRejected(
         command(
           {
-            type: 'recordToolResult',
+            type: 'settleToolCall',
             payload: {
               sessionID,
               assistantMessageID: call.assistantMessageID,
@@ -296,7 +296,7 @@ export const makeRunStepPlugin =
             const settled = yield* unlessRejected(
               command(
                 {
-                  type: 'recordToolResult',
+                  type: 'settleToolCall',
                   payload: {
                     sessionID,
                     assistantMessageID,

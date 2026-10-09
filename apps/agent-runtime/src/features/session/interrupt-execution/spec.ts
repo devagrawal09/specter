@@ -25,26 +25,26 @@ const stepStarted = (assistantMessageID = 'msg_1', sessionID = 'ses_1') =>
     agent: 'build',
     model,
   })
-const inputStarted = (id: string, name: string, assistantMessageID = 'msg_1') =>
-  event('session-tool-input-started', {
+const requested = (
+  id: string,
+  name: string,
+  assistantMessageID = 'msg_1',
+  executed = false,
+) =>
+  event('session-tool-requested', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
     name,
-  })
-const called = (id: string, assistantMessageID = 'msg_1', executed = false) =>
-  event('session-tool-called', {
-    sessionID: 'ses_1',
-    assistantMessageID,
-    id,
     input: { code: 'x' },
     executed,
   })
 const abortedFailure = (id: string, name: string, executed = false) =>
-  event('session-tool-failed', {
+  event('session-tool-settled', {
     sessionID: 'ses_1',
     assistantMessageID: 'msg_1',
     id,
+    outcome: 'failed',
     error: { type: 'aborted', message: `Tool execution interrupted: ${name}` },
     executed,
   })
@@ -63,13 +63,12 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
     },
     {
       description:
-        'An open tool call is settled atomically with the interrupt: one aborted tool-failed (naming the tool) precedes session-execution-interrupted in the same commit.',
+        'An open tool call is settled atomically with the interrupt: one aborted tool failure (naming the tool) precedes the interrupted execution in the same commit.',
       given: [
         created(),
         started(),
         stepStarted(),
-        inputStarted('call_1', 'execute'),
-        called('call_1'),
+        requested('call_1', 'execute'),
       ],
       when: { sessionID: 'ses_1' },
       expect: [abortedFailure('call_1', 'execute'), interrupted()],
@@ -81,16 +80,14 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         created(),
         started(),
         stepStarted(),
-        inputStarted('call_1', 'execute'),
-        called('call_1'),
-        inputStarted('call_2', 'execute'),
-        called('call_2', 'msg_1', true),
-        inputStarted('call_3', 'lookup'),
-        called('call_3'),
-        event('session-tool-success', {
+        requested('call_1', 'execute'),
+        requested('call_2', 'execute', 'msg_1', true),
+        requested('call_3', 'lookup'),
+        event('session-tool-settled', {
           sessionID: 'ses_1',
           assistantMessageID: 'msg_1',
           id: 'call_3',
+          outcome: 'succeeded',
           executed: true,
           content: [{ type: 'text', text: 'ok' }],
         }),
@@ -109,8 +106,7 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         created(),
         started(),
         stepStarted(),
-        inputStarted('call_1', 'execute'),
-        called('call_1'),
+        requested('call_1', 'execute'),
         abortedFailure('call_1', 'execute'),
       ],
       when: { sessionID: 'ses_1' },
@@ -123,8 +119,7 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         created(),
         started(),
         stepStarted('msg_1'),
-        inputStarted('call_1', 'execute'),
-        called('call_1'),
+        requested('call_1', 'execute'),
         stepStarted('msg_2'),
       ],
       when: { sessionID: 'ses_1' },

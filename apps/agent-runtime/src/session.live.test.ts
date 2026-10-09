@@ -70,7 +70,7 @@ const reason = skipReason()
 
 // head, then steps (text block and Code Mode calls optional), then success.
 const sequence =
-  /^session-inbox-enqueued session-execution-started session-inbox-delivered( session-step-started( session-text-started session-text-ended)?( session-tool-input-started session-tool-input-ended session-tool-called session-tool-(success|failed))* session-step-settled)+ session-execution-settled$/
+  /^session-inbox-enqueued session-execution-started session-inbox-delivered( session-step-started( session-text-started session-text-ended)?( session-tool-requested session-tool-settled)* session-step-settled)+ session-execution-settled$/
 
 describe.skipIf(reason !== undefined)(
   reason === undefined

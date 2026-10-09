@@ -16,10 +16,8 @@ type Entry = {
   attempts: number
   retrying: boolean
   lastFailure?: Failure
-  // Calls of the in-flight attempt recorded by tool-called and not yet settled.
+  // Requested calls of the in-flight attempt that have not settled.
   openCalls: OpenCall[]
-  // The call name is only on tool-input-started; tool-called has the rest.
-  callNames: Record<string, string>
 }
 type OpenCall = {
   assistantMessageID: string
@@ -40,10 +38,8 @@ const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
-const toolInputStarted = sessionEvent('session-tool-input-started')
-const toolCalled = sessionEvent('session-tool-called')
-const toolSuccess = sessionEvent('session-tool-success')
-const toolFailed = sessionEvent('session-tool-failed')
+const toolRequested = sessionEvent('session-tool-requested')
+const toolSettled = sessionEvent('session-tool-settled')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -55,7 +51,6 @@ const entry = (state: StepStatusState, sessionID: string) =>
     attempts: 0,
     retrying: false,
     openCalls: [],
-    callNames: {},
   })
 
 const settle = (state: StepStatusState, sessionID: string) => {
@@ -64,7 +59,6 @@ const settle = (state: StepStatusState, sessionID: string) => {
   session.inFlight = null
   session.retrying = false
   session.openCalls = []
-  session.callNames = {}
   delete session.lastFailure
 }
 
@@ -90,8 +84,8 @@ export const stepStatus = implementQuery(specification)
     stepsStarted: number
     attempts: number
     lastFailure?: { type: string; message: string; status?: number }
-    // Calls with tool-called and no tool-success/tool-failed, in call order;
-    // omitted when none. What orphan reconciliation settles as aborted.
+    // Requested calls that have not settled, in call order; omitted when
+    // none. What orphan reconciliation settles as aborted.
     openCalls?: {
       assistantMessageID: string
       id: string
@@ -119,24 +113,15 @@ export const stepStatus = implementQuery(specification)
     session.retrying = false
     // A new attempt starts with a clean call table.
     session.openCalls = []
-    session.callNames = {}
     delete session.lastFailure
   })
-  .apply(toolInputStarted, async (event, state) => {
-    const { sessionID, id, name } = event.payload
-    entry(state, sessionID).callNames[id] = name
-  })
-  .apply(toolCalled, async (event, state) => {
-    const { sessionID, assistantMessageID, id, executed } = event.payload
+  .apply(toolRequested, async (event, state) => {
+    const { sessionID, assistantMessageID, id, name, executed } = event.payload
     const session = entry(state, sessionID)
-    const name = session.callNames[id]
-    if (session.inFlight === assistantMessageID && name !== undefined)
+    if (session.inFlight === assistantMessageID)
       session.openCalls.push({ assistantMessageID, id, name, executed })
   })
-  .apply(toolSuccess, async (event, state) => {
-    closeCall(entry(state, event.payload.sessionID), event.payload)
-  })
-  .apply(toolFailed, async (event, state) => {
+  .apply(toolSettled, async (event, state) => {
     closeCall(entry(state, event.payload.sessionID), event.payload)
   })
   .apply(stepSettled, async (event, state) => {

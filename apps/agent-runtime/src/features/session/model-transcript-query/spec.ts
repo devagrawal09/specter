@@ -121,53 +121,35 @@ const forked = (
 const committed = (to: string) =>
   event('session-revert-committed', { sessionID: 'ses_1', to })
 
-const toolStarted = (
+const toolRequested = (
   assistantMessageID: string,
   id: string,
+  input: Record<string, string>,
   name = 'execute',
 ) =>
-  event('session-tool-input-started', {
+  event('session-tool-requested', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
     name,
-  })
-const toolInputEnded = (
-  assistantMessageID: string,
-  id: string,
-  input: string,
-) =>
-  event('session-tool-input-ended', {
-    sessionID: 'ses_1',
-    assistantMessageID,
-    id,
-    text: input,
-  })
-const toolCalled = (
-  assistantMessageID: string,
-  id: string,
-  input: Record<string, string>,
-) =>
-  event('session-tool-called', {
-    sessionID: 'ses_1',
-    assistantMessageID,
-    id,
     input,
     executed: false,
   })
 const toolSucceeded = (assistantMessageID: string, id: string, value: string) =>
-  event('session-tool-success', {
+  event('session-tool-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
+    outcome: 'succeeded',
     content: [{ type: 'text', text: value }],
     executed: false,
   })
 const toolFailed = (assistantMessageID: string, id: string, message: string) =>
-  event('session-tool-failed', {
+  event('session-tool-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
+    outcome: 'failed',
     error: { type: 'tool.execution', message },
     executed: false,
   })
@@ -711,9 +693,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
         stepStarted('msg_2'),
         textStarted('msg_2'),
         textEnded('msg_2', 'running it'),
-        toolStarted('msg_2', 'call_1'),
-        toolInputEnded('msg_2', 'call_1', '{"code":"1+1"}'),
-        toolCalled('msg_2', 'call_1', { code: '1+1' }),
+        toolRequested('msg_2', 'call_1', { code: '1+1' }),
         toolSucceeded('msg_2', 'call_1', '2'),
         stepEnded('msg_2'),
       ],
@@ -756,8 +736,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: 'boom()' }),
+        toolRequested('msg_2', 'call_1', { code: 'boom()' }),
         toolFailed('msg_2', 'call_1', 'boom is not defined'),
         stepEnded('msg_2'),
       ],
@@ -808,20 +787,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: '1' }),
-      ],
-      when: { sessionID: 'ses_1' },
-      expect: { messages: [userMessage('msg_1', 'hello')] },
-    },
-    {
-      description:
-        'A call whose input is still streaming is open too, and omitted.',
-      given: [
-        ...prompted,
-        stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolInputEnded('msg_2', 'call_1', '{"code":"2"}'),
+        toolRequested('msg_2', 'call_1', { code: '1' }),
       ],
       when: { sessionID: 'ses_1' },
       expect: { messages: [userMessage('msg_1', 'hello')] },
@@ -834,10 +800,8 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
         stepStarted('msg_2'),
         textStarted('msg_2'),
         textEnded('msg_2', 'working'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: 'a' }),
-        toolStarted('msg_2', 'call_2'),
-        toolCalled('msg_2', 'call_2', { code: 'b' }),
+        toolRequested('msg_2', 'call_1', { code: 'a' }),
+        toolRequested('msg_2', 'call_2', { code: 'b' }),
         toolSucceeded('msg_2', 'call_1', 'A'),
       ],
       when: { sessionID: 'ses_1' },
@@ -875,16 +839,16 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'An aborted call (tool.failed with type "aborted", as settled for an orphaned or interrupted call) is an error tool result carrying the error and an empty content.',
+        'An aborted call (a failure with type "aborted", as settled for an orphaned or interrupted call) is an error tool result carrying the error and an empty content.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: '1' }),
-        event('session-tool-failed', {
+        toolRequested('msg_2', 'call_1', { code: '1' }),
+        event('session-tool-settled', {
           sessionID: 'ses_1',
           assistantMessageID: 'msg_2',
           id: 'call_1',
+          outcome: 'failed',
           error: {
             type: 'aborted',
             message: 'Tool execution interrupted: execute',
@@ -939,10 +903,8 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: 'a' }),
-        toolStarted('msg_2', 'call_2'),
-        toolCalled('msg_2', 'call_2', { code: 'b' }),
+        toolRequested('msg_2', 'call_1', { code: 'a' }),
+        toolRequested('msg_2', 'call_2', { code: 'b' }),
         toolSucceeded('msg_2', 'call_2', 'B'),
         toolSucceeded('msg_2', 'call_1', 'A'),
         stepEnded('msg_2'),
@@ -1000,23 +962,10 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
     },
     {
       description:
-        'A tool success for a call that never ran (no tool.called) is ignored by the projector, so the call stays open and is omitted.',
+        'A settlement for a call that was never requested finds no tool part, so nothing is projected for it.',
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolSucceeded('msg_2', 'call_1', 'too early'),
-      ],
-      when: { sessionID: 'ses_1' },
-      expect: { messages: [userMessage('msg_1', 'hello')] },
-    },
-    {
-      description:
-        'A tool.called with no tool.input.started finds no tool part, so nothing is projected for it.',
-      given: [
-        ...prompted,
-        stepStarted('msg_2'),
-        toolCalled('msg_2', 'call_1', { code: '1' }),
         toolSucceeded('msg_2', 'call_1', '1'),
       ],
       when: { sessionID: 'ses_1' },
@@ -1028,8 +977,7 @@ export const modelTranscriptSpec = createQuerySlice('modelTranscript')
       given: [
         ...prompted,
         stepStarted('msg_2'),
-        toolStarted('msg_2', 'call_1'),
-        toolCalled('msg_2', 'call_1', { code: '1' }),
+        toolRequested('msg_2', 'call_1', { code: '1' }),
         toolSucceeded('msg_2', 'call_1', '1'),
         stepEnded('msg_2'),
         contentUpdated('msg_2', ['summary']),

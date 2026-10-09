@@ -51,6 +51,25 @@ const runtimeEventSchemas = {
       ),
     }),
   ]),
+  // A complete tool call the model requested, durable before any side effect
+  // (replaces OC++'s tool input started, input ended and called). The raw
+  // input text is derivable from the input, so it is not recorded.
+  'session-tool-requested': Schema.Struct({
+    ...SessionEvent.Tool.Called.data.fields,
+    name: Schema.String,
+  }),
+  // The one terminal of a requested call (replaces OC++'s tool success and
+  // tool failed).
+  'session-tool-settled': Schema.Union([
+    Schema.Struct({
+      ...SessionEvent.Tool.Success.data.fields,
+      outcome: Schema.Literal('succeeded'),
+    }),
+    Schema.Struct({
+      ...SessionEvent.Tool.Failed.data.fields,
+      outcome: Schema.Literal('failed'),
+    }),
+  ]),
 } as const
 
 // One Specter event definition per OC++ durable session event (mapped name,

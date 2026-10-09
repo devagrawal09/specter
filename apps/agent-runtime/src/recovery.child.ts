@@ -45,7 +45,7 @@ const { app, log } = await openJsonlSessionApp({
 const stepStarts = () =>
   Effect.runSync(
     log.query(0, [
-      mode === 'tool' ? 'session-tool-called' : 'session-step-started',
+      mode === 'tool' ? 'session-tool-requested' : 'session-step-started',
     ]),
   ).length
 // A restarted child (same directory) resumes the work of the one before it:

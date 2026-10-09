@@ -58,33 +58,30 @@ const toolCalled = (
   executed = false,
   sessionID = 'ses_1',
 ) => [
-  event('session-tool-input-started', {
+  event('session-tool-requested', {
     sessionID,
     assistantMessageID,
     id,
     name: 'execute',
-  }),
-  event('session-tool-called', {
-    sessionID,
-    assistantMessageID,
-    id,
     input: { code: '1' },
     executed,
   }),
 ]
 const toolSucceeded = (assistantMessageID: string, id: string) =>
-  event('session-tool-success', {
+  event('session-tool-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
+    outcome: 'succeeded',
     content: [{ type: 'text', text: '2' }],
     executed: false,
   })
 const toolFailed = (assistantMessageID: string, id: string) =>
-  event('session-tool-failed', {
+  event('session-tool-settled', {
     sessionID: 'ses_1',
     assistantMessageID,
     id,
+    outcome: 'failed',
     error: { type: 'aborted', message: 'Tool execution interrupted: execute' },
     executed: false,
   })

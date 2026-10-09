@@ -1,8 +1,8 @@
 import { createCommandSlice, event } from '@specter-ts/spec'
 
 // session.md: tool outcomes are serialized after the call is durable. A
-// recorded call settles exactly once, as tool.success (non-empty content) or
-// tool.failed (an error); both are self-contained terminal facts.
+// requested call settles exactly once, succeeded (non-empty content) or failed
+// (an error), in one self-contained terminal fact.
 const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
   event('session-execution-started', { sessionID })
@@ -57,22 +57,11 @@ const toolCall = (
   id: string,
   sessionID = 'ses_1',
 ) => [
-  event('session-tool-input-started', {
+  event('session-tool-requested', {
     sessionID,
     assistantMessageID,
     id,
     name: 'execute',
-  }),
-  event('session-tool-input-ended', {
-    sessionID,
-    assistantMessageID,
-    id,
-    text: '{"code":"1"}',
-  }),
-  event('session-tool-called', {
-    sessionID,
-    assistantMessageID,
-    id,
     input: { code: '1' },
     executed: false,
   }),
@@ -83,10 +72,11 @@ const succeeded = (
   value: string,
   sessionID = 'ses_1',
 ) =>
-  event('session-tool-success', {
+  event('session-tool-settled', {
     sessionID,
     assistantMessageID,
     id,
+    outcome: 'succeeded',
     content: [{ type: 'text', text: value }],
     executed: false,
   })
@@ -95,10 +85,11 @@ const failedTool = (
   id: string,
   sessionID = 'ses_1',
 ) =>
-  event('session-tool-failed', {
+  event('session-tool-settled', {
     sessionID,
     assistantMessageID,
     id,
+    outcome: 'failed',
     error: { type: 'tool.execution', message: 'boom' },
     executed: false,
   })
@@ -138,28 +129,29 @@ const aborted = (
   executed = false,
   sessionID = 'ses_1',
 ) =>
-  event('session-tool-failed', {
+  event('session-tool-settled', {
     sessionID,
     assistantMessageID,
     id,
+    outcome: 'failed',
     error: abortError,
     executed,
   })
 const open = [started(), stepStarted('msg_1'), ...toolCall('msg_1', 'call_1')]
 
-export const recordToolResultSpec = createCommandSlice('recordToolResult')
+export const settleToolCallSpec = createCommandSlice('settleToolCall')
   .description(
     'Settles a recorded tool call of the in-flight step with its content or its error (session.md: tool outcomes after durable calls).',
   )
   .scenarios(
     {
-      description: 'A recorded call settles as tool.success with its content.',
+      description: 'A requested call succeeds with its content.',
       given: open,
       when: success('msg_1', 'call_1', '2'),
       expect: [succeeded('msg_1', 'call_1', '2')],
     },
     {
-      description: 'A recorded call settles as tool.failed with its error.',
+      description: 'A requested call fails with its error.',
       given: open,
       when: failure('msg_1', 'call_1'),
       expect: [failedTool('msg_1', 'call_1')],
@@ -173,10 +165,11 @@ export const recordToolResultSpec = createCommandSlice('recordToolResult')
         content: [{ type: 'text', text: 'partial' }],
       },
       expect: [
-        event('session-tool-failed', {
+        event('session-tool-settled', {
           sessionID: 'ses_1',
           assistantMessageID: 'msg_1',
           id: 'call_1',
+          outcome: 'failed',
           error: { type: 'tool.execution', message: 'boom' },
           content: [{ type: 'text', text: 'partial' }],
           executed: false,
@@ -274,7 +267,7 @@ export const recordToolResultSpec = createCommandSlice('recordToolResult')
     },
     {
       description:
-        'An open call is aborted with the type "aborted": tool.failed carries that error (orphan reconciliation and interrupt settle calls this way).',
+        'An open call is aborted with the type "aborted": the failure carries that error (orphan reconciliation and interrupt settle calls this way).',
       given: open,
       when: abort('msg_1', 'call_1'),
       expect: [aborted('msg_1', 'call_1')],
@@ -303,4 +296,4 @@ export const recordToolResultSpec = createCommandSlice('recordToolResult')
     },
   )
 
-export default recordToolResultSpec
+export default settleToolCallSpec

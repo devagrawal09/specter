@@ -26,9 +26,7 @@ const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
-const inputStarted = sessionEvent('session-tool-input-started')
-const inputEnded = sessionEvent('session-tool-input-ended')
-const toolCalled = sessionEvent('session-tool-called')
+const toolRequested = sessionEvent('session-tool-requested')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -70,9 +68,7 @@ export const recordToolCall = implementCommand(specification)
   .apply(stepSettled, async (event, state) => {
     closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
   })
-  .apply(inputStarted, async () => {})
-  .apply(inputEnded, async () => {})
-  .apply(toolCalled, async (event, state) => {
+  .apply(toolRequested, async (event, state) => {
     const { sessionID, assistantMessageID, id } = event.payload
     const step = state.inFlight[sessionID]
     if (step?.assistantMessageID === assistantMessageID) step.calls.push(id)
@@ -85,14 +81,14 @@ export const recordToolCall = implementCommand(specification)
       throw new Error('Step not in flight')
     if (step.calls.includes(command.id))
       throw new Error('Tool call already recorded')
-    const base = {
-      sessionID: command.sessionID,
-      assistantMessageID: command.assistantMessageID,
-      id: command.id,
-    }
     return [
-      inputStarted.create({ ...base, name: command.name }),
-      inputEnded.create({ ...base, text: JSON.stringify(command.input) }),
-      toolCalled.create({ ...base, input: command.input, executed: false }),
+      toolRequested.create({
+        sessionID: command.sessionID,
+        assistantMessageID: command.assistantMessageID,
+        id: command.id,
+        name: command.name,
+        input: command.input,
+        executed: false,
+      }),
     ]
   })

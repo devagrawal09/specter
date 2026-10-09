@@ -271,10 +271,8 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-step-started',
       'session-text-started',
       'session-text-ended',
-      'session-tool-input-started',
-      'session-tool-input-ended',
-      'session-tool-called',
-      'session-tool-success',
+      'session-tool-requested',
+      'session-tool-settled',
       'session-step-settled',
       'session-step-started',
       'session-text-started',
@@ -283,15 +281,15 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-execution-settled',
     ])
     // Durable call strictly before its result.
-    expect(t.types().indexOf('session-tool-called')).toBeLessThan(
-      t.types().indexOf('session-tool-success'),
+    expect(t.types().indexOf('session-tool-requested')).toBeLessThan(
+      t.types().indexOf('session-tool-settled'),
     )
-    expect(t.payloads('session-tool-called')[0]).toMatchObject({
+    expect(t.payloads('session-tool-requested')[0]).toMatchObject({
       id: 'call_1',
       input: { code: 'return await tools.echo({ text: "pong" })' },
       executed: false,
     })
-    expect(t.payloads('session-tool-success')[0]).toMatchObject({
+    expect(t.payloads('session-tool-settled')[0]).toMatchObject({
       id: 'call_1',
       content: [{ type: 'text', text: '{"text":"pong"}' }],
     })
@@ -335,14 +333,9 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     await t.waitFor(() => t.types().includes('session-execution-settled'))
 
     expect(t.types().filter((type) => type.startsWith('session-tool'))).toEqual(
-      [
-        'session-tool-input-started',
-        'session-tool-input-ended',
-        'session-tool-called',
-        'session-tool-failed',
-      ],
+      ['session-tool-requested', 'session-tool-settled'],
     )
-    expect(t.payloads('session-tool-failed')[0]).toMatchObject({
+    expect(t.payloads('session-tool-settled')[0]).toMatchObject({
       id: 'call_1',
       error: { type: 'tool.execution' },
     })
@@ -368,7 +361,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
     await t.app.command(prompt)
     await t.waitFor(() => t.types().includes('session-execution-settled'))
 
-    expect(t.payloads('session-tool-failed')[0]).toMatchObject({
+    expect(t.payloads('session-tool-settled')[0]).toMatchObject({
       error: { type: 'tool.unknown', message: 'Unknown tool: shell' },
     })
   })
@@ -462,14 +455,12 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started',
-      'session-tool-input-started',
-      'session-tool-input-ended',
-      'session-tool-called',
-      'session-tool-failed',
+      'session-tool-requested',
+      'session-tool-settled',
       'session-execution-settled',
     ]
     expect(t.types()).toEqual(expected)
-    expect(t.payloads('session-tool-failed')[0]).toMatchObject({
+    expect(t.payloads('session-tool-settled')[0]).toMatchObject({
       id: 'call_1',
       error: {
         type: 'aborted',

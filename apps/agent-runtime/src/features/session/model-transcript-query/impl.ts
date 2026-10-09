@@ -100,11 +100,8 @@ const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
 const textStarted = sessionEvent('session-text-started')
 const textEnded = sessionEvent('session-text-ended')
-const toolInputStarted = sessionEvent('session-tool-input-started')
-const toolInputEnded = sessionEvent('session-tool-input-ended')
-const toolCalled = sessionEvent('session-tool-called')
-const toolSuccess = sessionEvent('session-tool-success')
-const toolFailed = sessionEvent('session-tool-failed')
+const toolRequested = sessionEvent('session-tool-requested')
+const toolSettled = sessionEvent('session-tool-settled')
 const contentUpdated = sessionEvent('session-message-content-updated')
 const compactionStarted = sessionEvent('session-compaction-started')
 const compactionEnded = sessionEvent('session-compaction-ended')
@@ -333,45 +330,29 @@ export const modelTranscript = implementQuery(specification)
     const latest = lastOf(parts ?? [], (part) => part.kind === 'text')
     if (latest?.kind === 'text') latest.text = text
   })
-  .apply(toolInputStarted, async (event, state) => {
-    const { sessionID, assistantMessageID, id, name } = event.payload
+  .apply(toolRequested, async (event, state) => {
+    const { sessionID, assistantMessageID, id, name, input, executed } =
+      event.payload
     assistantOf(state, sessionID, assistantMessageID)?.parts.push({
       kind: 'tool',
       id,
       name,
-      status: 'streaming',
-      input: '',
+      executed,
+      status: 'running',
+      input,
     })
   })
-  .apply(toolInputEnded, async (event, state) => {
-    const { sessionID, assistantMessageID, id, text } = event.payload
-    const tool = latestTool(state, sessionID, assistantMessageID, id)
-    if (tool?.status === 'streaming') tool.input = text
-  })
-  .apply(toolCalled, async (event, state) => {
-    const { sessionID, assistantMessageID, id, input, executed } = event.payload
-    const tool = latestTool(state, sessionID, assistantMessageID, id)
-    if (!tool) return
-    tool.executed = executed
-    tool.status = 'running'
-    tool.input = input
-  })
-  .apply(toolSuccess, async (event, state) => {
-    const { sessionID, assistantMessageID, id, content, executed } =
-      event.payload
+  .apply(toolSettled, async (event, state) => {
+    const { sessionID, assistantMessageID, id, executed } = event.payload
     const tool = latestTool(state, sessionID, assistantMessageID, id)
     if (tool?.status !== 'running') return
     tool.executed = executed || tool.executed === true
-    tool.status = 'completed'
-    tool.content = [...content]
-  })
-  .apply(toolFailed, async (event, state) => {
-    const { sessionID, assistantMessageID, id, error, content, executed } =
-      event.payload
-    const tool = latestTool(state, sessionID, assistantMessageID, id)
-    if (tool?.status !== 'streaming' && tool?.status !== 'running') return
-    tool.executed = executed || tool.executed === true
-    if (typeof tool.input === 'string') tool.input = {}
+    if (event.payload.outcome === 'succeeded') {
+      tool.status = 'completed'
+      tool.content = [...event.payload.content]
+      return
+    }
+    const { error, content } = event.payload
     tool.status = 'error'
     tool.error = { type: error.type, message: error.message }
     if (content) tool.content = [...content]

@@ -10,7 +10,7 @@ import specification from './spec.json' with { type: 'json' }
 
 // Rebuildable projection: active executions, the in-flight step per Session
 // and its recorded calls with whether each has settled. Duplicated on purpose.
-export type RecordToolResultState = {
+export type SettleToolCallState = {
   active: Record<string, true>
   inFlight: Record<
     string,
@@ -18,11 +18,11 @@ export type RecordToolResultState = {
   >
 }
 
-export const recordToolResultStore = Context.Service<
-  SliceStoreService<RecordToolResultState, RecordToolResultState, unknown>
->('@specter/agent-runtime/RecordToolResultStore')
+export const settleToolCallStore = Context.Service<
+  SliceStoreService<SettleToolCallState, SettleToolCallState, unknown>
+>('@specter/agent-runtime/SettleToolCallStore')
 
-export const createRecordToolResultState = (): RecordToolResultState => ({
+export const createSettleToolCallState = (): SettleToolCallState => ({
   active: {},
   inFlight: {},
 })
@@ -31,11 +31,8 @@ const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
-const inputStarted = sessionEvent('session-tool-input-started')
-const inputEnded = sessionEvent('session-tool-input-ended')
-const toolCalled = sessionEvent('session-tool-called')
-const toolSuccess = sessionEvent('session-tool-success')
-const toolFailed = sessionEvent('session-tool-failed')
+const toolRequested = sessionEvent('session-tool-requested')
+const toolSettled = sessionEvent('session-tool-settled')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
@@ -51,13 +48,13 @@ const input = Schema.toStandardSchemaV1(
   }),
 )
 
-const settle = (state: RecordToolResultState, sessionID: string) => {
+const settle = (state: SettleToolCallState, sessionID: string) => {
   delete state.active[sessionID]
   delete state.inFlight[sessionID]
 }
 
 const closeStep = (
-  state: RecordToolResultState,
+  state: SettleToolCallState,
   sessionID: string,
   assistantMessageID: string,
 ) => {
@@ -66,7 +63,7 @@ const closeStep = (
 }
 
 const settleCall = (
-  state: RecordToolResultState,
+  state: SettleToolCallState,
   payload: { sessionID: string; assistantMessageID: string; id: string },
 ) => {
   const call = state.inFlight[payload.sessionID]?.calls[payload.id]
@@ -78,9 +75,9 @@ const settleCall = (
     call.settled = true
 }
 
-export const recordToolResult = implementCommand(specification)
+export const settleToolCall = implementCommand(specification)
   .inputSchema(input)
-  .store(recordToolResultStore)
+  .store(settleToolCallStore)
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
   })
@@ -94,18 +91,13 @@ export const recordToolResult = implementCommand(specification)
   .apply(stepSettled, async (event, state) => {
     closeStep(state, event.payload.sessionID, event.payload.assistantMessageID)
   })
-  .apply(inputStarted, async () => {})
-  .apply(inputEnded, async () => {})
-  .apply(toolCalled, async (event, state) => {
+  .apply(toolRequested, async (event, state) => {
     const { sessionID, assistantMessageID, id } = event.payload
     const step = state.inFlight[sessionID]
     if (step?.assistantMessageID === assistantMessageID)
       step.calls[id] = { settled: false }
   })
-  .apply(toolSuccess, async (event, state) => {
-    settleCall(state, event.payload)
-  })
-  .apply(toolFailed, async (event, state) => {
+  .apply(toolSettled, async (event, state) => {
     settleCall(state, event.payload)
   })
   .handle(async (command, state) => {
@@ -125,12 +117,19 @@ export const recordToolResult = implementCommand(specification)
     }
     if (command.error)
       return [
-        toolFailed.create({
+        toolSettled.create({
           ...base,
+          outcome: 'failed',
           error: command.error,
           ...(command.content ? { content: command.content } : {}),
         }),
       ]
     if (!command.content) throw new Error('Success needs content')
-    return [toolSuccess.create({ ...base, content: command.content })]
+    return [
+      toolSettled.create({
+        ...base,
+        outcome: 'succeeded',
+        content: command.content,
+      }),
+    ]
   })

@@ -1,8 +1,7 @@
 import { createCommandSlice, event } from '@specter-ts/spec'
 
 // session.md: "Each complete local tool call is durable before side effects
-// begin." The call is recorded as OC++ publishes it: tool.input.started,
-// tool.input.ended (the raw input text), tool.called (the decoded input).
+// begin." The call is one tool-requested fact with its name and decoded input.
 // Execution happens only after this commit.
 const model = { id: 'scripted', providerID: 'test' }
 const started = (sessionID = 'ses_1') =>
@@ -53,38 +52,6 @@ const stepRetried = (assistantMessageID: string, sessionID = 'ses_1') =>
     error: boom,
     retry: { attempt: 1, at: 1000 },
   })
-const inputStarted = (
-  assistantMessageID: string,
-  id: string,
-  name = 'execute',
-  sessionID = 'ses_1',
-) =>
-  event('session-tool-input-started', {
-    sessionID,
-    assistantMessageID,
-    id,
-    name,
-  })
-const inputEnded = (
-  assistantMessageID: string,
-  id: string,
-  text: string,
-  sessionID = 'ses_1',
-) =>
-  event('session-tool-input-ended', { sessionID, assistantMessageID, id, text })
-const called = (
-  assistantMessageID: string,
-  id: string,
-  input: Record<string, string>,
-  sessionID = 'ses_1',
-) =>
-  event('session-tool-called', {
-    sessionID,
-    assistantMessageID,
-    id,
-    input,
-    executed: false,
-  })
 const recorded = (
   assistantMessageID: string,
   id: string,
@@ -93,9 +60,14 @@ const recorded = (
   sessionID = 'ses_1',
 ) =>
   [
-    inputStarted(assistantMessageID, id, name, sessionID),
-    inputEnded(assistantMessageID, id, JSON.stringify(input), sessionID),
-    called(assistantMessageID, id, input, sessionID),
+    event('session-tool-requested', {
+      sessionID,
+      assistantMessageID,
+      id,
+      name,
+      input,
+      executed: false,
+    }),
   ] as const
 const call = (
   assistantMessageID: string,
@@ -112,7 +84,7 @@ export const recordToolCallSpec = createCommandSlice('recordToolCall')
   .scenarios(
     {
       description:
-        'A tool call becomes input started, input ended with the raw JSON text, and called with the decoded input, in one commit.',
+        'A tool call is recorded with its decoded input, not yet executed.',
       given: [started(), stepStarted('msg_1')],
       when: call('msg_1', 'call_1', { code: 'return 1' }),
       expect: recorded('msg_1', 'call_1', { code: 'return 1' }),

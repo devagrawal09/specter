@@ -213,10 +213,8 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       'session-execution-started',
       'session-inbox-delivered',
       'session-step-started', // A
-      'session-tool-input-started',
-      'session-tool-input-ended',
-      'session-tool-called', // A died here: the call is running
-      'session-tool-failed', // reconciliation settles the call first
+      'session-tool-requested', // A died here: the call is running
+      'session-tool-settled', // reconciliation settles the call first
       'session-step-settled',
       'session-step-started', // B: a new physical attempt
       'session-text-started',
@@ -228,7 +226,7 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
       events(b.log)
         .filter((event) => event.type === type)
         .map((event) => event.payload as Record<string, unknown>)
-    expect(of('session-tool-failed')).toEqual([
+    expect(of('session-tool-settled')).toEqual([
       expect.objectContaining({
         id: 'call_1',
         error: {
