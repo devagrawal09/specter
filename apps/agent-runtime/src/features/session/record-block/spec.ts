@@ -94,6 +94,25 @@ export const recordBlockSpec = createCommandSlice('recordBlock')
     },
     {
       description:
+        'Provider continuation state is recorded with the block as given.',
+      given: [started(), stepStarted('msg_1')],
+      when: {
+        ...text('msg_1', 0, 'hello'),
+        state: { openai: { itemID: 'msg_abc' } },
+      },
+      expect: [
+        event('session-block-recorded', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          ordinal: 0,
+          text: 'hello',
+          kind: 'text',
+          state: { openai: { itemID: 'msg_abc' } },
+        }),
+      ],
+    },
+    {
+      description:
         'A reasoning block counts its ordinals apart from text: reasoning 0 is recorded after text 0.',
       given: [started(), stepStarted('msg_1'), recorded('msg_1', 0, 'one')],
       when: text('msg_1', 0, 'thinking', 'ses_1', 'reasoning'),

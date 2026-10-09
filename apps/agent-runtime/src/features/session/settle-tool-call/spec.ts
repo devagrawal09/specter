@@ -158,6 +158,28 @@ export const settleToolCallSpec = createCommandSlice('settleToolCall')
     },
     {
       description:
+        'UI metadata and provider result state are recorded with the outcome as given.',
+      given: open,
+      when: {
+        ...success('msg_1', 'call_1', '2'),
+        metadata: { exitCode: 0 },
+        resultState: { openai: { itemID: 'out_1' } },
+      },
+      expect: [
+        event('session-tool-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          id: 'call_1',
+          outcome: 'succeeded',
+          content: [{ type: 'text', text: '2' }],
+          metadata: { exitCode: 0 },
+          resultState: { openai: { itemID: 'out_1' } },
+          executed: false,
+        }),
+      ],
+    },
+    {
+      description:
         'A failure may carry the partial content the tool produced before failing.',
       given: open,
       when: {

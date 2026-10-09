@@ -234,7 +234,7 @@ export const makeRunStepPlugin =
             // budget and records either the retry or the failed execution in
             // the same fact as the step failure. A retry is requested by the
             // Reaction from that fact, not by this job.
-            const { outcome: _, retryable, ...failure } = outcome
+            const { outcome: _, retryable, retryDelay, ...failure } = outcome
             yield* unlessRejected(
               command(
                 {
@@ -245,8 +245,8 @@ export const makeRunStepPlugin =
                     outcome: 'failed',
                     ...failure,
                     retryable,
-                    // Backoff is recorded, not waited on.
-                    at: Date.now(),
+                    // The retry's due time: backoff is recorded, not waited on.
+                    at: Date.now() + (retryDelay ?? 0),
                   },
                 },
                 { idempotencyKey: `${key}:failed` },

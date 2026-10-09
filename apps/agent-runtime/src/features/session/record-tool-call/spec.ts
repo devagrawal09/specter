@@ -97,6 +97,27 @@ export const recordToolCallSpec = createCommandSlice('recordToolCall')
     },
     {
       description:
+        'A call the provider executes itself is recorded as executed, with its provider state.',
+      given: [started(), stepStarted('msg_1')],
+      when: {
+        ...call('msg_1', 'call_1', { query: 'x' }, 'web_search'),
+        executed: true,
+        state: { openai: { itemID: 'ws_1' } },
+      },
+      expect: [
+        event('session-tool-requested', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          id: 'call_1',
+          name: 'web_search',
+          input: { query: 'x' },
+          executed: true,
+          state: { openai: { itemID: 'ws_1' } },
+        }),
+      ],
+    },
+    {
+      description:
         'A step may record several calls, each with its own call id.',
       given: [
         started(),

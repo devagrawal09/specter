@@ -37,6 +37,8 @@ const input = Schema.toStandardSchemaV1(
     kind: Schema.Literals(['text', 'reasoning']),
     ordinal: NonNegativeInt,
     text: Schema.String,
+    // Provider continuation state, recorded as given.
+    state: Schema.optional(SessionMessage.ProviderState),
   }),
 )
 
@@ -95,6 +97,7 @@ export const recordBlock = implementCommand(specification)
         kind: command.kind,
         ordinal: command.ordinal,
         text: command.text,
+        ...(command.state === undefined ? {} : { state: command.state }),
       }),
     ]
   })

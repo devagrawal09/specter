@@ -5,7 +5,7 @@ import type { Tool } from '@ocpp/schema/tool'
 import type { TokenUsage } from '@ocpp/schema/token-usage'
 import type { Tool as CodeModeTool } from '@ocpp/codemode'
 import type { SpecterEffectError } from '@specter-ts/core'
-import { Context, Effect, Layer, PubSub } from 'effect'
+import { Context, Effect, Layer, PubSub, type Schema } from 'effect'
 
 import type { ModelMessage } from '../features/session/model-transcript-query/impl.ts'
 import { executeToolSpec, runTool } from './code-mode-tool.ts'
@@ -25,15 +25,24 @@ export type AttemptRecorder = {
     readonly kind: 'text' | 'reasoning'
     readonly ordinal: number
     readonly text: string
+    readonly state?: SessionMessage.ProviderState
   }) => Effect.Effect<boolean, RecordFailure>
   // A complete call, recorded before it runs.
   readonly toolRequested: (call: {
     readonly id: string
     readonly name: string
     readonly input: Record<string, unknown>
+    // The provider executes the call itself.
+    readonly executed?: boolean
+    readonly state?: SessionMessage.ProviderState
   }) => Effect.Effect<boolean, RecordFailure>
   readonly toolSettled: (
-    result: { readonly id: string; readonly executed?: boolean } & (
+    result: {
+      readonly id: string
+      readonly executed?: boolean
+      readonly metadata?: { readonly [key: string]: Schema.Json }
+      readonly resultState?: SessionMessage.ProviderState
+    } & (
       | { readonly content: readonly [Tool.Content, ...Tool.Content[]] }
       | {
           readonly error: SessionError.Error
@@ -65,6 +74,8 @@ export type AttemptOutcome =
       readonly outcome: 'failed'
       readonly error: SessionError.Error
       readonly retryable: boolean
+      // How long a retry should wait (milliseconds); recorded as its due time.
+      readonly retryDelay?: number
       readonly finish?: 'content-filter'
     })
   // A record was rejected: nothing more is recorded for this attempt.

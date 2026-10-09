@@ -45,6 +45,9 @@ const input = Schema.toStandardSchemaV1(
     // success.
     error: Schema.optional(SessionError.Error),
     content: Schema.optional(Schema.NonEmptyArray(Tool.Content)),
+    // UI metadata and provider continuation state, recorded as given.
+    metadata: Schema.optional(Schema.Record(Schema.String, Schema.Json)),
+    resultState: Schema.optional(SessionMessage.ProviderState),
   }),
 )
 
@@ -114,6 +117,10 @@ export const settleToolCall = implementCommand(specification)
       assistantMessageID: command.assistantMessageID,
       id: command.id,
       executed: command.executed ?? false,
+      ...(command.metadata === undefined ? {} : { metadata: command.metadata }),
+      ...(command.resultState === undefined
+        ? {}
+        : { resultState: command.resultState }),
     }
     if (command.error)
       return [

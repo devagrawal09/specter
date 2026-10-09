@@ -35,6 +35,10 @@ const input = Schema.toStandardSchemaV1(
     id: Schema.String,
     name: Schema.String,
     input: Schema.Record(Schema.String, Schema.Unknown),
+    // Whether the provider executes the call itself (false by default).
+    executed: Schema.optional(Schema.Boolean),
+    // Provider continuation state, recorded as given.
+    state: Schema.optional(SessionMessage.ProviderState),
   }),
 )
 
@@ -88,7 +92,8 @@ export const recordToolCall = implementCommand(specification)
         id: command.id,
         name: command.name,
         input: command.input,
-        executed: false,
+        executed: command.executed ?? false,
+        ...(command.state === undefined ? {} : { state: command.state }),
       }),
     ]
   })
