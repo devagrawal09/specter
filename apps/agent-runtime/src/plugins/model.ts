@@ -47,6 +47,11 @@ export class Model extends Context.Service<
   {
     // Recorded on step.started.
     readonly ref: { readonly id: string; readonly providerID: string }
+    // Optional per-Session selection, for a host that resolves each Session's
+    // own model. Without it every Session records `ref`.
+    readonly refFor?: (
+      sessionID: string,
+    ) => Effect.Effect<{ readonly id: string; readonly providerID: string }>
     readonly nextOutcome: (input: ModelInput) => Effect.Effect<Outcome>
   }
 >()('@specter/agent-runtime/Model') {}

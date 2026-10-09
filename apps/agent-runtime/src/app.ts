@@ -103,6 +103,11 @@ import {
   interruptExecutionStore,
 } from './features/session/interrupt-execution/impl.ts'
 import {
+  createRegisterSessionState,
+  registerSession,
+  registerSessionStore,
+} from './features/session/register-session/impl.ts'
+import {
   createStartExecutionState,
   startExecution,
   startExecutionStore,
@@ -154,6 +159,7 @@ export const createSessionAppConfig = (
   ({
     events: sessionEventDefinitions,
     slices: {
+      registerSession,
       enqueueInput,
       cancelInboxItem,
       nextDeliverable,
@@ -205,6 +211,7 @@ export type ProvideSliceStore = <TIdentifier, TWriteState, TReadState>(
 
 export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
   Layer.mergeAll(
+    provide(registerSessionStore, createRegisterSessionState),
     provide(enqueueInputStore, createEnqueueInputState),
     provide(cancelInboxItemStore, createCancelInboxItemState),
     provide(nextDeliverableStore, createNextDeliverableState),

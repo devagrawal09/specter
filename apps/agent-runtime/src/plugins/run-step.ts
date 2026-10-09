@@ -102,6 +102,17 @@ export type RunStepOptions = {
   // Plugin input: extra host tools exposed to Code Mode programs (scenario
   // tests use it to hold a program open). The model-visible spec is unchanged.
   readonly hostTools?: Record<string, Tool.Tool>
+  // Plugin input: the assistant message ID of a Session's step. It must return
+  // the same ID for the same Session and ordinal, because a retried attempt
+  // reuses its step's ID. The default, msg_<sessionID>_<ordinal>, is unique
+  // within one Event Log; a host whose message IDs outlive the log supplies its
+  // own.
+  readonly assistantMessageID?: (step: {
+    readonly sessionID: string
+    readonly ordinal: number
+  }) => string
+  // Plugin input: the agent recorded on each step (default `build`).
+  readonly agent?: (sessionID: SessionID) => Effect.Effect<string>
 }
 
 // One job = one safe-step boundary: deliver, run one step, maybe finish.
@@ -170,7 +181,9 @@ export const makeRunStepPlugin =
             if (!delivered) return
           }
 
-          const assistantMessageID = `msg_${sessionID}_${ordinal}`
+          const assistantMessageID =
+            options.assistantMessageID?.({ sessionID, ordinal }) ??
+            `msg_${sessionID}_${ordinal}`
           const started = yield* unlessRejected(
             command(
               {
@@ -178,8 +191,14 @@ export const makeRunStepPlugin =
                 payload: {
                   sessionID,
                   assistantMessageID,
-                  agent: 'build',
-                  model: { ...model.ref },
+                  agent: options.agent
+                    ? yield* options.agent(sessionID)
+                    : 'build',
+                  model: {
+                    ...(model.refFor
+                      ? yield* model.refFor(sessionID)
+                      : model.ref),
+                  },
                 },
               },
               { idempotencyKey: `${delivery.deliveryId}:started` },

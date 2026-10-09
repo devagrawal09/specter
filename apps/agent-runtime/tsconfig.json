@@ -26,6 +26,9 @@
       ],
       "@specter-ts/core/testing": [
         "../../packages/core/src/testing-entry.ts"
+      ],
+      "@specter-ts/core/effect": [
+        "../../packages/core/src/effect-entry.ts"
       ]
     }
   }

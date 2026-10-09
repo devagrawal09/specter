@@ -10,6 +10,11 @@ export {
   type RunStepOutboxStore,
 } from './app.ts'
 export {
+  type EmbeddedSessionRuntime,
+  type EmbeddedSessionRuntimeOptions,
+  makeEmbeddedSessionRuntime,
+} from './embedded.ts'
+export {
   type SessionEventPayloads,
   sessionEvent,
   sessionEventDefinitions,
@@ -28,3 +33,9 @@ export {
   type Outcome,
   type ToolSpec,
 } from './plugins/model.ts'
+export {
+  type HostModelFailure,
+  type HostModelSelection,
+  hostModel,
+} from './plugins/ocpp-ai-model.ts'
+export type { RunStepOptions } from './plugins/run-step.ts'

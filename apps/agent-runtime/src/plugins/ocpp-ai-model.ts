@@ -1,7 +1,17 @@
-import { type AIError, LLM, LLMEvent, LLMResponse, Message } from '@ocpp/ai'
+import {
+  type AIError,
+  type LanguageModel,
+  LLM,
+  LLMEvent,
+  LLMResponse,
+  Message,
+} from '@ocpp/ai'
 import * as Anthropic from '@ocpp/ai/providers/anthropic'
 import * as OpenAI from '@ocpp/ai/providers/openai'
-import { LLMClient } from '@ocpp/ai/route/client'
+import {
+  LLMClient,
+  type Interface as LLMClientInterface,
+} from '@ocpp/ai/route/client'
 import { RequestExecutor } from '@ocpp/ai/route/executor'
 import type { TokenUsage } from '@ocpp/schema/token-usage'
 import { Data, Effect, Layer, Stream } from 'effect'
@@ -11,7 +21,12 @@ import {
   type OcppCredential,
   OcppCredentials,
 } from './ocpp-credentials.ts'
-import { Model, type ModelToolCall, type Outcome } from './model.ts'
+import {
+  Model,
+  type ModelInput,
+  type ModelToolCall,
+  type Outcome,
+} from './model.ts'
 
 // The real-provider implementation of the Model service, on @ocpp/ai. One
 // physical attempt = one LLM.stream: text deltas go to `onText` as they
@@ -216,6 +231,87 @@ const asRecord = (value: unknown): Record<string, unknown> =>
     ? (value as Record<string, unknown>)
     : { value }
 
+// One physical attempt on a selected language model, settled to an Outcome:
+// a provider failure is data (a failed attempt), never an Effect failure.
+const attempt = (
+  client: LLMClientInterface,
+  model: LanguageModel,
+  input: ModelInput,
+): Effect.Effect<Outcome> =>
+  Effect.gen(function* () {
+    const request = LLM.request({
+      model,
+      system: input.system,
+      // The transcript is plain data in @ocpp/ai's Message shape; the local
+      // mirror types its tool-result `result` as unknown.
+      messages: input.messages.map((message) =>
+        Message.make(message as Message.Input),
+      ),
+      tools: input.tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      })),
+    })
+    let state = LLMResponse.empty()
+    yield* LLM.stream(request).pipe(
+      Stream.runForEach((event) => {
+        state = LLMResponse.reduce(state, event)
+        return LLMEvent.is.textDelta(event)
+          ? input.onText(event.text)
+          : Effect.void
+      }),
+      Effect.provideService(LLMClient.Service, client),
+    )
+    const response = LLMResponse.complete(state)
+    if (!response)
+      return failed(
+        'provider.incomplete-stream',
+        'The provider stream ended without a finish',
+        true,
+      )
+    const providerError = response.events.find(LLMEvent.is.providerError)
+    const reason = response.finishReason.normalized
+    if (providerError || reason === 'error')
+      return failed(
+        'provider.unknown',
+        providerError?.message ?? 'The provider reported an error',
+        false,
+      )
+    if (reason === 'content-filter')
+      return failed(
+        'provider.content-filter',
+        'Provider blocked the response',
+        false,
+      )
+    const toolCalls: ModelToolCall[] = response.toolCalls.map((call) => ({
+      id: call.id,
+      name: call.name,
+      input: asRecord(call.input),
+    }))
+    const text = response.text
+    return {
+      // A response with tool calls always needs a follow-up step.
+      finish:
+        toolCalls.length > 0 && (reason === 'stop' || reason === 'unknown')
+          ? 'tool-calls'
+          : reason,
+      ...(text === '' ? {} : { text }),
+      ...(toolCalls.length === 0 ? {} : { toolCalls }),
+      usage: tokens(response.usage),
+    } satisfies Outcome
+  }).pipe(
+    Effect.catch((error: AIError) =>
+      Effect.succeed(
+        failed(
+          `provider.${error.reason._tag}`,
+          providerMessage(error),
+          retryable(error),
+        ),
+      ),
+    ),
+  )
+
 export const ocppAiModelLayer = (selection: ProviderSelection) =>
   Layer.effect(
     Model,
@@ -225,79 +321,8 @@ export const ocppAiModelLayer = (selection: ProviderSelection) =>
       return Model.of({
         ref: { id: selection.modelID, providerID: selection.providerID },
         nextOutcome: (input) =>
-          Effect.gen(function* () {
-            const model = yield* resolveModel(
-              credentials,
-              selection,
-              input.sessionID,
-            )
-            const request = LLM.request({
-              model,
-              system: input.system,
-              // The transcript is plain data in @ocpp/ai's Message shape; the
-              // local mirror types its tool-result `result` as unknown.
-              messages: input.messages.map((message) =>
-                Message.make(message as Message.Input),
-              ),
-              tools: input.tools.map((tool) => ({
-                name: tool.name,
-                description: tool.description,
-                inputSchema: tool.inputSchema,
-              })),
-            })
-            let state = LLMResponse.empty()
-            yield* LLM.stream(request).pipe(
-              Stream.runForEach((event) => {
-                state = LLMResponse.reduce(state, event)
-                return LLMEvent.is.textDelta(event)
-                  ? input.onText(event.text)
-                  : Effect.void
-              }),
-              Effect.provideService(LLMClient.Service, client),
-            )
-            const response = LLMResponse.complete(state)
-            if (!response)
-              return failed(
-                'provider.incomplete-stream',
-                'The provider stream ended without a finish',
-                true,
-              )
-            const providerError = response.events.find(
-              LLMEvent.is.providerError,
-            )
-            const reason = response.finishReason.normalized
-            if (providerError || reason === 'error')
-              return failed(
-                'provider.unknown',
-                providerError?.message ?? 'The provider reported an error',
-                false,
-              )
-            if (reason === 'content-filter')
-              return failed(
-                'provider.content-filter',
-                'Provider blocked the response',
-                false,
-              )
-            const toolCalls: ModelToolCall[] = response.toolCalls.map(
-              (call) => ({
-                id: call.id,
-                name: call.name,
-                input: asRecord(call.input),
-              }),
-            )
-            const text = response.text
-            return {
-              // A response with tool calls always needs a follow-up step.
-              finish:
-                toolCalls.length > 0 &&
-                (reason === 'stop' || reason === 'unknown')
-                  ? 'tool-calls'
-                  : reason,
-              ...(text === '' ? {} : { text }),
-              ...(toolCalls.length === 0 ? {} : { toolCalls }),
-              usage: tokens(response.usage),
-            } satisfies Outcome
-          }).pipe(
+          resolveModel(credentials, selection, input.sessionID).pipe(
+            Effect.flatMap((model) => attempt(client, model, input)),
             Effect.catchTag('ModelCredentialError', (error) =>
               Effect.succeed(
                 failed(`auth.credential-${error.reason}`, error.message, false),
@@ -308,17 +333,55 @@ export const ocppAiModelLayer = (selection: ProviderSelection) =>
                 failed('provider.ModelNotEligible', error.message, false),
               ),
             ),
-            Effect.catch((error: AIError) =>
-              Effect.succeed(
-                failed(
-                  `provider.${error.reason._tag}`,
-                  providerMessage(error),
-                  retryable(error),
-                ),
-              ),
-            ),
           ),
       })
+    }),
+  )
+
+// What a host selects for one Session: the language model to call and the
+// ref recorded on its steps.
+export type HostModelSelection = {
+  readonly model: LanguageModel
+  readonly ref: { readonly id: string; readonly providerID: string }
+}
+
+// Why a host could not select a Session's model. It becomes a failed attempt.
+export type HostModelFailure = {
+  readonly type: string
+  readonly message: string
+  readonly retryable: boolean
+}
+
+// A Model for a host that selects each Session's language model itself (OC++
+// core: the Session's model, agent and provider configuration). Credentials
+// and routing are the host's; the request, streaming and outcome mapping are
+// this module's.
+export const hostModel = (
+  select: (
+    sessionID: string,
+  ) => Effect.Effect<HostModelSelection, HostModelFailure>,
+) =>
+  Effect.map(LLMClient.Service, (client) =>
+    Model.of({
+      ref: { id: 'unselected', providerID: 'host' },
+      refFor: (sessionID) =>
+        select(sessionID).pipe(
+          Effect.map((selection) => selection.ref),
+          Effect.orElseSucceed(() => ({
+            id: 'unavailable',
+            providerID: 'host',
+          })),
+        ),
+      nextOutcome: (input) =>
+        select(input.sessionID).pipe(
+          Effect.matchEffect({
+            onFailure: (failure) =>
+              Effect.succeed(
+                failed(failure.type, failure.message, failure.retryable),
+              ),
+            onSuccess: (selection) => attempt(client, selection.model, input),
+          }),
+        ),
     }),
   )
 
