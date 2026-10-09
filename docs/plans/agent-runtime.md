@@ -229,6 +229,18 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 
       The two lock-permission tests fail only as root, as their premise is a directory root can still write. They pass as an ordinary user.
 
+  - **What "all of OC++" covers, and what else the monorepo holds.**
+    - **The OC++ agent is on Specter.** Its product state is all in core's database, as Specter's log and its projections. That covers Sessions, projects, worktrees, workspaces, credentials, plugin state, Code Mode and background jobs, and every projection rebuilds from the log. The server reads projections and writes nothing of its own. The CLI's `auth` commands go through the server API. The workerd profile runs the same core database on Durable Object storage. The client and the `app` UI reach product data only through the server API; `app` keeps browser UI state (layout, tabs, drafts) in localStorage and IndexedDB. The CLI writes its own config and service registration files.
+    - **Other services in the monorepo are separate products, inherited from upstream.** They deploy on their own through `sst.config.ts` and `infra/*.ts`, or their own wrangler config, each with its own store:
+      - the Zen/console SaaS (`packages/console/*`): PlanetScale MySQL for accounts, workspaces, keys, billing and usage, plus Stripe, Upstash Redis and Cloudflare KV for auth;
+      - the stats site (`packages/stats/*`): its own PlanetScale database and an AWS data lake;
+      - the update registry (`packages/updates`): Cloudflare D1;
+      - two share backends: `packages/enterprise` (R2 or S3 objects) and `packages/function` (Durable Objects and R2). No OC++ code calls either;
+      - the static sites `www`, `posts` and `web`.
+
+      None of them reads or writes through OC++ core. Moving them onto Specter would be a rewrite of separate production services, so it is the owner's call and has not been done.
+    - **Verification in this container.** Every package typechecks except `app` and `enterprise`, whose dependencies (`ghostty-web` from GitHub, `@solidjs/start` from pkg.pr.new) the network policy blocks. With those two modules stubbed, the only errors left come from their types. The lock tests now make their root unwritable for root as well, by marking it immutable, so the core suite passes as root.
+
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
 1. **Fork** — decided 2026-10-08: no Event Log primitive. OC++'s fork is a projection: the `session.forked` projector copies message rows up to the boundary into the child; the child's event log starts at `session.forked{parentID, boundary}`. Mirror that: `fork-session` Command emits the fact; a Reaction materializes the child's history slice from the parent's slice state up to the boundary (rebuildable derived index). Only requirement on Specter: a Reaction/Query may read another aggregate's slice state via `{ query }` — verify in M1.
