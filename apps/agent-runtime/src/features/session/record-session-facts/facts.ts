@@ -556,6 +556,13 @@ export const sessionFacts = {
   'session-background-completed': {
     notificationID: 'msg_3',
   },
+  'kv-stored': {
+    key: 'websearch:provider',
+    value: 'exa',
+  },
+  'kv-removed': {
+    key: 'websearch:provider',
+  },
   'credential-created': {
     integrationID: 'anthropic',
     credentialID: 'cred_1',
