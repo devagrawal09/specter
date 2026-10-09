@@ -173,7 +173,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - A turn that keeps dying is bounded by the runtime's per-step retry budget, not by a count of boots.
     - **One status Query.** `sessionStatus` replaces `executionStatus`, `stepStatus` and `nextStep`. It reports a Session's executions, its steps and what its next step starts from, as one fold. The step Plugin reads one snapshot at each boundary instead of several Queries that another commit could land between. `revertStatus` stays separate: a staged revert is the UI's concern, and a part in `sessionStatus` would add it to every status scenario.
     - **The runtime is the only thing that delivers input.** `StepHost.drive` hands the host the runtime's inbox for the execution (what delivers next at a boundary, and delivering an item), so an external agent's turn takes input by the runtime's delivery law and `deliverInboxItem`, as an OC++-run Session's does. OC++'s own promotion moved to a test fixture. OC++'s inbox service stays as the inbox for compositions without the runtime (tests); its facts go to Specter's log like any other.
-    - **What stays outside Specter, by design.** OC++'s read models (`session_message`, `session_inbox` and the rest) are projections of Specter's log, built in the append transaction. Project, workspace and worktree records, credentials, settings and Code Mode's working storage (notebook bindings, reservations, its replay journal) are configuration and working state with ephemeral notifications, not domain facts.
+    - **Read models are projections.** OC++'s read models (`session_message`, `session_inbox` and the rest) are projections of Specter's log, built in the append transaction. Phase 6 brought the rest of OC++'s stored state onto the log.
   - **Phase 5 done: the runtime boots from where it stopped.**
     - **The host keeps the runtime's state.** `makeEmbeddedSessionRuntime` takes `stores`: the Slice stores, and the outbox stores of its two outboxed Reactions. `makeSnapshotSliceStores` gives in-memory Slice stores that start from saved snapshots (a Slice's state and cursor) and take new ones. The Bus's event store takes Slice stores the same way.
     - **OC++ keeps it in its database.**
@@ -182,6 +182,26 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
     - **A boot does work in proportion to what changed.** Each Slice folds only the log after its cursor. A delivery replayed because its Slice's snapshot is older finds its job and does not run again. Completed jobs older than a day are pruned at boot.
     - **Opening an outbox requeues what the last process left unfinished.** Running and dead-lettered jobs get a fresh retry budget, as replaying them into an empty outbox did. Their attempts died with the process, so waiting out their leases would only delay their Sessions.
     - **Losing the snapshots costs time, not correctness.** Without them, a boot folds the whole log as it did before.
+  - **Phase 6 done: OC++'s stored state is projections of Specter's log.**
+    - **One manifest.** OC++'s durable event manifest lists every fact it records. The Bus records each one through the runtime, and the runtime's catalog is that manifest, so a new fact is one entry.
+    - **Every change is a fact.** These each publish internal durable facts instead of writing their rows:
+      - project records, worktrees and workspaces;
+      - API instruction entries;
+      - Code Mode: executions, their call journal, the notebook, slash commands and scheduled events;
+      - credentials;
+      - background job markers;
+      - an imported Session's history, and the instruction values an update refers to by hash.
+
+      Their rows are projections written in the transaction that records the fact. Internal facts stay out of the client-facing manifest; clients keep their usual notifications.
+    - **Decisions.** A decision that reads state before recording is serialized per key (project, workspace, credential integration, Session). One that must be atomic with concurrent facts is made by the projection: whether a finished Code Mode program's declarations save, which a revert can race.
+    - **Aggregates.** A Code Mode execution and a background job marker are aggregates of their own. Journaling a program's calls does not advance its Session's sequence, and a marker can be recorded from a Session listener, which holds that Session's lock.
+    - **What stays outside the log, and why:**
+      - A credential's secret: an append-only log cannot forget it. It is written by the publish that records the credential's fact, in the same transaction, and deleted with the credential.
+      - Caches and plugin storage in the key-value store: the models.dev catalog, repository refresh times, known well-known origins, and the plugin key-value API.
+      - The runtime's own outbox and Slice snapshots.
+      - Legacy tables that no code writes: `account`, `account_state`, `control_account`, `session_pending`, `project_directory`.
+
+      The one `commit:` hook left that writes is the credential secret's.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
