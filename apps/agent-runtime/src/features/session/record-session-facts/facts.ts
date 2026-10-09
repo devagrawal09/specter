@@ -416,4 +416,108 @@ export const sessionFacts = {
   'workspace-destroyed': {
     workspaceID: 'wrk_1',
   },
+  'session-instruction-entry-set': {
+    sessionID: 'ses_1',
+    key: 'ticket',
+    value: { id: 42 },
+  },
+  'session-instruction-entry-removed': {
+    sessionID: 'ses_1',
+    key: 'ticket',
+  },
+  'session-codemode-execution-admitted': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+    assistantMessageID: 'msg_1',
+    toolCallID: 'call_1',
+    program: { version: 1 },
+    snapshot: ['summary'],
+    reserved: ['report'],
+  },
+  'session-codemode-execution-started': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+  },
+  'session-codemode-execution-resumed': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+  },
+  'session-codemode-execution-settled': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+    outcome: 'saved',
+    values: { report: 'done' },
+    messageSeq: 3,
+  },
+  'session-codemode-execution-discarded': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+  },
+  'session-codemode-call-scheduled': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+    index: 0,
+    tool: 'read',
+    input: { path: 'a.txt' },
+    omitted: false,
+  },
+  'session-codemode-call-progressed': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+    index: 0,
+    progress: { sessionID: 'ses_2' },
+  },
+  'session-codemode-call-settled': {
+    sessionID: 'ses_1',
+    executionID: 'exe_1',
+    index: 0,
+    outcome: 'completed',
+    output: 'text',
+    omitted: false,
+  },
+  'session-codemode-command-defined': {
+    sessionID: 'ses_1',
+    name: 'deploy',
+    description: 'Deploys the app',
+    handler: 'deploy',
+  },
+  'session-codemode-command-removed': {
+    sessionID: 'ses_1',
+    name: 'deploy',
+  },
+  'session-codemode-event-defined': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+    description: 'Runs the nightly check',
+    schedule: { every: '1h' },
+    handler: 'check',
+    time: 1,
+    next: 3_600_001,
+  },
+  'session-codemode-event-toggled': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+    enabled: false,
+  },
+  'session-codemode-event-removed': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+  },
+  'session-codemode-event-planned': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+    next: 3_600_001,
+  },
+  'session-codemode-event-fired': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+    at: 3_600_001,
+    executionID: 'exe_2',
+    messageID: 'msg_2',
+  },
+  'session-codemode-event-skipped': {
+    sessionID: 'ses_1',
+    name: 'nightly',
+    at: 7_200_001,
+  },
 } as const
