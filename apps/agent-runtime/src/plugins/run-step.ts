@@ -6,6 +6,7 @@ import type { SessionID } from '@ocpp/schema/session-id'
 import { Effect } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
+import { stepBoundary } from '../features/session/step-boundary-query/impl.ts'
 import type { RunStepRequest } from '../features/session/run-step-reaction/impl.ts'
 import { stepStatus } from '../features/session/step-status-query/impl.ts'
 import { modelTranscript } from '../features/session/model-transcript-query/impl.ts'
@@ -142,15 +143,22 @@ export const makeRunStepPlugin =
             : status.stepsStarted
           if (expected !== ordinal) return
 
-          // Delivery law: steers (and, only at idle, queued items) enter history
-          // at the safe-step boundary, before the next step starts.
+          // Delivery law (OC++ runner): every pending steer enters history
+          // before the next step; at an idle boundary (the execution's start,
+          // or after a step that needed no continuation) one queued item may
+          // enter too, with the steers that arrive behind it.
+          const { boundary, stepsInExecution } = yield* query(stepBoundary, {
+            sessionID,
+          })
+          let scope = boundary
+          let delivered = 0
           for (;;) {
             const next = yield* query(nextDeliverable, {
               sessionID,
-              boundary: 'step',
+              boundary: scope,
             })
             if (next.item === null) break
-            const delivered = yield* unlessRejected(
+            const accepted = yield* unlessRejected(
               command(
                 {
                   type: 'deliverInboxItem',
@@ -161,7 +169,19 @@ export const makeRunStepPlugin =
                 },
               ),
             )
-            if (!delivered) return
+            if (!accepted) return
+            delivered += 1
+            if (next.item.delivery === 'queue') scope = 'step'
+          }
+          // An idle execution with nothing left to deliver is done.
+          if (boundary === 'idle' && stepsInExecution > 0 && delivered === 0) {
+            yield* unlessRejected(
+              command(
+                { type: 'finishExecution', payload: { sessionID } },
+                { idempotencyKey: `${delivery.deliveryId}:finished` },
+              ),
+            )
+            return
           }
 
           const assistantMessageID =
@@ -265,12 +285,20 @@ export const makeRunStepPlugin =
                   assistantMessageID,
                   outcome: 'succeeded',
                   ...success,
+                  continues: next,
                 },
               },
               { idempotencyKey: `${key}:ended` },
             ),
           )
           if (!ended || next) return
+          // Input waiting for this idle boundary keeps the execution going: the
+          // next step delivers it.
+          const waiting = yield* query(nextDeliverable, {
+            sessionID,
+            boundary: 'idle',
+          })
+          if (waiting.item !== null) return
 
           yield* unlessRejected(
             command(

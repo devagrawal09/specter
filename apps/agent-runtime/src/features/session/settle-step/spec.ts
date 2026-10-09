@@ -95,6 +95,23 @@ export const settleStepSpec = createCommandSlice('settleStep')
       expect: [stepSucceeded('msg_1', 'tool-calls')],
     },
     {
+      description:
+        'A step whose tool results the model must answer records that another step follows.',
+      given: [started(), stepStarted('msg_1')],
+      when: success({ finish: 'tool-calls', continues: true }),
+      expect: [
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          outcome: 'succeeded',
+          finish: 'tool-calls',
+          continues: true,
+          cost: 0,
+          tokens: zeroTokens,
+        }),
+      ],
+    },
+    {
       description: 'Reported cost and token usage are recorded with the step.',
       given: [started(), stepStarted('msg_1')],
       when: success({

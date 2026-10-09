@@ -42,6 +42,9 @@ const runtimeEventSchemas = {
     Schema.Struct({
       ...SessionEvent.Step.Ended.data.fields,
       outcome: Schema.Literal('succeeded'),
+      // Another step must follow (tool results to answer): the next step
+      // starts at a step boundary instead of an idle one.
+      continues: optional(Schema.Literal(true)),
     }),
     Schema.Struct({
       ...SessionEvent.Step.Failed.data.fields,

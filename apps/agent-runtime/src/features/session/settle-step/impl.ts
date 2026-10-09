@@ -59,6 +59,7 @@ const input = Schema.toStandardSchemaV1(
       ...observed,
       outcome: Schema.Literal('succeeded'),
       finish: LLM.FinishReason,
+      continues: Schema.optional(Schema.Boolean),
     }),
     Schema.Struct({
       ...target,
@@ -134,6 +135,7 @@ export const settleStep = implementCommand(specification)
           assistantMessageID,
           outcome: 'succeeded',
           finish: command.finish,
+          ...(command.continues ? { continues: true as const } : {}),
           ...recorded,
           cost: command.cost ?? Money.USD.make(0),
           tokens: command.tokens ?? zeroTokens,

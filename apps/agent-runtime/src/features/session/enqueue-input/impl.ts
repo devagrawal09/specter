@@ -8,11 +8,12 @@ import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Slice state is a rebuildable projection of the Event Log: which Sessions
-// exist and which Session/type each inbox ID was admitted under. It is a
-// duplicate of the projection in cancel-inbox-item on purpose.
+// exist, which Session/type each inbox ID was admitted under, and whether it
+// is still pending. It is a duplicate of the projection in cancel-inbox-item on
+// purpose.
 export type EnqueueInputState = {
   sessions: Record<string, true>
-  items: Record<string, { sessionID: string; type: string }>
+  items: Record<string, { sessionID: string; type: string; pending: boolean }>
 }
 
 export const enqueueInputStore = Context.Service<
@@ -26,6 +27,8 @@ export const createEnqueueInputState = (): EnqueueInputState => ({
 
 const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
+const inboxDelivered = sessionEvent('session-inbox-delivered')
+const inboxCancelled = sessionEvent('session-inbox-cancelled')
 const revertCommitted = sessionEvent('session-revert-committed')
 
 const base = {
@@ -33,6 +36,9 @@ const base = {
   inboxID: SessionMessage.ID,
   delivery: Schema.optional(SessionInbox.Delivery),
   resume: Schema.optional(Schema.Boolean),
+  // Pending items of the same Session this input replaces (OC++ coalescing):
+  // they are cancelled in the same commit.
+  replaces: Schema.optional(Schema.Array(SessionMessage.ID)),
 }
 
 // The flat Command input, discriminated on `type` so the payload reaches the
@@ -61,7 +67,15 @@ export const enqueueInput = implementCommand(specification)
   })
   .apply(inboxEnqueued, async (event, state) => {
     const { sessionID, inboxID, item } = event.payload
-    state.items[inboxID] ??= { sessionID, type: item.type }
+    state.items[inboxID] ??= { sessionID, type: item.type, pending: true }
+  })
+  .apply(inboxDelivered, async (event, state) => {
+    const item = state.items[event.payload.inboxID]
+    if (item) item.pending = false
+  })
+  .apply(inboxCancelled, async (event, state) => {
+    const item = state.items[event.payload.inboxID]
+    if (item) item.pending = false
   })
   // Deliberately a no-op: a committed revert does not affect admission; the
   // scenario puts it in Given to prove admission works normally afterwards.
@@ -78,9 +92,21 @@ export const enqueueInput = implementCommand(specification)
       throw new Error('Inbox item already admitted')
     }
 
+    // A replaced item must still be pending, or the replacement would drop
+    // input that was already delivered or cancelled: the caller decides again.
+    const replaced = command.replaces ?? []
+    for (const inboxID of replaced) {
+      const item = state.items[inboxID]
+      if (item?.sessionID !== command.sessionID || !item.pending)
+        throw new Error('Replaced input not pending')
+    }
+
     // `resume` only controls scheduling (a reaction on the enqueued event),
     // so it is not part of the durable fact.
     return [
+      ...replaced.map((inboxID) =>
+        inboxCancelled.create({ sessionID: command.sessionID, inboxID }),
+      ),
       inboxEnqueued.create({
         sessionID: command.sessionID,
         inboxID: command.inboxID,

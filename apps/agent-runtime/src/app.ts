@@ -63,10 +63,20 @@ import {
   type RunStepRequest,
 } from './features/session/run-step-reaction/impl.ts'
 import {
+  createStepBoundaryState,
+  stepBoundary,
+  stepBoundaryStore,
+} from './features/session/step-boundary-query/impl.ts'
+import {
   createStepStatusState,
   stepStatus,
   stepStatusStore,
 } from './features/session/step-status-query/impl.ts'
+import {
+  changeDelivery,
+  changeDeliveryStore,
+  createChangeDeliveryState,
+} from './features/session/change-delivery/impl.ts'
 import {
   cancelInboxItem,
   cancelInboxItemStore,
@@ -165,6 +175,7 @@ export const createSessionAppConfig = (
       registerSession,
       enqueueInput,
       cancelInboxItem,
+      changeDelivery,
       nextDeliverable,
       deliverInboxItem,
       startExecution,
@@ -178,6 +189,7 @@ export const createSessionAppConfig = (
       settleToolCall,
       finishExecution,
       stepStatus,
+      stepBoundary,
       forkSession,
       sessionHistory,
       modelTranscript,
@@ -218,6 +230,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(registerSessionStore, createRegisterSessionState),
     provide(enqueueInputStore, createEnqueueInputState),
     provide(cancelInboxItemStore, createCancelInboxItemState),
+    provide(changeDeliveryStore, createChangeDeliveryState),
     provide(nextDeliverableStore, createNextDeliverableState),
     provide(deliverInboxItemStore, createDeliverInboxItemState),
     provide(startExecutionStore, createStartExecutionState),
@@ -231,6 +244,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(settleToolCallStore, createSettleToolCallState),
     provide(finishExecutionStore, createFinishExecutionState),
     provide(stepStatusStore, createStepStatusState),
+    provide(stepBoundaryStore, createStepBoundaryState),
     provide(forkSessionStore, createForkSessionState),
     provide(sessionHistoryStore, createSessionHistoryState),
     provide(modelTranscriptStore, createModelTranscriptState),

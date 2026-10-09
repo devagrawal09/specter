@@ -241,6 +241,37 @@ describe('step loop with a scripted model', () => {
     await t.outboxSettled()
   })
 
+  it('delivers a queued input once the execution is idle, within the same execution', async () => {
+    const t = await start()
+    const hold = gate()
+    t.model.script('ses_1', [
+      { finish: 'stop', text: 'first', gate: hold.promise },
+      { finish: 'stop', text: 'second' },
+    ])
+
+    await t.app.command(enqueue('msg_a'))
+    await t.waitFor(() => t.types().includes('session-step-started'))
+    await t.app.command(enqueue('msg_b', 'queue'))
+    hold.open()
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(t.types()).toEqual([
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered', // A
+      'session-step-started',
+      'session-inbox-enqueued', // B waits for idle
+      'session-block-recorded',
+      'session-step-settled',
+      'session-inbox-delivered', // B, at the idle boundary
+      'session-step-started',
+      'session-block-recorded',
+      'session-step-settled',
+      'session-execution-settled',
+    ])
+  })
+
   it('delivers a steer enqueued mid-step at the next boundary, before the next step', async () => {
     const t = await start()
     const hold = gate()

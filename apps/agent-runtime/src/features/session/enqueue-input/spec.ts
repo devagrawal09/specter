@@ -42,6 +42,77 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
     },
     {
       description:
+        'A replacing admission (OC++ coalescing) cancels the replaced pending items and admits the new one in the same commit.',
+      given: [
+        created('ses_1'),
+        enqueued('ses_1', 'msg_1', userItem('first notice')),
+        enqueued('ses_1', 'msg_2', userItem('second notice')),
+      ],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_3',
+        type: 'user',
+        payload: { text: 'both notices' },
+        replaces: ['msg_1', 'msg_2'],
+      },
+      expect: [
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+        }),
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_2',
+        }),
+        enqueued('ses_1', 'msg_3', userItem('both notices')),
+      ],
+    },
+    {
+      description:
+        'A replaced item that was already delivered is not pending: the replacement is rejected so the caller decides again.',
+      given: [
+        created('ses_1'),
+        enqueued('ses_1', 'msg_1', userItem('first notice')),
+        event('session-inbox-delivered', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+        }),
+      ],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_2',
+        type: 'user',
+        payload: { text: 'merged' },
+        replaces: ['msg_1'],
+      },
+      expect: [],
+      reject: { reason: 'Replaced input not pending' },
+    },
+    {
+      description:
+        'A replaced item that was cancelled, or belongs to another Session, is not pending here either.',
+      given: [
+        created('ses_1'),
+        created('ses_2'),
+        enqueued('ses_2', 'msg_1', userItem('elsewhere')),
+        enqueued('ses_1', 'msg_2', userItem('cancelled')),
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_2',
+        }),
+      ],
+      when: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_3',
+        type: 'user',
+        payload: { text: 'merged' },
+        replaces: ['msg_1'],
+      },
+      expect: [],
+      reject: { reason: 'Replaced input not pending' },
+    },
+    {
+      description:
         'Delivery is explicit: steer is the default when delivery is omitted.',
       given: [created('ses_1')],
       when: {
