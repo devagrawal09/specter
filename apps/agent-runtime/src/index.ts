@@ -1,6 +1,9 @@
 // Public entry for a host process (OC++ core) that embeds the runtime.
 // Hosts import only from here; everything else is the app's own layout.
 
+// A Command's rejection: the runtime refused it with an exact reason.
+export { SpecterCommandRejectedError } from '@specter-ts/core'
+
 export {
   createSessionAppConfig,
   createSliceStoreLayer,
