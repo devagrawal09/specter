@@ -11,6 +11,7 @@ export default defineConfig({
       external: [
         /^@specter-ts\/core(?:\/.*)?$/,
         /^@specter-ts\/reaction-outbox(?:\/.*)?$/,
+        /^effect(?:\/.*)?$/,
         /^node:/,
       ],
     },

@@ -8,7 +8,7 @@ export default defineConfig({
       formats: ['es'],
     },
     rollupOptions: {
-      external: [/^@specter-ts\/core(?:\/.*)?$/],
+      external: [/^@specter-ts\/core(?:\/.*)?$/, /^effect(?:\/.*)?$/],
     },
   },
 })

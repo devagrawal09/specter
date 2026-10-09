@@ -12,6 +12,7 @@ export default defineConfig({
         /^@libsql\/client(?:\/.*)?$/,
         /^@specter-ts\/core(?:\/.*)?$/,
         /^@specter-ts\/reaction-outbox(?:\/.*)?$/,
+        /^effect(?:\/.*)?$/,
         /^node:/,
       ],
     },

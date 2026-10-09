@@ -3,8 +3,15 @@
   "private": true,
   "type": "module",
   "license": "MIT",
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "default": "./src/index.ts"
+    }
+  },
   "scripts": {
     "spec:build": "if ls src/features/*/*/spec.ts >/dev/null 2>&1; then node ../../packages/spec/dist/cli.js export src/features; fi",
+    "build": "npm run spec:build && tsc -p tsconfig.build.json",
     "test": "npm run spec:build && vitest run --passWithNoTests",
     "typecheck": "npm run spec:build && tsc --noEmit"
   },

@@ -1,0 +1,17 @@
+{
+  // Declarations for host processes that type-check against the runtime
+  // (OC++ core) without compiling its source under their own settings.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/recovery.child.ts"],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "rootDir": "src",
+    "outDir": "dist/types",
+    // Resolve @specter-ts/core through its package (built declarations)
+    // instead of the workspace source mapping, so rootDir holds.
+    "paths": {}
+  }
+}
