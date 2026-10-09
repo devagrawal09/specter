@@ -3,6 +3,18 @@
 
 // A Command's rejection: the runtime refused it with an exact reason.
 export { SpecterCommandRejectedError } from '@specter-ts/core'
+// The Event Log contract a host implements when it keeps the log itself.
+export {
+  type EventDraft,
+  EventLog,
+  type EventLogAppendOptions,
+  type EventLogAppendResult,
+  type EventLogCommit,
+  EventLogFailure,
+  type EventLogService,
+  type PersistedEvent,
+  SpecterVersionConflictError,
+} from '@specter-ts/core'
 
 export {
   createSessionAppConfig,
@@ -12,6 +24,11 @@ export {
   type RunStepOutboxOptions,
   type RunStepOutboxStore,
 } from './app.ts'
+export {
+  makeSessionEventStore,
+  type SessionEventStore,
+  sessionEventStoreConfig,
+} from './event-store.ts'
 export {
   type EmbeddedSessionRuntime,
   type EmbeddedSessionRuntimeOptions,
