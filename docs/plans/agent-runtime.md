@@ -119,6 +119,22 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
   4. A server or app switch (env flag) needs the effect preload in the server process too, and has not been exercised with the real `SpecterSessionModel` (Location model resolution).
   5. Text deltas are not forwarded as ephemeral Bus events yet, so the UI shows text when a step records it, not while it streams.
 
+- **Goal raised 2026-10-09 (maintainer): rewrite all of OC++ on top of Specter.** The work runs in phases.
+  - **Phase 1 done: Specter is OC++'s event store.** Specter's Event Log lives in OC++'s SQLite (`specter_event`, `specter_commit`). The Bus records every durable Session fact through the runtime's `recordSessionFacts` Command and projects it (projectors, commit hooks, sequences) inside the same append transaction. This closes gap 2 above: the log persists, and a restart no longer forgets anything.
+  - **Two runtimes, one log.** The Bus holds a fact-recording runtime with no Reactions. The runtime that runs Sessions writes to the same log through `bus.specterLog`, and the Bus projects each of its commits as OC++ events in the append transaction and notifies listeners once it commits. Its appends hold the Bus locks of the Sessions they record for, so listeners see each Session's events in order. Registering a Session that the log predates (idempotency key `register:<id>`) is not projected again. Core now re-decides a Command whose own compare-and-swap lost a race to another writer.
+  - **Phase 2 in progress: a consolidated catalog for what the runtime records.** OC++'s structure is not binding. A lifecycle has one started fact and one settled fact with an outcome. When a fact's shape changes, it gets a new name, so one name never carries two shapes. OC++ receives its own events by translation (`core/src/specter/translate.ts`, the only place the two vocabularies meet). The translation goes when OC++'s protocol adopts the catalog.
+
+    | Runtime fact | Replaces (OC++) | Command |
+    |---|---|---|
+    | `session-execution-settled {outcome}` | execution succeeded / failed / interrupted | `finishExecution`, `interruptExecution`, `settleStep` |
+    | `session-step-settled {outcome, retry?}` | step ended / failed, retry scheduled | `settleStep` (was `recordStepEnded` + `recordStepFailed`) |
+    | `session-block-recorded {kind, ordinal, text}` | text / reasoning started + ended | `recordBlock` (was `recordText`) |
+    | `session-tool-requested {name, input}` | tool input started / ended, tool called | `recordToolCall` |
+    | `session-tool-settled {outcome}` | tool success / failed | `settleToolCall` (was `recordToolResult`) |
+
+    Still to do: one `session-status` Query in place of the four status Queries; inbox admission with coalescing, compaction and move items, and delivery changes; compaction and instruction facts.
+  - **Phase 3 next: the runtime drives OC++'s real steps.** The runtime keeps orchestration: inbox delivery, the execution lifecycle, steps, the retry budget, recovery and finishing. OC++ supplies the step's I/O as a host service: it builds the request from OC++'s own context (`SessionContext.select/load/prepare`: system prompt, instructions, agent, tools), streams the model, executes tools, and captures snapshots. The service records what the attempt produces through a recorder the step Plugin hands it (`recordBlock`, `recordToolCall`, `settleToolCall`), and returns the outcome that `settleStep` records. OC++'s message tables are projected from the runtime's facts in the same transaction, so OC++'s request building already sees the runtime's history. After that, the runner, inbox, execution and run coordinator in OC++ are deleted.
+
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
 1. **Fork** — decided 2026-10-08: no Event Log primitive. OC++'s fork is a projection: the `session.forked` projector copies message rows up to the boundary into the child; the child's event log starts at `session.forked{parentID, boundary}`. Mirror that: `fork-session` Command emits the fact; a Reaction materializes the child's history slice from the parent's slice state up to the boundary (rebuildable derived index). Only requirement on Specter: a Reaction/Query may read another aggregate's slice state via `{ query }` — verify in M1.
