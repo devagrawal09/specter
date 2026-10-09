@@ -6,7 +6,7 @@ Date: 2026-10-08. Status: proposal. Decision owner: dev@codemod.com.
 
 Rebuild OC++'s Session Execution aggregate (inbox -> step -> steer/interrupt -> wake -> recovery) as a Specter application, spec-first, until OC++'s existing web app (`packages/app`) runs against it. This dogfoods Specter on a hard real domain, produces the first executable Slice Specifications for OC++ behavior, and decides whether the rest of OC++ core should move to Specter.
 
-It is a new app in the Specter repo, not a change to OC++. OC++ (`~/opencode`, branch `v2`) is the behavioral oracle and the source of reusable packages.
+It is a new app in the Specter repo, not a change to OC++. OC++ (`github.com/devagrawal09/ocpp`, branch `main`, checked out as `../ocpp` next to this repo) is the behavioral oracle and the source of reusable packages. (Until 2026-10-09 this plan said `v2`; on the fork that branch is a stale copy of upstream OpenCode, see the findings log.)
 
 ## Findings that shape the plan
 
@@ -74,6 +74,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - **M2 complete 2026-10-09.** Live run passed: `gpt-5.5` via the Codex backend (`chatgpt.com/backend-api/codex`) with the stored ChatGPT login, `chatgpt-account-id` derived from the JWT claim; full session with a Code Mode tool call in 3.1 s; every durable event validated and matched OC++'s event-type sequence. Three diagnoses on the way (API scopes -> codex routing -> account id + model eligibility) are in the findings log.
 - Sizing 2026-10-08: `@ocpp/ai` (108 files) and `@ocpp/codemode` (35 files) depend on no other `@ocpp/*` package (dependency law holds) but import `effect/unstable/{http,socket,encoding/Sse}` in 14 + 3 files. Those paths moved to stable names in 4.0.1 and `Socket` changed, so no dual-compatible import exists — unlike `@ocpp/schema`. Consuming the real packages on 4.0.1 requires the full OC++ effect upgrade (the M4 prerequisite), an out-of-process step worker on rc.112, or vendoring. Decided 2026-10-08: do the full OC++ upgrade now (branch `effect-stable`, worktree `~/opencode-effect-upgrade`, opus), targeting 4.0.1 to match Specter; bump both repos to 4.0.2 afterwards as a patch step. The M4 prerequisite is thereby pulled into M2.
 - Status 2026-10-09: `effect-stable` verified — 11 commits, typecheck 33/33 (= baseline), per-package tests match baseline (all extra core failures classified environmental: ripgrep download 403, flaky ShellTool), one real regression found and fixed (`u`-flag JSON-Schema patterns), OpenAPI regenerated. Unpushed. Client codegen brands — revised 2026-10-09: fix the generator now on effect-stable (read the brand identifier from the schema wrapper, where 4.0.1 keeps it), regenerate, and verify the generated client is byte-identical to the committed one. `schema-effect-compat` is superseded; the app now links `@ocpp/schema`, `@ocpp/ai`, `@ocpp/codemode` from `~/opencode-effect-upgrade`.
+- **Superseded 2026-10-09:** OC++'s trunk is `main`, which already carries its own effect 4.0.1 upgrade (devagrawal09/ocpp#5, merged 2026-10-08). `effect-stable` (built on the fork's stale `v2`) is not merged anywhere. The app now links `../../../ocpp/packages/*`, an OC++ `main` checkout; all 386 tests pass there, and the only change OC++ needed was one type annotation in `@ocpp/codemode` (see findings).
 - Swap in `@ocpp/ai` provider layer and `@ocpp/codemode` as the step plugin's tools; port rule groups 4, 5 (attempts/retry, tool-call durability: each local tool call durable before side effects, outcomes serialized).
 - Done when (loosened 2026-10-08) a real provider completes a multi-step session with Code Mode executions through the Specter runtime, and the durable events (a) validate against `@ocpp/schema` (enforced by the typed definitions) and (b) form the same event-type sequence OC++ produces for an equivalent interaction, ignoring provider-dependent fields (text, tokens, cost, timestamps, IDs). Verified by a gated live test (skipped without a provider key); `@ocpp/http-recorder` cassettes optional.
 - Credentials (decided 2026-10-08, provider-agnostic): the gated live test reads OC++'s own store without `@ocpp/core` — `src/plugins/ocpp-credentials.ts` opens `$XDG_DATA_HOME/ocpp/ocpp-local.db` read-only via `node:sqlite` and decodes rows through `@ocpp/schema` `Credential.Value`. On this machine the store holds `openai` (OAuth) and `typesafe` (key); no Anthropic. OAuth `access` is used as the bearer token; refresh stays OC++'s job; expired -> test skips.
@@ -88,7 +89,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - Done when the crash scenario is a scenario-tested, repeatable test, and fork/revert pass their scenarios.
 
 ### M4 - Embed the Specter runtime inside OC++ (target: +3 weeks)
-- Decided 2026-10-08: OC++ keeps its server, protocol, and UI. The Specter app becomes the implementation behind OC++'s unchanged `session.*` handlers. Work happens in the OC++ repo on a branch off `v2`.
+- Decided 2026-10-08: OC++ keeps its server, protocol, and UI. The Specter app becomes the implementation behind OC++'s unchanged `session.*` handlers. Work happens in the OC++ repo on a branch off `main`.
 - Mount point: OC++'s ID-bound `Session` facade (`core/src/session/session.ts`, 523 LOC). Its operations (`prompt`, inbox `steer/queue/cancel`, `interrupt`, `fork`, `switchAgent/Model`, `rename`, ...) call the Specter app's `command`/`query`; the 47 HTTP handlers and `packages/app` do not change.
 - One event stream: a Specter -> `Bus` bridge forwards session events from `app.subscribe` into `Bus.publish`, using Specter's per-session sequence as the Bus `seq` via the existing `Bus.reserveSequence(aggregateID, seq)` (`seq = max(existing, seq)`) so ordering stays monotonic. SSE feed, projector consumers, and recovery readers are untouched.
 - One database: Specter's sqlite adapter (`@specter-ts/sqlite-node`) uses OC++'s existing SQLite file with its own tables.
@@ -107,10 +108,10 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 
 ## Risks
 
-- OC++ `v2` moves daily; pin a commit (current: `e23e7cd2`) for the oracle and fixtures, re-pin per milestone.
+- OC++ `main` moves daily; pin a commit (current: `5e2cfbbf`) for the oracle and fixtures, re-pin per milestone.
 - Specter is pre-1.0 with 'no backward compat' policy; the app will break on Specter changes. Acceptable: this app is the reason to change Specter.
 - 165k LOC of `app`/`ui` are untouched by design; M4 proves the runtime boundary, not a UI rewrite.
-- M4 lives on an OC++ branch that must track a fast-moving `v2`; rebase per week, keep the mount surface (`Session` facade + bridge) small so rebases stay mechanical.
+- M4 lives on an OC++ branch that must track a fast-moving `main`; rebase per week, keep the mount surface (`Session` facade + bridge) small so rebases stay mechanical.
 - Double-write window in the bridge: Specter commits, then Bus publishes. A crash between the two must be recoverable by replaying from Specter's log into Bus on startup (idempotent via `reserveSequence`). Scenario-test it in M3's crash harness.
 - `effect` version skew between OC++ (`4.0.0-rc.112`) and Specter (`4.0.1`): resolved for `@ocpp/schema` by the OC++ branch `schema-effect-compat` (dual-compatible). Importing `@ocpp/ai`/`@ocpp/codemode` at M2 and embedding at M4 require OC++ on stable effect — file "upgrade to effect 4.0.2" in OC++ as an M4 prerequisite (it is a real migration: `effect/unstable/*` paths, `Socket` redesign, CLI renames).
 

@@ -10,15 +10,15 @@ OC++'s Session Execution aggregate (inbox → wake → step loop → retries →
 
 | What | Where | State |
 |---|---|---|
-| Specter (this repo) | `~/specter`, `main` | pushed to `github.com/devagrawal09/specter`; clean |
-| OC++ upgraded to effect 4.0.1 | `~/opencode-effect-upgrade`, branch `effect-stable` (14 commits on `origin/v2` + cherry-pick) | pushed to `github.com/devagrawal09/ocpp` as `effect-stable`; **no PR opened yet** |
-| OC++ `@ocpp/schema` dual-compat only | `~/opencode-effect-bump`, branch `schema-effect-compat` | superseded by `effect-stable`; safe to delete after the app's link is confirmed on `effect-stable` (it is) |
-| OC++ main checkout | `~/opencode` (`main`/`v2`) | untouched by this work |
-| Baseline worktree used for test comparisons | `/tmp/claude/ocpp-baseline` (detached at `c519a59b9a`) | disposable |
-| M4 worktree (pre-created, empty) | `~/opencode-m4`, branch `specter-session` off `effect-stable` | removed at handoff; recreate with `git worktree add -b specter-session ~/opencode-m4 effect-stable` |
-| Saved patches | `~/specter-cleanup-patches/` | cleanup-era worktree diffs + the first partial effect migration; all superseded |
+| Specter (this repo) | `~/specter`, branch `claude/sweet-lovelace-gcz2il` (off `main`) | pushed to `github.com/devagrawal09/specter` |
+| OC++ (oracle, package source, M4) | `~/ocpp` (a sibling of `~/specter`), branch `claude/sweet-lovelace-gcz2il` off `main` | pushed to `github.com/devagrawal09/ocpp`; one commit on `main` (codemode type annotation for `tsc`) |
+| OC++ `effect-stable` | built on the fork's stale `v2` | superseded by `main`'s own effect 4.0.1 upgrade (devagrawal09/ocpp#5); not merged, kept on the remote as a record |
+| OC++ `schema-effect-compat` | `~/opencode-effect-bump` | superseded; safe to delete |
+| Saved patches | `~/specter-cleanup-patches/` | all superseded |
 
-**Critical coupling:** `apps/agent-runtime/package.json` links `@ocpp/schema`, `@ocpp/ai`, `@ocpp/codemode` via `link:../../../opencode-effect-upgrade/packages/*`. The app follows whatever that worktree has checked out. Do not develop M4 inside `~/opencode-effect-upgrade`; use a separate worktree (as pre-created) so the link stays pinned. When `effect-stable` merges to `v2`, repoint the links (or switch to git deps pinned to a commit) and `pnpm install`.
+**OC++'s trunk is `main`, not `v2`** (corrected 2026-10-09). On the fork, `v2` is a copy of upstream OpenCode last updated 2026-08-31. See the findings entry "OC++ trunk is `main`, not `v2`".
+
+**Critical coupling:** `apps/agent-runtime/package.json` links `@ocpp/schema`, `@ocpp/ai`, `@ocpp/codemode` via `link:../../../ocpp/packages/*`, so an OC++ checkout must sit at `../ocpp` next to this repo. The app follows whatever that checkout has checked out. M4 happens in that same checkout on purpose: when `@ocpp/core` imports the runtime, both sides need one copy of the `@ocpp/*` sources.
 
 ## How to run
 
@@ -31,7 +31,7 @@ pnpm check && pnpm lint && pnpm typecheck && pnpm test # whole workspace (verify
 cd apps/agent-runtime && AGENT_RUNTIME_LIVE=1 pnpm exec vitest run src/session.live.test.ts
 #   AGENT_RUNTIME_LIVE_MODEL / AGENT_RUNTIME_LIVE_PROVIDER override; default openai/gpt-5.5
 ```
-OC++ worktree: `bun install` needs `BUN_TMPDIR=/tmp/claude/bt BUN_INSTALL_CACHE_DIR=/tmp/claude/bc`; typecheck is `bun turbo typecheck --concurrency=3`; tests run per package (`bun test` inside `packages/<x>`), never from the root. Many OC++ tests need local port binding and a real `rg` on PATH to avoid the ripgrep download.
+OC++ checkout: `bun install` needs `BUN_TMPDIR=/tmp/claude/bt BUN_INSTALL_CACHE_DIR=/tmp/claude/bc`; typecheck is `bun turbo typecheck --concurrency=3`; tests run per package (`bun test` inside `packages/<x>`), never from the root. Many OC++ tests need local port binding and a real `rg` on PATH to avoid the ripgrep download.
 
 ## App layout (`apps/agent-runtime/src`)
 
@@ -45,17 +45,18 @@ OC++ worktree: `bun install` needs `BUN_TMPDIR=/tmp/claude/bt BUN_INSTALL_CACHE_
 
 Standard Schema → `@ocpp/schema` consumed directly · kebab event names, mapped at the boundary · idempotent/no-op Command outcomes modelled as rejections (facade translates back) · Reactions derive requests from state (never from a trigger); one output per commit · fork is a projection, not an Event Log primitive · ephemeral deltas via in-process side channel · failure outcome atomic (one Command emits step-failed + retry|execution-failed) · delivery requires active execution · interrupt settles open tool calls in its own commit · `resume:false` not modelled (no callers in OC++) · M2 done-criterion is event-type sequence + schema validity, not byte-for-byte · M4 = embed in OC++ behind the unchanged facade with a Specter→Bus bridge · full OC++ effect upgrade done now (not deferred) · codex `codexAllowed` table advisory; backend decides · client codegen brands fixed in the generator.
 
-## OC++ `effect-stable` branch (14 commits, verified)
+## OC++ effect version
 
-Typecheck 33/33 (= baseline). Per-package tests match baseline; every extra core failure classified environmental (ripgrep download 403; flaky ShellTool). Real regressions found and fixed: `u`-flag JSON-Schema patterns, `Schema.make` getter crash in `protocol/groups/session.ts`, open-struct JSON Schema default, permission key order without `propertyOrder`, codegen brand recovery (reads the brand from the schema wrapper chain; Effect client regenerates byte-identical; Promise `types.ts` differs only in declaration order). Wire note: SSE stream-failure event renamed `effect/http-api/stream/failure`. **Next step for this branch: open a PR to `v2`** (title `chore: upgrade effect to 4.0.1 stable`; body = the findings entries dated 2026-10-09). Then bump both repos to 4.0.2 (publishes 2026-10-07T17:28Z; OC++'s `minimumReleaseAge` = 3 days → allowed from 2026-10-10 ~17:28Z).
+`main` is on effect 4.0.1 (devagrawal09/ocpp#5). The `effect-stable` branch from the first handoff is superseded and gets no PR. Still to do: bump both repos to 4.0.2. OC++'s `minimumReleaseAge` is 3 days, so 4.0.2 can be installed from 2026-10-10 ~17:28Z. Wire note from #5: the SSE stream-failure event name changed, so client and server must ship together.
 
 ## M4 — ready to start; facts gathered
 
 - Mount point: `packages/core/src/session.ts` (`Session.Service`, 544 LOC, ~35 ops). It is the only place acquiring `SessionExecution.Service` (l.239) and `SessionInbox.Service` (l.246); server handlers (`packages/server/src/handlers/session.ts`) depend only on `Session.Service`. Ops our runtime covers: `prompt, synthetic, inbox, cancelInbox, steerInbox, queueInbox, interrupt, resume, fork, revert.{stage,clear,commit}, switchAgent, switchModel, rename, wait, active`. Leave to OC++: `list, get, create*, messages, context, environment, view, remove, move, shell, skill, compact, generate, log, background`. (*`create` emits `session.created` — decide whether Specter or OC++ owns it; simplest: OC++ emits, Specter folds it since `session-created` is in our catalog.)
+  - **Changed on `main` (5e2cfbbf); re-survey before starting.** The facts above came from `v2`. On `main`, `packages/core/src/session.ts` is 741 LOC and acquires `SessionExecution.Service` (l.300) and `SessionInbox.Service` (l.309). It is no longer the only acquirer: the ID-bound facade `session/session.ts` (523 LOC) acquires both (l.56-57), and `session/execution/restart.ts` acquires `SessionExecution.Service` (l.74). `runner/` gained `stale.ts`, `max-steps.ts` and `prompt/`. Server handlers still depend only on `Session.Service`.
 - Errors: facade uses `Schema.TaggedError` classes in `session/error.ts` (`NotFoundError`, `InboxConflictError`, `BusyError`, …). Translation table from our exact rejection strings → these classes is mechanical; our idempotent-retry and idle-interrupt rejections map to OC++'s silent successes.
 - Bridge: `Bus.publish(definition, data, { commit?: (seq) => Effect })` + `Bus.reserveSequence(aggregateID, seq)` (`seq = max`) exist for exactly this. Forward Specter's per-session sequence as the Bus `seq`; replay from Specter's log on startup for crash-between-writes idempotency. Ephemeral deltas from `DeltaChannel` → `Bus` ephemeral publish.
 - Acceptance harness: OC++'s own `packages/core/test/session-*.test.ts` (create 38, runner 4, plugin 20, wait, owned, revert, …) drive `Session.Service` with `TestLLM`. M4 done = they pass unchanged with the Specter runtime mounted, plus `packages/app` runs a full session with no app/protocol changes, plus `session/inbox.ts, execution.ts, run-coordinator.ts, runner/*` deleted.
-- Suggested first slice: inbox only (prompt/steer/queue/cancel through Specter, bridged to Bus; OC++'s runner keeps executing). Then execution. Work in a fresh worktree off `effect-stable` (`specter-session`).
+- Suggested first slice: inbox only (prompt/steer/queue/cancel through Specter, bridged to Bus; OC++'s runner keeps executing). Then execution. Work in `~/ocpp` on a branch off `main`.
 - Dependency law: `@ocpp/core` may depend on `@specter-ts/*` and the runtime app; the app must never import `@ocpp/core` (it imports only `@ocpp/schema`, `@ocpp/ai`, `@ocpp/codemode`).
 
 ## Known gaps / small follow-ups
