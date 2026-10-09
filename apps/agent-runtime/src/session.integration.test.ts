@@ -526,7 +526,7 @@ describe('step loop with a scripted model', () => {
               model: { id: 'sonnet', providerID: 'claude' },
             },
           },
-        ],
+        ] as const,
       },
     }
 
