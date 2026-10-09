@@ -32,6 +32,12 @@ export type ReactionOutboxPluginOptions<TOutput> = {
    * run again. Defaults to 30 seconds.
    */
   readonly shutdownTimeoutMs?: number
+  /**
+   * Interrupt a running delivery when the scope closes instead of waiting for
+   * it, for deliveries too long to wait for (an agent's model call). The
+   * interrupted attempt fails and runs again from the Store.
+   */
+  readonly interruptOnShutdown?: boolean
   readonly onError?: (cause: unknown) => Promise<void> | void
 }
 
@@ -57,8 +63,11 @@ export function withReactionOutbox<TOutput, R = never>(
         ...options.worker,
         store: options.store,
         signal: controller.signal,
-        handle: (delivery) =>
-          Effect.runPromise(execute(delivery.output, delivery.context)),
+        handle: (delivery, attempt) =>
+          Effect.runPromise(
+            execute(delivery.output, delivery.context),
+            options.interruptOnShutdown ? { signal: attempt.signal } : {},
+          ),
       })
 
       const running = runReactionOutboxWorker(worker, {

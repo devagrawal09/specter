@@ -37,7 +37,11 @@ runs outside the Slice transaction, the wrapped Plugin may call `query`.
 options, polling interval, shutdown timeout, and polling error callback. When
 the Plugin scope closes, the worker stops claiming and the finalizer waits up
 to `shutdownTimeoutMs` (default 30 seconds) for a running attempt to record
-its outcome before Stores are closed. SQL and JSONL Store
+its outcome before Stores are closed. With `interruptOnShutdown: true` it does
+not wait: closing the scope interrupts the running delivery, whose attempt fails
+and runs again from the Store (for deliveries too long to wait for, such as an
+agent's model call). A worker's `handle` sees the same stop as `signal` on its
+attempt context. SQL and JSONL Store
 codecs require JSON-compatible output and context by default.
 
 Stores:

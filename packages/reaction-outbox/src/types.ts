@@ -113,6 +113,12 @@ export type ReactionOutboxAttemptContext = {
   readonly requestedAt: Date
   readonly attemptId: string
   readonly attemptNumber: number
+  /**
+   * Aborted when the worker stops (closed, or its `signal` aborted). A
+   * handler that cannot wait for shutdown may stop early: its attempt then
+   * fails and runs again.
+   */
+  readonly signal: AbortSignal
 }
 
 export type ReactionOutboxTransition<TPayload = unknown> =

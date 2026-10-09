@@ -323,6 +323,7 @@ export function createReactionOutboxWorker<TPayload>(
       requestedAt: claim.requestedAt,
       attemptId: claim.activeAttemptId,
       attemptNumber: claim.attemptCount,
+      signal,
     }
 
     try {

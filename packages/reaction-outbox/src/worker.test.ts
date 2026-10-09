@@ -789,4 +789,49 @@ describe('outbox Reaction Plugin', () => {
       status: 'running',
     })
   })
+
+  it('interrupts a running delivery at shutdown with interruptOnShutdown', async () => {
+    const store =
+      createMemoryReactionOutboxStore<OutboxedReaction<{ message: string }>>()
+    let interrupted = false
+    const plugin = withReactionOutbox(
+      () =>
+        Effect.succeed(() =>
+          Effect.never.pipe(
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                interrupted = true
+              }),
+            ),
+          ),
+        ),
+      { store, interruptOnShutdown: true },
+    )
+    const started = Date.now()
+
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(unusedPluginContext)
+          yield* exec(
+            { message: 'endless' },
+            {
+              deliveryId: 'runStep:1',
+              throughOrder: 1,
+              scheduledAt: new Date().toISOString(),
+            },
+          )
+          yield* Effect.sleep('10 millis')
+        }),
+      ),
+    )
+
+    // No shutdown wait: the attempt stopped, failed, and stays due to run again.
+    expect(Date.now() - started).toBeLessThan(1_000)
+    expect(interrupted).toBe(true)
+    expect(await Effect.runPromise(store.get('runStep:1'))).toMatchObject({
+      status: 'pending',
+      attemptCount: 1,
+    })
+  })
 })
