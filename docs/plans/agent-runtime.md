@@ -102,13 +102,22 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
   - One Effect in the process: a Bun preload plugin re-exports OC++'s copy, and tsconfig `paths` do the same for types.
   - `test/specter-runtime.test.ts` passes, and the 548 `session-*` tests still pass.
   - Superseded by what the code shows: Bun's `link:` names a `bun link` registration, not a path. Bus `seq` cannot be Specter's per-session sequence, because OC++-owned events share the aggregate's sequence space. Bridged events keep their event IDs instead, which also makes startup replay idempotent (`Bus.publish` refuses a duplicate ID).
-- **Revised first slice (2026-10-09): inbox *and* execution lifecycle, not inbox alone.**
-  - Why inbox alone fails: `deliver-inbox-item` requires an active execution, which it learns from `execution-*` facts, so Specter would have to copy OC++-owned execution facts back into its own log. Cancelling also needs `inbox-delivered`. That breaks one fact, one owner.
-  - Smallest closed set: Specter owns `session.inbox.{enqueued, cancelled, delivery-changed, delivered}` and `session.execution.{started, succeeded, failed, interrupted}`. OC++ keeps deciding *when* (run coordinator, runner, external-agent harness) but records these facts through Specter Commands instead of `bus.publish`. Everything else (steps, text, tools, messages, create, fork) stays OC++-owned for now. Specter's wake and run-step Reactions are not registered in this slice.
-  - Session existence: Specter learns it from a `register-session` Command that takes OC++'s `session.created` / `session.forked` payload and emits it once. The adapter calls it right before the first Command for a Session. It is a boundary Command, not a second writer: OC++ remains the owner.
-  - Bridge: the OC++ adapter publishes each committed Specter event to `Bus` with the same event ID, synchronously, so `session_inbox`, `session_message`, claims and SSE are unchanged. On startup it replays Specter events missing from `Bus`. Before admitting, it keeps OC++'s `reconcile` read of `session_message`, so a reused message ID is still refused before Specter commits; that is the one projector invariant Specter cannot see.
-  - New Specter work: `change-delivery`; `enqueue-input` accepting `compaction` (one pending per Session) and `move` items; `fail-execution`; `register-session`. Plus a persistent store in OC++: a Specter SQLite file next to `OCPP_DB` (memory in tests), not OC++'s own file, which would mean a second connection inside Bus's write transaction.
-  - Later slices: steps/text/tools; then the run loop with OC++ providing model and tools as services; then fork/revert; then delete OC++'s code.
+- **Path chosen 2026-10-09 (maintainer): the runtime runs whole Sessions, one way.** Two other designs were rejected: moving the inbox plus execution lifecycle first (it still splits one aggregate's facts between two owners, and needs copying both ways) and a shared log over OC++'s event table (OC++ does not keep its event history by default).
+  - **Ownership.** Behind a switch, the runtime owns every Session Execution fact it records: inbox, execution, steps, text and tools. OC++ owns Session creation and everything else.
+  - **Session existence.** The host tells the runtime a Session exists with `register-session`, a boundary Command that takes OC++'s `session.created` payload. The runtime never creates a Session.
+  - **Bridge, one way.** `makeEmbeddedSessionRuntime` passes each commit to the host before the Command returns. OC++ publishes it to the Bus with `publishAll`, under the same event IDs and in log order, so `session_inbox`, `session_message`, SSE and the UI are unchanged. Nothing flows back.
+  - **Switch.** `SpecterSessions.replacements` in OC++ core swaps `SessionInbox.node` and `SessionExecution.node`. The facade is untouched.
+- **Increment 1 done 2026-10-09.** `test/specter-session.test.ts` drives OC++'s `Session.Service` with TestLLM and covers a reply, a Code Mode tool call, an interrupt, and a queued input cancelled mid-step. The default path still passes all 548 `session-*` tests.
+- **Gaps, in rough order of next work:**
+  1. The model request is the runtime's own: generic system prompt, its transcript, and Code Mode with `echo` only. OC++'s system prompt, instructions and real tools are missing. Next: OC++ provides the step's request and tool execution as services (`SessionContext.prepare` and `prepared.executeTool`). That also gives the model OC++'s history, which today lacks reverts, forks and anything from before a restart.
+  2. The runtime's log is in memory, so a restart forgets pending input and running executions. No claims are written, so OC++'s restart recovery skips these Sessions. Next: a persistent Specter store next to `OCPP_DB`, plus replay to the Bus by event ID.
+  3. Paths that still write Session Execution facts behind the runtime's back:
+     - coalesced synthetic input (`Session.synthetic` with `coalesce` cancels on the Bus);
+     - `move`, compaction admission and steer/queue changes (unsupported: they die with a clear message);
+     - `revert.commit` on prompt (published by OC++; the runtime's transcript does not see it);
+     - the external-agent harness.
+  4. A server or app switch (env flag) needs the effect preload in the server process too, and has not been exercised with the real `SpecterSessionModel` (Location model resolution).
+  5. Text deltas are not forwarded as ephemeral Bus events yet, so the UI shows text when a step records it, not while it streams.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 

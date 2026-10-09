@@ -201,3 +201,25 @@ Added: `Model` service (`plugins/model.ts`), `ocpp-ai-model.ts` (`@ocpp/ai`), `c
 - **Relink.** `apps/agent-runtime` now links `@ocpp/schema`, `@ocpp/ai`, `@ocpp/codemode` from `link:../../../ocpp/packages/*`, an OC++ checkout named `ocpp` next to this repo (the repo's own name). M4 happens in that same checkout. That is deliberate: once `@ocpp/core` imports the runtime, the app and OC++ must share one copy of the `@ocpp/*` sources, which a separate pinned worktree would not give.
 - **Result on `main` (5e2cfbbf):** 386 tests pass, 1 gated skip, with no app change. Typecheck had 3 errors, all in `@ocpp/codemode` `src/interpreter/execute.ts`. OC++ typechecks with `tsgo`, which infers the timeout-race union; `tsc` 6.0.3 (this repo) widens it to `unknown`. Fixed in OC++ with two type annotations (no behavior change; codemode `tsgo` clean, 249 tests pass), commit `97955008` on OC++ branch `claude/sweet-lovelace-gcz2il`. Expect more of this: anything that compiles OC++ source under `tsc` can disagree with `tsgo`, and M4 makes OC++ compile Specter source under `tsgo` too.
 - **`main`'s #5 covers the regressions `effect-stable` found** (spot-checked, not a full audit). Patterns carry the `u` flag (`openapi.json` has 148 `pattern`s), generated-client brands come back through a `brands` annotation in `httpapi-codegen`, and its commit message names lazy `Schema.make` and closed tool JSON Schemas. Nothing from `effect-stable` needs porting.
+
+## 2026-10-09 — M4 plumbing and increment 1 (runtime runs whole Sessions in OC++)
+
+- **Two copies of effect, three places.**
+  - Specter's own builds: `memory`, `reaction-outbox`, `sqlite` and `postgres` bundled effect into `dist` although it is a peer dependency. Fixed with vite `external`.
+  - Runtime, in OC++: the linked app resolves effect from Specter's `node_modules`. A Bun preload plugin (`onLoad` on files under the runtime's effect directory) re-exports OC++'s copy. Bun's runtime `onResolve` never sees bare package imports, so it cannot redirect them; `onLoad` must return contents, so its filter matches only the foreign copy. Without the plugin, schema validation across the boundary crashes (`s.startsWith is not a function`), and the smoke test catches it.
+  - Types: tsconfig `paths` in OC++ core map `effect` to OC++'s `.d.ts` files. Bun ignores `.d.ts` path targets at runtime. tsgo's incremental build kept stale diagnostics for an unchanged file after `paths` changed; touching the file cleared them.
+- **Bun applies each file's nearest tsconfig `paths`.** App files therefore load `@specter-ts/core` from source while OC++ would load `dist`. Rule: OC++ imports only `@specter/agent-runtime`, and the app maps `@specter-ts/core/effect` to source like the other core entries. Its index re-exports `SpecterCommandRejectedError` so `instanceof` works in OC++.
+- **Bun `link:` is not a path.** It names a package registered with `bun link`, and `file:` copies via hardlinks. The app is registered once per machine (`bun link` in `apps/agent-runtime`), and OC++ core depends on `link:@specter/agent-runtime`. OC++ type-checks against the app's declarations (`pnpm --filter @specter/agent-runtime build`); composite projects cannot include source from outside `rootDir`.
+- **Inbox alone could not move first** (see the plan). The maintainer chose the one-way design: the runtime owns every execution fact for the Sessions it runs. One fact, one owner holds without copying anything back.
+- **Host seams added to the app**, all plain options or services, no Specter core change:
+  - `makeEmbeddedSessionRuntime` with `onCommit` called inside the append lock, so the host sees log order;
+  - `register-session`, a boundary Command;
+  - step options for assistant message IDs and the agent;
+  - `Model.refFor`, the model recorded on each Session's steps;
+  - `hostModel`, which shares request, streaming and outcome mapping with `ocppAiModelLayer`.
+- **Message IDs outlive the in-memory log.** The default `msg_<session>_<ordinal>` would collide in OC++'s tables after a restart, so OC++ prefixes them per boot. They must stay deterministic per Session and ordinal, because a retried attempt reuses its step's ID.
+- **Waiting for a Session needs the wake to have committed.** OC++'s `Session.wait` right after a prompt must see the execution that the input started. Admission therefore awaits the enqueue command's `reactions`: the wake Reaction's `startExecution` commits before `admit` returns.
+- **Payloads cross the boundary encoded.** Command inputs decode from the encoded form, so OC++ encodes inbox payloads, and drops `undefined` optional keys (for example `location.workspaceID`) before registering.
+- **Specter rough edges seen here:**
+  - `eventsFor` from `@specter-ts/core/testing` is needed in production code, because whole-app conformance rejects a catalog with unported events. A partial-catalog mode would remove that.
+  - The memory Event Log's default event IDs (`event-N`) and timestamps (`new Date(order - 1)`) are test values; a host must override both.

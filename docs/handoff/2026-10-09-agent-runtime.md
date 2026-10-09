@@ -4,7 +4,9 @@ Written 2026-10-09 for the next agent. Read this, then `docs/plans/agent-runtime
 
 ## One-paragraph state
 
-OC++'s Session Execution aggregate (inbox → wake → step loop → retries → interrupt → crash recovery → fork/revert → real model + Code Mode) has been rebuilt as a Specter app in `apps/agent-runtime`, spec-first from OC++'s `specs/v2/session.md`. **M1, M2, M3 are complete.** 24 slices, ~386 tests (scenarios + in-process integration + SIGKILL recovery + fake-provider integration), zero app lint warnings, one documented cast. The gated live test passes against a real model (`gpt-5.5` via OpenAI's Codex backend using the OC++ ChatGPT login). **M4 (embed the runtime inside OC++ behind its unchanged `Session` facade) has not started**; its design and facts are below. Everything verified is committed and pushed.
+OC++'s Session Execution aggregate (inbox, wake, step loop, retries, interrupt, crash recovery, fork and revert, real model and Code Mode) has been rebuilt as a Specter app in `apps/agent-runtime`, spec-first from OC++'s `specs/v2/session.md`. **M1 to M3 are complete.**
+
+**M4 is under way on OC++ `main`** (updated 2026-10-09). The plumbing is done: OC++ core links the runtime, one Effect runs in the process, and a smoke test guards both. The maintainer chose the one-way path: behind a switch, the runtime runs whole Sessions and owns every execution fact, and OC++ receives each commit on its Bus. Increment 1 passes end to end through OC++'s unchanged `Session.Service` (reply, tool call, interrupt, cancel). The gaps and the order to close them are in the plan's M4 section. Everything is pushed on `claude/sweet-lovelace-gcz2il` in both repositories.
 
 ## Repositories, branches, worktrees
 
