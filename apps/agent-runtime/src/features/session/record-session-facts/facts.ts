@@ -519,4 +519,27 @@ export const sessionFacts = {
     name: 'nightly',
     at: 7_200_001,
   },
+  'credential-created': {
+    integrationID: 'anthropic',
+    credentialID: 'cred_1',
+    label: 'default',
+  },
+  'credential-activated': {
+    integrationID: 'anthropic',
+    credentialID: 'cred_1',
+  },
+  'credential-relabeled': {
+    integrationID: 'anthropic',
+    credentialID: 'cred_1',
+    label: 'work',
+  },
+  'credential-rotated': {
+    integrationID: 'anthropic',
+    credentialID: 'cred_1',
+  },
+  'credential-removed': {
+    integrationID: 'anthropic',
+    credentialID: 'cred_1',
+    replacement: 'cred_2',
+  },
 } as const
