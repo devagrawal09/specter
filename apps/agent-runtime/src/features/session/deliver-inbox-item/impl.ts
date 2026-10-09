@@ -1,4 +1,5 @@
 import { SessionID } from '@ocpp/schema/session-id'
+import type { SessionInbox } from '@ocpp/schema/session-inbox'
 import { SessionMessage } from '@ocpp/schema/session-message'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
@@ -13,7 +14,12 @@ export type DeliverInboxItemState = {
   active: Record<string, true>
   items: Record<
     string,
-    { sessionID: string; status: 'pending' | 'delivered' | 'cancelled' }
+    {
+      sessionID: string
+      status: 'pending' | 'delivered' | 'cancelled'
+      // A move item's destination.
+      move?: SessionInbox.MovePayload
+    }
   >
 }
 
@@ -33,6 +39,7 @@ const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
+const sessionMoved = sessionEvent('session-moved')
 
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({ sessionID: SessionID, inboxID: SessionMessage.ID }),
@@ -46,8 +53,12 @@ export const deliverInboxItem = implementCommand(specification)
     state.sessions[sessionID] = true
   })
   .apply(inboxEnqueued, async (event, state) => {
-    const { sessionID, inboxID } = event.payload
-    state.items[inboxID] ??= { sessionID, status: 'pending' }
+    const { sessionID, inboxID, item } = event.payload
+    state.items[inboxID] ??= {
+      sessionID,
+      status: 'pending',
+      ...(item.type === 'move' ? { move: item.payload } : {}),
+    }
   })
   .apply(executionStarted, async (event, state) => {
     state.active[event.payload.sessionID] = true
@@ -76,10 +87,15 @@ export const deliverInboxItem = implementCommand(specification)
       throw new Error('Inbox item already delivered')
     if (item.status === 'cancelled')
       throw new Error('Inbox item already cancelled')
-    return [
-      inboxDelivered.create({
-        sessionID: command.sessionID,
-        inboxID: command.inboxID,
-      }),
-    ]
+    const delivered = inboxDelivered.create({
+      sessionID: command.sessionID,
+      inboxID: command.inboxID,
+    })
+    // Delivering a move moves the Session in the same commit.
+    if (item.move)
+      return [
+        delivered,
+        sessionMoved.create({ sessionID: command.sessionID, ...item.move }),
+      ]
+    return [delivered]
   })

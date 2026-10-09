@@ -119,6 +119,9 @@ export class StepHost extends Context.Service<
         RecordFailure
       >
     }) => Effect.Effect<StepPlan | CompactFirst>
+    // Called before a move item is delivered, so the host can release what
+    // it holds for the Session's current Location.
+    readonly moving?: (sessionID: string) => Effect.Effect<void>
     // Compacts the Session's history: manually, for a delivered compaction
     // item, or automatically, when begin asked for it.
     readonly compact: (input: {

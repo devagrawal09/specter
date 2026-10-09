@@ -34,6 +34,37 @@ export const deliverInboxItemSpec = createCommandSlice('deliverInboxItem')
     },
     {
       description:
+        'Delivering a move item moves the Session to its destination in the same commit.',
+      given: [
+        created,
+        started(),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: {
+            type: 'move',
+            payload: {
+              location: { directory: '/tmp/other' },
+              projectID: 'prj_2',
+              subpath: 'pkg',
+            },
+            delivery: 'steer',
+          },
+        }),
+      ],
+      when: ref('msg_1'),
+      expect: [
+        event('session-inbox-delivered', ref('msg_1')),
+        event('session-moved', {
+          sessionID: 'ses_1',
+          location: { directory: '/tmp/other' },
+          projectID: 'prj_2',
+          subpath: 'pkg',
+        }),
+      ],
+    },
+    {
+      description:
         'Delivery consumes one item at a time: a second pending item stays deliverable after the first is delivered.',
       given: [
         created,

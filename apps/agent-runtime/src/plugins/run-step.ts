@@ -177,13 +177,16 @@ export const makeRunStepPlugin =
           })
           let scope = boundary
           let delivered = 0
-          let compacted = false
+          // A delivered control item (compaction, move) is not input for a step.
+          let controlled = false
           for (;;) {
             const next = yield* query(nextDeliverable, {
               sessionID,
               boundary: scope,
             })
             if (next.item === null) break
+            if (next.item.type === 'move' && host.moving)
+              yield* host.moving(sessionID)
             const accepted = yield* unlessRejected(
               command(
                 {
@@ -204,7 +207,13 @@ export const makeRunStepPlugin =
                 `${delivery.deliveryId}:compaction:${next.item.inboxID}`,
               )
               if (!settled) return
-              compacted = true
+              controlled = true
+              continue
+            }
+            // A delivered move moved the Session: what follows runs in its
+            // new Location.
+            if (next.item.type === 'move') {
+              controlled = true
               continue
             }
             delivered += 1
@@ -213,7 +222,7 @@ export const makeRunStepPlugin =
           // An idle execution with nothing left to deliver is done.
           if (
             boundary === 'idle' &&
-            (stepsInExecution > 0 || compacted) &&
+            (stepsInExecution > 0 || controlled) &&
             delivered === 0
           ) {
             yield* unlessRejected(

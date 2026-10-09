@@ -32,6 +32,7 @@ const boot = async (
     readonly compact?: StepHost['Service']['compact']
     // How many times the host asks to compact before a step.
     readonly compactFirst?: number
+    readonly moving?: StepHost['Service']['moving']
   } = {},
 ) => {
   const log = createMemoryEventLog()
@@ -84,6 +85,7 @@ const boot = async (
         Effect.map(StepHost, (host) => {
           let compactFirst = options.compactFirst ?? 0
           return StepHost.of({
+            ...(options.moving ? { moving: options.moving } : {}),
             compact: options.compact ?? host.compact,
             begin: (input) =>
               compactFirst-- > 0
@@ -358,6 +360,37 @@ describe('step loop with a scripted model', () => {
       'session-step-started',
       'session-block-recorded',
       'session-step-settled',
+      'session-execution-settled',
+    ])
+  })
+
+  it('moves the Session when a move item is delivered, without running a step', async () => {
+    const released: string[] = []
+    const t = await start({
+      moving: (sessionID) =>
+        Effect.sync(() => {
+          released.push(sessionID)
+        }),
+    })
+
+    await t.app.command({
+      type: 'enqueueInput',
+      payload: {
+        sessionID: 'ses_1',
+        inboxID: 'msg_m',
+        type: 'move',
+        payload: { location: { directory: '/tmp/other' }, projectID: 'prj_2' },
+      },
+    })
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
+    await t.outboxSettled()
+
+    expect(released).toEqual(['ses_1'])
+    expect(t.types()).toEqual([
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-moved',
       'session-execution-settled',
     ])
   })
