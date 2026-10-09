@@ -195,13 +195,19 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       Their rows are projections written in the transaction that records the fact. Internal facts stay out of the client-facing manifest; clients keep their usual notifications.
     - **Decisions.** A decision that reads state before recording is serialized per key (project, workspace, credential integration, Session). One that must be atomic with concurrent facts is made by the projection: whether a finished Code Mode program's declarations save, which a revert can race.
     - **Aggregates.** A Code Mode execution and a background job marker are aggregates of their own. Journaling a program's calls does not advance its Session's sequence, and a marker can be recorded from a Session listener, which holds that Session's lock.
-    - **What stays outside the log, and why:**
-      - A credential's secret: an append-only log cannot forget it. It is written by the publish that records the credential's fact, in the same transaction, and deleted with the credential.
-      - Caches and plugin storage in the key-value store: the models.dev catalog, repository refresh times, known well-known origins, and the plugin key-value API.
-      - The runtime's own outbox and Slice snapshots.
-      - Legacy tables that no code writes: `account`, `account_state`, `control_account`, `session_pending`, `project_directory`.
-
-      The one `commit:` hook left that writes is the credential secret's.
+    - **What Phase 6 left outside the log:** credential secrets, the key-value store, the runtime's outbox and Slice snapshots, and legacy tables. Phase 7 settled each of them.
+  - **Phase 7 done: nothing OC++ stores is kept off the log by design.**
+    - **Credential secrets are on the log, sealed.** A credential's created and rotated facts carry its secret, encrypted with AES-GCM under a key of that credential. The key is the one thing kept beside the log. The publish of the creation writes it, in the same transaction, and it is deleted with the credential. That leaves every sealed copy of the secret unreadable, in the log or any copy of it (crypto-shredding). A migration seals the secrets already stored.
+    - **The key-value store is facts.** Plugin storage, the web search provider and the known well-known origins publish `kv.stored` and `kv.removed`; `kv` is their projection.
+    - **Caches are not state.** The models.dev catalog and repository refresh times moved to a `cache` table. Its entries can be dropped at any time and are refetched, so they are not facts.
+    - **The runtime's own state is derived.** Its outbox and Slice snapshots only save work. A test deletes both between boots: the next boot rebuilds them from the log, and the Session carries on.
+    - **Legacy tables are gone.** `account`, `account_state`, `control_account`, `session_pending` and `project_directory` were dropped, since no code read or wrote them.
+  - **Phase 8 done: one copy of every event.**
+    - **OC++'s event table is an index, not a store.** The Bus used to keep a second copy of every durable event, with its payload, when configured to persist (the workerd server was). `Bus.log`, and with it the Session log endpoint, read only that copy, so a server without it served an empty history. The `event` table now holds each event's aggregate sequence and the fact in Specter's log it is, written for every fact. Log reads translate the facts on the way out. The `persist` option is gone, and every server serves Session logs.
+    - **Replaying events from another server is gone.** `Bus.replay`, `Bus.claim` and replay owners had no callers. `Bus.rebuild(aggregate)` projects an aggregate's events again from Specter's log; tests use it to show that read models are projections of the log.
+    - **The Bus records only the inventory.** A durable event outside OC++'s inventory of recorded facts is refused, instead of taking the old path into OC++'s own table.
+    - **Stored history moved into the log.** A migration archives the events a persisting server kept, under their versioned OC++ type, one commit per aggregate. The runtime does not read those types, and log reads decode them as they were.
+    - **Usage statistics read the log.** Compaction usage is counted from the facts. The old query compared an unversioned type with the stored versioned one, so it had never counted any.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
