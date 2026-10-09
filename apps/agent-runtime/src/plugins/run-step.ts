@@ -3,6 +3,7 @@ import {
   SpecterCommandRejectedError,
 } from '@specter-ts/core'
 import type { SessionID } from '@ocpp/schema/session-id'
+import type { Tool } from '@ocpp/codemode'
 import { Effect, PubSub } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
@@ -98,6 +99,9 @@ export const DEFAULT_SYSTEM_PROMPT =
 export type RunStepOptions = {
   // Plugin input: the system prompt of every model request.
   readonly system?: string
+  // Plugin input: extra host tools exposed to Code Mode programs (scenario
+  // tests use it to hold a program open). The model-visible spec is unchanged.
+  readonly hostTools?: Record<string, Tool.Tool>
 }
 
 // One job = one safe-step boundary: deliver, run one step, maybe finish.
@@ -263,7 +267,11 @@ export const makeRunStepPlugin =
             if (!recorded) return
           }
           for (const call of calls) {
-            const settlement = yield* runTool(call.name, call.input)
+            const settlement = yield* runTool(
+              call.name,
+              call.input,
+              options.hostTools,
+            )
             const settled = yield* unlessRejected(
               command(
                 {

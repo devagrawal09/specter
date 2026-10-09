@@ -38,14 +38,64 @@ export class ModelCredentialError extends Data.TaggedError(
   }
 }
 
+// OC++ plugin/provider/openai.ts: ChatGPT-plan (browser login) tokens are
+// routed to the Codex backend and only authorize codex-eligible models.
+export const codexBaseURL = 'https://chatgpt.com/backend-api/codex'
+const browserMethodID = 'chatgpt-browser'
+const codexAllowed = new Set([
+  'gpt-5.5',
+  'gpt-5.3-codex-spark',
+  'gpt-5.4',
+  'gpt-5.4-mini',
+])
+const codexDisallowed = new Set(['gpt-5.5-pro', 'gpt-5.6'])
+
+export const codexEligible = (modelID: string): boolean => {
+  if (codexAllowed.has(modelID)) return true
+  const version = modelID.match(/^gpt-(\d+\.\d+)/)?.[1]
+  return (
+    !codexDisallowed.has(modelID) &&
+    version !== undefined &&
+    Number.parseFloat(version) > 5.4
+  )
+}
+
+export const isChatgptCredential = (credential: OcppCredential) =>
+  credential.type === 'oauth' && credential.methodID === browserMethodID
+
+// The OpenAI provider settings for a credential: the default endpoint for
+// keys, the Codex endpoint plus OC++'s Codex headers for ChatGPT logins.
+export const openAISettings = (
+  credential: OcppCredential,
+  sessionID: string,
+) => {
+  // Key and OAuth access token are both sent as the bearer token.
+  if (credential.type === 'key') return { apiKey: credential.key }
+  if (!isChatgptCredential(credential)) return { apiKey: credential.access }
+  return {
+    apiKey: credential.access,
+    baseURL: codexBaseURL,
+    headers: {
+      originator: 'opencode',
+      'session-id': sessionID,
+      ...(credential.accountID === undefined
+        ? {}
+        : { 'chatgpt-account-id': credential.accountID }),
+    },
+  }
+}
+
 const languageModel = (
   selection: ProviderSelection,
   credential: OcppCredential,
+  sessionID: string,
 ) => {
   const secret = credential.type === 'key' ? credential.key : credential.access
   if (selection.providerID === 'openai')
-    // Key and OAuth access token are both sent as the bearer token.
-    return OpenAI.model(selection.modelID, { apiKey: secret })
+    return OpenAI.model(
+      selection.modelID,
+      openAISettings(credential, sessionID),
+    )
   return Anthropic.model(
     selection.modelID,
     credential.type === 'key' ? { apiKey: secret } : { authToken: secret },
@@ -55,6 +105,7 @@ const languageModel = (
 const resolveModel = (
   credentials: OcppCredentials['Service'],
   selection: ProviderSelection,
+  sessionID: string,
 ) =>
   Effect.gen(function* () {
     // The integration id is the provider id for both supported providers.
@@ -70,8 +121,22 @@ const resolveModel = (
         integrationID,
         reason: 'expired',
       })
-    return languageModel(selection, credential)
+    if (
+      selection.providerID === 'openai' &&
+      isChatgptCredential(credential) &&
+      !codexEligible(selection.modelID)
+    )
+      return yield* new ModelNotEligibleError({ modelID: selection.modelID })
+    return languageModel(selection, credential, sessionID)
   })
+
+export class ModelNotEligibleError extends Data.TaggedError(
+  'ModelNotEligibleError',
+)<{ readonly modelID: string }> {
+  override get message() {
+    return `Model ${this.modelID} is not available with a ChatGPT-plan login`
+  }
+}
 
 // OC++ SessionUsage.tokens, minus cost (no price tables here).
 const finite = (value: number | undefined) =>
@@ -133,7 +198,11 @@ export const ocppAiModelLayer = (selection: ProviderSelection) =>
         ref: { id: selection.modelID, providerID: selection.providerID },
         nextOutcome: (input) =>
           Effect.gen(function* () {
-            const model = yield* resolveModel(credentials, selection)
+            const model = yield* resolveModel(
+              credentials,
+              selection,
+              input.sessionID,
+            )
             const request = LLM.request({
               model,
               system: input.system,
@@ -204,6 +273,11 @@ export const ocppAiModelLayer = (selection: ProviderSelection) =>
             Effect.catchTag('ModelCredentialError', (error) =>
               Effect.succeed(
                 failed(`auth.credential-${error.reason}`, error.message, false),
+              ),
+            ),
+            Effect.catchTag('ModelNotEligibleError', (error) =>
+              Effect.succeed(
+                failed('provider.ModelNotEligible', error.message, false),
               ),
             ),
             Effect.catch((error: AIError) =>

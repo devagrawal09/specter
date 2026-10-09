@@ -25,6 +25,8 @@ export type OcppCredential =
       // Epoch milliseconds, as OC++ core compares it (integration.ts: `expires > now + 5min`).
       readonly expires: number
       readonly methodID: string
+      // metadata.accountID, present on ChatGPT-plan logins.
+      readonly accountID?: string
     }
 
 export type CredentialsOutcome =
@@ -95,6 +97,9 @@ export const readCredentials = (path: string): CredentialsOutcome => {
                 access: value.access,
                 expires: value.expires,
                 methodID: value.methodID,
+                ...(typeof value.metadata?.accountID === 'string'
+                  ? { accountID: value.metadata.accountID }
+                  : {}),
               },
         )
       }

@@ -13,6 +13,38 @@ const started = (sessionID = 'ses_1') =>
 const interrupted = (sessionID = 'ses_1', reason = 'user') =>
   event('session-execution-interrupted', { sessionID, reason })
 
+const model = { id: 'scripted', providerID: 'test' }
+const stepStarted = (assistantMessageID = 'msg_1', sessionID = 'ses_1') =>
+  event('session-step-started', {
+    sessionID,
+    assistantMessageID,
+    agent: 'build',
+    model,
+  })
+const inputStarted = (id: string, name: string, assistantMessageID = 'msg_1') =>
+  event('session-tool-input-started', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    name,
+  })
+const called = (id: string, assistantMessageID = 'msg_1', executed = false) =>
+  event('session-tool-called', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    id,
+    input: { code: 'x' },
+    executed,
+  })
+const abortedFailure = (id: string, name: string, executed = false) =>
+  event('session-tool-failed', {
+    sessionID: 'ses_1',
+    assistantMessageID: 'msg_1',
+    id,
+    error: { type: 'aborted', message: `Tool execution interrupted: ${name}` },
+    executed,
+  })
+
 export const interruptExecutionSpec = createCommandSlice('interruptExecution')
   .description(
     'Interrupts the active execution of a Session without touching pending input (session.md: Execution Is Process-Local). OC++ treats idle/settled interrupt as a public no-op; the app models it as a rejection and the M4 facade translates it back.',
@@ -22,6 +54,75 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
       description:
         'Interruption stops locally owned execution: an active execution is interrupted (reason defaults to user).',
       given: [created(), started()],
+      when: { sessionID: 'ses_1' },
+      expect: [interrupted()],
+    },
+    {
+      description:
+        'An open tool call is settled atomically with the interrupt: one aborted tool-failed (naming the tool) precedes session-execution-interrupted in the same commit.',
+      given: [
+        created(),
+        started(),
+        stepStarted(),
+        inputStarted('call_1', 'execute'),
+        called('call_1'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: [abortedFailure('call_1', 'execute'), interrupted()],
+    },
+    {
+      description:
+        'Every open call is settled in call order, and the executed flag of each call is carried over; settled calls are left alone.',
+      given: [
+        created(),
+        started(),
+        stepStarted(),
+        inputStarted('call_1', 'execute'),
+        called('call_1'),
+        inputStarted('call_2', 'execute'),
+        called('call_2', 'msg_1', true),
+        inputStarted('call_3', 'lookup'),
+        called('call_3'),
+        event('session-tool-success', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          id: 'call_3',
+          executed: true,
+          content: [{ type: 'text', text: 'ok' }],
+        }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: [
+        abortedFailure('call_1', 'execute'),
+        abortedFailure('call_2', 'execute', true),
+        interrupted(),
+      ],
+    },
+    {
+      description:
+        'A call that already failed is settled and not failed again: only the interrupted event is emitted.',
+      given: [
+        created(),
+        started(),
+        stepStarted(),
+        inputStarted('call_1', 'execute'),
+        called('call_1'),
+        abortedFailure('call_1', 'execute'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: [interrupted()],
+    },
+    {
+      description:
+        'A new step attempt starts with a clean call table: calls left open by an earlier attempt are not settled by the interrupt.',
+      given: [
+        created(),
+        started(),
+        stepStarted('msg_1'),
+        inputStarted('call_1', 'execute'),
+        called('call_1'),
+        stepStarted('msg_2'),
+      ],
       when: { sessionID: 'ses_1' },
       expect: [interrupted()],
     },

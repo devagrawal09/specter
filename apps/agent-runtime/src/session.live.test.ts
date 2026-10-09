@@ -49,7 +49,7 @@ const selection: ProviderSelection = {
     process.env.AGENT_RUNTIME_LIVE_MODEL ??
     (process.env.AGENT_RUNTIME_LIVE_PROVIDER === 'anthropic'
       ? 'claude-sonnet-4-5'
-      : 'gpt-5-mini'),
+      : 'gpt-5.4-mini'),
 }
 
 const skipReason = (): string | undefined => {

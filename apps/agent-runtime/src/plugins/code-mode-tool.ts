@@ -48,6 +48,7 @@ const decodeInput = Schema.decodeUnknownOption(CodeMode.Input)
 export const runTool = (
   name: string,
   input: Record<string, unknown>,
+  hostTools: Record<string, Tool.Tool> = {},
 ): Effect.Effect<ToolSettlement> =>
   Effect.gen(function* () {
     if (name !== EXECUTE_TOOL)
@@ -66,7 +67,7 @@ export const runTool = (
       } as const
     const result = yield* CodeMode.execute({
       code: decoded.value.code,
-      tools: provided,
+      tools: { ...provided, ...hostTools },
       limits: executeLimits,
     })
     if (!result.ok)

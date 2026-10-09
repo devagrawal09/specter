@@ -1,9 +1,19 @@
+import { Tool } from '@ocpp/codemode'
 import { AIError, LLMEvent, RateLimitError, type LLMRequest } from '@ocpp/ai'
 import { TestLLM } from '@ocpp/ai/testing'
 import { ProjectID } from '@ocpp/schema/project-id'
 import { SessionID } from '@ocpp/schema/session-id'
 import { AbsolutePath } from '@ocpp/schema/schema'
-import { Context, Effect, Exit, Layer, PubSub, Scope } from 'effect'
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Layer,
+  PubSub,
+  Schema,
+  Scope,
+} from 'effect'
 import { createSpecterApp, EventLog } from '@specter-ts/core'
 import { eventsFor } from '@specter-ts/core/testing'
 import {
@@ -67,7 +77,10 @@ const toolCallsWith = (u: ReturnType<typeof usage>, ...events: LLMEvent[]) =>
 const executeCall = (id: string, code: string) =>
   LLMEvent.toolCall({ id, name: 'execute', input: { code } })
 
-const boot = async (credential: OcppCredential | undefined = key) => {
+const boot = async (
+  credential: OcppCredential | undefined = key,
+  hostTools: Record<string, Tool.Tool> = {},
+) => {
   const scope = Effect.runSync(Scope.make())
   const base = await Effect.runPromise(
     Layer.build(
@@ -102,7 +115,11 @@ const boot = async (credential: OcppCredential | undefined = key) => {
   )
   const outbox =
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>()
-  const full = createSessionAppConfig(outbox, {}, { system: 'Be brief.' })
+  const full = createSessionAppConfig(
+    outbox,
+    {},
+    { system: 'Be brief.', hostTools },
+  )
   const events = [
     ...new Map(
       Object.values(full.slices)
@@ -170,8 +187,11 @@ const messageParts = (request: LLMRequest) =>
   }))
 
 let running: Awaited<ReturnType<typeof boot>> | undefined
-const start = async (credential?: OcppCredential | undefined) => {
-  running = await boot(...(credential === undefined ? [] : [credential]))
+const start = async (
+  credential?: OcppCredential | undefined,
+  hostTools?: Record<string, Tool.Tool>,
+) => {
+  running = await boot(credential, hostTools)
   return running
 }
 afterEach(async () => {
@@ -401,5 +421,65 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       error: { type: 'auth.credential-expired' },
     })
     expect(await t.requests()).toEqual([])
+  })
+
+  it('settles an open tool call as aborted atomically with the interrupt, and stays quiet after the call is released', async () => {
+    const gate = Effect.runSync(Deferred.make<void>())
+    const entered = Effect.runSync(Deferred.make<void>())
+    const t = await start(undefined, {
+      gate: Tool.make({
+        description: 'Blocks until the test releases it.',
+        input: Schema.Struct({}),
+        output: Schema.Struct({ ok: Schema.Boolean }),
+        execute: () =>
+          Deferred.succeed(entered, undefined).pipe(
+            Effect.andThen(Deferred.await(gate)),
+            Effect.as({ ok: true }),
+          ),
+      }),
+    })
+    await Effect.runPromise(
+      t.llm.push(
+        toolCallsWith(
+          usage(10, 5),
+          executeCall('call_1', 'return await tools.gate({})'),
+        ),
+        stopWith(usage(20, 4), ...text('t2', 'unreachable')),
+      ),
+    )
+
+    await t.app.command(prompt)
+    await Effect.runPromise(Deferred.await(entered))
+    await t.app.command({
+      type: 'interruptExecution',
+      payload: { sessionID: 'ses_1' },
+    })
+
+    const expected = [
+      'session-inbox-enqueued',
+      'session-execution-started',
+      'session-inbox-delivered',
+      'session-step-started',
+      'session-tool-input-started',
+      'session-tool-input-ended',
+      'session-tool-called',
+      'session-tool-failed',
+      'session-execution-interrupted',
+    ]
+    expect(t.types()).toEqual(expected)
+    expect(t.payloads('session-tool-failed')[0]).toMatchObject({
+      id: 'call_1',
+      error: {
+        type: 'aborted',
+        message: 'Tool execution interrupted: execute',
+      },
+    })
+
+    // Release the program: its late result is rejected (execution not
+    // active), so nothing more is recorded and the model is never called again.
+    await Effect.runPromise(Deferred.succeed(gate, undefined))
+    await new Promise((resolve) => setTimeout(resolve, 100))
+    expect(t.types()).toEqual(expected)
+    expect(await t.requests()).toHaveLength(1)
   })
 })

@@ -392,6 +392,26 @@ export const stepStatusSpec = createQuerySlice('stepStatus')
         attempts: 1,
       },
     },
+    {
+      description:
+        'An interrupt commits the aborted settlement of every open call before the interrupted event: openCalls is empty afterwards.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        ...toolCalled('msg_1', 'call_1'),
+        ...toolCalled('msg_1', 'call_2', true),
+        toolFailed('msg_1', 'call_1'),
+        toolFailed('msg_1', 'call_2'),
+        interrupted(),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        active: false,
+        stepInFlight: false,
+        stepsStarted: 1,
+        attempts: 1,
+      },
+    },
   )
 
 export default stepStatusSpec
