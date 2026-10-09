@@ -48,6 +48,26 @@ export const executionStatusSpec = createQuerySlice('executionStatus')
     },
     {
       description:
+        'An execution takes the wakes recorded before it started: input it never delivered before failing waits for the next wake, and the Session is idle.',
+      given: [
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: { type: 'user', payload: { text: 'first' }, delivery: 'steer' },
+        }),
+        started(),
+        failed(),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        status: 'settled',
+        executions: 1,
+        lastOutcome: 'failed',
+        error: { type: 'provider', message: 'boom' },
+      },
+    },
+    {
+      description:
         'Held, delivered or cancelled input wakes nothing, and an interruption parks what is pending.',
       given: [
         event('session-inbox-enqueued', {

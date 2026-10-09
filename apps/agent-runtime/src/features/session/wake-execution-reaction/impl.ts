@@ -14,10 +14,13 @@ import specification from './spec.json' with { type: 'json' }
 // Per-Session projection, like apps/reference's cheer reaction: the handler
 // derives its request purely from this state, with no trigger field.
 // - waking: enqueued items that wake the Session, until delivered or
-//   cancelled. A held item waits for the next wake instead. An interruption
-//   empties the set: it never deletes pending input, but must not re-wake the
-//   Session by itself either, or it would restart right after the user
-//   stopped it; only a new waking input does.
+//   cancelled. A held item waits for the next wake instead. An execution
+//   takes the wakes recorded before it started (OC++'s coordinator: a wake
+//   starts a drain, and only one rung while it ran starts another), so input
+//   it never delivered, when it fails, waits for the next wake. An
+//   interruption empties the set too: it never deletes pending input, but
+//   must not re-wake the Session by itself either, or it would restart right
+//   after the user stopped it; only a new waking input does.
 // - active: an execution started and not yet settled.
 // - driven: the Session's model selects an external agent (OC++'s
 //   SessionDriver), which runs it instead of this runtime.
@@ -120,7 +123,9 @@ export const wakeExecution = implementReaction(specification)
     settled(state, event.payload)
   })
   .apply(executionStarted, async (event, state) => {
-    entry(state, event.payload.sessionID).active = true
+    const session = entry(state, event.payload.sessionID)
+    session.active = true
+    session.waking = {}
   })
   .apply(executionSettled, async (event, state) => {
     const session = entry(state, event.payload.sessionID)

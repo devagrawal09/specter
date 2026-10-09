@@ -225,6 +225,23 @@ export const wakeExecutionSpec = createReactionSlice('wakeExecution')
       ],
       expect: [start('ses_1')],
     },
+    {
+      description:
+        'An execution takes every wake recorded before it started: when it fails, the input it never delivered waits for the next wake instead of restarting it.',
+      given: [enqueued('ses_1', 'msg_1'), started('ses_1'), failed('ses_1')],
+      expect: [],
+    },
+    {
+      description:
+        'Input enqueued while an execution ran is a new wake: when the execution fails, it starts the next one.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        started('ses_1'),
+        enqueued('ses_1', 'msg_2'),
+        failed('ses_1'),
+      ],
+      expect: [start('ses_1')],
+    },
   )
 
 export default wakeExecutionSpec

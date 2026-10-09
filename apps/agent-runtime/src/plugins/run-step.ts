@@ -231,15 +231,25 @@ export const makeRunStepPlugin =
             }
             if (next.item.type === 'move' && host.moving)
               yield* host.moving(sessionID)
+            const inboxID = next.item.inboxID
             const accepted = yield* unlessRejected(
               command(
-                {
-                  type: 'deliverInboxItem',
-                  payload: { sessionID, inboxID: next.item.inboxID },
-                },
-                {
-                  idempotencyKey: `${delivery.deliveryId}:deliver:${next.item.inboxID}`,
-                },
+                { type: 'deliverInboxItem', payload: { sessionID, inboxID } },
+                { idempotencyKey: `${delivery.deliveryId}:deliver:${inboxID}` },
+              ),
+            ).pipe(
+              // Delivering it broke (a defect, which a retried job would only
+              // repeat, unlike a failure to record): the input stays pending
+              // and the execution fails, as OC++'s runner failed its run.
+              Effect.catchDefect((defect) =>
+                fail(
+                  {
+                    type: 'unknown',
+                    message:
+                      defect instanceof Error ? defect.message : String(defect),
+                  },
+                  `${delivery.deliveryId}:undelivered:${inboxID}`,
+                ).pipe(Effect.as(false)),
               ),
             )
             if (!accepted) return
@@ -366,6 +376,18 @@ export const makeRunStepPlugin =
             )
           const outcome = yield* plan.run({
             started: () => started,
+            streamed: () =>
+              afterStart(
+                unlessRejected(
+                  command(
+                    {
+                      type: 'recordStepStreamed',
+                      payload: { sessionID, assistantMessageID },
+                    },
+                    { idempotencyKey: `${key}:streamed` },
+                  ),
+                ),
+              ),
             block: (block) =>
               afterStart(
                 unlessRejected(

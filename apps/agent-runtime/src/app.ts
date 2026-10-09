@@ -27,6 +27,11 @@ import {
   recordStepStartedStore,
 } from './features/session/record-step-started/impl.ts'
 import {
+  createRecordStepStreamedState,
+  recordStepStreamed,
+  recordStepStreamedStore,
+} from './features/session/record-step-streamed/impl.ts'
+import {
   createRecordBlockState,
   recordBlock,
   recordBlockStore,
@@ -193,6 +198,7 @@ export const createSessionAppConfig = (
       wakeExecution,
       executionStatus,
       recordStepStarted,
+      recordStepStreamed,
       settleStep,
       recordBlock,
       recordToolCall,
@@ -253,6 +259,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(wakeExecutionStore, createWakeExecutionState),
     provide(executionStatusStore, createExecutionStatusState),
     provide(recordStepStartedStore, createRecordStepStartedState),
+    provide(recordStepStreamedStore, createRecordStepStreamedState),
     provide(settleStepStore, createSettleStepState),
     provide(recordBlockStore, createRecordBlockState),
     provide(recordToolCallStore, createRecordToolCallState),

@@ -108,6 +108,8 @@ export const executionStatus = implementQuery(specification)
     const session = entry(state, event.payload.sessionID)
     session.active = true
     session.executions += 1
+    // The execution takes the wakes recorded before it started.
+    session.waking = {}
   })
   .apply(executionSettled, async (event, state) => {
     end(state, event.payload.sessionID, event.payload)

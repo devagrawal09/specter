@@ -518,36 +518,36 @@ describe('step loop with a scripted model', () => {
       compact: () =>
         Effect.succeed({ outcome: 'failed', error, fatal: true } as const),
     })
-    t.model.script('ses_1', [{ finish: 'stop', text: 'Next time' }])
 
     await t.app.command(compactionItem('msg_c'))
     await t.app.command(enqueue('msg_a', 'queue'))
-    await t.waitFor(
-      () =>
-        t.types().filter((type) => type === 'session-execution-settled')
-          .length === 2,
-    )
+    await t.waitFor(() => t.types().includes('session-execution-settled'))
     await t.outboxSettled()
 
-    // The queued input behind it runs in the next execution.
     expect(t.types()).toEqual([
       'session-inbox-enqueued',
       'session-inbox-enqueued',
       'session-execution-started',
       'session-inbox-delivered', // the compaction
       'session-execution-settled',
-      'session-execution-started',
-      'session-inbox-delivered',
-      'session-step-started',
-      'session-block-recorded',
-      'session-step-settled',
-      'session-execution-settled',
     ])
-    const settled = t.log
-      .inspect()
-      .filter((event) => event.type === 'session-execution-settled')
-      .map((event) => event.payload)
-    expect(settled[0]).toMatchObject({ outcome: 'failed', error })
+    expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+      outcome: 'failed',
+      error,
+    })
+    // The queued input behind it stays pending for the next wake.
+    expect(
+      await t.app.query({
+        type: 'nextDeliverable',
+        payload: { sessionID: 'ses_1', boundary: 'idle' },
+      }),
+    ).toMatchObject({ item: { inboxID: 'msg_a' } })
+    expect(
+      await t.app.query({
+        type: 'executionStatus',
+        payload: { sessionID: 'ses_1' },
+      }),
+    ).not.toHaveProperty('wakes')
   })
 
   it('delivers a steer enqueued mid-step at the next boundary, before the next step', async () => {

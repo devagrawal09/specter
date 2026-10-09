@@ -26,6 +26,9 @@ export type AttemptRecorder = {
   // too, and so does a failure. An attempt that succeeds without starting
   // produced nothing, and records no step.
   readonly started: () => Effect.Effect<boolean, RecordFailure>
+  // The provider stream ended; the step's local tools may still be running.
+  // A host that marks this boundary (OC++ does) records it; it is optional.
+  readonly streamed: () => Effect.Effect<boolean, RecordFailure>
   readonly block: (block: {
     readonly kind: 'text' | 'reasoning'
     readonly ordinal: number
