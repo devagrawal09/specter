@@ -34,6 +34,16 @@ export const startExecutionSpec = createCommandSlice('startExecution')
   .scenarios(
     {
       description:
+        'An execution that continues an interrupted turn says so in its start: it takes steering input and control items only.',
+      given: [created()],
+      when: { sessionID: 'ses_1', continues: true },
+      expect: [
+        started(),
+        event('session-execution-continued', { sessionID: 'ses_1' }),
+      ],
+    },
+    {
+      description:
         'Execution commits a claim when a process-local busy period starts: an idle Session starts.',
       given: [created()],
       when: { sessionID: 'ses_1' },

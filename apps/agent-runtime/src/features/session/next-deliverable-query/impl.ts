@@ -34,7 +34,7 @@ const inboxDeliveryChanged = sessionEvent('session-inbox-delivery-changed')
 const input = Schema.toStandardSchemaV1(
   Schema.Struct({
     sessionID: SessionID,
-    boundary: Schema.Literals(['step', 'idle']),
+    boundary: Schema.Literals(['step', 'idle', 'entry']),
   }),
 )
 
@@ -43,7 +43,7 @@ const find = (
   ref: { sessionID: string; inboxID: string },
 ) => state.sessions[ref.sessionID]?.find((item) => item.inboxID === ref.inboxID)
 
-// Control items form a delivery boundary that later items never cross.
+// Control items (compaction, move) are delivered alone.
 const controlTypes = new Set(['compaction', 'move'])
 
 const deliverable = (item: InboxItem, reason: string) => ({
@@ -90,26 +90,19 @@ export const nextDeliverable = implementQuery(specification)
     const first = pending[0]
     if (!first) return { item: null, reason: 'nothing-pending' }
 
-    // Steers deliver in enqueue order at either boundary, up to the first
-    // queued control item, which nothing behind it may cross.
-    for (const item of pending) {
-      if (item.delivery === 'steer') return deliverable(item, 'steer-in-order')
-      if (controlTypes.has(item.type)) break
-    }
+    // Steers deliver first, in enqueue order, at any boundary; a steered
+    // control item delivers alone, so the steers behind it wait for it.
+    // Queued items never hold a steer back.
+    const steer = pending.find((item) => item.delivery === 'steer')
+    if (steer) return deliverable(steer, 'steer-in-order')
 
-    if (query.boundary === 'idle')
-      // The earliest queued item is at or before any control boundary.
-      return deliverable(
-        pending.find((item) => item.delivery === 'queue') ?? first,
-        'idle-queued',
-      )
-
-    // A steer behind a queued control item is blocked by it.
-    const control = pending.findIndex(
-      (item) => item.delivery === 'queue' && controlTypes.has(item.type),
-    )
-    return control >= 0 &&
-      pending.slice(control + 1).some((item) => item.delivery === 'steer')
-      ? { item: null, reason: 'blocked-by-control-boundary' }
-      : { item: null, reason: 'queue-waits-for-idle' }
+    const head = pending.find((item) => item.delivery === 'queue')
+    // At an idle boundary with no steer pending, the queue's head delivers.
+    if (query.boundary === 'idle' && head)
+      return deliverable(head, 'idle-queued')
+    // At an entry, the queue's head goes in if it is a control item; queued
+    // input waits for an idle boundary.
+    if (query.boundary === 'entry' && head && controlTypes.has(head.type))
+      return deliverable(head, 'entry-control')
+    return { item: null, reason: 'queue-waits-for-idle' }
   })

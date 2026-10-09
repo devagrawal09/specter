@@ -57,6 +57,16 @@ export const nextStepSpec = createQuerySlice('nextStep')
   )
   .scenarios(
     {
+      description:
+        'An execution continuing an interrupted turn rests at entry boundaries: never queued input.',
+      given: [
+        started(),
+        event('session-execution-continued', { sessionID: 'ses_1' }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: next('entry', 0, 0),
+    },
+    {
       description: 'A Session with no events is idle.',
       given: [],
       when: { sessionID: 'ses_1' },

@@ -43,6 +43,43 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
   .scenarios(
     {
       description:
+        "At an entry (a continued turn's rest point, or a new Location's), the queue's head goes in when it is a control item.",
+      given: [
+        enqueued('msg_1', compaction('queue')),
+        enqueued('msg_2', user('Later', 'queue')),
+      ],
+      when: { sessionID: 'ses_1', boundary: 'entry' },
+      expect: {
+        item: { inboxID: 'msg_1', type: 'compaction', delivery: 'queue' },
+        reason: 'entry-control',
+      },
+    },
+    {
+      description:
+        'At an entry, queued input at the head of the queue waits for an idle boundary, and so does a control item behind it.',
+      given: [
+        enqueued('msg_1', user('Later', 'queue')),
+        enqueued('msg_2', compaction('queue')),
+      ],
+      when: { sessionID: 'ses_1', boundary: 'entry' },
+      expect: { item: null, reason: 'queue-waits-for-idle' },
+    },
+    {
+      description:
+        'At an entry, steers deliver before a queued control item, in enqueue order.',
+      given: [
+        enqueued('msg_1', compaction('queue')),
+        enqueued('msg_2', user('Now', 'steer')),
+        enqueued('msg_3', user('Then', 'steer')),
+      ],
+      when: { sessionID: 'ses_1', boundary: 'entry' },
+      expect: {
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
+        reason: 'steer-in-order',
+      },
+    },
+    {
+      description:
         'An inbox item remains pending outside history until delivery: an empty inbox has nothing deliverable.',
       given: [],
       when: { sessionID: 'ses_1', boundary: 'step' },
@@ -162,23 +199,29 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
     },
     {
       description:
-        'Delivery stops before a compaction or move control item: a steer behind a compaction does not cross it.',
+        'Steering delivery is among steers: a queued compaction does not hold back a steer enqueued after it.',
       given: [
         enqueued('msg_1', compaction('queue')),
         enqueued('msg_2', user('After compaction', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
-      expect: { item: null, reason: 'blocked-by-control-boundary' },
+      expect: {
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
+        reason: 'steer-in-order',
+      },
     },
     {
       description:
-        'Delivery stops before a compaction or move control item: a steer behind a move does not cross it.',
+        'A queued move does not hold back a later steer either; it waits for an idle boundary or an entry.',
       given: [
         enqueued('msg_1', move('queue')),
         enqueued('msg_2', user('After move', 'steer')),
       ],
       when: { sessionID: 'ses_1', boundary: 'step' },
-      expect: { item: null, reason: 'blocked-by-control-boundary' },
+      expect: {
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
+        reason: 'steer-in-order',
+      },
     },
     {
       description:
@@ -209,10 +252,23 @@ export const nextDeliverableSpec = createQuerySlice('nextDeliverable')
     },
     {
       description:
-        'A queued control item is the next idle delivery even when a later steer is pending: steers do not cross it.',
+        'At an idle boundary steers take priority over a queued control item.',
       given: [
         enqueued('msg_1', move('queue')),
         enqueued('msg_2', user('After move', 'steer')),
+      ],
+      when: { sessionID: 'ses_1', boundary: 'idle' },
+      expect: {
+        item: { inboxID: 'msg_2', type: 'user', delivery: 'steer' },
+        reason: 'steer-in-order',
+      },
+    },
+    {
+      description:
+        'With no steer pending, a queued control item is the next idle delivery.',
+      given: [
+        enqueued('msg_1', move('queue')),
+        enqueued('msg_2', user('After move', 'queue')),
       ],
       when: { sessionID: 'ses_1', boundary: 'idle' },
       expect: {

@@ -13,6 +13,8 @@ import specification from './spec.json' with { type: 'json' }
 // keeps its number. Duplicated on purpose.
 type Entry = {
   idle: boolean
+  // The execution continues an interrupted turn: it never takes queued input.
+  continued?: true
   stepsInExecution: number
   stepsSinceInput: number
   retryAt?: number
@@ -42,6 +44,7 @@ const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const stepStarted = sessionEvent('session-step-started')
 const stepSettled = sessionEvent('session-step-settled')
+const executionContinued = sessionEvent('session-execution-continued')
 
 const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
 
@@ -58,8 +61,10 @@ export const nextStep = implementQuery(specification)
   .inputSchema(input)
   .outputSchema<{
     // Which inbox items the next step delivers first (nextDeliverable's
-    // boundary): idle admits a queued item, step only steers.
-    boundary: 'idle' | 'step'
+    // boundary): idle admits a queued item, step only steers, and entry (the
+    // rest points of an execution continuing an interrupted turn) admits a
+    // queued control item but no queued input.
+    boundary: 'idle' | 'step' | 'entry'
     stepsInExecution: number
     // Steps run since input was last delivered: the next step is one more.
     stepsSinceInput: number
@@ -72,6 +77,9 @@ export const nextStep = implementQuery(specification)
   .store(nextStepStore)
   .apply(executionStarted, async (event, state) => {
     state.sessions[event.payload.sessionID] = fresh()
+  })
+  .apply(executionContinued, async (event, state) => {
+    entry(state, event.payload.sessionID).continued = true
   })
   // The next execution resets everything when it starts.
   .apply(executionSettled, async () => {})
@@ -105,7 +113,7 @@ export const nextStep = implementQuery(specification)
   .handle(async (query, state) => {
     const session = state.sessions[query.sessionID] ?? fresh()
     return {
-      boundary: session.idle ? 'idle' : 'step',
+      boundary: !session.idle ? 'step' : session.continued ? 'entry' : 'idle',
       stepsInExecution: session.stepsInExecution,
       stepsSinceInput: session.stepsSinceInput,
       ...(session.retryAt === undefined ? {} : { retryAt: session.retryAt }),

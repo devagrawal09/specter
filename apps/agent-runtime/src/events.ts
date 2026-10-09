@@ -121,6 +121,10 @@ const runtimeEventSchemas = {
       reason: Schema.Literals(['user', 'shutdown', 'superseded']),
     }),
   ]),
+  // An execution that continues a turn the user interrupted, recorded in its
+  // start's commit: it takes steering input and control items, never queued
+  // input.
+  'session-execution-continued': Schema.Struct({ sessionID: SessionID }),
   // An admitted input that waits for the next wake instead of waking the
   // Session (OC++'s `resume: false`), recorded in its admission's commit.
   'session-inbox-held': Schema.Struct({

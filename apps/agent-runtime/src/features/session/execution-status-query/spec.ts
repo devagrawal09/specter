@@ -27,6 +27,96 @@ export const executionStatusSpec = createQuerySlice('executionStatus')
   .scenarios(
     {
       description:
+        'Input that will wake the Session keeps it from idle: the next execution starts from it.',
+      given: [
+        started(),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: { type: 'user', payload: { text: 'next' }, delivery: 'steer' },
+        }),
+        failed(),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        status: 'settled',
+        executions: 1,
+        lastOutcome: 'failed',
+        error: { type: 'provider', message: 'boom' },
+        wakes: true,
+      },
+    },
+    {
+      description:
+        'Held, delivered or cancelled input wakes nothing, and an interruption parks what is pending.',
+      given: [
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: { type: 'user', payload: { text: 'a' }, delivery: 'steer' },
+        }),
+        event('session-inbox-held', { sessionID: 'ses_1', inboxID: 'msg_1' }),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_2',
+          item: { type: 'user', payload: { text: 'b' }, delivery: 'steer' },
+        }),
+        event('session-inbox-delivered', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_2',
+        }),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_3',
+          item: { type: 'user', payload: { text: 'c' }, delivery: 'steer' },
+        }),
+        event('session-inbox-cancelled', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_3',
+        }),
+        started(),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_4',
+          item: { type: 'user', payload: { text: 'd' }, delivery: 'queue' },
+        }),
+        interrupted(),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: {
+        status: 'settled',
+        executions: 1,
+        lastOutcome: 'interrupted',
+        reason: 'user',
+      },
+    },
+    {
+      description:
+        "An external agent's Session is not woken by this runtime: its input does not keep it from idle.",
+      given: [
+        event('session-created', {
+          sessionID: 'ses_1',
+          projectID: 'prj_1',
+          location: { directory: '/tmp/ws' },
+          slug: 'brave-otter',
+          version: '2',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        event('session-model-selected', {
+          sessionID: 'ses_1',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        event('session-inbox-enqueued', {
+          sessionID: 'ses_1',
+          inboxID: 'msg_1',
+          item: { type: 'user', payload: { text: 'a' }, delivery: 'steer' },
+        }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: { status: 'idle', executions: 0, lastOutcome: null },
+    },
+    {
+      description:
         'A Session with no execution events is idle (no busy period has started).',
       given: [],
       when: { sessionID: 'ses_1' },

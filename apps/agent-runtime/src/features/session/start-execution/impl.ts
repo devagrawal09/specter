@@ -26,7 +26,16 @@ const sessionCreated = sessionEvent('session-created')
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 
-const input = Schema.toStandardSchemaV1(Schema.Struct({ sessionID: SessionID }))
+const executionContinued = sessionEvent('session-execution-continued')
+
+const input = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    sessionID: SessionID,
+    // Continue a turn the user interrupted: steering input and control items
+    // only.
+    continues: Schema.optional(Schema.Boolean),
+  }),
+)
 
 export const startExecution = implementCommand(specification)
   .inputSchema(input)
@@ -44,5 +53,10 @@ export const startExecution = implementCommand(specification)
     if (!state.sessions[command.sessionID]) throw new Error('Session not found')
     if (state.active[command.sessionID])
       throw new Error('Execution already active')
-    return [executionStarted.create({ sessionID: command.sessionID })]
+    return [
+      executionStarted.create({ sessionID: command.sessionID }),
+      ...(command.continues
+        ? [executionContinued.create({ sessionID: command.sessionID })]
+        : []),
+    ]
   })

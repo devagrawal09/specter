@@ -203,6 +203,9 @@ export const makeRunStepPlugin =
             if (next.item === null) break
             const control =
               next.item.type === 'compaction' || next.item.type === 'move'
+            // Delivery stops before a control item: the input delivered ahead
+            // of it gets its step first.
+            if (control && delivered > 0) break
             if (!control && !prepared && host.prepare) {
               const ready = yield* host.prepare(sessionID)
               if (ready.outcome === 'failed') {
@@ -239,9 +242,10 @@ export const makeRunStepPlugin =
               continue
             }
             // A delivered move moved the Session: what follows runs in its
-            // new Location.
+            // new Location, whose entry takes queued control items too.
             if (next.item.type === 'move') {
               controlled = true
+              if (scope === 'step') scope = 'entry'
               continue
             }
             delivered += 1
@@ -249,9 +253,9 @@ export const makeRunStepPlugin =
             // steers that arrive behind it: never steers and a queued item.
             scope = 'step'
           }
-          // An idle execution with nothing left to deliver is done.
+          // An execution at rest with nothing left to deliver is done.
           if (
-            boundary === 'idle' &&
+            boundary !== 'step' &&
             (stepsInExecution > 0 || controlled) &&
             delivered === 0
           ) {
@@ -471,9 +475,10 @@ export const makeRunStepPlugin =
           if (!ended || (begun && next)) return
           // Input waiting for this idle boundary keeps the execution going: the
           // next step delivers it.
+          const rest = yield* query(nextStep, { sessionID })
           const waiting = yield* query(nextDeliverable, {
             sessionID,
-            boundary: 'idle',
+            boundary: rest.boundary,
           })
           if (waiting.item !== null) return
 
