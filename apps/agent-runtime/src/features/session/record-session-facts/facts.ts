@@ -563,6 +563,21 @@ export const sessionFacts = {
   'kv-removed': {
     key: 'websearch:provider',
   },
+  'rows-adopted': {
+    aggregate: 'ses_1',
+    table: 'session_message',
+    rows: [
+      {
+        id: 'msg_1',
+        session_id: 'ses_1',
+        type: 'user',
+        seq: 0,
+        time_created: 1,
+        time_updated: 1,
+        data: '{"text":"hello"}',
+      },
+    ],
+  },
   'credential-created': {
     integrationID: 'anthropic',
     credentialID: 'cred_1',
