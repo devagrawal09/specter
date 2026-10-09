@@ -1,11 +1,10 @@
 import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
 import { SessionError } from '@ocpp/schema/session-error'
-import { ExternalSession } from '@ocpp/schema/external-session'
+import { DurableEventManifest } from '@ocpp/schema/durable-event-manifest'
 import { SessionEvent } from '@ocpp/schema/session-event'
 import { SessionID } from '@ocpp/schema/session-id'
 import { SessionMessage } from '@ocpp/schema/session-message'
 import { NonNegativeInt, optional, PositiveInt } from '@ocpp/schema/schema'
-import { Worktree } from '@ocpp/schema/worktree'
 import { Schema } from 'effect'
 
 // Specter's spec format requires kebab-case event types; OC++ uses dotted
@@ -135,14 +134,11 @@ const runtimeEventSchemas = {
   }),
 } as const
 
-// Every durable fact OC++ records: its Session events, the facts an external
-// agent's Session keeps (vendor binding and checkpoints), and a directory's
-// resolution to a project, which moves the Sessions it held to that project.
-const durableDefinitions = [
-  ...SessionEvent.DurableDefinitions,
-  ...ExternalSession.Definitions,
-  Worktree.Event.Resolved,
-] as const
+// Every durable fact OC++ records (its manifest of durable events): its
+// Session events, the facts an external agent's Session keeps (vendor binding
+// and checkpoints), and a directory's resolution to a project, which moves the
+// Sessions it held to that project.
+const durableDefinitions = DurableEventManifest.Definitions
 
 // One Specter event definition per OC++ durable session fact (mapped name,
 // OC++'s payload schema as a Standard Schema), then the runtime's own facts.
