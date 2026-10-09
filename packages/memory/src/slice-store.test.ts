@@ -33,6 +33,34 @@ describe('memory Slice Store', () => {
     })
   })
 
+  it('starts a Slice from the state and cursor a host seeds, and catches up after it', async () => {
+    const service = createMemorySliceStoreService(() => ({ count: 0 }), {
+      initial: (sliceName) =>
+        sliceName === 'countQuery'
+          ? { state: { count: 7 }, cursor: 12 }
+          : undefined,
+    })
+    await Effect.runPromise(
+      service.transaction('countQuery', (write, _read, cursor, publish) =>
+        Effect.gen(function* () {
+          expect(cursor).toBe(12)
+          write.count += 1
+          yield* publish(13)
+        }),
+      ),
+    )
+    expect(service.inspect('countQuery')).toEqual({
+      state: { count: 8 },
+      lastAppliedOrder: 13,
+    })
+    // A Slice the host has no snapshot for starts empty.
+    await Effect.runPromise(
+      service.read('otherQuery', (read, cursor) =>
+        Effect.sync(() => expect([read, cursor]).toEqual([{ count: 0 }, 0])),
+      ),
+    )
+  })
+
   it('exposes narrower read capability', async () => {
     const service = createMemorySliceStoreService(() => ({ count: 0 }), {
       read: (state) => ({ current: state.count }),

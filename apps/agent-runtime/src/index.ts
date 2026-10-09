@@ -19,6 +19,7 @@ export {
 export {
   createSessionAppConfig,
   createSliceStoreLayer,
+  type DriveExecutionOutboxStore,
   memorySliceStoreLayer,
   type ProvideSliceStore,
   type RunStepOutboxOptions,
@@ -29,6 +30,10 @@ export {
   type SessionEventStore,
   sessionEventStoreConfig,
 } from './event-store.ts'
+export {
+  makeSnapshotSliceStores,
+  type SliceSnapshot,
+} from './snapshots.ts'
 export {
   type EmbeddedSessionRuntime,
   type EmbeddedSessionRuntimeOptions,

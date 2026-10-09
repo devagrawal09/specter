@@ -14,7 +14,13 @@ import {
 import { Effect, Exit, Layer, PubSub, Scope } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { createSessionAppConfig, memorySliceStoreLayer } from './app.ts'
+import {
+  createSessionAppConfig,
+  createSliceStoreLayer,
+  memorySliceStoreLayer,
+  type ProvideSliceStore,
+} from './app.ts'
+import { makeSnapshotSliceStores } from './snapshots.ts'
 import { sessionEvent } from './events.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
@@ -42,22 +48,30 @@ const boot = async (
     ) => ReturnType<StepHost['Service']['begin']>
     // The outbox's wait before it retries a job that failed.
     readonly backoffMs?: (attempt: number) => number
+    // A later boot over an earlier one's log and outbox, with its Slice
+    // Stores provided this way.
+    readonly log?: ReturnType<typeof createMemoryEventLog>
+    readonly outbox?: ReturnType<
+      typeof createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>
+    >
+    readonly slices?: ProvideSliceStore
   } = {},
 ) => {
-  const log = createMemoryEventLog()
-  await Effect.runPromise(
-    log.append(
-      ['ses_1', 'ses_2'].map((id) =>
-        sessionEvent('session-created').create({
-          sessionID: SessionID.make(id),
-          projectID: ProjectID.make('prj_1'),
-          location: { directory: AbsolutePath.make('/tmp/ws') },
-          slug: `slug-${id}`,
-          version: '2',
-        }),
+  const log = options.log ?? createMemoryEventLog()
+  if (!options.log)
+    await Effect.runPromise(
+      log.append(
+        ['ses_1', 'ses_2'].map((id) =>
+          sessionEvent('session-created').create({
+            sessionID: SessionID.make(id),
+            projectID: ProjectID.make('prj_1'),
+            location: { directory: AbsolutePath.make('/tmp/ws') },
+            slug: `slug-${id}`,
+            version: '2',
+          }),
+        ),
       ),
-    ),
-  )
+    )
   const model = makeScriptedModel()
   const pubsub = Effect.runSync(PubSub.unbounded<Delta>())
   const scope = Effect.runSync(Scope.make())
@@ -65,6 +79,7 @@ const boot = async (
     Scope.provide(PubSub.subscribe(pubsub), scope),
   )
   const outbox =
+    options.outbox ??
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>()
 
   const full = createSessionAppConfig(outbox, {
@@ -91,7 +106,9 @@ const boot = async (
     { ...full, events },
     Layer.mergeAll(
       Layer.succeed(EventLog, log),
-      memorySliceStoreLayer,
+      options.slices
+        ? createSliceStoreLayer(options.slices)
+        : memorySliceStoreLayer,
       createImmediateReactionSchedulerLayer(),
       Layer.effect(
         StepHost,
@@ -158,6 +175,7 @@ const boot = async (
   return {
     app,
     log,
+    outbox,
     model,
     types,
     waitFor,
@@ -515,6 +533,54 @@ describe('step loop with a scripted model', () => {
     ])
     expect(t.log.inspect().at(-1)?.payload).toMatchObject({
       outcome: 'succeeded',
+    })
+  })
+
+  describe('a later boot', () => {
+    // The first boot runs a prompt to its end; the second opens the same log.
+    const firstBoot = async (slices?: ProvideSliceStore) => {
+      const first = await boot(slices ? { slices } : {})
+      first.model.script('ses_1', [{ finish: 'stop', text: 'done' }])
+      await first.app.command(enqueue('msg_a'))
+      await first.waitFor(() =>
+        first.types().includes('session-execution-settled'),
+      )
+      const jobs = await first.outboxSettled()
+      await first.close()
+      return { first, jobs: jobs.length }
+    }
+
+    it("enqueues no replayed Reaction's job again with the outbox kept", async () => {
+      const { first, jobs } = await firstBoot()
+      const second = await start({ log: first.log, outbox: first.outbox })
+      const after = await second.outboxSettled()
+
+      // Replaying the log at boot re-derived every request, and each deduped.
+      expect(after).toHaveLength(jobs)
+      expect(second.types().at(-1)).toBe('session-execution-settled')
+    })
+
+    it('starts every Slice from its snapshot instead of the log', async () => {
+      const stores = makeSnapshotSliceStores([])
+      const { first } = await firstBoot(stores.provide)
+      const snapshots = stores.snapshot()
+      const status = snapshots.find((one) => one.slice === 'sessionStatus')
+      expect(status?.cursor).toBe(first.log.inspect().length)
+
+      const restored = makeSnapshotSliceStores(snapshots)
+      const second = await start({
+        log: first.log,
+        outbox: first.outbox,
+        slices: restored.provide,
+      })
+      expect(
+        await second.app.query({
+          type: 'sessionStatus',
+          payload: { sessionID: 'ses_1' },
+        }),
+      ).toMatchObject({ status: 'settled', lastOutcome: 'succeeded' })
+      // Nothing moved since the snapshots: there is nothing new to save.
+      expect(restored.snapshot()).toEqual([])
     })
   })
 

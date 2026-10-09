@@ -9,6 +9,14 @@ type SliceEntry<TState> = {
 export type MemorySliceStoreOptions<TWriteState, TReadState> = {
   readonly clone?: (state: TWriteState) => TWriteState
   readonly read?: (state: TWriteState) => TReadState
+  /**
+   * A Slice's state and cursor to start from instead of empty state at the
+   * log's start, such as a snapshot a host saved from `inspect`. The Slice
+   * catches up from the cursor.
+   */
+  readonly initial?: (
+    sliceName: string,
+  ) => { readonly state: TWriteState; readonly cursor: number } | undefined
 }
 
 export type MemorySliceStoreService<TWriteState, TReadState> =
@@ -38,7 +46,10 @@ export function createMemorySliceStoreService<
   function getEntry(sliceName: string) {
     const current = entries.get(sliceName)
     if (current) return current
-    const created = { state: createState(), cursor: 0 }
+    const seeded = options.initial?.(sliceName)
+    const created = seeded
+      ? { state: seeded.state, cursor: seeded.cursor }
+      : { state: createState(), cursor: 0 }
     entries.set(sliceName, created)
     return created
   }
