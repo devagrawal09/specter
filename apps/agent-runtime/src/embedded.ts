@@ -19,7 +19,8 @@ export type EmbeddedSessionRuntimeOptions = {
   readonly step?: RunStepOptions
 }
 
-// Requires the EventLog, Model and DeltaChannel services and a Scope.
+// Requires the EventLog and StepHost services and a Scope. The host supplies the
+// step's I/O through StepHost (or the runtime's own, modelStepHostLayer).
 export const makeEmbeddedSessionRuntime = (
   options: EmbeddedSessionRuntimeOptions = {},
 ) => {

@@ -124,6 +124,31 @@ export const settleStepSpec = createCommandSlice('settleStep')
     },
     {
       description:
+        'What the host observed of the attempt is recorded as given: raw finish, provider state, snapshot and changed files.',
+      given: [started(), stepStarted('msg_1')],
+      when: success({
+        rawFinish: 'end_turn',
+        providerState: { openai: { responseID: 'resp_1' } },
+        snapshot: 'snap_1',
+        files: ['src/a.ts'],
+      }),
+      expect: [
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          outcome: 'succeeded',
+          finish: 'stop',
+          rawFinish: 'end_turn',
+          providerState: { openai: { responseID: 'resp_1' } },
+          snapshot: 'snap_1',
+          files: ['src/a.ts'],
+          cost: 0,
+          tokens: zeroTokens,
+        }),
+      ],
+    },
+    {
+      description:
         'A retryable failure within budget carries its retry (session.md, Retry Is Narrow And Observable: "session.retry.scheduled records generic backoff"): attempt 1, due at the given time.',
       given: [started(), stepStarted('msg_1')],
       when: failure(),

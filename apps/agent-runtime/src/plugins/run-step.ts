@@ -3,16 +3,13 @@ import {
   SpecterCommandRejectedError,
 } from '@specter-ts/core'
 import type { SessionID } from '@ocpp/schema/session-id'
-import type { Tool } from '@ocpp/codemode'
-import { Effect, PubSub } from 'effect'
+import { Effect } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
 import type { RunStepRequest } from '../features/session/run-step-reaction/impl.ts'
 import { stepStatus } from '../features/session/step-status-query/impl.ts'
 import { modelTranscript } from '../features/session/model-transcript-query/impl.ts'
-import { executeToolSpec, runTool } from './code-mode-tool.ts'
-import { DeltaChannel } from './delta-channel.ts'
-import { Model } from './model.ts'
+import { StepHost } from './step-host.ts'
 
 // A rejected Command means the world moved on (execution interrupted, step
 // already recorded by a duplicate request): stop quietly. Anything else fails
@@ -94,38 +91,23 @@ const reconcileOrphan = (
     )
   })
 
-export const DEFAULT_SYSTEM_PROMPT =
-  'You are a coding agent. Use the execute tool to run programs when it helps, then answer concisely.'
-
 export type RunStepOptions = {
-  // Plugin input: the system prompt of every model request.
-  readonly system?: string
-  // Plugin input: extra host tools exposed to Code Mode programs (scenario
-  // tests use it to hold a program open). The model-visible spec is unchanged.
-  readonly hostTools?: Record<string, Tool.Tool>
   // Plugin input: the assistant message ID of a Session's step. It must return
   // the same ID for the same Session and ordinal, because a retried attempt
   // reuses its step's ID. The default, msg_<sessionID>_<ordinal>, is unique
-  // within one Event Log; a host whose message IDs outlive the log supplies its
-  // own.
+  // within one Event Log.
   readonly assistantMessageID?: (step: {
     readonly sessionID: string
     readonly ordinal: number
   }) => string
-  // Plugin input: the agent recorded on each step (default `build`).
-  readonly agent?: (sessionID: SessionID) => Effect.Effect<string>
 }
 
 // One job = one safe-step boundary: deliver, run one step, maybe finish.
 export const makeRunStepPlugin =
-  (
-    options: RunStepOptions = {},
-  ): ReactionPlugin<RunStepRequest, Model | DeltaChannel> =>
+  (options: RunStepOptions = {}): ReactionPlugin<RunStepRequest, StepHost> =>
   ({ command, query }) =>
     Effect.gen(function* () {
-      const model = yield* Model
-      const deltas = yield* DeltaChannel
-      const system = options.system ?? DEFAULT_SYSTEM_PROMPT
+      const host = yield* StepHost
       return (request, delivery) =>
         Effect.gen(function* () {
           const { sessionID, ordinal } = request.payload
@@ -185,6 +167,12 @@ export const makeRunStepPlugin =
           const assistantMessageID =
             options.assistantMessageID?.({ sessionID, ordinal }) ??
             `msg_${sessionID}_${ordinal}`
+          const plan = yield* host.begin({
+            sessionID,
+            assistantMessageID,
+            ordinal,
+            transcript: query(modelTranscript, { sessionID }),
+          })
           const started = yield* unlessRejected(
             command(
               {
@@ -192,14 +180,11 @@ export const makeRunStepPlugin =
                 payload: {
                   sessionID,
                   assistantMessageID,
-                  agent: options.agent
-                    ? yield* options.agent(sessionID)
-                    : 'build',
-                  model: {
-                    ...(model.refFor
-                      ? yield* model.refFor(sessionID)
-                      : model.ref),
-                  },
+                  agent: plan.agent,
+                  model: plan.model,
+                  ...(plan.snapshot === undefined
+                    ? {}
+                    : { snapshot: plan.snapshot }),
                 },
               },
               { idempotencyKey: `${delivery.deliveryId}:started` },
@@ -207,27 +192,49 @@ export const makeRunStepPlugin =
           )
           if (!started) return
 
-          // The model sees durable history only: the transcript Query is the
-          // single source of the request messages.
-          const transcript = yield* query(modelTranscript, { sessionID })
-          const outcome = yield* model.nextOutcome({
-            sessionID,
-            system,
-            messages: transcript.messages,
-            tools: [executeToolSpec],
-            onText: (text) =>
-              PubSub.publish(deltas.pubsub, {
-                sessionID,
-                type: 'session.text.delta' as const,
-                text,
-              }).pipe(Effect.asVoid),
+          const key = delivery.deliveryId
+          const outcome = yield* plan.run({
+            block: (block) =>
+              unlessRejected(
+                command(
+                  {
+                    type: 'recordBlock',
+                    payload: { sessionID, assistantMessageID, ...block },
+                  },
+                  {
+                    idempotencyKey: `${key}:block:${block.kind}:${block.ordinal}`,
+                  },
+                ),
+              ),
+            toolRequested: (call) =>
+              unlessRejected(
+                command(
+                  {
+                    type: 'recordToolCall',
+                    payload: { sessionID, assistantMessageID, ...call },
+                  },
+                  { idempotencyKey: `${key}:call:${call.id}` },
+                ),
+              ),
+            toolSettled: (result) =>
+              unlessRejected(
+                command(
+                  {
+                    type: 'settleToolCall',
+                    payload: { sessionID, assistantMessageID, ...result },
+                  },
+                  { idempotencyKey: `${key}:result:${result.id}` },
+                ),
+              ),
           })
+          if (outcome.outcome === 'stopped') return
 
-          if (outcome.finish === 'error') {
-            // Retry is narrow: the Plugin classifies, the Command owns the
-            // budget and records either the scheduled retry or the failed
-            // execution in the same commit as the step failure. A retry is
-            // requested by the Reaction from that fact, not by this job.
+          if (outcome.outcome === 'failed') {
+            // Retry is narrow: the host classifies, the Command owns the
+            // budget and records either the retry or the failed execution in
+            // the same fact as the step failure. A retry is requested by the
+            // Reaction from that fact, not by this job.
+            const { outcome: _, retryable, ...failure } = outcome
             yield* unlessRejected(
               command(
                 {
@@ -236,83 +243,19 @@ export const makeRunStepPlugin =
                     sessionID,
                     assistantMessageID,
                     outcome: 'failed',
-                    error: outcome.error,
-                    retryable: outcome.retryable,
+                    ...failure,
+                    retryable,
                     // Backoff is recorded, not waited on.
                     at: Date.now(),
                   },
                 },
-                { idempotencyKey: `${delivery.deliveryId}:failed` },
+                { idempotencyKey: `${key}:failed` },
               ),
             )
             return
           }
 
-          if (outcome.text) {
-            const recorded = yield* unlessRejected(
-              command(
-                {
-                  type: 'recordBlock',
-                  payload: {
-                    sessionID,
-                    assistantMessageID,
-                    kind: 'text',
-                    ordinal: 0,
-                    text: outcome.text,
-                  },
-                },
-                { idempotencyKey: `${delivery.deliveryId}:text` },
-              ),
-            )
-            if (!recorded) return
-          }
-
-          // Tool calls are durable before any side effect (session.md): record
-          // every complete call first, then execute them one at a time.
-          const calls = outcome.toolCalls ?? []
-          for (const call of calls) {
-            const recorded = yield* unlessRejected(
-              command(
-                {
-                  type: 'recordToolCall',
-                  payload: {
-                    sessionID,
-                    assistantMessageID,
-                    id: call.id,
-                    name: call.name,
-                    input: call.input,
-                  },
-                },
-                { idempotencyKey: `${delivery.deliveryId}:call:${call.id}` },
-              ),
-            )
-            if (!recorded) return
-          }
-          for (const call of calls) {
-            const settlement = yield* runTool(
-              call.name,
-              call.input,
-              options.hostTools,
-            )
-            const settled = yield* unlessRejected(
-              command(
-                {
-                  type: 'settleToolCall',
-                  payload: {
-                    sessionID,
-                    assistantMessageID,
-                    id: call.id,
-                    ...(settlement.ok
-                      ? { content: [{ type: 'text', text: settlement.text }] }
-                      : { error: settlement.error }),
-                  },
-                },
-                { idempotencyKey: `${delivery.deliveryId}:result:${call.id}` },
-              ),
-            )
-            if (!settled) return
-          }
-
+          const { outcome: _, continue: next, ...success } = outcome
           const ended = yield* unlessRejected(
             command(
               {
@@ -321,19 +264,18 @@ export const makeRunStepPlugin =
                   sessionID,
                   assistantMessageID,
                   outcome: 'succeeded',
-                  finish: outcome.finish,
-                  ...(outcome.usage ? { tokens: outcome.usage } : {}),
+                  ...success,
                 },
               },
-              { idempotencyKey: `${delivery.deliveryId}:ended` },
+              { idempotencyKey: `${key}:ended` },
             ),
           )
-          if (!ended || outcome.finish === 'tool-calls') return
+          if (!ended || next) return
 
           yield* unlessRejected(
             command(
               { type: 'finishExecution', payload: { sessionID } },
-              { idempotencyKey: `${delivery.deliveryId}:finished` },
+              { idempotencyKey: `${key}:finished` },
             ),
           )
         })

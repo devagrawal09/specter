@@ -7,9 +7,10 @@ import { makeEmbeddedSessionRuntime } from './embedded.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
 import { makeScriptedModel } from './plugins/scripted-model.ts'
+import { modelStepHostLayer } from './plugins/step-host.ts'
 
 // The runtime as a host embeds it: over the host's Event Log, with the
-// assistant message IDs and agent the host supplies.
+// assistant message IDs and step I/O the host supplies.
 const boot = Effect.gen(function* () {
   let next = 0
   const log = createMemoryEventLog({
@@ -20,16 +21,21 @@ const boot = Effect.gen(function* () {
     step: {
       assistantMessageID: ({ sessionID, ordinal }) =>
         `msg_boot_${sessionID}_${ordinal}`,
-      agent: () => Effect.succeed('plan'),
     },
   }).pipe(
     Effect.provide(
       Layer.mergeAll(
         Layer.succeed(EventLog, log),
-        Layer.succeed(Model, model),
-        Layer.effect(
-          DeltaChannel,
-          Effect.map(PubSub.unbounded<Delta>(), (pubsub) => ({ pubsub })),
+        modelStepHostLayer({ agent: () => Effect.succeed('plan') }).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(Model, model),
+              Layer.effect(
+                DeltaChannel,
+                Effect.map(PubSub.unbounded<Delta>(), (pubsub) => ({ pubsub })),
+              ),
+            ),
+          ),
         ),
       ),
     ),

@@ -1,9 +1,10 @@
 import { LLM } from '@ocpp/schema/llm'
 import { Money } from '@ocpp/schema/money'
-import { NonNegativeInt } from '@ocpp/schema/schema'
+import { NonNegativeInt, RelativePath } from '@ocpp/schema/schema'
 import { SessionError } from '@ocpp/schema/session-error'
 import { SessionID } from '@ocpp/schema/session-id'
 import { SessionMessage } from '@ocpp/schema/session-message'
+import { Snapshot } from '@ocpp/schema/snapshot'
 import { TokenUsage } from '@ocpp/schema/token-usage'
 import { implementCommand, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
@@ -42,23 +43,29 @@ const target = {
   sessionID: SessionID,
   assistantMessageID: SessionMessage.ID,
 }
+// What the host observed of the attempt, recorded as given.
+const observed = {
+  rawFinish: Schema.optional(Schema.String),
+  providerState: Schema.optional(SessionMessage.ProviderState),
+  cost: Schema.optional(Money.USD),
+  tokens: Schema.optional(TokenUsage.Info),
+  snapshot: Schema.optional(Snapshot.ID),
+  files: Schema.optional(Schema.Array(RelativePath)),
+}
 const input = Schema.toStandardSchemaV1(
   Schema.Union([
     Schema.Struct({
       ...target,
+      ...observed,
       outcome: Schema.Literal('succeeded'),
       finish: LLM.FinishReason,
-      cost: Schema.optional(Money.USD),
-      tokens: Schema.optional(TokenUsage.Info),
     }),
     Schema.Struct({
       ...target,
+      ...observed,
       outcome: Schema.Literal('failed'),
       error: SessionError.Error,
       finish: Schema.optional(Schema.Literals(['content-filter'])),
-      rawFinish: Schema.optional(Schema.String),
-      cost: Schema.optional(Money.USD),
-      tokens: Schema.optional(TokenUsage.Info),
       // Retry classification is the caller's; the budget and the outcome are
       // this Command's.
       retryable: Schema.Boolean,
@@ -67,6 +74,10 @@ const input = Schema.toStandardSchemaV1(
     }),
   ]),
 )
+
+// Optional keys stay absent rather than undefined in recorded payloads.
+const defined = <K extends string, V>(key: K, value: V | undefined) =>
+  (value === undefined ? {} : { [key]: value }) as { [P in K]?: V }
 
 const zeroTokens = {
   input: 0,
@@ -110,6 +121,12 @@ export const settleStep = implementCommand(specification)
       throw new Error('Step not started')
     if (step.status === 'settled') throw new Error('Step already settled')
     const { sessionID, assistantMessageID } = command
+    const recorded = {
+      ...defined('rawFinish', command.rawFinish),
+      ...defined('providerState', command.providerState),
+      ...defined('snapshot', command.snapshot),
+      ...defined('files', command.files),
+    }
     if (command.outcome === 'succeeded')
       return [
         stepSettled.create({
@@ -117,6 +134,7 @@ export const settleStep = implementCommand(specification)
           assistantMessageID,
           outcome: 'succeeded',
           finish: command.finish,
+          ...recorded,
           cost: command.cost ?? Money.USD.make(0),
           tokens: command.tokens ?? zeroTokens,
         }),
@@ -126,12 +144,10 @@ export const settleStep = implementCommand(specification)
       assistantMessageID,
       outcome: 'failed' as const,
       error: command.error,
-      ...(command.finish === undefined ? {} : { finish: command.finish }),
-      ...(command.rawFinish === undefined
-        ? {}
-        : { rawFinish: command.rawFinish }),
-      ...(command.cost === undefined ? {} : { cost: command.cost }),
-      ...(command.tokens === undefined ? {} : { tokens: command.tokens }),
+      ...defined('finish', command.finish),
+      ...recorded,
+      ...defined('cost', command.cost),
+      ...defined('tokens', command.tokens),
     }
     // One commit, one outcome: the failure and its consequence cannot be torn
     // apart by a crash.

@@ -19,6 +19,7 @@ import { sessionEvent } from './events.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
+import { modelStepHostLayer } from './plugins/step-host.ts'
 import { makeScriptedModel } from './plugins/scripted-model.ts'
 
 // The real app, in process: memory Event Log, memory Slice stores, immediate
@@ -63,8 +64,14 @@ const boot = async () => {
       Layer.succeed(EventLog, log),
       memorySliceStoreLayer,
       createImmediateReactionSchedulerLayer(),
-      Layer.succeed(Model, model),
-      Layer.succeed(DeltaChannel, { pubsub }),
+      modelStepHostLayer().pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(Model, model),
+            Layer.succeed(DeltaChannel, { pubsub }),
+          ),
+        ),
+      ),
     ),
   )
 

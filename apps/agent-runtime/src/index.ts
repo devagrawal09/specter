@@ -59,3 +59,13 @@ export {
   hostModel,
 } from './plugins/ocpp-ai-model.ts'
 export type { RunStepOptions } from './plugins/run-step.ts'
+export {
+  type AttemptOutcome,
+  type AttemptRecorder,
+  DEFAULT_SYSTEM_PROMPT,
+  type ModelStepHostOptions,
+  modelStepHostLayer,
+  type RecordFailure,
+  StepHost,
+  type StepPlan,
+} from './plugins/step-host.ts'

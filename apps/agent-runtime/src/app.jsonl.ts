@@ -19,7 +19,9 @@ import {
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
+import { modelStepHostLayer } from './plugins/step-host.ts'
 import type { RunStepOptions } from './plugins/run-step.ts'
+import type { ModelStepHostOptions } from './plugins/step-host.ts'
 
 export type JsonlSessionAppOptions = {
   // Everything durable lives here: events.jsonl, outbox.jsonl, slices/*.json.
@@ -29,6 +31,8 @@ export type JsonlSessionAppOptions = {
   // Lease, heartbeat, backoff and shutdown wait of the step Plugin's outbox.
   readonly outbox?: RunStepOutboxOptions
   readonly step?: RunStepOptions
+  // The step's model I/O: system prompt, Code Mode host tools, agent.
+  readonly host?: ModelStepHostOptions
 }
 
 // The persistent twin of the memory composition used by scenario tests: the
@@ -67,8 +71,14 @@ export const openJsonlSessionApp = async (options: JsonlSessionAppOptions) => {
           }),
         ),
         createImmediateReactionSchedulerLayer(),
-        Layer.succeed(Model, options.model),
-        Layer.succeed(DeltaChannel, { pubsub }),
+        modelStepHostLayer(options.host).pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(Model, options.model),
+              Layer.succeed(DeltaChannel, { pubsub }),
+            ),
+          ),
+        ),
       ),
     )
     return {

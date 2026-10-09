@@ -31,6 +31,7 @@ import { sessionEvent } from './events.ts'
 import type { RunStepRequest } from './features/session/run-step-reaction/impl.ts'
 import { type Delta, DeltaChannel } from './plugins/delta-channel.ts'
 import { Model } from './plugins/model.ts'
+import { modelStepHostLayer } from './plugins/step-host.ts'
 import { ocppAiModelLayer } from './plugins/ocpp-ai-model.ts'
 import {
   type OcppCredential,
@@ -115,11 +116,7 @@ const boot = async (
   )
   const outbox =
     createMemoryReactionOutboxStore<OutboxedReaction<RunStepRequest>>()
-  const full = createSessionAppConfig(
-    outbox,
-    {},
-    { system: 'Be brief.', hostTools },
-  )
+  const full = createSessionAppConfig(outbox)
   const events = [
     ...new Map(
       Object.values(full.slices)
@@ -133,8 +130,14 @@ const boot = async (
       Layer.succeed(EventLog, log),
       memorySliceStoreLayer,
       createImmediateReactionSchedulerLayer(),
-      Layer.succeed(Model, model),
-      Layer.succeed(DeltaChannel, { pubsub }),
+      modelStepHostLayer({ system: 'Be brief.', hostTools }).pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(Model, model),
+            Layer.succeed(DeltaChannel, { pubsub }),
+          ),
+        ),
+      ),
     ),
   )
   const types = () =>
