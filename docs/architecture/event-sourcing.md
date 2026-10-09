@@ -52,7 +52,10 @@ ascending and greater than the supplied cursor. Core raises
 Command catch-up, decision, and append run inside one Event Log transaction.
 Core reads the current version and always appends with compare-and-swap against
 that same version. An adapter must serialize conflicting decisions or reject a
-stale append with `SpecterVersionConflictError`.
+stale append with `SpecterVersionConflictError`. When the caller passed no
+`expectedVersion`, a stale append only means another writer committed first, so
+core runs catch-up and the decision again against the new version (up to 32
+times) before surfacing the conflict.
 
 Callers can add two guards:
 

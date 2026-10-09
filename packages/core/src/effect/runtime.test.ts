@@ -29,6 +29,7 @@ import {
   SpecterPluginQueryInTransactionError,
   SpecterProjectionFailedError,
   SpecterStoreConfigurationError,
+  SpecterVersionConflictError,
 } from '..'
 import {
   type CommandExecutionOptions,
@@ -1414,6 +1415,61 @@ describe('Effect-native runtime', () => {
     expect(duplicate.events[0]?.payload).toBe(7)
     expect(handled).toEqual([1])
     await expect(Effect.runPromise(base.currentVersion)).resolves.toBe(1)
+  })
+
+  it('decides again when another writer commits between the version read and the append', async () => {
+    const base = makeEventLogService()
+    let raced = false
+    // The first append loses the race: a concurrent writer commits first.
+    const racing: EventLogService = {
+      ...base,
+      append: (drafts, options) =>
+        raced
+          ? base.append(drafts, options)
+          : Effect.sync(() => {
+              raced = true
+            }).pipe(
+              Effect.andThen(
+                base.append([{ type: 'value-recorded', payload: 7 }]),
+              ),
+              Effect.andThen(
+                Effect.fail(
+                  new EventLogFailure(
+                    'append',
+                    new SpecterVersionConflictError(0, 1),
+                  ),
+                ),
+              ),
+            ),
+    }
+    const { runCommand, handled } = idempotencyHarness(racing)
+
+    const receipt = await runCommand(1, { idempotencyKey: 'request-1' })
+    expect(receipt).toMatchObject({ duplicate: false, version: 2 })
+    expect(handled).toEqual([1, 1])
+    const recorded = await Effect.runPromise(base.query(0, ['value-recorded']))
+    expect(recorded.map((item) => item.payload)).toEqual([7, 1])
+  })
+
+  it('surfaces a stale append when the caller supplied expectedVersion', async () => {
+    const base = makeEventLogService()
+    const racing: EventLogService = {
+      ...base,
+      append: () =>
+        Effect.fail(
+          new EventLogFailure('append', new SpecterVersionConflictError(0, 1)),
+        ),
+    }
+    const { runCommand, handled } = idempotencyHarness(racing)
+
+    const failure = await runCommand(1, { expectedVersion: 0 }).catch(
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(EventLogFailure)
+    expect((failure as EventLogFailure).cause).toBeInstanceOf(
+      SpecterVersionConflictError,
+    )
+    expect(handled).toEqual([1])
   })
 
   it('returns a duplicate receipt before checking expectedVersion', async () => {

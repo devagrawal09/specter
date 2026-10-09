@@ -29,7 +29,7 @@ network transport and no application database schema.
 | `SpecterInvalidInputError` | A Command or Query input schema rejected its payload. |
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
 | `SpecterCommandRejectedError` | A Command handler rejected an intent or emitted no Events. |
-| `SpecterVersionConflictError` | `expectedVersion` or the runtime compare-and-swap did not match the Event Log version. |
+| `SpecterVersionConflictError` | `expectedVersion` did not match the Event Log version, or the runtime compare-and-swap kept losing to other writers after its retries. |
 | `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |

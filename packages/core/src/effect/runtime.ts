@@ -186,6 +186,9 @@ type ReactionSkip = { readonly from: number; readonly through: number }
  * shutdown publishes any shorter remembered tail.
  */
 const reactionSkipFlushOrders = 256
+// How many times a Command re-runs its decision after another writer moved
+// the Event Log between the version read and the append.
+const staleAppendRetries = 32
 
 /** Per-config work: everything derived from a conforming config alone. */
 type SpecterAppPlan = {
@@ -622,6 +625,22 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     }
 
     function runCommand(
+      command: AnyCommand,
+      parsed: unknown,
+      options: CommandExecutionOptions & { readonly fingerprint?: string },
+    ): Effect.Effect<EventLogAppendResult, SpecterEffectError> {
+      const decide = decideCommand(command, parsed, options)
+      // Without a caller expectedVersion the compare-and-swap is the runtime's
+      // own: a stale append only means another writer committed first, so the
+      // decision runs again against the new version.
+      return options.expectedVersion === undefined
+        ? decide.pipe(
+            Effect.retry({ while: isStaleAppend, times: staleAppendRetries }),
+          )
+        : decide
+    }
+
+    function decideCommand(
       command: AnyCommand,
       parsed: unknown,
       options: CommandExecutionOptions & { readonly fingerprint?: string },
@@ -1497,6 +1516,14 @@ function withSafeSpan(
         return yield* exit
       }),
     )
+}
+
+function isStaleAppend(cause: SpecterEffectError) {
+  return (
+    cause instanceof EventLogFailure &&
+    cause.operation === 'append' &&
+    cause.cause instanceof SpecterVersionConflictError
+  )
 }
 
 function isCommandRejection(cause: SpecterEffectError) {
