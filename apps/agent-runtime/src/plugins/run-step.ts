@@ -20,10 +20,7 @@ const unlessRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.map(() => true),
     Effect.catch((error) =>
       error instanceof SpecterCommandRejectedError
-        ? Effect.sync(() => {
-            console.log('DBG rejected', String((error as any).cause))
-            return false
-          })
+        ? Effect.succeed(false)
         : Effect.fail(error),
     ),
   )
@@ -149,7 +146,6 @@ export const makeRunStepPlugin =
           // Requests are derived from state, so a duplicate or stale one can be
           // queued behind the job that already ran this boundary.
           const status = yield* query(stepStatus, { sessionID })
-          console.log('DBG job', ordinal, JSON.stringify(status))
           if (!status.active) return
           // A step still in flight when a job starts belongs to a dead attempt:
           // the outbox worker runs one job at a time, so no live handler can own
@@ -404,11 +400,6 @@ export const makeRunStepPlugin =
                 ),
               ),
           })
-          console.log(
-            'DBG outcome',
-            JSON.stringify(outcome).slice(0, 300),
-            begun,
-          )
           if (outcome.outcome === 'stopped') return
           if (outcome.outcome === 'interrupted') {
             yield* unlessRejected(
