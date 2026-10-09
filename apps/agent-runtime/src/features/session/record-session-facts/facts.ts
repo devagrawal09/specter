@@ -372,4 +372,48 @@ export const sessionFacts = {
     directory: '/a',
     previous: 'global',
   },
+  'project-created': {
+    projectID: 'prj_1',
+    canonical: '/a',
+    vcs: 'git',
+  },
+  'project-vcs-changed': {
+    projectID: 'prj_1',
+    vcs: 'hg',
+  },
+  'project-relocated': {
+    projectID: 'prj_1',
+    canonical: '/b',
+  },
+  'project-edited': {
+    projectID: 'prj_1',
+    name: 'Routing',
+    icon: { color: 'blue' },
+    commands: { start: 'bun install' },
+  },
+  'worktree-recorded': {
+    projectID: 'prj_1',
+    directory: '/a/feature',
+    strategy: 'git',
+  },
+  'worktree-removed': {
+    projectID: 'prj_1',
+    directory: '/a/feature',
+  },
+  'workspace-created': {
+    workspaceID: 'wrk_1',
+    provider: 'local',
+    time: 1,
+  },
+  'workspace-bound': {
+    workspaceID: 'wrk_1',
+    binding: { sandbox: 'sbx_1' },
+  },
+  'workspace-used': {
+    workspaceID: 'wrk_1',
+    time: 2,
+  },
+  'workspace-destroyed': {
+    workspaceID: 'wrk_1',
+  },
 } as const
