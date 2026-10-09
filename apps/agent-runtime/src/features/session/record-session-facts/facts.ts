@@ -416,6 +416,26 @@ export const sessionFacts = {
   'workspace-destroyed': {
     workspaceID: 'wrk_1',
   },
+  'session-imported': {
+    sessionID: 'ses_1',
+    messages: [
+      {
+        id: 'msg_1',
+        type: 'user',
+        seq: 1,
+        created: 1,
+        data: { text: 'Hello' },
+      },
+    ],
+    cost: 0.25,
+    tokens: { input: 10, output: 5, reasoning: 0, cacheRead: 0, cacheWrite: 0 },
+    time: { created: 1, updated: 2, idle: 2 },
+    outcome: 'succeeded',
+  },
+  'session-instruction-blobs-stored': {
+    sessionID: 'ses_1',
+    blobs: { sha_1: 'Follow the style guide.' },
+  },
   'session-instruction-entry-set': {
     sessionID: 'ses_1',
     key: 'ticket',
