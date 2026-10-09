@@ -122,7 +122,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 - **Goal raised 2026-10-09 (maintainer): rewrite all of OC++ on top of Specter.** The work runs in phases.
   - **Phase 1 done: Specter is OC++'s event store.** Specter's Event Log lives in OC++'s SQLite (`specter_event`, `specter_commit`). The Bus records every durable Session fact through the runtime's `recordSessionFacts` Command and projects it (projectors, commit hooks, sequences) inside the same append transaction. This closes gap 2 above: the log persists, and a restart no longer forgets anything.
   - **Two runtimes, one log.** The Bus holds a fact-recording runtime with no Reactions. The runtime that runs Sessions writes to the same log through `bus.specterLog`, and the Bus projects each of its commits as OC++ events in the append transaction and notifies listeners once it commits. Its appends hold the Bus locks of the Sessions they record for, so listeners see each Session's events in order. Registering a Session that the log predates (idempotency key `register:<id>`) is not projected again. Core now re-decides a Command whose own compare-and-swap lost a race to another writer.
-  - **Phase 2 in progress: a consolidated catalog for what the runtime records.** OC++'s structure is not binding. A lifecycle has one started fact and one settled fact with an outcome. When a fact's shape changes, it gets a new name, so one name never carries two shapes. OC++ receives its own events by translation (`core/src/specter/translate.ts`, the only place the two vocabularies meet). The translation goes when OC++'s protocol adopts the catalog.
+  - **Phase 2 done: a consolidated catalog for what the runtime records.** OC++'s structure is not binding. A lifecycle has one started fact and one settled fact with an outcome. When a fact's shape changes, it gets a new name, so one name never carries two shapes. OC++ receives its own events by translation (`core/src/specter/translate.ts`, the only place the two vocabularies meet). The translation goes when OC++'s protocol adopts the catalog.
 
     | Runtime fact | Replaces (OC++) | Command |
     |---|---|---|
@@ -133,7 +133,41 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
     | `session-tool-settled {outcome}` | tool success / failed | `settleToolCall` (was `recordToolResult`) |
 
     Still to do: one `session-status` Query in place of the four status Queries; inbox admission with coalescing, compaction and move items, and delivery changes; compaction and instruction facts.
-  - **Phase 3 next: the runtime drives OC++'s real steps.** The runtime keeps orchestration: inbox delivery, the execution lifecycle, steps, the retry budget, recovery and finishing. OC++ supplies the step's I/O as a host service: it builds the request from OC++'s own context (`SessionContext.select/load/prepare`: system prompt, instructions, agent, tools), streams the model, executes tools, and captures snapshots. The service records what the attempt produces through a recorder the step Plugin hands it (`recordBlock`, `recordToolCall`, `settleToolCall`), and returns the outcome that `settleStep` records. OC++'s message tables are projected from the runtime's facts in the same transaction, so OC++'s request building already sees the runtime's history. After that, the runner, inbox, execution and run coordinator in OC++ are deleted.
+  - **Phase 3 done 2026-10-09: the runtime drives OC++'s real steps, and OC++'s runner is gone.** Every Session runs on the runtime by default (`AppNodeBuilder` adds `SpecterSessions.replacements` unless a caller replaces the inbox or execution node). `session/runner/llm.ts` and OC++'s run loop are deleted; `SessionExecution.make()` keeps only external-agent Sessions, whose executions the runtime records as `session-external-execution-*` facts and never acts on. All 179 native runner scenarios, and the recorded-cassette and HTTP-hook tests, pass on the runtime.
+    - **The runtime orchestrates.** Inbox delivery, the execution lifecycle, steps, the retry budget, recovery and finishing are the step Plugin's (`plugins/run-step.ts`). OC++ supplies the step's I/O through the `StepHost` port (`core/src/specter/step-host.ts`):
+
+      | Hook | What OC++ does |
+      |---|---|
+      | `begin` (with `attempt`) | Builds the request from OC++'s own context and returns a plan, or asks to compact first |
+      | `prepare` | Records instruction changes before input is delivered; a failure fails the execution and leaves the input pending |
+      | `moving` | Releases the model transport before a move item is delivered |
+      | `compact` | Runs OC++'s compaction; `fatal` when it broke rather than recording its own failure |
+      | `recover` | Settles a dead attempt's tool calls from OC++'s records (a delegated child Session) before the runtime settles the rest |
+
+      The attempt records through the recorder: `started`, `streamed`, `block`, `toolRequested`, `toolInputFailed` and `toolSettled`. Its outcome is `succeeded`, `failed` (with `retryable`, `retryDelay`, `fresh` and `limit`), `stopped`, or `interrupted`.
+    - **Delivery law, as OC++'s runner and docs state it.**
+      - Steers deliver first, in order among themselves; a queued item never holds a steer back.
+      - A steered control item is delivered alone.
+      - Delivery stops before a control item once input has been delivered.
+      - At idle, either the steers or one queued item deliver, never both.
+      - An `entry` boundary (a continued turn, or a Session entering a new Location) delivers steers, then the queue's head only when it is a control item.
+    - **Executions and wakes.**
+      - Held input (`resume: false`) does not wake the Session.
+      - An execution takes every wake recorded before it started, as OC++'s run coordinator did. Input it never delivered, when it fails, waits for the next wake; input enqueued while it ran starts the next execution.
+      - `executionStatus.wakes` makes "idle" mean no active execution and no waking input.
+      - `interrupt` stops the local attempt so it records what it produced, then settles the in-flight step as aborted. Continuing after an interrupt starts an execution with `continues`.
+    - **Retries.** A transparent retry repeats the same step. A fresh retry (the stream continues, or the history was compacted after the step started) runs a new step on the shared budget. OC++'s retry policy (`SessionRunnerRetry`) bounds a step's retries per logical step.
+    - **Defects.** A recording failure fails the job, and the outbox retries it (orphan reconciliation covers the step it left in flight). A defect while delivering input would only repeat, so it fails the execution and leaves the input pending.
+    - **Intentional differences from OC++'s runner**, recorded in the ported tests:
+      - Errors cross the log as `StepFailedError`; a waiter never sees the original defect.
+      - A stream that ends without a step finish records `step.unsettled`.
+      - A steer cancelled during preparation delivers the queued input at once, with no extra step on unchanged history.
+      - A moved Session runs its next input in its new Location; nothing is stranded in the old one.
+      - Event lists include the execution lifecycle around each run.
+    - **Still to do.**
+      - One `session-status` Query in place of the four status Queries.
+      - The remaining aggregates (worktree, Code Mode bindings, CRUD) on Specter.
+      - A persistent outbox store next to the persistent log.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
@@ -141,7 +175,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
 2. **Step-boundary queries from inside an outboxed plugin**: confirm `{ query }` inside `withReactionOutbox` reads committed state at the boundary without racing the next delivery. Add a scenario harness for outboxed plugins if `@specter-ts/core/testing` lacks one.
 3. **Orphan reconciliation hook**: a documented way to run a Reaction once at process start over 'jobs leased by a dead process'. May already fall out of outbox resume; verify, then document in `docs/architecture/plugins.md`.
 4. **Event payload schemas** — decided 2026-10-08: Specter validates through Standard Schema (`@standard-schema/spec`), and Effect Schema implements it, so `apps/agent-runtime` imports event definitions from `@ocpp/schema` (pinned commit) directly. No adapter, no Zod port, no Specter change. Verify at M2 that `effect`'s Standard Schema export is identical between OC++'s `4.0.0-rc.112` and Specter's `4.0.1`.
-5. **Ephemeral events** — decided 2026-10-08: transport side-channel. OC++ never persists its seven delta/progress events (`text.delta`, `reasoning.delta`, `tool.input.delta`, `tool.progress`, `codemode.progress`, `step.streamed`, `compaction.delta`); `Bus` keeps them in separate PubSubs. Specter `subscribe` coalesces to latest Query State, which is wrong for deltas. So the step plugin publishes deltas to an in-process PubSub service (plain Effect dependency, no Specter change); the M4 bridge forwards them to `Bus` as ephemeral, unchanged.
+5. **Ephemeral events** — decided 2026-10-08: transport side-channel. OC++ never persists its delta/progress events (`text.delta`, `reasoning.delta`, `tool.input.delta`, `tool.progress`, `codemode.progress`, `compaction.delta`); `Bus` keeps them in separate PubSubs. (`step.streamed` has since become durable in OC++: the runtime records it as `session-step-streamed`.) Specter `subscribe` coalesces to latest Query State, which is wrong for deltas. So the step plugin publishes deltas to an in-process PubSub service (plain Effect dependency, no Specter change); the M4 bridge forwards them to `Bus` as ephemeral, unchanged.
 
 ## Risks
 

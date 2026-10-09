@@ -232,3 +232,15 @@ Added: `Model` service (`plugins/model.ts`), `ocpp-ai-model.ts` (`@ocpp/ai`), `c
 - **Message IDs.** With a persistent log, the runtime's default `msg_<session>_<ordinal>` is unique and stable across restarts, which a retried step needs. The per-boot prefix is gone. OC++ orders messages by sequence; clients sort by creation time and use the ID only to break ties.
 - **Consolidating the catalog cost less than expected.** Every fold that applied OC++'s pairs (started/ended, success/failed) now applies one fact. Scenarios that pinned OC++'s projector quirks (an `ended` without a `started`, `text.ended` setting the latest block) lost the facts that described them and were removed. The merged Commands (`settleStep`, `settleToolCall`) are smaller than the ones they replace.
 - **The runtime folds only its own catalog for execution facts.** A Session that OC++'s native runner ran records OC++'s vocabulary, which the runtime's folds do not read. This branch is unreleased and the native runner goes away, so no fold reads both.
+
+## 2026-10-09 — the runtime drives OC++'s real steps (Phase 3)
+
+- **Porting the runner's scenarios was the specification.** OC++'s 179 runner scenarios now run on the runtime's fixture, unchanged where the behavior is the same. Each place a scenario had to change records a deliberate difference (see the plan). They surfaced rules the runtime had wrong:
+  - **Steering order.** A queued control item must never hold back a steer.
+  - **Entry boundaries.** A continued turn, or a Session entering a new Location, delivers queued control items but not queued input.
+  - **Wakes.** An execution claims the wakes recorded before it started. Without that, a failure that left input pending restarted the Session in a loop.
+- **A Bus notification can interrupt a record.** OC++'s Bus notifies listeners interruptibly once a commit lands. When the attempt was stopped during that notification, the interruption escaped OC++'s uninterruptible step tail, so its interrupted tools and failed step were never recorded. Running each record in its own fiber, joined uninterruptibly, keeps a record whole once it begins.
+- **Defects and failures are different budgets.** A failure to record retries the job; orphan reconciliation and the retry budget bound a step that keeps dying. Nothing bounded a delivery that kept dying, so a defect while delivering input now fails the execution.
+- **Some facts only the host knows.** A dead attempt's tool calls carry what OC++ stored about them (a delegated child Session), which the log never saw. The `recover` hook lets the host settle those calls before the runtime settles the rest.
+- **`step.streamed` became durable in OC++ on `main`.** The runtime records it as `session-step-streamed`, through an optional recorder method. The runtime's own model host does not record it.
+- **Clock.** The step Plugin runs on the embedding's clock (`Clock.Clock` captured where the Plugin is built), so OC++'s TestClock drives retry delays.
