@@ -534,14 +534,22 @@ describe('step loop with a scripted model', () => {
       },
     }
 
-    it('wakes, and the host drives the execution whole', async () => {
+    it("wakes, and the host drives the execution whole, delivering through the runtime's inbox", async () => {
       const driven: unknown[] = []
+      const repeated: boolean[] = []
       const t = await start({
         drive: (input) =>
-          Effect.sync(() => {
-            driven.push(input)
+          Effect.gen(function* () {
+            driven.push({
+              sessionID: input.sessionID,
+              continues: input.continues,
+            })
+            const next = yield* input.inbox.next('idle')
+            if (next) yield* input.inbox.deliver(next.inboxID)
+            // A repeated delivery (a retried job's) is the same delivery.
+            if (next) repeated.push(yield* input.inbox.deliver(next.inboxID))
             return { outcome: 'succeeded' } as const
-          }),
+          }).pipe(Effect.orDie),
       })
       await t.app.command(vendor)
       await t.app.command(enqueue('msg_a'))
@@ -549,11 +557,13 @@ describe('step loop with a scripted model', () => {
       await t.outboxSettled()
 
       expect(driven).toEqual([{ sessionID: 'ses_1', continues: false }])
+      expect(repeated).toEqual([true])
       // No step of the runtime's: the agent's steps are the host's facts.
       expect(t.types()).toEqual([
         'session-model-selected',
         'session-inbox-enqueued',
         'session-execution-started',
+        'session-inbox-delivered',
         'session-execution-settled',
       ])
       expect(t.log.inspect().at(-1)?.payload).toMatchObject({

@@ -5,6 +5,7 @@ import {
 import { Effect } from 'effect'
 
 import type { DriveExecutionRequest } from '../features/session/drive-execution-reaction/impl.ts'
+import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
 import { sessionStatus } from '../features/session/session-status-query/impl.ts'
 import { StepHost } from './step-host.ts'
 
@@ -55,6 +56,24 @@ export const makeDriveExecutionPlugin =
           const outcome = yield* host.drive({
             sessionID,
             continues: status.next.boundary === 'entry',
+            inbox: {
+              next: (boundary) =>
+                query(nextDeliverable, { sessionID, boundary }).pipe(
+                  Effect.map((next) => next.item),
+                ),
+              deliver: (inboxID) =>
+                command(
+                  { type: 'deliverInboxItem', payload: { sessionID, inboxID } },
+                  key(`deliver:${inboxID}`),
+                ).pipe(
+                  Effect.as(true),
+                  Effect.catch((error) =>
+                    error instanceof SpecterCommandRejectedError
+                      ? Effect.succeed(false)
+                      : Effect.fail(error),
+                  ),
+                ),
+            },
           })
           switch (outcome.outcome) {
             case 'succeeded':

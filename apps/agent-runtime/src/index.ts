@@ -64,6 +64,7 @@ export {
   type AttemptRecorder,
   type CompactFirst,
   type CompactionOutcome,
+  type DriveInbox,
   type DriveOutcome,
   type PrepareOutcome,
   DEFAULT_SYSTEM_PROMPT,

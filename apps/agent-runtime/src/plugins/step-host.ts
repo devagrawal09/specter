@@ -130,6 +130,23 @@ export type DriveOutcome =
   | { readonly outcome: 'interrupted' }
   | { readonly outcome: 'stopped' }
 
+// The runtime's inbox, as an agent's turn delivers it: which item delivers
+// next at a boundary (nextDeliverable's law), and delivering one (false when
+// the runtime refused it: the execution moved on, or the item is gone). A
+// delivered move moves the Session.
+export type DriveInbox = {
+  readonly next: (boundary: 'idle' | 'step' | 'entry') => Effect.Effect<
+    {
+      readonly inboxID: string
+      // user, synthetic, compaction or move.
+      readonly type: string
+      readonly delivery: string
+    } | null,
+    RecordFailure
+  >
+  readonly deliver: (inboxID: string) => Effect.Effect<boolean, RecordFailure>
+}
+
 // Whether the Session is ready for input to be delivered.
 export type PrepareOutcome =
   | { readonly outcome: 'ready' }
@@ -183,6 +200,7 @@ export class StepHost extends Context.Service<
     readonly drive?: (input: {
       readonly sessionID: string
       readonly continues: boolean
+      readonly inbox: DriveInbox
     }) => Effect.Effect<DriveOutcome>
     // Called when a step was left in flight by an attempt that died, before
     // the runtime settles what it left open: the host settles the tool calls
