@@ -122,6 +122,14 @@ export type CompactionOutcome =
   // The execution moved on while it ran.
   | { readonly outcome: 'stopped' }
 
+// How an execution an external agent drove ended. `stopped`: the execution
+// moved on while it ran (it was interrupted), and nothing is left to settle.
+export type DriveOutcome =
+  | { readonly outcome: 'succeeded' }
+  | { readonly outcome: 'failed'; readonly error: SessionError.Error }
+  | { readonly outcome: 'interrupted' }
+  | { readonly outcome: 'stopped' }
+
 // Whether the Session is ready for input to be delivered.
 export type PrepareOutcome =
   | { readonly outcome: 'ready' }
@@ -168,6 +176,14 @@ export class StepHost extends Context.Service<
     // Called before a move item is delivered, so the host can release what
     // it holds for the Session's current Location.
     readonly moving?: (sessionID: string) => Effect.Effect<void>
+    // Drives one execution of a Session an external agent runs (its model
+    // selects one), whole: the host delivers its input and records what the
+    // agent produces as its own facts. `continues`: the execution continues
+    // an interrupted turn, so it takes steers and queued control items only.
+    readonly drive?: (input: {
+      readonly sessionID: string
+      readonly continues: boolean
+    }) => Effect.Effect<DriveOutcome>
     // Called when a step was left in flight by an attempt that died, before
     // the runtime settles what it left open: the host settles the tool calls
     // it knows more about (OC++'s delegated child Sessions) first.

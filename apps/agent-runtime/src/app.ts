@@ -10,7 +10,14 @@ import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
 import { Layer } from 'effect'
 
 import { sessionEventDefinitions } from './events.ts'
+import { makeDriveExecutionPlugin } from './plugins/drive-execution.ts'
 import { makeRunStepPlugin, type RunStepOptions } from './plugins/run-step.ts'
+import {
+  createDriveExecution,
+  createDriveExecutionState,
+  type DriveExecutionRequest,
+  driveExecutionStore,
+} from './features/session/drive-execution-reaction/impl.ts'
 import {
   createFailExecutionState,
   failExecution,
@@ -166,6 +173,9 @@ import {
 export type RunStepOutboxStore = ReactionOutboxStore<
   OutboxedReaction<RunStepRequest>
 >
+export type DriveExecutionOutboxStore = ReactionOutboxStore<
+  OutboxedReaction<DriveExecutionRequest>
+>
 
 // Worker tuning (concurrency, lease, heartbeat, backoff, shutdown wait) for the
 // step Plugin's outbox; defaults are the outbox's own. Steps are keyed by
@@ -182,6 +192,8 @@ export const createSessionAppConfig = (
   runStepOutbox: RunStepOutboxStore,
   outboxOptions: RunStepOutboxOptions = {},
   stepOptions: RunStepOptions = {},
+  // An external agent's executions, which the host drives whole.
+  driveOutbox: DriveExecutionOutboxStore = createMemoryReactionOutboxStore(),
 ) =>
   ({
     events: sessionEventDefinitions,
@@ -222,6 +234,18 @@ export const createSessionAppConfig = (
           interruptOnShutdown: true,
           ...outboxOptions,
           store: runStepOutbox,
+          concurrencyKey: (request) => request.payload.sessionID,
+        }),
+      ),
+      driveExecution: createDriveExecution(
+        withReactionOutbox(makeDriveExecutionPlugin(), {
+          // An agent's turn can run for minutes too.
+          interruptOnShutdown: true,
+          // As many Sessions at once as the step outbox runs.
+          ...(outboxOptions.worker?.concurrency === undefined
+            ? {}
+            : { worker: { concurrency: outboxOptions.worker.concurrency } }),
+          store: driveOutbox,
           concurrencyKey: (request) => request.payload.sessionID,
         }),
       ),
@@ -277,6 +301,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(commitRevertStore, createCommitRevertState),
     provide(revertStatusStore, createRevertStatusState),
     provide(runStepStore, createRunStepState),
+    provide(driveExecutionStore, createDriveExecutionState),
   )
 
 // Fresh in-memory state per Layer scope.

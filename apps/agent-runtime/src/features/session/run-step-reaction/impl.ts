@@ -1,3 +1,4 @@
+import { SessionDriver } from '@ocpp/schema/session-driver'
 import { SessionID } from '@ocpp/schema/session-id'
 import {
   implementReaction,
@@ -23,6 +24,11 @@ export type RunStepState = {
       stepsStarted: number
       awaitingRetry: boolean
       retrying: boolean
+      // The Session's model selects an external agent, and the active
+      // execution is that agent's (the host drives it whole): its steps are
+      // the agent's, never this Reaction's.
+      driven?: true
+      external?: true
     }
   >
 }
@@ -33,6 +39,8 @@ export const runStepStore = Context.Service<
 
 export const createRunStepState = (): RunStepState => ({ sessions: {} })
 
+const sessionCreated = sessionEvent('session-created')
+const modelSelected = sessionEvent('session-model-selected')
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
@@ -53,9 +61,20 @@ const entry = (state: RunStepState, sessionID: string) =>
     retrying: false,
   })
 
+const driver = (
+  state: RunStepState,
+  sessionID: string,
+  model: { readonly providerID: string } | undefined,
+) => {
+  const session = entry(state, sessionID)
+  if (SessionDriver.of(model) === 'ocpp') delete session.driven
+  else session.driven = true
+}
+
 const settle = (state: RunStepState, sessionID: string) => {
   const session = entry(state, sessionID)
   session.active = false
+  delete session.external
   session.inFlight = null
   session.awaitingRetry = false
   session.retrying = false
@@ -69,9 +88,16 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
     .outputSchema(Schema.toStandardSchemaV1(runStepRequest))
     .plugin(plugin)
     .store(runStepStore)
+    .apply(sessionCreated, async (event, state) => {
+      driver(state, event.payload.sessionID, event.payload.model)
+    })
+    .apply(modelSelected, async (event, state) => {
+      driver(state, event.payload.sessionID, event.payload.model)
+    })
     .apply(executionStarted, async (event, state) => {
       const session = entry(state, event.payload.sessionID)
       session.active = true
+      if (session.driven) session.external = true
       if (session.inFlight) session.stale = true
     })
     .apply(executionSettled, async (event, state) => {
@@ -110,6 +136,7 @@ export const createRunStep = <R>(plugin: ReactionPlugin<RunStepRequest, R>) =>
           const session = state.sessions[id]
           return (
             session?.active &&
+            !session.external &&
             (!session.inFlight || session.stale) &&
             !session.awaitingRetry
           )

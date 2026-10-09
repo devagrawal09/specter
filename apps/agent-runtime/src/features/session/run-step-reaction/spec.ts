@@ -206,6 +206,42 @@ export const runStepSpec = createReactionSlice('runStep')
       ],
       expect: [],
     },
+    {
+      description:
+        "An execution of a Session whose model selects an external agent is the agent's: its steps request nothing.",
+      given: [
+        event('session-created', {
+          sessionID: 'ses_1',
+          projectID: 'prj_1',
+          location: { directory: '/tmp/ws' },
+          slug: 'brave-otter',
+          version: '2',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        started('ses_1'),
+        stepStarted('ses_1', 'msg_1'),
+        stepEnded('ses_1', 'msg_1'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'The driver is the one the execution started with: selecting an OC++ model hands the next execution back to this runtime.',
+      given: [
+        event('session-model-selected', {
+          sessionID: 'ses_1',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        started('ses_1'),
+        event('session-model-selected', {
+          sessionID: 'ses_1',
+          model: { id: 'gpt-5', providerID: 'openai' },
+        }),
+        succeeded('ses_1'),
+        started('ses_1'),
+      ],
+      expect: [run('ses_1', 0)],
+    },
   )
 
 export default runStepSpec

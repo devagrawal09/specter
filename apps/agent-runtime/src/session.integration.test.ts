@@ -34,6 +34,7 @@ const boot = async (
     readonly compactFirst?: number
     readonly moving?: StepHost['Service']['moving']
     readonly recover?: StepHost['Service']['recover']
+    readonly drive?: StepHost['Service']['drive']
     // Wraps the model host's begin.
     readonly begin?: (
       input: Parameters<StepHost['Service']['begin']>[0],
@@ -99,6 +100,7 @@ const boot = async (
           return StepHost.of({
             ...(options.moving ? { moving: options.moving } : {}),
             ...(options.recover ? { recover: options.recover } : {}),
+            ...(options.drive ? { drive: options.drive } : {}),
             compact: options.compact ?? host.compact,
             begin: (input) =>
               compactFirst-- > 0
@@ -509,6 +511,77 @@ describe('step loop with a scripted model', () => {
     ])
     expect(t.log.inspect().at(-1)?.payload).toMatchObject({
       outcome: 'succeeded',
+    })
+  })
+
+  describe('a Session an external agent runs', () => {
+    const vendor = {
+      type: 'recordSessionFacts' as const,
+      payload: {
+        facts: [
+          {
+            type: 'session-model-selected',
+            payload: {
+              sessionID: 'ses_1',
+              model: { id: 'sonnet', providerID: 'claude' },
+            },
+          },
+        ],
+      },
+    }
+
+    it('wakes, and the host drives the execution whole', async () => {
+      const driven: unknown[] = []
+      const t = await start({
+        drive: (input) =>
+          Effect.sync(() => {
+            driven.push(input)
+            return { outcome: 'succeeded' } as const
+          }),
+      })
+      await t.app.command(vendor)
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
+      await t.outboxSettled()
+
+      expect(driven).toEqual([{ sessionID: 'ses_1', continues: false }])
+      // No step of the runtime's: the agent's steps are the host's facts.
+      expect(t.types()).toEqual([
+        'session-model-selected',
+        'session-inbox-enqueued',
+        'session-execution-started',
+        'session-execution-settled',
+      ])
+      expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+        outcome: 'succeeded',
+      })
+    })
+
+    it('fails the execution with the error the agent failed with', async () => {
+      const error = { type: 'driver.unavailable', message: 'no CLI' }
+      const t = await start({
+        drive: () => Effect.succeed({ outcome: 'failed', error } as const),
+      })
+      await t.app.command(vendor)
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
+
+      expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+        outcome: 'failed',
+        error,
+      })
+    })
+
+    it('fails the execution when the host runs no external agents', async () => {
+      const t = await start()
+      await t.app.command(vendor)
+      await t.app.command(enqueue('msg_a'))
+      await t.waitFor(() => t.types().includes('session-execution-settled'))
+
+      expect(t.log.inspect().at(-1)?.payload).toMatchObject({
+        outcome: 'failed',
+        error: { type: 'driver.unavailable' },
+      })
     })
   })
 

@@ -1,4 +1,3 @@
-import { SessionDriver } from '@ocpp/schema/session-driver'
 import { SessionID } from '@ocpp/schema/session-id'
 import {
   implementReaction,
@@ -22,15 +21,14 @@ import specification from './spec.json' with { type: 'json' }
 //   must not re-wake the Session by itself either, or it would restart right
 //   after the user stopped it; only a new waking input does.
 // - active: an execution started and not yet settled.
-// - driven: the Session's model selects an external agent (OC++'s
-//   SessionDriver), which runs it instead of this runtime.
+// A Session an external agent runs is woken like any other: the host drives
+// its executions (the driveExecution Reaction).
 export type WakeExecutionState = {
   sessions: Record<
     string,
     {
       waking: Record<string, true>
       active: boolean
-      driven?: true
     }
   >
 }
@@ -43,8 +41,6 @@ export const createWakeExecutionState = (): WakeExecutionState => ({
   sessions: {},
 })
 
-const sessionCreated = sessionEvent('session-created')
-const modelSelected = sessionEvent('session-model-selected')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
@@ -72,16 +68,6 @@ const settled = (
   delete entry(state, payload.sessionID).waking[payload.inboxID]
 }
 
-const drive = (
-  state: WakeExecutionState,
-  sessionID: string,
-  model: { readonly providerID: string } | undefined,
-) => {
-  const session = entry(state, sessionID)
-  if (SessionDriver.of(model) === 'ocpp') delete session.driven
-  else session.driven = true
-}
-
 // The request is derived from the state as of its commit, so it can be stale
 // by the time it runs: a start the runtime rejects (already active, nothing
 // left to deliver) means the world moved on, and a later commit wakes whatever
@@ -104,12 +90,6 @@ export const wakeExecution = implementReaction(specification)
   .outputSchema(startExecutionRequest)
   .plugin(startUnlessMovedOn)
   .store(wakeExecutionStore)
-  .apply(sessionCreated, async (event, state) => {
-    drive(state, event.payload.sessionID, event.payload.model)
-  })
-  .apply(modelSelected, async (event, state) => {
-    drive(state, event.payload.sessionID, event.payload.model)
-  })
   .apply(inboxEnqueued, async (event, state) => {
     entry(state, event.payload.sessionID).waking[event.payload.inboxID] = true
   })
@@ -145,8 +125,7 @@ export const wakeExecution = implementReaction(specification)
         return (
           session !== undefined &&
           Object.keys(session.waking).length > 0 &&
-          !session.active &&
-          !session.driven
+          !session.active
         )
       })
     if (sessionID === undefined) return

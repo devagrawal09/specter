@@ -1,5 +1,4 @@
 import type { SessionError } from '@ocpp/schema/session-error'
-import { SessionDriver } from '@ocpp/schema/session-driver'
 import { SessionID } from '@ocpp/schema/session-id'
 import { implementQuery, type SliceStoreService } from '@specter-ts/core'
 import { Context, Schema } from 'effect'
@@ -19,10 +18,8 @@ type Execution = {
   // Why the last execution failed or was interrupted.
   error?: SessionError.Error
   reason?: Reason
-  // Pending input that wakes the Session; an external agent's Session is
-  // never woken by this runtime.
+  // Pending input that wakes the Session.
   waking: Record<string, true>
-  driven?: true
 }
 
 export type ExecutionStatusState = { sessions: Record<string, Execution> }
@@ -37,8 +34,6 @@ export const createExecutionStatusState = (): ExecutionStatusState => ({
 
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
-const sessionCreated = sessionEvent('session-created')
-const modelSelected = sessionEvent('session-model-selected')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxHeld = sessionEvent('session-inbox-held')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
@@ -53,16 +48,6 @@ const entry = (state: ExecutionStatusState, sessionID: string) =>
     lastOutcome: null,
     waking: {},
   })
-
-const drive = (
-  state: ExecutionStatusState,
-  sessionID: string,
-  model: { readonly providerID: string } | undefined,
-) => {
-  const session = entry(state, sessionID)
-  if (SessionDriver.of(model) === 'ocpp') delete session.driven
-  else session.driven = true
-}
 
 const consumed = (
   state: ExecutionStatusState,
@@ -114,12 +99,6 @@ export const executionStatus = implementQuery(specification)
   .apply(executionSettled, async (event, state) => {
     end(state, event.payload.sessionID, event.payload)
   })
-  .apply(sessionCreated, async (event, state) => {
-    drive(state, event.payload.sessionID, event.payload.model)
-  })
-  .apply(modelSelected, async (event, state) => {
-    drive(state, event.payload.sessionID, event.payload.model)
-  })
   .apply(inboxEnqueued, async (event, state) => {
     entry(state, event.payload.sessionID).waking[event.payload.inboxID] = true
   })
@@ -137,7 +116,6 @@ export const executionStatus = implementQuery(specification)
     const wakes =
       session !== undefined &&
       !session.active &&
-      !session.driven &&
       Object.keys(session.waking).length > 0
     if (!session || session.executions === 0)
       return {

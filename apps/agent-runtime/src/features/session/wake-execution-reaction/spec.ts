@@ -43,38 +43,6 @@ export const wakeExecutionSpec = createReactionSlice('wakeExecution')
     },
     {
       description:
-        'A Session whose model selects an external agent is driven by that agent, not this runtime: its input requests nothing.',
-      given: [
-        event('session-created', {
-          sessionID: 'ses_1',
-          projectID: 'prj_1',
-          location: { directory: '/tmp/ws' },
-          slug: 'brave-otter',
-          version: '2',
-          model: { id: 'sonnet', providerID: 'claude' },
-        }),
-        enqueued('ses_1', 'msg_1'),
-      ],
-      expect: [],
-    },
-    {
-      description:
-        'Selecting an OC++ model hands the Session back to this runtime: its pending input requests a start.',
-      given: [
-        event('session-model-selected', {
-          sessionID: 'ses_1',
-          model: { id: 'sonnet', providerID: 'claude' },
-        }),
-        enqueued('ses_1', 'msg_1'),
-        event('session-model-selected', {
-          sessionID: 'ses_1',
-          model: { id: 'gpt-5', providerID: 'openai' },
-        }),
-      ],
-      expect: [start('ses_1')],
-    },
-    {
-      description:
         'Explicit resumes join the active execution, and repeated wakes coalesce: an enqueue while active requests nothing.',
       given: [started('ses_1'), enqueued('ses_1', 'msg_1')],
       expect: [],
