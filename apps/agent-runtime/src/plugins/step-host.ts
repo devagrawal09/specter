@@ -41,6 +41,17 @@ export type AttemptRecorder = {
     readonly executed?: boolean
     readonly state?: SessionMessage.ProviderState
   }) => Effect.Effect<boolean, RecordFailure>
+  // A call whose input never became one (it stopped streaming or never
+  // parsed), failed with the raw input it had.
+  readonly toolInputFailed: (failure: {
+    readonly id: string
+    readonly name: string
+    readonly text?: string
+    readonly error: SessionError.Error
+    readonly executed?: boolean
+    readonly metadata?: { readonly [key: string]: Schema.Json }
+    readonly content?: readonly [Tool.Content, ...Tool.Content[]]
+  }) => Effect.Effect<boolean, RecordFailure>
   readonly toolSettled: (
     result: {
       readonly id: string
@@ -90,6 +101,9 @@ export type AttemptOutcome =
     })
   // A record was rejected: nothing more is recorded for this attempt.
   | { readonly outcome: 'stopped' }
+  // The attempt was interrupted on the user's behalf (a dismissed question):
+  // what it produced is recorded, and the execution is interrupted.
+  | { readonly outcome: 'interrupted' }
 
 // How a compaction the host ran ended. Its own facts (started, ended or
 // failed, usage) are the host's; the runtime decides when it runs.

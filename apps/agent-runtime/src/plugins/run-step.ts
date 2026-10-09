@@ -20,7 +20,10 @@ const unlessRejected = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     Effect.map(() => true),
     Effect.catch((error) =>
       error instanceof SpecterCommandRejectedError
-        ? Effect.succeed(false)
+        ? Effect.sync(() => {
+            console.log('DBG rejected', String((error as any).cause))
+            return false
+          })
         : Effect.fail(error),
     ),
   )
@@ -146,6 +149,7 @@ export const makeRunStepPlugin =
           // Requests are derived from state, so a duplicate or stale one can be
           // queued behind the job that already ran this boundary.
           const status = yield* query(stepStatus, { sessionID })
+          console.log('DBG job', ordinal, JSON.stringify(status))
           if (!status.active) return
           // A step still in flight when a job starts belongs to a dead attempt:
           // the outbox worker runs one job at a time, so no live handler can own
@@ -175,8 +179,9 @@ export const makeRunStepPlugin =
 
           // Delivery law (OC++ runner): every pending steer enters history
           // before the next step; at an idle boundary (the execution's start,
-          // or after a step that needed no continuation) one queued item may
-          // enter too, with the steers that arrive behind it.
+          // or after a step that needed no continuation) with no steer
+          // pending, one queued item may enter instead, with the steers that
+          // arrive behind it.
           const {
             boundary,
             stepsInExecution,
@@ -244,7 +249,9 @@ export const makeRunStepPlugin =
               continue
             }
             delivered += 1
-            if (next.item.delivery === 'queue') scope = 'step'
+            // An idle boundary delivers its steers, or one queued item with the
+            // steers that arrive behind it: never steers and a queued item.
+            scope = 'step'
           }
           // An idle execution with nothing left to deliver is done.
           if (
@@ -372,6 +379,18 @@ export const makeRunStepPlugin =
                   ),
                 ),
               ),
+            toolInputFailed: (failure) =>
+              afterStart(
+                unlessRejected(
+                  command(
+                    {
+                      type: 'failToolInput',
+                      payload: { sessionID, assistantMessageID, ...failure },
+                    },
+                    { idempotencyKey: `${key}:input-failed:${failure.id}` },
+                  ),
+                ),
+              ),
             toolSettled: (result) =>
               afterStart(
                 unlessRejected(
@@ -385,7 +404,21 @@ export const makeRunStepPlugin =
                 ),
               ),
           })
+          console.log(
+            'DBG outcome',
+            JSON.stringify(outcome).slice(0, 300),
+            begun,
+          )
           if (outcome.outcome === 'stopped') return
+          if (outcome.outcome === 'interrupted') {
+            yield* unlessRejected(
+              command(
+                { type: 'interruptExecution', payload: { sessionID } },
+                { idempotencyKey: `${key}:interrupted` },
+              ),
+            )
+            return
+          }
 
           if (outcome.outcome === 'failed') {
             // A failure is a step's, even one before any output.

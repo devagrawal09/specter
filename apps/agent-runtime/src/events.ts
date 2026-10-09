@@ -81,6 +81,14 @@ const runtimeEventSchemas = {
     ...SessionEvent.Tool.Called.data.fields,
     name: Schema.String,
   }),
+  // A call whose input never became a call (it stopped streaming, or never
+  // parsed): it fails with the raw input it had (replaces OC++'s tool input
+  // started, input ended and failed for such a call).
+  'session-tool-input-failed': Schema.Struct({
+    ...SessionEvent.Tool.Failed.data.fields,
+    name: Schema.String,
+    text: optional(Schema.String),
+  }),
   // The one terminal of a requested call (replaces OC++'s tool success and
   // tool failed).
   'session-tool-settled': Schema.Union([

@@ -456,6 +456,7 @@ describe('step loop on the @ocpp/ai path (TestLLM provider)', () => {
       'session-step-started',
       'session-tool-requested',
       'session-tool-settled',
+      'session-step-settled', // the interrupted step, aborted
       'session-execution-settled',
     ]
     expect(t.types()).toEqual(expected)

@@ -15,6 +15,8 @@ export type InterruptExecutionState = {
   // Requested calls of the in-flight attempt that have not settled, in call
   // order, per Session. The interrupt settles these in its own commit.
   openCalls: Record<string, OpenCall[]>
+  // The step in flight per Session: the interrupt settles it as aborted.
+  inFlight: Record<string, SessionMessage.ID>
 }
 type OpenCall = {
   assistantMessageID: SessionMessage.ID
@@ -31,6 +33,7 @@ export const createInterruptExecutionState = (): InterruptExecutionState => ({
   sessions: {},
   active: {},
   openCalls: {},
+  inFlight: {},
 })
 
 const sessionCreated = sessionEvent('session-created')
@@ -38,6 +41,7 @@ const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 const stepStarted = sessionEvent('session-step-started')
+const stepSettled = sessionEvent('session-step-settled')
 const toolRequested = sessionEvent('session-tool-requested')
 const toolSettled = sessionEvent('session-tool-settled')
 
@@ -69,7 +73,7 @@ const input = Schema.toStandardSchemaV1(
 
 // Interrupt appends the interrupted fact, preceded in the same commit by an
 // aborted tool failure for every open call (session.md: settling orphaned tool
-// calls); pending inbox items are owned by the inbox slices and are never
+// calls) and the in-flight step's aborted failure; pending inbox items are owned by the inbox slices and are never
 // touched here.
 export const interruptExecution = implementCommand(specification)
   .inputSchema(input)
@@ -86,11 +90,18 @@ export const interruptExecution = implementCommand(specification)
   })
   .apply(executionSettled, async (event, state) => {
     delete state.active[event.payload.sessionID]
+    delete state.inFlight[event.payload.sessionID]
     clearCalls(state, event.payload.sessionID)
   })
   .apply(stepStarted, async (event, state) => {
     // A new attempt starts with a clean call table.
     clearCalls(state, event.payload.sessionID)
+    state.inFlight[event.payload.sessionID] = event.payload.assistantMessageID
+  })
+  .apply(stepSettled, async (event, state) => {
+    const { sessionID, assistantMessageID } = event.payload
+    if (state.inFlight[sessionID] === assistantMessageID)
+      delete state.inFlight[sessionID]
   })
   .apply(toolRequested, async (event, state) => {
     const { sessionID, assistantMessageID, id, name, executed } = event.payload
@@ -119,8 +130,20 @@ export const interruptExecution = implementCommand(specification)
         executed: call.executed,
       }),
     )
+    // The step in flight ends with the execution (OC++: Step interrupted).
+    const step = state.inFlight[command.sessionID]
     return [
       ...aborted,
+      ...(step === undefined
+        ? []
+        : [
+            stepSettled.create({
+              sessionID: command.sessionID,
+              assistantMessageID: step,
+              outcome: 'failed',
+              error: { type: 'aborted', message: 'Step interrupted' },
+            }),
+          ]),
       executionSettled.create({
         sessionID: command.sessionID,
         outcome: 'interrupted',

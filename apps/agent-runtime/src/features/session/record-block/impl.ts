@@ -87,7 +87,6 @@ export const recordBlock = implementCommand(specification)
     const step = state.inFlight[command.sessionID]
     if (step?.assistantMessageID !== command.assistantMessageID)
       throw new Error('Step not in flight')
-    if (command.text === '') throw new Error('Block is empty')
     if (step.blocks.includes(key(command)))
       throw new Error('Block already recorded')
     return [

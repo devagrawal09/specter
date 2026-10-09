@@ -42,6 +42,11 @@ import {
   settleToolCallStore,
 } from './features/session/settle-tool-call/impl.ts'
 import {
+  createFailToolInputState,
+  failToolInput,
+  failToolInputStore,
+} from './features/session/fail-tool-input/impl.ts'
+import {
   createSettleStepState,
   settleStep,
   settleStepStore,
@@ -192,6 +197,7 @@ export const createSessionAppConfig = (
       recordBlock,
       recordToolCall,
       settleToolCall,
+      failToolInput,
       finishExecution,
       failExecution,
       stepStatus,
@@ -251,6 +257,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(recordBlockStore, createRecordBlockState),
     provide(recordToolCallStore, createRecordToolCallState),
     provide(settleToolCallStore, createSettleToolCallState),
+    provide(failToolInputStore, createFailToolInputState),
     provide(finishExecutionStore, createFinishExecutionState),
     provide(failExecutionStore, createFailExecutionState),
     provide(stepStatusStore, createStepStatusState),

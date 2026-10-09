@@ -4,10 +4,14 @@ import { Context, Schema } from 'effect'
 import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
-// The names of the calls whose input the host has started recording, keyed
-// by assistant message and call: OC++ names a call at its input's start, the
-// runtime's requested call carries the name.
-export type RecordSessionFactsState = { toolNames: Record<string, string> }
+// What the host recorded of each call so far, keyed by assistant message and
+// call: OC++ names a call at its input's start and gives its raw input at its
+// end; a call it requested is settled, one it did not fails as input.
+export type RecordSessionFactsState = {
+  toolNames: Record<string, string>
+  toolTexts: Record<string, string>
+  requested: Record<string, true>
+}
 
 export const recordSessionFactsStore = Context.Service<
   SliceStoreService<RecordSessionFactsState, RecordSessionFactsState, unknown>
@@ -15,6 +19,8 @@ export const recordSessionFactsStore = Context.Service<
 
 export const createRecordSessionFactsState = (): RecordSessionFactsState => ({
   toolNames: {},
+  toolTexts: {},
+  requested: {},
 })
 
 // Each payload is decoded by its event's definition (OC++'s schema) when the
@@ -44,7 +50,12 @@ const external: Record<string, string> = {
 // one fact for one fact, so every Slice sees them as it sees its own: a step
 // settled, a finished block, a requested call and its settlement. The rest of
 // a step (its start, block and input starts) keeps OC++'s name.
-const translate = (fact: Fact, names: Record<string, string>): Fact => {
+type Calls = Pick<
+  RecordSessionFactsState,
+  'toolNames' | 'toolTexts' | 'requested'
+>
+
+const translate = (fact: Fact, calls: Calls): Fact => {
   const payload = fact.payload as Payload
   if (fact.type === 'session-execution-started')
     return { type: 'session-external-execution-started', payload }
@@ -78,24 +89,41 @@ const translate = (fact: Fact, names: Record<string, string>): Fact => {
     case 'session-tool-called':
       return {
         type: 'session-tool-requested',
-        payload: { ...payload, name: names[callKey(payload)] ?? 'unknown' },
+        payload: {
+          ...payload,
+          name: calls.toolNames[callKey(payload)] ?? 'unknown',
+        },
       }
     case 'session-tool-success':
       return {
         type: 'session-tool-settled',
         payload: { ...payload, outcome: 'succeeded' },
       }
-    case 'session-tool-failed':
+    case 'session-tool-failed': {
+      const key = callKey(payload)
+      if (calls.requested[key])
+        return {
+          type: 'session-tool-settled',
+          payload: { ...payload, outcome: 'failed' },
+        }
+      const text = calls.toolTexts[key]
       return {
-        type: 'session-tool-settled',
-        payload: { ...payload, outcome: 'failed' },
+        type: 'session-tool-input-failed',
+        payload: {
+          ...payload,
+          name: calls.toolNames[key] ?? 'unknown',
+          ...(text === undefined ? {} : { text }),
+        },
       }
+    }
     default:
       return fact
   }
 }
 
 const inputStarted = sessionEvent('session-tool-input-started')
+const inputEnded = sessionEvent('session-tool-input-ended')
+const toolRequested = sessionEvent('session-tool-requested')
 
 export const recordSessionFacts = implementCommand(specification)
   .inputSchema(input)
@@ -103,14 +131,27 @@ export const recordSessionFacts = implementCommand(specification)
   .apply(inputStarted, async (event, state) => {
     state.toolNames[callKey(event.payload)] = event.payload.name
   })
+  .apply(inputEnded, async (event, state) => {
+    state.toolTexts[callKey(event.payload)] = event.payload.text
+  })
+  .apply(toolRequested, async (event, state) => {
+    state.requested[callKey(event.payload)] = true
+  })
   .handle(async (command, state) => {
     // A publication can start a call's input and request the call at once.
-    const names = { ...state.toolNames }
+    const calls: Calls = {
+      toolNames: { ...state.toolNames },
+      toolTexts: { ...state.toolTexts },
+      requested: { ...state.requested },
+    }
     return command.facts.map((fact) => {
-      if (fact.type === 'session-tool-input-started') {
-        const payload = fact.payload as Payload
-        names[callKey(payload)] = String(payload.name)
-      }
-      return translate(fact, names)
+      const payload = fact.payload as Payload
+      const key = callKey(payload)
+      if (fact.type === 'session-tool-input-started')
+        calls.toolNames[key] = String(payload.name)
+      if (fact.type === 'session-tool-input-ended')
+        calls.toolTexts[key] = String(payload.text)
+      if (fact.type === 'session-tool-called') calls.requested[key] = true
+      return translate(fact, calls)
     })
   })

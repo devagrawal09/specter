@@ -140,11 +140,11 @@ export const recordBlockSpec = createCommandSlice('recordBlock')
       expect: [recorded('msg_1', 0, 'complete')],
     },
     {
-      description: 'An empty block is not recorded.',
+      description:
+        'A block closed with no text is still a finished block (OC++ closes an opened fragment when its stream ends).',
       given: [started(), stepStarted('msg_1')],
       when: text('msg_1', 0, ''),
-      expect: [],
-      reject: { reason: 'Block is empty' },
+      expect: [recorded('msg_1', 0, '')],
     },
     {
       description: 'Text needs an active execution.',

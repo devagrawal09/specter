@@ -476,6 +476,7 @@ describe('step loop with a scripted model', () => {
       'session-inbox-delivered',
       'session-step-started',
       'session-inbox-enqueued', // C
+      'session-step-settled', // the interrupted step, aborted
       'session-execution-settled',
     ])
     expect(

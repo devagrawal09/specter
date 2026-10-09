@@ -64,9 +64,10 @@ const recordedAs: Partial<
     'session-tool-settled',
     { ...payload, outcome: 'succeeded' },
   ],
+  // No call was requested: the input failed.
   'session-tool-failed': (payload) => [
-    'session-tool-settled',
-    { ...payload, outcome: 'failed' },
+    'session-tool-input-failed',
+    { ...payload, name: 'unknown' },
   ],
 }
 const recordOne = (type: Fact) => {
@@ -96,6 +97,86 @@ export const recordSessionFactsSpec = createCommandSlice('recordSessionFacts')
   )
   .scenarios(
     ...recorded,
+    {
+      description:
+        'A requested call that fails is settled; one never requested failed as input, with the raw input it had.',
+      given: [
+        event('session-tool-input-started', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_assistant_1',
+          id: 'call_1',
+          name: 'echo',
+        }),
+        event('session-tool-input-ended', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_assistant_1',
+          id: 'call_1',
+          text: '{"text":',
+        }),
+      ],
+      when: {
+        facts: [
+          {
+            type: 'session-tool-failed',
+            payload: {
+              sessionID: 'ses_1',
+              assistantMessageID: 'msg_assistant_1',
+              id: 'call_1',
+              error: { type: 'tool.input-json', message: 'malformed' },
+              executed: false,
+            },
+          },
+        ],
+      },
+      expect: [
+        event('session-tool-input-failed', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_assistant_1',
+          id: 'call_1',
+          error: { type: 'tool.input-json', message: 'malformed' },
+          executed: false,
+          name: 'echo',
+          text: '{"text":',
+        }),
+      ],
+    },
+    {
+      description: 'A requested call that fails is settled.',
+      given: [
+        event('session-tool-requested', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_assistant_1',
+          id: 'call_1',
+          name: 'echo',
+          input: {},
+          executed: false,
+        }),
+      ],
+      when: {
+        facts: [
+          {
+            type: 'session-tool-failed',
+            payload: {
+              sessionID: 'ses_1',
+              assistantMessageID: 'msg_assistant_1',
+              id: 'call_1',
+              error: { type: 'aborted', message: 'Tool execution interrupted' },
+              executed: false,
+            },
+          },
+        ],
+      },
+      expect: [
+        event('session-tool-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_assistant_1',
+          id: 'call_1',
+          error: { type: 'aborted', message: 'Tool execution interrupted' },
+          executed: false,
+          outcome: 'failed',
+        }),
+      ],
+    },
     {
       description:
         "A requested call takes its name from the start of the call's input.",

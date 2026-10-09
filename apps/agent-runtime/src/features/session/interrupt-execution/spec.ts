@@ -49,6 +49,14 @@ const abortedFailure = (id: string, name: string, executed = false) =>
     executed,
   })
 
+const stepAborted = (assistantMessageID = 'msg_1') =>
+  event('session-step-settled', {
+    sessionID: 'ses_1',
+    assistantMessageID,
+    outcome: 'failed',
+    error: { type: 'aborted', message: 'Step interrupted' },
+  })
+
 export const interruptExecutionSpec = createCommandSlice('interruptExecution')
   .description(
     'Interrupts the active execution of a Session without touching pending input (session.md: Execution Is Process-Local). OC++ treats idle/settled interrupt as a public no-op; the app models it as a rejection and the M4 facade translates it back.',
@@ -71,7 +79,11 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         requested('call_1', 'execute'),
       ],
       when: { sessionID: 'ses_1' },
-      expect: [abortedFailure('call_1', 'execute'), interrupted()],
+      expect: [
+        abortedFailure('call_1', 'execute'),
+        stepAborted(),
+        interrupted(),
+      ],
     },
     {
       description:
@@ -96,6 +108,7 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
       expect: [
         abortedFailure('call_1', 'execute'),
         abortedFailure('call_2', 'execute', true),
+        stepAborted(),
         interrupted(),
       ],
     },
@@ -110,7 +123,7 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         abortedFailure('call_1', 'execute'),
       ],
       when: { sessionID: 'ses_1' },
-      expect: [interrupted()],
+      expect: [stepAborted(), interrupted()],
     },
     {
       description:
@@ -121,6 +134,30 @@ export const interruptExecutionSpec = createCommandSlice('interruptExecution')
         stepStarted('msg_1'),
         requested('call_1', 'execute'),
         stepStarted('msg_2'),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: [stepAborted('msg_2'), interrupted()],
+    },
+    {
+      description:
+        'A step that already settled is left alone: only the interrupted event is emitted.',
+      given: [
+        created(),
+        started(),
+        stepStarted('msg_1'),
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          outcome: 'succeeded',
+          finish: 'stop',
+          cost: 0,
+          tokens: {
+            input: 0,
+            output: 0,
+            reasoning: 0,
+            cache: { read: 0, write: 0 },
+          },
+        }),
       ],
       when: { sessionID: 'ses_1' },
       expect: [interrupted()],

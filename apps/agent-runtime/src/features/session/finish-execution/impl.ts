@@ -46,10 +46,10 @@ export const finishExecution = implementCommand(specification)
     const { sessionID, assistantMessageID } = event.payload
     state.inFlight[sessionID] = assistantMessageID
   })
-  // A step whose failure is retried stays in flight until a later attempt
-  // settles it.
+  // A settled step is no longer in flight, even one whose failure is retried:
+  // a retried attempt that produces nothing leaves the failure standing, and
+  // the execution may finish.
   .apply(stepSettled, async (event, state) => {
-    if (event.payload.outcome === 'failed' && event.payload.retry) return
     const { sessionID, assistantMessageID } = event.payload
     if (state.inFlight[sessionID] === assistantMessageID)
       delete state.inFlight[sessionID]

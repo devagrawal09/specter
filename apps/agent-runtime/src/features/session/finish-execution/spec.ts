@@ -40,6 +40,23 @@ export const finishExecutionSpec = createCommandSlice('finishExecution')
   )
   .scenarios(
     {
+      description:
+        'A failed step whose retry produced nothing leaves its failure standing: the execution may finish.',
+      given: [
+        started(),
+        stepStarted('msg_1'),
+        event('session-step-settled', {
+          sessionID: 'ses_1',
+          assistantMessageID: 'msg_1',
+          outcome: 'failed',
+          error: { type: 'transport', message: 'reset' },
+          retry: { attempt: 1, at: 1000 },
+        }),
+      ],
+      when: { sessionID: 'ses_1' },
+      expect: [succeeded()],
+    },
+    {
       description: 'An active execution with all steps ended succeeds.',
       given: [started(), stepStarted('msg_1'), stepEnded('msg_1')],
       when: { sessionID: 'ses_1' },
