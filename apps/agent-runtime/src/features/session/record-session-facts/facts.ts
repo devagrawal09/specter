@@ -519,6 +519,23 @@ export const sessionFacts = {
     name: 'nightly',
     at: 7_200_001,
   },
+  'session-background-recorded': {
+    notificationID: 'msg_3',
+    jobID: 'exe_2',
+    recovery: {
+      kind: 'codemode',
+      parentSessionID: 'ses_1',
+      assistantMessageID: 'msg_1',
+      toolCallID: 'call_1',
+    },
+    status: 'running',
+  },
+  'session-background-terminal': {
+    notificationID: 'msg_3',
+  },
+  'session-background-completed': {
+    notificationID: 'msg_3',
+  },
   'credential-created': {
     integrationID: 'anthropic',
     credentialID: 'cred_1',
