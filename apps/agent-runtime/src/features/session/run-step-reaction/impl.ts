@@ -11,7 +11,7 @@ import { sessionEvent } from '../../../events.ts'
 import specification from './spec.json' with { type: 'json' }
 
 // Per-Session projection; the handler derives its request from this state
-// alone (no trigger). Duplicated from step-status-query on purpose.
+// alone (no trigger). Duplicated from session-status-query on purpose.
 export type RunStepState = {
   sessions: Record<
     string,

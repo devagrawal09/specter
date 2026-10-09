@@ -1,7 +1,8 @@
 import { createQuerySlice, event } from '@specter-ts/spec'
 
-// A separate Query rather than a field on execution-status-query: adding
-// { staged } there would change every existing scenario's expected output.
+// A separate Query rather than a part of session-status-query: a staged
+// revert is the UI's concern, and a part there would add it to every status
+// scenario's expected output.
 const staged = (messageID: string, sessionID = 'ses_1') =>
   event('session-revert-staged', { sessionID, revert: { messageID } })
 const cleared = (sessionID = 'ses_1') =>

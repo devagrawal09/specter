@@ -6,9 +6,8 @@ import type { SessionID } from '@ocpp/schema/session-id'
 import { Clock, Effect } from 'effect'
 
 import { nextDeliverable } from '../features/session/next-deliverable-query/impl.ts'
-import { nextStep } from '../features/session/next-step-query/impl.ts'
 import type { RunStepRequest } from '../features/session/run-step-reaction/impl.ts'
-import { stepStatus } from '../features/session/step-status-query/impl.ts'
+import { sessionStatus } from '../features/session/session-status-query/impl.ts'
 import { modelTranscript } from '../features/session/model-transcript-query/impl.ts'
 import { type RecordFailure, StepHost } from './step-host.ts'
 
@@ -149,30 +148,33 @@ export const makeRunStepPlugin =
 
           // Requests are derived from state, so a duplicate or stale one can be
           // queued behind the job that already ran this boundary.
-          const status = yield* query(stepStatus, { sessionID })
-          if (!status.active) return
+          // One snapshot of the Session at this boundary.
+          const {
+            status,
+            step: steps,
+            next: upcoming,
+          } = yield* query(sessionStatus, { sessionID })
+          if (status !== 'active') return
           // A step still in flight when a job starts belongs to a dead attempt:
           // the outbox worker runs one job at a time, so no live handler can own
           // it. The outbox does not tell the handler that its job was claimed
           // before, so the slice state is the evidence.
-          if (status.stepInFlight) {
-            if (
-              status.inFlightStepID !== undefined &&
-              ordinal === status.stepsStarted - 1
-            ) {
+          if (steps.inFlight !== undefined) {
+            if (ordinal === steps.started - 1) {
               // The host settles what it knows more about first; the runtime
               // settles the calls still open after it.
               const recovered =
                 host.recover === undefined
-                  ? status
-                  : yield* host
-                      .recover(sessionID)
-                      .pipe(Effect.andThen(query(stepStatus, { sessionID })))
+                  ? steps
+                  : yield* host.recover(sessionID).pipe(
+                      Effect.andThen(query(sessionStatus, { sessionID })),
+                      Effect.map((after) => after.step),
+                    )
               yield* reconcileOrphan(
                 { command },
                 {
                   sessionID,
-                  assistantMessageID: status.inFlightStepID,
+                  assistantMessageID: steps.inFlight,
                   deliveryId: delivery.deliveryId,
                   openCalls: recovered.openCalls ?? [],
                 },
@@ -181,9 +183,7 @@ export const makeRunStepPlugin =
             return
           }
           // A request for a retry repeats the ordinal of the step that failed.
-          const expected = status.retrying
-            ? status.stepsStarted - 1
-            : status.stepsStarted
+          const expected = steps.retrying ? steps.started - 1 : steps.started
           if (expected !== ordinal) return
 
           // Delivery law (OC++ runner): every pending steer enters history
@@ -197,7 +197,7 @@ export const makeRunStepPlugin =
             stepsSinceInput,
             retryAt,
             attempt,
-          } = yield* query(nextStep, { sessionID })
+          } = upcoming
           // A retried step waits until it is due: backoff is recorded with the
           // failure and honored here, one Session's job at a time.
           const now = yield* Clock.currentTimeMillis
@@ -510,7 +510,7 @@ export const makeRunStepPlugin =
           if (!ended || (begun && next)) return
           // Input waiting for this idle boundary keeps the execution going: the
           // next step delivers it.
-          const rest = yield* query(nextStep, { sessionID })
+          const { next: rest } = yield* query(sessionStatus, { sessionID })
           const waiting = yield* query(nextDeliverable, {
             sessionID,
             boundary: rest.boundary,

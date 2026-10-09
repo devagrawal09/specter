@@ -141,20 +141,20 @@ describe('crash and restart (JSONL)', { timeout: 30_000 }, () => {
     ])
     expect(
       await b.app.query({
-        type: 'executionStatus',
-        payload: { sessionID: 'ses_1' },
-      }),
-    ).toEqual({ status: 'settled', executions: 1, lastOutcome: 'succeeded' })
-    expect(
-      await b.app.query({
-        type: 'stepStatus',
+        type: 'sessionStatus',
         payload: { sessionID: 'ses_1' },
       }),
     ).toEqual({
-      active: false,
-      stepInFlight: false,
-      stepsStarted: 1,
-      attempts: 2,
+      status: 'settled',
+      executions: 1,
+      lastOutcome: 'succeeded',
+      step: { started: 1, attempts: 2 },
+      next: {
+        boundary: 'idle',
+        stepsInExecution: 2,
+        stepsSinceInput: 1,
+        attempt: 1,
+      },
     })
 
     // Every job settles; nothing is dead-lettered.

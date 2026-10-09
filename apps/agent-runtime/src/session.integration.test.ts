@@ -239,10 +239,14 @@ describe('step loop with a scripted model', () => {
     ])
     expect(
       await t.app.query({
-        type: 'executionStatus',
+        type: 'sessionStatus',
         payload: { sessionID: 'ses_1' },
       }),
-    ).toEqual({ status: 'settled', executions: 1, lastOutcome: 'succeeded' })
+    ).toMatchObject({
+      status: 'settled',
+      executions: 1,
+      lastOutcome: 'succeeded',
+    })
     // The step after the last one was requested too (state-derived), then ran
     // as a no-op because the execution had already settled.
     expect(jobs.length).toBe(3)
@@ -617,7 +621,7 @@ describe('step loop with a scripted model', () => {
     ).toMatchObject({ item: { inboxID: 'msg_a' } })
     expect(
       await t.app.query({
-        type: 'executionStatus',
+        type: 'sessionStatus',
         payload: { sessionID: 'ses_1' },
       }),
     ).not.toHaveProperty('wakes')
@@ -688,10 +692,10 @@ describe('step loop with a scripted model', () => {
     ])
     expect(
       await t.app.query({
-        type: 'executionStatus',
+        type: 'sessionStatus',
         payload: { sessionID: 'ses_1' },
       }),
-    ).toEqual({
+    ).toMatchObject({
       status: 'settled',
       executions: 1,
       lastOutcome: 'interrupted',
@@ -752,14 +756,12 @@ describe('step loop with a scripted model', () => {
       expect(retries[0]?.assistantMessageID).toBe(starts[0]?.assistantMessageID)
       expect(
         await t.app.query({
-          type: 'stepStatus',
+          type: 'sessionStatus',
           payload: { sessionID: 'ses_1' },
         }),
-      ).toEqual({
-        active: false,
-        stepInFlight: false,
-        stepsStarted: 1,
-        attempts: 2,
+      ).toMatchObject({
+        status: 'settled',
+        step: { started: 1, attempts: 2 },
       })
     })
 
@@ -786,7 +788,7 @@ describe('step loop with a scripted model', () => {
       })
       expect(
         await t.app.query({
-          type: 'executionStatus',
+          type: 'sessionStatus',
           payload: { sessionID: 'ses_1' },
         }),
       ).toMatchObject({

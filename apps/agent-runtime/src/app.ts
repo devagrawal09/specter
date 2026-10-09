@@ -85,16 +85,6 @@ import {
   type RunStepRequest,
 } from './features/session/run-step-reaction/impl.ts'
 import {
-  createNextStepState,
-  nextStep,
-  nextStepStore,
-} from './features/session/next-step-query/impl.ts'
-import {
-  createStepStatusState,
-  stepStatus,
-  stepStatusStore,
-} from './features/session/step-status-query/impl.ts'
-import {
   changeDelivery,
   changeDeliveryStore,
   createChangeDeliveryState,
@@ -120,10 +110,10 @@ import {
   deliverInboxItemStore,
 } from './features/session/deliver-inbox-item/impl.ts'
 import {
-  createExecutionStatusState,
-  executionStatus,
-  executionStatusStore,
-} from './features/session/execution-status-query/impl.ts'
+  createSessionStatusState,
+  sessionStatus,
+  sessionStatusStore,
+} from './features/session/session-status-query/impl.ts'
 import {
   createInterruptExecutionState,
   interruptExecution,
@@ -208,7 +198,7 @@ export const createSessionAppConfig = (
       startExecution,
       interruptExecution,
       wakeExecution,
-      executionStatus,
+      sessionStatus,
       recordStepStarted,
       recordStepStreamed,
       settleStep,
@@ -218,8 +208,6 @@ export const createSessionAppConfig = (
       failToolInput,
       finishExecution,
       failExecution,
-      stepStatus,
-      nextStep,
       forkSession,
       sessionHistory,
       modelTranscript,
@@ -281,7 +269,7 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(startExecutionStore, createStartExecutionState),
     provide(interruptExecutionStore, createInterruptExecutionState),
     provide(wakeExecutionStore, createWakeExecutionState),
-    provide(executionStatusStore, createExecutionStatusState),
+    provide(sessionStatusStore, createSessionStatusState),
     provide(recordStepStartedStore, createRecordStepStartedState),
     provide(recordStepStreamedStore, createRecordStepStreamedState),
     provide(settleStepStore, createSettleStepState),
@@ -291,8 +279,6 @@ export const createSliceStoreLayer = (provide: ProvideSliceStore) =>
     provide(failToolInputStore, createFailToolInputState),
     provide(finishExecutionStore, createFinishExecutionState),
     provide(failExecutionStore, createFailExecutionState),
-    provide(stepStatusStore, createStepStatusState),
-    provide(nextStepStore, createNextStepState),
     provide(forkSessionStore, createForkSessionState),
     provide(sessionHistoryStore, createSessionHistoryState),
     provide(modelTranscriptStore, createModelTranscriptState),

@@ -154,7 +154,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
     - **Executions and wakes.**
       - Held input (`resume: false`) does not wake the Session.
       - An execution takes every wake recorded before it started, as OC++'s run coordinator did. Input it never delivered, when it fails, waits for the next wake; input enqueued while it ran starts the next execution.
-      - `executionStatus.wakes` makes "idle" mean no active execution and no waking input.
+      - `sessionStatus.wakes` makes "idle" mean no active execution and no waking input.
       - `interrupt` stops the local attempt so it records what it produced, then settles the in-flight step as aborted. Continuing after an interrupt starts an execution with `continues`.
     - **Retries.** A transparent retry repeats the same step. A fresh retry (the stream continues, or the history was compacted after the step started) runs a new step on the shared budget. OC++'s retry policy (`SessionRunnerRetry`) bounds a step's retries per logical step.
     - **Defects.** A recording failure fails the job, and the outbox retries it (orphan reconciliation covers the step it left in flight). A defect while delivering input would only repeat, so it fails the execution and leaves the input pending.
@@ -171,8 +171,8 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
     - **Intentional differences from OC++'s restart recovery.**
       - An OC++-run Session that stopped mid-step retries that step from the same history, so the model gets no restart notice. The dead attempt's partial output does not stand.
       - A turn that keeps dying is bounded by the runtime's per-step retry budget, not by a count of boots.
+    - **One status Query.** `sessionStatus` replaces `executionStatus`, `stepStatus` and `nextStep`. It reports a Session's executions, its steps and what its next step starts from, as one fold. The step Plugin reads one snapshot at each boundary instead of several Queries that another commit could land between. `revertStatus` stays separate: a staged revert is the UI's concern, and a part in `sessionStatus` would add it to every status scenario.
     - **Still to do.**
-      - One `session-status` Query in place of the four status Queries.
       - OC++'s native inbox implementation, still used by the external agent harness and by tests that run without the runtime.
       - The remaining non-Session state (worktree, Code Mode bindings, project and workspace records) on Specter.
       - A persistent outbox store next to the persistent log.

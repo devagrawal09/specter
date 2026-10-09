@@ -5,8 +5,7 @@ import {
 import { Effect } from 'effect'
 
 import type { DriveExecutionRequest } from '../features/session/drive-execution-reaction/impl.ts'
-import { executionStatus } from '../features/session/execution-status-query/impl.ts'
-import { nextStep } from '../features/session/next-step-query/impl.ts'
+import { sessionStatus } from '../features/session/session-status-query/impl.ts'
 import { StepHost } from './step-host.ts'
 
 // A rejected Command means the world moved on (the execution was interrupted
@@ -33,7 +32,7 @@ export const makeDriveExecutionPlugin =
         Effect.gen(function* () {
           const { sessionID, execution } = request.payload
           // A duplicate request, or one for an execution that has settled.
-          const status = yield* query(executionStatus, { sessionID })
+          const status = yield* query(sessionStatus, { sessionID })
           if (status.status !== 'active' || status.executions !== execution)
             return
           const key = (outcome: string) => ({
@@ -53,10 +52,9 @@ export const makeDriveExecutionPlugin =
             })
           // An execution that continues an interrupted turn takes steers and
           // queued control items only.
-          const { boundary } = yield* query(nextStep, { sessionID })
           const outcome = yield* host.drive({
             sessionID,
-            continues: boundary === 'entry',
+            continues: status.next.boundary === 'entry',
           })
           switch (outcome.outcome) {
             case 'succeeded':
