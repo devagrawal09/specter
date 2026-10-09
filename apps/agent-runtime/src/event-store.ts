@@ -6,6 +6,7 @@ import {
 } from '@specter-ts/memory'
 import { Effect, Layer } from 'effect'
 
+import type { ProvideSliceStore } from './app.ts'
 import { sessionEventDefinitions } from './events.ts'
 import {
   createRecordSessionFactsState,
@@ -31,12 +32,16 @@ export const sessionEventStoreConfig = {
   slices,
 }
 
-// Requires the EventLog service, which the host provides.
-export const makeSessionEventStore = () =>
+// Requires the EventLog service, which the host provides. Its Slice is kept
+// in memory unless the host supplies a store that starts from a snapshot
+// (makeSnapshotSliceStores), as for the embedded runtime.
+export const makeSessionEventStore = (
+  options: { readonly slices?: ProvideSliceStore } = {},
+) =>
   makeSpecterRuntime(sessionEventStoreConfig).pipe(
     Effect.provide(
       Layer.mergeAll(
-        createMemorySliceStoreLayer(
+        (options.slices ?? createMemorySliceStoreLayer)(
           recordSessionFactsStore,
           createRecordSessionFactsState,
         ),

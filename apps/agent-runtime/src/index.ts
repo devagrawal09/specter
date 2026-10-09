@@ -30,6 +30,15 @@ export {
   type SessionEventStore,
   sessionEventStoreConfig,
 } from './event-store.ts'
+// The outbox contract a host implements when it keeps the runtime's jobs.
+export {
+  type OutboxedReaction,
+  type ReactionOutboxClaim,
+  type ReactionOutboxJob,
+  ReactionOutboxLeaseLostError,
+  type ReactionOutboxStatus,
+  type ReactionOutboxStore,
+} from '@specter-ts/reaction-outbox'
 export {
   makeSnapshotSliceStores,
   type SliceSnapshot,
