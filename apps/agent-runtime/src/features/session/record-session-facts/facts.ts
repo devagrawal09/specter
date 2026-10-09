@@ -1,4 +1,4 @@
-// One payload per durable Session event, as OC++ publishes it (captured from OC++'s
+// One payload per durable OC++ event, as OC++ publishes it (captured from OC++'s
 // own test suite, identifiers normalized). Each is valid for OC++'s schema and
 // decodes unchanged, which Specter requires of every stored payload.
 export const sessionFacts = {
@@ -366,5 +366,10 @@ export const sessionFacts = {
     sessionID: 'ses_1',
     checkpoint: 'checkpoint_1',
     historyHash: 'hash_1',
+  },
+  'worktree-resolved': {
+    projectID: 'prj_1',
+    directory: '/a',
+    previous: 'global',
   },
 } as const
