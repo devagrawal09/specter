@@ -209,6 +209,14 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
     - **Stored history moved into the log.** A migration archives the events a persisting server kept, under their versioned OC++ type, one commit per aggregate. The runtime does not read those types, and log reads decode them as they were.
     - **Usage statistics read the log.** Compaction usage is counted from the facts. The old query compared an unversioned type with the stored versioned one, so it had never counted any.
 
+  - **Phase 9 done: every row OC++ stores is a projection of Specter's log.**
+    - **Rebuilding from the log alone reproduces every read model.** `Bus.rebuild()` projects the whole log again, in the order it was recorded. A test runs a Session through a Code Mode program, a credential and plugin state, wipes every table OC++ projects, rebuilds, and requires the same rows. The only tables it leaves out are Specter's own, the event index, the migration record, caches and credential keys.
+    - **Projections no longer read the clock.** The test found updates that took `time_updated` from `Date.now()`, through the shared timestamp columns' update hook. Updates now change it only when they set it, and projections set it from their fact.
+    - **Rows without a fact are adopted.** `rows.adopted` records an aggregate's rows in one projected table as they are stored, and its projection makes the table hold exactly those rows.
+      - A migration adopts everything a database holds when it upgrades, which is the state the log predates.
+      - The v1 importer adopts each Session it converts, and its own progress, before moving on.
+      - A test upgrades a database that held its project, Session, messages and plugin state as rows, rebuilds every projection from the log, and the Session carries on.
+
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
 1. **Fork** — decided 2026-10-08: no Event Log primitive. OC++'s fork is a projection: the `session.forked` projector copies message rows up to the boundary into the child; the child's event log starts at `session.forked{parentID, boundary}`. Mirror that: `fork-session` Command emits the fact; a Reaction materializes the child's history slice from the parent's slice state up to the boundary (rebuildable derived index). Only requirement on Specter: a Reaction/Query may read another aggregate's slice state via `{ query }` — verify in M1.

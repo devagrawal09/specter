@@ -280,3 +280,11 @@ Added: `Model` service (`plugins/model.ts`), `ocpp-ai-model.ts` (`@ocpp/ai`), `c
 - **A second event store hid behind an option.** With `persist`, the Bus wrote every durable event twice: once to Specter's log and once, with its payload, to its own `event` table. Session log reads used only the second copy. A payload-free index by aggregate sequence, pointing at each fact, gives the same reads from one copy. One fact can be several OC++ events, so the index keeps each event's own ID.
 - **Old events need a home that the runtime ignores.** Archiving them in Specter's log under their versioned OC++ type keeps them readable. The runtime reads only its own types: Slices query by type, and Reactions skip commits with none of theirs. Only the log readers decode those archived types.
 - **The second copy had masked a bug.** Usage statistics counted compaction usage with the unversioned type, but the table stored versioned types. The query never matched. Reading the log fixed it as a side effect.
+
+## 2026-10-09 — every row a projection of the log (Phase 9)
+
+- **The strongest test is a rebuild.** Wipe every projected table and project the whole log again: any row that differs is a projection that is not a function of its facts. The first run found the shared timestamp columns' update hook, which stamped `Date.now()` on any update that did not set `time_updated`. Nothing else differed.
+- **Some rows will always arrive without a fact.** These are a database from before the log, and an importer converting another format. Recording such rows as they are (`rows.adopted`: one aggregate's rows in one table) puts them on the log without inventing facts that never happened. An adoption replaces the aggregate's rows in that table, which also covers an importer that replaces stale rows.
+- **Adopt after the write, record progress after the adoption.** The importer keeps its conversion transactional and adopts what the transaction wrote. Its progress comes last, so a stop anywhere repeats a Session's conversion and adoption, never skips them.
+- **A sequence must never move back.** The importer used to set a Session's sequence to its imported messages' watermark after clearing the old event table. With the events kept in the log, that could reuse a sequence number, so the watermark is now a floor.
+
