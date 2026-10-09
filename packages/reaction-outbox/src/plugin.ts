@@ -21,6 +21,11 @@ export type ReactionOutboxPluginOptions<TOutput> = {
   >
   readonly pollIntervalMs?: number
   /**
+   * Deliveries whose outputs share a key run one at a time, in order; with
+   * `worker.concurrency` above 1, deliveries with different keys run at once.
+   */
+  readonly concurrencyKey?: (output: TOutput) => string | undefined
+  /**
    * When the Plugin's scope closes, the worker stops claiming and the
    * finalizer waits up to this long for a running attempt to finish and
    * record its outcome, so closing the Store afterwards does not make the job
@@ -84,9 +89,11 @@ export function withReactionOutbox<TOutput, R = never>(
           if (Number.isNaN(requestedAt.getTime())) {
             throw new Error('Reaction scheduledAt must be ISO-8601')
           }
+          const concurrencyKey = options.concurrencyKey?.(output)
           yield* options.store.enqueue({
             id: context.deliveryId,
             idempotencyKey: context.deliveryId,
+            ...(concurrencyKey === undefined ? {} : { concurrencyKey }),
             payload: { output, context },
             requestedAt,
             availableAt: requestedAt,

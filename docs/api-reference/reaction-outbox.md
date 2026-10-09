@@ -60,7 +60,8 @@ integration.
 ## Worker lifecycle
 
 Defaults: five attempts, five-minute lease, heartbeat every third of the lease,
-exponential backoff from one second, random UUID job IDs, system clock.
+exponential backoff from one second, one attempt at a time, random UUID job
+IDs, system clock.
 
 1. `enqueue` writes pending job; duplicate idempotency key returns existing job.
 2. `drain` requeues expired leases and claims next available job.
@@ -77,6 +78,14 @@ Optional Store capabilities:
   Memory and JSONL Stores implement it; SQL Stores rely on polling, since
   their enqueue becomes visible only when the Slice transaction commits.
   Workers in other processes always poll.
+- `concurrencyKeys: true` means the Store keeps each job's `concurrencyKey` and
+  `claimNext` never claims a job while another job with the same key is
+  running. Only over such a Store may a worker run several attempts at once
+  (`worker.concurrency`, default 1): jobs with different keys run in parallel,
+  and jobs sharing a key still run one at a time, in claim order. A job waiting
+  for its key is not counted as available work. The wrapper sets each job's key
+  with `concurrencyKey(output)`; `worker.enqueue` takes `{ concurrencyKey }`.
+  The memory Store implements it.
 - `renewLease(jobId, attemptId, leaseExpiresAt)` lets the worker heartbeat a
   running attempt every `heartbeatMs` (shorter than `leaseMs`), so a slow
   handler keeps its lease. A lost attempt stops renewing; its completion then

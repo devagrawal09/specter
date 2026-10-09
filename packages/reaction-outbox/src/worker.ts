@@ -34,6 +34,7 @@ export class ReactionOutboxDrainFailure extends AggregateError {
 export type EnqueueReactionOptions = {
   readonly jobId?: string
   readonly idempotencyKey?: string
+  readonly concurrencyKey?: string
   readonly requestedAt?: Date
   readonly availableAt?: Date
 }
@@ -45,6 +46,12 @@ export type ReactionOutboxWorkerOptions<TPayload> = {
     context: ReactionOutboxAttemptContext,
   ) => Promise<void>
   readonly maxAttempts?: number
+  /**
+   * How many attempts run at once (default 1). Above 1 the Store must honor
+   * concurrency keys: jobs with the same key still run one at a time, in
+   * order.
+   */
+  readonly concurrency?: number
   readonly backoffMs?: (attemptNumber: number) => number
   readonly leaseMs?: number
   /**
@@ -132,6 +139,7 @@ export function createReactionOutboxWorker<TPayload>(
   const heartbeatMs = options.heartbeatMs ?? Math.min(leaseMs / 3, maxTimerMs)
   const idFactory = options.idFactory ?? randomUUID
   const onTransition = options.onTransition ?? (() => {})
+  const concurrency = options.concurrency ?? 1
   let activeDrain: Promise<void> | undefined
   let drainRequested = false
   /** Interrupts for waits in progress. */
@@ -144,6 +152,14 @@ export function createReactionOutboxWorker<TPayload>(
 
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1) {
     throw new Error('maxAttempts must be a positive integer')
+  }
+  if (!Number.isInteger(concurrency) || concurrency < 1) {
+    throw new Error('concurrency must be a positive integer')
+  }
+  if (concurrency > 1 && !options.store.concurrencyKeys) {
+    throw new Error(
+      'concurrency above 1 needs a Store that honors concurrency keys',
+    )
   }
   if (!Number.isFinite(leaseMs) || leaseMs <= 0) {
     throw new Error('leaseMs must be positive')
@@ -282,6 +298,9 @@ export function createReactionOutboxWorker<TPayload>(
       options.store.enqueue({
         id,
         idempotencyKey: enqueueOptions.idempotencyKey ?? id,
+        ...(enqueueOptions.concurrencyKey === undefined
+          ? {}
+          : { concurrencyKey: enqueueOptions.concurrencyKey }),
         payload,
         requestedAt,
         availableAt: enqueueOptions.availableAt ?? requestedAt,
@@ -292,110 +311,146 @@ export function createReactionOutboxWorker<TPayload>(
     return { jobId: result.job.id, created: result.created }
   }
 
-  async function runDrain() {
-    const failures: ReactionOutboxFailure[] = []
+  /** Runs one claimed attempt to its recorded outcome. */
+  async function runAttempt(
+    claim: ReactionOutboxClaim<TPayload>,
+    failures: ReactionOutboxFailure[],
+  ) {
+    await notify({ type: 'attempt-started', claim })
+    const context: ReactionOutboxAttemptContext = {
+      jobId: claim.id,
+      idempotencyKey: claim.idempotencyKey,
+      requestedAt: claim.requestedAt,
+      attemptId: claim.activeAttemptId,
+      attemptNumber: claim.attemptCount,
+    }
 
-    for (;;) {
-      if (signal.aborted) break
-      const claimTime = now()
-      await Effect.runPromise(options.store.requeueExpired(claimTime))
-      const claim = await Effect.runPromise(
-        options.store.claimNext(
-          claimTime,
-          new Date(claimTime.getTime() + leaseMs),
-        ),
+    try {
+      await handleWithHeartbeat(claim, context)
+      const completedAt = now()
+      await Effect.runPromise(
+        options.store.complete(claim.id, claim.activeAttemptId, completedAt),
       )
-
-      if (!claim) {
-        const nextWorkAt = await Effect.runPromise(options.store.nextWorkAt())
-        if (!nextWorkAt) break
-        const delay = Math.max(0, nextWorkAt.getTime() - now().getTime())
-        if (delay > 0) await waitForWork(delay, { sleep: options.sleep })
-        if (signal.aborted) break
-        continue
-      }
-
-      await notify({ type: 'attempt-started', claim })
-      const context: ReactionOutboxAttemptContext = {
-        jobId: claim.id,
-        idempotencyKey: claim.idempotencyKey,
-        requestedAt: claim.requestedAt,
-        attemptId: claim.activeAttemptId,
-        attemptNumber: claim.attemptCount,
-      }
-
-      try {
-        await handleWithHeartbeat(claim, context)
-        const completedAt = now()
-        await Effect.runPromise(
-          options.store.complete(claim.id, claim.activeAttemptId, completedAt),
-        )
-        await notify({
-          type: 'attempt-completed',
-          claim,
-          completedAt,
-        })
-      } catch (cause) {
-        if (cause instanceof ReactionOutboxLeaseLostError) continue
-        const error = errorSummary(cause)
-        if (claim.attemptCount >= maxAttempts) {
-          const failedAt = now()
-          try {
-            await Effect.runPromise(
-              options.store.deadLetter(
-                claim.id,
-                claim.activeAttemptId,
-                failedAt,
-                error,
-              ),
-            )
-          } catch (deadLetterCause) {
-            if (deadLetterCause instanceof ReactionOutboxLeaseLostError) {
-              continue
-            }
-            throw deadLetterCause
-          }
-          await notify({
-            type: 'dead-lettered',
-            claim,
-            failedAt,
-            error,
-          })
-          failures.push({
-            jobId: claim.id,
-            attemptId: claim.activeAttemptId,
-            cause,
-          })
-          continue
-        }
-
-        const delay = backoffMs(claim.attemptCount)
-        if (!Number.isFinite(delay) || delay < 0) {
-          throw new Error('Reaction outbox backoff must be non-negative')
-        }
-        const availableAt = new Date(now().getTime() + delay)
+      await notify({
+        type: 'attempt-completed',
+        claim,
+        completedAt,
+      })
+    } catch (cause) {
+      if (cause instanceof ReactionOutboxLeaseLostError) return
+      const error = errorSummary(cause)
+      if (claim.attemptCount >= maxAttempts) {
+        const failedAt = now()
         try {
           await Effect.runPromise(
-            options.store.reschedule(
+            options.store.deadLetter(
               claim.id,
               claim.activeAttemptId,
-              availableAt,
+              failedAt,
               error,
             ),
           )
-        } catch (rescheduleCause) {
-          if (rescheduleCause instanceof ReactionOutboxLeaseLostError) continue
-          throw rescheduleCause
+        } catch (deadLetterCause) {
+          if (deadLetterCause instanceof ReactionOutboxLeaseLostError) return
+          throw deadLetterCause
         }
         await notify({
-          type: 'attempt-retrying',
+          type: 'dead-lettered',
           claim,
-          availableAt,
+          failedAt,
           error,
         })
+        failures.push({
+          jobId: claim.id,
+          attemptId: claim.activeAttemptId,
+          cause,
+        })
+        return
+      }
+
+      const delay = backoffMs(claim.attemptCount)
+      if (!Number.isFinite(delay) || delay < 0) {
+        throw new Error('Reaction outbox backoff must be non-negative')
+      }
+      const availableAt = new Date(now().getTime() + delay)
+      try {
+        await Effect.runPromise(
+          options.store.reschedule(
+            claim.id,
+            claim.activeAttemptId,
+            availableAt,
+            error,
+          ),
+        )
+      } catch (rescheduleCause) {
+        if (rescheduleCause instanceof ReactionOutboxLeaseLostError) return
+        throw rescheduleCause
+      }
+      await notify({
+        type: 'attempt-retrying',
+        claim,
+        availableAt,
+        error,
+      })
+    }
+  }
+
+  async function runDrain() {
+    const failures: ReactionOutboxFailure[] = []
+    const running = new Set<Promise<void>>()
+    let fatal: { readonly cause: unknown } | undefined
+
+    for (;;) {
+      if (signal.aborted || fatal) break
+      if (running.size < concurrency) {
+        const claimTime = now()
+        await Effect.runPromise(options.store.requeueExpired(claimTime))
+        const claim = await Effect.runPromise(
+          options.store.claimNext(
+            claimTime,
+            new Date(claimTime.getTime() + leaseMs),
+          ),
+        )
+        if (claim) {
+          const attempt: Promise<void> = runAttempt(claim, failures)
+            .catch((cause) => {
+              fatal ??= { cause }
+            })
+            .finally(() => running.delete(attempt))
+          running.add(attempt)
+          continue
+        }
+      }
+
+      // At capacity, or nothing claimable now: wait for a running attempt to
+      // end, for new work, or for the next work this Store knows of.
+      const waits: Promise<unknown>[] = [...running]
+      if (running.size < concurrency) {
+        const nextWorkAt = await Effect.runPromise(options.store.nextWorkAt())
+        if (!nextWorkAt && running.size === 0) break
+        const delay = nextWorkAt
+          ? Math.max(0, nextWorkAt.getTime() - now().getTime())
+          : undefined
+        if (delay === 0) continue
+        const ended = new AbortController()
+        waits.push(
+          delay === undefined
+            ? waitForWork(maxTimerMs, { signal: ended.signal })
+            : waitForWork(delay, {
+                sleep: options.sleep,
+                signal: ended.signal,
+              }),
+        )
+        await Promise.race(waits)
+        ended.abort()
+      } else {
+        await Promise.race(waits)
       }
     }
 
+    // A stopping drain lets running attempts record their outcome.
+    await Promise.allSettled([...running])
+    if (fatal) throw fatal.cause
     if (failures.length) throw new ReactionOutboxDrainFailure(failures)
   }
 

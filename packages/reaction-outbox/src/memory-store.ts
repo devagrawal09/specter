@@ -12,7 +12,10 @@ import { Effect } from 'effect'
 export type MemoryReactionOutboxStore<TPayload> =
   ReactionOutboxStore<TPayload> &
     Required<
-      Pick<ReactionOutboxStore<TPayload>, 'renewLease' | 'subscribe'>
+      Pick<
+        ReactionOutboxStore<TPayload>,
+        'concurrencyKeys' | 'renewLease' | 'subscribe'
+      >
     > & {
       reset(): void
     }
@@ -46,6 +49,17 @@ export function createMemoryReactionOutboxStore<
     } as TJob
   }
 
+  // Keys with a running job: their pending jobs wait for it.
+  function busyKeys() {
+    return new Set(
+      [...jobs.values()].flatMap((job) =>
+        job.status === 'running' && job.concurrencyKey !== undefined
+          ? [job.concurrencyKey]
+          : [],
+      ),
+    )
+  }
+
   function requireActiveAttempt(jobId: string, attemptId: string) {
     const job = jobs.get(jobId)
     if (!job) throw new Error(`Unknown Reaction outbox job: ${jobId}`)
@@ -56,6 +70,8 @@ export function createMemoryReactionOutboxStore<
   }
 
   return {
+    concurrencyKeys: true,
+
     enqueue(
       input: EnqueueReactionInput<TPayload>,
     ): Effect.Effect<EnqueueReactionResult<TPayload>, unknown> {
@@ -85,11 +101,14 @@ export function createMemoryReactionOutboxStore<
 
     claimNext(now, leaseExpiresAt) {
       return Effect.sync(() => {
+        const busy = busyKeys()
         const job = [...jobs.values()]
           .filter(
             (candidate) =>
               candidate.status === 'pending' &&
-              candidate.availableAt.getTime() <= now.getTime(),
+              candidate.availableAt.getTime() <= now.getTime() &&
+              (candidate.concurrencyKey === undefined ||
+                !busy.has(candidate.concurrencyKey)),
           )
           .sort(
             (left, right) =>
@@ -187,8 +206,14 @@ export function createMemoryReactionOutboxStore<
 
     nextWorkAt() {
       return Effect.sync(() => {
+        const busy = busyKeys()
         const wakeups = [...jobs.values()].flatMap((job) => {
-          if (job.status === 'pending') return [job.availableAt]
+          // A job waiting for its key becomes work when the running job ends.
+          if (
+            job.status === 'pending' &&
+            (job.concurrencyKey === undefined || !busy.has(job.concurrencyKey))
+          )
+            return [job.availableAt]
           if (job.status === 'running' && job.leaseExpiresAt) {
             return [job.leaseExpiresAt]
           }

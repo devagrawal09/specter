@@ -7,6 +7,11 @@ export type ReactionOutboxStatus =
 export type ReactionOutboxJob<TPayload = unknown> = {
   readonly id: string
   readonly idempotencyKey: string
+  /**
+   * Jobs with the same key never run at the same time, and run in the order a
+   * Store claims them. Only Stores with `concurrencyKeys` honor it.
+   */
+  readonly concurrencyKey?: string
   readonly payload: TPayload
   readonly status: ReactionOutboxStatus
   readonly requestedAt: Date
@@ -28,6 +33,7 @@ export type ReactionOutboxClaim<TPayload = unknown> =
 export type EnqueueReactionInput<TPayload> = {
   readonly id: string
   readonly idempotencyKey: string
+  readonly concurrencyKey?: string
   readonly payload: TPayload
   readonly requestedAt: Date
   readonly availableAt: Date
@@ -39,6 +45,12 @@ export type EnqueueReactionResult<TPayload> = {
 }
 
 export type ReactionOutboxStore<TPayload = unknown> = {
+  /**
+   * The Store keeps each job's `concurrencyKey` and `claimNext` never claims a
+   * job while another job with the same key is running. A worker may run
+   * several attempts at once only over such a Store.
+   */
+  readonly concurrencyKeys?: true
   enqueue(
     input: EnqueueReactionInput<TPayload>,
   ): Effect.Effect<EnqueueReactionResult<TPayload>, unknown>

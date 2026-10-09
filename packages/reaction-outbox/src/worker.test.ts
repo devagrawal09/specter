@@ -539,6 +539,89 @@ const unusedPluginContext: ReactionPluginContext = {
   query: () => Effect.die('This Plugin does not run Queries.'),
 }
 
+describe('Reaction outbox concurrency', () => {
+  it('runs jobs with different keys at once and one key at a time, in order', async () => {
+    const store = createMemoryReactionOutboxStore<{ key: string; n: number }>()
+    const log: string[] = []
+    let active = 0
+    let peak = 0
+    const worker = createReactionOutboxWorker({
+      store,
+      concurrency: 2,
+      handle: async ({ key, n }) => {
+        active += 1
+        peak = Math.max(peak, active)
+        log.push(`start ${key}${n}`)
+        await new Promise((resolve) => setTimeout(resolve, 10))
+        log.push(`end ${key}${n}`)
+        active -= 1
+      },
+    })
+    const at = (ms: number) => new Date(ms)
+    await worker.enqueue(
+      { key: 'a', n: 1 },
+      { jobId: 'job-1', concurrencyKey: 'a', requestedAt: at(1) },
+    )
+    await worker.enqueue(
+      { key: 'a', n: 2 },
+      { jobId: 'job-2', concurrencyKey: 'a', requestedAt: at(2) },
+    )
+    await worker.enqueue(
+      { key: 'b', n: 1 },
+      { jobId: 'job-3', concurrencyKey: 'b', requestedAt: at(3) },
+    )
+    await worker.drain()
+
+    expect(peak).toBe(2)
+    // b runs while a's first job runs; a's second job waits for its first.
+    expect(log.indexOf('start b1')).toBeLessThan(log.indexOf('end a1'))
+    expect(log.indexOf('end a1')).toBeLessThan(log.indexOf('start a2'))
+    expect(
+      (await Effect.runPromise(store.list())).map((job) => job.status),
+    ).toEqual(['completed', 'completed', 'completed'])
+  })
+
+  it('needs a Store that honors concurrency keys to run attempts at once', () => {
+    const { concurrencyKeys: _, ...store } =
+      createMemoryReactionOutboxStore<string>()
+    expect(() =>
+      createReactionOutboxWorker({
+        store,
+        concurrency: 2,
+        handle: async () => {},
+      }),
+    ).toThrow('concurrency above 1 needs a Store that honors concurrency keys')
+  })
+
+  it('keys each delivery the Plugin enqueues', async () => {
+    const store =
+      createMemoryReactionOutboxStore<OutboxedReaction<{ session: string }>>()
+    const plugin = withReactionOutbox(() => Effect.succeed(() => Effect.void), {
+      store,
+      pollIntervalMs: 60_000,
+      concurrencyKey: (output) => output.session,
+    })
+    await Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const exec = yield* plugin(unusedPluginContext)
+          yield* exec(
+            { session: 'ses_1' },
+            {
+              deliveryId: 'runStep:1',
+              throughOrder: 1,
+              scheduledAt: new Date().toISOString(),
+            },
+          )
+        }),
+      ),
+    )
+    expect(await Effect.runPromise(store.get('runStep:1'))).toMatchObject({
+      concurrencyKey: 'ses_1',
+    })
+  })
+})
+
 describe('outbox Reaction Plugin', () => {
   it('deduplicates enqueue and runs wrapped Plugin outside caller Effect', async () => {
     const store =
