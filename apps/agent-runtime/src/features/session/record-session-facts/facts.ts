@@ -445,9 +445,8 @@ export const sessionFacts = {
   'session-codemode-execution-settled': {
     sessionID: 'ses_1',
     executionID: 'exe_1',
-    outcome: 'saved',
+    outcome: 'finished',
     values: { report: 'done' },
-    messageSeq: 3,
   },
   'session-codemode-execution-discarded': {
     sessionID: 'ses_1',
