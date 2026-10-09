@@ -1,3 +1,4 @@
+import { SessionDriver } from '@ocpp/schema/session-driver'
 import { SessionID } from '@ocpp/schema/session-id'
 import {
   implementReaction,
@@ -12,17 +13,22 @@ import specification from './spec.json' with { type: 'json' }
 
 // Per-Session projection, like apps/reference's cheer reaction: the handler
 // derives its request purely from this state, with no trigger field.
-// - pending: enqueued items neither delivered nor cancelled.
-// - active: an execution started and not yet succeeded/failed/interrupted.
-// - interrupted: the last busy period ended by interruption and no input has
-//   been enqueued since. Interruption never deletes pending input, but it must
-//   not re-wake the Session by itself either (only a new enqueue wakes);
-//   without this flag "pending > 0 and idle" would restart right after the
-//   user stopped it. Cleared by the next enqueue or start.
+// - waking: enqueued items that wake the Session, until delivered or
+//   cancelled. A held item waits for the next wake instead. An interruption
+//   empties the set: it never deletes pending input, but must not re-wake the
+//   Session by itself either, or it would restart right after the user
+//   stopped it; only a new waking input does.
+// - active: an execution started and not yet settled.
+// - driven: the Session's model selects an external agent (OC++'s
+//   SessionDriver), which runs it instead of this runtime.
 export type WakeExecutionState = {
   sessions: Record<
     string,
-    { pending: number; active: boolean; interrupted: boolean }
+    {
+      waking: Record<string, true>
+      active: boolean
+      driven?: true
+    }
   >
 }
 
@@ -34,9 +40,12 @@ export const createWakeExecutionState = (): WakeExecutionState => ({
   sessions: {},
 })
 
+const sessionCreated = sessionEvent('session-created')
+const modelSelected = sessionEvent('session-model-selected')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
+const inboxHeld = sessionEvent('session-inbox-held')
 const executionStarted = sessionEvent('session-execution-started')
 const executionSettled = sessionEvent('session-execution-settled')
 
@@ -49,18 +58,25 @@ const startExecutionRequest = Schema.toStandardSchemaV1(
 
 const entry = (state: WakeExecutionState, sessionID: string) =>
   (state.sessions[sessionID] ??= {
-    pending: 0,
+    waking: {},
     active: false,
-    interrupted: false,
   })
 
-const consumed = (state: WakeExecutionState, sessionID: string) => {
-  const session = entry(state, sessionID)
-  session.pending = Math.max(0, session.pending - 1)
+const settled = (
+  state: WakeExecutionState,
+  payload: { readonly sessionID: string; readonly inboxID: string },
+) => {
+  delete entry(state, payload.sessionID).waking[payload.inboxID]
 }
 
-const ended = (state: WakeExecutionState, sessionID: string) => {
-  entry(state, sessionID).active = false
+const drive = (
+  state: WakeExecutionState,
+  sessionID: string,
+  model: { readonly providerID: string } | undefined,
+) => {
+  const session = entry(state, sessionID)
+  if (SessionDriver.of(model) === 'ocpp') delete session.driven
+  else session.driven = true
 }
 
 // The request is derived from the state as of its commit, so it can be stale
@@ -85,27 +101,31 @@ export const wakeExecution = implementReaction(specification)
   .outputSchema(startExecutionRequest)
   .plugin(startUnlessMovedOn)
   .store(wakeExecutionStore)
+  .apply(sessionCreated, async (event, state) => {
+    drive(state, event.payload.sessionID, event.payload.model)
+  })
+  .apply(modelSelected, async (event, state) => {
+    drive(state, event.payload.sessionID, event.payload.model)
+  })
   .apply(inboxEnqueued, async (event, state) => {
-    const session = entry(state, event.payload.sessionID)
-    session.pending += 1
-    session.interrupted = false
+    entry(state, event.payload.sessionID).waking[event.payload.inboxID] = true
+  })
+  .apply(inboxHeld, async (event, state) => {
+    settled(state, event.payload)
   })
   .apply(inboxDelivered, async (event, state) => {
-    consumed(state, event.payload.sessionID)
+    settled(state, event.payload)
   })
   .apply(inboxCancelled, async (event, state) => {
-    consumed(state, event.payload.sessionID)
+    settled(state, event.payload)
   })
   .apply(executionStarted, async (event, state) => {
-    const session = entry(state, event.payload.sessionID)
-    session.active = true
-    session.interrupted = false
+    entry(state, event.payload.sessionID).active = true
   })
   .apply(executionSettled, async (event, state) => {
-    const sessionID = event.payload.sessionID
-    ended(state, sessionID)
-    if (event.payload.outcome === 'interrupted')
-      entry(state, sessionID).interrupted = true
+    const session = entry(state, event.payload.sessionID)
+    session.active = false
+    if (event.payload.outcome === 'interrupted') session.waking = {}
   })
   .handle(async (state) => {
     // A Reaction commit yields zero or one output (docs/architecture/
@@ -119,9 +139,9 @@ export const wakeExecution = implementReaction(specification)
         const session = state.sessions[id]
         return (
           session !== undefined &&
-          session.pending > 0 &&
+          Object.keys(session.waking).length > 0 &&
           !session.active &&
-          !session.interrupted
+          !session.driven
         )
       })
     if (sessionID === undefined) return

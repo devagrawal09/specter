@@ -205,6 +205,9 @@ export const createSessionAppConfig = (
       revertStatus,
       runStep: createRunStep(
         withReactionOutbox(makeRunStepPlugin(stepOptions), {
+          // A step can run for minutes: shutdown stops it instead of waiting,
+          // and the next run settles the step it left started.
+          interruptOnShutdown: true,
           ...outboxOptions,
           store: runStepOutbox,
           concurrencyKey: (request) => request.payload.sessionID,

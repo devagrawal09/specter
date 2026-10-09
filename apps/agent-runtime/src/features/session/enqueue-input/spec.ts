@@ -15,6 +15,9 @@ const enqueued = (
   item: { type: string; payload: Record<string, string>; delivery: string },
 ) => event('session-inbox-enqueued', { sessionID, inboxID, item })
 
+const held = (sessionID: string, inboxID: string) =>
+  event('session-inbox-held', { sessionID, inboxID })
+
 const userItem = (text: string, delivery = 'steer') => ({
   type: 'user',
   payload: { text },
@@ -196,11 +199,12 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
           payload: { text: 'Shell command finished' },
           delivery: 'steer',
         }),
+        held('ses_1', 'msg_2'),
       ],
     },
     {
       description:
-        'resume controls scheduling, not durability: false records the input without scheduling execution.',
+        'resume: false records the input as held: it waits for the next wake instead of waking the Session.',
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',
@@ -209,11 +213,14 @@ export const enqueueInputSpec = createCommandSlice('enqueueInput')
         payload: { text: 'record only' },
         resume: false,
       },
-      expect: [enqueued('ses_1', 'msg_1', userItem('record only'))],
+      expect: [
+        enqueued('ses_1', 'msg_1', userItem('record only')),
+        held('ses_1', 'msg_1'),
+      ],
     },
     {
       description:
-        'resume controls scheduling, not durability: omitted or true records the input, then schedules wake (wake is a reaction on session.inbox.enqueued; events.ts has no wake event).',
+        'Omitted or true resume records the input alone: the wake Reaction starts execution from it.',
       given: [created('ses_1')],
       when: {
         sessionID: 'ses_1',

@@ -2,6 +2,7 @@ import { createEventDefinition, type EventDefinition } from '@specter-ts/core'
 import { SessionError } from '@ocpp/schema/session-error'
 import { SessionEvent } from '@ocpp/schema/session-event'
 import { SessionID } from '@ocpp/schema/session-id'
+import { SessionMessage } from '@ocpp/schema/session-message'
 import { NonNegativeInt, optional, PositiveInt } from '@ocpp/schema/schema'
 import { Schema } from 'effect'
 
@@ -85,6 +86,12 @@ const runtimeEventSchemas = {
       outcome: Schema.Literal('failed'),
     }),
   ]),
+  // An admitted input that waits for the next wake instead of waking the
+  // Session (OC++'s `resume: false`), recorded in its admission's commit.
+  'session-inbox-held': Schema.Struct({
+    sessionID: SessionID,
+    inboxID: SessionMessage.ID,
+  }),
 } as const
 
 // One Specter event definition per OC++ durable session event (mapped name,

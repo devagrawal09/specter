@@ -1,15 +1,14 @@
 import { createReactionSlice, event } from '@specter-ts/spec'
 
-// The inbox item schema (@ocpp/schema session-inbox) has no `resume` field:
-// `resume` only decides whether enqueue-input's caller wakes. The enqueued
-// event therefore cannot distinguish resume:false, so the "false records the
-// input without scheduling execution" sentence is not expressible here.
 const enqueued = (sessionID: string, inboxID: string) =>
   event('session-inbox-enqueued', {
     sessionID,
     inboxID,
     item: { type: 'user', payload: { text: 'hello' }, delivery: 'steer' },
   })
+// Admitted with `resume: false`: recorded in the enqueue's commit.
+const held = (sessionID: string, inboxID: string) =>
+  event('session-inbox-held', { sessionID, inboxID })
 const started = (sessionID: string) =>
   event('session-execution-started', { sessionID })
 const succeeded = (sessionID: string) =>
@@ -33,13 +32,45 @@ const start = (sessionID: string) => ({
 
 export const wakeExecutionSpec = createReactionSlice('wakeExecution')
   .description(
-    'Schedules execution after input is recorded: requests startExecution on session.inbox.enqueued unless the Session is already active (session.md: Execution Is Process-Local).',
+    'Schedules execution after input is recorded: requests startExecution on session.inbox.enqueued unless the input is held or the Session is already active (session.md: Execution Is Process-Local).',
   )
   .scenarios(
     {
       description:
         'Omitted or true records the input, then schedules SessionExecution.wake: an enqueue on an idle Session requests a start.',
       given: [enqueued('ses_1', 'msg_1')],
+      expect: [start('ses_1')],
+    },
+    {
+      description:
+        'A Session whose model selects an external agent is driven by that agent, not this runtime: its input requests nothing.',
+      given: [
+        event('session-created', {
+          sessionID: 'ses_1',
+          projectID: 'prj_1',
+          location: { directory: '/tmp/ws' },
+          slug: 'brave-otter',
+          version: '2',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        enqueued('ses_1', 'msg_1'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'Selecting an OC++ model hands the Session back to this runtime: its pending input requests a start.',
+      given: [
+        event('session-model-selected', {
+          sessionID: 'ses_1',
+          model: { id: 'sonnet', providerID: 'claude' },
+        }),
+        enqueued('ses_1', 'msg_1'),
+        event('session-model-selected', {
+          sessionID: 'ses_1',
+          model: { id: 'gpt-5', providerID: 'openai' },
+        }),
+      ],
       expect: [start('ses_1')],
     },
     {
@@ -101,6 +132,34 @@ export const wakeExecutionSpec = createReactionSlice('wakeExecution')
         interrupted('ses_1'),
       ],
       expect: [],
+    },
+    {
+      description:
+        'A held input waits for the next wake: on an idle Session it requests nothing.',
+      given: [enqueued('ses_1', 'msg_1'), held('ses_1', 'msg_1')],
+      expect: [],
+    },
+    {
+      description:
+        'A held input does not undo an interruption: the input pending before it still does not wake the Session.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        started('ses_1'),
+        interrupted('ses_1'),
+        enqueued('ses_1', 'msg_2'),
+        held('ses_1', 'msg_2'),
+      ],
+      expect: [],
+    },
+    {
+      description:
+        'A waking input after a held one requests a start; the execution delivers both.',
+      given: [
+        enqueued('ses_1', 'msg_1'),
+        held('ses_1', 'msg_1'),
+        enqueued('ses_1', 'msg_2'),
+      ],
+      expect: [start('ses_1')],
     },
     {
       description:

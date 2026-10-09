@@ -29,12 +29,14 @@ const sessionCreated = sessionEvent('session-created')
 const inboxEnqueued = sessionEvent('session-inbox-enqueued')
 const inboxDelivered = sessionEvent('session-inbox-delivered')
 const inboxCancelled = sessionEvent('session-inbox-cancelled')
+const inboxHeld = sessionEvent('session-inbox-held')
 const revertCommitted = sessionEvent('session-revert-committed')
 
 const base = {
   sessionID: SessionID,
   inboxID: SessionMessage.ID,
   delivery: Schema.optional(SessionInbox.Delivery),
+  // false: the input waits for the next wake instead of waking the Session.
   resume: Schema.optional(Schema.Boolean),
   // Pending items of the same Session this input replaces (OC++ coalescing):
   // they are cancelled in the same commit.
@@ -79,7 +81,11 @@ const item = (command: Command) => {
     case 'synthetic':
       return { type: 'synthetic' as const, payload: command.payload, delivery }
     case 'compaction':
-      return { type: 'compaction' as const, payload: command.payload, delivery }
+      return {
+        type: 'compaction' as const,
+        payload: command.payload,
+        delivery,
+      }
     case 'move':
       return { type: 'move' as const, payload: command.payload, delivery }
   }
@@ -128,16 +134,14 @@ export const enqueueInput = implementCommand(specification)
         throw new Error('Replaced input not pending')
     }
 
-    // `resume` only controls scheduling (a reaction on the enqueued event),
-    // so it is not part of the durable fact.
+    // The wake Reaction reads `resume: false` from the held fact; OC++'s
+    // enqueued fact has no field for it.
+    const ref = { sessionID: command.sessionID, inboxID: command.inboxID }
     return [
       ...replaced.map((inboxID) =>
         inboxCancelled.create({ sessionID: command.sessionID, inboxID }),
       ),
-      inboxEnqueued.create({
-        sessionID: command.sessionID,
-        inboxID: command.inboxID,
-        item: item(command),
-      }),
+      inboxEnqueued.create({ ...ref, item: item(command) }),
+      ...(command.resume === false ? [inboxHeld.create(ref)] : []),
     ]
   })

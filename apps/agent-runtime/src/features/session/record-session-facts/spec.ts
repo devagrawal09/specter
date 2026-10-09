@@ -7,15 +7,33 @@ import { sessionFacts } from './facts.ts'
 // order, one commit per publication. The host's projections run in the same
 // transaction as the append and still hold the invariants; dedicated Slices
 // take them over family by family.
-const recordOne = (type: keyof typeof sessionFacts) => ({
-  description: `Records ${type} as the host published it.`,
-  given: [],
-  when: { facts: [{ type, payload: sessionFacts[type] }] },
-  expect: [event(type, sessionFacts[type])] as const,
-})
-const [first, ...rest] = (
-  Object.keys(sessionFacts) as (keyof typeof sessionFacts)[]
-).map(recordOne)
+type Fact = keyof typeof sessionFacts
+// OC++'s execution terminals, recorded as the runtime's one settled fact.
+const terminals: Partial<Record<Fact, string>> = {
+  'session-execution-succeeded': 'succeeded',
+  'session-execution-failed': 'failed',
+  'session-execution-interrupted': 'interrupted',
+}
+const recordOne = (type: Fact) => {
+  const outcome = terminals[type]
+  return {
+    description:
+      outcome === undefined
+        ? `Records ${type} as the host published it.`
+        : `Records ${type} as session-execution-settled with outcome ${outcome}, the runtime's own terminal.`,
+    given: [],
+    when: { facts: [{ type, payload: sessionFacts[type] }] },
+    expect: [
+      outcome === undefined
+        ? event(type, sessionFacts[type])
+        : event('session-execution-settled', {
+            ...sessionFacts[type],
+            outcome,
+          }),
+    ] as const,
+  }
+}
+const [first, ...rest] = (Object.keys(sessionFacts) as Fact[]).map(recordOne)
 // A tuple, so the builder can take one scenario per fact as rest arguments.
 const recorded = [first, ...rest] as [
   ReturnType<typeof recordOne>,
@@ -24,7 +42,7 @@ const recorded = [first, ...rest] as [
 
 export const recordSessionFactsSpec = createCommandSlice('recordSessionFacts')
   .description(
-    'Records the Session facts an embedding host published, in order and unchanged.',
+    "Records the Session facts an embedding host published, in order and unchanged except for execution terminals, which take the runtime's settled form.",
   )
   .scenarios(...recorded, {
     description:
