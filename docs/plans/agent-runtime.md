@@ -239,7 +239,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - the static sites `www`, `posts` and `web`.
 
       None of them reads or writes through OC++ core. The owner decided the rewrite's scope is the agent. These services stay in the repo as candidates for later experiments: how well other production services move onto Specter.
-    - **Verification in this container.** Every package typechecks except `app` and `enterprise`, whose dependencies (`ghostty-web` from GitHub, `@solidjs/start` from pkg.pr.new) the network policy blocks. With those two modules stubbed, the only errors left come from their types. The lock tests now make their root unwritable for root as well, by marking it immutable, so the core suite passes as root.
+    - **Verification in this container.** The network policy blocks two pinned dependencies: `ghostty-web` from a GitHub tarball and `@solidjs/start` from pkg.pr.new. Both were built from their pinned commits instead and installed where `bun install` puts them: ghostty-web from `anomalyco/ghostty-web@83c0a07` and `@solidjs/start` from `solidjs/solid-start@dfb2020`, packed. With them, every top-level package typechecks with no errors, `app` and `enterprise` included, and so do the console and stats sub-packages, except `console/app`. Its six errors are `RequestEvent.locals`, which it takes from `@solidjs/start/env`, an export the package at `dfb2020` does not have. The lock tests now make their root unwritable for root as well, by marking it immutable, so the core suite passes as root.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
 
