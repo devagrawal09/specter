@@ -238,7 +238,7 @@ Rules: one fact, one owner. The Event Log owns what happened; slice cursors own 
       - two share backends: `packages/enterprise` (R2 or S3 objects) and `packages/function` (Durable Objects and R2). No OC++ code calls either;
       - the static sites `www`, `posts` and `web`.
 
-      None of them reads or writes through OC++ core. Moving them onto Specter would be a rewrite of separate production services, so it is the owner's call and has not been done.
+      None of them reads or writes through OC++ core. The owner decided the rewrite's scope is the agent. These services stay in the repo as candidates for later experiments: how well other production services move onto Specter.
     - **Verification in this container.** Every package typechecks except `app` and `enterprise`, whose dependencies (`ghostty-web` from GitHub, `@solidjs/start` from pkg.pr.new) the network policy blocks. With those two modules stubbed, the only errors left come from their types. The lock tests now make their root unwritable for root as well, by marking it immutable, so the core suite passes as root.
 
 ## Specter work this will force (own it as Specter features, not app workarounds)
