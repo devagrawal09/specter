@@ -18,52 +18,6 @@ importers:
         specifier: ^6.0.2
         version: 6.0.3
 
-  apps/agent-runtime:
-    dependencies:
-      '@ocpp/ai':
-        specifier: link:../../../ocpp/packages/ai
-        version: link:../../../ocpp/packages/ai
-      '@ocpp/codemode':
-        specifier: link:../../../ocpp/packages/codemode
-        version: link:../../../ocpp/packages/codemode
-      '@ocpp/schema':
-        specifier: link:../../../ocpp/packages/schema
-        version: link:../../../ocpp/packages/schema
-      '@specter-ts/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-      '@specter-ts/jsonl':
-        specifier: workspace:*
-        version: link:../../packages/jsonl
-      '@specter-ts/memory':
-        specifier: workspace:*
-        version: link:../../packages/memory
-      '@specter-ts/reaction-outbox':
-        specifier: workspace:*
-        version: link:../../packages/reaction-outbox
-      '@specter-ts/spec':
-        specifier: workspace:*
-        version: link:../../packages/spec
-      '@standard-schema/spec':
-        specifier: ^1.1.0
-        version: 1.1.0
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1
-    devDependencies:
-      '@types/node':
-        specifier: ^24.10.1
-        version: 24.12.4
-      tsx:
-        specifier: ^4.22.3
-        version: 4.22.3
-      typescript:
-        specifier: ^6.0.2
-        version: 6.0.2
-      vitest:
-        specifier: ^4.1.5
-        version: 4.1.7(@types/node@24.12.4)(jsdom@28.1.0)(vite@8.0.14(@types/node@24.12.4)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.22.3))
-
   apps/reference:
     dependencies:
       '@hono/node-server':
