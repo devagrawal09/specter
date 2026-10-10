@@ -1,3 +1,5 @@
+// `./testing/index`, not `./testing`: the built entry is `dist/testing.js`, which a consumer
+// compiling with `allowJs` would resolve `./testing` to instead of `dist/testing/index.d.ts`.
 export {
   analyzeEventPropagation,
   AdapterConformanceFailure,
@@ -10,7 +12,7 @@ export {
   testSliceStoreService,
   testSliceImplementation,
   testSliceImplementations,
-} from './testing'
+} from './testing/index'
 export type {
   CommandScenario,
   EventApplyReference,
@@ -22,4 +24,4 @@ export type {
   ScenarioEvent,
   ScenarioTestOptions,
   SliceStoreConformanceOptions,
-} from './testing'
+} from './testing/index'
