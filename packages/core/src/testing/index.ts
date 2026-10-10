@@ -1,4 +1,4 @@
-export { eventsFor } from './events-for'
+export { eventsFor } from '../definition'
 export {
   AdapterConformanceFailure,
   eventLogConformance,

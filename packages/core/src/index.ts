@@ -6,6 +6,7 @@ export type {
 } from './definition'
 export {
   createEventDefinition,
+  eventsFor,
   implementCommand,
   implementQuery,
   implementReaction,

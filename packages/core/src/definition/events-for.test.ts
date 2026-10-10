@@ -1,10 +1,9 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { describe, expect, test } from 'vitest'
 
-import { createEventDefinition } from '../definition'
-import { createCommandSlice, event } from '../definition'
+import { createTestSliceStore } from '../testing/test-slice-store'
+import { createCommandSlice, createEventDefinition, event } from './index'
 import { eventsFor } from './events-for'
-import { createTestSliceStore } from './test-slice-store'
 
 const schema = {
   '~standard': {

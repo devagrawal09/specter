@@ -1,12 +1,11 @@
-import {
-  isScenarioEvent,
-  type ApplyEventDefinition,
-  type SliceRegistration,
-} from '../definition'
+import { isScenarioEvent } from './scenario-types'
+import type { ApplyEventDefinition, SliceRegistration } from './slices'
 
 /**
- * Selects the exact Event Definition catalog needed by one focused Slice test.
- * The result includes Given/apply Events and accepted Command outcome Events.
+ * Selects the exact Event Definition catalog one Slice needs: its Given/apply
+ * Events and accepted Command outcome Events. A focused Slice test passes one
+ * Slice's selection; an app that registers some Slices of a larger catalog
+ * registers the union of its Slices' selections.
  */
 export function eventsFor(
   slice: SliceRegistration,

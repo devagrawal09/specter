@@ -9,7 +9,7 @@ import {
   createReactionSlice,
   event,
 } from '../definition'
-import { eventsFor } from './events-for'
+import { eventsFor } from '../definition'
 import { testSliceImplementations } from './scenarios'
 import { createTestSliceStore } from './test-slice-store'
 

@@ -367,7 +367,7 @@ export function collectConformanceDiagnostics(
             eventType,
             message: `Registered Event "${eventType}" must appear in at least one scenario Given or Command outcome.`,
             remediation:
-              'For a whole-app check, add the missing scenario coverage. For a focused single-Slice test, pass eventsFor(slice, fullEventCatalog) from @specter-ts/core/testing instead of the whole app catalog.',
+              'For a whole-app check, add the missing scenario coverage. For a focused single-Slice test, pass eventsFor(slice, fullEventCatalog) from @specter-ts/core instead of the whole app catalog.',
           })
         }
       }

@@ -18,6 +18,7 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
+| `eventsFor(slice, fullCatalog)` | Selects the Event Definitions one Slice needs: Given/apply Events and accepted Command outcomes. An app that registers some Slices of a larger catalog registers the union over its Slices. |
 | `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
 | `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |

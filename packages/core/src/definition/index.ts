@@ -5,6 +5,7 @@ export type {
   PersistedEvent,
 } from './events'
 export { createEventDefinition } from './events'
+export { eventsFor } from './events-for'
 export {
   assertConforms,
   collectConformanceDiagnostics,
