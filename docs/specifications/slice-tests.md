@@ -95,7 +95,7 @@ After replay, the runner decodes `when`, reads the Slice State, and calls the Co
 - Emitted payloads are decoded by their Event Definitions and must not be transformed.
 - The resulting `{ type, payload }` values must exactly equal the ordered `expect` array.
 - Rejected Scenarios require the handler to throw, and the thrown error's message must match `reject.reason`.
-- A Command with consistency keys runs each Scenario a second time with only the Given Events that carry one of its keys or carry none, and must reach the same outcome. A failure means the decision reads Events its keys leave out: declare their keys too, or drop the keys and keep the type-scoped check.
+- A Command with consistency keys runs each Scenario a second time without its trailing Given Events that carry none of its keys (an unkeyed Event counts as carrying them), and must reach the same outcome: those are the Events a concurrent writer could append after the decision read its State without a conflict. A failure means the decision depends on Events its keys leave out: declare their keys too, or drop the keys and keep the type-scoped check.
 
 ### Queries
 
@@ -105,7 +105,7 @@ After replay, the runner decodes `when`, calls the Query handler, decodes the ac
 
 After replay, the runner calls the Reaction handler directly. It does not execute the Reaction Plugin. `undefined` becomes `[]`; a returned value is decoded through the output schema and becomes `[value]`. The result must exactly equal `expect`.
 
-A keyed Reaction's handler runs once for each key the Given Events carry, in the order the keys first appear, and the effects it requests are listed in that order. Each key then runs again from only the Given Events that carry it, and must request the same effect: the handler may read only its key's State.
+A keyed Reaction's handler runs once for each key the Given Events carry, in the order the keys first appear, and the effects it requests are listed in that order. Each key then runs again without the trailing Given Events that do not carry it, and must request the same effect: an Event without the key does not run its handler, so it must not change the key's effect.
 
 This keeps domain effect selection testable without performing provider calls or dispatching same-app Commands. Test a Plugin or outbox worker separately at its infrastructure boundary.
 

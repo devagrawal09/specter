@@ -226,10 +226,11 @@ cannot have. An Event that carries no keys runs no handler, and conformance
 rejects a keyed Reaction that applies an Event type declaring no keys.
 
 The handler must decide each key from that key's State alone, which is what
-lets core skip the others. Scenarios check it: a keyed Reaction's `expect`
-lists one output per key its Given Events carry, as if they were one commit,
-and each key's output must be the same from only the Given Events that carry
-that key.
+lets core skip the others: an Event that does not carry a key must not change
+that key's output. Scenarios check it: a keyed Reaction's `expect` lists one
+output per key its Given Events carry, as if they were one commit, and each
+key's output must be the same without the trailing Given Events that do not
+carry it, which would not have run its handler.
 
 ### When Reactions start
 

@@ -81,8 +81,8 @@ type CommandConsistencyStep<
   /**
    * Names the Event keys the decision reads, from the decoded Command. The
    * append then conflicts only with new Events of the applied types that carry
-   * one of them or carry none. Scenarios check that the Command decides the
-   * same from only those Events.
+   * one of them or carry none. Scenarios check that trailing Events carrying
+   * none of them cannot change the decision.
    */
   consistencyKeys: (
     keys: (command: TCommand) => readonly string[],

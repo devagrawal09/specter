@@ -104,16 +104,22 @@ Its append then conflicts only with a new Event of an applied type that
 carries one of those keys, or carries none: an unkeyed Event may concern any
 key. The re-decision on a stale append is scoped the same way.
 
-Declaring keys is a promise the runtime cannot check while it runs: the
-decision must depend only on the Events carrying those keys (or none). A
-Command that reads more, such as a parent's state, declares that key too
-(`[command.childId, command.parentId]`); one whose decision reads its whole
-fold, such as a limit across every Todo, declares no keys and keeps the
+Declaring keys is a promise the runtime cannot check while it runs: once the
+Command has read its State, no Event carrying none of its keys may change its
+decision. A Command that reads more, such as a parent's state, declares that
+key too (`[command.childId, command.parentId]`); one whose decision reads its
+whole fold, such as a limit across every Todo, declares no keys and keeps the
 type-scoped check. Without `consistencyKeys` the scoped check is the safe
-default. Executable Scenarios check the promise: each Scenario of a Command
-with consistency keys also runs with only the Given Events that carry one of
-its keys or none, and must reach the same outcome. A Scenario that shows the
-decision reading another key's Events fails with the keys it was missing.
+default. A fold may still read another key's past through an Event that
+carries the Command's key (a fork copying its parent's state when it is
+recorded): later Events of the parent cannot change what was copied.
+
+Executable Scenarios check the promise. Each Scenario of a Command with
+consistency keys also runs without its trailing Given Events that carry none
+of its keys or are unkeyed, the Events a concurrent writer could append after
+the decision read its State without a conflict, and must reach the same
+outcome. A Scenario that shows the decision depending on them fails with the
+keys it declared.
 
 Callers can add two guards:
 

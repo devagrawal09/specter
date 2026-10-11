@@ -44,7 +44,7 @@ Both test runners first call the same conformance check used to construct an app
 3. A Command handler must either throw or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`, and a keyed Reaction one per key the Given Events carry, in the order the keys first appear.
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.
 5. The runner compares exact values with `expect(...).toEqual(...)`.
-6. A Command with consistency keys runs the Scenario again with only the Given Events that carry one of its keys (computed from the decoded `when`) or carry none, and must reach the same outcome. A keyed Reaction runs each key again with only the Given Events carrying that key, and must request the same effect. Either failure names the keys and the Scenario.
+6. A Command with consistency keys runs the Scenario again without its trailing Given Events that carry none of its keys (computed from the decoded `when`), the Events a concurrent writer could append after the decision read its State, and must reach the same outcome. A keyed Reaction runs each key again without the trailing Given Events that do not carry that key, and must request the same effect. Either failure names the keys and the Scenario.
 
 Step 6 calls `runScenario` more than once per Scenario, so each call must start
 from empty Slice State.

@@ -175,9 +175,9 @@ export async function checkCommandScenario(
 
   expectCommandOutcome(await decide(scenario.given), scenario)
 
-  // A Command that declares consistency keys promises to decide from only
-  // the Events carrying one of them, or none: its append conflicts with no
-  // others. Each Scenario checks that promise.
+  // A Command that declares consistency keys promises that no Event carrying
+  // none of them can change its decision once it has read its State: its
+  // append conflicts with no such Event. Each Scenario checks that promise.
   const consistencyKeys = implementation.consistencyKeys
   if (!consistencyKeys) return
   const keys = new Set(
@@ -185,20 +185,35 @@ export async function checkCommandScenario(
       await decodeOptionalSchema(implementation.inputSchema, scenario.when),
     ),
   )
-  const keyed = scenario.given.filter((given) => {
+  const read = untilLast(scenario.given, (given) => {
     const carried = scenarioEventKeys(eventDefinitions, given)
     return carried === undefined || carried.some((key) => keys.has(key))
   })
-  if (keyed.length === scenario.given.length) return
+  if (read.length === scenario.given.length) return
   try {
-    expectCommandOutcome(await decide(keyed), scenario)
+    expectCommandOutcome(await decide(read), scenario)
   } catch (cause) {
     const named = [...keys].join(', ')
     throw new Error(
-      `Command "${implementation.name}" decides scenario "${scenario.description}" differently from only the Given Events that carry its consistency keys (${named}) or carry none. Declare every key its decision reads, or give the Events it reads those keys.`,
+      `Command "${implementation.name}" decides scenario "${scenario.description}" differently without its last Given Events, which carry none of its consistency keys (${named}): a writer could append those after it read its State without a conflict. Declare every key its decision reads, or give the Events it reads those keys.`,
       { cause },
     )
   }
+}
+
+/**
+ * The Events up to the last one `carries` accepts. What follows carries
+ * none of a decision's keys, so a concurrent writer could append it after the
+ * decision read its State and the scoped compare-and-swap would let both
+ * commit: the decision must not depend on it.
+ */
+function untilLast(
+  given: readonly ScenarioEvent[],
+  carries: (given: ScenarioEvent) => boolean,
+) {
+  let last = given.length - 1
+  while (last >= 0 && !carries(given[last] as ScenarioEvent)) last -= 1
+  return given.slice(0, last + 1)
 }
 
 function expectCommandOutcome(
@@ -353,15 +368,16 @@ export async function checkReactionScenario(
   if (!implementation.keyed) return
   for (const [index, key] of keys.entries()) {
     if (key === undefined) continue
-    const alone = await handle(
-      scenario.given.filter((given) =>
-        scenarioEventKeys(eventDefinitions, given)?.includes(key),
-      ),
-      key,
+    const read = untilLast(
+      scenario.given,
+      (given) =>
+        scenarioEventKeys(eventDefinitions, given)?.includes(key) ?? false,
     )
+    if (read.length === scenario.given.length) continue
+    const alone = await handle(read, key)
     if (!valuesEqual(alone, outputs[index])) {
       throw new Error(
-        `Keyed Reaction "${implementation.name}" handles key "${key}" in scenario "${scenario.description}" differently from only the Given Events that carry it: ${JSON.stringify(
+        `Keyed Reaction "${implementation.name}" handles key "${key}" in scenario "${scenario.description}" differently without its last Given Events, which do not carry that key and so would not run its handler: ${JSON.stringify(
           alone,
         )} instead of ${JSON.stringify(outputs[index])}. Its handler must decide each key from that key's State alone.`,
       )

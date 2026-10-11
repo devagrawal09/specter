@@ -94,7 +94,7 @@ function createChild(keys: (command: Created) => readonly string[]) {
 }
 
 describe('consistency keys in Scenarios', () => {
-  it('passes when the Command decides the same from only the Events carrying its keys', async () => {
+  it('passes when Events carrying none of its keys cannot change the decision', async () => {
     const { slice, runScenario } = createChild((command) => [
       command.id,
       ...(command.parentId ? [command.parentId] : []),
@@ -111,7 +111,57 @@ describe('consistency keys in Scenarios', () => {
     await expect(
       checkCommandScenario(slice, refusal, events, runScenario),
     ).rejects.toThrow(
-      /differently from only the Given Events that carry its consistency keys \(child\)/,
+      /differently without its last Given Events, which carry none of its consistency keys \(child\)/,
+    )
+  })
+})
+
+describe('consistency keys and history', () => {
+  it("accepts a decision that read another key's past through an Event carrying its own key", async () => {
+    const copied = createEventDefinition(
+      'thing-copied',
+      schema<{ readonly id: string; readonly from: string }>(),
+      { keys: (payload) => [payload.id] },
+    )
+    const { store, runScenario } = isolated()
+    const slice = createCommandSlice('touchThing')
+      .description('Touches a live thing.')
+      .scenarios({
+        description:
+          'Touches a copy made while its source lived, whatever happened to the source since.',
+        given: [
+          event('thing-created', { id: 'source' }),
+          event('thing-copied', { id: 'copy', from: 'source' }),
+          event('thing-removed', { id: 'source' }),
+        ],
+        when: { id: 'copy' },
+        expect: [event('thing-created', { id: 'copy' })],
+      })
+      .inputSchema<Created>()
+      .consistencyKeys((command) => [command.id])
+      .store(store.tag)
+      .apply(created, async (applied, state) => {
+        state.live[applied.payload.id] = true
+      })
+      .apply(copied, async (applied, state) => {
+        state.live[applied.payload.id] =
+          state.live[applied.payload.from] ?? false
+      })
+      .apply(removed, async (applied, state) => {
+        state.live[applied.payload.id] = false
+      })
+      .handle(async (command, state) => {
+        if (!state.live[command.id]) throw new Error('Thing not live')
+        return [created.create({ id: command.id })]
+      })
+    // The source's removal follows every Event carrying "copy", so it is
+    // what a concurrent writer could append: the decision must not depend on
+    // it, and does not. The source's creation precedes the copy.
+    await checkCommandScenario(
+      slice,
+      slice.scenarios[0],
+      [created, copied, removed],
+      runScenario,
     )
   })
 })
