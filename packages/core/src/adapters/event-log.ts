@@ -14,8 +14,27 @@ export type EventLogAppendResult = EventLogCommit & {
   readonly duplicate: boolean
 }
 
+/**
+ * What a decision read, for a compare-and-swap scoped to it: the Events of
+ * `eventTypes` up to `afterOrder`, narrowed by `matches` when present. An
+ * append under it is stale when a matching Event was appended after
+ * `afterOrder`.
+ */
+export type EventLogAppendCondition = {
+  readonly afterOrder: number
+  readonly eventTypes: readonly string[]
+  /** Every Event of `eventTypes` matches when omitted. */
+  readonly matches?: (event: PersistedEvent) => boolean
+}
+
 export type EventLogAppendOptions = {
+  /** The append is stale unless the log is at exactly this version. */
   readonly expectedVersion?: number
+  /**
+   * The append is stale when an Event of `eventTypes` with an order above
+   * `afterOrder`, and matched by `matches` when given, is already in the log.
+   */
+  readonly expectedUnchanged?: EventLogAppendCondition
   readonly idempotencyKey?: string
   readonly fingerprint?: string
 }
@@ -55,7 +74,10 @@ export type EventLogService = {
    * Atomically appends one commit. When idempotencyKey already exists, returns
    * the stored commit (with its original fingerprint) as `duplicate: true` and
    * appends nothing, whatever fingerprint was passed. The runtime decides
-   * whether a fingerprint mismatch is a conflict.
+   * whether a fingerprint mismatch is a conflict. Otherwise a stale
+   * `expectedVersion` or `expectedUnchanged` fails with an
+   * `EventLogFailure('append')` whose cause is a SpecterVersionConflictError,
+   * checked under the same lock as the write.
    */
   readonly append: (
     events: readonly EventDraft[],

@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Effect } from 'effect'
 
+import { eventKeys } from './events'
 import { isScenarioEvent, type ScenarioEvent } from './scenario-types'
 import { validateSchema, valuesEqual } from './schemas'
 import type {
@@ -438,6 +439,22 @@ function validateScenarioEvent(
           'The Event schema accepted this payload but changed, stripped, or generated data. Event payload schemas must preserve scenario payloads one-to-one.',
         remediation:
           'Make the Event schema validation-only, then use analyzeEventPropagation(...) from @specter-ts/core/testing to update every producer, Given example, and apply consumer.',
+      })
+      return
+    }
+
+    try {
+      eventKeys(definition, result.value)
+    } catch (cause) {
+      diagnostics.push({
+        code: 'event-keys',
+        ...context,
+        eventType: scenarioEvent.eventType,
+        message: `The Event's keys could not be read from this payload: ${
+          cause instanceof Error ? cause.message : String(cause)
+        }`,
+        remediation:
+          'Make the EventDefinition keys function return an array of strings for every valid payload.',
       })
     }
   })

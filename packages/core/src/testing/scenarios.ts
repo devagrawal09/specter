@@ -7,6 +7,7 @@ import {
   assertConforms,
   commandScenarioEventTypes,
   decodeOptionalSchema,
+  eventKeys,
   isScenarioEvent,
   type ApplyEventDefinition,
   type CommandScenario,
@@ -109,9 +110,26 @@ function testCommandScenario(
   eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
-  it(scenario.description, async () => {
-    const result = await runScenario(
-      replay([implementation], eventDefinitions, scenario.given).pipe(
+  it(scenario.description, () =>
+    checkCommandScenario(
+      implementation,
+      scenario,
+      eventDefinitions,
+      runScenario,
+    ),
+  )
+}
+
+/** Runs one Command Scenario; internal seam of the Vitest runner. */
+export async function checkCommandScenario(
+  implementation: Extract<SliceRegistration, { kind: 'command' }>,
+  scenario: CommandScenario,
+  eventDefinitions: readonly ApplyEventDefinition[],
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
+) {
+  const decide = (given: readonly ScenarioEvent[]) =>
+    runScenario(
+      replay([implementation], eventDefinitions, given).pipe(
         Effect.andThen(
           Effect.result(
             withStoreRead(implementation, async (state) => {
@@ -155,41 +173,72 @@ function testCommandScenario(
       ),
     )
 
-    if (scenario.expect.length === 0) {
-      expect(result._tag).toBe('Left')
-      if (scenario.reject) {
-        if (result._tag !== 'Left') {
-          throw new Error('Command scenario did not reject')
-        }
-        expect(result.left).toBeInstanceOf(Error)
-        expect(result.left).toMatchObject({
-          message: scenario.reject.reason,
-        })
-      }
-      return
-    }
+  expectCommandOutcome(await decide(scenario.given), scenario)
 
-    if (result._tag === 'Left') {
-      throw new Error('Command scenario rejected unexpectedly', {
-        cause: result.left,
-      })
-    }
-
-    expect(result.right).toHaveLength(scenario.expect.length)
-
-    for (const [index, expectedEvent] of scenario.expect.entries()) {
-      if (!isScenarioEvent(expectedEvent)) {
-        throw new Error(
-          'Command scenario expected value is not a ScenarioEvent',
-        )
-      }
-
-      expect(result.right[index]).toEqual({
-        type: expectedEvent.eventType,
-        payload: expectedEvent.examplePayload,
-      })
-    }
+  // A Command that declares consistency keys promises to decide from only
+  // the Events carrying one of them, or none: its append conflicts with no
+  // others. Each Scenario checks that promise.
+  const consistencyKeys = implementation.consistencyKeys
+  if (!consistencyKeys) return
+  const keys = new Set(
+    consistencyKeys(
+      await decodeOptionalSchema(implementation.inputSchema, scenario.when),
+    ),
+  )
+  const keyed = scenario.given.filter((given) => {
+    const carried = scenarioEventKeys(eventDefinitions, given)
+    return carried === undefined || carried.some((key) => keys.has(key))
   })
+  if (keyed.length === scenario.given.length) return
+  try {
+    expectCommandOutcome(await decide(keyed), scenario)
+  } catch (cause) {
+    const named = [...keys].join(', ')
+    throw new Error(
+      `Command "${implementation.name}" decides scenario "${scenario.description}" differently from only the Given Events that carry its consistency keys (${named}) or carry none. Declare every key its decision reads, or give the Events it reads those keys.`,
+      { cause },
+    )
+  }
+}
+
+function expectCommandOutcome(
+  result:
+    | { readonly _tag: 'Left'; readonly left: unknown }
+    | { readonly _tag: 'Right'; readonly right: readonly EventDraft[] },
+  scenario: CommandScenario,
+) {
+  if (scenario.expect.length === 0) {
+    expect(result._tag).toBe('Left')
+    if (scenario.reject) {
+      if (result._tag !== 'Left') {
+        throw new Error('Command scenario did not reject')
+      }
+      expect(result.left).toBeInstanceOf(Error)
+      expect(result.left).toMatchObject({
+        message: scenario.reject.reason,
+      })
+    }
+    return
+  }
+
+  if (result._tag === 'Left') {
+    throw new Error('Command scenario rejected unexpectedly', {
+      cause: result.left,
+    })
+  }
+
+  expect(result.right).toHaveLength(scenario.expect.length)
+
+  for (const [index, expectedEvent] of scenario.expect.entries()) {
+    if (!isScenarioEvent(expectedEvent)) {
+      throw new Error('Command scenario expected value is not a ScenarioEvent')
+    }
+
+    expect(result.right[index]).toEqual({
+      type: expectedEvent.eventType,
+      payload: expectedEvent.examplePayload,
+    })
+  }
 }
 
 function testQueryScenario(
@@ -242,6 +291,16 @@ function testReactionScenario(
     )
     expect(result).toEqual(scenario.expect)
   })
+}
+
+function scenarioEventKeys(
+  eventDefinitions: readonly ApplyEventDefinition[],
+  given: ScenarioEvent,
+) {
+  return eventKeys(
+    eventDefinitions.find((candidate) => candidate.type === given.eventType),
+    given.examplePayload,
+  )
 }
 
 async function decodeEventDraft(

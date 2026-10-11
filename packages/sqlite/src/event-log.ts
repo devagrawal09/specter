@@ -244,6 +244,15 @@ export function createSqliteEventLogService(
         version,
       )
     }
+    const unchanged = appendOptions.expectedUnchanged
+    if (unchanged) {
+      const stale = (
+        await query(connection, unchanged.afterOrder, unchanged.eventTypes)
+      ).find((event) => unchanged.matches?.(event) ?? true)
+      if (stale) {
+        throw new SpecterVersionConflictError(unchanged.afterOrder, stale.order)
+      }
+    }
 
     const events: PersistedEvent[] = []
     for (const draft of drafts) {

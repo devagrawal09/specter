@@ -166,6 +166,15 @@ export function createNodeSqliteEventLogService(
         version,
       )
     }
+    const unchanged = appendOptions.expectedUnchanged
+    if (unchanged) {
+      const stale = query(unchanged.afterOrder, unchanged.eventTypes).find(
+        (event) => unchanged.matches?.(event) ?? true,
+      )
+      if (stale) {
+        throw new SpecterVersionConflictError(unchanged.afterOrder, stale.order)
+      }
+    }
     const insert = context.database.prepare(
       'INSERT INTO specter_events (id, type, payload, recorded_at) VALUES (?, ?, ?, ?)',
     )

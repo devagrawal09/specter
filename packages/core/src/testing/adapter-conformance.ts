@@ -1,7 +1,12 @@
-import { Effect } from 'effect'
+import { Cause, Effect, Exit } from 'effect'
 import { describe, it } from 'vitest'
 
-import type { EventLogService, SliceStoreService } from '../adapters'
+import type {
+  EventLogFailure,
+  EventLogService,
+  SliceStoreService,
+} from '../adapters'
+import { SpecterVersionConflictError } from '../runtime/errors'
 
 export class AdapterConformanceFailure extends Error {
   readonly _tag = 'AdapterConformanceFailure' as const
@@ -110,6 +115,77 @@ export function eventLogConformance<TCreateError, TRequirements>(
         commits[1]?.version === second.version &&
         Number.isFinite(Date.parse(commits[1]?.committedAt ?? '')),
       commits,
+    )
+
+    // A compare-and-swap scoped to what a decision read: only later Events of
+    // its types, narrowed by `matches`, make the append stale.
+    const isStale = (exit: Exit.Exit<unknown, EventLogFailure>) =>
+      Exit.isFailure(exit) &&
+      exit.cause.reasons.some(
+        (reason) =>
+          Cause.isFailReason(reason) &&
+          reason.error.operation === 'append' &&
+          reason.error.cause instanceof SpecterVersionConflictError,
+      )
+    const unrelated = yield* service.append(
+      [{ type: 'first-recorded', payload: { value: 4 } }],
+      {
+        expectedUnchanged: { afterOrder: 1, eventTypes: ['first-recorded'] },
+      },
+    )
+    yield* requireInvariant(
+      'event-log',
+      'a scoped append ignores later Events of other types',
+      !unrelated.duplicate && unrelated.version === 4,
+      unrelated,
+    )
+    const staleByType = yield* Effect.exit(
+      service.append([{ type: 'third-recorded', payload: { value: 5 } }], {
+        expectedUnchanged: { afterOrder: 2, eventTypes: ['third-recorded'] },
+      }),
+    )
+    const unmatched = yield* service.append(
+      [{ type: 'third-recorded', payload: { value: 5 } }],
+      {
+        expectedUnchanged: {
+          afterOrder: 1,
+          eventTypes: ['first-recorded', 'third-recorded'],
+          matches: (event) =>
+            (event.payload as { readonly value?: unknown }).value === 1,
+        },
+      },
+    )
+    const staleByMatch = yield* Effect.exit(
+      service.append([{ type: 'third-recorded', payload: { value: 6 } }], {
+        expectedUnchanged: {
+          afterOrder: 1,
+          eventTypes: ['first-recorded'],
+          matches: (event) =>
+            (event.payload as { readonly value?: unknown }).value === 4,
+        },
+      }),
+    )
+    const versionAfterScoped = yield* service.currentVersion
+    yield* requireInvariant(
+      'event-log',
+      'a scoped append is stale only for a later matching Event of its types',
+      isStale(staleByType) &&
+        !unmatched.duplicate &&
+        unmatched.version === 5 &&
+        isStale(staleByMatch) &&
+        versionAfterScoped === 5,
+      { staleByType, unmatched, staleByMatch, versionAfterScoped },
+    )
+    const scopedDuplicate = yield* service.append(first.events, {
+      expectedUnchanged: { afterOrder: 0, eventTypes: ['first-recorded'] },
+      idempotencyKey: 'event-log-conformance',
+      fingerprint: 'v2:event-log-conformance',
+    })
+    yield* requireInvariant(
+      'event-log',
+      'a known idempotency key returns its commit before a scoped check',
+      scopedDuplicate.duplicate && scopedDuplicate.version === first.version,
+      scopedDuplicate,
     )
   })
 }

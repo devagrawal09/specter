@@ -1,6 +1,7 @@
 export type {
   Event,
   EventDefinition,
+  EventDefinitionOptions,
   EventDraft,
   PersistedEvent,
 } from './definition'
@@ -79,6 +80,7 @@ export type {
   SpecterQueryType,
 } from './runtime'
 export type {
+  EventLogAppendCondition,
   EventLogAppendOptions,
   EventLogAppendResult,
   EventLogCommit,

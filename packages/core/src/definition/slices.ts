@@ -30,6 +30,8 @@ export type ApplyEventDefinition = {
   readonly type: string
   readonly schema: StandardSchemaV1
   readonly decode: (payload: unknown) => Promise<unknown>
+  /** The keys an Event of this type carries; absent for an unkeyed type. */
+  readonly keys?: (payload: never) => readonly string[]
 }
 
 export type EventForDefinition<TDefinition> =
@@ -102,6 +104,12 @@ export type CommandSlice<
 > = SliceBase<TName, TScenarios> & {
   readonly kind: 'command'
   readonly inputSchema?: StandardSchemaV1<TInput, TCommand>
+  /**
+   * The Event keys this Command's decision reads. Its append then conflicts
+   * only with new Events of the types it applies that carry one of these keys,
+   * or carry none. Without it, any new Event of those types conflicts.
+   */
+  readonly consistencyKeys?: (command: TCommand) => readonly string[]
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly handle: (

@@ -13,6 +13,7 @@ import {
 
 import {
   EventLog,
+  type EventLogAppendCondition,
   type EventLogAppendResult,
   type EventLogCommit,
   EventLogFailure,
@@ -26,6 +27,7 @@ import {
   assertConforms,
   commandScenarioEventTypes,
   decodeOptionalSchema,
+  eventKeys,
   type ApplyEventDefinition,
   type ApplyRegistration,
   type CommandEnvelope,
@@ -684,14 +686,15 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         }
 
         yield* catchUpSlice(command)
-        const events = yield* readStore(command, (read) =>
+        // The State read is the fold of the applied Events up to `cursor`.
+        const { events, cursor } = yield* readStore(command, (read, cursor) =>
           fromPromise(
             () => command.handle(parsed, read),
             (cause) =>
               cause instanceof SpecterCommandRejectedError
                 ? cause
                 : new SpecterCommandRejectedError(command.name, cause),
-          ),
+          ).pipe(Effect.map((events) => ({ events, cursor }))),
         )
         if (events.length === 0) {
           return yield* Effect.fail(
@@ -715,7 +718,17 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         }
         const decoded = yield* Effect.forEach(events, decodeEventDraft)
         const appended = yield* eventLog.append(decoded, {
-          expectedVersion: version,
+          ...(options.expectedVersion === undefined
+            ? {
+                expectedUnchanged: yield* decisionCondition(
+                  command,
+                  parsed,
+                  // Catch-up found no applied Event between its cursor and
+                  // the version read before it, so both bounds are exact.
+                  Math.max(version, cursor),
+                ),
+              }
+            : { expectedVersion: version }),
           idempotencyKey: options.idempotencyKey,
           fingerprint: options.fingerprint,
         })
@@ -724,6 +737,61 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         return appended.duplicate
           ? yield* acceptDuplicate(appended, options)
           : appended
+      })
+    }
+
+    /**
+     * What a Command's decision read, for its append's compare-and-swap: the
+     * Events of the types it applies, up to `afterOrder`. With consistency
+     * keys, only the Events carrying one of them or carrying none: the
+     * Command declares that it decides from those alone.
+     */
+    function decisionCondition(
+      command: AnyCommand,
+      parsed: unknown,
+      afterOrder: number,
+    ): Effect.Effect<EventLogAppendCondition, SpecterEffectError> {
+      return Effect.gen(function* () {
+        const eventTypes = [...(applyBySlice.get(command)?.keys() ?? [])]
+        const consistencyKeys = command.consistencyKeys
+        if (!consistencyKeys) return { afterOrder, eventTypes }
+        const keys = yield* Effect.try({
+          try: () => {
+            const keys: unknown = consistencyKeys(parsed)
+            if (
+              !Array.isArray(keys) ||
+              keys.some((key) => typeof key !== 'string')
+            ) {
+              throw new TypeError(
+                'Consistency keys must be an array of strings.',
+              )
+            }
+            return new Set<string>(keys)
+          },
+          catch: (cause) =>
+            new SpecterInfrastructureError(
+              `Command "${command.name}" consistency keys failed.`,
+              cause,
+            ),
+        })
+        return {
+          afterOrder,
+          eventTypes,
+          matches: (event) => {
+            try {
+              const carried = eventKeys(
+                eventDefinitions.get(event.type),
+                event.payload,
+              )
+              return (
+                carried === undefined || carried.some((key) => keys.has(key))
+              )
+            } catch {
+              // An Event whose keys cannot be read may concern any key.
+              return true
+            }
+          },
+        }
       })
     }
 
@@ -1274,6 +1342,15 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             throw new SpecterInfrastructureError(
               `Event schema transformed payload for "${draft.type}".`,
               undefined,
+            )
+          }
+          // Keyed decisions read these keys back from the log.
+          try {
+            eventKeys(definition, payload)
+          } catch (cause) {
+            throw new SpecterInfrastructureError(
+              `Event keys failed for "${draft.type}".`,
+              cause,
             )
           }
           return { ...draft, payload }

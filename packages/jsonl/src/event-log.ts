@@ -127,6 +127,22 @@ export function createJsonlEventLog(
         version,
       )
     }
+    const unchanged = appendOptions.expectedUnchanged
+    if (unchanged) {
+      for (let index = events.length - 1; index >= 0; index--) {
+        const event = events[index] as PersistedEvent
+        if (event.order <= unchanged.afterOrder) break
+        if (
+          unchanged.eventTypes.includes(event.type) &&
+          (unchanged.matches?.(copyEvent(event)) ?? true)
+        ) {
+          throw new SpecterVersionConflictError(
+            unchanged.afterOrder,
+            event.order,
+          )
+        }
+      }
+    }
     const line = JSON.stringify({
       version: version + drafts.length,
       committedAt: now().toISOString(),

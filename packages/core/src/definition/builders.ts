@@ -56,7 +56,7 @@ export type CommandSliceSpec<
   readonly name: TName
   readonly description: string
   readonly scenarios: TScenarios
-  inputSchema<TInput = unknown>(): CommandStoreStep<
+  inputSchema<TInput = unknown>(): CommandConsistencyStep<
     TName,
     TInput,
     TInput,
@@ -64,12 +64,29 @@ export type CommandSliceSpec<
   >
   inputSchema<TSchema extends StandardSchemaV1>(
     schema: TSchema,
-  ): CommandStoreStep<
+  ): CommandConsistencyStep<
     TName,
     StandardSchemaV1.InferInput<TSchema>,
     StandardSchemaV1.InferOutput<TSchema>,
     TScenarios
   >
+}
+
+type CommandConsistencyStep<
+  TName extends string,
+  TInput,
+  TCommand,
+  TScenarios extends NonEmptyScenarios<CommandScenario>,
+> = CommandStoreStep<TName, TInput, TCommand, TScenarios> & {
+  /**
+   * Names the Event keys the decision reads, from the decoded Command. The
+   * append then conflicts only with new Events of the applied types that carry
+   * one of them or carry none. Scenarios check that the Command decides the
+   * same from only those Events.
+   */
+  consistencyKeys: (
+    keys: (command: TCommand) => readonly string[],
+  ) => CommandStoreStep<TName, TInput, TCommand, TScenarios>
 }
 
 type CommandStoreStep<
@@ -437,20 +454,30 @@ function createCommandSpec<
     ),
   })
 
+  const storeStep = (
+    schema: StandardSchemaV1 | undefined,
+    consistencyKeys: ((command: unknown) => readonly string[]) | undefined,
+  ) => ({
+    store: <TStore extends StoreBinding>(
+      store: TStore,
+      options?: SliceStoreOptions,
+    ) =>
+      createCommandApplyStep(
+        specification,
+        schema,
+        consistencyKeys,
+        store,
+        options?.eager ?? false,
+        Object.freeze([]),
+      ),
+  })
+
   return Object.freeze({
     ...specification,
     inputSchema: (schema?: StandardSchemaV1) => ({
-      store: <TStore extends StoreBinding>(
-        store: TStore,
-        options?: SliceStoreOptions,
-      ) =>
-        createCommandApplyStep(
-          specification,
-          schema,
-          store,
-          options?.eager ?? false,
-          Object.freeze([]),
-        ),
+      ...storeStep(schema, undefined),
+      consistencyKeys: (keys: (command: unknown) => readonly string[]) =>
+        storeStep(schema, keys),
     }),
   }) as CommandSliceSpec<TName, TScenarios>
 }
@@ -466,6 +493,7 @@ function createCommandApplyStep<
 >(
   specification: Specification<'command', TName, TScenarios>,
   inputSchema: StandardSchemaV1<TInput, TCommand> | undefined,
+  consistencyKeys: ((command: TCommand) => readonly string[]) | undefined,
   store: TStore,
   eager: boolean,
   apply: readonly ApplyRegistration<TWriteState>[],
@@ -494,7 +522,7 @@ function createCommandApplyStep<
         TReadState,
         TScenarios,
         TStore
-      >(specification, inputSchema, store, eager, [
+      >(specification, inputSchema, consistencyKeys, store, eager, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -508,6 +536,7 @@ function createCommandApplyStep<
         ...specification,
         stage: 'implementation' as const,
         inputSchema,
+        ...(consistencyKeys ? { consistencyKeys } : {}),
         store,
         eager,
         apply: Object.freeze([...apply]),

@@ -1,10 +1,11 @@
 export type {
   Event,
   EventDefinition,
+  EventDefinitionOptions,
   EventDraft,
   PersistedEvent,
 } from './events'
-export { createEventDefinition } from './events'
+export { createEventDefinition, eventKeys } from './events'
 export { eventsFor } from './events-for'
 export {
   assertConforms,

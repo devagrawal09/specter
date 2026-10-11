@@ -2590,6 +2590,21 @@ function makeEventLogService(
           ) {
             throw new Error('version conflict')
           }
+          const unchanged = options.expectedUnchanged
+          if (
+            unchanged &&
+            events.some(
+              (item) =>
+                item.order > unchanged.afterOrder &&
+                unchanged.eventTypes.includes(item.type) &&
+                (unchanged.matches?.(item) ?? true),
+            )
+          ) {
+            throw new SpecterVersionConflictError(
+              unchanged.afterOrder,
+              events.length,
+            )
+          }
           const persisted = drafts.map((draft, index) => ({
             ...draft,
             id: `event-${events.length + index + 1}`,
