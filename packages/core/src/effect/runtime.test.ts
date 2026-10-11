@@ -742,10 +742,10 @@ describe('Effect-native runtime', () => {
 
     // Commits that land while no runtime is running are found at startup.
     await Effect.runPromise(
-      eventLog.append([{ type: 'other-recorded', payload: 5 }]),
+      eventLog.append([{ type: 'other-recorded', payload: 5, keys: {} }]),
     )
     await Effect.runPromise(
-      eventLog.append([{ type: 'value-recorded', payload: 6 }]),
+      eventLog.append([{ type: 'value-recorded', payload: 6, keys: {} }]),
     )
     const before = counted.count('publishRelevantValue')
     const second = await createSpecterApp(fixture.config, dependencies)
@@ -1370,7 +1370,7 @@ describe('Effect-native runtime', () => {
   it('applies the idempotency mode to a duplicate returned by a concurrent append', async () => {
     const base = makeEventLogService()
     await Effect.runPromise(
-      base.append([{ type: 'value-recorded', payload: 7 }], {
+      base.append([{ type: 'value-recorded', payload: 7, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'v2:concurrent-winner',
       }),
@@ -1404,10 +1404,13 @@ describe('Effect-native runtime', () => {
                 raced = true
               }).pipe(
                 Effect.andThen(
-                  base.append([{ type: 'value-recorded', payload: 7 }], {
-                    idempotencyKey: key,
-                    fingerprint: 'v2:concurrent-winner',
-                  }),
+                  base.append(
+                    [{ type: 'value-recorded', payload: 7, keys: {} }],
+                    {
+                      idempotencyKey: key,
+                      fingerprint: 'v2:concurrent-winner',
+                    },
+                  ),
                 ),
                 Effect.as(undefined),
               ),
@@ -1438,7 +1441,7 @@ describe('Effect-native runtime', () => {
               raced = true
             }).pipe(
               Effect.andThen(
-                base.append([{ type: 'value-recorded', payload: 7 }]),
+                base.append([{ type: 'value-recorded', payload: 7, keys: {} }]),
               ),
               Effect.andThen(
                 Effect.fail(
@@ -2564,7 +2567,12 @@ function makeEventLogService(
         ]
       : []
   const commits = new Map<string, EventLogCommit>()
+  const keys = new Map<number, Readonly<Record<string, string>>>()
   const service: EventLogService = {
+    readKey: (key) =>
+      Effect.sync(() =>
+        events.filter((item) => keys.get(item.order)?.[key.name] === key.value),
+      ),
     query: (after, types) =>
       Effect.succeed(
         events.filter(
@@ -2597,7 +2605,10 @@ function makeEventLogService(
               (item) =>
                 item.order > unchanged.afterOrder &&
                 unchanged.eventTypes.includes(item.type) &&
-                (unchanged.matches?.(item) ?? true),
+                (unchanged.keys === undefined ||
+                  Object.entries(unchanged.keys).some(([name, values]) =>
+                    values.includes(keys.get(item.order)?.[name] as string),
+                  )),
             )
           ) {
             throw new SpecterVersionConflictError(
@@ -2605,8 +2616,12 @@ function makeEventLogService(
               events.length,
             )
           }
+          for (const [index, draft] of drafts.entries()) {
+            keys.set(events.length + index + 1, draft.keys)
+          }
           const persisted = drafts.map((draft, index) => ({
-            ...draft,
+            type: draft.type,
+            payload: draft.payload,
             id: `event-${events.length + index + 1}`,
             order: events.length + index + 1,
             recordedAt: new Date(0).toISOString(),

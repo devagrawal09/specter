@@ -9,8 +9,8 @@ describe('memory Event Log', () => {
     const eventLog = createMemoryEventLog()
     const commit = await Effect.runPromise(
       eventLog.append([
-        { type: 'todo-added', payload: { todoId: 'todo-1' } },
-        { type: 'todo-added', payload: { todoId: 'todo-2' } },
+        { type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} },
+        { type: 'todo-added', payload: { todoId: 'todo-2' }, keys: {} },
       ]),
     )
     expect(commit.events.map(({ order }) => order)).toEqual([1, 2])
@@ -23,7 +23,9 @@ describe('memory Event Log', () => {
     const eventLog = createMemoryEventLog()
     const callback = () => 'local-only'
     await Effect.runPromise(
-      eventLog.append([{ type: 'callback-registered', payload: callback }]),
+      eventLog.append([
+        { type: 'callback-registered', payload: callback, keys: {} },
+      ]),
     )
     const queried = await Effect.runPromise(
       eventLog.query(0, ['callback-registered']),
@@ -35,9 +37,12 @@ describe('memory Event Log', () => {
     const eventLog = createMemoryEventLog()
     const append = () =>
       Effect.runPromise(
-        eventLog.append([{ type: 'counter-incremented', payload: {} }], {
-          expectedVersion: 0,
-        }),
+        eventLog.append(
+          [{ type: 'counter-incremented', payload: {}, keys: {} }],
+          {
+            expectedVersion: 0,
+          },
+        ),
       )
     const results = await Promise.allSettled([append(), append()])
     expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(
@@ -55,20 +60,23 @@ describe('memory Event Log', () => {
   it('returns the first commit for a reused key regardless of fingerprint', async () => {
     const eventLog = createMemoryEventLog()
     const first = await Effect.runPromise(
-      eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
-        idempotencyKey: 'request-1',
-        fingerprint: 'fingerprint-one',
-      }),
+      eventLog.append(
+        [{ type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} }],
+        {
+          idempotencyKey: 'request-1',
+          fingerprint: 'fingerprint-one',
+        },
+      ),
     )
     const duplicate = await Effect.runPromise(
-      eventLog.append([{ type: 'ignored', payload: {} }], {
+      eventLog.append([{ type: 'ignored', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-one',
       }),
     )
     expect(duplicate).toEqual({ ...first, duplicate: true })
     const changed = await Effect.runPromise(
-      eventLog.append([{ type: 'ignored', payload: {} }], {
+      eventLog.append([{ type: 'ignored', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-two',
       }),

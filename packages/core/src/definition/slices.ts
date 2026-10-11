@@ -30,8 +30,10 @@ export type ApplyEventDefinition = {
   readonly type: string
   readonly schema: StandardSchemaV1
   readonly decode: (payload: unknown) => Promise<unknown>
-  /** The keys an Event of this type carries; absent for an unkeyed type. */
-  readonly keys?: (payload: never) => readonly string[]
+  /** The named keys an Event of this type carries; absent for an unkeyed type. */
+  readonly keys?: Readonly<
+    Record<string, (payload: never) => string | undefined>
+  >
 }
 
 export type EventForDefinition<TDefinition> =
@@ -56,9 +58,20 @@ export type ApplyRegistration<TState = unknown> = {
   readonly handle: ApplyHandler<Event, TState>
 }
 
-export type RejectedCommand = {
-  readonly reason: string
-}
+/**
+ * Derives the values of one consistency key from the decoded Command and the
+ * State its decision read: one value, several, or none.
+ */
+export type ConsistencyKey<TCommand = unknown, TReadState = unknown> = (
+  command: TCommand,
+  state: TReadState,
+) => string | readonly string[] | undefined
+
+/** A Command's consistency keys by name, each derived on its own. */
+export type ConsistencyKeys<
+  TCommand = unknown,
+  TReadState = unknown,
+> = Readonly<Record<string, ConsistencyKey<TCommand, TReadState>>>
 
 export type CommandEnvelope<
   TName extends string = string,
@@ -105,15 +118,12 @@ export type CommandSlice<
   readonly kind: 'command'
   readonly inputSchema?: StandardSchemaV1<TInput, TCommand>
   /**
-   * The Event keys this Command's decision reads, from the Command and the
-   * State it decided from. Its append then conflicts only with new Events of
-   * the types it applies that carry one of these keys, or carry none. Without
-   * it, any new Event of those types conflicts.
+   * The named Event keys this Command's decision reads, each derived from the
+   * Command and the State it decided from. Its append then conflicts only
+   * with new Events of the types it applies that carry one of these values
+   * under that name. Without it, any new Event of those types conflicts.
    */
-  readonly consistencyKeys?: (
-    command: TCommand,
-    state: TReadState,
-  ) => readonly string[]
+  readonly consistencyKeys?: ConsistencyKeys<TCommand, TReadState>
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly handle: (
@@ -301,11 +311,12 @@ export type ReactionSlice<
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly plugin?: ReactionPlugin<TOutput, TPluginRequirements>
   /**
-   * A keyed Reaction (`.handleEachKey`) runs its handler once for each key
-   * the commit's Events carry, with that key; any other runs it once per
-   * commit, without one.
+   * The Event key name a keyed Reaction (`.handleEachKey(name, ...)`)
+   * handles: its handler runs once for each value of it the commit's Events
+   * carry, with that value. Absent for any other Reaction, which runs once per
+   * commit without one.
    */
-  readonly keyed: boolean
+  readonly key?: string
   readonly handle: (
     state: TReadState,
     key?: string,

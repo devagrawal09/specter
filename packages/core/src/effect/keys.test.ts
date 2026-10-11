@@ -6,11 +6,13 @@ import {
   type EventDraft,
   EventLog,
   type EventLogCommit,
+  type EventLogDraft,
   EventLogFailure,
   type EventLogService,
   type PersistedEvent,
   type ReactionPlugin,
   SpecterConformanceError,
+  SpecterInfrastructureError,
   SpecterVersionConflictError,
   createEventDefinition,
 } from '..'
@@ -28,33 +30,50 @@ function schema<T>(): StandardSchemaV1<T, T> {
   }
 }
 
-type Item = { readonly itemId: string; readonly value: number }
+type Item = {
+  readonly itemId: string
+  readonly value: number
+  readonly listId?: string
+}
 
+// An item's change names its item and, when it has one, its list: two ID
+// spaces, so the same string under each name is two keys.
 const itemChanged = createEventDefinition('item-changed', schema<Item>(), {
-  keys: (payload) => [payload.itemId],
+  keys: {
+    item: (payload) => payload.itemId,
+    list: (payload) => payload.listId,
+  },
 })
-// Same shape, no keys: every keyed decision over its type depends on it.
-const itemReset = createEventDefinition('item-reset', schema<Item>())
+const itemReset = createEventDefinition('item-reset', schema<Item>(), {
+  keys: { item: (payload) => payload.itemId },
+})
 const noteRecorded = createEventDefinition('note-recorded', schema<Item>(), {
-  keys: (payload) => [payload.itemId],
+  keys: { item: (payload) => payload.itemId },
 })
 
 /**
- * An in-memory Event Log that honors both compare-and-swap forms. `race`
- * appends other writers' Events before each of the next appends, as a
- * concurrent writer that commits between a decision's read and its append.
+ * An in-memory Event Log that stores each Event's keys and honors both
+ * compare-and-swap forms from them. `race` appends other writers' Events
+ * before each of the next appends, as a concurrent writer that commits
+ * between a decision's read and its append.
  */
 function makeLog() {
   const events: PersistedEvent[] = []
+  const keys = new Map<number, Readonly<Record<string, string>>>()
   const commits: EventLogCommit[] = []
-  const races: EventDraft[][] = []
-  const append = (drafts: readonly EventDraft[]) => {
-    const persisted = drafts.map((draft, index) => ({
-      ...draft,
-      id: `event-${events.length + index + 1}`,
-      order: events.length + index + 1,
-      recordedAt: new Date(0).toISOString(),
-    }))
+  const races: EventLogDraft[][] = []
+  const append = (drafts: readonly EventLogDraft[]) => {
+    const persisted = drafts.map((draft, index) => {
+      const order = events.length + index + 1
+      keys.set(order, draft.keys)
+      return {
+        type: draft.type,
+        payload: draft.payload,
+        id: `event-${order}`,
+        order,
+        recordedAt: new Date(0).toISOString(),
+      }
+    })
     events.push(...persisted)
     const commit = {
       events: persisted,
@@ -70,6 +89,10 @@ function makeLog() {
         events.filter(
           (item) => item.order > after && types.includes(item.type),
         ),
+      ),
+    readKey: (key) =>
+      Effect.sync(() =>
+        events.filter((item) => keys.get(item.order)?.[key.name] === key.value),
       ),
     currentVersion: Effect.sync(() => events.length),
     commitsAfter: (after) =>
@@ -95,7 +118,10 @@ function makeLog() {
                 (item) =>
                   item.order > unchanged.afterOrder &&
                   unchanged.eventTypes.includes(item.type) &&
-                  (unchanged.matches?.(item) ?? true),
+                  (unchanged.keys === undefined ||
+                    Object.entries(unchanged.keys).some(([name, values]) =>
+                      values.includes(keys.get(item.order)?.[name] as string),
+                    )),
               )
             : undefined
           if (unchanged && stale) {
@@ -112,8 +138,22 @@ function makeLog() {
   return {
     service,
     events,
-    race: (...drafts: readonly (readonly EventDraft[])[]) => {
-      races.push(...drafts.map((raced) => [...raced]))
+    keys,
+    // Raced item Events carry the keys their definition derives, unless given.
+    race: (...drafts: readonly (readonly (EventDraft | EventLogDraft)[])[]) => {
+      races.push(...drafts.map((raced) => raced.map(withItemKeys)))
+    },
+  }
+}
+
+function withItemKeys(draft: EventDraft | EventLogDraft): EventLogDraft {
+  if ('keys' in draft) return draft
+  const payload = draft.payload as Item
+  return {
+    ...draft,
+    keys: {
+      item: payload.itemId,
+      ...(payload.listId === undefined ? {} : { list: payload.listId }),
     },
   }
 }
@@ -146,7 +186,7 @@ function changeItem(options: { readonly keyed: boolean }) {
     .inputSchema<Item>()
   const stored = spec.store(store.tag)
   const keyed = options.keyed
-    ? stored.consistencyKeys((command) => [command.itemId])
+    ? stored.consistencyKeys({ item: (command) => command.itemId })
     : stored
   const slice = keyed
     .apply(itemChanged, async (applied, state) => {
@@ -196,7 +236,7 @@ describe('consistency keys', () => {
         )
       }),
     )
-    return { result, handled, events: log.events }
+    return { result, handled, events: log.events, keys: log.keys }
   }
 
   it('lets a Command append when other writers appended only Event types it does not apply', async () => {
@@ -220,6 +260,11 @@ describe('consistency keys', () => {
     expect(handled).toHaveLength(2)
   })
 
+  it('appends each Event with the keys its definition derives from the payload', async () => {
+    const { keys } = await dispatchWithRace(true, [])
+    expect([...keys.values()]).toEqual([{ item: 'a' }])
+  })
+
   it('ignores an applied Event type for another key when the Command declares its keys', async () => {
     const { result, handled } = await dispatchWithRace(true, [
       [{ type: 'item-changed', payload: { itemId: 'b', value: 1 } }],
@@ -228,18 +273,31 @@ describe('consistency keys', () => {
     expect(handled).toHaveLength(1)
   })
 
-  it('decides again for an Event carrying its key, or an unkeyed one it applies', async () => {
+  it('tells key names apart: the same value under another name is another key', async () => {
+    const { result, handled } = await dispatchWithRace(true, [
+      [
+        {
+          type: 'item-changed',
+          payload: { itemId: 'b', value: 1, listId: 'a' },
+        },
+      ],
+    ])
+    expect(result._tag).toBe('Success')
+    expect(handled).toHaveLength(1)
+  })
+
+  it('decides again for an Event of any applied type carrying its key', async () => {
     const sameKey = await dispatchWithRace(true, [
       [{ type: 'item-changed', payload: { itemId: 'a', value: 3 } }],
     ])
     expect(sameKey.result._tag).toBe('Success')
     expect(sameKey.handled).toHaveLength(2)
 
-    const unkeyed = await dispatchWithRace(true, [
-      [{ type: 'item-reset', payload: { itemId: 'b', value: 0 } }],
+    const otherType = await dispatchWithRace(true, [
+      [{ type: 'item-reset', payload: { itemId: 'a', value: 0 } }],
     ])
-    expect(unkeyed.result._tag).toBe('Success')
-    expect(unkeyed.handled).toHaveLength(2)
+    expect(otherType.result._tag).toBe('Success')
+    expect(otherType.handled).toHaveLength(2)
 
     // The re-decision reads what the winner wrote.
     const refused = await dispatchWithRace(true, [
@@ -270,15 +328,19 @@ describe('consistency keys', () => {
 
   it('takes keys from the State the decision read', async () => {
     type Grouped = { readonly itemId: string; readonly group: string }
+    const groupKeys = {
+      item: (payload: Grouped) => payload.itemId,
+      group: (payload: Grouped) => payload.group,
+    }
     const itemGrouped = createEventDefinition(
       'item-grouped',
       schema<Grouped>(),
-      { keys: (payload) => [payload.itemId, payload.group] },
+      { keys: groupKeys },
     )
     const itemActivated = createEventDefinition(
       'item-activated',
       schema<Grouped>(),
-      { keys: (payload) => [payload.itemId, payload.group] },
+      { keys: groupKeys },
     )
     const store = createTestSliceStore<{
       groups: Record<string, string>
@@ -300,10 +362,10 @@ describe('consistency keys', () => {
       })
       .inputSchema<{ readonly itemId: string }>()
       .store(store.tag)
-      .consistencyKeys((command, state) => [
-        command.itemId,
-        ...(state.groups[command.itemId] ? [state.groups[command.itemId]] : []),
-      ])
+      .consistencyKeys({
+        item: (command) => command.itemId,
+        group: (command, state) => state.groups[command.itemId],
+      })
       .apply(itemGrouped, async (applied, state) => {
         state.groups[applied.payload.itemId] = applied.payload.group
       })
@@ -334,9 +396,21 @@ describe('consistency keys', () => {
             ),
           )
           yield* log.service.append([
-            { type: 'item-grouped', payload: { itemId: 'a', group: 'g' } },
+            {
+              type: 'item-grouped',
+              payload: { itemId: 'a', group: 'g' },
+              keys: { item: 'a', group: 'g' },
+            },
           ])
-          log.race(raced)
+          log.race(
+            raced.map((draft) => ({
+              ...draft,
+              keys: {
+                item: (draft.payload as Grouped).itemId,
+                group: (draft.payload as Grouped).group,
+              },
+            })),
+          )
           yield* app.command({ type: 'activateItem', payload: { itemId: 'a' } })
           return handled.length
         }),
@@ -368,7 +442,7 @@ describe('consistency keys', () => {
 })
 
 describe('keyed Reactions', () => {
-  function itemWatch(options: { readonly keyed: boolean }) {
+  function itemWatch() {
     const store = createTestSliceStore<{ values: Record<string, number> }>({
       values: {},
     })
@@ -379,12 +453,12 @@ describe('keyed Reactions', () => {
           delivered.push({ output, id: context.deliveryId })
         }),
       )
-    const applied = createReactionSlice('itemWatch')
+    const slice = createReactionSlice('itemWatch')
       .description('Reports each changed item.')
       .scenarios({
         description: 'Reports a changed item.',
         given: [
-          event('item-changed', { itemId: 'a', value: 1 }),
+          event('item-changed', { itemId: 'a', value: 1, listId: 'l' }),
           event('note-recorded', { itemId: 'a', value: 1 }),
         ],
         expect: [{ itemId: 'a', value: 1 }],
@@ -396,49 +470,52 @@ describe('keyed Reactions', () => {
         state.values[changed.payload.itemId] = changed.payload.value
       })
       .apply(noteRecorded, async () => {})
-    const slice = options.keyed
-      ? applied.handleEachKey(async (state, key) => {
-          const value = state.values[key]
-          return value === undefined ? undefined : { itemId: key, value }
-        })
-      : applied.handle(async () => undefined)
+      .handleEachKey('item', async (state, itemId) => {
+        const value = state.values[itemId]
+        return value === undefined ? undefined : { itemId, value }
+      })
     return { slice, store, delivered }
   }
 
-  it('handles each key a commit carries, each a delivery of its own', async () => {
-    const log = makeLog()
-    const { slice, store, delivered } = itemWatch({ keyed: true })
-    const commandStore = createTestSliceStore({})
-    const recordItems = createCommandSlice('recordItems')
+  function recordItems() {
+    const store = createTestSliceStore({})
+    const slice = createCommandSlice('recordItems')
       .description('Records items.')
       .scenarios({
         description: 'Records items.',
         given: [],
-        when: [{ itemId: 'a', value: 1 }],
-        expect: [event('item-changed', { itemId: 'a', value: 1 })],
+        when: [{ itemId: 'a', value: 1, listId: 'l' }],
+        expect: [event('item-changed', { itemId: 'a', value: 1, listId: 'l' })],
       })
       .inputSchema<readonly Item[]>()
-      .store(commandStore.tag)
+      .store(store.tag)
       .handle(async (items) => items.map((item) => itemChanged.create(item)))
+    return { slice, store }
+  }
+
+  it('handles each value of its key a commit carries, each a delivery of its own', async () => {
+    const log = makeLog()
+    const { slice, store, delivered } = itemWatch()
+    const command = recordItems()
     await run(
       Effect.gen(function* () {
         const app = yield* makeSpecterRuntime({
           events: [itemChanged, noteRecorded],
-          slices: { recordItems, itemWatch: slice },
+          slices: { recordItems: command.slice, itemWatch: slice },
         } as const).pipe(
           Effect.provide(
             Layer.mergeAll(
               Layer.succeed(EventLog, log.service),
               store.layer,
-              commandStore.layer,
+              command.store.layer,
             ),
           ),
         )
         const first = yield* app.command({
           type: 'recordItems',
           payload: [
-            { itemId: 'b', value: 1 },
-            { itemId: 'a', value: 2 },
+            { itemId: 'b', value: 1, listId: 'l' },
+            { itemId: 'a', value: 2, listId: 'l' },
             { itemId: 'b', value: 3 },
           ],
         })
@@ -451,14 +528,62 @@ describe('keyed Reactions', () => {
       }),
     )
     expect(delivered).toEqual([
+      // The items, not the list both name: the Reaction is keyed by item.
       { output: { itemId: 'b', value: 3 }, id: 'itemWatch:3:b' },
       { output: { itemId: 'a', value: 2 }, id: 'itemWatch:3:a' },
-      // Only the key the second commit carries: b's State did not change.
+      // Only the item the second commit carries: b's State did not change.
       { output: { itemId: 'a', value: 4 }, id: 'itemWatch:4:a' },
     ])
   })
 
-  it('rejects a keyed Reaction that applies an Event type without keys', async () => {
+  it('refuses to append an Event without a key a keyed Slice applies it by', async () => {
+    const log = makeLog()
+    const store = createTestSliceStore<Record<string, never>>({})
+    const listWatch = createReactionSlice('listWatch')
+      .description('Watches lists.')
+      .scenarios({
+        description: 'Ignores a change.',
+        given: [event('item-changed', { itemId: 'a', value: 1, listId: 'l' })],
+        expect: [],
+      })
+      .outputSchema<Item>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(store.tag)
+      .apply(itemChanged, async () => {})
+      .handleEachKey('list', async () => undefined)
+    const command = recordItems()
+    const result = await run(
+      Effect.gen(function* () {
+        const app = yield* makeSpecterRuntime({
+          events: [itemChanged],
+          slices: { recordItems: command.slice, listWatch },
+        } as const).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, log.service),
+              store.layer,
+              command.store.layer,
+            ),
+          ),
+        )
+        return yield* Effect.result(
+          app.command({
+            type: 'recordItems',
+            payload: [{ itemId: 'a', value: 1 }],
+          }),
+        )
+      }),
+    )
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    expect(result.failure).toBeInstanceOf(SpecterInfrastructureError)
+    expect(result.failure.message).toContain(
+      'Event "item-changed" carries none of the keys (list) that keyed Slice "listWatch" applies it by.',
+    )
+    expect(log.events).toEqual([])
+  })
+
+  it('rejects a keyed Reaction that applies an Event type without its key', async () => {
     const store = createTestSliceStore({})
     const slice = createReactionSlice('resetWatch')
       .description('Watches resets.')
@@ -471,7 +596,7 @@ describe('keyed Reactions', () => {
       .plugin(() => Effect.succeed(() => Effect.void))
       .store(store.tag)
       .apply(itemReset, async () => {})
-      .handleEachKey(async () => undefined)
+      .handleEachKey('list', async () => undefined)
     const result = await run(
       Effect.result(
         makeSpecterRuntime({
@@ -498,7 +623,7 @@ describe('keyed Reactions', () => {
       (result.failure as SpecterConformanceError).diagnostics.map(
         (diagnostic) => diagnostic.code,
       ),
-    ).toContain('keyed-reaction-unkeyed-event')
+    ).toContain('keyed-reaction-undeclared-key')
   })
 })
 

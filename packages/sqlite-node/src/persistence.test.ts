@@ -57,7 +57,11 @@ describe('node:sqlite Effect runtime', () => {
           Effect.gen(function* () {
             write.count = 1
             yield* eventLog.append([
-              { type: 'nested-command-recorded', payload: { value: 1 } },
+              {
+                type: 'nested-command-recorded',
+                payload: { value: 1 },
+                keys: {},
+              },
             ])
             yield* publish(1)
             return yield* Effect.fail('plugin-failed')

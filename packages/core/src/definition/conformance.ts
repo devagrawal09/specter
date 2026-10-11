@@ -1,7 +1,13 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Effect } from 'effect'
 
-import { eventKeys } from './events'
+import { declaredKeyNames, eventKeys } from './events'
+import {
+  carriesOneOf,
+  type KeyedConsumer,
+  keyedConsumers,
+  sliceKeyNames,
+} from './keys'
 import { isScenarioEvent, type ScenarioEvent } from './scenario-types'
 import { validateSchema, valuesEqual } from './schemas'
 import type {
@@ -97,7 +103,19 @@ export function collectConformanceDiagnostics(
             'Event types must use kebab-case (for example, "todo-added").',
         })
       }
+
+      for (const name of declaredKeyNames(definition)) {
+        if (!isLowerCamelCase(name)) {
+          diagnostics.push({
+            code: 'event-key-name',
+            eventType: definition.type,
+            message: `Event key name "${name}" must use lower camel case (for example, "session" or "todoList").`,
+          })
+        }
+      }
     }
+
+    const requiredKeys = keyedConsumers(input.slices)
 
     if (
       options.requireCommandSlice !== false &&
@@ -217,6 +235,7 @@ export function collectConformanceDiagnostics(
           yield* validateScenarioEvent(
             candidate,
             eventDefinitions,
+            requiredKeys,
             diagnostics,
             {
               sliceName: slice.name,
@@ -259,6 +278,7 @@ export function collectConformanceDiagnostics(
               yield* validateScenarioEvent(
                 candidate,
                 eventDefinitions,
+                requiredKeys,
                 diagnostics,
                 {
                   sliceName: slice.name,
@@ -299,6 +319,8 @@ export function collectConformanceDiagnostics(
       }
 
       const applyEventTypes = new Set<string>()
+      const keyNames = sliceKeyNames(slice)
+      const usedKeyNames = new Set<string>()
       for (const [index, registration] of slice.apply.entries()) {
         const eventType = registration.event.type
 
@@ -315,20 +337,34 @@ export function collectConformanceDiagnostics(
         }
 
         const registeredDefinition = eventDefinitions.get(eventType)
+        const declared = declaredKeyNames(registeredDefinition)
+        for (const name of declared) {
+          if (keyNames?.includes(name)) usedKeyNames.add(name)
+        }
         if (
-          slice.kind === 'reaction' &&
-          slice.keyed === true &&
+          keyNames &&
           registeredDefinition &&
-          !registeredDefinition.keys
+          !keyNames.some((name) => declared.includes(name))
         ) {
-          diagnostics.push({
-            code: 'keyed-reaction-unkeyed-event',
-            sliceName: slice.name,
-            location: `apply[${index}]`,
-            eventType,
-            message: `A keyed Reaction handles the keys its Events carry, but "${eventType}" declares no keys, so it could never be handled.`,
-            remediation: `Declare keys on the "${eventType}" EventDefinition (createEventDefinition(type, schema, { keys })), or complete Slice "${slice.name}" with .handle(...).`,
-          })
+          diagnostics.push(
+            slice.kind === 'reaction'
+              ? {
+                  code: 'keyed-reaction-undeclared-key',
+                  sliceName: slice.name,
+                  location: `apply[${index}]`,
+                  eventType,
+                  message: `The keyed Reaction handles each "${keyNames[0]}" key its Events carry, but "${eventType}" declares no "${keyNames[0]}" key, so its Events could never be handled.`,
+                  remediation: `Declare a "${keyNames[0]}" key on the "${eventType}" EventDefinition (createEventDefinition(type, schema, { keys: { ${keyNames[0]}: ... } })), or complete Slice "${slice.name}" with .handle(...).`,
+                }
+              : {
+                  code: 'keyed-command-undeclared-key',
+                  sliceName: slice.name,
+                  location: `apply[${index}]`,
+                  eventType,
+                  message: `The Command conflicts only with Events carrying its consistency keys (${keyNames.join(', ')}), but "${eventType}" declares none of them, so no Event of it could ever conflict.`,
+                  remediation: `Declare one of those keys on the "${eventType}" EventDefinition, or drop .consistencyKeys(...) from Slice "${slice.name}" to keep the type-scoped check.`,
+                },
+          )
         }
         if (!registeredDefinition) {
           diagnostics.push({
@@ -346,6 +382,18 @@ export function collectConformanceDiagnostics(
             eventType,
             message:
               'The apply handler must use the exact EventDefinition instance registered by the app.',
+          })
+        }
+      }
+
+      if (slice.kind === 'command' && keyNames) {
+        for (const name of keyNames) {
+          if (usedKeyNames.has(name)) continue
+          diagnostics.push({
+            code: 'keyed-command-unused-key',
+            sliceName: slice.name,
+            message: `Consistency key "${name}" is declared by no Event type the Command applies, so it can never conflict.`,
+            remediation: `Remove "${name}" from .consistencyKeys(...), or declare it on the Event Definitions whose Events the decision reads.`,
           })
         }
       }
@@ -410,6 +458,7 @@ export function commandScenarioEventTypes(
 function validateScenarioEvent(
   scenarioEvent: ScenarioEvent,
   eventDefinitions: ReadonlyMap<string, ApplyEventDefinition>,
+  requiredKeys: ReadonlyMap<string, readonly KeyedConsumer[]>,
   diagnostics: ConformanceDiagnostic[],
   context: Pick<
     ConformanceDiagnostic,
@@ -458,8 +507,9 @@ function validateScenarioEvent(
       return
     }
 
+    let keys: Readonly<Record<string, string>>
     try {
-      eventKeys(definition, result.value)
+      keys = eventKeys(definition, result.value)
     } catch (cause) {
       diagnostics.push({
         code: 'event-keys',
@@ -469,7 +519,22 @@ function validateScenarioEvent(
           cause instanceof Error ? cause.message : String(cause)
         }`,
         remediation:
-          'Make the EventDefinition keys function return an array of strings for every valid payload.',
+          'Make each EventDefinition key function return a string, or undefined when the Event has no such key, for every valid payload.',
+      })
+      return
+    }
+
+    const declared = declaredKeyNames(definition)
+    for (const consumer of requiredKeys.get(scenarioEvent.eventType) ?? []) {
+      // A type declaring none of the names is reported once, by its Slice.
+      if (!consumer.names.some((name) => declared.includes(name))) continue
+      if (carriesOneOf(keys, consumer.names)) continue
+      diagnostics.push({
+        code: 'event-missing-key',
+        ...context,
+        eventType: scenarioEvent.eventType,
+        message: `The Event carries none of the keys (${consumer.names.join(', ')}) that keyed Slice "${consumer.sliceName}" applies it by, so that Slice could not tell what it is about.`,
+        remediation: `Give every "${scenarioEvent.eventType}" Event one of those keys, or stop keying Slice "${consumer.sliceName}" by them.`,
       })
     }
   })

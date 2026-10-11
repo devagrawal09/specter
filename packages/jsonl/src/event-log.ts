@@ -13,10 +13,11 @@ import {
   EventLog,
   EventLogFailure,
   SpecterVersionConflictError,
-  type EventDraft,
+  type EventLogAppendCondition,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
+  type EventLogDraft,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -62,7 +63,8 @@ export type JsonlEventLog = EventLogService & {
 
 /**
  * Opens one append-only JSONL file as an Event Log. Each line is one complete
- * commit, so a line boundary is the atomic commit boundary. Opening takes an
+ * commit, so a line boundary is the atomic commit boundary; each Event in it
+ * keeps the keys it was appended with. Opening takes an
  * exclusive `<path>.lock` file, released by `close()`, so the opener is the
  * file's only writer; a lock left by an exited process on this host is taken
  * over and reported as `recoveredStaleLock`, on the log and to `onOpen`.
@@ -89,21 +91,50 @@ export function createJsonlEventLog(
   let closed = false
   /** Set when a failed write could not be undone; every later append fails. */
   let poisoned: AggregateError | undefined
-  const events: PersistedEvent[] = commits.flatMap((commit) => commit.events)
-  const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
-  for (const commit of commits) {
+  const events: StoredEvent[] = commits.flatMap((commit) => commit.events)
+  const commitsByIdempotencyKey = new Map<string, StoredCommit>()
+  // The orders of the Events carrying each key, in log order.
+  const ordersByKey = new Map<string, number[]>()
+  const index = (commit: StoredCommit) => {
     if (commit.idempotencyKey) {
       commitsByIdempotencyKey.set(commit.idempotencyKey, commit)
     }
+    for (const event of commit.events) {
+      for (const [name, value] of Object.entries(event.keys ?? {})) {
+        const key = keyOf(name, value)
+        const orders = ordersByKey.get(key)
+        if (orders) orders.push(event.order)
+        else ordersByKey.set(key, [event.order])
+      }
+    }
   }
-  const copyEvent = (event: PersistedEvent): PersistedEvent => ({ ...event })
-  const copyCommit = (commit: EventLogCommit): EventLogCommit => ({
+  for (const commit of commits) index(commit)
+  // A stored Event as the Event Log returns it: its keys stay in the file.
+  const copyEvent = (event: StoredEvent): PersistedEvent => ({
+    id: event.id,
+    order: event.order,
+    type: event.type,
+    payload: event.payload,
+    recordedAt: event.recordedAt,
+  })
+  // Whether a stored Event is one the condition's decision read.
+  const read = (event: StoredEvent, condition: EventLogAppendCondition) => {
+    if (!condition.eventTypes.includes(event.type)) return false
+    if (!condition.keys) return true
+    const carried = event.keys ?? {}
+    return Object.entries(condition.keys).some(
+      ([name, values]) =>
+        Object.hasOwn(carried, name) &&
+        values.includes(carried[name] as string),
+    )
+  }
+  const copyCommit = (commit: StoredCommit): EventLogCommit => ({
     ...commit,
     events: commit.events.map(copyEvent),
   })
 
   function append(
-    drafts: readonly EventDraft[],
+    drafts: readonly EventLogDraft[],
     appendOptions: EventLogAppendOptions = {},
   ): EventLogAppendResult {
     if (poisoned) throw poisoned
@@ -130,12 +161,9 @@ export function createJsonlEventLog(
     const unchanged = appendOptions.expectedUnchanged
     if (unchanged) {
       for (let index = events.length - 1; index >= 0; index--) {
-        const event = events[index] as PersistedEvent
+        const event = events[index] as StoredEvent
         if (event.order <= unchanged.afterOrder) break
-        if (
-          unchanged.eventTypes.includes(event.type) &&
-          (unchanged.matches?.(copyEvent(event)) ?? true)
-        ) {
+        if (read(event, unchanged)) {
           throw new SpecterVersionConflictError(
             unchanged.afterOrder,
             event.order,
@@ -154,6 +182,7 @@ export function createJsonlEventLog(
         type: draft.type,
         payload: draft.payload,
         recordedAt: now().toISOString(),
+        ...(Object.keys(draft.keys).length > 0 ? { keys: draft.keys } : {}),
       })),
     })
     // Index the decoded line so live reads match what a reopen returns.
@@ -186,9 +215,7 @@ export function createJsonlEventLog(
     committedBytes += bytes.length
     events.push(...commit.events)
     commits.push(commit)
-    if (commit.idempotencyKey) {
-      commitsByIdempotencyKey.set(commit.idempotencyKey, commit)
-    }
+    index(commit)
     return { ...copyCommit(commit), duplicate: false }
   }
 
@@ -209,6 +236,14 @@ export function createJsonlEventLog(
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.length),
+    readKey: (key, page = {}) =>
+      Effect.sync(() => {
+        const afterOrder = page.afterOrder ?? 0
+        return (ordersByKey.get(keyOf(key.name, key.value)) ?? [])
+          .filter((order) => order > afterOrder)
+          .slice(0, page.limit ?? Number.POSITIVE_INFINITY)
+          .map((order) => copyEvent(events[order - 1] as StoredEvent))
+      }),
     commitsAfter: (afterVersion) =>
       Effect.sync(() =>
         commits
@@ -266,6 +301,18 @@ export function createJsonlEventLogLayer(
   )
 }
 
+/** An Event as a commit line stores it: with the keys it was appended with. */
+type StoredEvent = PersistedEvent & {
+  readonly keys?: Readonly<Record<string, string>>
+}
+
+type StoredCommit = Omit<EventLogCommit, 'events'> & {
+  readonly events: readonly StoredEvent[]
+}
+
+// Names cannot contain a NUL, so a name and value join unambiguously.
+const keyOf = (name: string, value: string) => `${name}\u0000${value}`
+
 function openFile(path: string, fsync: boolean) {
   let content: Buffer
   try {
@@ -275,7 +322,7 @@ function openFile(path: string, fsync: boolean) {
     content = Buffer.alloc(0)
   }
   const complete = content.lastIndexOf(0x0a) + 1
-  const commits: EventLogCommit[] = []
+  const commits: StoredCommit[] = []
   let version = 0
   for (const line of content
     .subarray(0, complete)
@@ -321,6 +368,16 @@ function openFile(path: string, fsync: boolean) {
 
 const commitPrefix = '{"version":'
 
+function validKeys(keys: unknown) {
+  return (
+    keys === undefined ||
+    (typeof keys === 'object' &&
+      keys !== null &&
+      !Array.isArray(keys) &&
+      Object.values(keys).every((value) => typeof value === 'string'))
+  )
+}
+
 function parsesAsJson(text: string) {
   try {
     JSON.parse(text)
@@ -334,15 +391,16 @@ function isTornCommit(tail: string) {
   return tail.startsWith(commitPrefix) || commitPrefix.startsWith(tail)
 }
 
-function parseCommit(line: string, previousVersion: number): EventLogCommit {
-  const record = JSON.parse(line) as EventLogCommit
+function parseCommit(line: string, previousVersion: number): StoredCommit {
+  const record = JSON.parse(line) as StoredCommit
   const contiguous =
     typeof record === 'object' &&
     record !== null &&
     Array.isArray(record.events) &&
     record.events.length > 0 &&
     record.events.every(
-      (event, index) => event.order === previousVersion + index + 1,
+      (event, index) =>
+        event.order === previousVersion + index + 1 && validKeys(event.keys),
     ) &&
     record.version === previousVersion + record.events.length
   if (!contiguous || Number.isNaN(Date.parse(record.committedAt))) {

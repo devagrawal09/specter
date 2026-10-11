@@ -9,6 +9,7 @@ import {
   SpecterVersionConflictError,
   type SliceStoreService,
 } from '@specter-ts/core'
+import { eventLogConformance } from '@specter-ts/core/testing'
 import { createCommandSlice, event } from '@specter-ts/spec'
 import { Context, Effect, Layer } from 'effect'
 
@@ -78,6 +79,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       DROP TABLE IF EXISTS specter_reaction_outbox;
       DROP TABLE IF EXISTS specter_slice_states;
       DROP TABLE IF EXISTS specter_event_commits;
+      DROP TABLE IF EXISTS specter_event_keys;
       DROP TABLE IF EXISTS specter_events;
     `)
     await preparePostgresEventLog(pool)
@@ -87,6 +89,12 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
 
   afterAll(async () => {
     await nativePool.end()
+  })
+
+  it('conforms to the Event Log contract, keys and keyed reads included', async () => {
+    await run(
+      eventLogConformance(Effect.succeed(createPostgresEventLogService(pool))),
+    )
   })
 
   it('serializes cross-context appends with an advisory lock and real rollback', async () => {
@@ -100,14 +108,20 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
 
     const results = await Promise.allSettled([
       run(
-        firstLog.append([{ type: 'created', payload: { writer: 'first' } }], {
-          expectedVersion: 0,
-        }),
+        firstLog.append(
+          [{ type: 'created', payload: { writer: 'first' }, keys: {} }],
+          {
+            expectedVersion: 0,
+          },
+        ),
       ),
       run(
-        secondLog.append([{ type: 'created', payload: { writer: 'second' } }], {
-          expectedVersion: 0,
-        }),
+        secondLog.append(
+          [{ type: 'created', payload: { writer: 'second' }, keys: {} }],
+          {
+            expectedVersion: 0,
+          },
+        ),
       ),
     ])
 
@@ -128,7 +142,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     const idempotent = await Promise.all([
       run(
         firstLog.append(
-          [{ type: 'requested', payload: { requestId: 'one' } }],
+          [{ type: 'requested', payload: { requestId: 'one' }, keys: {} }],
           {
             expectedVersion: 1,
             idempotencyKey: 'request-one',
@@ -138,7 +152,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       ),
       run(
         secondLog.append(
-          [{ type: 'requested', payload: { requestId: 'one' } }],
+          [{ type: 'requested', payload: { requestId: 'one' }, keys: {} }],
           {
             expectedVersion: 1,
             idempotencyKey: 'request-one',
@@ -197,7 +211,11 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       },
     })
 
-    await run(commandLog.append([counterIncremented.create({ amount: 1 })]))
+    await run(
+      commandLog.append([
+        { ...counterIncremented.create({ amount: 1 }), keys: {} },
+      ]),
+    )
 
     const incrementCounterSpecification = createCommandSlice('incrementCounter')
       .description('Increments a counter after reading its Event projection.')
@@ -219,7 +237,11 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
         expect(state.count).toBe(1)
         await run(
           competingLog.append([
-            { type: 'competing-event', payload: { count: state.count } },
+            {
+              type: 'competing-event',
+              payload: { count: state.count },
+              keys: {},
+            },
           ]),
         )
         return [counterIncremented.create(input)]
@@ -235,8 +257,13 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       ),
     )
 
+    // A caller's expectedVersion is a whole-log check, so the competing
+    // writer's Event, of a type the Command does not apply, makes it stale.
     await expect(
-      app.command({ type: 'incrementCounter', payload: { amount: 9 } }),
+      app.command(
+        { type: 'incrementCounter', payload: { amount: 9 } },
+        { expectedVersion: 1 },
+      ),
     ).rejects.toBeInstanceOf(EventLogFailure)
 
     const published = await run(
@@ -259,7 +286,11 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
 
     await run(
       eventLog.append(
-        values.map((value) => ({ type: 'value-recorded', payload: value })),
+        values.map((value) => ({
+          type: 'value-recorded',
+          payload: value,
+          keys: {},
+        })),
       ),
     )
     expect(

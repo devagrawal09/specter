@@ -45,14 +45,16 @@ describe('JSONL Event Log', () => {
     await Effect.runPromise(
       first.append(
         [
-          { type: 'todo-added', payload: { todoId: 'todo-1' } },
-          { type: 'todo-added', payload: { todoId: 'todo-2' } },
+          { type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} },
+          { type: 'todo-added', payload: { todoId: 'todo-2' }, keys: {} },
         ],
         { idempotencyKey: 'request-1', fingerprint: 'fingerprint-1' },
       ),
     )
     await Effect.runPromise(
-      first.append([{ type: 'todo-removed', payload: { todoId: 'todo-1' } }]),
+      first.append([
+        { type: 'todo-removed', payload: { todoId: 'todo-1' }, keys: {} },
+      ]),
     )
     const snapshot = async (log: typeof first) => ({
       version: await Effect.runPromise(log.currentVersion),
@@ -69,16 +71,19 @@ describe('JSONL Event Log', () => {
     expect(await snapshot(reopened)).toEqual(before)
     expect(before.version).toBe(3)
     const duplicate = await Effect.runPromise(
-      reopened.append([{ type: 'ignored', payload: {} }], {
+      reopened.append([{ type: 'ignored', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
       }),
     )
     expect(duplicate).toEqual({ ...before.commits[0], duplicate: true })
     const next = await Effect.runPromise(
-      reopened.append([{ type: 'todo-added', payload: { todoId: 'todo-3' } }], {
-        expectedVersion: 3,
-      }),
+      reopened.append(
+        [{ type: 'todo-added', payload: { todoId: 'todo-3' }, keys: {} }],
+        {
+          expectedVersion: 3,
+        },
+      ),
     )
     expect(next.events[0]?.order).toBe(4)
     reopened.close()
@@ -89,7 +94,7 @@ describe('JSONL Event Log', () => {
     await Effect.runPromise(
       Effect.gen(function* () {
         const eventLog = yield* EventLog
-        yield* eventLog.append([{ type: 'todo-added', payload: {} }])
+        yield* eventLog.append([{ type: 'todo-added', payload: {}, keys: {} }])
       }).pipe(Effect.provide(createJsonlEventLogLayer({ path }))),
     )
     const reopened = createJsonlEventLog({ path })
@@ -101,7 +106,9 @@ describe('JSONL Event Log', () => {
     const path = temporaryLogPath()
     const first = createJsonlEventLog({ path })
     await Effect.runPromise(
-      first.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }]),
+      first.append([
+        { type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} },
+      ]),
     )
     first.close()
     const partial = '{"version":2,"committedAt":"2026-'
@@ -111,7 +118,9 @@ describe('JSONL Event Log', () => {
     expect(reopened.discardedTrailingBytes).toBe(partial.length)
     expect(await Effect.runPromise(reopened.currentVersion)).toBe(1)
     await Effect.runPromise(
-      reopened.append([{ type: 'todo-added', payload: { todoId: 'todo-2' } }]),
+      reopened.append([
+        { type: 'todo-added', payload: { todoId: 'todo-2' }, keys: {} },
+      ]),
     )
     reopened.close()
 
@@ -135,9 +144,12 @@ describe('JSONL Event Log', () => {
     const eventLog = createJsonlEventLog({ path: temporaryLogPath() })
     const append = () =>
       Effect.runPromise(
-        eventLog.append([{ type: 'counter-incremented', payload: {} }], {
-          expectedVersion: 0,
-        }),
+        eventLog.append(
+          [{ type: 'counter-incremented', payload: {}, keys: {} }],
+          {
+            expectedVersion: 0,
+          },
+        ),
       )
     const results = await Promise.allSettled([append(), append()])
     expect(results.filter(({ status }) => status === 'fulfilled')).toHaveLength(
@@ -151,13 +163,13 @@ describe('JSONL Event Log', () => {
     })
 
     const first = await Effect.runPromise(
-      eventLog.append([{ type: 'todo-added', payload: {} }], {
+      eventLog.append([{ type: 'todo-added', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-one',
       }),
     )
     const changed = await Effect.runPromise(
-      eventLog.append([{ type: 'todo-changed', payload: {} }], {
+      eventLog.append([{ type: 'todo-changed', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-two',
       }),
@@ -172,7 +184,9 @@ describe('JSONL Event Log', () => {
     const eventLog = createJsonlEventLog({ path: temporaryLogPath() })
     const result = await Effect.runPromise(
       Effect.result(
-        eventLog.append([{ type: 'callback-registered', payload: () => 1 }]),
+        eventLog.append([
+          { type: 'callback-registered', payload: () => 1, keys: {} },
+        ]),
       ),
     )
     expect(result._tag).toBe('Failure')
@@ -188,7 +202,9 @@ describe('JSONL Event Log', () => {
     eventLog.close()
     expect(existsSync(`${path}.lock`)).toBe(false)
     const result = await Effect.runPromise(
-      Effect.result(eventLog.append([{ type: 'todo-added', payload: {} }])),
+      Effect.result(
+        eventLog.append([{ type: 'todo-added', payload: {}, keys: {} }]),
+      ),
     )
     expect(result._tag).toBe('Failure')
     createJsonlEventLog({ path }).close()
@@ -205,7 +221,9 @@ describe('JSONL Event Log', () => {
   it('refuses a lock file held by another live process', async () => {
     const path = temporaryLogPath()
     const first = createJsonlEventLog({ path })
-    await Effect.runPromise(first.append([{ type: 'todo-added', payload: {} }]))
+    await Effect.runPromise(
+      first.append([{ type: 'todo-added', payload: {}, keys: {} }]),
+    )
     first.close()
     const before = readFileSync(path)
     writeFileSync(`${path}.lock`, `${process.ppid}\n`)
@@ -237,7 +255,7 @@ describe('JSONL Event Log', () => {
     const first = createJsonlEventLog({ path })
     for (const todoId of ['todo-1', 'todo-2']) {
       await Effect.runPromise(
-        first.append([{ type: 'todo-added', payload: { todoId } }]),
+        first.append([{ type: 'todo-added', payload: { todoId }, keys: {} }]),
       )
     }
     first.close()
@@ -247,7 +265,9 @@ describe('JSONL Event Log', () => {
     expect(reopened.discardedTrailingBytes).toBe(0)
     expect(await Effect.runPromise(reopened.currentVersion)).toBe(2)
     await Effect.runPromise(
-      reopened.append([{ type: 'todo-added', payload: { todoId: 'todo-3' } }]),
+      reopened.append([
+        { type: 'todo-added', payload: { todoId: 'todo-3' }, keys: {} },
+      ]),
     )
     reopened.close()
     const again = createJsonlEventLog({ path })
@@ -262,7 +282,7 @@ describe('JSONL Event Log', () => {
   it('matches no Events for a NaN cursor', async () => {
     const eventLog = createJsonlEventLog({ path: temporaryLogPath() })
     await Effect.runPromise(
-      eventLog.append([{ type: 'todo-added', payload: {} }]),
+      eventLog.append([{ type: 'todo-added', payload: {}, keys: {} }]),
     )
     expect(
       await Effect.runPromise(eventLog.query(Number.NaN, ['todo-added'])),

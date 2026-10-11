@@ -61,8 +61,12 @@ if (mode === 'thread') {
   })
   await Effect.runPromise(
     Effect.gen(function* () {
-      yield* eventLog.append([{ type: 'turn-started', payload: { turn: 1 } }])
-      yield* eventLog.append([{ type: 'turn-finished', payload: { turn: 1 } }])
+      yield* eventLog.append([
+        { type: 'turn-started', payload: { turn: 1 }, keys: {} },
+      ])
+      yield* eventLog.append([
+        { type: 'turn-finished', payload: { turn: 1 }, keys: {} },
+      ])
       yield* outbox.enqueue({
         id: 'job-1',
         idempotencyKey: 'job-1',

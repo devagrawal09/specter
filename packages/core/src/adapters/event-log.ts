@@ -1,6 +1,6 @@
 import { Context, type Effect } from 'effect'
 
-import type { EventDraft, PersistedEvent } from '../definition/events'
+import type { EventDraft, EventKey, PersistedEvent } from '../definition/events'
 
 export type EventLogCommit = {
   readonly events: readonly PersistedEvent[]
@@ -15,16 +15,38 @@ export type EventLogAppendResult = EventLogCommit & {
 }
 
 /**
+ * An Event to append, with the named keys core derived from its payload. The
+ * Event Log stores the keys with the Event: its scoped compare-and-swap and
+ * keyed reads use them, and it never derives keys itself.
+ */
+export type EventLogDraft = EventDraft & {
+  /** One value per key name the Event carries; empty for an unkeyed Event. */
+  readonly keys: Readonly<Record<string, string>>
+}
+
+/**
  * What a decision read, for a compare-and-swap scoped to it: the Events of
- * `eventTypes` up to `afterOrder`, narrowed by `matches` when present. An
- * append under it is stale when a matching Event was appended after
- * `afterOrder`.
+ * `eventTypes` up to `afterOrder`, narrowed to those carrying one of `keys`
+ * when present. An append under it is stale when such an Event was appended
+ * after `afterOrder`.
  */
 export type EventLogAppendCondition = {
   readonly afterOrder: number
   readonly eventTypes: readonly string[]
-  /** Every Event of `eventTypes` matches when omitted. */
-  readonly matches?: (event: PersistedEvent) => boolean
+  /**
+   * Values by key name. An Event matches when it carries one of the values
+   * listed under one of its key names; with no value listed, none matches.
+   * Every Event of `eventTypes` matches when omitted.
+   */
+  readonly keys?: Readonly<Record<string, readonly string[]>>
+}
+
+/** A page of a keyed read: the Events after `afterOrder`, at most `limit`. */
+export type EventLogKeyPage = {
+  /** Defaults to 0, the start of the log. */
+  readonly afterOrder?: number
+  /** Every remaining Event when omitted. */
+  readonly limit?: number
 }
 
 export type EventLogAppendOptions = {
@@ -32,7 +54,7 @@ export type EventLogAppendOptions = {
   readonly expectedVersion?: number
   /**
    * The append is stale when an Event of `eventTypes` with an order above
-   * `afterOrder`, and matched by `matches` when given, is already in the log.
+   * `afterOrder`, carrying one of `keys` when given, is already in the log.
    */
   readonly expectedUnchanged?: EventLogAppendCondition
   readonly idempotencyKey?: string
@@ -48,6 +70,7 @@ export class EventLogFailure extends Error {
       | 'commitsAfter'
       | 'currentVersion'
       | 'findCommit'
+      | 'readKey'
       | 'append',
     readonly cause: unknown,
   ) {
@@ -66,21 +89,31 @@ export type EventLogService = {
   readonly commitsAfter: (
     afterVersion: number,
   ) => Effect.Effect<readonly EventLogCommit[], EventLogFailure>
+  /**
+   * The Events carrying one key, such as one aggregate's: those whose stored
+   * key `key.name` is `key.value`, with an order above `page.afterOrder`, in
+   * ascending order, at most `page.limit` of them.
+   */
+  readonly readKey: (
+    key: EventKey,
+    page?: EventLogKeyPage,
+  ) => Effect.Effect<readonly PersistedEvent[], EventLogFailure>
   /** Returns the stored commit for a key, including its stored fingerprint. */
   readonly findCommit: (
     idempotencyKey: string,
   ) => Effect.Effect<EventLogCommit | undefined, EventLogFailure>
   /**
-   * Atomically appends one commit. When idempotencyKey already exists, returns
-   * the stored commit (with its original fingerprint) as `duplicate: true` and
-   * appends nothing, whatever fingerprint was passed. The runtime decides
-   * whether a fingerprint mismatch is a conflict. Otherwise a stale
-   * `expectedVersion` or `expectedUnchanged` fails with an
-   * `EventLogFailure('append')` whose cause is a SpecterVersionConflictError,
-   * checked under the same lock as the write.
+   * Atomically appends one commit, storing each Event's keys with it. When
+   * idempotencyKey already exists, returns the stored commit (with its
+   * original fingerprint) as `duplicate: true` and appends nothing, whatever
+   * fingerprint was passed. The runtime decides whether a fingerprint
+   * mismatch is a conflict. Otherwise a stale `expectedVersion` or
+   * `expectedUnchanged` fails with an `EventLogFailure('append')` whose cause
+   * is a SpecterVersionConflictError, checked in the store under the same
+   * lock as the write.
    */
   readonly append: (
-    events: readonly EventDraft[],
+    events: readonly EventLogDraft[],
     options?: EventLogAppendOptions,
   ) => Effect.Effect<EventLogAppendResult, EventLogFailure>
 }

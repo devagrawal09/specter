@@ -22,6 +22,29 @@ export type PersistedEvent<
   readonly order: number
 }
 
+/**
+ * A named key an Event carries: an identity of what it is about, such as its
+ * aggregate's ID, under the name of that identity's kind (`session`,
+ * `project`). Names keep ID spaces apart.
+ */
+export type EventKey = {
+  readonly name: string
+  readonly value: string
+}
+
+/**
+ * Derives one named key from a payload: its value, or undefined when this
+ * Event is about no identity of that name.
+ */
+export type EventKeyFunction<TPayload> = (
+  payload: TPayload,
+) => string | undefined
+
+/** The named keys an Event type declares, each derived from the payload. */
+export type EventKeyFunctions<TPayload> = Readonly<
+  Record<string, EventKeyFunction<TPayload>>
+>
+
 export type EventDefinition<
   TType extends string = string,
   TPayload = unknown,
@@ -31,19 +54,21 @@ export type EventDefinition<
   readonly create: (payload: TPayload) => EventDraft<TType, TPayload>
   readonly decode: (payload: unknown) => Promise<TPayload>
   /**
-   * The keys an Event of this type carries: the identities of what it is
-   * about, such as its aggregate's ID. Absent for an unkeyed Event type.
+   * The named keys an Event of this type carries: the identities of what it
+   * is about, such as its aggregate's ID. Absent for an unkeyed Event type.
    */
-  readonly keys?: (payload: TPayload) => readonly string[]
+  readonly keys?: EventKeyFunctions<TPayload>
 }
 
 export type EventDefinitionOptions<TPayload> = {
   /**
-   * Derives an Event's keys from its payload. A Command that declares
-   * consistency keys conflicts only with new Events carrying one of them (or
-   * none), and a keyed Reaction handles each key a commit's Events carry.
+   * Declares the named keys an Event carries, each derived from its payload:
+   * `{ session: (payload) => payload.sessionId }`. Core stores them with the
+   * Event when it is appended. A Command that declares consistency keys
+   * conflicts only with new Events carrying one of them, and a keyed Reaction
+   * handles each value of its key a commit's Events carry.
    */
-  readonly keys?: (payload: TPayload) => readonly string[]
+  readonly keys?: EventKeyFunctions<TPayload>
 }
 
 export function createEventDefinition<
@@ -64,32 +89,45 @@ export function createEventDefinition<
       payload,
     }),
     decode,
-    ...(options.keys ? { keys: options.keys } : {}),
+    ...(options.keys ? { keys: Object.freeze({ ...options.keys }) } : {}),
   }
 }
 
+/** Any Event Definition's key declarations, whatever its payload. */
+type KeyedDefinition =
+  | {
+      readonly type: string
+      readonly keys?: Readonly<Record<string, (payload: never) => unknown>>
+    }
+  | undefined
+
+/** The key names an Event type declares, in declaration order. */
+export function declaredKeyNames(
+  definition: KeyedDefinition,
+): readonly string[] {
+  return definition?.keys ? Object.keys(definition.keys) : []
+}
+
 /**
- * The keys one Event carries, or undefined when it carries none: its type
- * declares no keys, or they are empty for this payload. Throws when a key
- * function returns anything but an array of strings.
+ * The keys one Event carries, by name: a value for each name its type
+ * declares, except those this payload has none for. Throws when a key
+ * function returns anything but a string or undefined.
  */
 export function eventKeys(
-  definition:
-    | {
-        readonly type: string
-        readonly keys?: (payload: never) => readonly string[]
-      }
-    | undefined,
+  definition: KeyedDefinition,
   payload: unknown,
-): readonly string[] | undefined {
-  if (!definition?.keys) return undefined
-  const keys: unknown = (definition.keys as (payload: unknown) => unknown)(
-    payload,
-  )
-  if (!Array.isArray(keys) || keys.some((key) => typeof key !== 'string')) {
-    throw new TypeError(
-      `Event "${definition.type}" keys must be an array of strings.`,
-    )
+): Readonly<Record<string, string>> {
+  const keys: Record<string, string> = {}
+  if (!definition?.keys) return keys
+  for (const [name, derive] of Object.entries(definition.keys)) {
+    const value: unknown = (derive as (payload: unknown) => unknown)(payload)
+    if (value === undefined) continue
+    if (typeof value !== 'string') {
+      throw new TypeError(
+        `Event "${definition.type}" key "${name}" must be a string or undefined.`,
+      )
+    }
+    keys[name] = value
   }
-  return keys.length > 0 ? (keys as readonly string[]) : undefined
+  return keys
 }

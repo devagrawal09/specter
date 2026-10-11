@@ -20,9 +20,9 @@ test('appends multiple events in input order', async () => {
     const eventLog = createSqliteEventLogService(sqlite)
     const appended = await Effect.runPromise(
       eventLog.append([
-        { type: 'event.one', payload: { position: 1 } },
-        { type: 'event.two', payload: { position: 2 } },
-        { type: 'event.three', payload: { position: 3 } },
+        { type: 'event.one', payload: { position: 1 }, keys: {} },
+        { type: 'event.two', payload: { position: 2 }, keys: {} },
+        { type: 'event.three', payload: { position: 3 }, keys: {} },
       ]),
     )
 

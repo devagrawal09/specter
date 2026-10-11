@@ -19,6 +19,7 @@ import {
   type EventLogAppendCondition,
   type EventLogAppendResult,
   type EventLogCommit,
+  type EventLogDraft,
   EventLogFailure,
   ReactionScheduler,
   ReactionSchedulerFailure,
@@ -28,9 +29,13 @@ import {
 } from '../adapters'
 import {
   assertConforms,
+  carriesOneOf,
   commandScenarioEventTypes,
+  consistencyKeyValues,
   decodeOptionalSchema,
   eventKeys,
+  keyedConsumers,
+  type KeyedConsumer,
   type ApplyEventDefinition,
   type ApplyRegistration,
   type CommandEnvelope,
@@ -236,6 +241,11 @@ type SpecterAppPlan = {
     ReadonlyMap<string, ApplyRegistration>
   >
   readonly allowedCommandEvents: ReadonlyMap<AnyCommand, ReadonlySet<string>>
+  /**
+   * The keyed Slices applying each Event type: every Event of it must carry
+   * one of each one's key names.
+   */
+  readonly requiredKeys: ReadonlyMap<string, readonly KeyedConsumer[]>
 }
 
 type PendingPlan = Promise<Exit.Exit<SpecterAppPlan, SpecterConformanceError>>
@@ -394,6 +404,7 @@ function buildPlan(
         reactions,
         applyBySlice,
         allowedCommandEvents,
+        requiredKeys: keyedConsumers(config.slices),
       }
     }),
   )
@@ -461,6 +472,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       reactions,
       applyBySlice,
       allowedCommandEvents,
+      requiredKeys,
     } = yield* resolvePlan(config)
 
     const eventLog = yield* EventLog
@@ -845,27 +857,21 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     }
 
     /**
-     * The Event keys a Command's decision read, from the Command and the
-     * State it decided from; undefined when it declares none.
+     * The named Event keys a Command's decision read, each derived from the
+     * Command and the State it decided from; undefined when it declares none.
      */
     function consistencyKeysOf(
       command: AnyCommand,
       parsed: unknown,
       read: unknown,
-    ): Effect.Effect<ReadonlySet<string> | undefined, SpecterEffectError> {
+    ): Effect.Effect<
+      Readonly<Record<string, readonly string[]>> | undefined,
+      SpecterEffectError
+    > {
       const consistencyKeys = command.consistencyKeys
       if (!consistencyKeys) return Effect.succeed(undefined)
       return Effect.try({
-        try: () => {
-          const keys: unknown = consistencyKeys(parsed, read)
-          if (
-            !Array.isArray(keys) ||
-            keys.some((key) => typeof key !== 'string')
-          ) {
-            throw new TypeError('Consistency keys must be an array of strings.')
-          }
-          return new Set<string>(keys)
-        },
+        try: () => consistencyKeyValues(consistencyKeys, parsed, read),
         catch: (cause) =>
           new SpecterInfrastructureError(
             `Command "${command.name}" consistency keys failed.`,
@@ -877,32 +883,18 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     /**
      * What a Command's decision read, for its append's compare-and-swap: the
      * Events of the types it applies, up to `afterOrder`. With consistency
-     * keys, only the Events carrying one of them or carrying none: the
-     * Command declares that it decides from those alone.
+     * keys, only the Events carrying one of them: the Command declares that
+     * it decides from those alone.
      */
     function decisionCondition(
       command: AnyCommand,
-      keys: ReadonlySet<string> | undefined,
+      keys: Readonly<Record<string, readonly string[]>> | undefined,
       afterOrder: number,
     ): EventLogAppendCondition {
       const eventTypes = [...(applyBySlice.get(command)?.keys() ?? [])]
-      if (!keys) return { afterOrder, eventTypes }
-      return {
-        afterOrder,
-        eventTypes,
-        matches: (event) => {
-          try {
-            const carried = eventKeys(
-              eventDefinitions.get(event.type),
-              event.payload,
-            )
-            return carried === undefined || carried.some((key) => keys.has(key))
-          } catch {
-            // An Event whose keys cannot be read may concern any key.
-            return true
-          }
-        },
-      }
+      return keys
+        ? { afterOrder, eventTypes, keys }
+        : { afterOrder, eventTypes }
     }
 
     /**
@@ -1243,14 +1235,17 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                 }
                 // A keyed Reaction decides once per key the commit's Events
                 // carry, each a delivery of its own.
+                const key = reaction.key
                 const deliveries =
                   relevant.length === 0
                     ? []
-                    : reaction.keyed
-                      ? (yield* commitKeys(reaction, decoded)).map((key) => ({
-                          key: key as string | undefined,
-                          deliveryId: `${deliveryId}:${key}`,
-                        }))
+                    : key !== undefined
+                      ? (yield* commitKeys(reaction, key, decoded)).map(
+                          (value) => ({
+                            key: value as string | undefined,
+                            deliveryId: `${deliveryId}:${value}`,
+                          }),
+                        )
                       : [{ key: undefined, deliveryId }]
                 for (const delivery of deliveries) {
                   const handled = yield* fromPromise(
@@ -1321,7 +1316,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             ...sliceSpanAttributes('reaction', reaction.name, reaction),
             // A keyed Reaction's deliveries append each key to this.
             'specter.reaction.delivery_id': deliveryId,
-            'specter.reaction.keyed': reaction.keyed,
+            'specter.reaction.keyed': reaction.key !== undefined,
             'specter.event_log.commit_version': commit.version,
             'specter.event.count': commit.events.length,
             'specter.event.types': commit.events.map((event) => event.type),
@@ -1331,24 +1326,35 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       )
     }
 
-    /** The distinct keys a commit's Events carry, in the order they appear. */
+    /**
+     * The distinct values of a keyed Reaction's key that a commit's Events
+     * carry, in the order they appear. Every Event it applies carries one.
+     */
     function commitKeys(
       reaction: AnyReaction,
+      name: string,
       events: readonly PersistedEvent[],
     ): Effect.Effect<readonly string[], SpecterEffectError> {
       return Effect.try({
         try: () => [
           ...new Set(
-            events.flatMap(
-              (event) =>
-                eventKeys(eventDefinitions.get(event.type), event.payload) ??
-                [],
-            ),
+            events.map((event) => {
+              const value = eventKeys(
+                eventDefinitions.get(event.type),
+                event.payload,
+              )[name]
+              if (value === undefined) {
+                throw new TypeError(
+                  `Event ${event.order} ("${event.type}") carries no "${name}" key.`,
+                )
+              }
+              return value
+            }),
           ),
         ],
         catch: (cause) =>
           new SpecterInfrastructureError(
-            `Reaction "${reaction.name}" could not read its Events' keys.`,
+            `Reaction "${reaction.name}" could not read its Events' "${name}" keys.`,
             cause,
           ),
       })
@@ -1474,9 +1480,14 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       )
     }
 
+    /**
+     * Validates an emitted Event and derives the keys the Event Log stores
+     * with it. An Event must carry one of the key names of every keyed Slice
+     * that applies its type.
+     */
     function decodeEventDraft(
       draft: EventDraft,
-    ): Effect.Effect<EventDraft, SpecterEffectError> {
+    ): Effect.Effect<EventLogDraft, SpecterEffectError> {
       const definition = eventDefinitions.get(draft.type)
       if (!definition)
         return Effect.fail(new SpecterUnknownEventError(draft.type))
@@ -1489,16 +1500,23 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
               undefined,
             )
           }
-          // Keyed decisions read these keys back from the log.
+          let keys: Readonly<Record<string, string>>
           try {
-            eventKeys(definition, payload)
+            keys = eventKeys(definition, payload)
           } catch (cause) {
             throw new SpecterInfrastructureError(
               `Event keys failed for "${draft.type}".`,
               cause,
             )
           }
-          return { ...draft, payload }
+          for (const consumer of requiredKeys.get(draft.type) ?? []) {
+            if (carriesOneOf(keys, consumer.names)) continue
+            throw new SpecterInfrastructureError(
+              `Event "${draft.type}" carries none of the keys (${consumer.names.join(', ')}) that keyed Slice "${consumer.sliceName}" applies it by.`,
+              undefined,
+            )
+          }
+          return { type: draft.type, payload, keys }
         },
         preservePublicError(
           `Event schema rejected payload for "${draft.type}".`,

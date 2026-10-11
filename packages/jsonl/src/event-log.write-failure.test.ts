@@ -58,7 +58,7 @@ const appendTodo = (
 ) =>
   Effect.runPromise(
     Effect.result(
-      eventLog.append([{ type: 'todo-added', payload: { todoId } }]),
+      eventLog.append([{ type: 'todo-added', payload: { todoId }, keys: {} }]),
     ),
   )
 

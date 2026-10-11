@@ -80,8 +80,8 @@ describe('Specter SQLite persistence', () => {
     const first = await Effect.runPromise(
       eventLog.append(
         [
-          { type: 'legacy-one', payload: { value: 1 } },
-          { type: 'legacy-two', payload: { value: 2 } },
+          { type: 'legacy-one', payload: { value: 1 }, keys: {} },
+          { type: 'legacy-two', payload: { value: 2 }, keys: {} },
         ],
         {
           expectedVersion: 0,
@@ -91,15 +91,18 @@ describe('Specter SQLite persistence', () => {
       ),
     )
     const duplicate = await Effect.runPromise(
-      eventLog.append([{ type: 'ignored', payload: {} }], {
+      eventLog.append([{ type: 'ignored', payload: {}, keys: {} }], {
         idempotencyKey: 'legacy-request',
         fingerprint: 'legacy-fingerprint',
       }),
     )
     const unkeyed = await Effect.runPromise(
-      eventLog.append([{ type: 'legacy-three', payload: { value: 3 } }], {
-        expectedVersion: first.version,
-      }),
+      eventLog.append(
+        [{ type: 'legacy-three', payload: { value: 3 }, keys: {} }],
+        {
+          expectedVersion: first.version,
+        },
+      ),
     )
     const commits = await Effect.runPromise(eventLog.commitsAfter(0))
 
@@ -182,7 +185,11 @@ describe('Specter SQLite persistence', () => {
           Effect.gen(function* () {
             write.count = 1
             yield* eventLog.append([
-              { type: 'nested-command-recorded', payload: { value: 1 } },
+              {
+                type: 'nested-command-recorded',
+                payload: { value: 1 },
+                keys: {},
+              },
             ])
             yield* publish(1)
             return yield* Effect.fail('plugin-failed')
@@ -267,7 +274,11 @@ describe('Specter SQLite persistence', () => {
           const fiber = yield* context.transaction(() =>
             Effect.gen(function* () {
               yield* eventLog.append([
-                { type: 'nested-command-recorded', payload: { value: 1 } },
+                {
+                  type: 'nested-command-recorded',
+                  payload: { value: 1 },
+                  keys: {},
+                },
               ])
               return yield* Effect.forkIn(
                 Effect.sleep('5 millis').pipe(
@@ -287,14 +298,17 @@ describe('Specter SQLite persistence', () => {
   it('returns first-commit receipts for reused keys and typed version conflicts', async () => {
     const { eventLog } = await setup()
     const first = await Effect.runPromise(
-      eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
-        expectedVersion: 0,
-        idempotencyKey: 'request-1',
-        fingerprint: 'fingerprint-1',
-      }),
+      eventLog.append(
+        [{ type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} }],
+        {
+          expectedVersion: 0,
+          idempotencyKey: 'request-1',
+          fingerprint: 'fingerprint-1',
+        },
+      ),
     )
     const duplicate = await Effect.runPromise(
-      eventLog.append([{ type: 'ignored', payload: {} }], {
+      eventLog.append([{ type: 'ignored', payload: {}, keys: {} }], {
         expectedVersion: 0,
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
@@ -303,7 +317,7 @@ describe('Specter SQLite persistence', () => {
     expect(duplicate).toEqual({ ...first, duplicate: true })
 
     const changed = await Effect.runPromise(
-      eventLog.append([{ type: 'other', payload: {} }], {
+      eventLog.append([{ type: 'other', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-2',
       }),
@@ -313,7 +327,7 @@ describe('Specter SQLite persistence', () => {
 
     const version = await Effect.runPromise(
       Effect.flip(
-        eventLog.append([{ type: 'other', payload: {} }], {
+        eventLog.append([{ type: 'other', payload: {}, keys: {} }], {
           expectedVersion: 0,
         }),
       ),
@@ -325,7 +339,7 @@ describe('Specter SQLite persistence', () => {
     const { eventLog } = await setup()
     const append = (id: string) =>
       Effect.runPromise(
-        eventLog.append([{ type: 'created', payload: { id } }], {
+        eventLog.append([{ type: 'created', payload: { id }, keys: {} }], {
           expectedVersion: 0,
         }),
       )

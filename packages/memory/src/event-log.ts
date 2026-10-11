@@ -3,6 +3,7 @@ import {
   EventLogFailure,
   SpecterVersionConflictError,
   type EventDraft,
+  type EventLogAppendCondition,
   type EventLogCommit,
   type EventLogService,
   type PersistedEvent,
@@ -26,9 +27,23 @@ export function createMemoryEventLog(
   const recordedAt =
     options.recordedAt ?? ((order: number) => new Date(order - 1).toISOString())
   const events: PersistedEvent[] = []
+  // Each Event's stored keys, by order, and the orders carrying each key.
+  const keysByOrder = new Map<number, Readonly<Record<string, string>>>()
+  const ordersByKey = new Map<string, number[]>()
   const commits: EventLogCommit[] = []
   const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
   const copyEvent = (event: PersistedEvent): PersistedEvent => ({ ...event })
+  // Whether a stored Event is one the condition's decision read.
+  const read = (event: PersistedEvent, condition: EventLogAppendCondition) => {
+    if (!condition.eventTypes.includes(event.type)) return false
+    if (!condition.keys) return true
+    const carried = keysByOrder.get(event.order) ?? {}
+    return Object.entries(condition.keys).some(
+      ([name, values]) =>
+        Object.hasOwn(carried, name) &&
+        values.includes(carried[name] as string),
+    )
+  }
   const copyCommit = (commit: EventLogCommit): EventLogCommit => ({
     ...commit,
     events: commit.events.map(copyEvent),
@@ -45,6 +60,16 @@ export function createMemoryEventLog(
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.at(-1)?.order ?? 0),
+    readKey: (key, page = {}) =>
+      Effect.sync(() => {
+        const afterOrder = page.afterOrder ?? 0
+        const orders = (ordersByKey.get(keyOf(key.name, key.value)) ?? [])
+          .filter((order) => order > afterOrder)
+          .slice(0, page.limit ?? Number.POSITIVE_INFINITY)
+        return orders.map((order) =>
+          copyEvent(events[order - 1] as PersistedEvent),
+        )
+      }),
     commitsAfter: (afterVersion) =>
       Effect.sync(() =>
         commits
@@ -83,10 +108,7 @@ export function createMemoryEventLog(
             for (let index = events.length - 1; index >= 0; index--) {
               const event = events[index] as PersistedEvent
               if (event.order <= unchanged.afterOrder) break
-              if (
-                unchanged.eventTypes.includes(event.type) &&
-                (unchanged.matches?.(copyEvent(event)) ?? true)
-              ) {
+              if (read(event, unchanged)) {
                 throw new SpecterVersionConflictError(
                   unchanged.afterOrder,
                   event.order,
@@ -101,13 +123,22 @@ export function createMemoryEventLog(
               throw new Error('Event recordedAt must be an ISO-8601 timestamp')
             }
             return {
-              ...draft,
+              type: draft.type,
+              payload: draft.payload,
               id: eventId(order, draft),
               order,
               recordedAt: time,
             }
           })
           events.push(...persisted)
+          for (const [index, draft] of drafts.entries()) {
+            const order = version + index + 1
+            keysByOrder.set(order, { ...draft.keys })
+            for (const [name, value] of Object.entries(draft.keys)) {
+              const key = keyOf(name, value)
+              ordersByKey.set(key, [...(ordersByKey.get(key) ?? []), order])
+            }
+          }
           const commit: EventLogCommit = {
             events: persisted,
             version: persisted.at(-1)?.order ?? version,
@@ -127,11 +158,16 @@ export function createMemoryEventLog(
     inspect: () => events.map(copyEvent),
     reset: () => {
       events.length = 0
+      keysByOrder.clear()
+      ordersByKey.clear()
       commits.length = 0
       commitsByIdempotencyKey.clear()
     },
   }
 }
+
+// Names cannot contain a NUL, so a name and value join unambiguously.
+const keyOf = (name: string, value: string) => `${name}\u0000${value}`
 
 export function createMemoryEventLogLayer(
   options: MemoryEventLogOptions = {},

@@ -3,9 +3,12 @@ export type {
   EventDefinition,
   EventDefinitionOptions,
   EventDraft,
+  EventKey,
+  EventKeyFunction,
+  EventKeyFunctions,
   PersistedEvent,
 } from './events'
-export { createEventDefinition, eventKeys } from './events'
+export { createEventDefinition, declaredKeyNames, eventKeys } from './events'
 export { eventsFor } from './events-for'
 export {
   assertConforms,
@@ -18,6 +21,14 @@ export type {
   ConformanceInput,
   ConformanceOptions,
 } from './conformance'
+export {
+  carriesConsistencyKey,
+  carriesOneOf,
+  consistencyKeyValues,
+  keyedConsumers,
+  sliceKeyNames,
+} from './keys'
+export type { KeyedConsumer } from './keys'
 export {
   decodeOptionalSchema,
   decodeSchema,
@@ -59,6 +70,8 @@ export type {
   CommandReceipt,
   CommandRef,
   CommandSlice,
+  ConsistencyKey,
+  ConsistencyKeys,
   EventForDefinition,
   QueryDispatch,
   QueryInputOf,

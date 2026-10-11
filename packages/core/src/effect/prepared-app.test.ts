@@ -414,10 +414,12 @@ function makeEventLogService(): EventLogService {
         commits.filter((commit) => commit.version > afterVersion),
       ),
     findCommit: () => Effect.succeed(undefined),
+    readKey: () => Effect.succeed([]),
     append: (drafts, options = {}) =>
       Effect.sync(() => {
         const persisted = drafts.map((draft, index) => ({
-          ...draft,
+          type: draft.type,
+          payload: draft.payload,
           id: `event-${events.length + index + 1}`,
           order: events.length + index + 1,
           recordedAt: new Date(0).toISOString(),
@@ -440,7 +442,11 @@ function seededEventLogService(...payloads: number[]) {
   const service = makeEventLogService()
   Effect.runSync(
     service.append(
-      payloads.map((payload) => ({ type: 'value-recorded', payload })),
+      payloads.map((payload) => ({
+        type: 'value-recorded',
+        payload,
+        keys: {},
+      })),
     ),
   )
   return service

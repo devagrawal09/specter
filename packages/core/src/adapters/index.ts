@@ -3,6 +3,8 @@ export type {
   EventLogAppendOptions,
   EventLogAppendResult,
   EventLogCommit,
+  EventLogDraft,
+  EventLogKeyPage,
   EventLogService,
 } from './event-log'
 export { EventLog, EventLogFailure } from './event-log'

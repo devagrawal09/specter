@@ -5,7 +5,9 @@ import type { SliceStoreService } from '../adapters'
 
 import {
   assertConforms,
+  carriesConsistencyKey,
   commandScenarioEventTypes,
+  consistencyKeyValues,
   decodeOptionalSchema,
   eventKeys,
   isScenarioEvent,
@@ -134,7 +136,7 @@ export async function checkCommandScenario(
       replay([implementation], eventDefinitions, given).pipe(
         Effect.andThen(
           withStoreRead(implementation, async (state) => {
-            let keys: ReadonlySet<string> | undefined
+            let keys: Readonly<Record<string, readonly string[]>> | undefined
             try {
               const command = await decodeOptionalSchema(
                 implementation.inputSchema,
@@ -142,7 +144,11 @@ export async function checkCommandScenario(
               )
               keys =
                 implementation.consistencyKeys &&
-                new Set(implementation.consistencyKeys(command, state))
+                consistencyKeyValues(
+                  implementation.consistencyKeys,
+                  command,
+                  state,
+                )
 
               const events = await implementation.handle(command, state)
 
@@ -186,15 +192,16 @@ export async function checkCommandScenario(
   // append conflicts with no such Event. Each Scenario checks that promise.
   const keys = decided.keys
   if (!keys) return
-  const read = untilLast(scenario.given, (given) => {
-    const carried = scenarioEventKeys(eventDefinitions, given)
-    return carried === undefined || carried.some((key) => keys.has(key))
-  })
+  const read = untilLast(scenario.given, (given) =>
+    carriesConsistencyKey(scenarioEventKeys(eventDefinitions, given), keys),
+  )
   if (read.length === scenario.given.length) return
   try {
     expectCommandOutcome((await decide(read)).result, scenario)
   } catch (cause) {
-    const named = [...keys].join(', ')
+    const named = Object.entries(keys)
+      .map(([name, values]) => `${name}: ${values.join(', ')}`)
+      .join('; ')
     throw new Error(
       `Command "${implementation.name}" decides scenario "${scenario.description}" differently without its last Given Events, which carry none of its consistency keys (${named}): a writer could append those after it read its State without a conflict. Declare every key its decision reads, or give the Events it reads those keys.`,
       { cause },
@@ -312,15 +319,18 @@ export async function checkReactionScenario(
   eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
-  const keys: readonly (string | undefined)[] = implementation.keyed
-    ? [
-        ...new Set(
-          scenario.given.flatMap(
-            (given) => scenarioEventKeys(eventDefinitions, given) ?? [],
+  const name = implementation.key
+  const keys: readonly (string | undefined)[] =
+    name === undefined
+      ? [undefined]
+      : [
+          ...new Set(
+            scenario.given.flatMap((given) => {
+              const value = scenarioEventKeys(eventDefinitions, given)[name]
+              return value === undefined ? [] : [value]
+            }),
           ),
-        ),
-      ]
-    : [undefined]
+        ]
   const handle = (given: readonly ScenarioEvent[], key: string | undefined) =>
     runScenario(
       replay([implementation], eventDefinitions, given).pipe(
@@ -366,19 +376,18 @@ export async function checkReactionScenario(
 
   // A keyed Reaction decides each key from that key's Events alone, since
   // only Events carrying a key run its handler.
-  if (!implementation.keyed) return
+  if (name === undefined) return
   for (const [index, key] of keys.entries()) {
     if (key === undefined) continue
     const read = untilLast(
       scenario.given,
-      (given) =>
-        scenarioEventKeys(eventDefinitions, given)?.includes(key) ?? false,
+      (given) => scenarioEventKeys(eventDefinitions, given)[name] === key,
     )
     if (read.length === scenario.given.length) continue
     const alone = await handle(read, key)
     if (!valuesEqual(alone, outputs[index])) {
       throw new Error(
-        `Keyed Reaction "${implementation.name}" handles key "${key}" in scenario "${scenario.description}" differently without its last Given Events, which do not carry that key and so would not run its handler: ${JSON.stringify(
+        `Keyed Reaction "${implementation.name}" handles ${name} "${key}" in scenario "${scenario.description}" differently without its last Given Events, which do not carry that key and so would not run its handler: ${JSON.stringify(
           alone,
         )} instead of ${JSON.stringify(outputs[index])}. Its handler must decide each key from that key's State alone.`,
       )

@@ -21,6 +21,7 @@ import type {
   ApplyRegistration,
   CommandEnvelope,
   CommandSlice,
+  ConsistencyKeys,
   EventForDefinition,
   QuerySlice,
   ReactionPlugin,
@@ -110,13 +111,16 @@ type CommandConsistencyStep<
   TStore
 > & {
   /**
-   * Names the Event keys the decision reads, from the decoded Command and the
-   * State it decided from. The append then conflicts only with new Events of
-   * the applied types that carry one of them or carry none. Scenarios check
-   * that trailing Events carrying none of them cannot change the decision.
+   * Names the Event keys the decision reads, each derived from the decoded
+   * Command and the State it decided from:
+   * `{ session: (command) => command.sessionId }`. The append then conflicts
+   * only with new Events of the applied types that carry one of those values
+   * under that name. Every applied Event type must declare one of the names.
+   * Scenarios check that trailing Events carrying none of them cannot change
+   * the decision.
    */
   consistencyKeys: (
-    keys: (command: TCommand, state: TReadState) => readonly string[],
+    keys: ConsistencyKeys<TCommand, TReadState>,
   ) => CommandApplyStep<
     TName,
     TInput,
@@ -414,11 +418,13 @@ type ReactionApplyStep<
   >
   /**
    * Completes a keyed Reaction: for each relevant commit, the handler runs
-   * once for each key the commit's Events carry, deciding from that key's
-   * State alone. Every applied Event type must declare keys.
+   * once for each value of the named Event key the commit's Events carry,
+   * deciding from that value's State alone. Every applied Event type must
+   * declare the key, and every applied Event must carry it.
    */
   handleEachKey: (
-    handle: (state: TReadState, key: string) => Promise<TResult | undefined>,
+    key: string,
+    handle: (state: TReadState, value: string) => Promise<TResult | undefined>,
   ) => ReactionSlice<
     TName,
     TResult,
@@ -497,11 +503,7 @@ function createCommandSpec<
         store: TStore,
         options?: SliceStoreOptions,
       ) => {
-        const applyStep = (
-          consistencyKeys:
-            | ((command: unknown, state: unknown) => readonly string[])
-            | undefined,
-        ) =>
+        const applyStep = (consistencyKeys: ConsistencyKeys | undefined) =>
           createCommandApplyStep(
             specification,
             schema,
@@ -512,9 +514,8 @@ function createCommandSpec<
           )
         return {
           ...applyStep(undefined),
-          consistencyKeys: (
-            keys: (command: unknown, state: unknown) => readonly string[],
-          ) => applyStep(keys),
+          consistencyKeys: (keys: ConsistencyKeys) =>
+            applyStep(Object.freeze({ ...keys })),
         }
       },
     }),
@@ -532,9 +533,7 @@ function createCommandApplyStep<
 >(
   specification: Specification<'command', TName, TScenarios>,
   inputSchema: StandardSchemaV1<TInput, TCommand> | undefined,
-  consistencyKeys:
-    | ((command: TCommand, state: TReadState) => readonly string[])
-    | undefined,
+  consistencyKeys: ConsistencyKeys<TCommand, TReadState> | undefined,
   store: TStore,
   eager: boolean,
   apply: readonly ApplyRegistration<TWriteState>[],
@@ -873,11 +872,14 @@ function createReactionApplyStep<
         store,
         eager,
         apply: Object.freeze([...apply]),
-        keyed: false,
         handle: (state: TReadState) => handle(state),
       }),
     handleEachKey: (
-      handle: (state: TReadState, key: string) => Promise<TResult | undefined>,
+      key: string,
+      handle: (
+        state: TReadState,
+        value: string,
+      ) => Promise<TResult | undefined>,
     ) =>
       Object.freeze({
         ...specification,
@@ -887,14 +889,14 @@ function createReactionApplyStep<
         store,
         eager,
         apply: Object.freeze([...apply]),
-        keyed: true,
-        handle: (state: TReadState, key?: string) => {
-          if (key === undefined) {
+        key,
+        handle: (state: TReadState, value?: string) => {
+          if (value === undefined) {
             throw new TypeError(
-              `Keyed Reaction "${specification.name}" was handled without a key.`,
+              `Keyed Reaction "${specification.name}" was handled without a "${key}" key.`,
             )
           }
-          return handle(state, key)
+          return handle(state, value)
         },
       }),
   })

@@ -4,10 +4,12 @@ import { describe, expect, it } from 'vitest'
 
 import { createEventDefinition } from '..'
 import {
+  type ApplyEventDefinition,
   assertConforms,
   createCommandSlice,
   createReactionSlice,
   event,
+  type SliceRegistration,
 } from '../definition'
 import { checkCommandScenario, checkReactionScenario } from './scenarios'
 import { createTestSliceStore } from './test-slice-store'
@@ -24,13 +26,18 @@ function schema<T>(): StandardSchemaV1<T, T> {
 
 type Created = { readonly id: string; readonly parentId?: string }
 
+// A thing's creation names the thing and, for a child, its parent: a parent
+// is a thing too, but `parent` is another key.
 const created = createEventDefinition('thing-created', schema<Created>(), {
-  keys: (payload) => [payload.id],
+  keys: {
+    thing: (payload) => payload.id,
+    parent: (payload) => payload.parentId,
+  },
 })
 const removed = createEventDefinition(
   'thing-removed',
   schema<{ readonly id: string }>(),
-  { keys: (payload) => [payload.id] },
+  { keys: { thing: (payload) => payload.id } },
 )
 const events = [created, removed]
 
@@ -49,7 +56,7 @@ function isolated() {
   }
 }
 
-function createChild(keys: (command: Created) => readonly string[]) {
+function createChild(things: (command: Created) => string | readonly string[]) {
   const { store, runScenario } = isolated()
   const slice = createCommandSlice('createChild')
     .description('Creates a thing under a live parent.')
@@ -77,7 +84,7 @@ function createChild(keys: (command: Created) => readonly string[]) {
     )
     .inputSchema<Created>()
     .store(store.tag)
-    .consistencyKeys(keys)
+    .consistencyKeys({ thing: things })
     .apply(created, async (applied, state) => {
       state.live[applied.payload.id] = true
     })
@@ -95,6 +102,7 @@ function createChild(keys: (command: Created) => readonly string[]) {
 
 describe('consistency keys in Scenarios', () => {
   it('passes when Events carrying none of its keys cannot change the decision', async () => {
+    // The parent is a thing the decision reads, under its own `thing` key.
     const { slice, runScenario } = createChild((command) => [
       command.id,
       ...(command.parentId ? [command.parentId] : []),
@@ -106,12 +114,12 @@ describe('consistency keys in Scenarios', () => {
 
   it('fails a Scenario whose decision reads Events its keys leave out', async () => {
     // The parent's removal decides, but only the child's key is declared.
-    const { slice, runScenario } = createChild((command) => [command.id])
+    const { slice, runScenario } = createChild((command) => command.id)
     const [, refusal] = slice.scenarios
     await expect(
       checkCommandScenario(slice, refusal, events, runScenario),
     ).rejects.toThrow(
-      /differently without its last Given Events, which carry none of its consistency keys \(child\)/,
+      /differently without its last Given Events, which carry none of its consistency keys \(thing: child\)/,
     )
   })
 })
@@ -121,7 +129,7 @@ describe('consistency keys and history', () => {
     const copied = createEventDefinition(
       'thing-copied',
       schema<{ readonly id: string; readonly from: string }>(),
-      { keys: (payload) => [payload.id] },
+      { keys: { thing: (payload) => payload.id } },
     )
     const { store, runScenario } = isolated()
     const slice = createCommandSlice('touchThing')
@@ -139,7 +147,7 @@ describe('consistency keys and history', () => {
       })
       .inputSchema<Created>()
       .store(store.tag)
-      .consistencyKeys((command) => [command.id])
+      .consistencyKeys({ thing: (command) => command.id })
       .apply(created, async (applied, state) => {
         state.live[applied.payload.id] = true
       })
@@ -192,7 +200,7 @@ describe('keyed Reaction Scenarios', () => {
       .apply(removed, async (applied, state) => {
         state.live[applied.payload.id] = false
       })
-      .handleEachKey(handle)
+      .handleEachKey('thing', handle)
     return { slice, runScenario }
   }
 
@@ -212,17 +220,29 @@ describe('keyed Reaction Scenarios', () => {
     )
     await expect(
       checkReactionScenario(slice, slice.scenarios[0], events, runScenario),
-    ).rejects.toThrow(/handles key "b"/)
+    ).rejects.toThrow(/handles thing "b"/)
   })
 })
 
 describe('Event keys in conformance', () => {
-  it('reports a key function that does not return strings for a Scenario Event', async () => {
-    const broken = createEventDefinition('thing-created', schema<Created>(), {
-      keys: (payload) => [payload.parentId as string],
-    })
-    const { store } = isolated()
-    const slice = createCommandSlice('createThing')
+  const { store } = isolated()
+  const diagnosticsOf = (
+    eventDefinitions: readonly ApplyEventDefinition[],
+    slices: Readonly<Record<string, SliceRegistration>>,
+  ) =>
+    Effect.runPromise(
+      Effect.flip(
+        assertConforms(
+          { events: eventDefinitions, slices },
+          { requireEveryEventInAScenario: false },
+        ),
+      ),
+    ).then((failure) =>
+      failure.diagnostics.map((diagnostic) => diagnostic.code),
+    )
+
+  function createThing(definition: typeof created) {
+    return createCommandSlice('createThing')
       .description('Creates a thing.')
       .scenarios({
         description: 'Creates a thing.',
@@ -232,14 +252,76 @@ describe('Event keys in conformance', () => {
       })
       .inputSchema<Created>()
       .store(store.tag)
-      .handle(async (command) => [broken.create(command)])
-    const failure = await Effect.runPromise(
-      Effect.flip(
-        assertConforms({ events: [broken], slices: { createThing: slice } }),
-      ),
+      .handle(async (command) => [definition.create(command)])
+  }
+
+  it('reports a key function that does not return a string or undefined', async () => {
+    const broken = createEventDefinition('thing-created', schema<Created>(), {
+      keys: { thing: (payload) => payload.id.length as unknown as string },
+    })
+    await expect(
+      diagnosticsOf([broken], { createThing: createThing(broken) }),
+    ).resolves.toEqual(['event-keys'])
+  })
+
+  it('reports a key name that is not lower camel case', async () => {
+    const misnamed = createEventDefinition('thing-created', schema<Created>(), {
+      keys: { 'thing-id': (payload) => payload.id },
+    })
+    await expect(
+      diagnosticsOf([misnamed], { createThing: createThing(misnamed) }),
+    ).resolves.toEqual(['event-key-name'])
+  })
+
+  it('reports a keyed Command that applies an Event type declaring none of its keys, or names a key nothing declares', async () => {
+    const noted = createEventDefinition(
+      'thing-noted',
+      schema<{ readonly note: string }>(),
     )
-    expect(failure.diagnostics.map((diagnostic) => diagnostic.code)).toEqual([
-      'event-keys',
+    const slice = createCommandSlice('noteThing')
+      .description('Notes a thing.')
+      .scenarios({
+        description: 'Notes a thing.',
+        given: [event('thing-noted', { note: 'n' })],
+        when: { id: 'a' },
+        expect: [event('thing-created', { id: 'a' })],
+      })
+      .inputSchema<Created>()
+      .store(store.tag)
+      .consistencyKeys({
+        thing: (command) => command.id,
+        widget: (command) => command.id,
+      })
+      .apply(noted, async () => {})
+      .handle(async (command) => [created.create(command)])
+    await expect(
+      diagnosticsOf([created, noted], { noteThing: slice }),
+    ).resolves.toEqual([
+      'keyed-command-undeclared-key',
+      'keyed-command-unused-key',
+      'keyed-command-unused-key',
     ])
+  })
+
+  it('reports a Scenario Event without a key a keyed Slice applies its type by', async () => {
+    const watch = createReactionSlice('watchParents')
+      .description('Reports each parent that gains a child.')
+      .scenarios({
+        description: 'Reports a parent.',
+        given: [event('thing-created', { id: 'a', parentId: 'p' })],
+        expect: [],
+      })
+      .outputSchema<string>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(store.tag)
+      .apply(created, async () => {})
+      .handleEachKey('parent', async () => undefined)
+    // createThing's outcome has no parent, which watchParents applies it by.
+    await expect(
+      diagnosticsOf([created], {
+        createThing: createThing(created),
+        watchParents: watch,
+      }),
+    ).resolves.toEqual(['event-missing-key'])
   })
 })

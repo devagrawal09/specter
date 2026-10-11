@@ -286,7 +286,7 @@ const FiledStore = Context.Service<
 const noteFiled = createEventDefinition(
   'note-filed',
   z.object({ noteId: z.string() }),
-  { keys: (payload) => [payload.noteId] },
+  { keys: { note: (payload) => payload.noteId } },
 )
 
 it('enqueues one outboxed job for each key a keyed Reaction handles in a commit', async () => {
@@ -336,8 +336,8 @@ it('enqueues one outboxed job for each key a keyed Reaction handles in a commit'
     .apply(noteFiled, async ({ payload }, state) => {
       state.filed[payload.noteId] = true
     })
-    .handleEachKey(async (state, key) =>
-      state.filed[key] ? { noteId: key } : undefined,
+    .handleEachKey('note', async (state, noteId) =>
+      state.filed[noteId] ? { noteId } : undefined,
     )
   const app = await createSpecterApp(
     { events: [noteFiled], slices: { fileNotes, announceFiled } } as const,

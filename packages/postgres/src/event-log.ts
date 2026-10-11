@@ -4,10 +4,13 @@ import {
   EventLog,
   EventLogFailure,
   SpecterVersionConflictError,
-  type EventDraft,
+  type EventKey,
+  type EventLogAppendCondition,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
+  type EventLogDraft,
+  type EventLogKeyPage,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -53,6 +56,15 @@ export async function preparePostgresEventLog(pool: PostgresPool) {
     last_event_order BIGINT NOT NULL,
     committed_at TIMESTAMPTZ NOT NULL
   )`)
+  // Each Event's named keys, as core derived them when it was appended.
+  await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_keys (
+    event_order BIGINT NOT NULL REFERENCES specter_events(event_order),
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (event_order, name)
+  )`)
+  await pool.query(`CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
+    ON specter_event_keys(name, value, event_order)`)
 }
 
 export function createPostgresEventLogService(
@@ -87,6 +99,70 @@ export function createPostgresEventLogService(
        WHERE event_order > $1 AND type = ANY($2::text[])
        ORDER BY event_order ASC`,
       [afterOrder, eventTypes],
+    )
+    return result.rows.map((row) => toEvent(row))
+  }
+
+  /**
+   * The order of the first Event appended after the condition's read that it
+   * covers, or undefined when there is none. Checked in SQL, from the stored
+   * keys.
+   */
+  async function staleOrder(
+    connection: PostgresConnection,
+    condition: EventLogAppendCondition,
+  ): Promise<number | undefined> {
+    if (condition.eventTypes.length === 0) return undefined
+    if (!condition.keys) {
+      const result = await connection.query<{ event_order: unknown }>(
+        `SELECT event_order FROM specter_events
+         WHERE event_order > $1 AND type = ANY($2::text[])
+         ORDER BY event_order ASC LIMIT 1`,
+        [condition.afterOrder, condition.eventTypes],
+      )
+      const row = result.rows[0]
+      return row
+        ? postgresNumber(row.event_order, 'stale event order')
+        : undefined
+    }
+    const pairs = Object.entries(condition.keys).flatMap(([name, values]) =>
+      values.map((value) => [name, value] as const),
+    )
+    if (pairs.length === 0) return undefined
+    const result = await connection.query<{ event_order: unknown }>(
+      `SELECT k.event_order FROM specter_event_keys k
+       JOIN specter_events e ON e.event_order = k.event_order
+       WHERE k.event_order > $1 AND e.type = ANY($2::text[])
+         AND (k.name, k.value) IN (
+           SELECT * FROM unnest($3::text[], $4::text[])
+         )
+       ORDER BY k.event_order ASC LIMIT 1`,
+      [
+        condition.afterOrder,
+        condition.eventTypes,
+        pairs.map(([name]) => name),
+        pairs.map(([, value]) => value),
+      ],
+    )
+    const row = result.rows[0]
+    return row
+      ? postgresNumber(row.event_order, 'stale event order')
+      : undefined
+  }
+
+  async function readKey(
+    connection: PostgresConnection,
+    key: EventKey,
+    page: EventLogKeyPage,
+  ) {
+    const result = await connection.query(
+      `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+       FROM specter_event_keys k
+       JOIN specter_events e ON e.event_order = k.event_order
+       WHERE k.name = $1 AND k.value = $2 AND k.event_order > $3
+       ORDER BY k.event_order ASC
+       LIMIT $4`,
+      [key.name, key.value, page.afterOrder ?? 0, page.limit ?? null],
     )
     return result.rows.map((row) => toEvent(row))
   }
@@ -162,7 +238,7 @@ export function createPostgresEventLogService(
 
   async function append(
     connection: PostgresConnection,
-    drafts: readonly EventDraft[],
+    drafts: readonly EventLogDraft[],
     appendOptions: EventLogAppendOptions = {},
   ): Promise<EventLogAppendResult> {
     const existing = appendOptions.idempotencyKey
@@ -186,13 +262,9 @@ export function createPostgresEventLogService(
       )
     }
     const unchanged = appendOptions.expectedUnchanged
-    if (unchanged) {
-      const stale = (
-        await query(connection, unchanged.afterOrder, unchanged.eventTypes)
-      ).find((event) => unchanged.matches?.(event) ?? true)
-      if (stale) {
-        throw new SpecterVersionConflictError(unchanged.afterOrder, stale.order)
-      }
+    const stale = unchanged && (await staleOrder(connection, unchanged))
+    if (unchanged && stale !== undefined) {
+      throw new SpecterVersionConflictError(unchanged.afterOrder, stale)
     }
 
     const events: PersistedEvent[] = []
@@ -209,13 +281,24 @@ export function createPostgresEventLogService(
          RETURNING event_order`,
         [id, draft.type, encodedPayload, recordedAt],
       )
+      const order = postgresNumber(
+        result.rows[0]?.event_order,
+        'inserted event order',
+      )
+      const keys = Object.entries(draft.keys)
+      if (keys.length > 0) {
+        await connection.query(
+          `INSERT INTO specter_event_keys (event_order, name, value)
+           SELECT $1, name, value FROM unnest($2::text[], $3::text[])
+             AS keys(name, value)`,
+          [order, keys.map(([name]) => name), keys.map(([, value]) => value)],
+        )
+      }
       events.push({
-        ...draft,
+        type: draft.type,
+        payload: draft.payload,
         id,
-        order: postgresNumber(
-          result.rows[0]?.event_order,
-          'inserted event order',
-        ),
+        order,
         recordedAt,
       })
     }
@@ -268,6 +351,10 @@ export function createPostgresEventLogService(
     currentVersion: context.use((connection) =>
       attempt('currentVersion', () => currentVersion(connection)),
     ),
+    readKey: (key, page = {}) =>
+      context.use((connection) =>
+        attempt('readKey', () => readKey(connection, key, page)),
+      ),
     commitsAfter: (afterVersion) =>
       context.use((connection) =>
         attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),

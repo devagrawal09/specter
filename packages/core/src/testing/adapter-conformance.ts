@@ -39,8 +39,8 @@ export function eventLogConformance<TCreateError, TRequirements>(
     const service = yield* createService
     const first = yield* service.append(
       [
-        { type: 'first-recorded', payload: { value: 1 } },
-        { type: 'second-recorded', payload: { value: 2 } },
+        { type: 'first-recorded', payload: { value: 1 }, keys: {} },
+        { type: 'second-recorded', payload: { value: 2 }, keys: {} },
       ],
       {
         expectedVersion: 0,
@@ -56,11 +56,27 @@ export function eventLogConformance<TCreateError, TRequirements>(
         first.events[1]?.order === 2,
       first,
     )
-    const duplicate = yield* service.append(first.events, {
-      expectedVersion: 0,
-      idempotencyKey: 'event-log-conformance',
-      fingerprint: 'v2:event-log-conformance',
-    })
+    yield* requireInvariant(
+      'event-log',
+      'persisted Events carry type, payload and metadata only',
+      first.events.every(
+        (event) =>
+          Object.keys(event).sort().join(',') ===
+          'id,order,payload,recordedAt,type',
+      ),
+      first.events,
+    )
+    const duplicate = yield* service.append(
+      [
+        { type: 'first-recorded', payload: { value: 1 }, keys: {} },
+        { type: 'second-recorded', payload: { value: 2 }, keys: {} },
+      ],
+      {
+        expectedVersion: 0,
+        idempotencyKey: 'event-log-conformance',
+        fingerprint: 'v2:event-log-conformance',
+      },
+    )
     yield* requireInvariant(
       'event-log',
       'durable idempotent receipt',
@@ -70,7 +86,7 @@ export function eventLogConformance<TCreateError, TRequirements>(
       duplicate,
     )
     const changed = yield* service.append(
-      [{ type: 'first-recorded', payload: { value: 99 } }],
+      [{ type: 'first-recorded', payload: { value: 99 }, keys: {} }],
       {
         idempotencyKey: 'event-log-conformance',
         fingerprint: 'v2:changed-payload',
@@ -104,7 +120,7 @@ export function eventLogConformance<TCreateError, TRequirements>(
       queried,
     )
     const second = yield* service.append([
-      { type: 'third-recorded', payload: { value: 3 } },
+      { type: 'third-recorded', payload: { value: 3 }, keys: {} },
     ])
     const commits = yield* service.commitsAfter(0)
     yield* requireInvariant(
@@ -118,7 +134,8 @@ export function eventLogConformance<TCreateError, TRequirements>(
     )
 
     // A compare-and-swap scoped to what a decision read: only later Events of
-    // its types, narrowed by `matches`, make the append stale.
+    // its types, narrowed to those carrying one of its keys, make the append
+    // stale. The keys are the ones stored with each Event.
     const isStale = (exit: Exit.Exit<unknown, EventLogFailure>) =>
       Exit.isFailure(exit) &&
       exit.cause.reasons.some(
@@ -128,7 +145,7 @@ export function eventLogConformance<TCreateError, TRequirements>(
           reason.error.cause instanceof SpecterVersionConflictError,
       )
     const unrelated = yield* service.append(
-      [{ type: 'first-recorded', payload: { value: 4 } }],
+      [{ type: 'first-recorded', payload: { value: 4 }, keys: {} }],
       {
         expectedUnchanged: { afterOrder: 1, eventTypes: ['first-recorded'] },
       },
@@ -140,47 +157,126 @@ export function eventLogConformance<TCreateError, TRequirements>(
       unrelated,
     )
     const staleByType = yield* Effect.exit(
-      service.append([{ type: 'third-recorded', payload: { value: 5 } }], {
-        expectedUnchanged: { afterOrder: 2, eventTypes: ['third-recorded'] },
-      }),
-    )
-    const unmatched = yield* service.append(
-      [{ type: 'third-recorded', payload: { value: 5 } }],
-      {
-        expectedUnchanged: {
-          afterOrder: 1,
-          eventTypes: ['first-recorded', 'third-recorded'],
-          matches: (event) =>
-            (event.payload as { readonly value?: unknown }).value === 1,
+      service.append(
+        [{ type: 'third-recorded', payload: { value: 5 }, keys: {} }],
+        {
+          expectedUnchanged: { afterOrder: 2, eventTypes: ['third-recorded'] },
         },
-      },
+      ),
     )
-    const staleByMatch = yield* Effect.exit(
-      service.append([{ type: 'third-recorded', payload: { value: 6 } }], {
-        expectedUnchanged: {
-          afterOrder: 1,
-          eventTypes: ['first-recorded'],
-          matches: (event) =>
-            (event.payload as { readonly value?: unknown }).value === 4,
-        },
-      }),
-    )
-    const versionAfterScoped = yield* service.currentVersion
     yield* requireInvariant(
       'event-log',
-      'a scoped append is stale only for a later matching Event of its types',
-      isStale(staleByType) &&
-        !unmatched.duplicate &&
-        unmatched.version === 5 &&
-        isStale(staleByMatch) &&
-        versionAfterScoped === 5,
-      { staleByType, unmatched, staleByMatch, versionAfterScoped },
+      'a scoped append is stale for a later Event of its types',
+      isStale(staleByType),
+      staleByType,
     )
-    const scopedDuplicate = yield* service.append(first.events, {
-      expectedUnchanged: { afterOrder: 0, eventTypes: ['first-recorded'] },
-      idempotencyKey: 'event-log-conformance',
-      fingerprint: 'v2:event-log-conformance',
-    })
+
+    // Keyed Events: `item` and `list` are separate ID spaces, so the same
+    // value under another name is another key.
+    const keyed = yield* service.append([
+      {
+        type: 'item-recorded',
+        payload: { item: 'a', list: 'l' },
+        keys: { item: 'a', list: 'l' },
+      },
+      {
+        type: 'item-recorded',
+        payload: { item: 'b', list: 'a' },
+        keys: { item: 'b', list: 'a' },
+      },
+      { type: 'list-recorded', payload: { list: 'l' }, keys: { list: 'l' } },
+    ])
+    yield* requireInvariant(
+      'event-log',
+      'a keyed append stores its Events like any other',
+      keyed.version === 7 &&
+        keyed.events.map((event) => event.order).join(',') === '5,6,7',
+      keyed,
+    )
+    const scoped = (keys: Readonly<Record<string, readonly string[]>>) =>
+      Effect.exit(
+        service.append([{ type: 'item-noted', payload: {}, keys: {} }], {
+          expectedUnchanged: {
+            afterOrder: 4,
+            eventTypes: ['item-recorded', 'list-recorded'],
+            keys,
+          },
+        }),
+      )
+    const staleByKey = yield* scoped({ item: ['a'] })
+    const staleByOtherName = yield* scoped({ list: ['a'] })
+    const staleByAnyName = yield* scoped({ item: ['c'], list: ['l'] })
+    const unmatchedKey = yield* scoped({ item: ['c'] })
+    const unmatchedName = yield* scoped({ project: ['a'] })
+    const noValues = yield* scoped({ item: [] })
+    const versionAfterKeyed = yield* service.currentVersion
+    yield* requireInvariant(
+      'event-log',
+      'a keyed append is stale only for a later Event carrying one of its keys under that name',
+      isStale(staleByKey) &&
+        isStale(staleByOtherName) &&
+        isStale(staleByAnyName) &&
+        Exit.isSuccess(unmatchedKey) &&
+        Exit.isSuccess(unmatchedName) &&
+        Exit.isSuccess(noValues) &&
+        versionAfterKeyed === 10,
+      {
+        staleByKey,
+        staleByOtherName,
+        staleByAnyName,
+        unmatchedKey,
+        unmatchedName,
+        noValues,
+        versionAfterKeyed,
+      },
+    )
+    const staleByKeyAndType = yield* Effect.exit(
+      service.append([{ type: 'item-noted', payload: {}, keys: {} }], {
+        expectedUnchanged: {
+          afterOrder: 4,
+          eventTypes: ['list-recorded'],
+          keys: { item: ['a'] },
+        },
+      }),
+    )
+    yield* requireInvariant(
+      'event-log',
+      'a keyed append still needs a later Event of its types',
+      Exit.isSuccess(staleByKeyAndType),
+      staleByKeyAndType,
+    )
+
+    // A keyed read: the Events carrying one key, in order, paged.
+    const byList = yield* service.readKey({ name: 'list', value: 'l' })
+    const byListPage = yield* service.readKey(
+      { name: 'list', value: 'l' },
+      { afterOrder: 5, limit: 1 },
+    )
+    const byItem = yield* service.readKey(
+      { name: 'item', value: 'a' },
+      { limit: 10 },
+    )
+    const byOtherName = yield* service.readKey({ name: 'project', value: 'l' })
+    yield* requireInvariant(
+      'event-log',
+      'a keyed read returns the Events carrying that key under that name, ordered and paged',
+      byList.map((event) => event.order).join(',') === '5,7' &&
+        byList[0]?.type === 'item-recorded' &&
+        (byList[0]?.payload as { readonly item?: unknown }).item === 'a' &&
+        byListPage.map((event) => event.order).join(',') === '7' &&
+        byItem.map((event) => event.order).join(',') === '5' &&
+        byOtherName.length === 0,
+      { byList, byListPage, byItem, byOtherName },
+    )
+
+    const scopedDuplicate = yield* service.append(
+      [{ type: 'first-recorded', payload: { value: 1 }, keys: {} }],
+      {
+        expectedUnchanged: { afterOrder: 0, eventTypes: ['first-recorded'] },
+        idempotencyKey: 'event-log-conformance',
+        fingerprint: 'v2:event-log-conformance',
+      },
+    )
     yield* requireInvariant(
       'event-log',
       'a known idempotency key returns its commit before a scoped check',

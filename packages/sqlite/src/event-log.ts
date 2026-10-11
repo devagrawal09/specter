@@ -5,10 +5,13 @@ import {
   EventLog,
   EventLogFailure,
   SpecterVersionConflictError,
-  type EventDraft,
+  type EventKey,
+  type EventLogAppendCondition,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
+  type EventLogDraft,
+  type EventLogKeyPage,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -71,6 +74,15 @@ export async function prepareSqliteEventLog(client: Client) {
         last_event_order INTEGER NOT NULL,
         committed_at TEXT NOT NULL
       )`,
+      // Each Event's named keys, as core derived them when it was appended.
+      `CREATE TABLE IF NOT EXISTS specter_event_keys (
+        event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (event_order, name)
+      )`,
+      `CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
+        ON specter_event_keys(name, value, event_order)`,
     ],
     'write',
   )
@@ -131,6 +143,71 @@ export function createSqliteEventLogService(
           AND type IN (${eventTypes.map(() => '?').join(', ')})
         ORDER BY event_order ASC`,
       args: [afterOrder, ...eventTypes],
+    })
+    return result.rows.map((row) => fromRow(row as Record<string, unknown>))
+  }
+
+  /**
+   * The order of the first Event appended after the condition's read that it
+   * covers, or undefined when there is none. Checked in SQL, from the stored
+   * keys.
+   */
+  async function staleOrder(
+    connection: SqliteConnection,
+    condition: EventLogAppendCondition,
+  ): Promise<number | undefined> {
+    if (condition.eventTypes.length === 0) return undefined
+    const types = condition.eventTypes.map(() => '?').join(', ')
+    if (!condition.keys) {
+      const result = await connection.execute({
+        sql: `SELECT event_order FROM specter_events
+          WHERE event_order > ? AND type IN (${types})
+          ORDER BY event_order ASC LIMIT 1`,
+        args: [condition.afterOrder, ...condition.eventTypes],
+      })
+      const row = result.rows[0]
+      return row
+        ? requireNumber(row.event_order, 'stale event order')
+        : undefined
+    }
+    const keys = Object.entries(condition.keys).filter(
+      ([, values]) => values.length > 0,
+    )
+    if (keys.length === 0) return undefined
+    const result = await connection.execute({
+      sql: `SELECT k.event_order FROM specter_event_keys k
+        JOIN specter_events e ON e.event_order = k.event_order
+        WHERE k.event_order > ? AND e.type IN (${types})
+          AND (${keys
+            .map(
+              ([, values]) =>
+                `(k.name = ? AND k.value IN (${values.map(() => '?').join(', ')}))`,
+            )
+            .join(' OR ')})
+        ORDER BY k.event_order ASC LIMIT 1`,
+      args: [
+        condition.afterOrder,
+        ...condition.eventTypes,
+        ...keys.flatMap(([name, values]) => [name, ...values]),
+      ],
+    })
+    const row = result.rows[0]
+    return row ? requireNumber(row.event_order, 'stale event order') : undefined
+  }
+
+  async function readKey(
+    connection: SqliteConnection,
+    key: EventKey,
+    page: EventLogKeyPage,
+  ) {
+    const result = await connection.execute({
+      sql: `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+        FROM specter_event_keys k
+        JOIN specter_events e ON e.event_order = k.event_order
+        WHERE k.name = ? AND k.value = ? AND k.event_order > ?
+        ORDER BY k.event_order ASC
+        LIMIT ?`,
+      args: [key.name, key.value, page.afterOrder ?? 0, page.limit ?? -1],
     })
     return result.rows.map((row) => fromRow(row as Record<string, unknown>))
   }
@@ -219,7 +296,7 @@ export function createSqliteEventLogService(
 
   async function append(
     connection: SqliteConnection,
-    drafts: readonly EventDraft[],
+    drafts: readonly EventLogDraft[],
     appendOptions: EventLogAppendOptions = {},
   ): Promise<EventLogAppendResult> {
     const existing = appendOptions.idempotencyKey
@@ -245,13 +322,9 @@ export function createSqliteEventLogService(
       )
     }
     const unchanged = appendOptions.expectedUnchanged
-    if (unchanged) {
-      const stale = (
-        await query(connection, unchanged.afterOrder, unchanged.eventTypes)
-      ).find((event) => unchanged.matches?.(event) ?? true)
-      if (stale) {
-        throw new SpecterVersionConflictError(unchanged.afterOrder, stale.order)
-      }
+    const stale = unchanged && (await staleOrder(connection, unchanged))
+    if (unchanged && stale !== undefined) {
+      throw new SpecterVersionConflictError(unchanged.afterOrder, stale)
     }
 
     const events: PersistedEvent[] = []
@@ -264,13 +337,23 @@ export function createSqliteEventLogService(
           RETURNING event_order`,
         args: [id, draft.type, codec.encode(draft.payload), recordedAt],
       })
+      const order = requireNumber(
+        inserted.rows[0]?.event_order,
+        'inserted event order',
+      )
+      const keys = Object.entries(draft.keys)
+      if (keys.length > 0) {
+        await connection.execute({
+          sql: `INSERT INTO specter_event_keys (event_order, name, value)
+            VALUES ${keys.map(() => '(?, ?, ?)').join(', ')}`,
+          args: keys.flatMap(([name, value]) => [order, name, value]),
+        })
+      }
       events.push({
-        ...draft,
+        type: draft.type,
+        payload: draft.payload,
         id,
-        order: requireNumber(
-          inserted.rows[0]?.event_order,
-          'inserted event order',
-        ),
+        order,
         recordedAt,
       })
     }
@@ -342,6 +425,10 @@ export function createSqliteEventLogService(
     currentVersion: context.use((connection) =>
       attempt('currentVersion', () => currentVersion(connection)),
     ),
+    readKey: (key, page = {}) =>
+      context.use((connection) =>
+        attempt('readKey', () => readKey(connection, key, page)),
+      ),
     commitsAfter: (afterVersion) =>
       context.use((connection) =>
         attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),

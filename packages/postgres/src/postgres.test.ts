@@ -26,6 +26,12 @@ type EventRow = {
   recorded_at: string
 }
 
+type KeyRow = {
+  event_order: string
+  name: string
+  value: string
+}
+
 type CommitRow = {
   commit_version: string
   idempotency_key: string | null
@@ -56,6 +62,7 @@ testEventLogService('Postgres (fake pool)', () =>
 class FakePostgresPool implements PostgresPool {
   readonly statements: string[] = []
   readonly events: EventRow[] = []
+  readonly keys: KeyRow[] = []
   readonly commits: CommitRow[] = []
   readonly sliceStates = new Map<
     string,
@@ -163,6 +170,59 @@ class FakePostgresPool implements PostgresPool {
             Number(event.event_order) > afterOrder &&
             eventTypes.has(event.type),
         ),
+      }
+    }
+    if (normalized.startsWith('INSERT INTO specter_event_keys')) {
+      const names = parameters[1] as readonly string[]
+      const values = parameters[2] as readonly string[]
+      for (const [index, name] of names.entries()) {
+        this.keys.push({
+          event_order: String(parameters[0]),
+          name,
+          value: values[index] as string,
+        })
+      }
+      return { rows: [], rowCount: names.length }
+    }
+    if (
+      normalized.includes('FROM specter_event_keys k') &&
+      normalized.includes('unnest($3::text[], $4::text[])')
+    ) {
+      const afterOrder = Number(parameters[0])
+      const eventTypes = new Set(parameters[1] as readonly string[])
+      const names = parameters[2] as readonly string[]
+      const values = parameters[3] as readonly string[]
+      const stale = this.keys.find(
+        (key) =>
+          Number(key.event_order) > afterOrder &&
+          eventTypes.has(
+            this.events[Number(key.event_order) - 1]?.type ?? '',
+          ) &&
+          names.some(
+            (name, index) => name === key.name && values[index] === key.value,
+          ),
+      )
+      return { rows: stale ? [{ event_order: stale.event_order }] : [] }
+    }
+    if (
+      normalized.includes('FROM specter_event_keys k') &&
+      normalized.includes('WHERE k.name = $1 AND k.value = $2')
+    ) {
+      const afterOrder = Number(parameters[2])
+      const limit =
+        parameters[3] === null
+          ? Number.POSITIVE_INFINITY
+          : Number(parameters[3])
+      return {
+        rows: this.keys
+          .filter(
+            (key) =>
+              key.name === parameters[0] &&
+              key.value === parameters[1] &&
+              Number(key.event_order) > afterOrder,
+          )
+          .slice(0, limit)
+          .map((key) => this.events[Number(key.event_order) - 1]),
       }
     }
     if (normalized.startsWith('INSERT INTO specter_events')) {
@@ -274,14 +334,17 @@ describe('Postgres Event Log adapter', () => {
       now: () => new Date(0),
     })
     const first = await Effect.runPromise(
-      eventLog.append([{ type: 'todo-added', payload: { todoId: 'todo-1' } }], {
-        expectedVersion: 0,
-        idempotencyKey: 'request-1',
-        fingerprint: 'fingerprint-1',
-      }),
+      eventLog.append(
+        [{ type: 'todo-added', payload: { todoId: 'todo-1' }, keys: {} }],
+        {
+          expectedVersion: 0,
+          idempotencyKey: 'request-1',
+          fingerprint: 'fingerprint-1',
+        },
+      ),
     )
     const duplicate = await Effect.runPromise(
-      eventLog.append([{ type: 'ignored', payload: {} }], {
+      eventLog.append([{ type: 'ignored', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-1',
       }),
@@ -295,7 +358,7 @@ describe('Postgres Event Log adapter', () => {
       commit,
     )
     const changed = await Effect.runPromise(
-      eventLog.append([{ type: 'changed', payload: {} }], {
+      eventLog.append([{ type: 'changed', payload: {}, keys: {} }], {
         idempotencyKey: 'request-1',
         fingerprint: 'fingerprint-2',
       }),
@@ -315,7 +378,11 @@ describe('Postgres Event Log adapter', () => {
 
     await Effect.runPromise(
       eventLog.append(
-        values.map((value) => ({ type: 'value-recorded', payload: value })),
+        values.map((value) => ({
+          type: 'value-recorded',
+          payload: value,
+          keys: {},
+        })),
       ),
     )
     expect(
@@ -387,7 +454,7 @@ describe('Postgres Event Log adapter', () => {
     })
     const append = (id: string) =>
       Effect.runPromise(
-        eventLog.append([{ type: 'created', payload: { id } }], {
+        eventLog.append([{ type: 'created', payload: { id }, keys: {} }], {
           expectedVersion: 0,
         }),
       )

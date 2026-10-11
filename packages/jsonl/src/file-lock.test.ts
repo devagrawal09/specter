@@ -169,7 +169,9 @@ describe('JSONL lock takeover', () => {
     const path = join(temporaryDirectory(), 'events.jsonl')
     const first = createJsonlEventLog({ path })
     expect(first.recoveredStaleLock).toBeUndefined()
-    await Effect.runPromise(first.append([{ type: 'todo-added', payload: {} }]))
+    await Effect.runPromise(
+      first.append([{ type: 'todo-added', payload: {}, keys: {} }]),
+    )
     first.close()
     const exited = exitedHolder()
     const { pid } = exited
@@ -464,7 +466,7 @@ describe('JSONL onOpen', () => {
     })
     const appendOne = Effect.gen(function* () {
       const eventLog = yield* EventLog
-      yield* eventLog.append([{ type: 'todo-added', payload: {} }])
+      yield* eventLog.append([{ type: 'todo-added', payload: {}, keys: {} }])
     }).pipe(Effect.provide(layer))
 
     await Effect.runPromise(appendOne)

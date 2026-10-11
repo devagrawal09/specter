@@ -4,9 +4,10 @@ import {
   EventLog,
   EventLogFailure,
   SpecterVersionConflictError,
-  type EventDraft,
+  type EventLogAppendCondition,
   type EventLogAppendOptions,
   type EventLogCommit,
+  type EventLogDraft,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -42,6 +43,15 @@ export function prepareNodeSqliteEventLog(context: NodeSqliteContext) {
       last_event_order INTEGER NOT NULL,
       committed_at TEXT NOT NULL
     );
+    -- Each Event's named keys, as core derived them when it was appended.
+    CREATE TABLE IF NOT EXISTS specter_event_keys (
+      event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
+      name TEXT NOT NULL,
+      value TEXT NOT NULL,
+      PRIMARY KEY (event_order, name)
+    );
+    CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
+      ON specter_event_keys(name, value, event_order);
   `)
 }
 
@@ -79,6 +89,72 @@ export function createNodeSqliteEventLogService(
          ORDER BY event_order ASC`,
       )
       .all(afterOrder, ...eventTypes)
+      .map((row) => decodeRow(row as Record<string, unknown>))
+  }
+
+  /**
+   * The order of the first Event appended after the condition's read that it
+   * covers, or undefined when there is none. Checked in SQL, from the stored
+   * keys.
+   */
+  function staleOrder(condition: EventLogAppendCondition) {
+    if (condition.eventTypes.length === 0) return undefined
+    const types = condition.eventTypes.map(() => '?').join(', ')
+    if (!condition.keys) {
+      const row = context.database
+        .prepare(
+          `SELECT event_order FROM specter_events
+           WHERE event_order > ? AND type IN (${types})
+           ORDER BY event_order ASC LIMIT 1`,
+        )
+        .get(condition.afterOrder, ...condition.eventTypes) as
+        | Record<string, unknown>
+        | undefined
+      return row
+        ? requireNumber(row.event_order, 'stale event order')
+        : undefined
+    }
+    const keys = Object.entries(condition.keys).filter(
+      ([, values]) => values.length > 0,
+    )
+    if (keys.length === 0) return undefined
+    const row = context.database
+      .prepare(
+        `SELECT k.event_order FROM specter_event_keys k
+         JOIN specter_events e ON e.event_order = k.event_order
+         WHERE k.event_order > ? AND e.type IN (${types})
+           AND (${keys
+             .map(
+               ([, values]) =>
+                 `(k.name = ? AND k.value IN (${values.map(() => '?').join(', ')}))`,
+             )
+             .join(' OR ')})
+         ORDER BY k.event_order ASC LIMIT 1`,
+      )
+      .get(
+        condition.afterOrder,
+        ...condition.eventTypes,
+        ...keys.flatMap(([name, values]) => [name, ...values]),
+      ) as Record<string, unknown> | undefined
+    return row ? requireNumber(row.event_order, 'stale event order') : undefined
+  }
+
+  function readKey(
+    name: string,
+    value: string,
+    afterOrder: number,
+    limit: number,
+  ) {
+    return context.database
+      .prepare(
+        `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+         FROM specter_event_keys k
+         JOIN specter_events e ON e.event_order = k.event_order
+         WHERE k.name = ? AND k.value = ? AND k.event_order > ?
+         ORDER BY k.event_order ASC
+         LIMIT ?`,
+      )
+      .all(name, value, afterOrder, limit)
       .map((row) => decodeRow(row as Record<string, unknown>))
   }
 
@@ -146,7 +222,7 @@ export function createNodeSqliteEventLogService(
   }
 
   function append(
-    drafts: readonly EventDraft[],
+    drafts: readonly EventLogDraft[],
     appendOptions: EventLogAppendOptions = {},
   ) {
     const existing = appendOptions.idempotencyKey
@@ -167,18 +243,17 @@ export function createNodeSqliteEventLogService(
       )
     }
     const unchanged = appendOptions.expectedUnchanged
-    if (unchanged) {
-      const stale = query(unchanged.afterOrder, unchanged.eventTypes).find(
-        (event) => unchanged.matches?.(event) ?? true,
-      )
-      if (stale) {
-        throw new SpecterVersionConflictError(unchanged.afterOrder, stale.order)
-      }
+    const stale = unchanged && staleOrder(unchanged)
+    if (unchanged && stale !== undefined) {
+      throw new SpecterVersionConflictError(unchanged.afterOrder, stale)
     }
     const insert = context.database.prepare(
       'INSERT INTO specter_events (id, type, payload, recorded_at) VALUES (?, ?, ?, ?)',
     )
-    const events = drafts.map((draft) => {
+    const insertKey = context.database.prepare(
+      'INSERT INTO specter_event_keys (event_order, name, value) VALUES (?, ?, ?)',
+    )
+    const events = drafts.map((draft): PersistedEvent => {
       const id = eventId()
       const recordedAt = now().toISOString()
       const payload = JSON.stringify(draft.payload)
@@ -186,7 +261,10 @@ export function createNodeSqliteEventLogService(
       const result = insert.run(id, draft.type, payload, recordedAt)
       const order = Number(result.lastInsertRowid)
       if (!Number.isSafeInteger(order)) throw new Error('Unsafe Event order')
-      return { ...draft, id, order, recordedAt }
+      for (const [name, value] of Object.entries(draft.keys)) {
+        insertKey.run(order, name, value)
+      }
+      return { type: draft.type, payload: draft.payload, id, order, recordedAt }
     })
     const committedVersion = events.at(-1)?.order ?? version
     const committedAt = now().toISOString()
@@ -225,6 +303,12 @@ export function createNodeSqliteEventLogService(
       try: currentVersion,
       catch: (cause) => new EventLogFailure('currentVersion', cause),
     }),
+    readKey: (key, page = {}) =>
+      Effect.try({
+        try: () =>
+          readKey(key.name, key.value, page.afterOrder ?? 0, page.limit ?? -1),
+        catch: (cause) => new EventLogFailure('readKey', cause),
+      }),
     commitsAfter: (afterVersion) =>
       Effect.try({
         try: () => commitsAfter(afterVersion),
