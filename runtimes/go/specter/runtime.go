@@ -327,16 +327,18 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 		drafts, handleErr := command.definition.Handle(ctx, payload)
 		if handleErr != nil {
 			var public *Error
-			if errors.As(handleErr, &public) && public.Code != ErrCommandRejected {
-				return CommandExecution{}, public
-			}
 			if !errors.As(handleErr, &public) {
-				public = newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: %s", name, handleErr), map[string]any{"commandType": name}, handleErr)
+				return CommandExecution{}, newError(ErrInfrastructure, fmt.Sprintf("Command %q handler failed.", name), map[string]any{"commandType": name}, handleErr)
+			}
+			if public.Code == ErrCommandRejected {
+				if _, declared := command.definition.rejections[public.RejectionCode()]; !declared {
+					return CommandExecution{}, newError(ErrInfrastructure, fmt.Sprintf("Command %q rejected with code %q, which none of its Scenarios names.", name, public.RejectionCode()), map[string]any{"commandType": name}, public)
+				}
 			}
 			return CommandExecution{}, public
 		}
 		if len(drafts) == 0 {
-			failure := newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: Command emitted no Events.", name), map[string]any{"commandType": name}, nil)
+			failure := newError(ErrInfrastructure, fmt.Sprintf("Command %q emitted no Events: a handler emits at least one or rejects.", name), map[string]any{"commandType": name}, nil)
 			return CommandExecution{}, failure
 		}
 		for _, draft := range drafts {
@@ -375,9 +377,11 @@ func (a *App) CommandJSON(ctx context.Context, name string, payload json.RawMess
 	return execution, nil
 }
 
-// Reject returns a public Command rejection suitable for a handler.
-func Reject(commandType, reason string) error {
-	return newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected: %s", commandType, reason), map[string]any{"commandType": commandType, "reason": reason}, nil)
+// Reject returns a public Command rejection suitable for a handler: its stable
+// kebab-case code, which one of the Command's Scenarios must name, and its
+// message.
+func Reject(commandType, code, message string) error {
+	return newError(ErrCommandRejected, fmt.Sprintf("Command %q rejected (%s): %s", commandType, code, message), map[string]any{"commandType": commandType, "rejection": map[string]any{"code": code, "message": message}}, nil)
 }
 
 func (a *App) Query(ctx context.Context, name string, payload any) (any, error) {

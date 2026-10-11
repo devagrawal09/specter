@@ -9,7 +9,7 @@ import {
   todoRemovedEvent,
 } from '../events'
 import specification from './spec.json' with { type: 'json' }
-import { implementCommand } from '@specter-ts/core'
+import { CommandRejection, implementCommand } from '@specter-ts/core'
 
 export const todoCompletionSqlStates = sqliteTable(
   'todo_completion_sql_states',
@@ -59,9 +59,13 @@ export const changeTodoCompletion = implementCommand(specification)
       .all()
     const todo = rows[0]
 
-    if (!todo || todo.removed) throw new Error('Todo not found')
+    if (!todo || todo.removed)
+      throw new CommandRejection('todo-not-found', 'Todo not found')
     if (todo.completed === command.completed) {
-      throw new Error('Todo completion is already in requested state')
+      throw new CommandRejection(
+        'completion-unchanged',
+        'Todo completion is already in requested state',
+      )
     }
 
     return [

@@ -31,7 +31,7 @@ type EditableScenario = {
   given: EditableEvent[]
   when?: JsonValue
   expect: JsonValue | EditableEvent[]
-  reject?: { reason: string }
+  reject?: { code: string; message?: string; details?: JsonValue }
 }
 
 type EditableSpecification = Omit<
@@ -291,8 +291,8 @@ function SpecEditor() {
     }
     if (dirty() && !window.confirm('Discard unsaved edits?')) return
     const document = {
-      $schema: 'https://specter.dev/specification/v1/slice.schema.json',
-      formatVersion: 1,
+      $schema: 'https://specter.dev/specification/v2/slice.schema.json',
+      formatVersion: 2,
       kind: newKind(),
       name,
       description: 'Describe this Slice.',
@@ -698,7 +698,7 @@ function ScenarioEditor(props: {
                 props.update((item) => {
                   if (event.currentTarget.value === 'rejected') {
                     item.expect = []
-                    item.reject = { reason: 'Describe the rejection.' }
+                    item.reject = { code: 'describe-the-rejection' }
                   } else {
                     delete item.reject
                     item.expect = [defaultEvent()]
@@ -730,14 +730,31 @@ function ScenarioEditor(props: {
             }
           >
             <label>
-              Exact rejection reason
+              Rejection code
+              <input
+                disabled={props.readOnly}
+                value={props.scenario.reject?.code ?? ''}
+                onInput={(event) =>
+                  props.update((item) => {
+                    item.reject = {
+                      ...item.reject,
+                      code: event.currentTarget.value,
+                    }
+                  })
+                }
+              />
+            </label>
+            <label>
+              Exact rejection message (optional)
               <textarea
                 rows={3}
                 disabled={props.readOnly}
-                value={props.scenario.reject?.reason ?? ''}
+                value={props.scenario.reject?.message ?? ''}
                 onInput={(event) =>
                   props.update((item) => {
-                    item.reject = { reason: event.currentTarget.value }
+                    const message = event.currentTarget.value
+                    const { message: _, ...rest } = item.reject ?? { code: '' }
+                    item.reject = message ? { ...rest, message } : rest
                   })
                 }
               />
@@ -1035,7 +1052,7 @@ function defaultScenario(
     given: [],
     when: {},
     expect: [],
-    reject: { reason: 'Describe the rejection.' },
+    reject: { code: 'describe-the-rejection' },
   }
 }
 

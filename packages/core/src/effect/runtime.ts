@@ -32,6 +32,7 @@ import {
   assertConforms,
   carriesOneOf,
   commandScenarioEventTypes,
+  commandScenarioRejectionCodes,
   consistencyKeyValues,
   decodeOptionalSchema,
   eventKeys,
@@ -66,6 +67,7 @@ import type {
   SpecterQueryResult,
 } from '../runtime/app'
 import {
+  CommandRejection,
   ReactionRunFailure,
   type ReactionRunFailureDetail,
   SpecterCommandRejectedError,
@@ -243,6 +245,11 @@ type SpecterAppPlan = {
     ReadonlyMap<string, ApplyRegistration>
   >
   readonly allowedCommandEvents: ReadonlyMap<AnyCommand, ReadonlySet<string>>
+  /** The rejection codes each Command's rejected Scenarios name. */
+  readonly allowedCommandRejections: ReadonlyMap<
+    AnyCommand,
+    ReadonlySet<string>
+  >
   /**
    * The keyed Slices applying each Event type: every Event of it must carry
    * one of each one's key names.
@@ -376,6 +383,10 @@ function buildPlan(
         ReadonlyMap<string, ApplyRegistration>
       >()
       const allowedCommandEvents = new Map<AnyCommand, ReadonlySet<string>>()
+      const allowedCommandRejections = new Map<
+        AnyCommand,
+        ReadonlySet<string>
+      >()
 
       for (const eventDefinition of config.events) {
         eventDefinitions.set(eventDefinition.type, eventDefinition)
@@ -384,6 +395,10 @@ function buildPlan(
         if (slice.kind === 'command') {
           commands.set(slice.name, slice)
           allowedCommandEvents.set(slice, commandScenarioEventTypes(slice))
+          allowedCommandRejections.set(
+            slice,
+            commandScenarioRejectionCodes(slice),
+          )
         } else if (slice.kind === 'query') {
           queries.set(slice.name, slice)
         } else {
@@ -406,6 +421,7 @@ function buildPlan(
         reactions,
         applyBySlice,
         allowedCommandEvents,
+        allowedCommandRejections,
         requiredKeys: keyedConsumers(config.slices),
       }
     }),
@@ -481,6 +497,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       reactions,
       applyBySlice,
       allowedCommandEvents,
+      allowedCommandRejections,
       requiredKeys,
     } = yield* resolvePlan(config)
 
@@ -666,6 +683,14 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
               ? 'rejected'
               : 'failed',
             ...safeErrorAttributes(result.failure),
+            // A rejection's code is a stable name its Scenarios declare,
+            // never a payload value.
+            ...(result.failure instanceof SpecterCommandRejectedError
+              ? {
+                  'specter.command.rejection.code':
+                    result.failure.rejection.code,
+                }
+              : {}),
           })
           return yield* Effect.fail(result.failure)
         }
@@ -818,10 +843,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           (read, cursor) =>
             fromPromise(
               () => command.handle(parsed, read),
-              (cause) =>
-                cause instanceof SpecterCommandRejectedError
-                  ? cause
-                  : new SpecterCommandRejectedError(command.name, cause),
+              (cause) => handlerFailure(command, cause),
             ).pipe(
               Effect.flatMap((events) =>
                 consistencyKeysOf(command, parsed, read).pipe(
@@ -832,9 +854,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         )
         if (events.length === 0) {
           return yield* Effect.fail(
-            new SpecterCommandRejectedError(
-              command.name,
-              new Error('Command emitted no Events.'),
+            new SpecterInfrastructureError(
+              `Command "${command.name}" emitted no Events: a handler emits at least one or throws a CommandRejection.`,
+              undefined,
             ),
           )
         }
@@ -872,6 +894,31 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           ? yield* acceptDuplicate(appended, options)
           : appended
       })
+    }
+
+    /**
+     * What a Command handler's failure is: a rejection when it threw a
+     * CommandRejection with a code its Scenarios name, and otherwise a
+     * failure of the handler, which rejects nothing.
+     */
+    function handlerFailure(
+      command: AnyCommand,
+      cause: unknown,
+    ): SpecterEffectError {
+      if (!(cause instanceof CommandRejection)) {
+        return isPublicError(cause)
+          ? cause
+          : new SpecterInfrastructureError(
+              `Command "${command.name}" handler failed.`,
+              cause,
+            )
+      }
+      return allowedCommandRejections.get(command)?.has(cause.code)
+        ? new SpecterCommandRejectedError(command.name, cause)
+        : new SpecterInfrastructureError(
+            `Command "${command.name}" rejected with code "${cause.code}", which none of its Scenarios names.`,
+            cause,
+          )
     }
 
     /**

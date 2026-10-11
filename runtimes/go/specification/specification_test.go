@@ -22,13 +22,13 @@ func TestSharedSpecificationFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if digest != "sha256:eaf05020c0bbee5b8afb871f0a28b83678270c602495cc1476beb9b53cda20fd" {
+	if digest != "sha256:7b4e50afc9fd82bd836e50bae638f1164befd62dcaa54d5b2b710f2e15aa4c58" {
 		t.Fatalf("unexpected digest %s", digest)
 	}
 }
 
 func TestCanonicalDigestUsesJavaScriptUTF16Ordering(t *testing.T) {
-	contents := []byte(`{"$schema":"https://specter.dev/specification/v1/slice.schema.json","formatVersion":1,"kind":"command","name":"unicodeVector","description":"Exercises canonical JSON ordering.","scenarios":[{"description":"Sorts keys without locale rules.","given":[],"when":{"€":3,"\r":0,"😀":4,"ö":2,"1":1},"expect":[{"kind":"scenario-event","eventType":"unicode-recorded","examplePayload":{"value":true}}]}]}`)
+	contents := []byte(`{"$schema":"https://specter.dev/specification/v2/slice.schema.json","formatVersion":2,"kind":"command","name":"unicodeVector","description":"Exercises canonical JSON ordering.","scenarios":[{"description":"Sorts keys without locale rules.","given":[],"when":{"€":3,"\r":0,"😀":4,"ö":2,"1":1},"expect":[{"kind":"scenario-event","eventType":"unicode-recorded","examplePayload":{"value":true}}]}]}`)
 	document, err := specification.ParseJSON(contents)
 	if err != nil {
 		t.Fatal(err)
@@ -37,15 +37,31 @@ func TestCanonicalDigestUsesJavaScriptUTF16Ordering(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if digest != "sha256:55b5fb1832af7eb3a48eb72f161765c1b07f95c04bad0e10204c7d477e018b1c" {
+	if digest != "sha256:6310d825b7fcdce1aea7d3127a5b78a7794e9ab92d585dafcb2b1f8853ad5337" {
 		t.Fatalf("unexpected Unicode vector digest %s", digest)
 	}
 }
 
 func TestSpecificationRejectsUnknownFields(t *testing.T) {
-	contents := []byte(`{"$schema":"https://specter.dev/specification/v1/slice.schema.json","formatVersion":1,"kind":"command","name":"addTodo","description":"Adds.","scenarios":[{"description":"Adds.","given":[],"when":{},"expect":[{"kind":"scenario-event","eventType":"todo-added","examplePayload":{}}]}],"extra":true}`)
+	contents := []byte(`{"$schema":"https://specter.dev/specification/v2/slice.schema.json","formatVersion":2,"kind":"command","name":"addTodo","description":"Adds.","scenarios":[{"description":"Adds.","given":[],"when":{},"expect":[{"kind":"scenario-event","eventType":"todo-added","examplePayload":{}}]}],"extra":true}`)
 	if _, err := specification.ParseJSON(contents); err == nil {
 		t.Fatal("accepted an unknown specification field")
+	}
+}
+
+func TestSpecificationRequiresAKebabCaseRejectionCode(t *testing.T) {
+	document := func(reject string) []byte {
+		return []byte(`{"$schema":"https://specter.dev/specification/v2/slice.schema.json","formatVersion":2,"kind":"command","name":"addTodo","description":"Adds.","scenarios":[{"description":"Refuses.","given":[],"when":{},"expect":[],"reject":` + reject + `}]}`)
+	}
+	for _, valid := range []string{`{"code":"title-required"}`, `{"code":"title-required","message":"Todo title is required","details":{"field":"title"}}`} {
+		if _, err := specification.ParseJSON(document(valid)); err != nil {
+			t.Fatalf("rejected a valid rejection %s: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{`{"reason":"Todo title is required"}`, `{"code":"Title required"}`, `{"code":"title-required","message":""}`, `{"code":"title-required","extra":true}`} {
+		if _, err := specification.ParseJSON(document(invalid)); err == nil {
+			t.Fatalf("accepted an invalid rejection %s", invalid)
+		}
 	}
 }
 
@@ -72,7 +88,7 @@ func TestSharedUnicodeStringFixture(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if digest != "sha256:4c6675c9d9e5daf8e475adbfadf34d5fb94c0a097fa6b12e4ef1d1d6e14955ec" {
+	if digest != "sha256:20e59e607bb0c6d2111a45d6e15a7e0e8e0e588773b9ef1c6b7710f9445724e2" {
 		t.Fatalf("unexpected Unicode string digest %s", digest)
 	}
 }

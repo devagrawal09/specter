@@ -1,5 +1,9 @@
 import { createClient } from '@libsql/client/sqlite3'
-import { SpecterIdempotencyConflictError } from '@specter-ts/core'
+import {
+  CommandRejection,
+  SpecterCommandRejectedError,
+  SpecterIdempotencyConflictError,
+} from '@specter-ts/core'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -248,6 +252,47 @@ describe('Command idempotency options', () => {
       error: {
         code: 'SPECTER_IDEMPOTENCY_CONFLICT',
         details: { idempotencyKey: 'client-key' },
+      },
+    })
+  })
+
+  it('maps a rejected Command to HTTP 409 with its rejection code and details', async () => {
+    const handler = createSpecterHttpHandler({
+      app: {
+        command: vi.fn(async () => {
+          throw new SpecterCommandRejectedError(
+            'addTodo',
+            new CommandRejection(
+              'title-too-long',
+              'Todo title must be 120 characters or less',
+              { maxLength: 120 },
+            ),
+          )
+        }),
+        query: vi.fn(),
+        subscribe: vi.fn(),
+      } as never,
+      basePath: '/api',
+    })
+
+    const response = await handler(
+      new Request('http://specter.test/api/command', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          envelope: { type: 'addTodo', payload: { todoId: 'todo-2' } },
+        }),
+      }),
+    )
+
+    expect(response.status).toBe(409)
+    expect(await response.json()).toMatchObject({
+      error: {
+        code: 'SPECTER_COMMAND_REJECTED',
+        details: {
+          commandType: 'addTodo',
+          rejection: { code: 'title-too-long', details: { maxLength: 120 } },
+        },
       },
     })
   })

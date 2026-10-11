@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://specter.dev/specification/v1/slice.schema.json",
-  "title": "Specter behavioral Slice specification v1",
+  "$id": "https://specter.dev/specification/v2/slice.schema.json",
+  "title": "Specter behavioral Slice specification v2",
   "oneOf": [
     { "$ref": "#/$defs/command" },
     { "$ref": "#/$defs/query" },
@@ -30,8 +30,8 @@
       "type": "object", "additionalProperties": false,
       "required": ["$schema", "formatVersion", "kind", "name", "description", "scenarios"],
       "properties": {
-        "$schema": { "const": "https://specter.dev/specification/v1/slice.schema.json" },
-        "formatVersion": { "const": 1 },
+        "$schema": { "const": "https://specter.dev/specification/v2/slice.schema.json" },
+        "formatVersion": { "const": 2 },
         "kind": { "enum": ["command", "query", "reaction"] },
         "name": { "type": "string", "pattern": "^[a-z][A-Za-z0-9]*$" },
         "description": { "type": "string", "minLength": 1 },
@@ -46,7 +46,7 @@
         "given": { "type": "array", "items": { "$ref": "#/$defs/event" } },
         "when": { "$ref": "#/$defs/jsonValue" },
         "expect": { "type": "array", "items": { "$ref": "#/$defs/event" } },
-        "reject": { "type": "object", "additionalProperties": false, "required": ["reason"], "properties": { "reason": { "type": "string", "minLength": 1 } } }
+        "reject": { "type": "object", "additionalProperties": false, "required": ["code"], "properties": { "code": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" }, "message": { "type": "string", "minLength": 1 }, "details": { "$ref": "#/$defs/jsonValue" } } }
       },
       "oneOf": [
         { "type": "object", "properties": { "expect": { "type": "array", "minItems": 1 }, "reject": false } },

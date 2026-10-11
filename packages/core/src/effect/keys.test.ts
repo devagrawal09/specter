@@ -3,6 +3,7 @@ import { Context, Effect, Layer, type Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
+  CommandRejection,
   type EventDraft,
   EventLog,
   type EventLogCapabilities,
@@ -194,7 +195,7 @@ function changeItem(options: { readonly keyed: boolean }) {
         given: [event('item-changed', { itemId: 'a', value: 1 })],
         when: { itemId: 'a', value: 1 },
         expect: [],
-        reject: { reason: 'Item unchanged' },
+        reject: { code: 'item-unchanged' },
       },
     )
     .inputSchema<Item>()
@@ -212,7 +213,7 @@ function changeItem(options: { readonly keyed: boolean }) {
     .handle(async (command, state) => {
       handled.push(command)
       if (state.values[command.itemId] === command.value) {
-        throw new Error('Item unchanged')
+        throw new CommandRejection('item-unchanged', 'Item unchanged')
       }
       return [itemChanged.create(command)]
     })
@@ -389,9 +390,10 @@ describe('consistency keys', () => {
       .handle(async (command, state) => {
         handled.push(command.itemId)
         const group = state.groups[command.itemId]
-        if (!group) throw new Error('Item not found')
+        if (!group)
+          throw new CommandRejection('item-not-found', 'Item not found')
         if (state.active[group] === command.itemId) {
-          throw new Error('Item already active')
+          throw new CommandRejection('item-active', 'Item already active')
         }
         return [itemActivated.create({ itemId: command.itemId, group })]
       })

@@ -67,6 +67,45 @@ describe('spec editor client', () => {
     expect(requiredButton('Save').disabled).toBe(false)
   })
 
+  it('edits a rejection as a code and an optional exact message', async () => {
+    await vi.waitFor(() => expect(nameInput().value).toBe('addTodo'))
+    const outcome = requiredElement<HTMLSelectElement>('.stage-title select')
+    outcome.value = 'rejected'
+    outcome.dispatchEvent(new Event('change', { bubbles: true }))
+    input(labelled<HTMLInputElement>('Rejection code'), 'todo-title-taken')
+    input(
+      labelled<HTMLTextAreaElement>('Exact rejection message (optional)'),
+      'A todo with that title already exists',
+    )
+    requiredButton('Save').click()
+
+    const fetchMock = vi.mocked(fetch)
+    await vi.waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([, init]) => init?.method === 'PUT'),
+      ).toBe(true),
+    )
+    const [, init] = fetchMock.mock.calls.find(
+      ([, candidate]) => candidate?.method === 'PUT',
+    ) as [unknown, RequestInit]
+    const saved = JSON.parse(String(init.body)).document
+    expect(saved.scenarios[0]).toMatchObject({
+      expect: [],
+      reject: {
+        code: 'todo-title-taken',
+        message: 'A todo with that title already exists',
+      },
+    })
+
+    input(
+      labelled<HTMLTextAreaElement>('Exact rejection message (optional)'),
+      '',
+    )
+    expect(labelled<HTMLInputElement>('Rejection code').value).toBe(
+      'todo-title-taken',
+    )
+  })
+
   it('asks before replacing a dirty draft with a new Slice', async () => {
     await vi.waitFor(() => expect(nameInput().value).toBe('addTodo'))
     input(
@@ -115,7 +154,18 @@ function nameInput() {
   return input
 }
 
-function input(element: HTMLInputElement, value: string) {
+function labelled<T extends HTMLInputElement | HTMLTextAreaElement>(
+  text: string,
+) {
+  const label = [...document.querySelectorAll('label')].find(
+    (candidate) => candidate.firstChild?.textContent?.trim() === text,
+  )
+  const field = label?.querySelector('input, textarea')
+  if (!field) throw new Error(`Missing ${text} field.`)
+  return field as T
+}
+
+function input(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
   element.value = value
   element.dispatchEvent(new Event('input', { bubbles: true }))
 }
@@ -139,8 +189,8 @@ function requiredElement<T extends Element>(selector: string) {
 
 function specification() {
   return {
-    $schema: 'https://specter.dev/specification/v1/slice.schema.json',
-    formatVersion: 1,
+    $schema: 'https://specter.dev/specification/v2/slice.schema.json',
+    formatVersion: 2,
     kind: 'command',
     name: 'addTodo',
     description: 'Adds a todo.',

@@ -10,7 +10,7 @@ import {
   todoRemovedEvent,
 } from '../events'
 import specification from './spec.json' with { type: 'json' }
-import { implementCommand } from '@specter-ts/core'
+import { CommandRejection, implementCommand } from '@specter-ts/core'
 
 export const createTodoCheerSqlTodoStates = sqliteTable(
   'create_todo_cheer_sql_todo_states',
@@ -65,7 +65,10 @@ export const createTodoCheer = implementCommand(specification)
   })
   .handle(async (command, db) => {
     if (command.milestone % 5 !== 0) {
-      throw new Error('Todo cheer milestone must be a multiple of 5')
+      throw new CommandRejection(
+        'milestone-invalid',
+        'Todo cheer milestone must be a multiple of 5',
+      )
     }
 
     const completedTodos = await db
@@ -80,7 +83,10 @@ export const createTodoCheer = implementCommand(specification)
       .all()
 
     if (completedTodos.length < command.milestone) {
-      throw new Error('Todo cheer milestone has not been reached')
+      throw new CommandRejection(
+        'milestone-not-reached',
+        'Todo cheer milestone has not been reached',
+      )
     }
 
     const existingMilestones = await db
@@ -89,7 +95,10 @@ export const createTodoCheer = implementCommand(specification)
       .where(eq(createTodoCheerSqlMilestoneStates.milestone, command.milestone))
       .all()
     if (existingMilestones[0])
-      throw new Error('Todo cheer milestone already exists')
+      throw new CommandRejection(
+        'milestone-exists',
+        'Todo cheer milestone already exists',
+      )
 
     return [
       todoCheerCreatedEvent.create({

@@ -14,6 +14,7 @@ export {
   assertConforms,
   collectConformanceDiagnostics,
   commandScenarioEventTypes,
+  commandScenarioRejectionCodes,
   SpecterConformanceError,
 } from './conformance'
 export type {
@@ -57,6 +58,7 @@ export type {
   ReactionScenario,
   RejectedCommandScenario,
   ScenarioEvent,
+  ScenarioRejection,
   SliceScenario,
 } from './scenario-types'
 export type {

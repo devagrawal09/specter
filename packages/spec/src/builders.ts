@@ -10,6 +10,7 @@ import {
   type ReactionScenario,
   type ReactionSliceSpecification,
   type ScenarioEvent,
+  type ScenarioRejection,
 } from './types.ts'
 
 type DescriptionStep<TSpec> = {
@@ -83,7 +84,7 @@ type SliceScenarioInput = {
   readonly given: readonly ScenarioEvent[]
   readonly when?: JsonValue
   readonly expect: JsonValue | readonly JsonValue[]
-  readonly reject?: { readonly reason: string }
+  readonly reject?: ScenarioRejection
 }
 
 function freezeScenario(scenario: SliceScenarioInput) {

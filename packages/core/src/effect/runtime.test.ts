@@ -13,7 +13,9 @@ import {
 import { describe, expect, it } from 'vitest'
 
 import {
+  CommandRejection,
   type CommandReceipt,
+  type EventDraft,
   EventLog,
   type EventLogCommit,
   EventLogFailure,
@@ -23,6 +25,7 @@ import {
   ReactionSchedulerFailure,
   ReactionRunFailure,
   type SliceStoreService,
+  SpecterCommandRejectedError,
   SpecterIdempotencyConflictError,
   SpecterInfrastructureError,
   SpecterInvalidCommandOptionsError,
@@ -2089,16 +2092,25 @@ describe('Effect-native runtime', () => {
     const valueRecorded = createEventDefinition('value-recorded', numberSchema)
     const command = createCommandSlice('recordValue')
       .description('Records one value.')
-      .scenarios({
-        description: 'Records one value.',
-        given: [],
-        when: 1,
-        expect: [event('value-recorded', 1)],
-      })
+      .scenarios(
+        {
+          description: 'Records one value.',
+          given: [],
+          when: 1,
+          expect: [event('value-recorded', 1)],
+        },
+        {
+          description: 'Declines a value.',
+          given: [],
+          when: 2,
+          expect: [],
+          reject: { code: 'value-declined' },
+        },
+      )
       .inputSchema<number>()
       .store(ValuesStore)
       .handle(async () => {
-        throw new Error(secret)
+        throw new CommandRejection('value-declined', secret)
       })
     const query = createQuerySlice('values')
       .description('Reads all values.')
@@ -2484,6 +2496,120 @@ function idempotencyHarness(eventLog: EventLogService = makeEventLogService()) {
     )
   return { runCommand, eventLog, handled }
 }
+
+describe('typed Command rejections', () => {
+  const valueRecorded = createEventDefinition('value-recorded', numberSchema)
+  const recordValue = (
+    handle: (value: number) => Promise<readonly EventDraft[]>,
+  ) =>
+    createCommandSlice('recordValue')
+      .description('Records a positive value.')
+      .scenarios(
+        {
+          description: 'Records a positive value.',
+          given: [],
+          when: 1,
+          expect: [event('value-recorded', 1)],
+        },
+        {
+          description: 'Refuses a negative value.',
+          given: [],
+          when: -1,
+          expect: [],
+          reject: {
+            code: 'value-negative',
+            message: 'Value must be positive',
+            details: { value: -1 },
+          },
+        },
+      )
+      .inputSchema<number>()
+      .store(ValuesStore)
+      .handle(handle)
+  const dispatch = (
+    handle: (value: number) => Promise<readonly EventDraft[]>,
+    value: number,
+  ) =>
+    Effect.runPromise(
+      Effect.scoped(
+        Effect.gen(function* () {
+          const app = yield* SpecterRuntime
+          return yield* Effect.result(
+            app.command({ type: 'recordValue', payload: value }),
+          )
+        }).pipe(
+          Effect.provide(
+            createSpecterAppLayer({
+              events: [valueRecorded],
+              slices: { recordValue: recordValue(handle) },
+            } as const).pipe(
+              Layer.provide(Layer.mergeAll(storeLayer(), eventLogLayer())),
+            ),
+          ),
+        ),
+      ),
+    )
+  const failureOf = async (
+    result: Awaited<ReturnType<typeof dispatch>>,
+  ): Promise<unknown> => {
+    if (result._tag !== 'Failure') throw new Error('Expected a failure')
+    return result.failure
+  }
+
+  it('rejects with the code, message and details its handler rejected with', async () => {
+    const failure = await failureOf(
+      await dispatch(async (value) => {
+        if (value < 0) {
+          throw new CommandRejection(
+            'value-negative',
+            'Value must be positive',
+            {
+              value,
+            },
+          )
+        }
+        return [valueRecorded.create(value)]
+      }, -1),
+    )
+    expect(failure).toBeInstanceOf(SpecterCommandRejectedError)
+    expect(failure).toMatchObject({
+      code: 'SPECTER_COMMAND_REJECTED',
+      commandType: 'recordValue',
+      rejection: {
+        code: 'value-negative',
+        message: 'Value must be positive',
+        details: { value: -1 },
+      },
+      message:
+        'Command "recordValue" rejected (value-negative): Value must be positive',
+    })
+  })
+
+  it('fails, rejecting nothing, for a rejection code none of its Scenarios names', async () => {
+    const failure = await failureOf(
+      await dispatch(async () => {
+        throw new CommandRejection('value-odd', 'Value must be even')
+      }, 3),
+    )
+    expect(failure).toBeInstanceOf(SpecterInfrastructureError)
+    expect((failure as Error).message).toBe(
+      'Command "recordValue" rejected with code "value-odd", which none of its Scenarios names.',
+    )
+  })
+
+  it('fails, rejecting nothing, for any other handler error or no Events', async () => {
+    const thrown = await failureOf(
+      await dispatch(async () => {
+        throw new TypeError('a bug')
+      }, 1),
+    )
+    expect(thrown).toBeInstanceOf(SpecterInfrastructureError)
+    expect((thrown as Error).cause).toBeInstanceOf(TypeError)
+    const empty = await failureOf(await dispatch(async () => [], 1))
+    expect(empty).toBeInstanceOf(SpecterInfrastructureError)
+    expect((empty as Error).message).toContain('emitted no Events')
+  })
+})
 
 function storeLayer(
   options: { onTransaction?: (active: boolean) => void } = {},

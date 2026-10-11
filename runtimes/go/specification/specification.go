@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	Schema         = "https://specter.dev/specification/v1/slice.schema.json"
-	FormatVersion  = 1
+	Schema         = "https://specter.dev/specification/v2/slice.schema.json"
+	FormatVersion  = 2
 	maxSafeInteger = int64(9_007_199_254_740_991)
 )
 
@@ -161,14 +161,26 @@ func validateDocument(root map[string]any) error {
 				if !ok {
 					return fmt.Errorf("%s.reject must be an object", path)
 				}
-				if err := exactKeys(object, []string{"reason"}, path+".reject", nil); err != nil {
+				if err := exactKeys(object, []string{"code", "message", "details"}, path+".reject", map[string]struct{}{"message": {}, "details": {}}); err != nil {
 					return err
 				}
-				if !nonemptyString(object["reason"]) {
-					return fmt.Errorf("%s.reject.reason must be a non-empty string", path)
+				code, ok := object["code"].(string)
+				if !ok || strings.TrimSpace(code) == "" {
+					return fmt.Errorf("%s.reject.code must be a non-empty string", path)
+				}
+				if !eventTypePattern.MatchString(code) {
+					return fmt.Errorf("%s.reject.code must use kebab-case", path)
+				}
+				if message, present := object["message"]; present && !nonemptyString(message) {
+					return fmt.Errorf("%s.reject.message must be a non-empty string", path)
+				}
+				if details, present := object["details"]; present {
+					if err := validateJSONValue(details); err != nil {
+						return fmt.Errorf("%s.reject.details: %w", path, err)
+					}
 				}
 			} else if len(expected) == 0 {
-				return fmt.Errorf("%s must expect Events or define an exact rejection reason", path)
+				return fmt.Errorf("%s must expect Events or define a rejection code", path)
 			}
 		} else if kind == "reaction" {
 			expected, ok := scenario["expect"].([]any)

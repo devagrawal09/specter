@@ -14,6 +14,7 @@ export type {
   SpecterQueryType,
 } from './app'
 export {
+  CommandRejection,
   ReactionRunFailure,
   specterErrorCodes,
   SpecterCommandRejectedError,

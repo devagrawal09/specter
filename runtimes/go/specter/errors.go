@@ -33,6 +33,13 @@ type Error struct {
 }
 
 func (e *Error) Error() string { return e.Message }
+
+// RejectionCode is a Command rejection's stable code, or "" for any other failure.
+func (e *Error) RejectionCode() string {
+	rejection, _ := e.Details["rejection"].(map[string]any)
+	code, _ := rejection["code"].(string)
+	return code
+}
 func (e *Error) Unwrap() error { return e.Cause }
 
 func newError(code ErrorCode, message string, details map[string]any, cause error) *Error {

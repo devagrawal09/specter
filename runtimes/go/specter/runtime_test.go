@@ -24,14 +24,14 @@ func TestCommandQueryReactionAndDuplicate(t *testing.T) {
 	var commandState []string
 	var queryState []string
 	var reactions atomic.Int64
-	scenarios := []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}, {Description: "rejects existing", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Input: addInput{ID: "one"}, RejectReason: "already exists"}}
+	scenarios := []specter.CommandScenario{{Description: "adds", Input: addInput{ID: "one"}, Expect: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}}, {Description: "rejects existing", Given: []specter.ScenarioEvent{{Type: "added", Payload: added{ID: "one"}}}, Input: addInput{ID: "one"}, RejectCode: "already-exists", RejectMessage: "already exists"}}
 	command := specter.CommandDefinition{Name: "add", Scenarios: scenarios, Apply: map[string]specter.ApplyFunc{"added": specter.DecodeApply(func(_ context.Context, payload added, _ specter.PersistedEvent) error {
 		commandState = append(commandState, payload.ID)
 		return nil
 	})}, Handle: specter.DecodeCommand(func(_ context.Context, input addInput) ([]specter.EventDraft, error) {
 		for _, id := range commandState {
 			if id == input.ID {
-				return nil, specter.Reject("add", "already exists")
+				return nil, specter.Reject("add", "already-exists", "already exists")
 			}
 		}
 		return []specter.EventDraft{{Type: "added", Payload: added{ID: input.ID}}}, nil
@@ -101,8 +101,8 @@ func TestCommandEmittingNoEventsIsRejectedBeforeAppend(t *testing.T) {
 	}
 	_, err = app.Command(context.Background(), "add", addInput{ID: "one"}, specter.DispatchOptions{IdempotencyKey: "empty"})
 	var public *specter.Error
-	if !errors.As(err, &public) || public.Code != specter.ErrCommandRejected {
-		t.Fatalf("expected zero-Event Command rejection, got %v", err)
+	if !errors.As(err, &public) || public.Code != specter.ErrInfrastructure {
+		t.Fatalf("expected zero-Event Command failure, got %v", err)
 	}
 	if app.EventLog().Version() != 0 || len(app.EventLog().Query(0, nil)) != 0 {
 		t.Fatal("zero-Event Command changed the Event Log")

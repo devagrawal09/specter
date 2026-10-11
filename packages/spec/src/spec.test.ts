@@ -22,7 +22,7 @@ const specification = createCommandSlice('addTodo')
 describe('portable Slice specification', () => {
   it('serializes deterministically and computes a canonical digest', () => {
     expect(serializeSpecification(specification)).toContain(
-      '"formatVersion": 1',
+      '"formatVersion": 2',
     )
     expect(digestSpecification(specification)).toMatch(/^sha256:[a-f0-9]{64}$/)
   })
@@ -56,13 +56,46 @@ describe('portable Slice specification', () => {
     ).toThrow('symbol-keyed')
   })
 
-  it('requires exact reasons for rejected Command scenarios', () => {
+  it('requires a kebab-case code for rejected Command scenarios', () => {
+    const rejected = (reject: unknown) =>
+      parseSpecification({
+        ...specification,
+        scenarios: [{ ...specification.scenarios[0], expect: [], reject }],
+      })
     expect(() =>
       parseSpecification({
         ...specification,
         scenarios: [{ ...specification.scenarios[0], expect: [] }],
       }),
-    ).toThrow('define an exact rejection reason')
+    ).toThrow('define a rejection code')
+    expect(() => rejected({ message: 'Todo exists' })).toThrow(
+      '$.scenarios[0].reject.code is required',
+    )
+    expect(() => rejected({ code: 'Todo exists' })).toThrow(
+      '$.scenarios[0].reject.code must use kebab-case',
+    )
+    expect(() => rejected({ code: 'todo-exists', reason: 'x' })).toThrow(
+      '$.scenarios[0].reject.reason is not allowed',
+    )
+    expect(() => rejected({ code: 'todo-exists', message: ' ' })).toThrow(
+      '$.scenarios[0].reject.message must be a non-empty string',
+    )
+    expect(
+      rejected({
+        code: 'todo-exists',
+        message: 'Todo exists',
+        details: { todoId: '1' },
+      }).scenarios[0],
+    ).toMatchObject({
+      reject: {
+        code: 'todo-exists',
+        message: 'Todo exists',
+        details: { todoId: '1' },
+      },
+    })
+    expect(rejected({ code: 'todo-exists' }).scenarios[0]).toMatchObject({
+      reject: { code: 'todo-exists' },
+    })
   })
 
   it('uses UTF-16 key ordering for cross-language canonical digests', () => {
@@ -81,7 +114,7 @@ describe('portable Slice specification', () => {
     expect(canonical.indexOf('"ö"')).toBeLessThan(canonical.indexOf('"€"'))
     expect(canonical.indexOf('"€"')).toBeLessThan(canonical.indexOf('"😀"'))
     expect(digestSpecification(unicode)).toBe(
-      'sha256:55b5fb1832af7eb3a48eb72f161765c1b07f95c04bad0e10204c7d477e018b1c',
+      'sha256:6310d825b7fcdce1aea7d3127a5b78a7794e9ab92d585dafcb2b1f8853ad5337',
     )
   })
 
@@ -102,7 +135,7 @@ describe('portable Slice specification', () => {
       '\\u2028 and \\u2029',
     )
     expect(digestSpecification(parsed)).toBe(
-      'sha256:4c6675c9d9e5daf8e475adbfadf34d5fb94c0a097fa6b12e4ef1d1d6e14955ec',
+      'sha256:20e59e607bb0c6d2111a45d6e15a7e0e8e0e588773b9ef1c6b7710f9445724e2',
     )
   })
 

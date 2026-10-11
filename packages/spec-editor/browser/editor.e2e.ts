@@ -5,8 +5,8 @@ import { join } from 'node:path'
 import { startSpecEditor } from '../dist/index.js'
 
 const specification = (name = 'addTodo') => ({
-  $schema: 'https://specter.dev/specification/v1/slice.schema.json',
-  formatVersion: 1,
+  $schema: 'https://specter.dev/specification/v2/slice.schema.json',
+  formatVersion: 2,
   kind: 'command',
   name,
   description: 'Adds a todo.',
@@ -120,12 +120,13 @@ test('adds, reorders, removes, and rejects scenarios', async ({
     'Rejected duplicate',
   )
   await page.locator('.stage-title select').selectOption('rejected')
+  await page.getByLabel('Rejection code').fill('todo-title-taken')
   await page
-    .getByLabel('Exact rejection reason')
+    .getByLabel('Exact rejection message (optional)')
     .fill('A todo with that title already exists')
-  await expect(page.getByLabel('Exact rejection reason')).toHaveValue(
-    'A todo with that title already exists',
-  )
+  await expect(
+    page.getByLabel('Exact rejection message (optional)'),
+  ).toHaveValue('A todo with that title already exists')
   await page.getByLabel('Remove scenario').nth(1).click()
   await expect(page.locator('.scenario-select')).toHaveCount(1)
   await page.getByRole('button', { name: 'Save', exact: true }).click()
@@ -134,7 +135,8 @@ test('adds, reorders, removes, and rejects scenarios', async ({
   ).toBeDisabled()
   const saved = JSON.parse(await readFile(project.editable, 'utf8'))
   expect(saved.scenarios[0].reject).toEqual({
-    reason: 'A todo with that title already exists',
+    code: 'todo-title-taken',
+    message: 'A todo with that title already exists',
   })
   expect(saved.scenarios[0].expect).toEqual([])
 })

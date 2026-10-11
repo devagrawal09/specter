@@ -131,10 +131,17 @@ export function parseSpecification(input: unknown): SliceSpecification {
         if (expected.length)
           fail(`${path}.reject is only valid when expect is empty.`)
         const reject = object(scenario.reject, `${path}.reject`)
-        exactKeys(reject, ['reason'], `${path}.reject`)
-        nonEmptyString(reject.reason, `${path}.reject.reason`)
+        exactKeys(reject, ['code', 'message', 'details'], `${path}.reject`, [
+          'message',
+          'details',
+        ])
+        const code = nonEmptyString(reject.code, `${path}.reject.code`)
+        if (!kebabCase.test(code))
+          fail(`${path}.reject.code must use kebab-case.`)
+        if (reject.message !== undefined)
+          nonEmptyString(reject.message, `${path}.reject.message`)
       } else if (!expected.length) {
-        fail(`${path} must expect Events or define an exact rejection reason.`)
+        fail(`${path} must expect Events or define a rejection code.`)
       }
     } else if (kind === 'reaction') {
       array(scenario.expect, `${path}.expect`)
@@ -161,22 +168,25 @@ function scenarioEvent(value: unknown, path: string) {
   if (event.kind !== 'scenario-event')
     fail(`${path}.kind must be scenario-event.`)
   nonEmptyString(event.eventType, `${path}.eventType`)
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(event.eventType as string))
+  if (!kebabCase.test(event.eventType as string))
     fail(`${path}.eventType must use kebab-case.`)
   if (!Object.hasOwn(event, 'examplePayload'))
     fail(`${path}.examplePayload is required.`)
 }
 
+const kebabCase = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+
 function exactKeys(
   value: Record<string, unknown>,
   allowed: readonly string[],
   path: string,
+  optional: readonly string[] = ['reject'],
 ) {
   const allowedSet = new Set(allowed)
   const unknown = Object.keys(value).find((key) => !allowedSet.has(key))
   if (unknown) fail(`${path}.${unknown} is not allowed.`)
   const missing = allowed.find(
-    (key) => !Object.hasOwn(value, key) && !['reject'].includes(key),
+    (key) => !Object.hasOwn(value, key) && !optional.includes(key),
   )
   if (missing) fail(`${path}.${missing} is required.`)
 }

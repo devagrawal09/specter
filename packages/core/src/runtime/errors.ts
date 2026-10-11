@@ -110,18 +110,40 @@ export class SpecterInvalidOutputError extends SpecterError {
   }
 }
 
+/**
+ * A Command handler's refusal: a stable kebab-case `code` hosts match on, a
+ * message for people, and optional structured `details`. A handler throws it;
+ * the runtime then rejects the Command with a `SpecterCommandRejectedError`
+ * carrying it. Every code a Command rejects with must appear in one of its
+ * rejected Scenarios.
+ */
+export class CommandRejection extends Error {
+  readonly _tag = 'CommandRejection' as const
+  readonly code: string
+  readonly details?: unknown
+
+  constructor(code: string, message: string, details?: unknown) {
+    super(message)
+    this.name = 'CommandRejection'
+    this.code = code
+    if (details !== undefined) this.details = details
+  }
+}
+
+/** A Command was rejected: its handler threw `rejection`. */
 export class SpecterCommandRejectedError extends SpecterError {
   readonly commandType: string
+  readonly rejection: CommandRejection
 
-  constructor(commandType: string, cause: unknown) {
-    const reason = cause instanceof Error ? cause.message : String(cause)
+  constructor(commandType: string, rejection: CommandRejection) {
     super(
       specterErrorCodes.commandRejected,
-      `Command "${commandType}" rejected: ${reason}`,
-      { cause },
+      `Command "${commandType}" rejected (${rejection.code}): ${rejection.message}`,
+      { cause: rejection },
     )
     this.name = 'SpecterCommandRejectedError'
     this.commandType = commandType
+    this.rejection = rejection
   }
 }
 

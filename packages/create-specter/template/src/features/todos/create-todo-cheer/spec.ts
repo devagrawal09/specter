@@ -18,7 +18,10 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       given: [],
       when: { milestone: 4 },
       expect: [],
-      reject: { reason: 'Todo cheer milestone must be a multiple of 5' },
+      reject: {
+        code: 'milestone-invalid',
+        message: 'Todo cheer milestone must be a multiple of 5',
+      },
     },
     {
       description:
@@ -26,7 +29,10 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       given: completedTodoEvents(4),
       when: { milestone: 5 },
       expect: [],
-      reject: { reason: 'Todo cheer milestone has not been reached' },
+      reject: {
+        code: 'milestone-not-reached',
+        message: 'Todo cheer milestone has not been reached',
+      },
     },
     {
       description: 'Rejects a cheer milestone that was already created.',
@@ -39,7 +45,10 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       ],
       when: { milestone: 5 },
       expect: [],
-      reject: { reason: 'Todo cheer milestone already exists' },
+      reject: {
+        code: 'milestone-exists',
+        message: 'Todo cheer milestone already exists',
+      },
     },
     {
       description:
@@ -62,7 +71,10 @@ export const createTodoCheerSpec = createCommandSlice('createTodoCheer')
       ],
       when: { milestone: 5 },
       expect: [],
-      reject: { reason: 'Todo cheer milestone has not been reached' },
+      reject: {
+        code: 'milestone-not-reached',
+        message: 'Todo cheer milestone has not been reached',
+      },
     },
   )
 

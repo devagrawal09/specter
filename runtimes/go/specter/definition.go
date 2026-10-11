@@ -5,18 +5,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"regexp"
 )
+
+var rejectionCodePattern = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type ScenarioEvent struct {
 	Type    string
 	Payload any
 }
 type CommandScenario struct {
-	Description  string
-	Given        []ScenarioEvent
-	Input        any
-	Expect       []ScenarioEvent
-	RejectReason string
+	Description string
+	Given       []ScenarioEvent
+	Input       any
+	Expect      []ScenarioEvent
+	// RejectCode is the stable kebab-case code a rejected Scenario expects.
+	RejectCode string
+	// RejectMessage, when set, is the exact message it expects.
+	RejectMessage string
 }
 type QueryScenario struct {
 	Description string
@@ -36,11 +42,12 @@ type QueryHandle func(context.Context, json.RawMessage) (any, error)
 type ReactionHandle func(context.Context, ReactionContext, []PersistedEvent) (any, error)
 
 type CommandDefinition struct {
-	Name      string
-	Apply     map[string]ApplyFunc
-	Handle    CommandHandle
-	Scenarios []CommandScenario
-	allowed   map[string]struct{}
+	Name       string
+	Apply      map[string]ApplyFunc
+	Handle     CommandHandle
+	Scenarios  []CommandScenario
+	allowed    map[string]struct{}
+	rejections map[string]struct{}
 }
 type QueryDefinition struct {
 	Name      string
@@ -109,6 +116,7 @@ func validateDefinitions(commands []CommandDefinition, queries []QueryDefinition
 			return newError(ErrConformanceFailed, fmt.Sprintf("Command %q requires a handler.", commands[i].Name), nil, nil)
 		}
 		commands[i].allowed = map[string]struct{}{}
+		commands[i].rejections = map[string]struct{}{}
 		given := map[string]struct{}{}
 		descriptions := map[string]struct{}{}
 		for _, scenario := range commands[i].Scenarios {
@@ -125,11 +133,17 @@ func validateDefinitions(commands []CommandDefinition, queries []QueryDefinition
 			for _, event := range scenario.Expect {
 				commands[i].allowed[event.Type] = struct{}{}
 			}
-			if scenario.RejectReason == "" && len(scenario.Expect) == 0 {
+			if scenario.RejectCode == "" && len(scenario.Expect) == 0 {
 				return newError(ErrConformanceFailed, fmt.Sprintf("Accepted Command Scenario %q must expect at least one Event.", scenario.Description), nil, nil)
 			}
-			if scenario.RejectReason != "" && len(scenario.Expect) > 0 {
+			if scenario.RejectCode != "" && len(scenario.Expect) > 0 {
 				return newError(ErrConformanceFailed, fmt.Sprintf("Rejected Command Scenario %q must expect no Events.", scenario.Description), nil, nil)
+			}
+			if scenario.RejectCode != "" {
+				if !rejectionCodePattern.MatchString(scenario.RejectCode) {
+					return newError(ErrConformanceFailed, fmt.Sprintf("Rejected Command Scenario %q must name a kebab-case rejection code.", scenario.Description), nil, nil)
+				}
+				commands[i].rejections[scenario.RejectCode] = struct{}{}
 			}
 		}
 		if !sameKeys(given, commands[i].Apply) {
@@ -190,7 +204,14 @@ type TestingT interface {
 	Helper()
 	Errorf(string, ...any)
 }
-type CommandScenarioExecutor func(given []ScenarioEvent, input any) (events []ScenarioEvent, rejection string)
+
+// Rejection is what a Command handler refused with: its stable code and its message.
+type Rejection struct {
+	Code    string
+	Message string
+}
+
+type CommandScenarioExecutor func(given []ScenarioEvent, input any) (events []ScenarioEvent, rejection Rejection)
 type QueryScenarioExecutor func(given []ScenarioEvent, input any) any
 type ReactionScenarioExecutor func(given []ScenarioEvent) []any
 
@@ -201,8 +222,11 @@ func RunCommandScenarios(t TestingT, scenarios []CommandScenario, execute Comman
 		if !reflect.DeepEqual(events, scenario.Expect) {
 			t.Errorf("Scenario %q Events mismatch: got %#v, want %#v", scenario.Description, events, scenario.Expect)
 		}
-		if rejection != scenario.RejectReason {
-			t.Errorf("Scenario %q rejection mismatch: got %q, want %q", scenario.Description, rejection, scenario.RejectReason)
+		if rejection.Code != scenario.RejectCode {
+			t.Errorf("Scenario %q rejection code mismatch: got %q, want %q", scenario.Description, rejection.Code, scenario.RejectCode)
+		}
+		if scenario.RejectMessage != "" && rejection.Message != scenario.RejectMessage {
+			t.Errorf("Scenario %q rejection message mismatch: got %q, want %q", scenario.Description, rejection.Message, scenario.RejectMessage)
 		}
 	}
 }

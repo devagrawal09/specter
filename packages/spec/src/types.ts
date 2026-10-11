@@ -1,6 +1,6 @@
 export const SPECTER_SPECIFICATION_SCHEMA =
-  'https://specter.dev/specification/v1/slice.schema.json' as const
-export const SPECTER_SPECIFICATION_FORMAT_VERSION = 1 as const
+  'https://specter.dev/specification/v2/slice.schema.json' as const
+export const SPECTER_SPECIFICATION_FORMAT_VERSION = 2 as const
 
 export type JsonPrimitive = string | number | boolean | null
 export type JsonValue =
@@ -25,12 +25,22 @@ export type AcceptedCommandScenario<TWhen extends JsonValue = JsonValue> = {
   readonly reject?: never
 }
 
+/**
+ * The rejection a Command Scenario expects: its stable kebab-case `code`, and
+ * where useful the exact `message` and structured `details`.
+ */
+export type ScenarioRejection = {
+  readonly code: string
+  readonly message?: string
+  readonly details?: JsonValue
+}
+
 export type RejectedCommandScenario<TWhen extends JsonValue = JsonValue> = {
   readonly description: string
   readonly given: readonly ScenarioEvent[]
   readonly when: TWhen
   readonly expect: readonly []
-  readonly reject: { readonly reason: string }
+  readonly reject: ScenarioRejection
 }
 
 export type CommandScenario<TWhen extends JsonValue = JsonValue> =

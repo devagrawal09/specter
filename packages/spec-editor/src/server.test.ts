@@ -196,8 +196,8 @@ async function project() {
 
 function specification(description: string) {
   return {
-    $schema: 'https://specter.dev/specification/v1/slice.schema.json',
-    formatVersion: 1,
+    $schema: 'https://specter.dev/specification/v2/slice.schema.json',
+    formatVersion: 2,
     kind: 'command',
     name: 'addTodo',
     description,

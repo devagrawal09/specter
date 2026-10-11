@@ -27,14 +27,17 @@ export const changeTodoCompletionSpec = createCommandSlice(
       ],
       when: { todoId: 'todo-1', completed: true },
       expect: [],
-      reject: { reason: 'Todo completion is already in requested state' },
+      reject: {
+        code: 'completion-unchanged',
+        message: 'Todo completion is already in requested state',
+      },
     },
     {
       description: 'Rejects a completion change for a missing todo.',
       given: [],
       when: { todoId: 'missing', completed: true },
       expect: [],
-      reject: { reason: 'Todo not found' },
+      reject: { code: 'todo-not-found', message: 'Todo not found' },
     },
     {
       description: 'Rejects a completion change for a removed todo.',
@@ -44,7 +47,7 @@ export const changeTodoCompletionSpec = createCommandSlice(
       ],
       when: { todoId: 'todo-1', completed: true },
       expect: [],
-      reject: { reason: 'Todo not found' },
+      reject: { code: 'todo-not-found', message: 'Todo not found' },
     },
   )
 

@@ -261,6 +261,21 @@ export function collectConformanceDiagnostics(
               )
             }
 
+            if (
+              scenario.reject !== undefined &&
+              (typeof scenario.reject.code !== 'string' ||
+                !isKebabCase(scenario.reject.code))
+            ) {
+              diagnostics.push({
+                code: 'rejection-code',
+                sliceName: slice.name,
+                scenarioDescription: scenario.description,
+                location: 'reject.code',
+                message:
+                  'A rejected Command Scenario must name its rejection code in kebab-case (for example, "title-required").',
+              })
+            }
+
             for (const [index, candidate] of scenario.expect.entries()) {
               if (!isScenarioEvent(candidate)) {
                 diagnostics.push({
@@ -439,6 +454,17 @@ export function collectConformanceDiagnostics(
 
     return diagnostics
   })
+}
+
+/** The rejection codes a Command's rejected Scenarios name. */
+export function commandScenarioRejectionCodes(
+  slice: CommandSlice,
+): ReadonlySet<string> {
+  return new Set(
+    slice.scenarios.flatMap((scenario) =>
+      typeof scenario.reject?.code === 'string' ? [scenario.reject.code] : [],
+    ),
+  )
 }
 
 export function commandScenarioEventTypes(

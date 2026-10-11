@@ -1,5 +1,6 @@
 import {
   ReactionRunFailure,
+  SpecterCommandRejectedError,
   SpecterError,
   specterErrorCodes,
   type CommandExecutionOptions,
@@ -407,6 +408,21 @@ function publicDetails(error: SpecterError): JsonValue | undefined {
     } catch {
       // Causes and other non-JSON internals never cross the transport boundary.
     }
+  }
+
+  // A rejection's stable code is what a client matches on; its details
+  // cross only when they are JSON.
+  if (error instanceof SpecterCommandRejectedError) {
+    const rejection: Record<string, JsonValue> = { code: error.rejection.code }
+    try {
+      assertJsonCompatible(error.rejection.details)
+      if (error.rejection.details !== undefined) {
+        rejection.details = error.rejection.details
+      }
+    } catch {
+      // Non-JSON details stay on the server.
+    }
+    details.rejection = rejection
   }
 
   return Object.keys(details).length > 0 ? details : undefined

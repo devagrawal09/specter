@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from 'vitest'
 import { Context, Effect } from 'effect'
 
 import type { SliceStoreService } from '../adapters'
+import { CommandRejection } from '../runtime/errors'
 
 import {
   assertConforms,
@@ -154,7 +155,7 @@ export async function checkCommandScenario(
 
               if (events.length === 0) {
                 throw new Error(
-                  `Command emitted no events: ${implementation.name}`,
+                  `Command "${implementation.name}" emitted no Events: a handler emits at least one or throws a CommandRejection.`,
                 )
               }
 
@@ -231,15 +232,23 @@ function expectCommandOutcome(
   scenario: CommandScenario,
 ) {
   if (scenario.expect.length === 0) {
-    expect(result._tag).toBe('Left')
-    if (scenario.reject) {
-      if (result._tag !== 'Left') {
-        throw new Error('Command scenario did not reject')
-      }
-      expect(result.left).toBeInstanceOf(Error)
-      expect(result.left).toMatchObject({
-        message: scenario.reject.reason,
-      })
+    if (result._tag !== 'Left') {
+      throw new Error(
+        `Command scenario did not reject; it expected code "${scenario.reject?.code}".`,
+      )
+    }
+    if (!(result.left instanceof CommandRejection)) {
+      throw new Error(
+        `Command scenario failed instead of rejecting: a handler rejects by throwing a CommandRejection with code "${scenario.reject?.code}".`,
+        { cause: result.left },
+      )
+    }
+    expect(result.left.code).toBe(scenario.reject?.code)
+    if (scenario.reject?.message !== undefined) {
+      expect(result.left.message).toBe(scenario.reject.message)
+    }
+    if (scenario.reject?.details !== undefined) {
+      expect(result.left.details).toEqual(scenario.reject.details)
     }
     return
   }

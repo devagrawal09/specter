@@ -14,7 +14,7 @@ export const removeTodoSpec = createCommandSlice('removeTodo')
       given: [],
       when: { todoId: 'missing' },
       expect: [],
-      reject: { reason: 'Todo not found' },
+      reject: { code: 'todo-not-found', message: 'Todo not found' },
     },
     {
       description: 'Rejects removing a todo twice.',
@@ -24,7 +24,7 @@ export const removeTodoSpec = createCommandSlice('removeTodo')
       ],
       when: { todoId: 'todo-1' },
       expect: [],
-      reject: { reason: 'Todo not found' },
+      reject: { code: 'todo-not-found', message: 'Todo not found' },
     },
   )
 

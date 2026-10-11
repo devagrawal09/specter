@@ -8,6 +8,7 @@ export type {
   ReactionScenario,
   RejectedCommandScenario,
   ScenarioEvent,
+  ScenarioRejection,
   SliceScenario,
 } from '@specter-ts/spec'
 

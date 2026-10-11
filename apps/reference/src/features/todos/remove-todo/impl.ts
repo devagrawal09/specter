@@ -5,7 +5,7 @@ import { z } from 'zod'
 import { sqliteSliceStore } from '../../../db/specter-store'
 import { todoAddedEvent, todoRemovedEvent } from '../events'
 import specification from './spec.json' with { type: 'json' }
-import { implementCommand } from '@specter-ts/core'
+import { CommandRejection, implementCommand } from '@specter-ts/core'
 
 export const todoRemovalSqlStates = sqliteTable('todo_removal_sql_states', {
   todoId: text('todo_id').primaryKey(),
@@ -34,6 +34,6 @@ export const removeTodo = implementCommand(specification)
       .where(eq(todoRemovalSqlStates.todoId, command.todoId))
       .all()
 
-    if (!rows[0]) throw new Error('Todo not found')
+    if (!rows[0]) throw new CommandRejection('todo-not-found', 'Todo not found')
     return [todoRemovedEvent.create({ todoId: command.todoId })]
   })

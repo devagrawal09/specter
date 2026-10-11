@@ -2,7 +2,7 @@ import type { StandardSchemaV1 } from '@standard-schema/spec'
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
-import { createEventDefinition } from '..'
+import { CommandRejection, createEventDefinition } from '..'
 import {
   type ApplyEventDefinition,
   assertConforms,
@@ -79,7 +79,7 @@ function createChild(things: (command: Created) => string | readonly string[]) {
         ],
         when: { id: 'child', parentId: 'parent' },
         expect: [],
-        reject: { reason: 'Parent removed' },
+        reject: { code: 'parent-removed', message: 'Parent removed' },
       },
     )
     .inputSchema<Created>()
@@ -93,7 +93,7 @@ function createChild(things: (command: Created) => string | readonly string[]) {
     })
     .handle(async (command, state) => {
       if (command.parentId && state.live[command.parentId] === false) {
-        throw new Error('Parent removed')
+        throw new CommandRejection('parent-removed', 'Parent removed')
       }
       return [created.create(command)]
     })
@@ -159,7 +159,9 @@ describe('consistency keys and history', () => {
         state.live[applied.payload.id] = false
       })
       .handle(async (command, state) => {
-        if (!state.live[command.id]) throw new Error('Thing not live')
+        if (!state.live[command.id]) {
+          throw new CommandRejection('thing-not-live', 'Thing not live')
+        }
         return [created.create({ id: command.id })]
       })
     // The source's removal follows every Event carrying "copy", so it is

@@ -149,16 +149,17 @@ func newTodoApp() (*specter.App, error) {
 	})}
 	commandScenarios := []specter.CommandScenario{
 		{Description: "adds a Todo", Input: addTodoInput{TodoID: "todo-1", Title: "Ship it"}, Expect: []specter.ScenarioEvent{{Type: "todo-added", Payload: todoAdded{TodoID: "todo-1", Title: "Ship it"}}}},
-		{Description: "rejects a duplicate Todo ID", Given: []specter.ScenarioEvent{{Type: "todo-added", Payload: todoAdded{TodoID: "todo-1", Title: "Existing"}}}, Input: addTodoInput{TodoID: "todo-1", Title: "Again"}, RejectReason: "Todo already exists"},
+		{Description: "rejects a Todo without an ID or title", Input: addTodoInput{TodoID: "todo-1"}, RejectCode: "todo-incomplete", RejectMessage: "todoId and title are required"},
+		{Description: "rejects a duplicate Todo ID", Given: []specter.ScenarioEvent{{Type: "todo-added", Payload: todoAdded{TodoID: "todo-1", Title: "Existing"}}}, Input: addTodoInput{TodoID: "todo-1", Title: "Again"}, RejectCode: "todo-exists", RejectMessage: "Todo already exists"},
 	}
 	command := specter.CommandDefinition{Name: "addTodo", Apply: commandApply, Scenarios: commandScenarios, Handle: specter.DecodeCommand(func(_ context.Context, input addTodoInput) ([]specter.EventDraft, error) {
 		commandMu.Lock()
 		defer commandMu.Unlock()
 		if input.TodoID == "" || input.Title == "" {
-			return nil, specter.Reject("addTodo", "todoId and title are required")
+			return nil, specter.Reject("addTodo", "todo-incomplete", "todoId and title are required")
 		}
 		if _, exists := commandTodos[input.TodoID]; exists {
-			return nil, specter.Reject("addTodo", "Todo already exists")
+			return nil, specter.Reject("addTodo", "todo-exists", "Todo already exists")
 		}
 		return []specter.EventDraft{{Type: "todo-added", Payload: todoAdded{TodoID: input.TodoID, Title: input.Title}}}, nil
 	})}

@@ -22,7 +22,7 @@ export const addTodoSpec = createCommandSlice('addTodo')
       given: [],
       when: { todoId: 'todo-1', title: '   ' },
       expect: [],
-      reject: { reason: 'Todo title is required' },
+      reject: { code: 'title-required', message: 'Todo title is required' },
     },
     {
       description: 'Rejects a todo title longer than the limit.',
@@ -30,7 +30,9 @@ export const addTodoSpec = createCommandSlice('addTodo')
       when: { todoId: 'todo-1', title: 'x'.repeat(maxTitleLength + 1) },
       expect: [],
       reject: {
-        reason: `Todo title must be ${maxTitleLength} characters or less`,
+        code: 'title-too-long',
+        message: `Todo title must be ${maxTitleLength} characters or less`,
+        details: { maxLength: maxTitleLength },
       },
     },
   )

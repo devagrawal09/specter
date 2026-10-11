@@ -2,6 +2,7 @@
 // in code with @specter-ts/spec and passed straight to implement*, which
 // accepts the same portable object a spec.json export would contain.
 import {
+  CommandRejection,
   createEventDefinition,
   implementCommand,
   implementQuery,
@@ -154,7 +155,7 @@ const archiveSession = implementCommand(
         given: [event('session-archived', {})],
         when: {},
         expect: [],
-        reject: { reason: 'Session is already archived' },
+        reject: { code: 'session-archived' },
       },
     ),
 )
@@ -164,7 +165,7 @@ const archiveSession = implementCommand(
     state.archived = true
   })
   .handle(async (_command, state) => {
-    if (state.archived) throw new Error('Session is already archived')
+    if (state.archived) throw new CommandRejection('session-archived', 'Session is already archived')
     return [sessionArchived.create({})]
   })
 
@@ -188,7 +189,7 @@ const submitUserMessage = implementCommand(
         given: [],
         when: { messageId: 'message-1', text: 'Fix the build' },
         expect: [],
-        reject: { reason: 'Session does not exist' },
+        reject: { code: 'session-not-found' },
       },
     ),
 )
@@ -198,7 +199,7 @@ const submitUserMessage = implementCommand(
     state.created = true
   })
   .handle(async (command, state) => {
-    if (!state.created) throw new Error('Session does not exist')
+    if (!state.created) throw new CommandRejection('session-not-found', 'Session does not exist')
     return [userMessageSubmitted.create(command)]
   })
 
@@ -319,7 +320,7 @@ const resolveToolCall = implementCommand(
         ],
         when: { toolCallId: 'call-1', approved: true },
         expect: [],
-        reject: { reason: 'Tool call is not pending' },
+        reject: { code: 'tool-call-not-pending' },
       },
       {
         description: 'Rejects a denied call.',
@@ -329,7 +330,7 @@ const resolveToolCall = implementCommand(
         ],
         when: { toolCallId: 'call-1', approved: true },
         expect: [],
-        reject: { reason: 'Tool call is not pending' },
+        reject: { code: 'tool-call-not-pending' },
       },
     ),
 )
@@ -351,7 +352,7 @@ const resolveToolCall = implementCommand(
   })
   .handle(async ({ toolCallId, approved }, state) => {
     if (state.toolCalls[toolCallId]?.status !== 'pending') {
-      throw new Error('Tool call is not pending')
+      throw new CommandRejection('tool-call-not-pending', 'Tool call is not pending')
     }
     return approved
       ? [toolCallApproved.create({ toolCallId })]

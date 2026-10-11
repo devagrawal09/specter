@@ -47,6 +47,7 @@ export type {
   SliceStoreOptions,
 } from './definition'
 export {
+  CommandRejection,
   createSpecterApp,
   prepareSpecterApp,
   ReactionRunFailure,
