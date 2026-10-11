@@ -294,6 +294,7 @@ export function createNodeSqliteEventLogService(
   }
 
   return {
+    capabilities: { scopedAppend: true, keyedRead: true },
     query: (afterOrder, eventTypes) =>
       Effect.try({
         try: () => query(afterOrder, eventTypes),

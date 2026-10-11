@@ -18,6 +18,7 @@ export {
   specterErrorCodes,
   SpecterCommandRejectedError,
   SpecterError,
+  SpecterEventLogCapabilityError,
   SpecterEventLogOrderError,
   SpecterIdempotencyConflictError,
   SpecterInfrastructureError,

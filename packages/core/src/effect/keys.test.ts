@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import {
   type EventDraft,
   EventLog,
+  type EventLogCapabilities,
   type EventLogCommit,
   type EventLogDraft,
   EventLogFailure,
@@ -12,6 +13,7 @@ import {
   type PersistedEvent,
   type ReactionPlugin,
   SpecterConformanceError,
+  SpecterEventLogCapabilityError,
   SpecterInfrastructureError,
   SpecterVersionConflictError,
   createEventDefinition,
@@ -57,7 +59,9 @@ const noteRecorded = createEventDefinition('note-recorded', schema<Item>(), {
  * before each of the next appends, as a concurrent writer that commits
  * between a decision's read and its append.
  */
-function makeLog() {
+function makeLog(
+  capabilities: EventLogCapabilities = { scopedAppend: true, keyedRead: true },
+) {
   const events: PersistedEvent[] = []
   const keys = new Map<number, Readonly<Record<string, string>>>()
   const commits: EventLogCommit[] = []
@@ -84,6 +88,7 @@ function makeLog() {
     return commit
   }
   const service: EventLogService = {
+    capabilities,
     query: (after, types) =>
       Effect.sync(() =>
         events.filter(
@@ -91,9 +96,15 @@ function makeLog() {
         ),
       ),
     readKey: (key) =>
-      Effect.sync(() =>
-        events.filter((item) => keys.get(item.order)?.[key.name] === key.value),
-      ),
+      capabilities.keyedRead
+        ? Effect.sync(() =>
+            events.filter(
+              (item) => keys.get(item.order)?.[key.name] === key.value,
+            ),
+          )
+        : Effect.fail(
+            new EventLogFailure('readKey', new Error('Unsupported.')),
+          ),
     currentVersion: Effect.sync(() => events.length),
     commitsAfter: (after) =>
       Effect.sync(() => commits.filter((commit) => commit.version > after)),
@@ -101,6 +112,9 @@ function makeLog() {
     append: (drafts, options = {}) =>
       Effect.try({
         try: () => {
+          if (options.expectedUnchanged && !capabilities.scopedAppend) {
+            throw new Error('Scoped appends are unsupported.')
+          }
           const raced = races.shift()
           if (raced) append(raced)
           if (
@@ -624,6 +638,56 @@ describe('keyed Reactions', () => {
         (diagnostic) => diagnostic.code,
       ),
     ).toContain('keyed-reaction-undeclared-key')
+  })
+})
+
+describe('Event Log capabilities', () => {
+  const start = (
+    capabilities: EventLogCapabilities,
+    requires?: Partial<EventLogCapabilities>,
+  ) => {
+    const { slice, store } = changeItem({ keyed: true })
+    return run(
+      Effect.result(
+        makeSpecterRuntime(
+          { events: [itemChanged, itemReset], slices: { changeItem: slice } },
+          requires ? { requires } : {},
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, makeLog(capabilities).service),
+              store.layer,
+            ),
+          ),
+        ),
+      ),
+    )
+  }
+
+  it('refuses to start on an Event Log without scoped appends when the app has a Command', async () => {
+    const result = await start({ scopedAppend: false, keyedRead: true })
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    expect(result.failure).toBeInstanceOf(SpecterEventLogCapabilityError)
+    expect(result.failure).toMatchObject({
+      code: 'SPECTER_EVENT_LOG_CAPABILITY',
+      missing: ['scopedAppend'],
+    })
+    expect(result.failure.message).toContain(
+      'scopedAppend (every Command appends with a compare-and-swap scoped to what its decision read)',
+    )
+  })
+
+  it('refuses to start without keyed reads only when the host requires them', async () => {
+    const unrequired = await start({ scopedAppend: true, keyedRead: false })
+    expect(unrequired._tag).toBe('Success')
+    const required = await start(
+      { scopedAppend: true, keyedRead: false },
+      { keyedRead: true },
+    )
+    expect(required._tag).toBe('Failure')
+    if (required._tag !== 'Failure') return
+    expect(required.failure).toMatchObject({ missing: ['keyedRead'] })
   })
 })
 

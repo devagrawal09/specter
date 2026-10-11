@@ -17,6 +17,7 @@ import {
   type BoundReactionScheduler,
   EventLog,
   type EventLogAppendCondition,
+  type EventLogCapabilities,
   type EventLogAppendResult,
   type EventLogCommit,
   type EventLogDraft,
@@ -69,6 +70,7 @@ import {
   type ReactionRunFailureDetail,
   SpecterCommandRejectedError,
   SpecterError,
+  SpecterEventLogCapabilityError,
   SpecterEventLogOrderError,
   SpecterIdempotencyConflictError,
   SpecterInfrastructureError,
@@ -436,6 +438,13 @@ export type SpecterRuntimeOptions = {
    * required by `start`, not by the runtime. Defaults to `"started"`.
    */
   readonly reactions?: 'started' | 'deferred'
+  /**
+   * Event Log capabilities the host relies on besides those the runtime
+   * itself needs (`scopedAppend`, for an app with a Command), such as
+   * `{ keyedRead: true }` for a host that reads Events by key. The runtime
+   * refuses to start on an Event Log that lacks one.
+   */
+  readonly requires?: Partial<EventLogCapabilities>
 }
 
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
@@ -476,6 +485,15 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     } = yield* resolvePlan(config)
 
     const eventLog = yield* EventLog
+    yield* requireCapabilities(eventLog.capabilities, {
+      scopedAppend:
+        commands.size > 0
+          ? 'every Command appends with a compare-and-swap scoped to what its decision read'
+          : undefined,
+      keyedRead: options.requires?.keyedRead
+        ? 'the host reads Events by key'
+        : undefined,
+    })
     const scheduler = yield* ReactionScheduler
     const scope = yield* Effect.scope
     const services = yield* Effect.context<
@@ -1616,6 +1634,26 @@ export function startSpecterPromiseApp<const TConfig extends SpecterAppConfig>(
   return { app, ready: service }
 }
 
+/**
+ * Fails when the Event Log lacks a capability the app uses, naming what uses
+ * it. An Event Log that declares no capabilities supports none.
+ */
+function requireCapabilities(
+  capabilities: Partial<EventLogCapabilities> | undefined,
+  uses: { readonly [K in keyof EventLogCapabilities]: string | undefined },
+): Effect.Effect<void, SpecterEventLogCapabilityError> {
+  const missing = (
+    Object.entries(uses) as [keyof EventLogCapabilities, string | undefined][]
+  ).flatMap(([capability, usedBy]) =>
+    usedBy !== undefined && capabilities?.[capability] !== true
+      ? [{ capability, usedBy }]
+      : [],
+  )
+  return missing.length > 0
+    ? Effect.fail(new SpecterEventLogCapabilityError(missing))
+    : Effect.void
+}
+
 function resolveStore(
   slice: SliceRegistration,
   services: Context.Context<any>,
@@ -1701,6 +1739,8 @@ function sliceSpanAttributes(
 const safeSpecterErrorMessages: Readonly<Record<string, string>> = {
   [specterErrorCodes.commandRejected]: 'Command was rejected.',
   [specterErrorCodes.conformanceFailed]: 'Runtime conformance failed.',
+  [specterErrorCodes.eventLogCapability]:
+    'The Event Log lacks a capability the app uses.',
   [specterErrorCodes.eventLogOrderViolation]: 'Event Log ordering is invalid.',
   [specterErrorCodes.idempotencyConflict]:
     'The idempotency key conflicts with an earlier Command.',

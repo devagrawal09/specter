@@ -343,6 +343,7 @@ export function createPostgresEventLogService(
   }
 
   return {
+    capabilities: { scopedAppend: true, keyedRead: true },
     context,
     query: (afterOrder, eventTypes) =>
       context.use((connection) =>

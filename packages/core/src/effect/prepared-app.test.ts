@@ -7,6 +7,7 @@ import {
   createSpecterApp,
   EventLog,
   type EventLogCommit,
+  EventLogFailure,
   type EventLogService,
   type PreparedSpecterApp,
   prepareSpecterApp,
@@ -392,6 +393,7 @@ function makeStoreService(): SliceStoreService<Readonly<State>, State> {
   }
 }
 
+// Appends without checking a condition: these tests never race.
 function makeEventLogService(): EventLogService {
   const events: Array<{
     id: string
@@ -402,6 +404,7 @@ function makeEventLogService(): EventLogService {
   }> = []
   const commits: EventLogCommit[] = []
   return {
+    capabilities: { scopedAppend: true, keyedRead: false },
     query: (after, types) =>
       Effect.sync(() =>
         events.filter(
@@ -414,7 +417,8 @@ function makeEventLogService(): EventLogService {
         commits.filter((commit) => commit.version > afterVersion),
       ),
     findCommit: () => Effect.succeed(undefined),
-    readKey: () => Effect.succeed([]),
+    readKey: () =>
+      Effect.fail(new EventLogFailure('readKey', new Error('Unsupported.'))),
     append: (drafts, options = {}) =>
       Effect.sync(() => {
         const persisted = drafts.map((draft, index) => ({

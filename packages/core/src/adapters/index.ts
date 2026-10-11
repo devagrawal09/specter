@@ -2,6 +2,7 @@ export type {
   EventLogAppendCondition,
   EventLogAppendOptions,
   EventLogAppendResult,
+  EventLogCapabilities,
   EventLogCommit,
   EventLogDraft,
   EventLogKeyPage,

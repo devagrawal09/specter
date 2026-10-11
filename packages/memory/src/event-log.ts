@@ -50,6 +50,7 @@ export function createMemoryEventLog(
   })
 
   return {
+    capabilities: { scopedAppend: true, keyedRead: true },
     query: (afterOrder, eventTypes) =>
       Effect.sync(() =>
         events

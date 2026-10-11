@@ -297,10 +297,12 @@ function makeStore() {
   }
 }
 
+// Appends without checking a condition: the benchmark never races.
 function makeEventLog() {
   const events = []
   const commits = []
   return {
+    capabilities: { scopedAppend: true, keyedRead: false },
     query: (after, types) =>
       Effect.sync(() =>
         events.filter((item) => item.order > after && types.includes(item.type)),
@@ -309,10 +311,12 @@ function makeEventLog() {
     commitsAfter: (version) =>
       Effect.sync(() => commits.filter((commit) => commit.version > version)),
     findCommit: () => Effect.succeed(undefined),
+    readKey: () => Effect.die(new Error('The benchmark log reads no keys.')),
     append: (drafts, options = {}) =>
       Effect.sync(() => {
         const persisted = drafts.map((draft, index) => ({
-          ...draft,
+          type: draft.type,
+          payload: draft.payload,
           id: `event-${events.length + index + 1}`,
           order: events.length + index + 1,
           recordedAt: new Date(0).toISOString(),

@@ -41,6 +41,25 @@ export type EventLogAppendCondition = {
   readonly keys?: Readonly<Record<string, readonly string[]>>
 }
 
+/**
+ * What an Event Log adapter supports beyond appending and reading the log.
+ * The runtime refuses to start on an adapter that lacks a capability the app
+ * uses, and an adapter must refuse an operation it does not support rather
+ * than ignore part of it.
+ */
+export type EventLogCapabilities = {
+  /**
+   * `append` checks `expectedUnchanged`, keys included, under its append
+   * lock. Every Command without a caller `expectedVersion` uses it. Without
+   * it, an append carrying `expectedUnchanged` fails.
+   */
+  readonly scopedAppend: boolean
+  /**
+   * `readKey` reads the Events carrying a key. Without it, `readKey` fails.
+   */
+  readonly keyedRead: boolean
+}
+
 /** A page of a keyed read: the Events after `afterOrder`, at most `limit`. */
 export type EventLogKeyPage = {
   /** Defaults to 0, the start of the log. */
@@ -81,6 +100,8 @@ export class EventLogFailure extends Error {
 
 /** Effect-native Event Log capability. Implementations own serialization. */
 export type EventLogService = {
+  /** What this Event Log supports; see `EventLogCapabilities`. */
+  readonly capabilities: EventLogCapabilities
   readonly query: (
     afterOrder: number,
     eventTypes: readonly string[],

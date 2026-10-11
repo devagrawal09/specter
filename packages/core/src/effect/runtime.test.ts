@@ -2569,6 +2569,7 @@ function makeEventLogService(
   const commits = new Map<string, EventLogCommit>()
   const keys = new Map<number, Readonly<Record<string, string>>>()
   const service: EventLogService = {
+    capabilities: { scopedAppend: true, keyedRead: true },
     readKey: (key) =>
       Effect.sync(() =>
         events.filter((item) => keys.get(item.order)?.[key.name] === key.value),

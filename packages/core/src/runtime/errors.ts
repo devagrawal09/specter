@@ -1,6 +1,7 @@
 export const specterErrorCodes = {
   commandRejected: 'SPECTER_COMMAND_REJECTED',
   conformanceFailed: 'SPECTER_CONFORMANCE_FAILED',
+  eventLogCapability: 'SPECTER_EVENT_LOG_CAPABILITY',
   eventLogOrderViolation: 'SPECTER_EVENT_LOG_ORDER_VIOLATION',
   idempotencyConflict: 'SPECTER_IDEMPOTENCY_CONFLICT',
   infrastructureFailure: 'SPECTER_INFRASTRUCTURE_FAILURE',
@@ -215,6 +216,30 @@ export class SpecterEventLogOrderError extends SpecterError {
     this.name = 'SpecterEventLogOrderError'
     this.afterOrder = afterOrder
     this.receivedOrders = receivedOrders
+  }
+}
+
+/**
+ * The Event Log lacks a capability the app uses: the runtime refuses to start
+ * on it rather than let a Command's compare-and-swap, or a host's keyed read,
+ * silently do less than it promises.
+ */
+export class SpecterEventLogCapabilityError extends SpecterError {
+  readonly missing: readonly string[]
+
+  constructor(missing: readonly { capability: string; usedBy: string }[]) {
+    super(
+      specterErrorCodes.eventLogCapability,
+      `The Event Log does not support ${missing
+        .map(({ capability, usedBy }) => `${capability} (${usedBy})`)
+        .join(
+          ' or ',
+        )}. Provide an Event Log adapter whose capabilities declare ${
+        missing.length === 1 ? 'it' : 'them'
+      }.`,
+    )
+    this.name = 'SpecterEventLogCapabilityError'
+    this.missing = missing.map(({ capability }) => capability)
   }
 }
 

@@ -220,6 +220,7 @@ export function createJsonlEventLog(
   }
 
   const eventLog: JsonlEventLog = {
+    capabilities: { scopedAppend: true, keyedRead: true },
     path: options.path,
     discardedTrailingBytes,
     recoveredStaleLock,
