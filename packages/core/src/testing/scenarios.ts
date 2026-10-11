@@ -127,16 +127,22 @@ export async function checkCommandScenario(
   eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
+  // Decides from the Given Events, with the keys the decision declares from
+  // the State it read.
   const decide = (given: readonly ScenarioEvent[]) =>
     runScenario(
       replay([implementation], eventDefinitions, given).pipe(
         Effect.andThen(
-          Effect.result(
-            withStoreRead(implementation, async (state) => {
+          withStoreRead(implementation, async (state) => {
+            let keys: ReadonlySet<string> | undefined
+            try {
               const command = await decodeOptionalSchema(
                 implementation.inputSchema,
                 scenario.when,
               )
+              keys =
+                implementation.consistencyKeys &&
+                new Set(implementation.consistencyKeys(command, state))
 
               const events = await implementation.handle(command, state)
 
@@ -160,38 +166,33 @@ export async function checkCommandScenario(
                 }),
               )
 
-              return decodedEvents
-            }),
-          ).pipe(
-            Effect.map((result) =>
-              result._tag === 'Failure'
-                ? { _tag: 'Left' as const, left: result.failure }
-                : { _tag: 'Right' as const, right: result.success },
-            ),
-          ),
+              return {
+                keys,
+                result: { _tag: 'Right' as const, right: decodedEvents },
+              }
+            } catch (left) {
+              return { keys, result: { _tag: 'Left' as const, left } }
+            }
+          }),
         ),
       ),
     )
 
-  expectCommandOutcome(await decide(scenario.given), scenario)
+  const decided = await decide(scenario.given)
+  expectCommandOutcome(decided.result, scenario)
 
   // A Command that declares consistency keys promises that no Event carrying
   // none of them can change its decision once it has read its State: its
   // append conflicts with no such Event. Each Scenario checks that promise.
-  const consistencyKeys = implementation.consistencyKeys
-  if (!consistencyKeys) return
-  const keys = new Set(
-    consistencyKeys(
-      await decodeOptionalSchema(implementation.inputSchema, scenario.when),
-    ),
-  )
+  const keys = decided.keys
+  if (!keys) return
   const read = untilLast(scenario.given, (given) => {
     const carried = scenarioEventKeys(eventDefinitions, given)
     return carried === undefined || carried.some((key) => keys.has(key))
   })
   if (read.length === scenario.given.length) return
   try {
-    expectCommandOutcome(await decide(read), scenario)
+    expectCommandOutcome((await decide(read)).result, scenario)
   } catch (cause) {
     const named = [...keys].join(', ')
     throw new Error(

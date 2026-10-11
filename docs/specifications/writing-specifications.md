@@ -135,7 +135,7 @@ Complete each kind in its required order:
 
 | Slice kind | Required implementation order |
 | --- | --- |
-| Command | `inputSchema(...)` → optional `consistencyKeys(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Command | `inputSchema(...)` → `store(...)` → optional `consistencyKeys(...)` → zero or more `apply(...)` → `handle(...)` |
 | Query | `inputSchema(...)` → `outputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 | Same-app Command Reaction | `outputSchema(CommandEnvelopeSchema)` → `store(...)` → zero or more `apply(...)` → `handle(...)` or `handleEachKey(...)` |
 | Custom/external Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` or `handleEachKey(...)` |

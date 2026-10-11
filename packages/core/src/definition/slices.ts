@@ -105,11 +105,15 @@ export type CommandSlice<
   readonly kind: 'command'
   readonly inputSchema?: StandardSchemaV1<TInput, TCommand>
   /**
-   * The Event keys this Command's decision reads. Its append then conflicts
-   * only with new Events of the types it applies that carry one of these keys,
-   * or carry none. Without it, any new Event of those types conflicts.
+   * The Event keys this Command's decision reads, from the Command and the
+   * State it decided from. Its append then conflicts only with new Events of
+   * the types it applies that carry one of these keys, or carry none. Without
+   * it, any new Event of those types conflicts.
    */
-  readonly consistencyKeys?: (command: TCommand) => readonly string[]
+  readonly consistencyKeys?: (
+    command: TCommand,
+    state: TReadState,
+  ) => readonly string[]
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly handle: (

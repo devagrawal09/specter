@@ -50,11 +50,11 @@ export const addTodo = implementCommand(specification)
 
 Implementations follow these exact builder orders:
 
-- Command: `.inputSchema(...) → .consistencyKeys(...)? → .store(...) → .apply(...)* → .handle(...)`
+- Command: `.inputSchema(...) → .store(...) → .consistencyKeys(...)? → .apply(...)* → .handle(...)`
 - Query: `.inputSchema(...) → .outputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
 - Reaction: `.outputSchema(...) → .plugin(...)? → .store(...) → .apply(...)* → (.handle(...) | .handleEachKey(...))`
 
-`createEventDefinition(type, schema, { keys })` declares the keys an Event carries (the IDs it is about). `.consistencyKeys(command => keys)` makes a Command's append conflict only with new Events of its applied types that carry one of those keys or none; declare every key the decision reads, and Scenarios check it. Without it, any new Event of an applied type conflicts. `.handleEachKey((state, key) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:key`), per key a commit carries; it must decide each key from that key's State alone.
+`createEventDefinition(type, schema, { keys })` declares the keys an Event carries (the IDs it is about). `.consistencyKeys((command, state) => keys)` makes a Command's append conflict only with new Events of its applied types that carry one of those keys or none; declare every key the decision reads, and Scenarios check it. Without it, any new Event of an applied type conflicts. `.handleEachKey((state, key) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:key`), per key a commit carries; it must decide each key from that key's State alone.
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 

@@ -70,7 +70,7 @@ network transport and no application database schema.
 | `EventForDefinition<T>` | Infers the typed `Event` produced by an Event Definition. |
 | `ApplyRegistration` | An Event Definition and its async State apply handler. |
 | `CommandEnvelope` | Generic `{ type, payload }` Command envelope. |
-| `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys(command)` names the Event keys its decision reads. |
+| `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys(command, state)` names the Event keys its decision reads, from the Command and the State it decided from. |
 | `QuerySlice` | Completed Query Slice implementation type. |
 | `ReactionSlice` | Completed Reaction Slice implementation type; `keyed` is `true` for one completed with `.handleEachKey`. |
 | `SliceRegistration` | Heterogeneous union accepted by an app's Slice registry. |
@@ -226,14 +226,15 @@ export const todoRenamed = createEventDefinition('todo-renamed', schema, {
 
 export const renameTodo = implementCommand(specification)
   .inputSchema(renameTodoSchema)
-  .consistencyKeys((command) => [command.todoId])
   .store(RenameTodoStore)
+  .consistencyKeys((command) => [command.todoId])
   .apply(todoRenamed, applyTodoRenamed)
   .handle(handleRenameTodo)
 ```
 
-A stale append still runs catch-up and the decision again, up to 32 times,
-scoped the same way. Key functions must return arrays of strings; core checks
+The function also receives the read-only State the decision read, for keys
+the input does not name. A stale append still runs catch-up and the decision
+again, up to 32 times, scoped the same way. Key functions must return arrays of strings; core checks
 every emitted Event's keys before the append. Scenario runners hold a Command
 with consistency keys to its promise; see
 [Command consistency](../architecture/event-sourcing.md#command-consistency).

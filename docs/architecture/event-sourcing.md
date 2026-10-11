@@ -88,13 +88,14 @@ before surfacing the conflict.
 Folds of the same types still conflict across aggregates: two Commands that
 both apply `todo-renamed` conflict even for different Todos. A Command whose
 decision reads only some aggregates' Events declares their keys, derived from
-its input:
+its input and, when the input does not name them, from the State it decided
+from:
 
 ```ts
 export const renameTodo = implementCommand(specification)
   .inputSchema(renameTodoSchema)
-  .consistencyKeys((command) => [command.todoId])
   .store(RenameTodoStore)
+  .consistencyKeys((command) => [command.todoId])
   .apply(todoAddedEvent, applyTodoAdded)
   .apply(todoRenamedEvent, applyTodoRenamed)
   .handle(handleRenameTodo)
@@ -103,6 +104,14 @@ export const renameTodo = implementCommand(specification)
 Its append then conflicts only with a new Event of an applied type that
 carries one of those keys, or carries none: an unkeyed Event may concern any
 key. The re-decision on a stale append is scoped the same way.
+
+Keys are checked when the Command appends, after it decided, so they may come
+from the State it read: removing a credential that is its integration's
+active one reads that integration's other credentials, and the integration is
+the credential's, in its State
+(`(command, state) => [command.credentialId, state.integrationOf[command.credentialId]]`).
+The Event that would change what the keys were read from must carry one of
+them; here a credential's creation carries the credential.
 
 Declaring keys is a promise the runtime cannot check while it runs: once the
 Command has read its State, no Event carrying none of its keys may change its

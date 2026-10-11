@@ -75,7 +75,7 @@ implementations without turning projections into shared mutable models.
 The Slice kind determines the completion stages:
 
 ```text
-Command:  inputSchema -> consistencyKeys? -> store -> apply* -> handle
+Command:  inputSchema -> store -> consistencyKeys? -> apply* -> handle
 Query:    inputSchema -> outputSchema -> store -> apply* -> handle
 Same-app Command Reaction: outputSchema -> store -> apply* -> handle | handleEachKey
 Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle | handleEachKey

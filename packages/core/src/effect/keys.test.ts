@@ -112,8 +112,8 @@ function makeLog() {
   return {
     service,
     events,
-    race: (...drafts: readonly EventDraft[][]) => {
-      races.push(...drafts)
+    race: (...drafts: readonly (readonly EventDraft[])[]) => {
+      races.push(...drafts.map((raced) => [...raced]))
     },
   }
 }
@@ -144,11 +144,11 @@ function changeItem(options: { readonly keyed: boolean }) {
       },
     )
     .inputSchema<Item>()
+  const stored = spec.store(store.tag)
   const keyed = options.keyed
-    ? spec.consistencyKeys((command) => [command.itemId])
-    : spec
+    ? stored.consistencyKeys((command) => [command.itemId])
+    : stored
   const slice = keyed
-    .store(store.tag)
     .apply(itemChanged, async (applied, state) => {
       state.values[applied.payload.itemId] = applied.payload.value
     })
@@ -266,6 +266,94 @@ describe('consistency keys', () => {
     )
     // The first decision and 32 more.
     expect(handled).toHaveLength(33)
+  })
+
+  it('takes keys from the State the decision read', async () => {
+    type Grouped = { readonly itemId: string; readonly group: string }
+    const itemGrouped = createEventDefinition(
+      'item-grouped',
+      schema<Grouped>(),
+      { keys: (payload) => [payload.itemId, payload.group] },
+    )
+    const itemActivated = createEventDefinition(
+      'item-activated',
+      schema<Grouped>(),
+      { keys: (payload) => [payload.itemId, payload.group] },
+    )
+    const store = createTestSliceStore<{
+      groups: Record<string, string>
+      active: Record<string, string>
+    }>({ groups: {}, active: {} })
+    const handled: string[] = []
+    // One active item per group: the decision reads the item's group, which
+    // only its State knows.
+    const activateItem = createCommandSlice('activateItem')
+      .description('Makes an item its group active one.')
+      .scenarios({
+        description: 'Activates an item of a group.',
+        given: [
+          event('item-grouped', { itemId: 'a', group: 'g' }),
+          event('item-activated', { itemId: 'b', group: 'g' }),
+        ],
+        when: { itemId: 'a' },
+        expect: [event('item-activated', { itemId: 'a', group: 'g' })],
+      })
+      .inputSchema<{ readonly itemId: string }>()
+      .store(store.tag)
+      .consistencyKeys((command, state) => [
+        command.itemId,
+        ...(state.groups[command.itemId] ? [state.groups[command.itemId]] : []),
+      ])
+      .apply(itemGrouped, async (applied, state) => {
+        state.groups[applied.payload.itemId] = applied.payload.group
+      })
+      .apply(itemActivated, async (applied, state) => {
+        state.active[applied.payload.group] = applied.payload.itemId
+      })
+      .handle(async (command, state) => {
+        handled.push(command.itemId)
+        const group = state.groups[command.itemId]
+        if (!group) throw new Error('Item not found')
+        if (state.active[group] === command.itemId) {
+          throw new Error('Item already active')
+        }
+        return [itemActivated.create({ itemId: command.itemId, group })]
+      })
+    const dispatch = (raced: readonly EventDraft[]) => {
+      const log = makeLog()
+      handled.length = 0
+      store.reset()
+      return run(
+        Effect.gen(function* () {
+          const app = yield* makeSpecterRuntime({
+            events: [itemGrouped, itemActivated],
+            slices: { activateItem },
+          } as const).pipe(
+            Effect.provide(
+              Layer.mergeAll(Layer.succeed(EventLog, log.service), store.layer),
+            ),
+          )
+          yield* log.service.append([
+            { type: 'item-grouped', payload: { itemId: 'a', group: 'g' } },
+          ])
+          log.race(raced)
+          yield* app.command({ type: 'activateItem', payload: { itemId: 'a' } })
+          return handled.length
+        }),
+      )
+    }
+    // Another group's activation cannot change the decision.
+    await expect(
+      dispatch([
+        { type: 'item-activated', payload: { itemId: 'c', group: 'h' } },
+      ]),
+    ).resolves.toBe(1)
+    // The same group's can: the decision runs again.
+    await expect(
+      dispatch([
+        { type: 'item-activated', payload: { itemId: 'b', group: 'g' } },
+      ]),
+    ).resolves.toBe(2)
   })
 
   it('keeps the whole-log check for a caller expectedVersion', async () => {

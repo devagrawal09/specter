@@ -783,14 +783,22 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
         yield* catchUpSlice(command)
         // The State read is the fold of the applied Events up to `cursor`.
-        const { events, cursor } = yield* readStore(command, (read, cursor) =>
-          fromPromise(
-            () => command.handle(parsed, read),
-            (cause) =>
-              cause instanceof SpecterCommandRejectedError
-                ? cause
-                : new SpecterCommandRejectedError(command.name, cause),
-          ).pipe(Effect.map((events) => ({ events, cursor }))),
+        const { events, cursor, keys } = yield* readStore(
+          command,
+          (read, cursor) =>
+            fromPromise(
+              () => command.handle(parsed, read),
+              (cause) =>
+                cause instanceof SpecterCommandRejectedError
+                  ? cause
+                  : new SpecterCommandRejectedError(command.name, cause),
+            ).pipe(
+              Effect.flatMap((events) =>
+                consistencyKeysOf(command, parsed, read).pipe(
+                  Effect.map((keys) => ({ events, cursor, keys })),
+                ),
+              ),
+            ),
         )
         if (events.length === 0) {
           return yield* Effect.fail(
@@ -816,9 +824,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         const appended = yield* eventLog.append(decoded, {
           ...(options.expectedVersion === undefined
             ? {
-                expectedUnchanged: yield* decisionCondition(
+                expectedUnchanged: decisionCondition(
                   command,
-                  parsed,
+                  keys,
                   // Catch-up found no applied Event between its cursor and
                   // the version read before it, so both bounds are exact.
                   Math.max(version, cursor),
@@ -837,6 +845,36 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     }
 
     /**
+     * The Event keys a Command's decision read, from the Command and the
+     * State it decided from; undefined when it declares none.
+     */
+    function consistencyKeysOf(
+      command: AnyCommand,
+      parsed: unknown,
+      read: unknown,
+    ): Effect.Effect<ReadonlySet<string> | undefined, SpecterEffectError> {
+      const consistencyKeys = command.consistencyKeys
+      if (!consistencyKeys) return Effect.succeed(undefined)
+      return Effect.try({
+        try: () => {
+          const keys: unknown = consistencyKeys(parsed, read)
+          if (
+            !Array.isArray(keys) ||
+            keys.some((key) => typeof key !== 'string')
+          ) {
+            throw new TypeError('Consistency keys must be an array of strings.')
+          }
+          return new Set<string>(keys)
+        },
+        catch: (cause) =>
+          new SpecterInfrastructureError(
+            `Command "${command.name}" consistency keys failed.`,
+            cause,
+          ),
+      })
+    }
+
+    /**
      * What a Command's decision read, for its append's compare-and-swap: the
      * Events of the types it applies, up to `afterOrder`. With consistency
      * keys, only the Events carrying one of them or carrying none: the
@@ -844,51 +882,27 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
      */
     function decisionCondition(
       command: AnyCommand,
-      parsed: unknown,
+      keys: ReadonlySet<string> | undefined,
       afterOrder: number,
-    ): Effect.Effect<EventLogAppendCondition, SpecterEffectError> {
-      return Effect.gen(function* () {
-        const eventTypes = [...(applyBySlice.get(command)?.keys() ?? [])]
-        const consistencyKeys = command.consistencyKeys
-        if (!consistencyKeys) return { afterOrder, eventTypes }
-        const keys = yield* Effect.try({
-          try: () => {
-            const keys: unknown = consistencyKeys(parsed)
-            if (
-              !Array.isArray(keys) ||
-              keys.some((key) => typeof key !== 'string')
-            ) {
-              throw new TypeError(
-                'Consistency keys must be an array of strings.',
-              )
-            }
-            return new Set<string>(keys)
-          },
-          catch: (cause) =>
-            new SpecterInfrastructureError(
-              `Command "${command.name}" consistency keys failed.`,
-              cause,
-            ),
-        })
-        return {
-          afterOrder,
-          eventTypes,
-          matches: (event) => {
-            try {
-              const carried = eventKeys(
-                eventDefinitions.get(event.type),
-                event.payload,
-              )
-              return (
-                carried === undefined || carried.some((key) => keys.has(key))
-              )
-            } catch {
-              // An Event whose keys cannot be read may concern any key.
-              return true
-            }
-          },
-        }
-      })
+    ): EventLogAppendCondition {
+      const eventTypes = [...(applyBySlice.get(command)?.keys() ?? [])]
+      if (!keys) return { afterOrder, eventTypes }
+      return {
+        afterOrder,
+        eventTypes,
+        matches: (event) => {
+          try {
+            const carried = eventKeys(
+              eventDefinitions.get(event.type),
+              event.payload,
+            )
+            return carried === undefined || carried.some((key) => keys.has(key))
+          } catch {
+            // An Event whose keys cannot be read may concern any key.
+            return true
+          }
+        },
+      }
     }
 
     /**

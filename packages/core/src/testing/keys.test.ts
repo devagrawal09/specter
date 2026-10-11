@@ -76,8 +76,8 @@ function createChild(keys: (command: Created) => readonly string[]) {
       },
     )
     .inputSchema<Created>()
-    .consistencyKeys(keys)
     .store(store.tag)
+    .consistencyKeys(keys)
     .apply(created, async (applied, state) => {
       state.live[applied.payload.id] = true
     })
@@ -138,8 +138,8 @@ describe('consistency keys and history', () => {
         expect: [event('thing-created', { id: 'copy' })],
       })
       .inputSchema<Created>()
-      .consistencyKeys((command) => [command.id])
       .store(store.tag)
+      .consistencyKeys((command) => [command.id])
       .apply(created, async (applied, state) => {
         state.live[applied.payload.id] = true
       })
