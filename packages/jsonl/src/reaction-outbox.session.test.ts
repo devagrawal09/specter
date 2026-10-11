@@ -277,3 +277,93 @@ it('delivers a Reaction exactly once when its cursor write fails after enqueue',
     JSON.parse(readFileSync(join(slices, 'announceNote.json'), 'utf8')),
   ).toMatchObject({ cursor: 2 })
 })
+
+type FiledState = { filed: Record<string, true> }
+const FiledStore = Context.Service<
+  SliceStoreService<FiledState, FiledState, unknown>
+>('@specter/jsonl/test/OutboxFiledStore')
+
+const noteFiled = createEventDefinition(
+  'note-filed',
+  z.object({ noteId: z.string() }),
+  { keys: (payload) => [payload.noteId] },
+)
+
+it('enqueues one outboxed job for each key a keyed Reaction handles in a commit', async () => {
+  const directory = temporaryDirectory()
+  const path = join(directory, 'outbox.jsonl')
+  const delivered: string[] = []
+  const outbox = createJsonlReactionOutboxStore<
+    OutboxedReaction<{ noteId: string }>
+  >({ path })
+  const fileNotes = implementCommand(
+    createCommandSlice('fileNotes')
+      .description('Files notes.')
+      .scenarios({
+        description: 'Files the notes.',
+        given: [],
+        when: { noteIds: ['n1'] },
+        expect: [event('note-filed', { noteId: 'n1' })],
+      }),
+  )
+    .inputSchema(z.object({ noteIds: z.array(z.string()) }))
+    .store(FiledStore)
+    .handle(async (command) =>
+      command.noteIds.map((noteId) => noteFiled.create({ noteId })),
+    )
+  const announceFiled = implementReaction(
+    createReactionSlice('announceFiled')
+      .description('Announces each filed note.')
+      .scenarios({
+        description: 'Announces the note.',
+        given: [event('note-filed', { noteId: 'n1' })],
+        expect: [{ noteId: 'n1' }],
+      }),
+  )
+    .outputSchema<{ noteId: string }>()
+    .plugin(
+      withReactionOutbox(
+        () =>
+          Effect.succeed((output: { noteId: string }) =>
+            Effect.sync(() => {
+              delivered.push(output.noteId)
+            }),
+          ),
+        { store: outbox },
+      ),
+    )
+    .store(FiledStore)
+    .apply(noteFiled, async ({ payload }, state) => {
+      state.filed[payload.noteId] = true
+    })
+    .handleEachKey(async (state, key) =>
+      state.filed[key] ? { noteId: key } : undefined,
+    )
+  const app = await createSpecterApp(
+    { events: [noteFiled], slices: { fileNotes, announceFiled } } as const,
+    Layer.mergeAll(
+      createJsonlEventLogLayer({ path: join(directory, 'events.jsonl') }),
+      createJsonlSliceStoreLayer(FiledStore, () => ({ filed: {} }), {
+        directory: join(directory, 'slices'),
+      }),
+      createImmediateReactionSchedulerLayer(),
+    ),
+  )
+  const execution = await app.command({
+    type: 'fileNotes',
+    payload: { noteIds: ['n2', 'n1'] },
+  })
+  await execution.reactions
+  for (let tries = 0; delivered.length < 2 && tries < 500; tries += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 2))
+  }
+  const jobs = await run(outbox.list())
+  await app.close()
+  outbox.close()
+
+  expect(delivered.toSorted()).toEqual(['n1', 'n2'])
+  expect(jobs.map((job) => job.id).toSorted()).toEqual([
+    'announceFiled:2:n1',
+    'announceFiled:2:n2',
+  ])
+})

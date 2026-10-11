@@ -267,30 +267,106 @@ function testQueryScenario(
   })
 }
 
+/**
+ * A Reaction Scenario's `expect` lists what its handler requests after the
+ * Given Events: at most one value, or for a keyed Reaction at most one per
+ * key the Given Events carry, in the order the keys first appear, as if the
+ * Given Events were one commit.
+ */
 function testReactionScenario(
   implementation: Extract<SliceRegistration, { kind: 'reaction' }>,
   scenario: ReactionScenario,
   eventDefinitions: readonly ApplyEventDefinition[],
   runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
 ) {
-  it(scenario.description, async () => {
-    const result = await runScenario(
-      replay([implementation], eventDefinitions, scenario.given).pipe(
+  it(scenario.description, () =>
+    checkReactionScenario(
+      implementation,
+      scenario,
+      eventDefinitions,
+      runScenario,
+    ),
+  )
+}
+
+/** Runs one Reaction Scenario; internal seam of the Vitest runner. */
+export async function checkReactionScenario(
+  implementation: Extract<SliceRegistration, { kind: 'reaction' }>,
+  scenario: ReactionScenario,
+  eventDefinitions: readonly ApplyEventDefinition[],
+  runScenario: <T>(program: Effect.Effect<T, unknown, unknown>) => Promise<T>,
+) {
+  const keys: readonly (string | undefined)[] = implementation.keyed
+    ? [
+        ...new Set(
+          scenario.given.flatMap(
+            (given) => scenarioEventKeys(eventDefinitions, given) ?? [],
+          ),
+        ),
+      ]
+    : [undefined]
+  const handle = (given: readonly ScenarioEvent[], key: string | undefined) =>
+    runScenario(
+      replay([implementation], eventDefinitions, given).pipe(
         Effect.andThen(
           withStoreRead(implementation, async (state) => {
-            const output = await implementation.handle(state)
-
-            if (output === undefined) return []
-
-            return [
-              await decodeOptionalSchema(implementation.outputSchema, output),
-            ]
+            const output = await implementation.handle(state, key)
+            return output === undefined
+              ? []
+              : [
+                  await decodeOptionalSchema(
+                    implementation.outputSchema,
+                    output,
+                  ),
+                ]
           }),
         ),
       ),
     )
-    expect(result).toEqual(scenario.expect)
-  })
+  const outputs = await runScenario(
+    replay([implementation], eventDefinitions, scenario.given).pipe(
+      Effect.andThen(
+        withStoreRead(implementation, async (state) => {
+          const byKey: unknown[][] = []
+          for (const key of keys) {
+            const output = await implementation.handle(state, key)
+            byKey.push(
+              output === undefined
+                ? []
+                : [
+                    await decodeOptionalSchema(
+                      implementation.outputSchema,
+                      output,
+                    ),
+                  ],
+            )
+          }
+          return byKey
+        }),
+      ),
+    ),
+  )
+  expect(outputs.flat()).toEqual(scenario.expect)
+
+  // A keyed Reaction decides each key from that key's Events alone, since
+  // only Events carrying a key run its handler.
+  if (!implementation.keyed) return
+  for (const [index, key] of keys.entries()) {
+    if (key === undefined) continue
+    const alone = await handle(
+      scenario.given.filter((given) =>
+        scenarioEventKeys(eventDefinitions, given)?.includes(key),
+      ),
+      key,
+    )
+    if (!valuesEqual(alone, outputs[index])) {
+      throw new Error(
+        `Keyed Reaction "${implementation.name}" handles key "${key}" in scenario "${scenario.description}" differently from only the Given Events that carry it: ${JSON.stringify(
+          alone,
+        )} instead of ${JSON.stringify(outputs[index])}. Its handler must decide each key from that key's State alone.`,
+      )
+    }
+  }
 }
 
 function scenarioEventKeys(

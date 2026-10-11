@@ -393,6 +393,23 @@ type ReactionApplyStep<
     TStore,
     TPluginRequirements
   >
+  /**
+   * Completes a keyed Reaction: for each relevant commit, the handler runs
+   * once for each key the commit's Events carry, deciding from that key's
+   * State alone. Every applied Event type must declare keys.
+   */
+  handleEachKey: (
+    handle: (state: TReadState, key: string) => Promise<TResult | undefined>,
+  ) => ReactionSlice<
+    TName,
+    TResult,
+    TOutput,
+    TWriteState,
+    TReadState,
+    TScenarios,
+    TStore,
+    TPluginRequirements
+  >
 }
 
 type Specification<
@@ -832,7 +849,29 @@ function createReactionApplyStep<
         store,
         eager,
         apply: Object.freeze([...apply]),
-        handle,
+        keyed: false,
+        handle: (state: TReadState) => handle(state),
+      }),
+    handleEachKey: (
+      handle: (state: TReadState, key: string) => Promise<TResult | undefined>,
+    ) =>
+      Object.freeze({
+        ...specification,
+        stage: 'implementation' as const,
+        outputSchema,
+        plugin,
+        store,
+        eager,
+        apply: Object.freeze([...apply]),
+        keyed: true,
+        handle: (state: TReadState, key?: string) => {
+          if (key === undefined) {
+            throw new TypeError(
+              `Keyed Reaction "${specification.name}" was handled without a key.`,
+            )
+          }
+          return handle(state, key)
+        },
       }),
   })
 }

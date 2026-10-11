@@ -315,6 +315,21 @@ export function collectConformanceDiagnostics(
         }
 
         const registeredDefinition = eventDefinitions.get(eventType)
+        if (
+          slice.kind === 'reaction' &&
+          slice.keyed === true &&
+          registeredDefinition &&
+          !registeredDefinition.keys
+        ) {
+          diagnostics.push({
+            code: 'keyed-reaction-unkeyed-event',
+            sliceName: slice.name,
+            location: `apply[${index}]`,
+            eventType,
+            message: `A keyed Reaction handles the keys its Events carry, but "${eventType}" declares no keys, so it could never be handled.`,
+            remediation: `Declare keys on the "${eventType}" EventDefinition (createEventDefinition(type, schema, { keys })), or complete Slice "${slice.name}" with .handle(...).`,
+          })
+        }
         if (!registeredDefinition) {
           diagnostics.push({
             code: 'unknown-apply-event',

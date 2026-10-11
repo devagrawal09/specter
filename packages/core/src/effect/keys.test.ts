@@ -9,6 +9,8 @@ import {
   EventLogFailure,
   type EventLogService,
   type PersistedEvent,
+  type ReactionPlugin,
+  SpecterConformanceError,
   SpecterVersionConflictError,
   createEventDefinition,
 } from '..'
@@ -33,6 +35,10 @@ const itemChanged = createEventDefinition('item-changed', schema<Item>(), {
 })
 // Same shape, no keys: every keyed decision over its type depends on it.
 const itemReset = createEventDefinition('item-reset', schema<Item>())
+const noteRecorded = createEventDefinition('note-recorded', schema<Item>(), {
+  keys: (payload) => [payload.itemId],
+})
+
 /**
  * An in-memory Event Log that honors both compare-and-swap forms. `race`
  * appends other writers' Events before each of the next appends, as a
@@ -270,5 +276,140 @@ describe('consistency keys', () => {
     )
     expect(result._tag).toBe('Failure')
     expect(handled).toHaveLength(1)
+  })
+})
+
+describe('keyed Reactions', () => {
+  function itemWatch(options: { readonly keyed: boolean }) {
+    const store = createTestSliceStore<{ values: Record<string, number> }>({
+      values: {},
+    })
+    const delivered: Array<{ readonly output: Item; readonly id: string }> = []
+    const plugin: ReactionPlugin<Item> = () =>
+      Effect.succeed((output, context) =>
+        Effect.sync(() => {
+          delivered.push({ output, id: context.deliveryId })
+        }),
+      )
+    const applied = createReactionSlice('itemWatch')
+      .description('Reports each changed item.')
+      .scenarios({
+        description: 'Reports a changed item.',
+        given: [
+          event('item-changed', { itemId: 'a', value: 1 }),
+          event('note-recorded', { itemId: 'a', value: 1 }),
+        ],
+        expect: [{ itemId: 'a', value: 1 }],
+      })
+      .outputSchema<Item>()
+      .plugin(plugin)
+      .store(store.tag)
+      .apply(itemChanged, async (changed, state) => {
+        state.values[changed.payload.itemId] = changed.payload.value
+      })
+      .apply(noteRecorded, async () => {})
+    const slice = options.keyed
+      ? applied.handleEachKey(async (state, key) => {
+          const value = state.values[key]
+          return value === undefined ? undefined : { itemId: key, value }
+        })
+      : applied.handle(async () => undefined)
+    return { slice, store, delivered }
+  }
+
+  it('handles each key a commit carries, each a delivery of its own', async () => {
+    const log = makeLog()
+    const { slice, store, delivered } = itemWatch({ keyed: true })
+    const commandStore = createTestSliceStore({})
+    const recordItems = createCommandSlice('recordItems')
+      .description('Records items.')
+      .scenarios({
+        description: 'Records items.',
+        given: [],
+        when: [{ itemId: 'a', value: 1 }],
+        expect: [event('item-changed', { itemId: 'a', value: 1 })],
+      })
+      .inputSchema<readonly Item[]>()
+      .store(commandStore.tag)
+      .handle(async (items) => items.map((item) => itemChanged.create(item)))
+    await run(
+      Effect.gen(function* () {
+        const app = yield* makeSpecterRuntime({
+          events: [itemChanged, noteRecorded],
+          slices: { recordItems, itemWatch: slice },
+        } as const).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, log.service),
+              store.layer,
+              commandStore.layer,
+            ),
+          ),
+        )
+        const first = yield* app.command({
+          type: 'recordItems',
+          payload: [
+            { itemId: 'b', value: 1 },
+            { itemId: 'a', value: 2 },
+            { itemId: 'b', value: 3 },
+          ],
+        })
+        yield* first.reactions
+        const second = yield* app.command({
+          type: 'recordItems',
+          payload: [{ itemId: 'a', value: 4 }],
+        })
+        yield* second.reactions
+      }),
+    )
+    expect(delivered).toEqual([
+      { output: { itemId: 'b', value: 3 }, id: 'itemWatch:3:b' },
+      { output: { itemId: 'a', value: 2 }, id: 'itemWatch:3:a' },
+      // Only the key the second commit carries: b's State did not change.
+      { output: { itemId: 'a', value: 4 }, id: 'itemWatch:4:a' },
+    ])
+  })
+
+  it('rejects a keyed Reaction that applies an Event type without keys', async () => {
+    const store = createTestSliceStore({})
+    const slice = createReactionSlice('resetWatch')
+      .description('Watches resets.')
+      .scenarios({
+        description: 'Ignores a reset.',
+        given: [event('item-reset', { itemId: 'a', value: 0 })],
+        expect: [],
+      })
+      .outputSchema<Item>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(store.tag)
+      .apply(itemReset, async () => {})
+      .handleEachKey(async () => undefined)
+    const result = await run(
+      Effect.result(
+        makeSpecterRuntime({
+          events: [itemReset, itemChanged],
+          slices: {
+            resetWatch: slice,
+            changeItem: changeItem({ keyed: false }).slice,
+          },
+        } as const).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, makeLog().service),
+              store.layer,
+              createTestSliceStore({}).layer,
+            ),
+          ),
+        ),
+      ),
+    )
+    expect(result._tag).toBe('Failure')
+    if (result._tag !== 'Failure') return
+    expect(result.failure).toBeInstanceOf(SpecterConformanceError)
+    expect(
+      (result.failure as SpecterConformanceError).diagnostics.map(
+        (diagnostic) => diagnostic.code,
+      ),
+    ).toContain('keyed-reaction-unkeyed-event')
   })
 })

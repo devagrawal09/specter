@@ -1118,10 +1118,11 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                   (event) => event.order > cursor && handlers?.has(event.type),
                 )
                 assertEventLogOrder(cursor, relevant)
-                for (const event of yield* Effect.forEach(
+                const decoded = yield* Effect.forEach(
                   relevant,
                   decodePersistedEvent,
-                )) {
+                )
+                for (const event of decoded) {
                   const apply = handlers?.get(event.type)
                   if (!apply) continue
                   yield* fromPromise(
@@ -1130,43 +1131,52 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                       new SpecterProjectionFailedError(reaction.name, cause),
                   )
                 }
-                if (relevant.length > 0) {
+                // A keyed Reaction decides once per key the commit's Events
+                // carry, each a delivery of its own.
+                const deliveries =
+                  relevant.length === 0
+                    ? []
+                    : reaction.keyed
+                      ? (yield* commitKeys(reaction, decoded)).map((key) => ({
+                          key: key as string | undefined,
+                          deliveryId: `${deliveryId}:${key}`,
+                        }))
+                      : [{ key: undefined, deliveryId }]
+                for (const delivery of deliveries) {
                   const handled = yield* fromPromise(
-                    () => reaction.handle(read()),
+                    () => reaction.handle(read(), delivery.key),
                     (cause) =>
                       new SpecterInfrastructureError(
                         `Reaction "${reaction.name}" handler failed.`,
                         cause,
                       ),
                   )
-                  if (handled !== undefined) {
-                    const output = yield* fromPromise(
-                      () =>
-                        decodeOptionalSchema(reaction.outputSchema, handled),
-                      (cause) =>
-                        new SpecterInvalidOutputError(
-                          'reaction',
-                          reaction.name,
-                          cause,
-                        ),
-                    )
-                    const context: ReactionDeliveryContext = {
-                      deliveryId,
-                      throughOrder: commit.version,
-                      scheduledAt: commit.committedAt,
-                    }
-                    yield* execute(output, context).pipe(
-                      Effect.provideService(DirectReactionExecution, true),
-                      Effect.mapError((cause) =>
-                        isPublicError(cause)
-                          ? cause
-                          : new SpecterInfrastructureError(
-                              `Reaction "${reaction.name}" effect failed.`,
-                              cause,
-                            ),
+                  if (handled === undefined) continue
+                  const output = yield* fromPromise(
+                    () => decodeOptionalSchema(reaction.outputSchema, handled),
+                    (cause) =>
+                      new SpecterInvalidOutputError(
+                        'reaction',
+                        reaction.name,
+                        cause,
                       ),
-                    )
+                  )
+                  const context: ReactionDeliveryContext = {
+                    deliveryId: delivery.deliveryId,
+                    throughOrder: commit.version,
+                    scheduledAt: commit.committedAt,
                   }
+                  yield* execute(output, context).pipe(
+                    Effect.provideService(DirectReactionExecution, true),
+                    Effect.mapError((cause) =>
+                      isPublicError(cause)
+                        ? cause
+                        : new SpecterInfrastructureError(
+                            `Reaction "${reaction.name}" effect failed.`,
+                            cause,
+                          ),
+                    ),
+                  )
                 }
                 yield* publishCursor(commit.version)
                 return true
@@ -1199,7 +1209,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         withSafeSpan(`specter.reaction ${reaction.name}`, {
           attributes: {
             ...sliceSpanAttributes('reaction', reaction.name, reaction),
+            // A keyed Reaction's deliveries append each key to this.
             'specter.reaction.delivery_id': deliveryId,
+            'specter.reaction.keyed': reaction.keyed,
             'specter.event_log.commit_version': commit.version,
             'specter.event.count': commit.events.length,
             'specter.event.types': commit.events.map((event) => event.type),
@@ -1207,6 +1219,29 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           },
         }),
       )
+    }
+
+    /** The distinct keys a commit's Events carry, in the order they appear. */
+    function commitKeys(
+      reaction: AnyReaction,
+      events: readonly PersistedEvent[],
+    ): Effect.Effect<readonly string[], SpecterEffectError> {
+      return Effect.try({
+        try: () => [
+          ...new Set(
+            events.flatMap(
+              (event) =>
+                eventKeys(eventDefinitions.get(event.type), event.payload) ??
+                [],
+            ),
+          ),
+        ],
+        catch: (cause) =>
+          new SpecterInfrastructureError(
+            `Reaction "${reaction.name}" could not read its Events' keys.`,
+            cause,
+          ),
+      })
     }
 
     function getReactionExec(

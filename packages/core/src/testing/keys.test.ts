@@ -3,8 +3,13 @@ import { Effect } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import { createEventDefinition } from '..'
-import { assertConforms, createCommandSlice, event } from '../definition'
-import { checkCommandScenario } from './scenarios'
+import {
+  assertConforms,
+  createCommandSlice,
+  createReactionSlice,
+  event,
+} from '../definition'
+import { checkCommandScenario, checkReactionScenario } from './scenarios'
 import { createTestSliceStore } from './test-slice-store'
 
 function schema<T>(): StandardSchemaV1<T, T> {
@@ -108,6 +113,56 @@ describe('consistency keys in Scenarios', () => {
     ).rejects.toThrow(
       /differently from only the Given Events that carry its consistency keys \(child\)/,
     )
+  })
+})
+
+describe('keyed Reaction Scenarios', () => {
+  function watch(
+    handle: (state: State, key: string) => Promise<string | undefined>,
+  ) {
+    const { store, runScenario } = isolated()
+    const slice = createReactionSlice('watchThings')
+      .description('Reports each live thing.')
+      .scenarios({
+        description: 'Reports every live thing, in the order its key appears.',
+        given: [
+          event('thing-created', { id: 'b' }),
+          event('thing-created', { id: 'a' }),
+          event('thing-created', { id: 'c' }),
+          event('thing-removed', { id: 'c' }),
+        ],
+        expect: ['b', 'a'],
+      })
+      .outputSchema<string>()
+      .plugin(() => Effect.succeed(() => Effect.void))
+      .store(store.tag)
+      .apply(created, async (applied, state) => {
+        state.live[applied.payload.id] = true
+      })
+      .apply(removed, async (applied, state) => {
+        state.live[applied.payload.id] = false
+      })
+      .handleEachKey(handle)
+    return { slice, runScenario }
+  }
+
+  it('expects one value per key the Given Events carry', async () => {
+    const { slice, runScenario } = watch(async (state, key) =>
+      state.live[key] ? key : undefined,
+    )
+    await checkReactionScenario(slice, slice.scenarios[0], events, runScenario)
+  })
+
+  it("fails a handler that reads another key's State", async () => {
+    // Reports b only while c lives: b's output depends on c's Events.
+    const { slice, runScenario } = watch(async (state, key) =>
+      state.live[key] && (key !== 'b' || state.live.c === false)
+        ? key
+        : undefined,
+    )
+    await expect(
+      checkReactionScenario(slice, slice.scenarios[0], events, runScenario),
+    ).rejects.toThrow(/handles key "b"/)
   })
 })
 

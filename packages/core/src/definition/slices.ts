@@ -227,7 +227,11 @@ export type ReactionPluginContext = {
 }
 
 export type ReactionDeliveryContext = {
-  /** Stable for one Reaction Slice processing one Event Log commit. */
+  /**
+   * Stable for one Reaction Slice processing one Event Log commit
+   * (`reaction:version`), or one key of that commit for a keyed Reaction
+   * (`reaction:version:key`).
+   */
   readonly deliveryId: string
   readonly throughOrder: number
   readonly scheduledAt: string
@@ -292,7 +296,16 @@ export type ReactionSlice<
   readonly store: TStore
   readonly apply: readonly ApplyRegistration<TWriteState>[]
   readonly plugin?: ReactionPlugin<TOutput, TPluginRequirements>
-  readonly handle: (state: TReadState) => Promise<TResult | undefined>
+  /**
+   * A keyed Reaction (`.handleEachKey`) runs its handler once for each key
+   * the commit's Events carry, with that key; any other runs it once per
+   * commit, without one.
+   */
+  readonly keyed: boolean
+  readonly handle: (
+    state: TReadState,
+    key?: string,
+  ) => Promise<TResult | undefined>
 }
 
 // A heterogeneous app registry is an existential type: each Slice keeps its
