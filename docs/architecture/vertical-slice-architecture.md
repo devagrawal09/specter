@@ -81,10 +81,12 @@ Same-app Command Reaction: outputSchema -> store -> apply* -> handle | handleEac
 Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle | handleEachKey
 ```
 
-`consistencyKeys` names the [Event keys](event-sourcing.md#event-keys) a
-Command's decision reads, so its append conflicts only with Events carrying
-them. `handleEachKey` completes a [keyed Reaction](runtime.md#keyed-reactions),
-which decides once per key a commit's Events carry.
+`consistencyKeys({ name: (command, state) => value })` names the
+[Event keys](event-sourcing.md#event-keys) a Command's decision reads, so its
+append conflicts only with Events carrying them. `handleEachKey(name, handler)`
+completes a [keyed Reaction](runtime.md#keyed-reactions), which decides once
+per value of that key a commit's Events carry. A Command rejects by throwing a
+`CommandRejection` whose `code` one of its rejected Scenarios names.
 
 Calling `inputSchema<Type>()` or `outputSchema<Type>()` provides static typing
 only. Passing a Standard Schema also performs runtime validation and

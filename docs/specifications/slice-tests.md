@@ -1,6 +1,6 @@
 # Testing Slice implementations
 
-Specter executes the Scenarios attached to a completed Slice implementation. The same examples that explain the behavior verify projection replay, decisions, outputs, and declared rejection reasons without sending HTTP requests or starting an app runtime.
+Specter executes the Scenarios attached to a completed Slice implementation. The same examples that explain the behavior verify projection replay, decisions, outputs, and declared rejection codes without sending HTTP requests or starting an app runtime.
 
 ## One Slice or a registry
 
@@ -94,8 +94,8 @@ After replay, the runner decodes `when`, reads the Slice State, and calls the Co
 - Every emitted type must appear in an accepted outcome in the Command's specification.
 - Emitted payloads are decoded by their Event Definitions and must not be transformed.
 - The resulting `{ type, payload }` values must exactly equal the ordered `expect` array.
-- Rejected Scenarios require the handler to throw, and the thrown error's message must match `reject.reason`.
-- A Command with consistency keys runs each Scenario a second time without its trailing Given Events that carry none of its keys (an unkeyed Event counts as carrying them), and must reach the same outcome: those are the Events a concurrent writer could append after the decision read its State without a conflict. A failure means the decision depends on Events its keys leave out: declare their keys too, or drop the keys and keep the type-scoped check.
+- Rejected Scenarios require the handler to throw a `CommandRejection` whose `code` is `reject.code`, and whose message and details equal `reject.message` and `reject.details` when the Scenario states them. Any other thrown error fails the Scenario: a handler rejects only through a `CommandRejection`.
+- A Command with consistency keys runs each Scenario a second time without its trailing Given Events that carry none of its keys under their names, and must reach the same outcome: those are the Events a concurrent writer could append after the decision read its State without a conflict. A failure means the decision depends on Events its keys leave out: declare their keys too, or drop the keys and keep the type-scoped check.
 
 ### Queries
 
@@ -105,7 +105,7 @@ After replay, the runner decodes `when`, calls the Query handler, decodes the ac
 
 After replay, the runner calls the Reaction handler directly. It does not execute the Reaction Plugin. `undefined` becomes `[]`; a returned value is decoded through the output schema and becomes `[value]`. The result must exactly equal `expect`.
 
-A keyed Reaction's handler runs once for each key the Given Events carry, in the order the keys first appear, and the effects it requests are listed in that order. Each key then runs again without the trailing Given Events that do not carry it, and must request the same effect: an Event without the key does not run its handler, so it must not change the key's effect.
+A keyed Reaction's handler runs once for each value of its key the Given Events carry, in the order the values first appear, and the effects it requests are listed in that order. Each value then runs again without the trailing Given Events that do not carry it, and must request the same effect: an Event without the value does not run its handler, so it must not change the value's effect.
 
 This keeps domain effect selection testable without performing provider calls or dispatching same-app Commands. Test a Plugin or outbox worker separately at its infrastructure boundary.
 

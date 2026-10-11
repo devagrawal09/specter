@@ -35,7 +35,7 @@ The editor should support:
 - Creating Command, Query, and Reaction specifications.
 - Adding, reordering, duplicating, and removing Scenarios.
 - Editing Given Events, Command or Query inputs, expected Events, Query
-  results, Reaction outputs, and exact rejection reasons.
+  results, Reaction outputs, and rejection codes and messages.
 - Reusing Event types and example payloads from the other Slices in the
   workspace.
 - Importing an existing `spec.json` without losing information.

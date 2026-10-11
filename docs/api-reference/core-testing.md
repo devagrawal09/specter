@@ -27,7 +27,7 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | --- | --- |
 | `CommandScenario` | Accepted or rejected Command example with `given`, `when`, and Event `expect` values. |
 | `QueryScenario` | Query example with `given`, `when`, and a public output `expect` value. |
-| `ReactionScenario` | Reaction example with `given` and zero or one expected public effect, or one per key for a keyed Reaction. |
+| `ReactionScenario` | Reaction example with `given` and zero or one expected public effect, or one per value of its key for a keyed Reaction. |
 | `ScenarioEvent` | Branded Event example created by `event(type, payload)`. |
 | `ScenarioTestOptions` | Test configuration: `events` plus an optional `runScenario` isolation wrapper. |
 | `EventPropagationInput` | Event Definition catalog and completed Slice registry to analyze. |
@@ -41,10 +41,10 @@ Both test runners first call the same conformance check used to construct an app
 
 1. `replay` validates each Scenario Event against its registered Event Definition, assigns deterministic test metadata, and calls matching apply handlers.
 2. The runner loads the Slice's read state and validates/transforms the `when` input when an input schema exists.
-3. A Command handler must either throw or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`, and a keyed Reaction one per key the Given Events carry, in the order the keys first appear.
+3. A Command handler must either throw a `CommandRejection` or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`, and a keyed Reaction one per value of its key the Given Events carry, in the order the values first appear.
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.
 5. The runner compares exact values with `expect(...).toEqual(...)`.
-6. A Command with consistency keys runs the Scenario again without its trailing Given Events that carry none of its keys (computed from the decoded `when` and the State the decision read), the Events a concurrent writer could append after the decision read its State, and must reach the same outcome. A keyed Reaction runs each key again without the trailing Given Events that do not carry that key, and must request the same effect. Either failure names the keys and the Scenario.
+6. A Command with consistency keys runs the Scenario again without its trailing Given Events that carry none of its keys under their names (computed from the decoded `when` and the State the decision read), the Events a concurrent writer could append after the decision read its State, and must reach the same outcome. A keyed Reaction runs each value of its key again without the trailing Given Events that do not carry it, and must request the same effect. Either failure names the keys and the Scenario.
 
 Step 6 calls `runScenario` more than once per Scenario, so each call must start
 from empty Slice State.
@@ -112,9 +112,9 @@ The report is static: it reads the supplied executable registry and does not dis
 - Scenario Event payload schemas must preserve data one-to-one; coercing, stripping, or defaulting Event payload fields fails conformance or replay.
 - Invalid `when` input is not a Scenario language for testing transport validation. Command and Query Scenario inputs must already conform to their input schemas.
 - Accepted Command Events must match the exact ordered payloads declared in `expect` and must be authorized by at least one accepted Scenario outcome.
-- A rejected Command Scenario expects the handler to throw. When `reject.reason` is present, the error message must match it.
+- A rejected Command Scenario expects the handler to throw a `CommandRejection` with exactly `reject.code`, and, when the Scenario states them, exactly `reject.message` and `reject.details`. Any other thrown error fails the Scenario.
 - Query and Reaction expectations are public post-schema values. The actual handler output is decoded once and compared directly with `expect`.
-- A Reaction Scenario represents zero effects with `[]` and one effect with `[effect]`. A keyed Reaction's Scenario lists one effect per key that requests one, in the order the keys first appear in `given`.
+- A Reaction Scenario represents zero effects with `[]` and one effect with `[effect]`. A keyed Reaction's Scenario lists one effect per value of its key that requests one, in the order the values first appear in `given`.
 
 ## Related documentation
 

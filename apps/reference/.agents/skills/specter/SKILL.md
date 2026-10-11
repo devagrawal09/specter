@@ -54,7 +54,9 @@ Implementations follow these exact builder orders:
 - Query: `.inputSchema(...) → .outputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
 - Reaction: `.outputSchema(...) → .plugin(...)? → .store(...) → .apply(...)* → (.handle(...) | .handleEachKey(...))`
 
-`createEventDefinition(type, schema, { keys })` declares the keys an Event carries (the IDs it is about). `.consistencyKeys((command, state) => keys)` makes a Command's append conflict only with new Events of its applied types that carry one of those keys or none; declare every key the decision reads, and Scenarios check it. Without it, any new Event of an applied type conflicts. `.handleEachKey((state, key) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:key`), per key a commit carries; it must decide each key from that key's State alone.
+`createEventDefinition(type, schema, { keys: { todo: (payload) => payload.todoId } })` declares the named keys an Event carries (the IDs it is about, each under the name of its kind; a function returns `undefined` for an Event without that key). Core stores them with the Event when it is appended. `.consistencyKeys({ todo: (command, state) => command.todoId })` makes a Command's append conflict only with new Events of its applied types that carry one of those values under that name; declare every key the decision reads, and Scenarios check it. Every applied Event type must declare one of its key names, and every such Event must carry one. Without it, any new Event of an applied type conflicts. `.handleEachKey('todo', (state, todoId) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:value`), per value of that key a commit carries; every applied Event type must declare the key, and it must decide each value from that value's State alone.
+
+A Command handler rejects by throwing `new CommandRejection(code, message, details?)` from `@specter-ts/core`: a stable kebab-case `code` hosts match on (`error.rejection.code` of the `SpecterCommandRejectedError`), a message, and optional JSON `details`. Every code must appear in one of the Command's rejected Scenarios. Any other thrown error, or no Events, is a failure, not a rejection.
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 
@@ -64,12 +66,12 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 - Use `event('todo-added', { todoId: 'todo-1', title: 'Ship it' })`; never call an Event Definition from `spec.ts`.
 - Event types use kebab-case; Slice names use lower camel case.
 - Scenario payloads are exact. Include every ID-shaped field and domain timestamp.
-- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and must state the exact rejection reason. Invalid schema input is not a Scenario.
+- Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and name the rejection: `reject: { code: 'title-required' }`, adding the exact `message` and `details` where they matter. Invalid schema input is not a Scenario.
 - Across a Slice's Scenarios, the union of Given Event types exactly equals the implementation's apply Event types.
 - Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed.
 - Every registered Event Definition and Slice appears in executable Scenario coverage.
 - Command handlers emit only Event types authorized by accepted outcomes.
-- Query and Reaction `expect` values are final public values after output-schema transformation. A keyed Reaction's `expect` lists one effect per key the Given Events carry, in the order the keys first appear.
+- Query and Reaction `expect` values are final public values after output-schema transformation. A keyed Reaction's `expect` lists one effect per value of its key the Given Events carry, in the order the values first appear.
 - Specter freezes specification wrappers and arrays structurally; it does not clone or deep-freeze caller-owned payload values.
 
 ## Envelopes And Completion

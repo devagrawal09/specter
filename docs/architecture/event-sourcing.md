@@ -34,26 +34,49 @@ behavior. Create them at the initiating boundary. Do not treat Event Log IDs or
 ### Event keys
 
 Slices fold Event types, not aggregates, but most facts are about something
-with an identity. An Event Definition may declare the keys its Events carry,
-derived from the payload:
+with an identity. An Event Definition may declare the named keys its Events
+carry, each derived from the payload:
 
 ```ts
-export const todoRenamedEvent = createEventDefinition(
-  'todo-renamed',
-  z.object({ todoId: z.string(), title: z.string() }),
-  { keys: (payload) => [payload.todoId] },
+export const todoMovedEvent = createEventDefinition(
+  'todo-moved',
+  z.object({ todoId: z.string(), listId: z.string().optional() }),
+  {
+    keys: {
+      todo: (payload) => payload.todoId,
+      list: (payload) => payload.listId,
+    },
+  },
 )
 ```
 
-A key is an identity the fact is about, usually its aggregate's ID; a fact
-about several things carries several keys (a child Session's creation names
-the child and its parent). Keys are not stored: they are a function of the
-payload, so they cannot drift from it, and adding or changing them needs no
-migration. Equal strings are one key, whatever they name, so keys from
-different ID spaces that collide only cost extra conflicts. An Event whose
-type declares no keys, or whose keys are empty, is unkeyed. Two decisions use
-keys: a Command's [consistency keys](#command-consistency) and a
-[keyed Reaction](runtime.md#keyed-reactions).
+A key is an identity the fact is about, usually its aggregate's ID, named
+for its kind: a fact about several things carries several keys (a child
+Session's creation names its `session` and its `parent`). A key function
+returns `undefined` for an Event that has no such identity. Names keep ID
+spaces apart: a `todo` and a `list` with the same ID are two keys. An Event
+whose type declares no keys is unkeyed. Key names use lower camel case.
+
+Core derives an Event's keys when a Command emits it and passes them to the
+Event Log with the Event, which stores and indexes them; adapters never
+derive keys themselves, so the stored keys are exactly what the definition
+derived from the payload that was appended. The keys are not part of a
+`PersistedEvent`: they are an index of it. Three things use keys: a Command's
+[consistency keys](#command-consistency), checked against the stored keys; a
+[keyed Reaction](runtime.md#keyed-reactions), which derives them from each
+Event it handles; and a host's keyed read (`readKey({ name, value })`), which
+pages through one key's stored Events, such as one aggregate's. A definition
+whose key functions change derives new keys for new Events only; Events
+appended before keep the keys they were stored with.
+
+Two rules keep keyed decisions sound, and conformance checks both. A keyed
+Command or Reaction applies only Event types that declare one of its key
+names; and every Event of such a type, in a Scenario or emitted by a Command,
+carries one of them. An Event without the key a Slice decides by could change
+its State without the runtime knowing which key it concerns, so a Command
+emitting one fails before it appends. A key a type declares may be absent from
+an Event when no keyed Slice applying that type uses it, such as a Session's
+optional `parent`.
 
 ## Catch-up, apply, and replay
 
@@ -80,55 +103,65 @@ with a compare-and-swap scoped to exactly that (`expectedUnchanged` on the
 Event Log): no Event of the types the Command applies may follow the order its
 State was folded to. Writers of other types never conflict with it, and a
 Command that applies nothing never conflicts. An adapter checks the condition
-under its append lock and rejects a stale append with
+in its store, under its append lock, and rejects a stale append with
 `SpecterVersionConflictError`. A stale append only means another writer
 committed first, so core runs catch-up and the decision again (up to 32 times)
 before surfacing the conflict.
 
 Folds of the same types still conflict across aggregates: two Commands that
 both apply `todo-renamed` conflict even for different Todos. A Command whose
-decision reads only some aggregates' Events declares their keys, derived from
-its input and, when the input does not name them, from the State it decided
-from:
+decision reads only some aggregates' Events names their keys, each derived
+from its input and, when the input does not name them, from the State it
+decided from:
 
 ```ts
 export const renameTodo = implementCommand(specification)
   .inputSchema(renameTodoSchema)
   .store(RenameTodoStore)
-  .consistencyKeys((command) => [command.todoId])
+  .consistencyKeys({ todo: (command) => command.todoId })
   .apply(todoAddedEvent, applyTodoAdded)
   .apply(todoRenamedEvent, applyTodoRenamed)
   .handle(handleRenameTodo)
 ```
 
 Its append then conflicts only with a new Event of an applied type that
-carries one of those keys, or carries none: an unkeyed Event may concern any
-key. The re-decision on a stale append is scoped the same way.
+carries one of those values under that name. A key function returns one
+value, several, or `undefined` for none; a Command whose functions return no
+value at all conflicts with nothing. The adapter checks the stored keys in
+SQL (SQLite, node:sqlite, Postgres) or in its own index (memory, JSONL). The
+re-decision on a stale append is scoped the same way.
 
 Keys are checked when the Command appends, after it decided, so they may come
 from the State it read: removing a credential that is its integration's
 active one reads that integration's other credentials, and the integration is
-the credential's, in its State
-(`(command, state) => [command.credentialId, state.integrationOf[command.credentialId]]`).
+the credential's, in its State:
+
+```ts
+.consistencyKeys({
+  credential: (command) => command.credentialId,
+  integration: (command, state) => state.integrationOf[command.credentialId],
+})
+```
+
 The Event that would change what the keys were read from must carry one of
 them; here a credential's creation carries the credential.
 
 Declaring keys is a promise the runtime cannot check while it runs: once the
 Command has read its State, no Event carrying none of its keys may change its
 decision. A Command that reads more, such as a parent's state, declares that
-key too (`[command.childId, command.parentId]`); one whose decision reads its
-whole fold, such as a limit across every Todo, declares no keys and keeps the
-type-scoped check. Without `consistencyKeys` the scoped check is the safe
-default. A fold may still read another key's past through an Event that
-carries the Command's key (a fork copying its parent's state when it is
-recorded): later Events of the parent cannot change what was copied.
+key too (`{ todo: (command) => [command.todoId, command.parentId] }`); one
+whose decision reads its whole fold, such as a limit across every Todo,
+declares no keys and keeps the type-scoped check. Without `consistencyKeys`
+the scoped check is the safe default. A fold may still read another key's past
+through an Event that carries the Command's key (a fork copying its parent's
+state when it is recorded): later Events of the parent cannot change what was
+copied.
 
 Executable Scenarios check the promise. Each Scenario of a Command with
 consistency keys also runs without its trailing Given Events that carry none
-of its keys or are unkeyed, the Events a concurrent writer could append after
-the decision read its State without a conflict, and must reach the same
-outcome. A Scenario that shows the decision depending on them fails with the
-keys it declared.
+of its keys, the Events a concurrent writer could append after the decision
+read its State without a conflict, and must reach the same outcome. A Scenario
+that shows the decision depending on them fails with the keys it declared.
 
 Callers can add two guards:
 
@@ -151,6 +184,13 @@ await app.command(
 The idempotency lookup and append must share the adapter's atomic append lock.
 Adapters return the stored commit for a known key and never decide conflicts;
 the runtime applies the mode.
+
+An adapter declares what it supports beyond appending and reading the log,
+`capabilities: { scopedAppend, keyedRead }`, and refuses an operation it does
+not support rather than ignore part of it. The runtime refuses to start, with
+`SpecterEventLogCapabilityError`, on an Event Log without scoped appends when
+the app has a Command, and without keyed reads when the host says it reads by
+key (`makeSpecterRuntime(config, { requires: { keyedRead: true } })`).
 
 ## Determinism and schema evolution
 

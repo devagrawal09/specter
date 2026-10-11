@@ -79,6 +79,7 @@ place of a config.
 | --- | --- | --- | --- | --- |
 | `SpecterConformanceError` (invalid config) | rejects / fails | rejects | fails the Layer or Effect | first and every later operation rejects |
 | `SpecterStoreConfigurationError` (missing or malformed Store Layer) | not checked | rejects | fails the Layer or Effect | first and every later operation rejects |
+| `SpecterEventLogCapabilityError` (Event Log lacks a capability the app uses) | not checked | rejects | fails the Layer or Effect | first and every later operation rejects |
 | Dependency Layer, `EventLogFailure`, scheduler, startup Reaction, or eager catch-up failure | not checked | rejects | fails the Layer or Effect | first and every later operation rejects |
 
 `createSpecterApp` resolves only after per-log startup has finished, so
@@ -96,12 +97,15 @@ For `app.command(envelope, options)`, core:
 1. finds the registered Command and validates its options and input;
 2. resolves an idempotent duplicate or reads current Event Log version;
 3. catches Command Slice State up in Store transaction;
-4. runs handler against committed read State outside Store transaction;
-5. validates emitted Event types and payloads, and their keys;
-6. atomically appends with a compare-and-swap scoped to what the decision
-   read: the Event types the Command applies, narrowed to its consistency keys
-   when it declares them, or the whole log for a caller's `expectedVersion`
-   (see [Command consistency](event-sourcing.md#command-consistency));
+4. runs handler against committed read State outside Store transaction; a
+   `CommandRejection` it throws rejects the Command;
+5. validates emitted Event types and payloads, and derives their keys, each
+   carrying one of the key names of every keyed Slice that applies its type;
+6. atomically appends the Events with their keys, with a compare-and-swap
+   scoped to what the decision read: the Event types the Command applies,
+   narrowed to its consistency keys when it declares them, or the whole log
+   for a caller's `expectedVersion` (see
+   [Command consistency](event-sourcing.md#command-consistency));
 7. starts affected subscription invalidation and requests a Reaction pass.
 
 The outer Promise resolves with a durable commit receipt after the Reaction pass
@@ -118,7 +122,22 @@ const execution = await app.command({
 await execution.reactions
 ```
 
-A rejected Command appends nothing. A Reaction failure rejects
+A rejected Command appends nothing. A handler rejects by throwing a
+`CommandRejection`: a stable kebab-case `code` hosts match on, a message, and
+optional JSON `details`:
+
+```ts
+throw new CommandRejection('title-required', 'Todo title is required')
+```
+
+The caller receives a `SpecterCommandRejectedError` whose `rejection` carries
+them; `rejection.code` is the contract, not the message. Every code a Command
+rejects with must appear in one of its rejected Scenarios, as every Event type
+it emits must appear in an accepted one; a code no Scenario names, any other
+error the handler throws, and a handler that returns no Events are failures
+(`SpecterInfrastructureError`), not rejections.
+
+A Reaction failure rejects
 `execution.reactions` but never reverses the commit. Retrying the Command solely
 because a Reaction failed can duplicate domain intent; use an idempotency key.
 
@@ -204,7 +223,8 @@ or shut the old process down cleanly first.
 A Reaction completed with `.handle(state)` returns at most one output per
 relevant commit. A Reaction that tracks many independent things, such as one
 request per Session, would then have to pick one per commit, and the one it
-picks holds the others back. Complete it with `.handleEachKey` instead:
+picks holds the others back. Complete it with `.handleEachKey`, naming the
+[Event key](event-sourcing.md#event-keys) it handles:
 
 ```ts
 export const runStep = implementReaction(specification)
@@ -213,24 +233,28 @@ export const runStep = implementReaction(specification)
   .store(RunStepStore)
   .apply(executionStartedEvent, applyExecutionStarted)
   .apply(stepSettledEvent, applyStepSettled)
-  .handleEachKey(async (state, sessionId) => requestFor(state, sessionId))
+  .handleEachKey('session', async (state, sessionId) =>
+    requestFor(state, sessionId),
+  )
 ```
 
-For each relevant commit, core runs the handler once for each distinct
-[Event key](event-sourcing.md#event-keys) the commit's relevant Events carry,
-in the order the keys first appear, all inside the one Slice Store
-transaction. Each output is its own delivery, with `deliveryId`
-`reaction:version:key`, so an outbox enqueues each as its own job. A key the
-commit does not carry is not handled: its State did not change, so its output
-cannot have. An Event that carries no keys runs no handler, and conformance
-rejects a keyed Reaction that applies an Event type declaring no keys.
+For each relevant commit, core runs the handler once for each distinct value
+of that key the commit's relevant Events carry, in the order the values first
+appear, all inside the one Slice Store transaction. Each output is its own
+delivery, with `deliveryId` `reaction:version:value`, so an outbox enqueues
+each as its own job. A value the commit does not carry is not handled: its
+State did not change, so its output cannot have. Other keys the Events carry
+do not run the handler: a Reaction keyed by `session` never runs for the
+`project` a Session's creation names. Conformance rejects a keyed Reaction
+that applies an Event type not declaring its key, and every Event of the types
+it applies must carry it.
 
-The handler must decide each key from that key's State alone, which is what
-lets core skip the others: an Event that does not carry a key must not change
-that key's output. Scenarios check it: a keyed Reaction's `expect` lists one
-output per key its Given Events carry, as if they were one commit, and each
-key's output must be the same without the trailing Given Events that do not
-carry it, which would not have run its handler.
+The handler must decide each value from that value's State alone, which is
+what lets core skip the others: an Event that does not carry a value must not
+change that value's output. Scenarios check it: a keyed Reaction's `expect`
+lists one output per value of its key the Given Events carry, as if they were
+one commit, and each value's output must be the same without the trailing
+Given Events that do not carry it, which would not have run its handler.
 
 ### When Reactions start
 
@@ -337,6 +361,8 @@ Schema at an untrusted boundary.
 - SQLite is the default single-process persistent preset.
 - Postgres provides multi-process persistence and database-level
   serialization.
+- Every bundled Event Log stores Event keys and declares both capabilities:
+  the scoped compare-and-swap in its store and keyed reads.
 - Durable Reaction delivery uses `@specter-ts/reaction-outbox`.
 - Trace export is application-owned and stays outside domain correctness.
 

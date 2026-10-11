@@ -125,8 +125,16 @@ The ordered durable record of registered Events owned by a Specter App and acces
 _Avoid_: Per-feature log
 
 **Rejected Command**:
-A command that is not accepted and does not emit Events. A command that would produce no Events violates the accepted-command contract and is rejected rather than treated as a successful no-op. A rejected command rejects the command promise instead of appending to the Event Log.
+A command that is not accepted and does not emit Events. Its handler rejects it by throwing a Command Rejection, and the command promise rejects instead of appending to the Event Log. A handler that would produce no Events, or throws anything else, has failed rather than rejected: the accepted-command contract leaves no silent no-op.
 _Avoid_: Error event
+
+**Command Rejection**:
+Why a Command was refused: a stable kebab-case code that hosts match on, a message for people, and optional structured details. Each code a Command can reject with appears in one of its rejected Scenarios, so its specification lists every refusal a host must handle.
+_Avoid_: Matching on rejection messages
+
+**Event Key**:
+A named identity an Event is about, derived from its payload by its Event Definition, such as its `session` or its `project`. Core stores an Event's keys with it in the Event Log. A Command's consistency keys and a keyed Reaction name the key they decide by, so different kinds of identity never collide.
+_Avoid_: Aggregate ID, stream
 
 **Invalid Command Input**:
 A command payload that cannot be decoded against the command schema. Invalid command input is different from a Rejected Command, whose payload decoded successfully.

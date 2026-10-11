@@ -9,39 +9,67 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | Export | Purpose |
 | --- | --- |
 | `EventLog` | Runtime service Tag. |
-| `EventLogService` | `query`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
+| `EventLogService` | `capabilities`, `query`, `readKey`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
+| `EventLogCapabilities` | `{ scopedAppend, keyedRead }`: what the adapter supports beyond appending and reading the log. |
+| `EventLogDraft` | An Event to append with the `keys` core derived from its payload: one value per key name. |
 | `EventLogCommit` | Durable Events, commit version/time, optional idempotency metadata. |
 | `EventLogAppendResult` | Commit plus `duplicate`. |
 | `EventLogAppendOptions` | `expectedVersion`, `expectedUnchanged`, `idempotencyKey`, `fingerprint`. |
-| `EventLogAppendCondition` | `{ afterOrder, eventTypes, matches? }`: what a decision read. |
+| `EventLogAppendCondition` | `{ afterOrder, eventTypes, keys? }`: what a decision read. |
+| `EventLogKeyPage` | `{ afterOrder?, limit? }`: a page of a keyed read. |
+| `EventKey` | `{ name, value }`: one named key an Event carries. |
 | `EventLogFailure` | Typed operation failure. |
 
 `append` atomically checks its compare-and-swap, assigns Event orders, writes
-Events, and records commit boundary. Two forms of compare-and-swap exist:
+Events with their keys, and records commit boundary. Core derives each Event's
+keys from its payload when a Command emits it and passes them in
+`EventLogDraft.keys`; an adapter stores them as given and never derives keys
+itself, and a `PersistedEvent` does not carry them. Two forms of
+compare-and-swap exist:
 
 - `expectedVersion`: stale unless the log is at exactly that version (a
   caller's whole-log check).
-- `expectedUnchanged: { afterOrder, eventTypes, matches? }`: stale when an
-  Event of one of `eventTypes` with an order above `afterOrder` is in the log
-  and `matches(event)` (every such Event, when `matches` is omitted). The
-  runtime uses it for every Command without a caller `expectedVersion`:
-  `eventTypes` are the types the Command applies, and `matches` keeps the
-  Events carrying one of its consistency keys or none. `matches` is a function
-  of the stored Event, so an adapter reads the candidate Events (an indexed
-  query by type and order) and filters them in process.
+- `expectedUnchanged: { afterOrder, eventTypes, keys? }`: stale when an Event
+  of one of `eventTypes` with an order above `afterOrder` is in the log and,
+  when `keys` is present, carries one of the values listed under one of its
+  key names (`{ session: ['s1'], project: ['p1'] }`); with no value listed,
+  nothing matches. The runtime uses it for every Command without a caller
+  `expectedVersion`: `eventTypes` are the types the Command applies, and
+  `keys` its consistency keys. The adapter checks it in its store from the
+  stored keys: the bundled SQL adapters with one indexed query, memory and
+  JSONL from their own index.
 
 Either check runs under the same lock as the write, and a stale append fails
 with `EventLogFailure('append')` whose cause is a
-`SpecterVersionConflictError`, which the runtime retries. An adapter that
-ignores `expectedUnchanged` would let conflicting decisions through, so the
-Event Log conformance checks it. Every append creates commit receipt, including
-commands without idempotency key. `findCommit(key)` resolves idempotency receipt.
-When `append` receives a known idempotency key, it appends nothing and returns
-the stored commit, including its original fingerprint, with `duplicate: true`
-whatever fingerprint was passed, even when `expectedVersion` is stale. The runtime decides whether a mismatch is a
-conflict (`idempotencyMode: 'exact'`).
+`SpecterVersionConflictError`, which the runtime retries. Every append creates
+commit receipt, including commands without idempotency key.
+`findCommit(key)` resolves idempotency receipt. When `append` receives a known
+idempotency key, it appends nothing and returns the stored commit, including
+its original fingerprint, with `duplicate: true` whatever fingerprint was
+passed, even when `expectedVersion` is stale. The runtime decides whether a
+mismatch is a conflict (`idempotencyMode: 'exact'`).
 `commitsAfter(version)` returns complete commits ordered by commit version; core
 uses it as durable Reaction work stream.
+
+`readKey({ name, value }, { afterOrder, limit })` returns the Events carrying
+that key, such as one aggregate's, with an order above `afterOrder` (default
+0), ascending, at most `limit` (default all). A host pages through one key's
+Events with it; the runtime itself does not read by key.
+
+### Capabilities
+
+An adapter declares `capabilities: { scopedAppend, keyedRead }`. Without a
+capability it must refuse the operation rather than ignore part of it: an
+append carrying `expectedUnchanged` fails with `EventLogFailure('append')`,
+and `readKey` fails with `EventLogFailure('readKey')`. The runtime refuses to
+start, with `SpecterEventLogCapabilityError` naming what is missing and what
+uses it, on an Event Log without `scopedAppend` when the app registers a
+Command, and without `keyedRead` when the host requires it
+(`makeSpecterRuntime(config, { requires: { keyedRead: true } })`). An adapter
+that declares no capabilities supports none. `eventLogConformance` from
+`@specter-ts/core/testing` holds an adapter to its declaration: storage of
+keys, the scoped check and keyed reads when declared, and the refusals when
+not. Every bundled adapter declares both.
 
 ## Slice Store
 
@@ -114,6 +142,8 @@ Slice Store must not assume one transaction per commit.
 ## Invariants
 
 - Event Log is authority; Slice Stores are rebuildable views/checkpoints.
+- Event keys are an index of the Event Log, derived by core and stored by the
+  adapter with each Event.
 - App Layer provides one `EventLog` and every registered Store Tag.
 - Shared SQL database context lets nested Commands and outbox enqueue join active
   Reaction transaction.

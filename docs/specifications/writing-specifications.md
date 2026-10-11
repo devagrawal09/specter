@@ -28,7 +28,7 @@ export default createCommandSlice('addTodo')
       given: [],
       when: { todoId: 'todo-1', title: '   ' },
       expect: [],
-      reject: { reason: 'Todo title is required' },
+      reject: { code: 'title-required', message: 'Todo title is required' },
     },
   )
 ```
@@ -58,11 +58,11 @@ type CommandScenario =
       given: readonly ScenarioEvent[]
       when: unknown
       expect: readonly []
-      reject: { reason: string }
+      reject: { code: string; message?: string; details?: JsonValue }
     }
 ```
 
-An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and must state the exact thrown error message as `reject.reason`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification.
+An accepted Command Scenario declares one or more Events in exact order. A rejected Scenario declares no Events and names the rejection the handler throws: its stable kebab-case `reject.code`, which hosts match on, and where useful its exact `reject.message` and `reject.details`. At runtime, a Command must emit at least one Event, and it may emit only Event types that appear in an accepted outcome somewhere in that Command's specification; it rejects by throwing `new CommandRejection(code, message, details?)`, and only with codes its rejected Scenarios name.
 
 ### Query Scenarios
 
@@ -87,7 +87,7 @@ type ReactionScenario = {
 }
 ```
 
-A Reaction has no `when`: new Events and caught-up Slice State are its input. Use `[]` when the handler should return `undefined` and `[effect]` when it should return one effect. The expected effect is the public, post-output-schema value. A keyed Reaction (`.handleEachKey`) decides once per key the Given Events carry, so its `expect` lists one effect per key that requests one, in the order the keys first appear: `[effectForA, effectForB]`.
+A Reaction has no `when`: new Events and caught-up Slice State are its input. Use `[]` when the handler should return `undefined` and `[effect]` when it should return one effect. The expected effect is the public, post-output-schema value. A keyed Reaction (`.handleEachKey(name, ...)`) decides once per value of its key the Given Events carry, so its `expect` lists one effect per value that requests one, in the order the values first appear: `[effectForA, effectForB]`.
 
 ## Scenario Events and Event Definitions
 

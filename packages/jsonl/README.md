@@ -52,11 +52,13 @@ released, and the open fails with that error (a defect in the Layer).
 Each line is one commit:
 
 ```json
-{"version":2,"committedAt":"…","idempotencyKey":"…","fingerprint":"…","events":[{"id":"…","order":1,"type":"…","payload":{},"recordedAt":"…"},…]}
+{"version":2,"committedAt":"…","idempotencyKey":"…","fingerprint":"…","events":[{"id":"…","order":1,"type":"…","payload":{},"recordedAt":"…","keys":{"session":"…"}},…]}
 ```
 
 A line boundary is the atomic commit boundary, so `commitsAfter`, `findCommit`,
-and idempotent receipts need no second file. Event payloads must be
+and idempotent receipts need no second file. Each Event keeps the named keys
+core derived for it (`keys`, omitted for an unkeyed Event); opening indexes
+them for the scoped compare-and-swap and `readKey`. Event payloads must be
 JSON-serializable; values are returned as decoded JSON, both before and after a
 reopen.
 

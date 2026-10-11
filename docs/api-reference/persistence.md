@@ -14,7 +14,8 @@ cursor, ORM access, and transaction policy.
 | `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store. |
 
 Memory Store clones staged State and rolls failure back. Data disappears with
-process.
+process. The memory Event Log keeps each Event's keys in its own index, which
+its scoped check and keyed reads use.
 
 ## JSONL
 
@@ -49,7 +50,10 @@ The `onOpen` option of both Event Log constructors and of
 `recoveredStaleLock` and `discardedTrailingBytes` (and the outbox's
 `releasedOnOpen`), so apps using the Layer can log recoveries too.
 Expected versions and idempotency receipts match the SQLite adapters, and
-`query` returns Events with `order > afterOrder`. `fsync` is off by default, so
+`query` returns Events with `order > afterOrder`. Each Event in a commit line
+keeps its keys (`"keys": { "session": "s1" }`, omitted when it has none); the
+open builds an in-memory index of them, which the scoped check and keyed reads
+use. `fsync` is off by default, so
 a commit survives a process crash but not an operating-system failure; pass
 `fsync: true` when the file is the only durable record.
 
@@ -126,6 +130,11 @@ const dependencies = Layer.mergeAll(
 )
 ```
 
+`prepareSpecterSqlite` creates `specter_event_keys (event_order, name, value)`,
+keyed by `(event_order, name)` and indexed on `(name, value, event_order)`,
+beside the Event and commit tables. The scoped check is one indexed query over
+it, and so is a keyed read.
+
 `SqliteDatabaseContext.use` uses active transaction when present.
 `transaction` nests by joining active Effect context. This lets direct ORM Slice
 Stores, nested default-Plugin Commands, and outbox enqueue share one transaction
@@ -147,7 +156,8 @@ stale coordination state.
 | `createNodeSqliteSliceStoreLayer` | App Store Layer. |
 | `createSpecterNodeSqliteLayer` | Scoped DB lifecycle Layer. |
 
-Nested Effect transactions join active `BEGIN IMMEDIATE` transaction.
+Nested Effect transactions join active `BEGIN IMMEDIATE` transaction. The
+Event Log keeps keys in `specter_event_keys`, as the libSQL adapter does.
 
 ## Postgres
 
@@ -162,6 +172,9 @@ Nested Effect transactions join active `BEGIN IMMEDIATE` transaction.
 
 Event Log append uses advisory lock. Slice transactions use per-Slice advisory
 lock. Outbox claims use row locking. Nested operations join active connection.
+`prepareSpecterPostgres` creates `specter_event_keys (event_order, name,
+value)` with the same key and index as SQLite; the scoped check matches its
+`(name, value)` pairs against the condition's in one query.
 
 ## Adapter rules
 
@@ -172,12 +185,14 @@ lock. Outbox claims use row locking. Nested operations join active connection.
 - Commit State and cursor together; rollback both on failure.
 - Prevent visible cursor regression.
 - Persist every Event Log commit boundary for `commitsAfter`.
-- Check `expectedVersion` and `expectedUnchanged` under the append lock, after
-  the idempotency lookup; a stale append fails with a
-  `SpecterVersionConflictError` cause. The bundled adapters read the candidate
-  Events with the same type-and-order query as `query`.
-- Keys are not stored: core derives them from payloads, so no adapter schema
-  changes with them.
+- Check `expectedVersion` and `expectedUnchanged` in the store, under the
+  append lock, after the idempotency lookup; a stale append fails with a
+  `SpecterVersionConflictError` cause.
+- Store each Event's keys exactly as `append` receives them, never derived by
+  the adapter, and index them by `(name, value, order)` for the scoped check
+  and `readKey`.
+- Declare `capabilities`, and refuse what is not supported rather than ignore
+  it.
 
 ## Related documentation
 

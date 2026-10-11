@@ -17,7 +17,9 @@ network transport and no application database schema.
 
 | Export | Purpose |
 | --- | --- |
-| `createEventDefinition(type, schema, options?)` | Defines a kebab-case Event and creates/decodes its exact payload. `options.keys(payload)` declares the [Event keys](../architecture/event-sourcing.md#event-keys) each Event carries. |
+| `createEventDefinition(type, schema, options?)` | Defines a kebab-case Event and creates/decodes its exact payload. `options.keys` declares the named [Event keys](../architecture/event-sourcing.md#event-keys) each Event carries: `{ name: (payload) => value \| undefined }`. |
+| `eventKeys(definition, payload)` | The keys one Event carries, by name, as core stores them: for a host that appends to an Event Log itself. |
+| `CommandRejection` | What a Command handler throws to reject: `new CommandRejection(code, message, details?)`, with a stable kebab-case `code`. |
 | `eventsFor(slice, fullCatalog)` | Selects the Event Definitions one Slice needs: Given/apply Events and accepted Command outcomes. An app that registers some Slices of a larger catalog registers the union over its Slices. |
 | `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
 | `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
@@ -29,7 +31,8 @@ network transport and no application database schema.
 | `SpecterUnknownEventError` | An emitted or persisted Event type is not registered. |
 | `SpecterInvalidInputError` | A Command or Query input schema rejected its payload. |
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
-| `SpecterCommandRejectedError` | A Command handler rejected an intent or emitted no Events. |
+| `SpecterCommandRejectedError` | A Command handler rejected an intent; `rejection` is the `CommandRejection` it threw. |
+| `SpecterEventLogCapabilityError` | The Event Log lacks a capability the app uses; `missing` names it. |
 | `SpecterVersionConflictError` | `expectedVersion` did not match the Event Log version, or the runtime's scoped compare-and-swap kept losing to writers of Events the decision read, after its retries. |
 | `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
@@ -44,6 +47,7 @@ network transport and no application database schema.
 | --- | --- |
 | `commandRejected` | `SPECTER_COMMAND_REJECTED` |
 | `conformanceFailed` | `SPECTER_CONFORMANCE_FAILED` |
+| `eventLogCapability` | `SPECTER_EVENT_LOG_CAPABILITY` |
 | `eventLogOrderViolation` | `SPECTER_EVENT_LOG_ORDER_VIOLATION` |
 | `idempotencyConflict` | `SPECTER_IDEMPOTENCY_CONFLICT` |
 | `infrastructureFailure` | `SPECTER_INFRASTRUCTURE_FAILURE` |
@@ -64,15 +68,18 @@ network transport and no application database schema.
 | `EventDraft` | Domain `type` and `payload` before persistence metadata is assigned. |
 | `Event` | An Event draft plus Event Log `id` and ISO `recordedAt`. |
 | `PersistedEvent` | An `Event` plus its unique global `order`. |
-| `EventDefinition` | Event type, Standard Schema, typed `create`, async `decode`, and optional `keys(payload)`. |
-| `EventDefinitionOptions` | Optional `keys(payload)` returning the Event's keys as strings. |
+| `EventDefinition` | Event type, Standard Schema, typed `create`, async `decode`, and optional named `keys`. |
+| `EventDefinitionOptions` | Optional `keys`: a function per key name returning the key's value, or `undefined` when the Event has none. |
+| `EventKey` | `{ name, value }`: one named key an Event carries. |
+| `EventKeyFunction<T>` / `EventKeyFunctions<T>` | One key's function, and a definition's functions by name. |
 | `ApplyEventDefinition` | Structural Event Definition accepted by an apply registration or catalog. |
 | `EventForDefinition<T>` | Infers the typed `Event` produced by an Event Definition. |
 | `ApplyRegistration` | An Event Definition and its async State apply handler. |
 | `CommandEnvelope` | Generic `{ type, payload }` Command envelope. |
-| `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys(command, state)` names the Event keys its decision reads, from the Command and the State it decided from. |
+| `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys` names the Event keys its decision reads, each derived from the Command and the State it decided from. |
+| `ConsistencyKey<C, S>` / `ConsistencyKeys<C, S>` | One consistency key's function, returning one value, several, or `undefined`; and a Command's functions by key name. |
 | `QuerySlice` | Completed Query Slice implementation type. |
-| `ReactionSlice` | Completed Reaction Slice implementation type; `keyed` is `true` for one completed with `.handleEachKey`. |
+| `ReactionSlice` | Completed Reaction Slice implementation type; `key` names the Event key one completed with `.handleEachKey` handles. |
 | `SliceRegistration` | Heterogeneous union accepted by an app's Slice registry. |
 | `CommandInputOf<T>` | Infers a Command Slice's public input. |
 | `QueryInputOf<T>` | Infers a Query Slice's public input. |
@@ -86,7 +93,7 @@ network transport and no application database schema.
 | `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; the Slice must be the registered instance; rejected permanently inside a direct Plugin's Reaction transaction. |
 | `SpecterEffectError` | Union of public runtime failures; the error channel of Plugin `command` and `query`. |
 | `ReactionPluginContext` | `{ command, query }` passed once to a Plugin factory. |
-| `ReactionDeliveryContext` | `deliveryId` (`reaction:version`, or `reaction:version:key` for a keyed Reaction), `throughOrder`, and `scheduledAt`. |
+| `ReactionDeliveryContext` | `deliveryId` (`reaction:version`, or `reaction:version:value` for a keyed Reaction), `throughOrder`, and `scheduledAt`. |
 | `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
 | `ReactionPlugin<TOutput, R>` | Optional Effect factory for custom/external output; `R` lists app services it reads. Same-app `CommandEnvelope` output uses default dispatcher. |
 | `ReactionPluginRequirements<T>` | Infers a Reaction Slice's Plugin service requirements, excluding `Scope`. |
@@ -140,8 +147,10 @@ const prepared = await prepareSpecterApp(config)
 const app = await createSpecterApp(prepared, dependenciesFor(sessionId))
 ```
 
-Store resolution, Reaction scheduler binding, and Reaction and eager-Slice
-catch-up are per app, and `createSpecterApp` resolves only after they finish.
+Store resolution, the Event Log's capabilities, Reaction scheduler binding,
+and Reaction and eager-Slice catch-up are per app, and `createSpecterApp`
+resolves only after they finish. An app with a Command refuses an Event Log
+without `capabilities.scopedAppend` with `SpecterEventLogCapabilityError`.
 When Reactions are registered, startup catches each Reaction cursor up through
 current Event Log version. This recovers commits left unfinished by a previous
 process without unrelated Command. A missing Store Layer, dependency Layer
@@ -215,34 +224,62 @@ conflict. See [Runtime](../architecture/runtime.md#idempotency).
 
 A Command appends with a compare-and-swap scoped to what it read: the Event
 types it applies. Declaring `consistencyKeys` narrows it to the Events that
-carry one of the returned keys or carry none:
+carry one of the returned values under that key name:
 
 ```ts
 import { createEventDefinition, implementCommand } from '@specter-ts/core'
 
 export const todoRenamed = createEventDefinition('todo-renamed', schema, {
-  keys: (payload) => [payload.todoId],
+  keys: { todo: (payload) => payload.todoId },
 })
 
 export const renameTodo = implementCommand(specification)
   .inputSchema(renameTodoSchema)
   .store(RenameTodoStore)
-  .consistencyKeys((command) => [command.todoId])
+  .consistencyKeys({ todo: (command) => command.todoId })
   .apply(todoRenamed, applyTodoRenamed)
   .handle(handleRenameTodo)
 ```
 
-The function also receives the read-only State the decision read, for keys
-the input does not name. A stale append still runs catch-up and the decision
-again, up to 32 times, scoped the same way. Key functions must return arrays of strings; core checks
-every emitted Event's keys before the append. Scenario runners hold a Command
-with consistency keys to its promise; see
+Each key function also receives the read-only State the decision read, for
+keys the input does not name, and returns one value, several, or `undefined`.
+A stale append still runs catch-up and the decision again, up to 32 times,
+scoped the same way. Every Event type the Command applies must declare one of
+its key names, and every Event of those types must carry one; core checks each
+emitted Event's keys before the append and stores them with it. Scenario
+runners hold a Command with consistency keys to its promise; see
 [Command consistency](../architecture/event-sourcing.md#command-consistency).
 
-A Reaction completed with `.handleEachKey((state, key) => output)` runs once
-for each key the relevant commit's Events carry, each output its own delivery
-(`reaction:version:key`). Every Event type it applies must declare keys. See
+A Reaction completed with `.handleEachKey('todo', (state, todoId) => output)`
+runs once for each value of that key the relevant commit's Events carry, each
+output its own delivery (`reaction:version:value`). Every Event type it
+applies must declare the key. See
 [Keyed Reactions](../architecture/runtime.md#keyed-reactions).
+
+## Command rejections
+
+A handler rejects by throwing a `CommandRejection`:
+
+```ts
+import { CommandRejection } from '@specter-ts/core'
+
+if (!title) throw new CommandRejection('title-required', 'Todo title is required')
+if (title.length > 120) {
+  throw new CommandRejection('title-too-long', 'Todo title is too long', {
+    maxLength: 120,
+  })
+}
+```
+
+The caller receives a `SpecterCommandRejectedError` (`SPECTER_COMMAND_REJECTED`)
+whose `rejection` holds the `code`, `message` and `details`. Hosts match on
+`rejection.code`, which is stable; the message is for people. Every code a
+Command rejects with must appear in one of its rejected Scenarios
+(`reject: { code: 'title-required' }`). A code none names, any other error the
+handler throws, and a handler that emits no Events fail with
+`SpecterInfrastructureError` instead: they are defects, not decisions. The
+rejection code is recorded on the Command's span as
+`specter.command.rejection.code`.
 
 ## Effect runtime
 
@@ -288,6 +325,11 @@ yield* app.command(envelope) // its Reactions wait for start
 yield* app.start.pipe(Effect.provideService(Notifier, notifier))
 ```
 
+`makeSpecterRuntime(config, { requires: { keyedRead: true } })` and the same
+option of `createSpecterAppLayer` declare Event Log capabilities the host
+relies on beside those the runtime needs; the runtime refuses to start on an
+Event Log that lacks one.
+
 `prepareSpecterRuntime(config)` is the Effect form of `prepareSpecterApp`. It
 fails with `SpecterConformanceError` and shares the same per-config cache. Each
 of `createSpecterAppLayer`, `makeSpecterRuntime`, and `createSpecterPromiseApp`
@@ -329,7 +371,8 @@ consumers, and retain the newest value.
 - Register exactly one completed implementation per lower-camel-case Slice
   name and one Event Definition per kebab-case Event type.
 - Command handlers must emit at least one Event and only Event types authorized
-  by accepted Scenario outcomes.
+  by accepted Scenario outcomes, or throw a `CommandRejection` whose code a
+  rejected Scenario names.
 - Event schema decoding must preserve payload data one-to-one.
 - Use a runtime Standard Schema at every untrusted input or output boundary;
   type-only schema builder calls do not validate runtime values.

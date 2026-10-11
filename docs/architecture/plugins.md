@@ -180,7 +180,8 @@ with leases/backoff, dead-letters exhausted jobs, and supports replay.
 
 - Handler remains deterministic from caught-up Slice State.
 - One Reaction commit produces zero or one output; a keyed Reaction's commit
-  produces zero or one per key its Events carry, each its own delivery.
+  produces zero or one per value of its key the Events carry, each its own
+  delivery.
 - Return `undefined` for no output.
 - Use runtime output schema at untrusted integration boundary.
 - Treat direct external Plugin as at-least-once across crash window.

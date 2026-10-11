@@ -33,10 +33,11 @@ CLI, strict validation, canonical serialization, and SHA-256 digests.
 | Export | Purpose |
 | --- | --- |
 | `AcceptedCommandScenario<TWhen>` | A Command Scenario with one or more expected Scenario Events and no rejection. |
-| `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and its exact rejection reason. |
+| `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and the rejection it expects. |
+| `ScenarioRejection` | `{ code, message?, details? }`: a rejection's stable kebab-case code, and where useful its exact message and JSON details. |
 | `CommandScenario<TWhen>` | Union of accepted and rejected Command Scenarios. |
 | `QueryScenario<TWhen, TExpect>` | A Query Scenario with Given Events, Query input, and final public output. |
-| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and the expected Plugin effects: zero or one, or for a keyed Reaction zero or one per key the Given Events carry, in the order the keys first appear. |
+| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and the expected Plugin effects: zero or one, or for a keyed Reaction zero or one per value of its key the Given Events carry, in the order the values first appear. |
 | `ScenarioEvent<TType, TPayload>` | Branded exact Event example returned by `event(...)`. |
 | `NonEmptyScenarios<TScenario>` | Tuple requiring at least one Scenario. |
 | `CommandSliceSpecification<TName, TScenarios>` | Portable immutable Command specification data. |
@@ -56,7 +57,9 @@ create...Slice(name) -> description(text) -> scenarios(first, ...rest)
 ```
 
 The result is immutable JSON-compatible data with `$schema`, `formatVersion`,
-`kind`, `name`, `description`, and `scenarios`. Default-export it from `spec.ts`,
+`kind`, `name`, `description`, and `scenarios`. This is format version 2
+(`https://specter.dev/specification/v2/slice.schema.json`); version 1 named a
+rejection by its exact reason string only. Default-export it from `spec.ts`,
 then run:
 
 ```sh
@@ -98,14 +101,18 @@ export default createCommandSlice('addTodo')
       given: [],
       when: { todoId: 'todo-1', title: '   ' },
       expect: [],
-      reject: { reason: 'Todo title is required' },
+      reject: { code: 'title-required', message: 'Todo title is required' },
     },
   )
 ```
 
 An accepted Command Scenario must expect at least one Event. A rejected
-Command Scenario must expect no Events. `reject.reason` is required and is
-matched exactly by the Scenario runner. Invalid schema input is transport
+Command Scenario must expect no Events and names its rejection: `reject.code`
+is required, kebab-case, and stable, since hosts match on it; `reject.message`
+and `reject.details` are optional and, when present, matched exactly by the
+Scenario runner. The handler rejects with
+`new CommandRejection(code, message, details?)` from `@specter-ts/core`, and
+only with codes its rejected Scenarios name. Invalid schema input is transport
 validation, not a rejected domain Scenario.
 
 ## Query specification
@@ -167,9 +174,9 @@ export default createReactionSlice(
 
 Reaction `expect` values are the final values passed to the Reaction Plugin
 after output transformation. An empty array means no effect is requested. A
-keyed Reaction (`.handleEachKey`) requests at most one effect per key, so its
-Scenarios list one per key the Given Events carry, in the order the keys
-first appear, as if the Given Events were one commit. The format is the same
+keyed Reaction (`.handleEachKey(name, ...)`) requests at most one effect per
+value of its key, so its Scenarios list one per value the Given Events carry,
+in the order the values first appear, as if the Given Events were one commit. The format is the same
 for both; only the implementation says whether a Reaction is keyed.
 
 ## Constraints

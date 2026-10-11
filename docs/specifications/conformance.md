@@ -66,7 +66,10 @@ Each Event Definition is the single runtime decoder for that type. Whole-app con
 | `unknown-scenario-event` | A Scenario Event type has no Event Definition in the supplied catalog. |
 | `event-payload-schema` | A Scenario Event payload fails its Event schema. |
 | `event-payload-transformation` | The Event schema changes, strips, coerces, or generates payload data. |
-| `event-keys` | The Event Definition's `keys` function does not return an array of strings for a Scenario Event's payload. |
+| `event-keys` | A key function of the Event Definition returns something other than a string or `undefined` for a Scenario Event's payload. |
+| `event-key-name` | An Event Definition declares a key name that is not lower camel case. |
+| `event-missing-key` | A Scenario Event (Given or accepted outcome, in any Slice) carries none of the key names of a keyed Slice that applies its type. |
+| `rejection-code` | A rejected Command Scenario names no kebab-case `reject.code`. |
 | `command-input-schema` | A Command Scenario's `when` example fails its input schema. |
 | `query-input-schema` | A Query Scenario's `when` example fails its input schema. |
 
@@ -81,7 +84,9 @@ Query and Reaction `expect` values are public post-output-schema values. Constru
 | `apply-event-definition-identity` | An apply registration uses a different Event Definition object than the exact instance in the catalog. |
 | `missing-apply-handler` | An Event appears in that Slice's Given data but has no matching apply handler. |
 | `extra-apply-handler` | A Slice applies an Event that never appears in its Given data. |
-| `keyed-reaction-unkeyed-event` | A keyed Reaction (`.handleEachKey`) applies an Event type whose definition declares no keys, which could never run its handler. |
+| `keyed-reaction-undeclared-key` | A keyed Reaction (`.handleEachKey(name, ...)`) applies an Event type whose definition does not declare its key, which could never run its handler. |
+| `keyed-command-undeclared-key` | A Command with consistency keys applies an Event type that declares none of its key names, so no Event of it could ever conflict. |
+| `keyed-command-unused-key` | A Command names a consistency key that no Event type it applies declares. |
 
 These checks keep each Slice's declared history and projection code in lockstep. They also make a focused test's Event requirements derivable with `eventsFor(slice, fullCatalog)`.
 
@@ -94,10 +99,11 @@ Construction cannot execute arbitrary handlers or predict adapter behavior. The 
 - **Input and output schemas:** Command and Query inputs are decoded before their handlers; Query and Reaction outputs are decoded afterward. Failures become the corresponding public input or output error.
 - **Persisted Event decoding:** emitted and replayed payloads must pass the registered Event schema without transformation. Unknown Event types fail closed.
 - **Event Log order:** query results must have unique, strictly increasing safe-integer orders greater than the requested cursor.
-- **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Without a caller `expectedVersion`, append is stale only when an Event of a type the Command applies, carrying one of its consistency keys or none when it declares them, was appended after its State was read; core then decides again, up to 32 times. A caller `expectedVersion` compares against the whole log.
-- **Event keys:** every emitted Event's keys must be an array of strings, checked before the append.
+- **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Without a caller `expectedVersion`, append is stale only when an Event of a type the Command applies, carrying one of its consistency keys under that name when it declares them, was appended after its State was read; the Event Log checks it in its store, from the keys stored with each Event, and core then decides again, up to 32 times. A caller `expectedVersion` compares against the whole log.
+- **Event keys:** core derives every emitted Event's keys before the append, and stores them with it. Each must be a string or `undefined`, and an Event must carry one of the key names of every keyed Slice that applies its type; otherwise the Command fails with `SpecterInfrastructureError` and appends nothing. A keyed Reaction fails the same way on an Event without its key.
+- **Event Log capabilities:** the runtime refuses to start with `SpecterEventLogCapabilityError` on an Event Log without scoped appends when the app has a Command, or without keyed reads when the host requires them.
 - **Idempotency:** a repeated key returns the earlier commit with `duplicate: true`, even for a different envelope. With `idempotencyMode: 'exact'`, using that key for a different canonical envelope throws `SpecterIdempotencyConflictError`.
-- **Command outcomes:** a Command that returns no Events is rejected. Every emitted Event type must appear in at least one accepted Scenario outcome for that Command.
+- **Command outcomes:** a Command rejects only when its handler throws a `CommandRejection` whose code appears in one of its rejected Scenarios. A code none names, any other thrown error, and a handler that returns no Events fail with `SpecterInfrastructureError`. Every emitted Event type must appear in at least one accepted Scenario outcome for that Command.
 - **Projection publication:** Slice State changes remain staged until the cursor advances. Failed projections are disposable and replayable from the authoritative Event Log.
 - **Reaction effects:** a Reaction cursor advances only after its Plugin executor succeeds. Independent Reaction failures are collected in `ReactionRunFailure` after the pass settles.
 
