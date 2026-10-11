@@ -13,7 +13,7 @@ needs.
 | --- | --- | --- | --- |
 | Command | A typed Command envelope | Its private decision projection | One or more durable Events, or a rejection |
 | Query | A typed Query envelope | Its private read projection | A validated result |
-| Reaction | Newly applied Events | Its private effect projection | An optional value for a Reaction Plugin |
+| Reaction | Newly applied Events | Its private effect projection | An optional value for a Reaction Plugin, or one per key for a keyed Reaction |
 
 Commands and Queries use the same envelope shape:
 
@@ -57,7 +57,9 @@ importing one another or sharing mutable State.
    projection.
 3. The Command handler decides from that projection and returns Event drafts.
 4. Core validates that the Events are authorized by accepted Scenarios and
-   appends them with compare-and-swap.
+   appends them with a compare-and-swap scoped to what the decision read: the
+   Event types the Command applies, narrowed to its consistency keys when it
+   declares them (see [Command consistency](event-sourcing.md#command-consistency)).
 5. Query and Reaction projections catch up from the committed Events.
 
 The Event Log transaction—not a Query projection—is the decision boundary.

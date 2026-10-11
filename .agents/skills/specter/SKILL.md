@@ -50,9 +50,11 @@ export const addTodo = implementCommand(specification)
 
 Implementations follow these exact builder orders:
 
-- Command: `.inputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
+- Command: `.inputSchema(...) → .consistencyKeys(...)? → .store(...) → .apply(...)* → .handle(...)`
 - Query: `.inputSchema(...) → .outputSchema(...) → .store(...) → .apply(...)* → .handle(...)`
-- Reaction: `.outputSchema(...) → .plugin(...)? → .store(...) → .apply(...)* → .handle(...)`
+- Reaction: `.outputSchema(...) → .plugin(...)? → .store(...) → .apply(...)* → (.handle(...) | .handleEachKey(...))`
+
+`createEventDefinition(type, schema, { keys })` declares the keys an Event carries (the IDs it is about). `.consistencyKeys(command => keys)` makes a Command's append conflict only with new Events of its applied types that carry one of those keys or none; declare every key the decision reads, and Scenarios check it. Without it, any new Event of an applied type conflicts. `.handleEachKey((state, key) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:key`), per key a commit carries; it must decide each key from that key's State alone.
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 
@@ -67,7 +69,7 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 - Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed.
 - Every registered Event Definition and Slice appears in executable Scenario coverage.
 - Command handlers emit only Event types authorized by accepted outcomes.
-- Query and Reaction `expect` values are final public values after output-schema transformation.
+- Query and Reaction `expect` values are final public values after output-schema transformation. A keyed Reaction's `expect` lists one effect per key the Given Events carry, in the order the keys first appear.
 - Specter freezes specification wrappers and arrays structurally; it does not clone or deep-freeze caller-owned payload values.
 
 ## Envelopes And Completion

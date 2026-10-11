@@ -31,6 +31,30 @@ Domain IDs and timestamps belong in the Command payload when they affect
 behavior. Create them at the initiating boundary. Do not treat Event Log IDs or
 `recordedAt` as domain values.
 
+### Event keys
+
+Slices fold Event types, not aggregates, but most facts are about something
+with an identity. An Event Definition may declare the keys its Events carry,
+derived from the payload:
+
+```ts
+export const todoRenamedEvent = createEventDefinition(
+  'todo-renamed',
+  z.object({ todoId: z.string(), title: z.string() }),
+  { keys: (payload) => [payload.todoId] },
+)
+```
+
+A key is an identity the fact is about, usually its aggregate's ID; a fact
+about several things carries several keys (a child Session's creation names
+the child and its parent). Keys are not stored: they are a function of the
+payload, so they cannot drift from it, and adding or changing them needs no
+migration. Equal strings are one key, whatever they name, so keys from
+different ID spaces that collide only cost extra conflicts. An Event whose
+type declares no keys, or whose keys are empty, is unkeyed. Two decisions use
+keys: a Command's [consistency keys](#command-consistency) and a
+[keyed Reaction](runtime.md#keyed-reactions).
+
 ## Catch-up, apply, and replay
 
 Each Slice registers apply handlers for the Event types that build its private
@@ -49,13 +73,47 @@ ascending and greater than the supplied cursor. Core raises
 
 ## Command consistency
 
-Command catch-up, decision, and append run inside one Event Log transaction.
-Core reads the current version and always appends with compare-and-swap against
-that same version. An adapter must serialize conflicting decisions or reject a
-stale append with `SpecterVersionConflictError`. When the caller passed no
-`expectedVersion`, a stale append only means another writer committed first, so
-core runs catch-up and the decision again against the new version (up to 32
-times) before surfacing the conflict.
+A Command decides from its private State, which is the fold of the Event
+types it applies and nothing else. Its append is therefore stale only when an
+Event it would have folded was appended after it read that State. Core appends
+with a compare-and-swap scoped to exactly that (`expectedUnchanged` on the
+Event Log): no Event of the types the Command applies may follow the order its
+State was folded to. Writers of other types never conflict with it, and a
+Command that applies nothing never conflicts. An adapter checks the condition
+under its append lock and rejects a stale append with
+`SpecterVersionConflictError`. A stale append only means another writer
+committed first, so core runs catch-up and the decision again (up to 32 times)
+before surfacing the conflict.
+
+Folds of the same types still conflict across aggregates: two Commands that
+both apply `todo-renamed` conflict even for different Todos. A Command whose
+decision reads only some aggregates' Events declares their keys, derived from
+its input:
+
+```ts
+export const renameTodo = implementCommand(specification)
+  .inputSchema(renameTodoSchema)
+  .consistencyKeys((command) => [command.todoId])
+  .store(RenameTodoStore)
+  .apply(todoAddedEvent, applyTodoAdded)
+  .apply(todoRenamedEvent, applyTodoRenamed)
+  .handle(handleRenameTodo)
+```
+
+Its append then conflicts only with a new Event of an applied type that
+carries one of those keys, or carries none: an unkeyed Event may concern any
+key. The re-decision on a stale append is scoped the same way.
+
+Declaring keys is a promise the runtime cannot check while it runs: the
+decision must depend only on the Events carrying those keys (or none). A
+Command that reads more, such as a parent's state, declares that key too
+(`[command.childId, command.parentId]`); one whose decision reads its whole
+fold, such as a limit across every Todo, declares no keys and keeps the
+type-scoped check. Without `consistencyKeys` the scoped check is the safe
+default. Executable Scenarios check the promise: each Scenario of a Command
+with consistency keys also runs with only the Given Events that carry one of
+its keys or none, and must reach the same outcome. A Scenario that shows the
+decision reading another key's Events fails with the keys it was missing.
 
 Callers can add two guards:
 
@@ -67,7 +125,8 @@ await app.command(
 ```
 
 - `expectedVersion` rejects a decision made against any other Event Log
-  version.
+  version: a whole-log compare-and-swap, which neither consistency keys nor
+  the retry apply to.
 - `idempotencyKey` stores a durable receipt with a fingerprint of the
   Command envelope. Repeating the key returns the first commit with
   `duplicate: true`, even for different input. With

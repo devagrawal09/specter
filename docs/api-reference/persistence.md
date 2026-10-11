@@ -172,6 +172,12 @@ lock. Outbox claims use row locking. Nested operations join active connection.
 - Commit State and cursor together; rollback both on failure.
 - Prevent visible cursor regression.
 - Persist every Event Log commit boundary for `commitsAfter`.
+- Check `expectedVersion` and `expectedUnchanged` under the append lock, after
+  the idempotency lookup; a stale append fails with a
+  `SpecterVersionConflictError` cause. The bundled adapters read the candidate
+  Events with the same type-and-order query as `query`.
+- Keys are not stored: core derives them from payloads, so no adapter schema
+  changes with them.
 
 ## Related documentation
 

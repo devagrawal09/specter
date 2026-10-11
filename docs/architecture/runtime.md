@@ -37,7 +37,7 @@ Construction has two halves:
 | Half | Work | Runs |
 | --- | --- | --- |
 | Per config | Conformance (names, uniqueness, Scenario examples against schemas, apply coverage, Event coverage) and the lookup maps derived from it | once per `events`/`slices` object pair |
-| Per log | Store resolution from the Layer, Reaction scheduler binding, Reaction catch-up, eager-Slice catch-up | once per app |
+| Per log | Store resolution from the Layer, Reaction scheduler binding, Reaction catch-up, eager-Slice catch-up | once per app (Plugins, scheduler binding and Reaction catch-up at `start` when [deferred](#when-reactions-start)) |
 
 The per-config half is cached by the identity of the `events` array and the
 `slices` record. Rebuilding the outer `{ events, slices }` object per app still
@@ -97,8 +97,11 @@ For `app.command(envelope, options)`, core:
 2. resolves an idempotent duplicate or reads current Event Log version;
 3. catches Command Slice State up in Store transaction;
 4. runs handler against committed read State outside Store transaction;
-5. validates emitted Event types and payloads;
-6. atomically appends with expected-version compare-and-swap;
+5. validates emitted Event types and payloads, and their keys;
+6. atomically appends with a compare-and-swap scoped to what the decision
+   read: the Event types the Command applies, narrowed to its consistency keys
+   when it declares them, or the whole log for a caller's `expectedVersion`
+   (see [Command consistency](event-sourcing.md#command-consistency));
 7. starts affected subscription invalidation and requests a Reaction pass.
 
 The outer Promise resolves with a durable commit receipt after the Reaction pass
@@ -195,6 +198,64 @@ cursor stay unapplied, as before. If the previous process crashed, commits of
 the newly applied type inside that unpublished tail become relevant and are
 delivered once with their usual `deliveryId`. Keep those deliveries idempotent,
 or shut the old process down cleanly first.
+
+### Keyed Reactions
+
+A Reaction completed with `.handle(state)` returns at most one output per
+relevant commit. A Reaction that tracks many independent things, such as one
+request per Session, would then have to pick one per commit, and the one it
+picks holds the others back. Complete it with `.handleEachKey` instead:
+
+```ts
+export const runStep = implementReaction(specification)
+  .outputSchema(runStepRequestSchema)
+  .plugin(runStepPlugin)
+  .store(RunStepStore)
+  .apply(executionStartedEvent, applyExecutionStarted)
+  .apply(stepSettledEvent, applyStepSettled)
+  .handleEachKey(async (state, sessionId) => requestFor(state, sessionId))
+```
+
+For each relevant commit, core runs the handler once for each distinct
+[Event key](event-sourcing.md#event-keys) the commit's relevant Events carry,
+in the order the keys first appear, all inside the one Slice Store
+transaction. Each output is its own delivery, with `deliveryId`
+`reaction:version:key`, so an outbox enqueues each as its own job. A key the
+commit does not carry is not handled: its State did not change, so its output
+cannot have. An Event that carries no keys runs no handler, and conformance
+rejects a keyed Reaction that applies an Event type declaring no keys.
+
+The handler must decide each key from that key's State alone, which is what
+lets core skip the others. Scenarios check it: a keyed Reaction's `expect`
+lists one output per key its Given Events carry, as if they were one commit,
+and each key's output must be the same from only the Given Events that carry
+that key.
+
+### When Reactions start
+
+By default the runtime starts its Reactions while it is made: Plugins
+initialize (an outbox worker starts with its Plugin), the scheduler binds, and
+every Reaction catches up with the log before the app is returned. A host
+whose Plugins need services composed after the runtime, because those
+services themselves record through it, makes the runtime with its Reactions
+held and starts them later:
+
+```ts
+const app = yield* makeSpecterRuntime(config, { reactions: 'deferred' })
+// Commands and Queries work now; compose what the Plugins need.
+yield* app.start.pipe(Effect.provideService(StepHost, stepHost))
+```
+
+Until `start`, a Command's `reactions` completes at once and the runtime only
+remembers how far the log has gone; no Plugin runs and no outbox job is
+claimed. The runtime requires the Plugins' services in `start`, not when it is
+made. `start` initializes every Plugin in the runtime's scope, binds the
+scheduler, runs every Reaction through the log as startup does, and then
+handles each commit as it lands. It runs once; a later call waits for the
+first. Only `makeSpecterRuntime` offers the option: `createSpecterApp` and
+`createSpecterAppLayer` always start their Reactions.
+
+### Scheduling
 
 The scheduler coordinates wakeups; it does not own Reaction correctness.
 Single-process apps use the default in-memory scheduler. Stateless or

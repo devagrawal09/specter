@@ -87,7 +87,7 @@ type ReactionScenario = {
 }
 ```
 
-A Reaction has no `when`: new Events and caught-up Slice State are its input. Use `[]` when the handler should return `undefined` and `[effect]` when it should return one effect. The expected effect is the public, post-output-schema value. A single handler run does not represent multiple effects.
+A Reaction has no `when`: new Events and caught-up Slice State are its input. Use `[]` when the handler should return `undefined` and `[effect]` when it should return one effect. The expected effect is the public, post-output-schema value. A keyed Reaction (`.handleEachKey`) decides once per key the Given Events carry, so its `expect` lists one effect per key that requests one, in the order the keys first appear: `[effectForA, effectForB]`.
 
 ## Scenario Events and Event Definitions
 
@@ -135,10 +135,10 @@ Complete each kind in its required order:
 
 | Slice kind | Required implementation order |
 | --- | --- |
-| Command | `inputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Command | `inputSchema(...)` → optional `consistencyKeys(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
 | Query | `inputSchema(...)` → `outputSchema(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
-| Same-app Command Reaction | `outputSchema(CommandEnvelopeSchema)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
-| Custom/external Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` |
+| Same-app Command Reaction | `outputSchema(CommandEnvelopeSchema)` → `store(...)` → zero or more `apply(...)` → `handle(...)` or `handleEachKey(...)` |
+| Custom/external Reaction | `outputSchema(...)` → `plugin(...)` → `store(...)` → zero or more `apply(...)` → `handle(...)` or `handleEachKey(...)` |
 
 Call the schema steps even when relying on type parameters instead of a runtime schema. A type-only schema choice improves TypeScript inference but performs no runtime validation.
 

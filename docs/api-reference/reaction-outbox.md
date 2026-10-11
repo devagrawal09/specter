@@ -27,8 +27,12 @@ const durablePlugin = withReactionOutbox(emailPlugin, {
 ```
 
 Wrapper enqueues `OutboxedReaction<TOutput> = { output, context }` under stable
-`deliveryId`. Slice cursor commits after enqueue. Scoped worker executes wrapped
-Plugin outside Slice transaction and resumes unfinished jobs at app startup.
+`deliveryId`. A keyed Reaction delivers one output per key a commit carries,
+each under its own `deliveryId` (`reaction:version:key`), so each is its own
+job, deduplicated on redelivery; with `concurrencyKey`, jobs for different keys
+run in parallel. Slice cursor commits after enqueue. Scoped worker executes wrapped
+Plugin outside Slice transaction and resumes unfinished jobs at app startup,
+or at `start` for a runtime whose Reactions are deferred.
 `withReactionOutbox<TOutput, R>` passes the same `ReactionPluginContext` to the
 wrapped Plugin and preserves its service requirements `R`. Because the worker
 runs outside the Slice transaction, the wrapped Plugin may call `query`.

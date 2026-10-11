@@ -66,6 +66,7 @@ Each Event Definition is the single runtime decoder for that type. Whole-app con
 | `unknown-scenario-event` | A Scenario Event type has no Event Definition in the supplied catalog. |
 | `event-payload-schema` | A Scenario Event payload fails its Event schema. |
 | `event-payload-transformation` | The Event schema changes, strips, coerces, or generates payload data. |
+| `event-keys` | The Event Definition's `keys` function does not return an array of strings for a Scenario Event's payload. |
 | `command-input-schema` | A Command Scenario's `when` example fails its input schema. |
 | `query-input-schema` | A Query Scenario's `when` example fails its input schema. |
 
@@ -80,6 +81,7 @@ Query and Reaction `expect` values are public post-output-schema values. Constru
 | `apply-event-definition-identity` | An apply registration uses a different Event Definition object than the exact instance in the catalog. |
 | `missing-apply-handler` | An Event appears in that Slice's Given data but has no matching apply handler. |
 | `extra-apply-handler` | A Slice applies an Event that never appears in its Given data. |
+| `keyed-reaction-unkeyed-event` | A keyed Reaction (`.handleEachKey`) applies an Event type whose definition declares no keys, which could never run its handler. |
 
 These checks keep each Slice's declared history and projection code in lockstep. They also make a focused test's Event requirements derivable with `eventsFor(slice, fullCatalog)`.
 
@@ -92,7 +94,8 @@ Construction cannot execute arbitrary handlers or predict adapter behavior. The 
 - **Input and output schemas:** Command and Query inputs are decoded before their handlers; Query and Reaction outputs are decoded afterward. Failures become the corresponding public input or output error.
 - **Persisted Event decoding:** emitted and replayed payloads must pass the registered Event schema without transformation. Unknown Event types fail closed.
 - **Event Log order:** query results must have unique, strictly increasing safe-integer orders greater than the requested cursor.
-- **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Append compares against the exact version used for the decision, even if the caller did not provide `expectedVersion`.
+- **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Without a caller `expectedVersion`, append is stale only when an Event of a type the Command applies, carrying one of its consistency keys or none when it declares them, was appended after its State was read; core then decides again, up to 32 times. A caller `expectedVersion` compares against the whole log.
+- **Event keys:** every emitted Event's keys must be an array of strings, checked before the append.
 - **Idempotency:** a repeated key returns the earlier commit with `duplicate: true`, even for a different envelope. With `idempotencyMode: 'exact'`, using that key for a different canonical envelope throws `SpecterIdempotencyConflictError`.
 - **Command outcomes:** a Command that returns no Events is rejected. Every emitted Event type must appear in at least one accepted Scenario outcome for that Command.
 - **Projection publication:** Slice State changes remain staged until the cursor advances. Failed projections are disposable and replayable from the authoritative Event Log.

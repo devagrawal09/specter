@@ -36,7 +36,7 @@ CLI, strict validation, canonical serialization, and SHA-256 digests.
 | `RejectedCommandScenario<TWhen>` | A Command Scenario with no expected Events and its exact rejection reason. |
 | `CommandScenario<TWhen>` | Union of accepted and rejected Command Scenarios. |
 | `QueryScenario<TWhen, TExpect>` | A Query Scenario with Given Events, Query input, and final public output. |
-| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and zero or one expected Plugin effect for one handler run. The current array type is broader than the executable cardinality. |
+| `ReactionScenario<TPayload>` | A Reaction Scenario with Given Events and the expected Plugin effects: zero or one, or for a keyed Reaction zero or one per key the Given Events carry, in the order the keys first appear. |
 | `ScenarioEvent<TType, TPayload>` | Branded exact Event example returned by `event(...)`. |
 | `NonEmptyScenarios<TScenario>` | Tuple requiring at least one Scenario. |
 | `CommandSliceSpecification<TName, TScenarios>` | Portable immutable Command specification data. |
@@ -166,7 +166,11 @@ export default createReactionSlice(
 ```
 
 Reaction `expect` values are the final values passed to the Reaction Plugin
-after output transformation. An empty array means no effect is requested.
+after output transformation. An empty array means no effect is requested. A
+keyed Reaction (`.handleEachKey`) requests at most one effect per key, so its
+Scenarios list one per key the Given Events carry, in the order the keys
+first appear, as if the Given Events were one commit. The format is the same
+for both; only the implementation says whether a Reaction is keyed.
 
 ## Constraints
 

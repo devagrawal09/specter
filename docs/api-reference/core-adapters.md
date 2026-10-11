@@ -12,10 +12,29 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | `EventLogService` | `query`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
 | `EventLogCommit` | Durable Events, commit version/time, optional idempotency metadata. |
 | `EventLogAppendResult` | Commit plus `duplicate`. |
+| `EventLogAppendOptions` | `expectedVersion`, `expectedUnchanged`, `idempotencyKey`, `fingerprint`. |
+| `EventLogAppendCondition` | `{ afterOrder, eventTypes, matches? }`: what a decision read. |
 | `EventLogFailure` | Typed operation failure. |
 
-`append` atomically checks expected version, assigns Event orders, writes Events,
-and records commit boundary. Every append creates commit receipt, including
+`append` atomically checks its compare-and-swap, assigns Event orders, writes
+Events, and records commit boundary. Two forms of compare-and-swap exist:
+
+- `expectedVersion`: stale unless the log is at exactly that version (a
+  caller's whole-log check).
+- `expectedUnchanged: { afterOrder, eventTypes, matches? }`: stale when an
+  Event of one of `eventTypes` with an order above `afterOrder` is in the log
+  and `matches(event)` (every such Event, when `matches` is omitted). The
+  runtime uses it for every Command without a caller `expectedVersion`:
+  `eventTypes` are the types the Command applies, and `matches` keeps the
+  Events carrying one of its consistency keys or none. `matches` is a function
+  of the stored Event, so an adapter reads the candidate Events (an indexed
+  query by type and order) and filters them in process.
+
+Either check runs under the same lock as the write, and a stale append fails
+with `EventLogFailure('append')` whose cause is a
+`SpecterVersionConflictError`, which the runtime retries. An adapter that
+ignores `expectedUnchanged` would let conflicting decisions through, so the
+Event Log conformance checks it. Every append creates commit receipt, including
 commands without idempotency key. `findCommit(key)` resolves idempotency receipt.
 When `append` receives a known idempotency key, it appends nothing and returns
 the stored commit, including its original fingerprint, with `duplicate: true`
@@ -70,6 +89,9 @@ or last-write-wins publication internally, but cannot rerun developer code.
 | --- | --- |
 | `ReactionScheduler` | Optional Effect Reference with a process-local default. |
 | `ReactionSchedulerService` | Binds one executor; `schedule(throughOrder)` acknowledges acceptance and returns a separate completion Effect. |
+| `ReactionSchedulerBinding<E>` | What `bind` receives: `{ execute }`, the executor run for each scheduled boundary. |
+| `BoundReactionScheduler<E>` | What `bind` returns: `{ schedule }`. |
+| `ReactionExecutor<E>` | `(context: ReactionScheduleContext) => Effect<void, E>`. |
 | `ReactionSchedulerFailure` | Typed bind, scheduling, or completion failure. |
 
 Event Log commits and Reaction Slice cursors own correctness. A scheduler only

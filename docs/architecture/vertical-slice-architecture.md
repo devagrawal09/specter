@@ -75,11 +75,16 @@ implementations without turning projections into shared mutable models.
 The Slice kind determines the completion stages:
 
 ```text
-Command:  inputSchema -> store -> apply* -> handle
+Command:  inputSchema -> consistencyKeys? -> store -> apply* -> handle
 Query:    inputSchema -> outputSchema -> store -> apply* -> handle
-Same-app Command Reaction: outputSchema -> store -> apply* -> handle
-Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle
+Same-app Command Reaction: outputSchema -> store -> apply* -> handle | handleEachKey
+Custom Reaction: outputSchema -> plugin -> store -> apply* -> handle | handleEachKey
 ```
+
+`consistencyKeys` names the [Event keys](event-sourcing.md#event-keys) a
+Command's decision reads, so its append conflicts only with Events carrying
+them. `handleEachKey` completes a [keyed Reaction](runtime.md#keyed-reactions),
+which decides once per key a commit's Events carry.
 
 Calling `inputSchema<Type>()` or `outputSchema<Type>()` provides static typing
 only. Passing a Standard Schema also performs runtime validation and

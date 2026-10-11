@@ -17,7 +17,7 @@ network transport and no application database schema.
 
 | Export | Purpose |
 | --- | --- |
-| `createEventDefinition(type, schema)` | Defines a kebab-case Event and creates/decodes its exact payload. |
+| `createEventDefinition(type, schema, options?)` | Defines a kebab-case Event and creates/decodes its exact payload. `options.keys(payload)` declares the [Event keys](../architecture/event-sourcing.md#event-keys) each Event carries. |
 | `eventsFor(slice, fullCatalog)` | Selects the Event Definitions one Slice needs: Given/apply Events and accepted Command outcomes. An app that registers some Slices of a larger catalog registers the union over its Slices. |
 | `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
 | `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
@@ -30,7 +30,7 @@ network transport and no application database schema.
 | `SpecterInvalidInputError` | A Command or Query input schema rejected its payload. |
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
 | `SpecterCommandRejectedError` | A Command handler rejected an intent or emitted no Events. |
-| `SpecterVersionConflictError` | `expectedVersion` did not match the Event Log version, or the runtime compare-and-swap kept losing to other writers after its retries. |
+| `SpecterVersionConflictError` | `expectedVersion` did not match the Event Log version, or the runtime's scoped compare-and-swap kept losing to writers of Events the decision read, after its retries. |
 | `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
 | `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
@@ -64,14 +64,15 @@ network transport and no application database schema.
 | `EventDraft` | Domain `type` and `payload` before persistence metadata is assigned. |
 | `Event` | An Event draft plus Event Log `id` and ISO `recordedAt`. |
 | `PersistedEvent` | An `Event` plus its unique global `order`. |
-| `EventDefinition` | Event type, Standard Schema, typed `create`, and async `decode`. |
+| `EventDefinition` | Event type, Standard Schema, typed `create`, async `decode`, and optional `keys(payload)`. |
+| `EventDefinitionOptions` | Optional `keys(payload)` returning the Event's keys as strings. |
 | `ApplyEventDefinition` | Structural Event Definition accepted by an apply registration or catalog. |
 | `EventForDefinition<T>` | Infers the typed `Event` produced by an Event Definition. |
 | `ApplyRegistration` | An Event Definition and its async State apply handler. |
 | `CommandEnvelope` | Generic `{ type, payload }` Command envelope. |
-| `CommandSlice` | Completed Command Slice implementation type. |
+| `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys(command)` names the Event keys its decision reads. |
 | `QuerySlice` | Completed Query Slice implementation type. |
-| `ReactionSlice` | Completed Reaction Slice implementation type. |
+| `ReactionSlice` | Completed Reaction Slice implementation type; `keyed` is `true` for one completed with `.handleEachKey`. |
 | `SliceRegistration` | Heterogeneous union accepted by an app's Slice registry. |
 | `CommandInputOf<T>` | Infers a Command Slice's public input. |
 | `QueryInputOf<T>` | Infers a Query Slice's public input. |
@@ -85,6 +86,7 @@ network transport and no application database schema.
 | `QueryDispatch` | Plugin capability `query(querySlice, input)` returning the decoded Query output; the Slice must be the registered instance; rejected permanently inside a direct Plugin's Reaction transaction. |
 | `SpecterEffectError` | Union of public runtime failures; the error channel of Plugin `command` and `query`. |
 | `ReactionPluginContext` | `{ command, query }` passed once to a Plugin factory. |
+| `ReactionDeliveryContext` | `deliveryId` (`reaction:version`, or `reaction:version:key` for a keyed Reaction), `throughOrder`, and `scheduledAt`. |
 | `ReactionExec` | Effect executor called with output and commit-stable delivery context. |
 | `ReactionPlugin<TOutput, R>` | Optional Effect factory for custom/external output; `R` lists app services it reads. Same-app `CommandEnvelope` output uses default dispatcher. |
 | `ReactionPluginRequirements<T>` | Infers a Reaction Slice's Plugin service requirements, excluding `Scope`. |
@@ -209,6 +211,38 @@ in both modes and passes that same decoded value to the handler. The key lookup
 runs before the `expectedVersion` check, so a duplicate never reports a version
 conflict. See [Runtime](../architecture/runtime.md#idempotency).
 
+## Consistency keys and keyed Reactions
+
+A Command appends with a compare-and-swap scoped to what it read: the Event
+types it applies. Declaring `consistencyKeys` narrows it to the Events that
+carry one of the returned keys or carry none:
+
+```ts
+import { createEventDefinition, implementCommand } from '@specter-ts/core'
+
+export const todoRenamed = createEventDefinition('todo-renamed', schema, {
+  keys: (payload) => [payload.todoId],
+})
+
+export const renameTodo = implementCommand(specification)
+  .inputSchema(renameTodoSchema)
+  .consistencyKeys((command) => [command.todoId])
+  .store(RenameTodoStore)
+  .apply(todoRenamed, applyTodoRenamed)
+  .handle(handleRenameTodo)
+```
+
+A stale append still runs catch-up and the decision again, up to 32 times,
+scoped the same way. Key functions must return arrays of strings; core checks
+every emitted Event's keys before the append. Scenario runners hold a Command
+with consistency keys to its promise; see
+[Command consistency](../architecture/event-sourcing.md#command-consistency).
+
+A Reaction completed with `.handleEachKey((state, key) => output)` runs once
+for each key the relevant commit's Events carry, each output its own delivery
+(`reaction:version:key`). Every Event type it applies must declare keys. See
+[Keyed Reactions](../architecture/runtime.md#keyed-reactions).
+
 ## Effect runtime
 
 Import Effect integration from `@specter-ts/core/effect`. Specifications remain
@@ -236,6 +270,22 @@ Effect `Stream` values. `createSpecterPromiseApp(config, dependencies)` is
 synchronous Promise boundary: it does not wait for startup, so any
 construction failure, including a raw config's conformance failure, rejects
 its first and every later operation instead.
+
+`makeSpecterRuntime(config, { reactions: 'deferred' })` makes the runtime with
+its Reactions held and returns a `SpecterDeferredEffectApp`: the Effect app
+plus `start`, an Effect that requires the Plugins' services
+(`SpecterPluginRequirements<TConfig>`), which the runtime itself then does not
+(`SpecterDeferredRuntimeRequirements<TConfig>`). Until `start`, a Command's
+`reactions` completes at once. `start` initializes every Plugin in the
+runtime's scope, binds the scheduler and runs every Reaction through the log,
+once; a later call waits for the first. See
+[When Reactions start](../architecture/runtime.md#when-reactions-start).
+
+```ts
+const app = yield* makeSpecterRuntime(config, { reactions: 'deferred' })
+yield* app.command(envelope) // its Reactions wait for start
+yield* app.start.pipe(Effect.provideService(Notifier, notifier))
+```
 
 `prepareSpecterRuntime(config)` is the Effect form of `prepareSpecterApp`. It
 fails with `SpecterConformanceError` and shares the same per-config cache. Each

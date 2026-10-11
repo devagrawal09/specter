@@ -16,7 +16,7 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. Re-exported from `@specter-ts/core`, where application code imports it. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
-| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, and filtered queries. |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, filtered queries, and the scoped compare-and-swap (`expectedUnchanged`, with and without `matches`). |
 | `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, and one-shot callbacks. |
 | `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
 | `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |
@@ -27,7 +27,7 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | --- | --- |
 | `CommandScenario` | Accepted or rejected Command example with `given`, `when`, and Event `expect` values. |
 | `QueryScenario` | Query example with `given`, `when`, and a public output `expect` value. |
-| `ReactionScenario` | Reaction example with `given` and zero or one expected public effect. |
+| `ReactionScenario` | Reaction example with `given` and zero or one expected public effect, or one per key for a keyed Reaction. |
 | `ScenarioEvent` | Branded Event example created by `event(type, payload)`. |
 | `ScenarioTestOptions` | Test configuration: `events` plus an optional `runScenario` isolation wrapper. |
 | `EventPropagationInput` | Event Definition catalog and completed Slice registry to analyze. |
@@ -41,9 +41,13 @@ Both test runners first call the same conformance check used to construct an app
 
 1. `replay` validates each Scenario Event against its registered Event Definition, assigns deterministic test metadata, and calls matching apply handlers.
 2. The runner loads the Slice's read state and validates/transforms the `when` input when an input schema exists.
-3. A Command handler must either throw or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`.
+3. A Command handler must either throw or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`, and a keyed Reaction one per key the Given Events carry, in the order the keys first appear.
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.
 5. The runner compares exact values with `expect(...).toEqual(...)`.
+6. A Command with consistency keys runs the Scenario again with only the Given Events that carry one of its keys (computed from the decoded `when`) or carry none, and must reach the same outcome. A keyed Reaction runs each key again with only the Given Events carrying that key, and must request the same effect. Either failure names the keys and the Scenario.
+
+Step 6 calls `runScenario` more than once per Scenario, so each call must start
+from empty Slice State.
 
 `runScenario` receives Effect program and wraps whole replay-and-execute
 operation. Use it to provide Store Layers, create a transaction, reset memory
@@ -110,7 +114,7 @@ The report is static: it reads the supplied executable registry and does not dis
 - Accepted Command Events must match the exact ordered payloads declared in `expect` and must be authorized by at least one accepted Scenario outcome.
 - A rejected Command Scenario expects the handler to throw. When `reject.reason` is present, the error message must match it.
 - Query and Reaction expectations are public post-schema values. The actual handler output is decoded once and compared directly with `expect`.
-- A Reaction Scenario represents zero effects with `[]` and one effect with `[effect]`; one handler execution cannot assert multiple effects.
+- A Reaction Scenario represents zero effects with `[]` and one effect with `[effect]`. A keyed Reaction's Scenario lists one effect per key that requests one, in the order the keys first appear in `given`.
 
 ## Related documentation
 

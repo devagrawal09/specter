@@ -33,7 +33,8 @@ idempotency key. Under the default `first-wins` mode they may come from a
 different payload than the one this call dispatched.
 
 Core initializes and caches executor during app construction, inside the app
-scope. For each Event Log commit containing an Event type the Reaction applies,
+scope, or at `start` for a runtime made with `reactions: 'deferred'` (see
+[When Reactions start](runtime.md#when-reactions-start)). For each Event Log commit containing an Event type the Reaction applies,
 Reaction Store transaction applies Events, runs handler, validates output,
 executes Plugin, then advances cursor. Failure rolls back State and cursor.
 Other commits run no handler or Plugin and open no transaction.
@@ -152,7 +153,7 @@ joins nested command work to active Reaction transaction.
 
 | Field | Meaning |
 | --- | --- |
-| `deliveryId` | Stable `reactionName:commitVersion`; use for idempotency. |
+| `deliveryId` | Stable `reactionName:commitVersion`, or `reactionName:commitVersion:key` for a [keyed Reaction](runtime.md#keyed-reactions); use for idempotency. |
 | `throughOrder` | Relevant Event Log commit version being processed. |
 | `scheduledAt` | Durable Event Log commit timestamp. |
 
@@ -178,7 +179,8 @@ with leases/backoff, dead-letters exhausted jobs, and supports replay.
 ## Invariants
 
 - Handler remains deterministic from caught-up Slice State.
-- One Reaction commit produces zero or one output.
+- One Reaction commit produces zero or one output; a keyed Reaction's commit
+  produces zero or one per key its Events carry, each its own delivery.
 - Return `undefined` for no output.
 - Use runtime output schema at untrusted integration boundary.
 - Treat direct external Plugin as at-least-once across crash window.
