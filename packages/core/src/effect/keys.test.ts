@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec'
-import { Effect, Layer, type Scope } from 'effect'
+import { Context, Effect, Layer, type Scope } from 'effect'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -411,5 +411,86 @@ describe('keyed Reactions', () => {
         (diagnostic) => diagnostic.code,
       ),
     ).toContain('keyed-reaction-unkeyed-event')
+  })
+})
+
+class Notifier extends Context.Service<
+  Notifier,
+  { readonly notify: (item: Item) => void }
+>()('specter-keys-test/Notifier') {}
+
+describe('deferred Reactions', () => {
+  it('holds Reactions until start, which supplies Plugin services and runs them through the log', async () => {
+    const log = makeLog()
+    const notified: Item[] = []
+    let initialized = 0
+    const store = createTestSliceStore<{ latest?: Item }>({})
+    const notifyPlugin: ReactionPlugin<Item, Notifier> = () =>
+      Effect.gen(function* () {
+        initialized += 1
+        const notifier = yield* Notifier
+        return (item) => Effect.sync(() => notifier.notify(item))
+      })
+    const notify = createReactionSlice('notifyItem')
+      .description('Notifies the latest changed item.')
+      .scenarios({
+        description: 'Notifies a changed item.',
+        given: [event('item-changed', { itemId: 'a', value: 1 })],
+        expect: [{ itemId: 'a', value: 1 }],
+      })
+      .outputSchema<Item>()
+      .plugin(notifyPlugin)
+      .store(store.tag)
+      .apply(itemChanged, async (changed, state) => {
+        state.latest = changed.payload
+      })
+      .handle(async (state) => state.latest)
+    const { slice, store: commandStore } = changeItem({ keyed: true })
+    await run(
+      Effect.gen(function* () {
+        // No Notifier here: the deferred runtime does not need it.
+        const app = yield* makeSpecterRuntime(
+          {
+            events: [itemChanged, itemReset],
+            slices: { changeItem: slice, notifyItem: notify },
+          } as const,
+          { reactions: 'deferred' },
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, log.service),
+              store.layer,
+              commandStore.layer,
+            ),
+          ),
+        )
+        const before = yield* app.command({
+          type: 'changeItem',
+          payload: { itemId: 'a', value: 1 },
+        })
+        // Completes at once, having run nothing.
+        yield* before.reactions
+        expect(initialized).toBe(0)
+        expect(notified).toEqual([])
+
+        const notifier = Notifier.of({ notify: (item) => notified.push(item) })
+        yield* app.start.pipe(Effect.provideService(Notifier, notifier))
+        expect(initialized).toBe(1)
+        expect(notified).toEqual([{ itemId: 'a', value: 1 }])
+
+        const after = yield* app.command({
+          type: 'changeItem',
+          payload: { itemId: 'b', value: 2 },
+        })
+        yield* after.reactions
+        // Starting again changes nothing.
+        yield* app.start.pipe(Effect.provideService(Notifier, notifier))
+        expect(initialized).toBe(1)
+        expect(notified).toEqual([
+          { itemId: 'a', value: 1 },
+          { itemId: 'b', value: 2 },
+        ])
+      }),
+    )
   })
 })

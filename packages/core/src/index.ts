@@ -80,6 +80,7 @@ export type {
   SpecterQueryType,
 } from './runtime'
 export type {
+  BoundReactionScheduler,
   EventLogAppendCondition,
   EventLogAppendOptions,
   EventLogAppendResult,
@@ -87,6 +88,7 @@ export type {
   EventLogService,
   ReactionExecutor,
   ReactionScheduleContext,
+  ReactionSchedulerBinding,
   ReactionSchedulerService,
   SliceStoreError,
   SliceStoreRead,

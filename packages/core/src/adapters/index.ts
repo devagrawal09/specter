@@ -7,8 +7,10 @@ export type {
 } from './event-log'
 export { EventLog, EventLogFailure } from './event-log'
 export type {
+  BoundReactionScheduler,
   ReactionExecutor,
   ReactionScheduleContext,
+  ReactionSchedulerBinding,
   ReactionSchedulerService,
 } from './reaction-scheduler'
 export {

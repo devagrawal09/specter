@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from 'effect'
+import { Context, Effect, Layer, type Scope } from 'effect'
 
 import {
   createSpecterApp,
@@ -15,7 +15,11 @@ import {
   createReactionSlice,
   event,
 } from '@specter-ts/spec'
-import { createSpecterAppLayer, prepareSpecterRuntime } from './runtime'
+import {
+  createSpecterAppLayer,
+  makeSpecterRuntime,
+  prepareSpecterRuntime,
+} from './runtime'
 
 type Equal<TLeft, TRight> =
   (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
@@ -106,6 +110,36 @@ export type PluginRuntimeRequirements = Expect<
   Equal<
     Layer.Services<typeof pluginRuntimeLayer>,
     RuntimeTypeStore | ValueNotifier | EventLog
+  >
+>
+
+// Deferred Reactions: the runtime needs no Plugin service; `start` does.
+const deferredRuntime = makeSpecterRuntime(pluginConfig, {
+  reactions: 'deferred',
+})
+export type DeferredRuntimeRequirements = Expect<
+  Equal<
+    Effect.Services<typeof deferredRuntime>,
+    RuntimeTypeStore | EventLog | Scope.Scope
+  >
+>
+export type DeferredStartRequirements = Expect<
+  Equal<
+    Effect.Services<Effect.Success<typeof deferredRuntime>['start']>,
+    ValueNotifier
+  >
+>
+const startedRuntime = makeSpecterRuntime(pluginConfig)
+export type StartedRuntimeRequirements = Expect<
+  Equal<
+    Effect.Services<typeof startedRuntime>,
+    RuntimeTypeStore | ValueNotifier | EventLog | Scope.Scope
+  >
+>
+export type StartedRuntimeHasNoStart = Expect<
+  Equal<
+    'start' extends keyof Effect.Success<typeof startedRuntime> ? true : false,
+    false
   >
 >
 

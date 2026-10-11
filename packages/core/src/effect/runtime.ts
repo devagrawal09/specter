@@ -1,6 +1,7 @@
 import {
   Cause,
   Context,
+  Deferred,
   Effect,
   Exit,
   Fiber,
@@ -8,10 +9,12 @@ import {
   ManagedRuntime,
   Option,
   Queue,
+  Scope,
   Stream,
 } from 'effect'
 
 import {
+  type BoundReactionScheduler,
   EventLog,
   type EventLogAppendCondition,
   type EventLogAppendResult,
@@ -109,6 +112,14 @@ export type SpecterRuntimeRequirements<TConfig extends SpecterAppConfig> =
   | SpecterPluginRequirements<TConfig>
   | EventLog
 
+/**
+ * What a runtime made with `reactions: 'deferred'` needs: Plugin services are
+ * required by `start` instead.
+ */
+export type SpecterDeferredRuntimeRequirements<
+  TConfig extends SpecterAppConfig,
+> = SpecterStoreRequirements<TConfig> | EventLog
+
 export type SpecterEffectCommandExecution = Omit<
   CommandExecution,
   'reactions'
@@ -134,6 +145,26 @@ export type SpecterEffectApp<TConfig extends SpecterAppConfig> = {
     SpecterEffectError
   >
 }
+
+/**
+ * A runtime made with `reactions: 'deferred'`. Commands and Queries work at
+ * once; Reactions are held until `start`.
+ */
+export type SpecterDeferredEffectApp<TConfig extends SpecterAppConfig> =
+  SpecterEffectApp<TConfig> & {
+    /**
+     * Initializes every Reaction Plugin with the services it reads (an outbox
+     * worker starts here), binds the Reaction scheduler, and runs every
+     * Reaction through the log, as startup does without the option. Later
+     * commits then run as they land. Runs once: a later call waits for the
+     * first and shares its outcome.
+     */
+    readonly start: Effect.Effect<
+      void,
+      SpecterEffectError,
+      SpecterPluginRequirements<TConfig>
+    >
+  }
 
 export type SpecterRuntimeService = {
   readonly command: (
@@ -383,18 +414,42 @@ export type SpecterRuntimeOptions = {
   /**
    * `"all"` catches every Command and Query Slice up to the log at startup,
    * as an eager Slice is, instead of each when it is first used. Reactions
-   * always catch up at startup.
+   * always catch up when they start.
    */
   readonly catchUp?: 'eager' | 'all'
+  /**
+   * `"deferred"` makes the runtime with its Reactions held: no Plugin is
+   * initialized and no scheduler is bound until the returned app's `start`.
+   * Until then a Command's `reactions` completes at once, and the runtime
+   * only remembers how far the log has gone. Plugin services are then
+   * required by `start`, not by the runtime. Defaults to `"started"`.
+   */
+  readonly reactions?: 'started' | 'deferred'
 }
 
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
   config: TConfig | PreparedSpecterApp<TConfig>,
-  options: SpecterRuntimeOptions = {},
+  options: SpecterRuntimeOptions & { readonly reactions: 'deferred' },
+): Effect.Effect<
+  SpecterDeferredEffectApp<TConfig>,
+  SpecterEffectError,
+  SpecterDeferredRuntimeRequirements<TConfig> | Scope.Scope
+>
+export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
+  options?: SpecterRuntimeOptions & { readonly reactions?: 'started' },
 ): Effect.Effect<
   SpecterEffectApp<TConfig>,
   SpecterEffectError,
-  SpecterRuntimeRequirements<TConfig> | import('effect').Scope.Scope
+  SpecterRuntimeRequirements<TConfig> | Scope.Scope
+>
+export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
+  config: TConfig | PreparedSpecterApp<TConfig>,
+  options: SpecterRuntimeOptions = {},
+): Effect.Effect<
+  SpecterEffectApp<TConfig> | SpecterDeferredEffectApp<TConfig>,
+  SpecterEffectError,
+  SpecterRuntimeRequirements<TConfig> | Scope.Scope
 > {
   return Effect.gen(function* () {
     const {
@@ -414,10 +469,18 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     const services = yield* Effect.context<
       SpecterStoreRequirements<TConfig> | SpecterPluginRequirements<TConfig>
     >()
+    // What Plugin factories run with: the runtime's services, joined by those
+    // `start` supplies when Reactions are deferred.
+    let pluginServices = services
     const stores = new Map<SliceRegistration, ResolvedStore>()
     const reactionExecs = new Map<string, ReactionExec>()
     const reactionSkips = new Map<string, ReactionSkip>()
     const subscriptions = new Set<Subscription>()
+    let reactionScheduler:
+      | BoundReactionScheduler<ReactionRunFailure>
+      | undefined
+    // While Reactions are held: the newest commit a Command made.
+    let heldThrough = 0
 
     for (const slice of slices) {
       stores.set(slice, yield* resolveStore(slice, services))
@@ -437,12 +500,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       ),
     )
 
-    yield* Effect.forEach(reactions.values(), getReactionExec, {
-      discard: true,
-    })
-
-    // Registered before the scheduler binds, so it runs after Reaction work
-    // stops: a graceful shutdown leaves no skipped tail to re-read.
+    // Registered before Plugins initialize and the scheduler binds, so it
+    // runs after Reaction work stops: a graceful shutdown leaves no skipped
+    // tail to re-read.
     yield* Effect.addFinalizer(() =>
       Effect.forEach(
         [...reactionSkips],
@@ -458,18 +518,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       ),
     )
 
-    const reactionScheduler =
-      reactions.size === 0
-        ? undefined
-        : yield* scheduler.bind({
-            execute: runReactions,
-          })
-
-    if (reactionScheduler) {
-      const currentVersion = yield* eventLog.currentVersion
-      const completion = yield* reactionScheduler.schedule(currentVersion)
-      yield* completion
-    }
+    const deferred = options.reactions === 'deferred'
+    if (!deferred) yield* startReactions()
 
     for (const slice of options.catchUp === 'all'
       ? slices.filter((slice) => slice.kind !== 'reaction')
@@ -477,12 +527,55 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       yield* catchUpSlice(slice)
     }
 
-    const runtime: SpecterRuntimeService = Object.freeze({
+    const started = yield* Deferred.make<void, SpecterEffectError>()
+    let starting = false
+    const start = Effect.suspend(() => {
+      if (starting) return Deferred.await(started)
+      starting = true
+      return Effect.context<never>().pipe(
+        Effect.flatMap((context) => {
+          // The runtime's scope owns what Plugins and the scheduler acquire,
+          // whatever scope the caller of `start` runs in.
+          pluginServices = Context.add(
+            Context.merge(services, context),
+            Scope.Scope,
+            scope,
+          ) as typeof services
+          return startReactions()
+        }),
+        Effect.onExit((exit) => Deferred.done(started, exit)),
+      )
+    })
+
+    const runtime = Object.freeze({
       command: dispatchCommand,
       query: dispatchQuery,
       subscribe: dispatchSubscription,
+      ...(deferred ? { start } : {}),
     })
-    return runtime as unknown as SpecterEffectApp<TConfig>
+    return runtime as unknown as SpecterDeferredEffectApp<TConfig>
+
+    /**
+     * Initializes every Plugin, binds the scheduler, and runs every Reaction
+     * through the log.
+     */
+    function startReactions(): Effect.Effect<void, SpecterEffectError> {
+      return Effect.gen(function* () {
+        yield* Effect.forEach(reactions.values(), getReactionExec, {
+          discard: true,
+        })
+        if (reactions.size === 0) return
+        const bound = yield* scheduler
+          .bind({ execute: runReactions })
+          .pipe(Effect.provideService(Scope.Scope, scope))
+        reactionScheduler = bound
+        // Read after binding: a commit before it is covered here, and one
+        // after it schedules itself.
+        const through = Math.max(heldThrough, yield* eventLog.currentVersion)
+        const completion = yield* bound.schedule(through)
+        yield* completion
+      })
+    }
 
     function dispatchCommand(
       envelope: CommandEnvelope,
@@ -523,8 +616,11 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             })
 
             yield* invalidateSubscriptions(commit.events)
-            const scheduled = reactionScheduler
-              ? yield* Effect.result(reactionScheduler.schedule(commit.version))
+            const bound = reactionScheduler
+            // Reactions held: remember how far the log has gone.
+            if (!bound) heldThrough = Math.max(heldThrough, commit.version)
+            const scheduled = bound
+              ? yield* Effect.result(bound.schedule(commit.version))
               : undefined
             const completion =
               scheduled?._tag === 'Failure'
@@ -1320,7 +1416,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
               cause,
             ),
         ),
-        Effect.provide(services),
+        Effect.provide(pluginServices),
       ) as Effect.Effect<ReactionExec, SpecterEffectError>
     }
 
@@ -1400,7 +1496,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
 export function createSpecterAppLayer<const TConfig extends SpecterAppConfig>(
   config: TConfig | PreparedSpecterApp<TConfig>,
-  options: SpecterRuntimeOptions = {},
+  options: SpecterRuntimeOptions & { readonly reactions?: 'started' } = {},
 ): Layer.Layer<
   SpecterRuntime,
   SpecterEffectError,

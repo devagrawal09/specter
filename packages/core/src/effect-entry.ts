@@ -6,6 +6,8 @@ export {
   SpecterRuntime,
 } from './effect/runtime'
 export type {
+  SpecterDeferredEffectApp,
+  SpecterDeferredRuntimeRequirements,
   SpecterEffectApp,
   SpecterEffectCommandExecution,
   SpecterEffectError,
