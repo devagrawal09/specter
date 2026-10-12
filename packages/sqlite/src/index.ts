@@ -1,10 +1,12 @@
 export {
+  createNodeSqliteDatabaseContext,
   createSqlClientDatabaseContext,
   createSqliteDatabaseContext,
   SqliteDatabaseFailure,
   type LibsqlClient,
   type LibsqlConnection,
   type LibsqlDatabaseContext,
+  type NodeSqliteDatabase,
   type SqlClientDatabaseOptions,
   type SqliteDatabaseContext,
   type SqliteRow,

@@ -222,6 +222,114 @@ export function createSqlClientDatabaseContext(
   }
 }
 
+/** What Specter uses of a `node:sqlite` `DatabaseSync`. */
+export type NodeSqliteDatabase = {
+  exec(sql: string): void
+  prepare(sql: string): {
+    all(...params: SqliteValue[]): readonly SqliteRow[]
+  }
+}
+
+type ActiveNodeSqliteTransaction = {
+  readonly owner: object
+  active: boolean
+}
+
+const ActiveNodeSqliteTransaction =
+  Context.Service<ActiveNodeSqliteTransaction>(
+    '@specter-ts/sqlite/ActiveNodeTransaction',
+  )
+
+/**
+ * The database over one `node:sqlite` connection (`DatabaseSync`), which
+ * the host opens and closes. It has one connection, so its transactions
+ * (`BEGIN IMMEDIATE`) are serialized in the process and nest by joining the
+ * active one, and a statement run outside a transaction waits for the
+ * active one to end rather than run inside it. `use` gives the host the
+ * `DatabaseSync`.
+ */
+export function createNodeSqliteDatabaseContext<
+  TDatabase extends NodeSqliteDatabase,
+>(database: TDatabase): SqliteDatabaseContext<TDatabase> {
+  const semaphore = Semaphore.makeUnsafe(1)
+  const owner = {}
+
+  const inTransaction = Effect.contextWith<never, boolean, never, never>(
+    (services) => {
+      const active = Context.getOption(services, ActiveNodeSqliteTransaction)
+      return Effect.succeed(
+        Option.isSome(active) &&
+          active.value.owner === owner &&
+          active.value.active,
+      )
+    },
+  )
+
+  const exec = (
+    sql: string,
+    operation: 'begin' | 'commit' | 'rollback',
+  ): Effect.Effect<void, SqliteDatabaseFailure> =>
+    Effect.try({
+      try: () => database.exec(sql),
+      catch: (cause) => new SqliteDatabaseFailure(operation, cause),
+    })
+
+  const execute: SqliteDatabaseContext<TDatabase>['execute'] = (
+    sql,
+    args = [],
+  ) => {
+    const run = Effect.try({
+      try: () => database.prepare(sql).all(...args),
+      catch: (cause) => new SqliteDatabaseFailure('execute', cause),
+    })
+    return Effect.flatMap(inTransaction, (active) =>
+      active ? run : semaphore.withPermit(run),
+    )
+  }
+
+  return {
+    execute,
+    use: (run) => run(database),
+    transaction: (run) =>
+      Effect.flatMap(inTransaction, (active) =>
+        active
+          ? run(database)
+          : semaphore.withPermit(
+              Effect.acquireUseRelease(
+                Effect.as(exec('BEGIN IMMEDIATE', 'begin'), {
+                  owner,
+                  active: true,
+                }),
+                (transaction) =>
+                  run(database).pipe(
+                    Effect.provideService(
+                      ActiveNodeSqliteTransaction,
+                      transaction,
+                    ),
+                  ),
+                (transaction, exit) =>
+                  (Exit.isSuccess(exit)
+                    ? // A commit that fails leaves the transaction open:
+                      // roll it back, and fail with the commit's error.
+                      exec('COMMIT', 'commit').pipe(
+                        Effect.tapError(() =>
+                          Effect.ignore(exec('ROLLBACK', 'rollback')),
+                        ),
+                      )
+                    : exec('ROLLBACK', 'rollback')
+                  ).pipe(
+                    Effect.ensuring(
+                      Effect.sync(() => {
+                        transaction.active = false
+                      }),
+                    ),
+                  ),
+              ),
+            ),
+      ),
+  }
+}
+
 function isSqlError(cause: unknown): cause is SqlError.SqlError {
   return (
     typeof cause === 'object' &&

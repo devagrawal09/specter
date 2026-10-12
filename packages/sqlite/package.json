@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/sqlite",
   "version": "0.4.0",
-  "description": "SQLite Event Log, Slice Stores, Slice snapshots, Reaction outbox and scheduler for Specter, on the host's SQLite connection.",
+  "description": "SQLite Event Log, Slice Stores, Slice snapshots, Reaction outbox and scheduler for Specter, on the host's SQLite connection: libSQL, an Effect SqlClient or node:sqlite.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,

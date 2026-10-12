@@ -16,8 +16,7 @@ This repository is a pnpm workspace:
 packages/core/             @specter-ts/core framework/runtime package
 packages/spec/             @specter-ts/spec portable authoring and export package
 packages/memory/           deterministic test adapters and immediate scheduler
-packages/sqlite/           SQLite Event Log, Slice Stores, snapshots, and outbox on the host's connection
-packages/sqlite-node/      scoped native node:sqlite runtime bundle
+packages/sqlite/           SQLite Event Log, Slice Stores, snapshots, and outbox on the host's connection (libSQL, SqlClient, node:sqlite)
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/jsonl/            file-backed JSONL Event Log, Slice Store, and outbox
 packages/reaction-outbox/  durable Reaction attempts, retry, and dead letters
@@ -165,7 +164,7 @@ pnpm release:publish
 The unpublished `0.4.0` release set contains `@specter-ts/spec`,
 `@specter-ts/core`,
 `@specter-ts/memory`, `@specter-ts/sqlite`, `@specter-ts/postgres`,
-`@specter-ts/sqlite-node`, `@specter-ts/reaction-outbox`,
+`@specter-ts/reaction-outbox`,
 `@specter-ts/spec-editor`, and
 `create-specter`. Release verification builds every publishable package before
 workspace typechecks/tests, validates the JSON-spec migration codemod, packs and

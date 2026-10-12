@@ -18,14 +18,24 @@ import {
   reactionOutboxStoreConformance,
 } from '@specter-ts/reaction-outbox/testing'
 import { createCommandSlice, event } from '@specter-ts/spec'
-import { Context, Effect, Exit, Layer, type Scope } from 'effect'
+import {
+  Context,
+  Deferred,
+  Effect,
+  Exit,
+  Fiber,
+  Layer,
+  type Scope,
+} from 'effect'
 import type { SqlClient } from 'effect/sql'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import {
+  createNodeSqliteDatabaseContext,
   createSqlClientDatabaseContext,
   createSqliteDatabaseContext,
   type SqliteDatabaseContext,
@@ -73,6 +83,15 @@ const hostDatabase = Effect.gen(function* () {
   return sql
 })
 
+/** A `node:sqlite` connection the host opened, with Specter's tables. */
+const nodeDatabase = Effect.gen(function* () {
+  const database = new DatabaseSync(databaseFile())
+  yield* Effect.addFinalizer(() => Effect.sync(() => database.close()))
+  const context = createNodeSqliteDatabaseContext(database)
+  yield* prepareSpecterSqlite(context)
+  return context
+})
+
 const run = <A, E>(program: Effect.Effect<A, E, Scope.Scope>) =>
   Effect.runPromise(Effect.scoped(program))
 
@@ -94,6 +113,7 @@ const drivers: ReadonlyArray<
       return context
     }),
   ],
+  ['node:sqlite', nodeDatabase],
 ]
 
 describe.each(drivers)('SQLite stores on %s', (_name, database) => {
@@ -145,6 +165,65 @@ describe.each(drivers)('SQLite stores on %s', (_name, database) => {
             ),
           ),
         )
+      }),
+    ))
+})
+
+describe('SQLite stores on one node:sqlite connection', () => {
+  const reaction = { name: 'reaction', version: 'v1' }
+
+  it('roll an append back with the Slice Store transaction it joined', () =>
+    run(
+      Effect.gen(function* () {
+        const context = yield* nodeDatabase
+        const eventLog = createSqliteEventLogService(context)
+        const store = createSqliteSliceStoreService(context, () => ({
+          count: 0,
+        }))
+        const failed = yield* Effect.exit(
+          store.transaction(reaction, (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.count = 1
+              yield* eventLog.append([draft('n1')])
+              yield* publish(1)
+              return yield* Effect.fail(new Error('plugin failed'))
+            }),
+          ),
+        )
+        expect(Exit.isFailure(failed)).toBe(true)
+        expect(yield* eventLog.currentVersion).toBe(0)
+        expect(
+          yield* store.read(reaction, (read, cursor) =>
+            Effect.succeed({ count: read.count, cursor }),
+          ),
+        ).toEqual({ count: 0, cursor: 0 })
+      }),
+    ))
+
+  it('run a statement outside a transaction after it, not inside it', () =>
+    run(
+      Effect.gen(function* () {
+        const context = yield* nodeDatabase
+        const eventLog = createSqliteEventLogService(context)
+        const appended = yield* Deferred.make<void>()
+        const proceed = yield* Deferred.make<void>()
+        const transaction = yield* Effect.forkChild(
+          context.transaction(() =>
+            Effect.gen(function* () {
+              yield* eventLog.append([draft('n1')])
+              yield* Deferred.succeed(appended, undefined)
+              yield* Deferred.await(proceed)
+              return yield* Effect.fail(new Error('host failed'))
+            }),
+          ),
+        )
+        yield* Deferred.await(appended)
+        // The read waits for the transaction, so it never sees its append.
+        const read = yield* Effect.forkChild(eventLog.currentVersion)
+        yield* Effect.sleep('20 millis')
+        yield* Deferred.succeed(proceed, undefined)
+        expect(Exit.isFailure(yield* Fiber.await(transaction))).toBe(true)
+        expect(yield* Fiber.join(read)).toBe(0)
       }),
     ))
 })
