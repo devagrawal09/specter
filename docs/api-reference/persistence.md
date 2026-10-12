@@ -11,11 +11,34 @@ cursor, ORM access, and transaction policy.
 | Export | Purpose |
 | --- | --- |
 | `createMemoryEventLog` / `createMemoryEventLogLayer` | In-memory Event Log. |
-| `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store. |
+| `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store; `initial(slice)` seeds a Slice, `inspect(name)` reads it back with its cursor and version. |
+| `createSnapshotSliceStores(snapshots)` | Memory Stores whose Slices start from snapshots of their version, and `snapshot()` of the Slices that moved. |
+| `persistSliceSnapshots(store, { interval })` | Scoped: memory Stores loaded from a `SliceSnapshotStore`, saved back every `interval` (one minute) and when the scope closes. |
+| `createMemorySliceSnapshotStore` | A `SliceSnapshotStore` in this process, for tests. |
 
 Memory Store clones staged State and rolls failure back. Data disappears with
-process. The memory Event Log keeps each Event's keys in its own index, which
-its scoped check and keyed reads use.
+process. It keeps one State per Slice name, with the version of the Slice it
+was folded for; a call for another version starts the Slice again. The memory
+Event Log keeps each Event's keys in its own index, which its scoped check and
+keyed reads use.
+
+Slices that fold in memory need not fold the whole log at every boot:
+
+```ts
+const stores = yield* persistSliceSnapshots(
+  createSqliteSliceSnapshotStore(context),
+)
+const app = yield* makeSpecterRuntime(config).pipe(
+  Effect.provide(stores.layer(TodosStore, () => ({ todos: [] }))),
+)
+```
+
+Each Slice starts from its saved snapshot when the snapshot's version is the
+Slice's, and catches up after its cursor; a Slice whose specification or
+`stateVersion` changed folds the log instead, so a snapshot of an old shape is
+never read. Make the runtime after `persistSliceSnapshots`, in the same scope:
+the last save then runs after the runtime closes. A failed save is logged and
+retried with the next one; a lost snapshot only costs its Slice a fold.
 
 ## JSONL
 
@@ -66,8 +89,10 @@ if that truncate fails too, every later append fails with an
 `EventLogFailure('append')` carrying both errors until the log is reopened.
 
 The JSON Slice Store keeps each Slice's State and cursor in
-`<directory>/<sliceName>.json`. It reads a Slice's file on first use and then
-serves reads from memory. A transaction that publishes a cursor writes the
+`<directory>/<sliceName>.json`, with the version of the Slice that folded it.
+It reads a Slice's file on first use and then serves reads from memory; a
+file of another version (or one written before Slices had versions) is not
+read, and the Slice folds the log until its first commit replaces the file. A transaction that publishes a cursor writes the
 whole `{ cursor, state }` document to a temporary file and renames it over the
 Slice file; a failed transaction leaves the file unchanged. Reaction cursors
 therefore survive a restart, and reopening an app does not run Reactions again
@@ -105,24 +130,31 @@ not yet in the `release:*` scripts.
 
 | Export | Purpose |
 | --- | --- |
-| `prepareSpecterSqlite` | Configure DB and create tables/indexes. |
-| `createSqliteDatabaseContext` | Serialized, nestable Effect transaction context. |
-| `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log. |
-| `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store. |
+| `SqliteDatabaseContext<TConnection>` | The host's database: `execute` a statement, `use` the connection a statement runs on now, run a nestable `transaction`. |
+| `createSqliteDatabaseContext(client)` | The database over a libSQL client; `use` gives the libSQL connection. |
+| `createSqlClientDatabaseContext(sql, { transaction })` | The database over an Effect `SqlClient` (`effect/sql`), with the host's transaction runner. |
+| `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log, with the `onAppend` hook. |
+| `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store, versioned. |
+| `createSqliteSliceSnapshotStore` | `SliceSnapshotStore` in `specter_slice_snapshots`. |
+| `createSqliteReactionOutboxStore` | Durable outbox Store, one queue per Plugin. |
 | `createSqliteReactionSchedulerService` / `createSqliteReactionSchedulerLayer` | Durable, multi-runtime Reaction coordination. |
-| `prepareSqliteReactionScheduler` | Creates the dedicated scheduler table and index. |
-| `createSqliteReactionOutboxStore` | Durable outbox Store. |
-| `createSpecterSqlitePersistence` | Shared context and factories. |
+| `sqliteEventLogSchema`, `sqliteSliceStoreSchema`, `sqliteSliceSnapshotSchema`, `sqliteReactionOutboxSchema`, `sqliteReactionSchedulerSchema` | The statements that create each store's tables and indexes. |
+| `specterSqliteSchema` | All of them. |
+| `prepareSpecterSqlite` and `prepareSqlite*` | Run them (the first also turns on WAL and a busy timeout). |
+| `createSpecterSqlitePersistence` | Every store on one database. |
+
+Specter's SQLite stores run on a database the host provides, so they share
+its connection and its transactions. A host on libSQL hands Specter its
+client:
 
 ```ts
-await prepareSpecterSqlite(client)
-const persistence = createSpecterSqlitePersistence(client)
+const context = createSqliteDatabaseContext(client)
+await Effect.runPromise(prepareSpecterSqlite(context))
+const persistence = createSpecterSqlitePersistence(context)
 
 const dependencies = Layer.mergeAll(
   Layer.succeed(EventLog, persistence.eventLog),
-  createSqliteReactionSchedulerLayer(client, {
-    context: persistence.context,
-  }),
+  createSqliteReactionSchedulerLayer(context),
   Layer.succeed(
     TodosStore,
     persistence.createSliceStoreService(() => ({ todos: [] })),
@@ -130,16 +162,99 @@ const dependencies = Layer.mergeAll(
 )
 ```
 
-`prepareSpecterSqlite` creates `specter_event_keys (event_order, name, value)`,
-keyed by `(event_order, name)` and indexed on `(name, value, event_order)`,
-beside the Event and commit tables. The scoped check is one indexed query over
-it, and so is a keyed read. Every read returns each Event's keys from it, as
-one JSON object a subquery aggregates per Event.
+A host on an Effect `SqlClient` (`@effect/sql-sqlite-bun`,
+`@effect/sql-sqlite-node`, a Durable Object's storage, or its own driver)
+hands Specter the client, and its own transaction runner when it has one,
+such as its ORM's:
 
-`SqliteDatabaseContext.use` uses active transaction when present.
-`transaction` nests by joining active Effect context. This lets direct ORM Slice
-Stores, nested default-Plugin Commands, and outbox enqueue share one transaction
-without AsyncLocalStorage.
+```ts
+const context = createSqlClientDatabaseContext(db.$client, {
+  transaction: (effect) => db.transaction(() => effect, { behavior: 'immediate' }),
+})
+```
+
+Statements run through the client, so inside any transaction the client knows,
+the host's or Specter's, they run on its connection: an Event Log append, a
+Slice Store transaction, an outbox enqueue and the host's own writes inside one
+transaction commit or roll back together. Without a runner the context uses
+`sql.withTransaction`, which begins a deferred transaction; begin it
+immediately when several processes write the database. `context.transaction`
+nests: inside an active transaction it joins it (libSQL) or opens a savepoint
+(`SqlClient`).
+
+### Who creates the tables
+
+The host does, when it owns the database's migrations: the migration that
+introduces Specter runs the statements of the stores it uses
+(`sqliteEventLogSchema` and the others, `CREATE ... IF NOT EXISTS`). A host
+without migrations runs `prepareSpecterSqlite(context)`, or a store's
+`prepareSqlite*`, at startup. Table names are fixed (`specter_events`,
+`specter_event_keys`, `specter_event_commits`, `specter_slice_states`,
+`specter_slice_snapshots`, `specter_reaction_outbox`,
+`specter_reaction_scheduler`), so one database holds one Specter app's
+tables; the host's own tables sit beside them and may reference them (an
+index of the log by `specter_events.event_order`). A Specter release that
+changes these statements says what moves an existing database.
+
+### Event Log
+
+`specter_events` holds each Event, `specter_event_keys (event_order, name,
+value)`, keyed by `(event_order, name)` and indexed on `(name, value,
+event_order)`, its keys, and `specter_event_commits` each commit. The scoped
+check is one indexed query over the keys, and so is a keyed read; every read
+returns each Event's keys from them, as one JSON object a subquery aggregates
+per Event. A page of `commitsAfter` reads its commits' Events in one query.
+
+An append runs in one `context.transaction`, joining the host's when it runs
+inside one. `onAppend` runs in that transaction once the commit's Events and
+keys are stored, with the commit and the metadata each Event's draft carried
+(the dispatch's `eventContext`), by position:
+
+```ts
+const eventLog = createSqliteEventLogService(context, {
+  onAppend: ({ commit, metadata }) =>
+    Effect.gen(function* () {
+      yield* projectReadModels(commit.events, metadata)
+      // Run once the transaction has committed.
+      return notifyListeners(commit.events)
+    }),
+})
+```
+
+A host writes its own read models there, so they change with the log or not
+at all: a failing hook rolls the append back and fails it. What the hook
+returns, if anything, runs after the commit and before `append` returns; the
+append is uninterruptible, so a committed append always runs it. A duplicate
+(a known idempotency key) appends nothing and runs no hook. The Event Log
+keeps every guarantee of the contract (stored keys, the scoped
+compare-and-swap, keyed reads, idempotency, paged reads) and declares both
+capabilities.
+
+### Slice Stores and snapshots
+
+The JSON Slice Store keeps each Slice's State in `specter_slice_states` with
+its cursor and version, written in the database's transaction. State kept
+under another version is not read: the Slice folds the log, and its first
+commit replaces the row. `createSqliteSliceSnapshotStore` keeps snapshots of
+Slices that fold in memory (`persistSliceSnapshots` in `@specter-ts/memory`),
+one row per Slice with its version, all of a save in one transaction.
+
+### Reaction outbox
+
+Each Store is one queue of `specter_reaction_outbox`
+(`createSqliteReactionOutboxStore(context, { queue: 'emails' })`, `default`
+when omitted); a worker claims every job of its queue, so give each wrapped
+Plugin its own. Every operation is one statement: a claim picks and leases
+the first available job in one `UPDATE`, so workers in several processes never
+claim one job twice. The Store keeps each job's concurrency key (a job never
+runs while another job of its queue with its key runs), renews leases, and
+wakes this process's workers when an enqueue or a retried dead letter makes
+work claimable. `release(now, { deadLetters })` returns the jobs an earlier
+process left running (and its dead letters) to pending with a fresh attempt
+count, for a process starting as the queue's only worker; `prune(before)`
+deletes the jobs that completed by then.
+
+### Scheduler
 
 The scheduler table is a rebuildable coordination index. Event Log commits and
 Reaction Slice cursors remain authoritative; a failed execution stays pending
@@ -158,7 +273,9 @@ stale coordination state.
 | `createSpecterNodeSqliteLayer` | Scoped DB lifecycle Layer. |
 
 Nested Effect transactions join active `BEGIN IMMEDIATE` transaction. The
-Event Log keeps keys in `specter_event_keys`, as the libSQL adapter does.
+Event Log keeps keys in `specter_event_keys`, as the SQLite adapter does, and
+pages its reads; the Slice Store keeps each Slice's version in
+`specter_slice_states` and ignores State of another version.
 
 ## Postgres
 
@@ -175,7 +292,10 @@ Event Log append uses advisory lock. Slice transactions use per-Slice advisory
 lock. Outbox claims use row locking. Nested operations join active connection.
 `prepareSpecterPostgres` creates `specter_event_keys (event_order, name,
 value)` with the same key and index as SQLite; the scoped check matches its
-`(name, value)` pairs against the condition's in one query.
+`(name, value)` pairs against the condition's in one query. Reads are paged
+with `LIMIT`. The JSONB Store keeps each Slice's version beside its State and
+ignores State of another version. The outbox Store has one queue per table
+and no concurrency keys, lease renewal or wake-ups.
 
 ## Adapter rules
 
@@ -186,6 +306,10 @@ value)` with the same key and index as SQLite; the scoped check matches its
 - Commit State and cursor together; rollback both on failure.
 - Prevent visible cursor regression.
 - Persist every Event Log commit boundary for `commitsAfter`.
+- Honor the `limit` of `query` and `commitsAfter`: at most that many Events or
+  whole commits, the first after where the read starts.
+- Keep a Slice's State under its `SliceStoreSlice.version`, and never return
+  State kept under another version.
 - Check `expectedVersion` and `expectedUnchanged` in the store, under the
   append lock, after the idempotency lookup; a stale append fails with a
   `SpecterVersionConflictError` cause.

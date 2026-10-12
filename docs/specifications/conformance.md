@@ -55,6 +55,8 @@ Each Event Definition is the single runtime decoder for that type. Whole-app con
 | `slice-name-format` | A Slice name is not lower camel case, such as `addTodo`. |
 | `empty-slice-description` | A Slice description is blank. |
 | `missing-scenarios` | A Slice has no Scenario. |
+| `invalid-store-eager` | A Slice's Store option `eager` is not a boolean. |
+| `invalid-store-state-version` | A Slice's Store option `stateVersion` is not a positive integer. |
 
 ### Scenarios and schemas
 
@@ -105,7 +107,8 @@ Construction cannot execute arbitrary handlers or predict adapter behavior. The 
 - **Command options:** `expectedVersion` must be a non-negative safe integer; an idempotency key must be non-blank; `idempotencyMode` must be `first-wins` or `exact` and requires an idempotency key; idempotent Command payloads must be structurally serializable.
 - **Input and output schemas:** Command and Query inputs are decoded before their handlers; Query and Reaction outputs are decoded afterward. Failures become the corresponding public input or output error.
 - **Persisted Event decoding:** emitted and replayed payloads must pass the registered Event schema without transformation. Unknown Event types fail closed.
-- **Event Log order:** query results must have unique, strictly increasing safe-integer orders greater than the requested cursor.
+- **Event Log order:** query results must have unique, strictly increasing safe-integer orders greater than the requested cursor. Catch-up reads the log one page at a time and checks each page against the order the read started after.
+- **State versions:** core gives a Slice Store each Slice's version (its specification digest and declared `stateVersion`); a Store never returns State kept under another version, so a Slice whose State changed shape folds the log again.
 - **Optimistic decisions:** Command catch-up, decision, and append occur inside one Event Log transaction. Without a caller `expectedVersion`, append is stale only when an Event of a type the Command applies, carrying one of its consistency keys under that name when it declares them, was appended after its State was read; the Event Log checks it in its store, from the keys stored with each Event, and core then decides again, up to 32 times. A caller `expectedVersion` compares against the whole log.
 - **Event keys:** core derives every emitted Event's keys before the append, and stores them with it. Each must be a string or `undefined`, and an Event must carry one of the key names of every keyed Slice that applies its type; otherwise the Command fails with `SpecterInfrastructureError` and appends nothing. Every Event an Event Log returns must carry the keys stored with it (`keys`, an object of strings), or the read fails with `SpecterInfrastructureError`. A keyed Reaction handles the stored values, and fails the same way on an Event without its key.
 - **Host context:** `eventContext` must be a function. What it returns for an Event must be `undefined` or an object whose `id`, when present, is a non-blank string no other Event of the commit has, and whose `recordedAt`, when present, is an ISO-8601 UTC timestamp as `Date.prototype.toISOString` writes it; otherwise the Command fails with `SpecterInvalidCommandOptionsError` and appends nothing. A context function that throws fails it with `SpecterInfrastructureError`. The Event Log fails an append whose ID is already in the log.

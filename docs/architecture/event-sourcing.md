@@ -136,7 +136,24 @@ Each Slice registers apply handlers for the Event types that build its private
 State. Before a handler runs, core asks the Slice Store for its last applied
 global order, queries the Event Log for later relevant Events, validates them,
 and applies them in strictly ascending order. Advancing the State and cursor
-must be locally atomic or safely idempotent.
+must be locally atomic or safely idempotent. Core reads the log one page at a
+time (`readPageSize` Events, 1000 by default), each read starting after the
+last Event of the page before, so a first boot on a long log never holds
+more than a page; a Reaction reads its commits the same way.
+
+### State versions
+
+A Store keeps a Slice's State under the Slice's version, which changes with
+its specification digest and with the `stateVersion` the implementation
+declares in `.store(Tag, { stateVersion })`. A State of another version is
+never read: the Slice starts empty and folds the log, and its next commit
+replaces the old State. So a State whose shape changed is rebuilt instead of
+misread. Raise `stateVersion` when the State changes shape and the
+specification does not (a refactor of the fold); a specification change
+already changes the version. A Reaction of a new version handles the log's
+relevant commits again, under their usual `deliveryId`s, so its deliveries
+must stay idempotent. Snapshots of Slices that fold in memory are kept under
+the same version and ignored the same way.
 
 For the Todo Query, replaying `todo-added`, `todo-completion-changed`, and
 `todo-removed` reconstructs the list projection. Deleting that projection does

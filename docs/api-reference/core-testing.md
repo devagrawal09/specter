@@ -16,10 +16,16 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. Re-exported from `@specter-ts/core`, where application code imports it. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
-| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, filtered queries, stored keys returned with every read, the host's IDs and times (and the refusal of an ID already in the log), and the scoped compare-and-swap (`expectedUnchanged`, with and without `keys`) and keyed reads as declared. |
-| `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, and one-shot callbacks. |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, filtered queries, paged `query` and `commitsAfter` reads, stored keys returned with every read, the host's IDs and times (and the refusal of an ID already in the log), and the scoped compare-and-swap (`expectedUnchanged`, with and without `keys`) and keyed reads as declared. |
+| `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, one-shot callbacks, and that a Slice of another version starts at cursor 0 and never reads the State kept under the old one. |
+| `sliceSnapshotStoreConformance` | `(storeEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks that a snapshot store loads what it saved, one per Slice, never moves a Slice of the same version back, replaces a snapshot of another version, and round-trips State as JSON. Needs an empty store. |
 | `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
 | `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |
+| `testSliceSnapshotStore` | `(name, factory) => void` | Thin Vitest runner over snapshot store conformance. |
+
+`@specter-ts/reaction-outbox/testing` holds Reaction outbox Stores to their
+contract the same way (`reactionOutboxStoreConformance`,
+`testReactionOutboxStore`); see [Reaction outbox](reaction-outbox.md).
 
 ## Public types
 

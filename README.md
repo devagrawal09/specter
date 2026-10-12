@@ -16,7 +16,7 @@ This repository is a pnpm workspace:
 packages/core/             @specter-ts/core framework/runtime package
 packages/spec/             @specter-ts/spec portable authoring and export package
 packages/memory/           deterministic test adapters and immediate scheduler
-packages/sqlite/           persistent SQLite Event Log, Slice Store, and outbox
+packages/sqlite/           SQLite Event Log, Slice Stores, snapshots, and outbox on the host's connection
 packages/sqlite-node/      scoped native node:sqlite runtime bundle
 packages/postgres/         persistent Postgres Event Log, Slice Store, and outbox
 packages/jsonl/            file-backed JSONL Event Log, Slice Store, and outbox

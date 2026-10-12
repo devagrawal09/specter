@@ -11,13 +11,13 @@ Public package entrypoints are the source of truth. Import only the names docume
 | `@specter-ts/core` | Event definitions, completed Slice types, Promise app edge, service Tags, envelopes, and public errors | [Core runtime API](./core-runtime.md) and [core service contracts](./core-adapters.md) |
 | `@specter-ts/core/effect` | Native Effect interpreter, scoped Layer construction, Context service, and Streams | [Core runtime API](./core-runtime.md) |
 | `@specter-ts/spec` | Specification builders, Scenario Event helper, and specification types | [Core specification API](./spec.md) |
-| `@specter-ts/core/testing` | Scenario runners, replay, focused Event catalogs, and Event propagation analysis | [Core testing API](./core-testing.md) |
-| `@specter-ts/memory` | In-memory Event Log, Slice Store, and immediate Reaction scheduler | [Persistence API](./persistence.md) |
+| `@specter-ts/core/testing` | Scenario runners, replay, focused Event catalogs, Event propagation analysis, and adapter conformance programs | [Core testing API](./core-testing.md) |
+| `@specter-ts/memory` | In-memory Event Log, Slice Store, Slice Stores that start from saved snapshots, and immediate Reaction scheduler | [Persistence API](./persistence.md) |
 | `@specter-ts/jsonl` | Append-only JSONL file Event Log and JSON file Slice Store, no database | [Persistence API](./persistence.md) |
-| `@specter-ts/sqlite` | libSQL/SQLite Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
+| `@specter-ts/sqlite` | SQLite Event Log with an append hook, Slice Store, Slice snapshot store, Reaction outbox and scheduler on the host's connection (libSQL or an Effect `SqlClient`), their schema statements, and combined persistence | [Persistence API](./persistence.md) |
 | `@specter-ts/sqlite-node` | Native `node:sqlite` adapters and scoped Effect runtime bundle | [Persistence API](./persistence.md) |
 | `@specter-ts/postgres` | Postgres Event Log, Slice Store, Reaction outbox store, and combined persistence | [Persistence API](./persistence.md) |
-| `@specter-ts/reaction-outbox` | Durable Reaction Plugin wrapper, worker, store contract, retries, and dead-letter handling | [Reaction outbox API](./reaction-outbox.md) |
+| `@specter-ts/reaction-outbox` | Durable Reaction Plugin wrapper, worker, store contract, retries, and dead-letter handling; `/testing` holds a Store to the contract | [Reaction outbox API](./reaction-outbox.md) |
 | `@specter-ts/spec-editor` | Local browser editor for committed portable Slice specifications | [Visual Spec Editor](../../packages/spec-editor/README.md) |
 | `create-specter` | CLI that creates the Todo reference project and generates Slices and Events | [Create Specter CLI](./create-specter.md) |
 

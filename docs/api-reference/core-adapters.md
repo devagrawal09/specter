@@ -16,6 +16,7 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | `EventLogAppendResult` | Commit plus `duplicate`. |
 | `EventLogAppendOptions` | `expectedVersion`, `expectedUnchanged`, `idempotencyKey`, `fingerprint`. |
 | `EventLogAppendCondition` | `{ afterOrder, eventTypes, keys? }`: what a decision read. |
+| `EventLogPage` | `{ limit? }`: a page of `query` or `commitsAfter`. |
 | `EventLogKeyPage` | `{ afterOrder?, limit? }`: a page of a keyed read. |
 | `EventKey` | `{ name, value }`: one named key an Event carries. |
 | `EventLogFailure` | Typed operation failure. |
@@ -59,6 +60,18 @@ passed, even when `expectedVersion` is stale. The runtime decides whether a
 mismatch is a conflict (`idempotencyMode: 'exact'`).
 `commitsAfter(version)` returns complete commits ordered by commit version; core
 uses it as durable Reaction work stream.
+
+### Paged reads
+
+`query(afterOrder, eventTypes, { limit })` returns at most `limit` Events and
+`commitsAfter(version, { limit })` at most `limit` whole commits (a page
+counts commits, not their Events), each the first after where the read
+starts; without a `limit` every remaining one. Core reads the log one page at
+a time while a Slice catches up (Events) and while a Reaction catches up
+(commits), starting each read after the last item of the page before, so a
+first boot on a long log never holds more than a page; the page size is the
+runtime's `readPageSize` (1000 by default). An adapter must honor `limit`;
+the conformance checks it.
 
 `readKey({ name, value }, { afterOrder, limit })` returns the Events carrying
 that key, such as one aggregate's, with an order above `afterOrder` (default
@@ -107,6 +120,20 @@ const todos = implementQuery(specification)
   .handle(handleTodos)
 ```
 
+Both operations receive the Slice as `SliceStoreSlice`: its `name` and its
+State's `version`. The version changes with the Slice's specification digest
+and with the `stateVersion` its implementation declares
+(`.store(Tag, { stateVersion: 2 })`, 1 by default), so a State of another
+shape has another version. A Store that keeps State across processes keeps
+the version with it and never returns State kept under another version: it
+starts that Slice empty at cursor 0, so the Slice folds the log from its
+start, and the Slice's next commit replaces the old State. A Store whose
+schema the host migrates itself (a Drizzle projection) may ignore it.
+
+A Reaction is a Slice like any other: a new version starts its cursor at 0,
+so it handles every relevant commit of the log again under its usual
+`deliveryId`, and its deliveries must stay idempotent.
+
 Store owns State representation, ORM access, persistence, and concurrency.
 `transaction` must:
 
@@ -120,6 +147,22 @@ Reaction Plugin executes inside this callback. Adapter may use compare-and-swap
 or last-write-wins publication internally, but cannot rerun developer code.
 
 `{ eager: true }` catches Slice up at startup. Default catches up before handle.
+
+## Slice snapshots
+
+| Export | Purpose |
+| --- | --- |
+| `SliceSnapshot` | `{ slice, version, state, cursor }`: one Slice's State as of its cursor, under its version. |
+| `SliceSnapshotStore` | `load` and `save(snapshots)`: where a host keeps snapshots between processes. |
+
+A host whose Slices fold in memory saves their snapshots so that a later
+process catches each Slice up after its cursor instead of folding the log
+from its start (`persistSliceSnapshots` in `@specter-ts/memory`). A snapshot
+is a cache of the log, never authority: a Slice whose version differs from
+its snapshot's ignores it and folds the log. `save` replaces a Slice's
+snapshot unless the saved one has the same version and a later cursor, and a
+snapshot of another version always replaces it. `sliceSnapshotStoreConformance`
+holds a store to it.
 
 ## Reaction scheduler
 
@@ -151,7 +194,8 @@ Slice Store must not assume one transaction per commit.
 
 ## Invariants
 
-- Event Log is authority; Slice Stores are rebuildable views/checkpoints.
+- Event Log is authority; Slice Stores are rebuildable views/checkpoints, and
+  State kept under another version of its Slice is never read.
 - Event keys are an index of the Event Log, derived by core when an Event is
   appended, stored by the adapter with it and returned with it on every read.
 - App Layer provides one `EventLog` and every registered Store Tag.
@@ -164,3 +208,4 @@ Slice Store must not assume one transaction per commit.
 - [Runtime API](core-runtime.md)
 - [Persistence API](persistence.md)
 - [Reaction outbox API](reaction-outbox.md)
+- [Core testing API](core-testing.md)

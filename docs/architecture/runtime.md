@@ -11,7 +11,9 @@ The Todo server uses a persistence preset and registers all selected domain
 parts explicitly:
 
 ```ts
-const persistence = createSpecterSqlitePersistence(sqliteClient)
+const persistence = createSpecterSqlitePersistence(
+  createSqliteDatabaseContext(sqliteClient),
+)
 
 const dependencies = Layer.mergeAll(
   Layer.succeed(EventLog, persistence.eventLog),
@@ -230,6 +232,10 @@ version. Failure rolls back state and cursor, so restart retries the same
 commit with the same `deliveryId`, derived from Reaction name and commit
 version.
 
+Core reads the commits after a Reaction's cursor one page at a time
+(`readPageSize` commits, 1000 by default), so a long catch-up never holds the
+whole log.
+
 Irrelevant commits open no Slice Store transaction. The next relevant commit's
 cursor covers them, and core remembers the skipped range in process so later
 runs do not re-read it. Whenever a skipped run reaches 256 Event Log orders,
@@ -393,8 +399,13 @@ Schema at an untrusted boundary.
 
 ## Operational presets and failures
 
-- Memory adapters are deterministic and suited to tests and local tools.
-- SQLite is the default single-process persistent preset.
+- Memory adapters are deterministic and suited to tests and local tools; with
+  saved snapshots (`persistSliceSnapshots`) a process that folds in memory
+  starts each Slice from its snapshot of the same version.
+- SQLite is the default single-process persistent preset. Its stores run on
+  the host's connection (libSQL or an Effect `SqlClient`), share the host's
+  transactions, and hand each append to the host's `onAppend` hook in its
+  transaction.
 - Postgres provides multi-process persistence and database-level
   serialization.
 - Every bundled Event Log stores Event keys and declares both capabilities:

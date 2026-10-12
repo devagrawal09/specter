@@ -16,6 +16,13 @@ worker.
 | `ReactionOutboxLeaseLostError` | Stale attempt transition. |
 | `ReactionOutboxDrainFailure` | Newly dead-lettered failures from drain. |
 
+`@specter-ts/reaction-outbox/testing` exports `reactionOutboxStoreConformance`,
+an Effect program that holds a Store to the contract below (idempotent
+enqueue, claim order, attempts only the active one settles, expired leases,
+dead letters, the next work time, and the optional capabilities a Store
+declares), and `testReactionOutboxStore`, its Vitest runner. Each run needs
+an empty Store.
+
 ## Plugin wrapper
 
 ```ts
@@ -53,12 +60,13 @@ Stores:
 | Store | Package | Enqueue and cursor |
 | --- | --- | --- |
 | `createMemoryReactionOutboxStore` | `@specter-ts/reaction-outbox` | Process-local; lost on exit. |
-| `createSqliteReactionOutboxStore` | `@specter-ts/sqlite` | Same transaction with shared context. |
+| `createSqliteReactionOutboxStore` | `@specter-ts/sqlite` | Same transaction with shared context; one queue per Store. |
 | `createPostgresReactionOutboxStore` | `@specter-ts/postgres` | Same transaction with shared context. |
 | `createJsonlReactionOutboxStore` | `@specter-ts/jsonl` | Enqueue durable before cursor write; replay is a no-op. |
 
 Each wrapper runs its own worker, and a worker claims every job in its Store,
-so give each wrapped Plugin its own Store (table scope or JSONL file).
+so give each wrapped Plugin its own Store (a SQLite queue, a Postgres table,
+a JSONL file).
 
 `ReactionOutboxStore` operations return Effects. This lets SQL adapters join an
 active Slice Store transaction without AsyncLocalStorage or a Promise bridge.
@@ -83,9 +91,10 @@ Optional Store capabilities:
 - `subscribe(listener)` wakes workers in the same process after an enqueue or
   dead-letter retry. The worker then ends its poll wait, or a backoff wait for
   a later job, at once. `worker.enqueue` wakes its own worker with any Store.
-  Memory and JSONL Stores implement it; SQL Stores rely on polling, since
-  their enqueue becomes visible only when the Slice transaction commits.
-  Workers in other processes always poll.
+  Memory, JSONL and SQLite Stores implement it. An enqueue inside an
+  enclosing transaction wakes before the transaction commits, so the worker
+  may find the job only at its next poll; the Postgres Store relies on
+  polling. Workers in other processes always poll.
 - `concurrencyKeys: true` means the Store keeps each job's `concurrencyKey` and
   `claimNext` never claims a job while another job with the same key is
   running. Only over such a Store may a worker run several attempts at once
@@ -93,12 +102,12 @@ Optional Store capabilities:
   and jobs sharing a key still run one at a time, in claim order. A job waiting
   for its key is not counted as available work. The wrapper sets each job's key
   with `concurrencyKey(output)`; `worker.enqueue` takes `{ concurrencyKey }`.
-  The memory Store implements it.
+  The memory and SQLite Stores implement it.
 - `renewLease(jobId, attemptId, leaseExpiresAt)` lets the worker heartbeat a
   running attempt every `heartbeatMs` (shorter than `leaseMs`), so a slow
   handler keeps its lease. A lost attempt stops renewing; its completion then
-  fails with `ReactionOutboxLeaseLostError`. Memory and JSONL Stores implement
-  it; SQL Stores keep the lease set at claim.
+  fails with `ReactionOutboxLeaseLostError`. Memory, JSONL and SQLite Stores
+  implement it; the Postgres Store keeps the lease set at claim.
 
 `worker.waitForWork(ms, { sleep, signal })` is the interruptible wait used by
 `drain` and `runReactionOutboxWorker`. Waits share one wake-up, so another
@@ -119,7 +128,10 @@ or Reaction `deliveryId` for provider deduplication, never attempt ID.
 - Lease prevents stale completion; it does not cancel handler. Heartbeats
   extend it only on Stores with `renewLease`.
 - Listener failure cannot change delivery state.
-- SQLite/Postgres stores support multi-worker claims and restart recovery.
+- SQLite/Postgres stores support multi-worker claims and restart recovery. A
+  SQLite Store's `release` returns the jobs an earlier process left running to
+  pending at once, for a process that is its queue's only worker, and `prune`
+  deletes completed jobs.
 - JSONL store has one writer per file; it releases attempts left running by
   an earlier open as soon as it opens, without waiting for their lease.
 - Use same persistence context as Slice Store when enqueue and cursor must share
