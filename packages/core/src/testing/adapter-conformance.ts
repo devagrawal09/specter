@@ -858,9 +858,13 @@ export function sliceStoreConformance<
     )
 
     // A Slice of another version, such as after its State changed shape,
-    // starts empty: it folds the log again from its start.
+    // starts empty: it folds the log again from its start. Its name keeps
+    // the highest cursor it reached.
     const upgraded: SliceStoreSlice = { ...first, version: 'conformance-2' }
     const upgradedCursor = yield* cursorOf(upgraded)
+    const reachedOf = (slice: SliceStoreSlice) =>
+      service.read(slice, (_read, _cursor, reached) => Effect.succeed(reached))
+    const reachedBefore = yield* reachedOf(upgraded)
     yield* service.transaction(
       upgraded,
       (write, _read, cursor, publishCursor) =>
@@ -876,6 +880,7 @@ export function sliceStoreConformance<
         }),
     )
     const refolded = yield* valueAndCursor(upgraded)
+    const reachedAfter = yield* reachedOf(upgraded)
     yield* requireInvariant(
       'slice-store',
       'State kept under another version is never read, and a Slice of a new version publishes from 0',
@@ -883,6 +888,24 @@ export function sliceStoreConformance<
         refolded.cursor === 3 &&
         Object.is(refolded.value, options.value),
       { upgradedCursor, refolded },
+    )
+    yield* requireInvariant(
+      'slice-store',
+      'a Slice keeps the highest cursor its name reached under any version',
+      reachedBefore === 9 && reachedAfter === 9,
+      { reachedBefore, reachedAfter },
+    )
+    yield* service.transaction(
+      upgraded,
+      (_write, _read, _cursor, publishCursor) => publishCursor(12),
+    )
+    const raised = yield* reachedOf(upgraded)
+    const fresh = yield* reachedOf(second)
+    yield* requireInvariant(
+      'slice-store',
+      'reached rises with the cursor, and a Slice never published reached nothing',
+      raised === 12 && fresh === 0,
+      { raised, fresh },
     )
   })
 }
@@ -910,12 +933,14 @@ export function sliceSnapshotStoreConformance<TCreateError, TRequirements>(
       version: 'sha256:a/1',
       state: { items: [{ id: 't1', done: false }], names: ['first'] },
       cursor: 4,
+      reached: 4,
     }
     const counts: SliceSnapshot = {
       slice: 'counts',
       version: 'sha256:b/1',
       state: { total: 2 },
       cursor: 7,
+      reached: 11,
     }
     yield* store.save([todos, counts])
     const loaded = bySlice(yield* store.load)
@@ -929,7 +954,7 @@ export function sliceSnapshotStoreConformance<TCreateError, TRequirements>(
     )
 
     const behind = { ...todos, state: { items: [] }, cursor: 3 }
-    const ahead = { ...counts, state: { total: 5 }, cursor: 9 }
+    const ahead = { ...counts, state: { total: 5 }, cursor: 9, reached: 11 }
     yield* store.save([behind, ahead])
     const moved = bySlice(yield* store.load)
     yield* requireInvariant(
@@ -945,6 +970,7 @@ export function sliceSnapshotStoreConformance<TCreateError, TRequirements>(
       version: 'sha256:a/2',
       state: { open: [] },
       cursor: 2,
+      reached: 4,
     }
     yield* store.save([reshaped])
     const replaced = bySlice(yield* store.load)
@@ -953,6 +979,15 @@ export function sliceSnapshotStoreConformance<TCreateError, TRequirements>(
       "a snapshot of another version replaces its Slice's snapshot, whatever its cursor",
       replaced.size === 2 && sameSnapshot(replaced.get('todos'), reshaped),
       [...replaced.values()],
+    )
+
+    yield* store.remove(['todos', 'unknown'])
+    const removed = bySlice(yield* store.load)
+    yield* requireInvariant(
+      'slice-snapshot-store',
+      'remove deletes the snapshots of the Slices it names, and only those',
+      removed.size === 1 && sameSnapshot(removed.get('counts'), ahead),
+      [...removed.values()],
     )
   })
 }
@@ -970,6 +1005,7 @@ function sameSnapshot(
     actual.slice === expected.slice &&
     actual.version === expected.version &&
     actual.cursor === expected.cursor &&
+    actual.reached === expected.reached &&
     valuesEqual(actual.state, expected.state)
   )
 }

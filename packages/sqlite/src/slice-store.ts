@@ -52,7 +52,8 @@ export const sqliteSliceStoreSchema: readonly string[] = [
     slice_name TEXT PRIMARY KEY,
     version TEXT NOT NULL,
     state_json TEXT NOT NULL,
-    last_applied_order INTEGER NOT NULL
+    last_applied_order INTEGER NOT NULL,
+    reached INTEGER NOT NULL DEFAULT 0
   )`,
 ]
 
@@ -64,7 +65,8 @@ export function prepareSqliteSliceStore(context: SqliteDatabaseContext) {
  * A Slice Store that keeps each Slice's State as JSON beside its cursor and
  * the Slice's version, and writes both in the database's transaction. State
  * kept under another version of the Slice is not read: the Slice starts
- * empty and folds the log, and its first commit replaces the row.
+ * empty and folds the log, and its first commit replaces the row, which keeps
+ * the highest cursor the Slice reached under any version (`reached`).
  */
 export function createSqliteSliceStoreService<
   TWriteState,
@@ -85,26 +87,36 @@ export function createSqliteSliceStoreService<
   function load(slice: SliceStoreSlice) {
     return context
       .execute(
-        `SELECT state_json, last_applied_order
+        `SELECT version, state_json, last_applied_order, reached
           FROM specter_slice_states
-          WHERE slice_name = ? AND version = ?`,
-        [slice.name, slice.version],
+          WHERE slice_name = ?`,
+        [slice.name],
       )
       .pipe(
         Effect.flatMap(([row]) =>
           Effect.try({
-            try: () =>
-              row
+            try: () => {
+              if (!row) return { state: createState(), cursor: 0, reached: 0 }
+              const cursor = requireNumber(
+                row.last_applied_order,
+                'Slice cursor',
+              )
+              const reached = Math.max(
+                cursor,
+                requireNumber(row.reached, 'Slice reached cursor'),
+              )
+              // State of another version is never read.
+              return requireString(row.version, 'Slice version') ===
+                slice.version
                 ? {
                     state: codec.decode(
                       requireString(row.state_json, 'Slice State'),
                     ),
-                    cursor: requireNumber(
-                      row.last_applied_order,
-                      'Slice cursor',
-                    ),
+                    cursor,
+                    reached,
                   }
-                : { state: createState(), cursor: 0 },
+                : { state: createState(), cursor: 0, reached }
+            },
             catch: (cause) => new SqliteSliceStoreFailure('read', cause),
           }),
         ),
@@ -113,7 +125,7 @@ export function createSqliteSliceStoreService<
 
   function save(
     slice: SliceStoreSlice,
-    entry: { state: TWriteState; cursor: number },
+    entry: { state: TWriteState; cursor: number; reached: number },
   ) {
     return Effect.try({
       try: () => codec.encode(entry.state),
@@ -123,15 +135,26 @@ export function createSqliteSliceStoreService<
         // A State of another version is replaced whatever its cursor.
         context.execute(
           `INSERT INTO specter_slice_states (
-              slice_name, version, state_json, last_applied_order
-            ) VALUES (?, ?, ?, ?)
+              slice_name, version, state_json, last_applied_order, reached
+            ) VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(slice_name) DO UPDATE SET
               version = excluded.version,
               state_json = excluded.state_json,
-              last_applied_order = excluded.last_applied_order
+              last_applied_order = excluded.last_applied_order,
+              reached = MAX(
+                specter_slice_states.reached,
+                specter_slice_states.last_applied_order,
+                excluded.reached
+              )
             WHERE specter_slice_states.version <> excluded.version
               OR specter_slice_states.last_applied_order <= excluded.last_applied_order`,
-          [slice.name, slice.version, state, entry.cursor],
+          [
+            slice.name,
+            slice.version,
+            state,
+            entry.cursor,
+            Math.max(entry.reached, entry.cursor),
+          ],
         ),
       ),
     )
@@ -140,7 +163,7 @@ export function createSqliteSliceStoreService<
   return {
     read: (slice, run) =>
       Effect.flatMap(load(slice), (entry) =>
-        run(read(entry.state), entry.cursor),
+        run(read(entry.state), entry.cursor, entry.reached),
       ),
     transaction: (slice, run) =>
       context.transaction(() =>

@@ -36,6 +36,7 @@ export const sqliteSliceSnapshotSchema: readonly string[] = [
     version TEXT NOT NULL,
     state_json TEXT NOT NULL,
     cursor INTEGER NOT NULL,
+    reached INTEGER NOT NULL,
     saved_at TEXT NOT NULL
   )`,
 ]
@@ -61,7 +62,7 @@ export function createSqliteSliceSnapshotStore(
   return {
     load: context
       .execute(
-        `SELECT slice_name, version, state_json, cursor
+        `SELECT slice_name, version, state_json, cursor, reached
           FROM specter_slice_snapshots`,
       )
       .pipe(
@@ -75,6 +76,7 @@ export function createSqliteSliceSnapshotStore(
                   requireString(row.state_json, 'snapshot State'),
                 ),
                 cursor: requireNumber(row.cursor, 'snapshot cursor'),
+                reached: requireNumber(row.reached, 'snapshot reached cursor'),
               }),
             ),
           ),
@@ -89,12 +91,13 @@ export function createSqliteSliceSnapshotStore(
               Effect.flatMap((state) =>
                 context.execute(
                   `INSERT INTO specter_slice_snapshots (
-                      slice_name, version, state_json, cursor, saved_at
-                    ) VALUES (?, ?, ?, ?, ?)
+                      slice_name, version, state_json, cursor, reached, saved_at
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     ON CONFLICT(slice_name) DO UPDATE SET
                       version = excluded.version,
                       state_json = excluded.state_json,
                       cursor = excluded.cursor,
+                      reached = excluded.reached,
                       saved_at = excluded.saved_at
                     WHERE specter_slice_snapshots.version <> excluded.version
                       OR specter_slice_snapshots.cursor < excluded.cursor`,
@@ -103,6 +106,7 @@ export function createSqliteSliceSnapshotStore(
                     snapshot.version,
                     state,
                     snapshot.cursor,
+                    Math.max(snapshot.reached, snapshot.cursor),
                     now().toISOString(),
                   ],
                 ),
@@ -111,5 +115,15 @@ export function createSqliteSliceSnapshotStore(
           { discard: true },
         ),
       ),
+    remove: (slices) =>
+      slices.length === 0
+        ? Effect.void
+        : context
+            .execute(
+              `DELETE FROM specter_slice_snapshots
+                WHERE slice_name IN (${slices.map(() => '?').join(', ')})`,
+              [...slices],
+            )
+            .pipe(Effect.asVoid),
   }
 }

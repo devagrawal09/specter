@@ -22,7 +22,8 @@ export function prepareNodeSqliteSliceStore(context: NodeSqliteContext) {
     slice_name TEXT PRIMARY KEY,
     version TEXT NOT NULL,
     state_json TEXT NOT NULL,
-    last_applied_order INTEGER NOT NULL
+    last_applied_order INTEGER NOT NULL,
+    reached INTEGER NOT NULL DEFAULT 0
   )`)
 }
 
@@ -49,47 +50,66 @@ export function createNodeSqliteSliceStoreService<
     options.decode ?? (JSON.parse as (value: string) => TWriteState)
 
   // State kept under another version of the Slice is not read: the Slice
-  // starts empty and folds the log.
+  // starts empty and folds the log, keeping the cursor its name reached.
   function load(slice: SliceStoreSlice) {
     const row = context.database
       .prepare(
-        `SELECT state_json, last_applied_order FROM specter_slice_states
-          WHERE slice_name = ? AND version = ?`,
+        `SELECT version, state_json, last_applied_order, reached
+          FROM specter_slice_states WHERE slice_name = ?`,
       )
-      .get(slice.name, slice.version) as Record<string, unknown> | undefined
-    return row
+      .get(slice.name) as Record<string, unknown> | undefined
+    if (!row) return { state: createState(), cursor: 0, reached: 0 }
+    const cursor = requireNumber(row.last_applied_order, 'Slice cursor')
+    const reached = Math.max(
+      cursor,
+      requireNumber(row.reached, 'Slice reached cursor'),
+    )
+    return requireString(row.version, 'Slice version') === slice.version
       ? {
           state: decode(requireString(row.state_json, 'Slice State')),
-          cursor: requireNumber(row.last_applied_order, 'Slice cursor'),
+          cursor,
+          reached,
         }
-      : { state: createState(), cursor: 0 }
+      : { state: createState(), cursor: 0, reached }
   }
 
   function save(
     slice: SliceStoreSlice,
-    entry: { state: TWriteState; cursor: number },
+    entry: { state: TWriteState; cursor: number; reached: number },
   ) {
-    // A State of another version is replaced whatever its cursor.
+    // A State of another version is replaced whatever its cursor; the cursor
+    // its name reached stays.
     context.database
       .prepare(
         `INSERT INTO specter_slice_states (
-          slice_name, version, state_json, last_applied_order
-        ) VALUES (?, ?, ?, ?)
+          slice_name, version, state_json, last_applied_order, reached
+        ) VALUES (?, ?, ?, ?, ?)
         ON CONFLICT(slice_name) DO UPDATE SET
           version = excluded.version,
           state_json = excluded.state_json,
-          last_applied_order = excluded.last_applied_order
+          last_applied_order = excluded.last_applied_order,
+          reached = MAX(
+            specter_slice_states.reached,
+            specter_slice_states.last_applied_order,
+            excluded.reached
+          )
         WHERE specter_slice_states.version <> excluded.version
           OR specter_slice_states.last_applied_order <= excluded.last_applied_order`,
       )
-      .run(slice.name, slice.version, encode(entry.state), entry.cursor)
+      .run(
+        slice.name,
+        slice.version,
+        encode(entry.state),
+        entry.cursor,
+        Math.max(entry.reached, entry.cursor),
+      )
   }
 
   return {
     read: (slice, run) =>
       Effect.suspend(() => {
         const current = context.run(() => load(slice))
-        return run(read(current.state), current.cursor)
+        return run(read(current.state), current.cursor, current.reached)
       }),
     transaction: (slice, run) =>
       context.transactionEffect(

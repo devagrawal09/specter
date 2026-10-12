@@ -38,7 +38,9 @@ export function createSqliteSliceStoreLayer(context: LibsqlDatabaseContext) {
           const cursor = yield* Effect.tryPromise(() =>
             loadCursor(scoped, slice.name),
           )
-          return yield* run(scoped, cursor)
+          // One cursor per Slice name, whatever its version: the highest it
+          // reached too.
+          return yield* run(scoped, cursor, cursor)
         })
       }),
     transaction: (slice, run) =>

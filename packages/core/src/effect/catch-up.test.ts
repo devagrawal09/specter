@@ -36,22 +36,30 @@ type Values = { values: number[] }
 
 /**
  * An in-memory Event Log holding one commit per value, which honors a read's
- * limit and records every read.
+ * limit and records every read. `record` adds a value's commit, as another
+ * process would.
  */
 function makeLog(values: readonly number[]) {
-  const events: PersistedEvent[] = values.map((value, index) => ({
+  const recorded = (value: number, index: number): PersistedEvent => ({
     type: 'value-recorded',
     payload: value,
     id: `event-${index + 1}`,
     order: index + 1,
     recordedAt: new Date(index + 1).toISOString(),
     keys: {},
-  }))
-  const commits: EventLogCommit[] = events.map((recorded) => ({
-    events: [recorded],
-    version: recorded.order,
-    committedAt: recorded.recordedAt,
-  }))
+  })
+  const commitOf = (event: PersistedEvent): EventLogCommit => ({
+    events: [event],
+    version: event.order,
+    committedAt: event.recordedAt,
+  })
+  const events: PersistedEvent[] = values.map(recorded)
+  const commits: EventLogCommit[] = events.map(commitOf)
+  const record = (value: number) => {
+    const event = recorded(value, events.length)
+    events.push(event)
+    commits.push(commitOf(event))
+  }
   const reads: string[] = []
   const service: EventLogService = {
     capabilities: { scopedAppend: true, keyedRead: false },
@@ -78,7 +86,7 @@ function makeLog(values: readonly number[]) {
     purge: () =>
       Effect.fail(new EventLogFailure('purge', new Error('Read only.'))),
   }
-  return { service, reads }
+  return { service, reads, record }
 }
 
 /**
@@ -89,14 +97,20 @@ function makeLog(values: readonly number[]) {
 function makeVersionedStore() {
   const entries = new Map<
     string,
-    { version: string; state: Values; cursor: number }
+    { version: string; state: Values; cursor: number; reached: number }
   >()
   const versions: string[] = []
   const entry = (slice: SliceStoreSlice) => {
     versions.push(`${slice.name} ${slice.version}`)
     const current = entries.get(slice.name)
     if (current?.version === slice.version) return current
-    const created = { version: slice.version, state: { values: [] }, cursor: 0 }
+    // The name keeps the highest cursor it reached under any version.
+    const created = {
+      version: slice.version,
+      state: { values: [] },
+      cursor: 0,
+      reached: Math.max(current?.reached ?? 0, current?.cursor ?? 0),
+    }
     entries.set(slice.name, created)
     return created
   }
@@ -104,7 +118,11 @@ function makeVersionedStore() {
     read: (slice, run) =>
       Effect.suspend(() => {
         const current = entry(slice)
-        return run(current.state, current.cursor)
+        return run(
+          current.state,
+          current.cursor,
+          Math.max(current.reached, current.cursor),
+        )
       }),
     transaction: (slice, run) =>
       Effect.gen(function* () {
@@ -280,6 +298,73 @@ describe('Catch-up', () => {
     expect(new Set(store.versions)).toEqual(
       new Set([`values ${digest}/1`, `values ${digest}/2`]),
     )
+  })
+
+  it('folds a Reaction of a new version up to what it delivered, without delivering it again', async () => {
+    const log = makeLog([1, 2, 3])
+    const store = makeVersionedStore()
+    const delivered: string[] = []
+    const sumValues = (options: { stateVersion?: number } = {}) =>
+      createReactionSlice('sumValues')
+        .description('Publishes the sum of the values recorded so far.')
+        .scenarios({
+          description: 'Publishes the sum of one value.',
+          given: [event('value-recorded', 1)],
+          expect: 1,
+        })
+        .outputSchema<number>()
+        .plugin(() =>
+          Effect.succeed((sum, context) =>
+            Effect.sync(() => {
+              delivered.push(`${context.deliveryId}=${sum}`)
+            }),
+          ),
+        )
+        .store(ValuesStore, options)
+        .apply(valueRecorded, async (recorded, state) => {
+          state.values.push(recorded.payload)
+        })
+        .handle(async (state) =>
+          state.values.reduce((sum, value) => sum + value, 0),
+        )
+    const boot = (sumValuesReaction: ReturnType<typeof sumValues>) =>
+      run(
+        makeSpecterRuntime(
+          {
+            events: [valueRecorded],
+            slices: { recordValue, sumValues: sumValuesReaction },
+          },
+          { readPageSize: 2 },
+        ).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              Layer.succeed(EventLog, log.service),
+              Layer.succeed(ValuesStore, store.service),
+            ),
+          ),
+        ),
+      )
+
+    await boot(sumValues())
+    expect(delivered).toEqual([
+      'sumValues:1=1',
+      'sumValues:2=3',
+      'sumValues:3=6',
+    ])
+    // A State of another shape starts again, but its commits were delivered:
+    // the new version folds them without delivering, then delivers what
+    // came after with the whole fold.
+    log.record(4)
+    await boot(sumValues({ stateVersion: 2 }))
+    expect(delivered).toEqual([
+      'sumValues:1=1',
+      'sumValues:2=3',
+      'sumValues:3=6',
+      'sumValues:4=10',
+    ])
+    log.record(5)
+    await boot(sumValues({ stateVersion: 2 }))
+    expect(delivered.slice(4)).toEqual(['sumValues:5=15'])
   })
 
   it('refuses a read page size that is not a positive integer', async () => {

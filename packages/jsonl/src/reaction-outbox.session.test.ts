@@ -97,7 +97,7 @@ it('writes the enqueue before the Slice Store writes the cursor', async () => {
   expect(observed).toEqual([{ lines: 1, sliceFile: false }])
   expect(
     JSON.parse(readFileSync(store.pathFor('notification'), 'utf8')),
-  ).toEqual({ cursor: 1, version: 'v1', state: { count: 1 } })
+  ).toEqual({ cursor: 1, reached: 1, version: 'v1', state: { count: 1 } })
 })
 
 it('keeps an enqueue whose cursor write never happened, and ignores its replay', async () => {

@@ -25,11 +25,26 @@ export type SliceStoreSlice = {
  * that visible cursors never move backwards. The adapter acquires exclusion
  * before invoking `run` and invokes it exactly once. Reaction Plugins may run
  * inside this transaction, so optimistic callback replay is forbidden.
+ *
+ * Beside each Slice's State and cursor, kept under its version, a Store keeps
+ * under the Slice's name alone the highest cursor it has published for it
+ * under any version (`reached`). A Reaction delivers each commit once, as its
+ * cursor passes it; when its version changes, its State starts again at 0
+ * but `reached` stays, so the runtime folds the new State up to `reached`
+ * without delivering and delivers only the commits after it.
  */
 export type SliceStoreService<TRead, TWrite, TError = never> = {
   readonly read: <A, E, R>(
     slice: SliceStoreSlice,
-    run: (state: TRead, cursor: number) => Effect.Effect<A, E, R>,
+    run: (
+      state: TRead,
+      cursor: number,
+      /**
+       * The highest cursor published for the Slice's name under any
+       * version: at least `cursor`, and never lower than before.
+       */
+      reached: number,
+    ) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, TError | E, R>
   readonly transaction: <A, E, R>(
     slice: SliceStoreSlice,

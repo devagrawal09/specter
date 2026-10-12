@@ -112,7 +112,12 @@ describe('JSON file Slice Store', () => {
     })
     expect(
       JSON.parse(readFileSync(reopened.pathFor('todosQuery'), 'utf8')),
-    ).toEqual({ cursor: 5, version: 'v1', state: { todos: ['one', 'two'] } })
+    ).toEqual({
+      cursor: 5,
+      reached: 5,
+      version: 'v1',
+      state: { todos: ['one', 'two'] },
+    })
     expect(readdirSync(directory)).toEqual(['todosQuery.json'])
   })
 
@@ -139,7 +144,13 @@ describe('JSON file Slice Store', () => {
     )
     expect(
       JSON.parse(readFileSync(reopened.pathFor('todosQuery'), 'utf8')),
-    ).toEqual({ cursor: 1, version: 'v2', state: { todos: ['refolded'] } })
+    ).toEqual({
+      cursor: 1,
+      // The highest cursor the Slice's name reached under any version.
+      reached: 3,
+      version: 'v2',
+      state: { todos: ['refolded'] },
+    })
     // A file written before Slices had versions is of another version too.
     writeFileSync(
       reopened.pathFor('todosQuery'),
@@ -297,6 +308,7 @@ describe('JSON file Slice Store', () => {
     expect(existsSync(`${path}.tmp`)).toBe(false)
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       cursor: 2,
+      reached: 2,
       version: 'v1',
       state: { todos: ['one', 'two'] },
     })

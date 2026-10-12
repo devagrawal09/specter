@@ -9,20 +9,30 @@ type SliceEntry<TState> = {
   state: TState
   cursor: number
   readonly version: string
+  // The highest cursor published for the Slice's name under any version.
+  reached: number
 }
 
 export type MemorySliceStoreOptions<TWriteState, TReadState> = {
   readonly clone?: (state: TWriteState) => TWriteState
   readonly read?: (state: TWriteState) => TReadState
   /**
-   * A Slice's state and cursor to start from instead of empty state at the
-   * log's start, such as a snapshot a host saved from `inspect`, for the
-   * Slice's name and version. The Slice catches up from the cursor. Return
-   * nothing for a snapshot of another version.
+   * Where a Slice starts instead of empty state at the log's start, such as
+   * from a snapshot a host saved from `inspect`: `folded`, its State and
+   * cursor, only when they were kept under the Slice's version (the Slice
+   * catches up from the cursor), and `reached`, the highest cursor the
+   * Slice's name published under any version. Return nothing for a Slice
+   * the host kept nothing of.
    */
-  readonly initial?: (
-    slice: SliceStoreSlice,
-  ) => { readonly state: TWriteState; readonly cursor: number } | undefined
+  readonly initial?: (slice: SliceStoreSlice) =>
+    | {
+        readonly folded?: {
+          readonly state: TWriteState
+          readonly cursor: number
+        }
+        readonly reached?: number
+      }
+    | undefined
 }
 
 export type MemorySliceStoreService<TWriteState, TReadState> =
@@ -36,6 +46,8 @@ export type MemorySliceStoreService<TWriteState, TReadState> =
           readonly state: TWriteState
           readonly lastAppliedOrder: number
           readonly version: string
+          /** The highest cursor its name published under any version. */
+          readonly reached: number
         }
       | undefined
     readonly reset: (sliceName?: string) => void
@@ -44,7 +56,8 @@ export type MemorySliceStoreService<TWriteState, TReadState> =
 /**
  * Creates one app-scoped in-memory Store service. It keeps one State per
  * Slice name; a call for another version of the Slice starts it again from
- * `initial` or empty, so a Slice whose State changed shape folds the log.
+ * `initial` or empty, so a Slice whose State changed shape folds the log,
+ * and keeps the highest cursor the name reached under its earlier versions.
  */
 export function createMemorySliceStoreService<
   TWriteState,
@@ -63,9 +76,18 @@ export function createMemorySliceStoreService<
     const current = entries.get(slice.name)
     if (current?.version === slice.version) return current
     const seeded = options.initial?.(slice)
-    const created = seeded
-      ? { state: seeded.state, cursor: seeded.cursor, version: slice.version }
-      : { state: createState(), cursor: 0, version: slice.version }
+    const folded = seeded?.folded
+    const cursor = folded?.cursor ?? 0
+    const created = {
+      state: folded ? folded.state : createState(),
+      cursor,
+      version: slice.version,
+      reached: Math.max(
+        cursor,
+        seeded?.reached ?? 0,
+        current ? Math.max(current.reached, current.cursor) : 0,
+      ),
+    }
     entries.set(slice.name, created)
     return created
   }
@@ -82,7 +104,11 @@ export function createMemorySliceStoreService<
     read: (slice, run) =>
       Effect.suspend(() => {
         const current = getEntry(slice)
-        return run(read(current.state), current.cursor)
+        return run(
+          read(current.state),
+          current.cursor,
+          Math.max(current.reached, current.cursor),
+        )
       }),
     transaction: (slice, run) =>
       Effect.suspend(() =>
@@ -93,6 +119,7 @@ export function createMemorySliceStoreService<
               state: clone(current.state),
               cursor: current.cursor,
               version: current.version,
+              reached: current.reached,
             }
             let published = false
             const result = yield* run(
@@ -107,6 +134,7 @@ export function createMemorySliceStoreService<
                     )
                   }
                   working.cursor = order
+                  working.reached = Math.max(working.reached, order)
                   published = true
                 }),
             )
@@ -128,6 +156,7 @@ export function createMemorySliceStoreService<
             state: clone(current.state),
             lastAppliedOrder: current.cursor,
             version: current.version,
+            reached: Math.max(current.reached, current.cursor),
           }
         : undefined
     },

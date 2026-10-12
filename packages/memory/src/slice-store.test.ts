@@ -34,6 +34,7 @@ describe('memory Slice Store', () => {
       state: { todos: ['one'] },
       lastAppliedOrder: 1,
       version: 'v1',
+      reached: 1,
     })
   })
 
@@ -41,7 +42,7 @@ describe('memory Slice Store', () => {
     const service = createMemorySliceStoreService(() => ({ count: 0 }), {
       initial: (slice) =>
         slice.name === 'countQuery' && slice.version === 'v1'
-          ? { state: { count: 7 }, cursor: 12 }
+          ? { folded: { state: { count: 7 }, cursor: 12 } }
           : undefined,
     })
     await Effect.runPromise(
@@ -57,6 +58,7 @@ describe('memory Slice Store', () => {
       state: { count: 8 },
       lastAppliedOrder: 13,
       version: 'v1',
+      reached: 13,
     })
     // A Slice the host has no snapshot for starts empty, and so does one
     // whose version is not the snapshot's.
@@ -71,6 +73,38 @@ describe('memory Slice Store', () => {
       )
     }
     expect(service.inspect('countQuery')?.version).toBe('v2')
+  })
+
+  it("keeps the cursor a Slice's name reached when its version changes", async () => {
+    const service = createMemorySliceStoreService(() => ({ count: 0 }), {
+      initial: (slice) =>
+        slice.name === 'seededQuery' ? { reached: 30 } : undefined,
+    })
+    const reached = (slice: { name: string; version: string }) =>
+      Effect.runPromise(
+        service.read(slice, (_read, cursor, reached) =>
+          Effect.succeed({ cursor, reached }),
+        ),
+      )
+    await Effect.runPromise(
+      service.transaction(countQuery, (_write, _read, _cursor, publish) =>
+        publish(20),
+      ),
+    )
+    expect(await reached(countQuery)).toEqual({ cursor: 20, reached: 20 })
+    const upgraded = { ...countQuery, version: 'v2' }
+    expect(await reached(upgraded)).toEqual({ cursor: 0, reached: 20 })
+    await Effect.runPromise(
+      service.transaction(upgraded, (_write, _read, _cursor, publish) =>
+        publish(4),
+      ),
+    )
+    expect(await reached(upgraded)).toEqual({ cursor: 4, reached: 20 })
+    // A host may seed what a name reached without the State of its version.
+    expect(await reached({ name: 'seededQuery', version: 'v1' })).toEqual({
+      cursor: 0,
+      reached: 30,
+    })
   })
 
   it('exposes narrower read capability', async () => {

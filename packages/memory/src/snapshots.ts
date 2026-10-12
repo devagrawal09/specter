@@ -43,9 +43,11 @@ export type SnapshotSliceStores = {
  * Memory Slice Stores seeded from snapshots. A Slice starts from its
  * snapshot when the snapshot's version is the Slice's (`SliceStoreSlice
  * .version`), and catches up after its cursor; a Slice without one, or whose
- * snapshot is of another version, starts empty and folds the log. Snapshots
- * are taken per Slice, each at its own cursor, so they need no coordination
- * with each other or with appends.
+ * snapshot is of another version, starts empty and folds the log, keeping
+ * the cursor its name reached (a Reaction does not deliver again what it
+ * delivered under its old version). Snapshots are taken per Slice, each at
+ * its own cursor, so they need no coordination with each other or with
+ * appends.
  */
 export function createSnapshotSliceStores(
   snapshots: Iterable<SliceSnapshot> = [],
@@ -71,9 +73,18 @@ export function createSnapshotSliceStores(
       initial: (slice) => {
         slices.add(slice.name)
         const snapshot = saved.get(slice.name)
-        return snapshot?.version === slice.version
-          ? { state: snapshot.state as TWriteState, cursor: snapshot.cursor }
-          : undefined
+        if (!snapshot) return undefined
+        return {
+          ...(snapshot.version === slice.version
+            ? {
+                folded: {
+                  state: snapshot.state as TWriteState,
+                  cursor: snapshot.cursor,
+                },
+              }
+            : {}),
+          reached: Math.max(snapshot.reached ?? 0, snapshot.cursor),
+        }
       },
     })
     services.push({
@@ -107,7 +118,8 @@ export function createSnapshotSliceStores(
           const last = saved.get(slice)
           if (
             last?.version === current.version &&
-            last.cursor === current.lastAppliedOrder
+            last.cursor === current.lastAppliedOrder &&
+            Math.max(last.reached ?? 0, last.cursor) === current.reached
           )
             return []
           const taken: SliceSnapshot = {
@@ -115,6 +127,7 @@ export function createSnapshotSliceStores(
             version: current.version,
             state: current.state,
             cursor: current.lastAppliedOrder,
+            reached: current.reached,
           }
           saved.set(slice, taken)
           return [taken]
@@ -126,6 +139,12 @@ export function createSnapshotSliceStores(
 export type PersistSliceSnapshotsOptions = {
   /** How often the Slices that moved are saved; one minute by default. */
   readonly interval?: Duration.Input
+  /**
+   * The names of the Slices the runtime serves (`Object.keys(config.slices)`).
+   * When given, the snapshots of every other Slice are removed from the store
+   * as it loads: a Slice the app no longer registers leaves nothing behind.
+   */
+  readonly slices?: readonly string[]
 }
 
 /**
@@ -134,14 +153,25 @@ export type PersistSliceSnapshotsOptions = {
  * after this, in the same scope: the last save then runs after the runtime
  * has closed, with every Slice where it stopped. A save that fails is logged,
  * and its snapshots are saved with the next one; a lost snapshot only makes
- * its Slice fold the log again.
+ * its Slice fold the log again. With `slices`, the snapshots of Slices the
+ * runtime does not serve are removed first.
  */
 export function persistSliceSnapshots(
   store: SliceSnapshotStore,
   options: PersistSliceSnapshotsOptions = {},
 ): Effect.Effect<SnapshotSliceStores, unknown, Scope.Scope> {
   return Effect.gen(function* () {
-    const stores = createSnapshotSliceStores(yield* store.load)
+    const loaded = yield* store.load
+    const served = options.slices && new Set(options.slices)
+    const gone = served
+      ? loaded
+          .filter((snapshot) => !served.has(snapshot.slice))
+          .map((snapshot) => snapshot.slice)
+      : []
+    if (gone.length > 0) yield* store.remove(gone)
+    const stores = createSnapshotSliceStores(
+      served ? loaded.filter((snapshot) => served.has(snapshot.slice)) : loaded,
+    )
     const interval = Duration.fromInputUnsafe(
       options.interval ?? Duration.minutes(1),
     )
@@ -203,6 +233,10 @@ export function createMemorySliceSnapshotStore(): SliceSnapshotStore & {
             continue
           saved.set(snapshot.slice, copy(snapshot))
         }
+      }),
+    remove: (slices) =>
+      Effect.sync(() => {
+        for (const slice of slices) saved.delete(slice)
       }),
     snapshots: () => [...saved.values()].map(copy),
   }

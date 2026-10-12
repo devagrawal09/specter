@@ -1087,8 +1087,13 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       })
     }
 
+    /**
+     * Folds a Slice's State up to the log's head, or with `through` up to that
+     * order, which it then publishes as its cursor even past its last Event.
+     */
     function catchUpSlice(
       slice: SliceRegistration,
+      through?: number,
     ): Effect.Effect<void, SpecterEffectError> {
       const resolved = stores.get(slice)
       if (!resolved) {
@@ -1108,19 +1113,22 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                 Effect.gen(function* () {
                   const handlers = applyBySlice.get(slice)
                   const eventTypes = [...(handlers?.keys() ?? [])]
-                  if (eventTypes.length === 0) return undefined
                   // One page of the log at a time: a long catch-up never
                   // holds more than a page of Events.
                   let toOrder = cursor
                   let count = 0
                   const read: PersistedEvent[] = []
-                  while (true) {
+                  while (eventTypes.length > 0) {
                     const page = yield* eventLog.query(toOrder, eventTypes, {
                       limit: readPageSize,
                     })
                     assertEventLogOrder(toOrder, page)
+                    const folded =
+                      through === undefined
+                        ? page
+                        : page.filter((event) => event.order <= through)
                     for (const event of yield* Effect.forEach(
-                      page,
+                      folded,
                       decodePersistedEvent,
                     )) {
                       const apply = handlers?.get(event.type)
@@ -1131,18 +1139,20 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
                           new SpecterProjectionFailedError(slice.name, cause),
                       )
                     }
-                    if (page.length === 0) break
-                    toOrder = page[page.length - 1].order
-                    count += page.length
+                    if (folded.length === 0) break
+                    toOrder = folded[folded.length - 1].order
+                    count += folded.length
                     // Span attributes name each Event of a short catch-up.
-                    if (count <= readPageSize) read.push(...page)
-                    if (page.length < readPageSize) break
+                    if (count <= readPageSize) read.push(...folded)
+                    if (folded.length < readPageSize) break
                   }
-                  if (count === 0) return undefined
-                  yield* publishCursor(toOrder)
+                  const published =
+                    through === undefined ? toOrder : Math.max(toOrder, through)
+                  if (published <= cursor) return undefined
+                  yield* publishCursor(published)
                   return {
                     fromOrder: cursor,
-                    toOrder,
+                    toOrder: published,
                     count,
                     events: count === read.length ? read : undefined,
                   }
@@ -1200,6 +1210,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       use: (
         read: unknown,
         cursor: number,
+        reached: number,
       ) => Effect.Effect<A, SpecterEffectError>,
     ): Effect.Effect<A, SpecterEffectError> {
       const resolved = stores.get(slice)
@@ -1252,9 +1263,20 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
     ): Effect.Effect<void, SpecterEffectError> {
       return Effect.gen(function* () {
         const handlers = applyBySlice.get(reaction)
-        const cursor = yield* readStore(reaction, (_read, current) =>
-          Effect.succeed(current),
+        const stored = yield* readStore(reaction, (_read, current, reached) =>
+          Effect.succeed({
+            current,
+            reached: typeof reached === 'number' ? reached : current,
+          }),
         )
+        // A Reaction of a new version starts its State at 0, but it has
+        // delivered every commit up to the highest cursor its name reached:
+        // it folds its State up to there without delivering, and delivers
+        // only the commits after.
+        if (stored.reached > stored.current) {
+          yield* catchUpSlice(reaction, stored.reached)
+        }
+        const cursor = Math.max(stored.current, stored.reached)
         // A remembered skip range applies only while the durable cursor sits
         // inside it; any other cursor means the Store moved independently.
         const remembered = reactionSkips.get(reaction.name)

@@ -53,6 +53,8 @@ type SliceEntry<TState> = {
   readonly cursor: number
   /** The version of the Slice the State was folded for. */
   readonly version: string | undefined
+  /** The highest cursor published for the Slice's name under any version. */
+  readonly reached: number
   /** State as written to the file; transactions start from a fresh decode. */
   readonly json: string
   decoded?: TState
@@ -98,18 +100,21 @@ export function createJsonlSliceStoreService<
     const existing = entries.get(slice.name)
     if (existing?.version === slice.version) return existing
     const path = pathFor(slice.name)
-    const empty = {
+    // A Slice of another version starts empty, keeping the cursor its name
+    // reached.
+    const empty = (reached: number) => ({
       cursor: 0,
       version: slice.version,
+      reached: Math.max(reached, existing?.reached ?? 0),
       json: encodeState(createState()),
-    }
+    })
     let entry: SliceEntry<TWriteState>
     try {
       const stored = decodeFile<TWriteState>(readFileSync(path, 'utf8'), path)
-      entry = stored.version === slice.version ? stored : empty
+      entry = stored.version === slice.version ? stored : empty(stored.reached)
     } catch (cause) {
       if ((cause as NodeJS.ErrnoException).code !== 'ENOENT') throw cause
-      entry = empty
+      entry = empty(0)
     }
     entries.set(slice.name, entry)
     return entry
@@ -130,6 +135,7 @@ export function createJsonlSliceStoreService<
   function save(
     slice: SliceStoreSlice,
     cursor: number,
+    reached: number,
     state: TWriteState,
   ): SliceEntry<TWriteState> {
     const json = encodeState(state)
@@ -144,7 +150,7 @@ export function createJsonlSliceStoreService<
       writeAll(
         fd,
         Buffer.from(
-          `{"cursor":${cursor},"version":${JSON.stringify(slice.version)},"state":${json}}\n`,
+          `{"cursor":${cursor},"reached":${reached},"version":${JSON.stringify(slice.version)},"state":${json}}\n`,
         ),
       )
       if (options.fsync) fsyncSync(fd)
@@ -153,7 +159,7 @@ export function createJsonlSliceStoreService<
     }
     renameSync(temporary, path)
     if (options.fsync) fsyncDirectory(directory)
-    return { cursor, version: slice.version, json }
+    return { cursor, version: slice.version, reached, json }
   }
 
   function semaphore(sliceName: string) {
@@ -169,7 +175,11 @@ export function createJsonlSliceStoreService<
     pathFor,
     read: (slice, run) =>
       Effect.flatMap(loadEffect(slice), (entry) =>
-        run(read(decoded(entry)), entry.cursor),
+        run(
+          read(decoded(entry)),
+          entry.cursor,
+          Math.max(entry.reached, entry.cursor),
+        ),
       ),
     transaction: (slice, run) =>
       Effect.suspend(() =>
@@ -200,7 +210,13 @@ export function createJsonlSliceStoreService<
             )
             if (published) {
               const saved = yield* Effect.try({
-                try: () => save(slice, cursor, state),
+                try: () =>
+                  save(
+                    slice,
+                    cursor,
+                    Math.max(current.reached, current.cursor, cursor),
+                    state,
+                  ),
                 catch: (cause) =>
                   new JsonlSliceStoreFailure('write', slice.name, cause),
               })
@@ -252,6 +268,7 @@ function rejectMapsAndSets(key: string, value: unknown) {
 function decodeFile<TState>(content: string, path: string): SliceEntry<TState> {
   const document = JSON.parse(content) as {
     cursor?: unknown
+    reached?: unknown
     version?: unknown
     state?: unknown
   }
@@ -260,6 +277,8 @@ function decodeFile<TState>(content: string, path: string): SliceEntry<TState> {
     document === null ||
     !Number.isSafeInteger(document.cursor) ||
     (document.cursor as number) < 0 ||
+    (document.reached !== undefined &&
+      !Number.isSafeInteger(document.reached)) ||
     (document.version !== undefined && typeof document.version !== 'string') ||
     !('state' in document)
   ) {
@@ -267,6 +286,10 @@ function decodeFile<TState>(content: string, path: string): SliceEntry<TState> {
   }
   return {
     cursor: document.cursor as number,
+    reached: Math.max(
+      document.cursor as number,
+      (document.reached as number | undefined) ?? 0,
+    ),
     version: document.version,
     json: JSON.stringify(document.state),
     decoded: document.state as TState,

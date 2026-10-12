@@ -36,12 +36,14 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 7 },
         cursor: 12,
+        reached: 12,
       },
       {
         slice: 'listQuery',
         version: 'sha256:list/0',
         state: { count: 99 },
         cursor: 40,
+        reached: 40,
       },
     ])
     const service = stores.service(() => ({ count: 0 }))
@@ -53,6 +55,24 @@ describe('memory Slice Stores from snapshots', () => {
       )
     expect(await start(countQuery)).toEqual({ state: { count: 7 }, cursor: 12 })
     expect(await start(listQuery)).toEqual({ state: { count: 0 }, cursor: 0 })
+    // The Slice of another version keeps the cursor its name reached.
+    expect(
+      await Effect.runPromise(
+        service.read(listQuery, (_state, _cursor, reached) =>
+          Effect.succeed(reached),
+        ),
+      ),
+    ).toBe(40)
+    await increment(service, listQuery, 2)
+    expect(stores.snapshot()).toEqual([
+      {
+        slice: 'listQuery',
+        version: listQuery.version,
+        state: { count: 1 },
+        cursor: 2,
+        reached: 40,
+      },
+    ])
   })
 
   it('snapshots each Slice that moved, at its own cursor and version', async () => {
@@ -62,6 +82,7 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 7 },
         cursor: 12,
+        reached: 12,
       },
     ])
     const service = stores.service(() => ({ count: 0 }))
@@ -73,6 +94,7 @@ describe('memory Slice Stores from snapshots', () => {
         version: listQuery.version,
         state: { count: 1 },
         cursor: 3,
+        reached: 3,
       },
     ])
     // Nothing moved since.
@@ -84,6 +106,7 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 8 },
         cursor: 13,
+        reached: 13,
       },
     ])
   })
@@ -105,6 +128,7 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 1 },
         cursor: 4,
+        reached: 4,
       },
     ])
     await increment(service, countQuery, 5)
@@ -115,6 +139,7 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 2 },
         cursor: 5,
+        reached: 5,
       },
     ])
 
@@ -139,6 +164,7 @@ describe('memory Slice Stores from snapshots', () => {
     let failNext = true
     const store: SliceSnapshotStore = {
       load: Effect.succeed([]),
+      remove: () => Effect.void,
       save: (snapshots) =>
         Effect.suspend(() => {
           if (failNext) {
@@ -165,7 +191,49 @@ describe('memory Slice Stores from snapshots', () => {
         version: countQuery.version,
         state: { count: 1 },
         cursor: 4,
+        reached: 4,
       },
+    ])
+  })
+
+  it('removes the snapshots of Slices the runtime does not serve', async () => {
+    const store = createMemorySliceSnapshotStore()
+    await Effect.runPromise(
+      store.save([
+        {
+          slice: 'countQuery',
+          version: countQuery.version,
+          state: { count: 3 },
+          cursor: 9,
+          reached: 9,
+        },
+        {
+          slice: 'retiredQuery',
+          version: 'sha256:retired/1',
+          state: { count: 1 },
+          cursor: 4,
+          reached: 4,
+        },
+      ]),
+    )
+    const started = await Effect.runPromise(
+      Effect.scoped(
+        persistSliceSnapshots(store, {
+          slices: ['countQuery', 'listQuery'],
+        }).pipe(
+          Effect.flatMap((stores) =>
+            stores
+              .service(() => ({ count: 0 }))
+              .read(countQuery, (state, cursor) =>
+                Effect.succeed({ state, cursor }),
+              ),
+          ),
+        ),
+      ),
+    )
+    expect(started).toEqual({ state: { count: 3 }, cursor: 9 })
+    expect(store.snapshots().map((snapshot) => snapshot.slice)).toEqual([
+      'countQuery',
     ])
   })
 })

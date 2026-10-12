@@ -11,6 +11,12 @@ export type SliceSnapshot = {
   readonly version: string
   readonly state: unknown
   readonly cursor: number
+  /**
+   * The highest cursor the Slice published under any of its versions
+   * (`SliceStoreService` `reached`), at least `cursor`: a Reaction of a new
+   * version folds its State up to it without delivering.
+   */
+  readonly reached: number
 }
 
 /**
@@ -29,4 +35,9 @@ export type SliceSnapshotStore = {
   readonly save: (
     snapshots: readonly SliceSnapshot[],
   ) => Effect.Effect<void, unknown>
+  /**
+   * Deletes the snapshots of these Slices, such as those of Slices the
+   * runtime no longer serves.
+   */
+  readonly remove: (slices: readonly string[]) => Effect.Effect<void, unknown>
 }

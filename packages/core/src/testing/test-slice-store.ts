@@ -10,7 +10,7 @@ export function createTestSliceStore<TState extends object>(
   let state = structuredClone(initialState)
   let cursor = 0
   const service: SliceStoreService<TState, TState, unknown> = {
-    read: (_sliceName, run) => Effect.suspend(() => run(state, cursor)),
+    read: (_sliceName, run) => Effect.suspend(() => run(state, cursor, cursor)),
     transaction: (_sliceName, run) =>
       Effect.suspend(() =>
         run(

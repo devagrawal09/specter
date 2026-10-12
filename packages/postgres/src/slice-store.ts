@@ -39,7 +39,8 @@ export async function preparePostgresSliceStore(pool: PostgresPool) {
     slice_name TEXT PRIMARY KEY,
     version TEXT NOT NULL,
     state_json JSONB NOT NULL,
-    last_applied_order BIGINT NOT NULL
+    last_applied_order BIGINT NOT NULL,
+    reached BIGINT NOT NULL DEFAULT 0
   )`)
 }
 
@@ -61,49 +62,72 @@ export function createPostgresSliceStoreService<
     options.read ?? ((state: TWriteState) => state as unknown as TReadState)
 
   // State kept under another version of the Slice is not read: the Slice
-  // starts empty and folds the log.
+  // starts empty and folds the log, keeping the cursor its name reached.
   async function load(connection: PostgresConnection, slice: SliceStoreSlice) {
     const result = await connection.query<{
+      version: unknown
       state_json: unknown
       last_applied_order: unknown
+      reached: unknown
     }>(
-      `SELECT state_json, last_applied_order
+      `SELECT version, state_json, last_applied_order, reached
        FROM specter_slice_states
-       WHERE slice_name = $1 AND version = $2`,
-      [slice.name, slice.version],
+       WHERE slice_name = $1`,
+      [slice.name],
     )
     const row = result.rows[0]
-    if (!row) return { state: createState(), cursor: 0 }
-    return {
-      state: postgresJson<TWriteState>(row.state_json, 'Slice State'),
-      cursor: postgresNumber(row.last_applied_order, 'Slice cursor'),
-    }
+    if (!row) return { state: createState(), cursor: 0, reached: 0 }
+    const cursor = postgresNumber(row.last_applied_order, 'Slice cursor')
+    const reached = Math.max(
+      cursor,
+      postgresNumber(row.reached, 'Slice reached cursor'),
+    )
+    return row.version === slice.version
+      ? {
+          state: postgresJson<TWriteState>(row.state_json, 'Slice State'),
+          cursor,
+          reached,
+        }
+      : { state: createState(), cursor: 0, reached }
   }
 
   async function save(
     connection: PostgresConnection,
     slice: SliceStoreSlice,
-    entry: { state: TWriteState; cursor: number },
+    entry: { state: TWriteState; cursor: number; reached: number },
   ) {
     const encoded = JSON.stringify(entry.state)
     if (encoded === undefined) {
       throw new Error('Postgres Slice State must be JSON-serializable')
     }
-    // A State of another version is replaced whatever its cursor.
+    // A State of another version is replaced whatever its cursor; the cursor
+    // its name reached stays.
     const result = await connection.query(
       `INSERT INTO specter_slice_states (
         slice_name,
         version,
         state_json,
-        last_applied_order
-      ) VALUES ($1, $2, $3::jsonb, $4)
+        last_applied_order,
+        reached
+      ) VALUES ($1, $2, $3::jsonb, $4, $5)
       ON CONFLICT(slice_name) DO UPDATE SET
         version = excluded.version,
         state_json = excluded.state_json,
-        last_applied_order = excluded.last_applied_order
+        last_applied_order = excluded.last_applied_order,
+        reached = GREATEST(
+          specter_slice_states.reached,
+          specter_slice_states.last_applied_order,
+          excluded.reached
+        )
       WHERE specter_slice_states.version <> excluded.version
         OR specter_slice_states.last_applied_order <= excluded.last_applied_order`,
-      [slice.name, slice.version, encoded, entry.cursor],
+      [
+        slice.name,
+        slice.version,
+        encoded,
+        entry.cursor,
+        Math.max(entry.reached, entry.cursor),
+      ],
     )
     if (result.rowCount !== 1) {
       throw new Error(`Stale Slice cursor publication for ${slice.name}`)
@@ -125,7 +149,11 @@ export function createPostgresSliceStoreService<
       context.use((connection) =>
         Effect.gen(function* () {
           const current = yield* attempt('read', () => load(connection, slice))
-          return yield* run(read(current.state), current.cursor)
+          return yield* run(
+            read(current.state),
+            current.cursor,
+            current.reached,
+          )
         }),
       ),
     transaction: (slice, run) =>

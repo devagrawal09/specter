@@ -73,7 +73,12 @@ class FakePostgresPool implements PostgresPool {
   readonly commits: CommitRow[] = []
   readonly sliceStates = new Map<
     string,
-    { version: string; state_json: unknown; last_applied_order: string }
+    {
+      version: string
+      state_json: unknown
+      last_applied_order: string
+      reached: string
+    }
   >()
   readonly purges = new Map<string, number>()
   #nextOrder = 1
@@ -364,17 +369,32 @@ class FakePostgresPool implements PostgresPool {
       return { rows: [], rowCount: 1 }
     }
     if (
-      normalized.startsWith('SELECT state_json, last_applied_order') &&
+      normalized.startsWith('SELECT version, state_json, last_applied_order') &&
       normalized.includes('FROM specter_slice_states')
     ) {
       const state = this.sliceStates.get(String(parameters[0]))
-      return { rows: state && state.version === parameters[1] ? [state] : [] }
+      return { rows: state ? [state] : [] }
     }
     if (normalized.startsWith('INSERT INTO specter_slice_states')) {
+      const current = this.sliceStates.get(String(parameters[0]))
+      if (
+        current &&
+        current.version === String(parameters[1]) &&
+        Number(current.last_applied_order) > Number(parameters[3])
+      ) {
+        return { rows: [], rowCount: 0 }
+      }
       this.sliceStates.set(String(parameters[0]), {
         version: String(parameters[1]),
         state_json: JSON.parse(String(parameters[2])) as unknown,
         last_applied_order: String(parameters[3]),
+        reached: String(
+          Math.max(
+            Number(current?.reached ?? 0),
+            Number(current?.last_applied_order ?? 0),
+            Number(parameters[4]),
+          ),
+        ),
       })
       return { rows: [], rowCount: 1 }
     }
