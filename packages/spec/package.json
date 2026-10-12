@@ -22,7 +22,7 @@
     }
   },
   "scripts": {
-    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-imports.mjs",
+    "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly && node scripts/rewrite-declaration-imports.mjs && node -e \"require('node:fs').chmodSync('dist/cli.js', 0o755)\"",
     "test": "pnpm build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

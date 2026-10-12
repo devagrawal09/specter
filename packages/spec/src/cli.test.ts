@@ -4,6 +4,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -38,6 +39,19 @@ describe('specter-spec export', () => {
     expect(run(input(root)).status).toBe(0)
     expect(readFileSync(join(root, 'one', 'spec.json'), 'utf8')).toBe(output)
   })
+
+  // A linked package's bin is the built file itself, which no install marks
+  // executable, so the build leaves it executable.
+  it.skipIf(process.platform === 'win32')(
+    'runs as the package bin, which the build leaves executable',
+    () => {
+      expect(statSync(cli).mode & 0o111).toBe(0o111)
+      const root = fixtureRoot()
+      writeSpecification(join(root, 'one', 'spec.ts'), 'one')
+      const result = spawnSync(cli, ['export', root], { encoding: 'utf8' })
+      expect(result.status, result.stderr).toBe(0)
+    },
+  )
 
   it('declares the literal types of each spec.json beside it', () => {
     const root = fixtureRoot()
