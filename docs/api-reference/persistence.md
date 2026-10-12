@@ -133,7 +133,8 @@ const dependencies = Layer.mergeAll(
 `prepareSpecterSqlite` creates `specter_event_keys (event_order, name, value)`,
 keyed by `(event_order, name)` and indexed on `(name, value, event_order)`,
 beside the Event and commit tables. The scoped check is one indexed query over
-it, and so is a keyed read.
+it, and so is a keyed read. Every read returns each Event's keys from it, as
+one JSON object a subquery aggregates per Event.
 
 `SqliteDatabaseContext.use` uses active transaction when present.
 `transaction` nests by joining active Effect context. This lets direct ORM Slice
@@ -189,8 +190,10 @@ value)` with the same key and index as SQLite; the scoped check matches its
   append lock, after the idempotency lookup; a stale append fails with a
   `SpecterVersionConflictError` cause.
 - Store each Event's keys exactly as `append` receives them, never derived by
-  the adapter, and index them by `(name, value, order)` for the scoped check
-  and `readKey`.
+  the adapter, index them by `(name, value, order)` for the scoped check
+  and `readKey`, and return them with the Event from every read.
+- Store an Event under the host's `id` and `recordedAt` when its draft carries
+  them, and refuse an ID already in the log; `metadata` is the host's.
 - Declare `capabilities`, and refuse what is not supported rather than ignore
   it.
 

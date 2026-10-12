@@ -43,6 +43,8 @@ Every Slice has two required source files and one generated portable contract:
   imports from `@specter-ts/spec` and contains only descriptions and Scenarios.
 - `spec.json` is generated beside it by `specter-spec export`. It is the strict,
   versioned contract consumed by every implementation language and by tooling.
+  The exporter also writes `spec.d.json.ts`, its literal TypeScript types, so a
+  Command's rejection codes are a type.
 - `impl.ts` loads `spec.json` and exports the completed Slice Implementation.
   It supplies runtime schemas, a private Slice Store, Event apply handlers, a
   Reaction Plugin when needed, and the final handler.

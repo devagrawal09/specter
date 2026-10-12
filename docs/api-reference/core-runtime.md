@@ -19,9 +19,10 @@ network transport and no application database schema.
 | --- | --- |
 | `createEventDefinition(type, schema, options?)` | Defines a kebab-case Event and creates/decodes its exact payload. `options.keys` declares the named [Event keys](../architecture/event-sourcing.md#event-keys) each Event carries: `{ name: (payload) => value \| undefined }`. |
 | `eventKeys(definition, payload)` | The keys one Event carries, by name, as core stores them: for a host that appends to an Event Log itself. |
-| `CommandRejection` | What a Command handler throws to reject: `new CommandRejection(code, message, details?)`, with a stable kebab-case `code`. |
+| `CommandRejection<TCode>` | What a Command handler throws to reject: `new CommandRejection(code, message, details?)`, with a stable kebab-case `code`. |
 | `eventsFor(slice, fullCatalog)` | Selects the Event Definitions one Slice needs: Given/apply Events and accepted Command outcomes. An app that registers some Slices of a larger catalog registers the union over its Slices. |
 | `createSpecterApp(config, dependencies)` | Promise transport edge over native Effect runtime and supplied dependency Layer. Accepts a config or a `PreparedSpecterApp`. |
+| `extendSpecterConfig(config, { slices?, events? })` | A config with more Slices and the Event Definitions they need beside another's, typed as both: a test's runtime with a test-only Slice. Throws for a Slice the config already registers. |
 | `prepareSpecterApp(config)` | Validates a config once (cached by `events`/`slices` identity) and returns a `PreparedSpecterApp`. |
 | `specterErrorCodes` | Stable map of public runtime error-code strings. |
 | `SpecterConformanceError` | Aggregate construction error with structured conformance diagnostics. |
@@ -31,11 +32,11 @@ network transport and no application database schema.
 | `SpecterUnknownEventError` | An emitted or persisted Event type is not registered. |
 | `SpecterInvalidInputError` | A Command or Query input schema rejected its payload. |
 | `SpecterInvalidOutputError` | A Query or Reaction output schema rejected its result. |
-| `SpecterCommandRejectedError` | A Command handler rejected an intent; `rejection` is the `CommandRejection` it threw. |
+| `SpecterCommandRejectedError<TCode>` | A Command handler rejected an intent; `rejection` is the `CommandRejection` it threw. `TCode` narrows its code for a host that knows its Commands, such as to `SpecterRejectionCode<typeof config>`. |
 | `SpecterEventLogCapabilityError` | The Event Log lacks a capability the app uses; `missing` names it. |
 | `SpecterVersionConflictError` | `expectedVersion` did not match the Event Log version, or the runtime's scoped compare-and-swap kept losing to writers of Events the decision read, after its retries. |
 | `SpecterIdempotencyConflictError` | Under `idempotencyMode: 'exact'`, an idempotency key was reused for a different Command fingerprint. |
-| `SpecterInvalidCommandOptionsError` | Command consistency options are malformed. |
+| `SpecterInvalidCommandOptionsError` | Command options are malformed, including an `eventContext` that returned an invalid ID or time. |
 | `SpecterEventLogOrderError` | An adapter returned non-unique, non-ascending, or stale Event orders. |
 | `SpecterInfrastructureError` | An unexpected schema, adapter, handler, or Plugin failure crossed the runtime boundary. |
 | `SpecterPluginQueryInTransactionError` | A direct Reaction Plugin called `query` inside its Slice Store transaction; permanent until the Plugin changes. |
@@ -66,17 +67,18 @@ network transport and no application database schema.
 | Export | Purpose |
 | --- | --- |
 | `EventDraft` | Domain `type` and `payload` before persistence metadata is assigned. |
-| `Event` | An Event draft plus Event Log `id` and ISO `recordedAt`. |
-| `PersistedEvent` | An `Event` plus its unique global `order`. |
+| `PersistedEvent` | An Event as the Event Log recorded it: its draft plus `id`, ISO `recordedAt`, unique global `order`, and the `keys` stored with it. Apply handlers receive it. |
+| `EventContext` | What a host supplies with one emitted Event through `eventContext`: an optional `id`, ISO `recordedAt`, and opaque `metadata` for the Event Log adapter. |
 | `EventDefinition` | Event type, Standard Schema, typed `create`, async `decode`, and optional named `keys`. |
 | `EventDefinitionOptions` | Optional `keys`: a function per key name returning the key's value, or `undefined` when the Event has none. |
 | `EventKey` | `{ name, value }`: one named key an Event carries. |
 | `EventKeyFunction<T>` / `EventKeyFunctions<T>` | One key's function, and a definition's functions by name. |
 | `ApplyEventDefinition` | Structural Event Definition accepted by an apply registration or catalog. |
-| `EventForDefinition<T>` | Infers the typed `Event` produced by an Event Definition. |
+| `EventForDefinition<T>` | Infers the typed `PersistedEvent` an apply handler receives for an Event Definition. |
 | `ApplyRegistration` | An Event Definition and its async State apply handler. |
 | `CommandEnvelope` | Generic `{ type, payload }` Command envelope. |
 | `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys` names the Event keys its decision reads, each derived from the Command and the State it decided from. |
+| `CommandRejectionCode<T>` | The codes a Command Slice rejects with, from its Scenarios: exact when implemented from a declared `spec.json` or built in TypeScript, `string` from a plain JSON import, `never` for another kind of Slice. |
 | `ConsistencyKey<C, S>` / `ConsistencyKeys<C, S>` | One consistency key's function, returning one value, several, or `undefined`; and a Command's functions by key name. |
 | `QuerySlice` | Completed Query Slice implementation type. |
 | `ReactionSlice` | Completed Reaction Slice implementation type; `key` names the Event key one completed with `.handleEachKey` handles. |
@@ -86,7 +88,7 @@ network transport and no application database schema.
 | `QueryOutputOf<T>` | Infers a Query Slice's decoded public output. |
 | `CommandRef<T>` | Registry-oriented Command name and optional payload reference. |
 | `QueryRef<T>` | Registry-oriented Query name and optional input/result reference. |
-| `CommandDispatchOptions` | Optional `expectedVersion`, `idempotencyKey`, and `idempotencyMode` (requires a key). |
+| `CommandDispatchOptions` | Optional `expectedVersion`, `idempotencyKey`, `idempotencyMode` (requires a key), and `eventContext: (draft, index) => EventContext \| undefined`. |
 | `CommandIdempotencyMode` | `'first-wins'` (default) returns the first commit for a key regardless of payload; `'exact'` also requires a matching fingerprint. |
 | `CommandReceipt` | Committed `events`, resulting `version`, and `duplicate` flag returned to a Plugin; no Reaction completion. On a duplicate, `events`/`version` are the first commit for the key and may differ from this call's payload. |
 | `CommandDispatch` | Plugin capability dispatching a same-app Command; resolves to `CommandReceipt`. |
@@ -112,6 +114,8 @@ network transport and no application database schema.
 | `SpecterCommandType<TConfig>` | Union of registered Command names. |
 | `SpecterQueryType<TConfig>` | Union of registered Query names. |
 | `SpecterQueryResult<TConfig, TType>` | Output type for one registered Query name. |
+| `SpecterRejectionCode<TConfig>` | Union of the codes the app's Commands reject with, from their Scenarios. |
+| `ExtendedSpecterAppConfig<TConfig, TSlices>` | What `extendSpecterConfig` returns: the config's Slices and the extension's. |
 | `CommandExecutionOptions` | Alias of `CommandDispatchOptions` for `app.command`. |
 | `CommandExecution` | Committed Events, resulting version, duplicate flag, and Reaction completion Promise. |
 | `QuerySubscriptionOptions` | Optional cancellation `AbortSignal`. |
@@ -281,6 +285,84 @@ handler throws, and a handler that emits no Events fail with
 rejection code is recorded on the Command's span as
 `specter.command.rejection.code`.
 
+### Rejection codes as types
+
+The codes a Command rejects with are in its Scenarios, so they are a type.
+`specter-spec export` writes `spec.d.json.ts` beside each `spec.json`, which
+TypeScript reads for its import when `tsconfig.json` sets
+`allowArbitraryExtensions`; `implementCommand` then knows the Slice's name and
+rejection codes:
+
+```ts
+import {
+  SpecterCommandRejectedError,
+  type SpecterRejectionCode,
+} from '@specter-ts/core'
+
+type TodoRejection = SpecterRejectionCode<typeof todoConfig>
+// 'title-required' | 'title-too-long' | 'todo-not-found' | ...
+
+function isRejection(
+  error: unknown,
+): error is SpecterCommandRejectedError<TodoRejection> {
+  return error instanceof SpecterCommandRejectedError
+}
+```
+
+`CommandRejectionCode<typeof addTodo>` is one Command's union. A Command built
+with `createCommandSlice` in TypeScript is exact too; one implemented from a
+plain JSON import, without the declaration, has `string` codes.
+
+## Host context on dispatch
+
+`eventContext` gives each Event a Command emits the host's ID, recorded time
+and metadata for the Event Log adapter:
+
+```ts
+await app.command(
+  { type: 'addTodo', payload },
+  {
+    eventContext: (draft, index) => ({
+      id: eventIds[index],
+      recordedAt: new Date(requestTime).toISOString(),
+      metadata: { requestId },
+    }),
+  },
+)
+```
+
+Core calls it after the decision, once per Event with the validated draft and
+its position in the commit, for each attempt that appends. An Event it
+returns `undefined` for takes the Event Log's ID and time. The Event is stored
+under the given `id` and `recordedAt`, which the receipt's `events` and every
+later read return; `metadata` is opaque to Specter and reaches the adapter in
+`EventLogDraft.metadata`, and the bundled adapters store none of it. An `id`
+must be non-blank and unique in the log, and `recordedAt` an ISO-8601 UTC
+timestamp as `toISOString` writes it: an invalid context fails with
+`SpecterInvalidCommandOptionsError`, a throwing one with
+`SpecterInfrastructureError`, and an ID already in the log fails the append,
+all before anything is appended. See
+[Host context on dispatch](../architecture/event-sourcing.md#host-context-on-dispatch).
+
+## Test-only Slices
+
+`extendSpecterConfig(config, { slices, events })` returns a config with the
+extension's Slices and Event Definitions beside the config's, typed as both,
+so a test's app dispatches a test-only Command and the production config's
+type never names it:
+
+```ts
+const testConfig = extendSpecterConfig(todoConfig, {
+  slices: { recordHistory },
+  events: historyEvents,
+})
+```
+
+A Slice name the config already registers throws a `TypeError`: an extension
+never replaces a Slice. With no `slices`, the result has the config's type.
+Each call builds a new `events` array and `slices` record, which validate on
+their own, so build the extended config once.
+
 ## Effect runtime
 
 Import Effect integration from `@specter-ts/core/effect`. Specifications remain
@@ -377,7 +459,8 @@ consumers, and retain the newest value.
 - Use a runtime Standard Schema at every untrusted input or output boundary;
   type-only schema builder calls do not validate runtime values.
 - Generate domain IDs and timestamps before dispatch. Event Log identity and
-  recorded time are metadata.
+  recorded time are metadata, which a host may supply per Event with
+  `eventContext` and a fold may read.
 - Core is transport-agnostic. Remote access belongs in project-owned envelope
   transports.
 

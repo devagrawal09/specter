@@ -29,6 +29,7 @@ my-specter-app/
 │   │       ├── add-todo/
 │   │       │   ├── spec.ts         # required TS authoring source
 │   │       │   ├── spec.json       # generated portable contract; ignored
+│   │       │   ├── spec.d.json.ts  # generated type of spec.json; ignored
 │   │       │   └── impl.ts         # required TS implementation
 │   │       ├── todos-query/        # same required pair for a Query
 │   │       └── ...
@@ -53,7 +54,11 @@ Two source files define the Slice boundary:
 Project scripts run `specter-spec export` before development, typecheck, tests,
 and builds. The exporter writes adjacent `spec.json`, which is ignored as a
 generated artifact but is the only specification input used by implementations
-and tooling. `impl.ts` must load that JSON with the matching
+and tooling, and beside it `spec.d.json.ts`, the literal types of that JSON
+(its name and, for a Command, its rejection codes). TypeScript reads the
+declaration for `import specification from './spec.json'` when the project's
+`tsconfig.json` sets `allowArbitraryExtensions`, as the starter's does; a
+JSON import alone would widen every string. `impl.ts` must load that JSON with the matching
 `implementCommand`, `implementQuery`, or `implementReaction` entry point; it
 must not import `spec.ts`.
 
@@ -125,7 +130,9 @@ database modules, or a nonexistent `@specter-ts/core/client` entrypoint.
 - `impl.ts` imports adjacent generated `spec.json`; it may also import core
   implementation types, local Event Definitions, its private projection, Store
   adapters, and Reaction Plugins.
-- Slices do not import sibling Slices or their state.
+- Slices do not import sibling Slices or their state. A module directly
+  under a feature directory, such as fold code several Slices share, is not a
+  Slice and may be imported.
 - `registry.ts` is the explicit composition boundary for implementations and
   Event Definitions.
 - `server.ts` owns adapter construction and lifecycle; UI code owns neither.

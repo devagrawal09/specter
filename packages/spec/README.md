@@ -22,8 +22,10 @@ export default addTodo
 ```
 
 Export an explicit file, directory, or glob. Each source is evaluated in an
-isolated subprocess and produces ignored adjacent `spec.json`; no manifest is
-created.
+isolated subprocess and produces ignored adjacent `spec.json`, and beside it
+`spec.d.json.ts`, the document's literal types (its name and, for a Command,
+its rejection codes), which TypeScript reads for the JSON import when
+`allowArbitraryExtensions` is set; no manifest is created.
 
 ```sh
 specter-spec export src/features

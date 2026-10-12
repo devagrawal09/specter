@@ -52,6 +52,45 @@ The Todo Reference application keeps related use cases under
 These Slices share facts through Event Definitions in the feature catalog. They
 do not call one another or query one another's Slice State.
 
+### Shared fold code, not shared State
+
+Many Slices of one feature often fold the same facts the same way: every
+Command about a Session first needs to know whether the Session exists and
+whether it was deleted. Each Slice still owns its State, but the fold code
+may live once, in a module of the feature that is not a Slice:
+
+```ts
+// src/features/session/lifecycle.ts
+export type SessionLifecycle = { sessions: Record<string, 'live' | 'deleted'> }
+
+export const sessionLifecycle = {
+  created: async (event: EventForDefinition<typeof sessionCreated>, state: SessionLifecycle) => {
+    state.sessions[event.payload.sessionId] = 'live'
+  },
+  deleted: async (event: EventForDefinition<typeof sessionDeleted>, state: SessionLifecycle) => {
+    state.sessions[event.payload.sessionId] = 'deleted'
+  },
+}
+```
+
+```ts
+// src/features/session/rename-session/impl.ts
+export const renameSession = implementCommand(specification)
+  .inputSchema(renameSessionSchema)
+  .store(RenameSessionStore)
+  .apply(sessionCreated, sessionLifecycle.created)
+  .apply(sessionDeleted, sessionLifecycle.deleted)
+  .apply(sessionRenamed, applySessionRenamed)
+  .handle(handleRenameSession)
+```
+
+The Slice still registers every Event type it folds, so its Scenarios,
+conformance and compare-and-swap see exactly what it reads, and its State
+type extends the shared part (`RenameSessionState = SessionLifecycle & {
+titles: ... }`). A module directly under the feature directory is not a
+Slice, so the boundary check lets Slices import it; what it must not become
+is a shared State or a sibling Slice's projection.
+
 ## Ownership and dependencies
 
 The important boundary is ownership, not directory depth:
@@ -97,12 +136,16 @@ transformation. Use runtime schemas at untrusted transport boundaries.
 - Use lower camel case for Slice names and kebab-case for Event types.
 - Give every Slice at least one uniquely described Scenario.
 - Across a Slice's Scenarios, the union of `given` Event types must exactly
-  match its registered `.apply(...)` Event types.
+  match its registered `.apply(...)` Event types: every fold handler is
+  exercised by a Scenario, and every Given Event reaches the Slice (see
+  [Conformance](../specifications/conformance.md#apply-registrations)).
 - A Command emits only Events authorized by accepted Scenario outcomes.
 - Create domain IDs and timestamps at the initiating boundary, not inside Slice
   handlers.
 - Avoid extracting a shared schema or state abstraction merely because nearby
   Slices look similar; preserve explicit ownership until a real boundary exists.
+  Fold code many Slices repeat may live once in a non-Slice module, while each
+  Slice keeps its own State and its own `.apply` registrations.
 - Do not let a Query projection drive a Command decision. A Command that needs
   history owns its own decision projection.
 

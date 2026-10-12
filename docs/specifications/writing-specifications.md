@@ -111,9 +111,13 @@ export const todoAddedEvent = createEventDefinition(
 Event types use kebab-case. Event payload schemas are validation-only contracts: they must preserve Scenario, emitted, and persisted payloads one-to-one. Do not trim, coerce, strip unknown keys, or generate defaults inside an Event schema. Make such decisions in the Command handler before calling `definition.create(payload)`.
 
 Runtime Event metadata is separate from the domain payload. `event(...)`
-provides only type and example payload. Replay supplies deterministic `id` and
-`recordedAt` values to apply handlers, then advances the Slice cursor separately
-to the Event's one-based position.
+provides only type and example payload. Replay supplies each Given Event's
+metadata from its one-based position N: the ID `scenario-event-N`, `order` N,
+`recordedAt` N seconds after the Unix epoch, and the keys its definition
+derives, then advances the Slice cursor to that order. A fold that reads when
+its facts were recorded therefore sees Given Events recorded in order, one
+second apart, and a Scenario states times from positions (`3000` for the third
+Given Event).
 
 ## Complete the implementation in order
 
@@ -142,7 +146,9 @@ Complete each kind in its required order:
 
 Call the schema steps even when relying on type parameters instead of a runtime schema. A type-only schema choice improves TypeScript inference but performs no runtime validation.
 
-Every Event used in a Slice's `given` data must have exactly one matching `.apply(definition, handler)` on that Slice. Conversely, every apply registration must appear in at least one Given Scenario. Use the exact Event Definition instance from the app catalog, not another object with the same type string.
+Every Event used in a Slice's `given` data must have exactly one matching `.apply(definition, handler)` on that Slice. Conversely, every apply registration must appear in at least one Given Scenario. Use the exact Event Definition instance from the app catalog, not another object with the same type string. [Conformance](./conformance.md#why-given-types-and-applied-types-match-exactly) explains why both directions hold.
+
+The exporter also writes `spec.d.json.ts` beside each `spec.json`: its literal name and, for a Command, the union of the codes its rejected Scenarios name. With `allowArbitraryExtensions` set, TypeScript reads it for the JSON import, so `CommandRejectionCode<typeof slice>` and `SpecterRejectionCode<typeof config>` are exact without a hand-kept list.
 
 Slice State is a disposable, replayable projection. Apply handlers mutate only the store's write capability; Command, Query, and Reaction handlers receive its read capability. The Event Log remains authoritative.
 

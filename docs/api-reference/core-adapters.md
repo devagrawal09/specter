@@ -11,7 +11,7 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | `EventLog` | Runtime service Tag. |
 | `EventLogService` | `capabilities`, `query`, `readKey`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
 | `EventLogCapabilities` | `{ scopedAppend, keyedRead }`: what the adapter supports beyond appending and reading the log. |
-| `EventLogDraft` | An Event to append with the `keys` core derived from its payload: one value per key name. |
+| `EventLogDraft` | An Event to append with the `keys` core derived from its payload (one value per key name) and the host's context: an optional `id`, `recordedAt` and opaque `metadata`. |
 | `EventLogCommit` | Durable Events, commit version/time, optional idempotency metadata. |
 | `EventLogAppendResult` | Commit plus `duplicate`. |
 | `EventLogAppendOptions` | `expectedVersion`, `expectedUnchanged`, `idempotencyKey`, `fingerprint`. |
@@ -23,9 +23,18 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 `append` atomically checks its compare-and-swap, assigns Event orders, writes
 Events with their keys, and records commit boundary. Core derives each Event's
 keys from its payload when a Command emits it and passes them in
-`EventLogDraft.keys`; an adapter stores them as given and never derives keys
-itself, and a `PersistedEvent` does not carry them. Two forms of
-compare-and-swap exist:
+`EventLogDraft.keys`; an adapter stores them as given, never derives keys
+itself, and returns them with the Event (`PersistedEvent.keys`, empty for an
+unkeyed Event) from `append` and every read: `query`, `commitsAfter`,
+`findCommit` and `readKey`. Core refuses an Event read back without them.
+
+A draft may carry the host's context. An adapter stores the Event under
+`EventLogDraft.id` and `recordedAt` when present, and under an ID it generates
+and its own clock's time when not; an ID already in the log fails the append,
+which then appends nothing. `metadata` is the host's, for its own adapter's
+use in the append (a projection, a hook); the bundled adapters keep none of
+it, and it is never part of a `PersistedEvent`. The commit's `committedAt`
+stays the Event Log's own time. Two forms of compare-and-swap exist:
 
 - `expectedVersion`: stale unless the log is at exactly that version (a
   caller's whole-log check).
@@ -68,8 +77,9 @@ Command, and without `keyedRead` when the host requires it
 (`makeSpecterRuntime(config, { requires: { keyedRead: true } })`). An adapter
 that declares no capabilities supports none. `eventLogConformance` from
 `@specter-ts/core/testing` holds an adapter to its declaration: storage of
-keys, the scoped check and keyed reads when declared, and the refusals when
-not. Every bundled adapter declares both.
+keys and their return with every read, the host's IDs and times and the
+refusal of an ID already in the log, the scoped check and keyed reads when
+declared, and the refusals when not. Every bundled adapter declares both.
 
 ## Slice Store
 
@@ -142,8 +152,8 @@ Slice Store must not assume one transaction per commit.
 ## Invariants
 
 - Event Log is authority; Slice Stores are rebuildable views/checkpoints.
-- Event keys are an index of the Event Log, derived by core and stored by the
-  adapter with each Event.
+- Event keys are an index of the Event Log, derived by core when an Event is
+  appended, stored by the adapter with it and returned with it on every read.
 - App Layer provides one `EventLog` and every registered Store Tag.
 - Shared SQL database context lets nested Commands and outbox enqueue join active
   Reaction transaction.

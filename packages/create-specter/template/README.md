@@ -51,11 +51,14 @@ Every scenario object also needs a `description`. Scenario tests use Slice descr
 Keep `spec.ts` free of runtime schemas, Event Definitions, stores, and plugins.
 It must default-export exactly one specification. Project scripts run
 `specter-spec export` before development, typecheck, tests, and builds, writing
-ignored adjacent `spec.json`. Add implementation dependencies in `impl.ts`,
-load that JSON with `implementCommand`, `implementQuery`, or
-`implementReaction`, then supply `inputSchema`/`outputSchema`, a store, repeated
+ignored adjacent `spec.json` and its declaration `spec.d.json.ts`, which types
+a Command's rejection codes (`allowArbitraryExtensions` in `tsconfig.json`).
+Add implementation dependencies in `impl.ts`, load that JSON with
+`implementCommand`, `implementQuery`, or `implementReaction`, then supply
+`inputSchema`/`outputSchema`, a store, repeated
 `apply(EventDefinition, handler)` calls, and `handle`. Apply handlers receive
-decoded payloads at `event.payload`.
+decoded payloads at `event.payload`, with the Event's `order`, `recordedAt` and
+stored `keys`.
 
 Every Slice requires `spec.ts` and `impl.ts`. A named `<sliceName>Spec` alias is
 optional, while the default specification export and named `<sliceName>`

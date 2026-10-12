@@ -18,18 +18,22 @@ export const todoAddedEvent = createEventDefinition(
 ```
 
 The Command creates an `EventDraft` containing only `type` and `payload`. The
-Event Log adds the storage metadata:
+Event Log records it as a `PersistedEvent` with its storage metadata:
 
 | Field | Owner | Meaning |
 | --- | --- | --- |
 | `type`, `payload` | Domain | The exact fact consumers replay |
-| `id` | Event Log | Unique identity for the stored Event |
+| `id` | Host or Event Log | Unique identity for the stored Event: the host's when it [supplied one](#host-context-on-dispatch), else one the Event Log generates |
+| `recordedAt` | Host or Event Log | ISO-8601 time the Event was recorded: the host's when it supplied one, else the Event Log's clock |
 | `order` | Event Log | Unique global position used by cursors |
-| `recordedAt` | Event Log | ISO timestamp for persistence metadata |
+| `keys` | Core, stored by the Event Log | The [named keys](#event-keys) derived from the payload when it was appended |
 
 Domain IDs and timestamps belong in the Command payload when they affect
-behavior. Create them at the initiating boundary. Do not treat Event Log IDs or
-`recordedAt` as domain values.
+the decision. Create them at the initiating boundary. A fold may read an
+Event's `order` and `recordedAt` (see
+[Event metadata in folds](#event-metadata-in-folds)), but a Command handler
+never sees the Event it is about to emit, so neither can drive the decision
+that records it.
 
 ### Event keys
 
@@ -60,14 +64,16 @@ whose type declares no keys is unkeyed. Key names use lower camel case.
 Core derives an Event's keys when a Command emits it and passes them to the
 Event Log with the Event, which stores and indexes them; adapters never
 derive keys themselves, so the stored keys are exactly what the definition
-derived from the payload that was appended. The keys are not part of a
-`PersistedEvent`: they are an index of it. Three things use keys: a Command's
-[consistency keys](#command-consistency), checked against the stored keys; a
-[keyed Reaction](runtime.md#keyed-reactions), which derives them from each
-Event it handles; and a host's keyed read (`readKey({ name, value })`), which
-pages through one key's stored Events, such as one aggregate's. A definition
-whose key functions change derives new keys for new Events only; Events
-appended before keep the keys they were stored with.
+derived from the payload that was appended. Every read returns an Event with
+its stored keys (`PersistedEvent.keys`), and the stored keys are the only
+ones used after the append: a Command's
+[consistency keys](#command-consistency) are checked against them; a
+[keyed Reaction](runtime.md#keyed-reactions) handles the values stored with
+each Event; and a host's keyed read (`readKey({ name, value })`) pages
+through one key's stored Events, such as one aggregate's. A definition whose
+key functions change derives new keys for new Events only; Events appended
+before keep the keys they were stored with, in the index and in every
+Reaction's catch-up alike.
 
 Two rules keep keyed decisions sound, and conformance checks both. A keyed
 Command or Reaction applies only Event types that declare one of its key
@@ -77,6 +83,52 @@ its State without the runtime knowing which key it concerns, so a Command
 emitting one fails before it appends. A key a type declares may be absent from
 an Event when no keyed Slice applying that type uses it, such as a Session's
 optional `parent`.
+
+## Host context on dispatch
+
+A host often owns facts about an Event that are not the domain's: the ID its
+own records derive from (a message named after the Event that created it),
+the time its clock read when the request arrived, or what its own Event Log
+needs in the append transaction. It supplies them per Event when it
+dispatches the Command:
+
+```ts
+await app.command(envelope, {
+  eventContext: (draft, index) => ({
+    id: requestEventIds[index],
+    recordedAt: new Date(receivedAt).toISOString(),
+    metadata: { requestId },
+  }),
+})
+```
+
+Core calls `eventContext` after the decision, once per emitted Event, with
+the Event's validated draft and its position in the commit, for every attempt
+that appends (a stale append decides again, and the drafts may differ). It
+hands the Event Log each draft with the context: the Event is stored under the
+host's `id` and `recordedAt`, and the adapter receives `metadata`, which is
+opaque to Specter. An Event without context takes the Event Log's ID and time.
+The decision never sees the context, so a Command stays a function of its
+input and its fold; the context only names and dates what the decision
+emitted. An ID must be unique in the log, and a time an ISO-8601 UTC
+timestamp; an invalid context fails the dispatch before it appends. The
+bundled adapters store the ID and time and none of the metadata, which is for
+a host's own Event Log (projections or hooks it runs in the append).
+
+## Event metadata in folds
+
+An apply handler receives the `PersistedEvent`: its typed payload, with its
+`id`, `order`, `recordedAt` and stored `keys`. A fold may therefore read when
+and in what order its facts were recorded, such as the time a Session went
+idle, or which of two facts came first. Because the State is a fold of the
+log, the same log replays to the same State; the time is the one recorded,
+not the time of replay.
+
+In a Scenario, Given Event N (one-based) has `order` N, is recorded N seconds
+after the Unix epoch (`1970-01-01T00:00:0N.000Z`), has the ID
+`scenario-event-N`, and carries the keys its definition derives from its
+payload. A Scenario that compares times therefore writes them from the Given
+Events' positions: the third Given Event was recorded at `3000` milliseconds.
 
 ## Catch-up, apply, and replay
 
@@ -196,7 +248,9 @@ key (`makeSpecterRuntime(config, { requires: { keyedRead: true } })`).
 
 Create domain IDs, timestamps, and random values before dispatch, then preserve
 them one-to-one in Event payloads. Event schemas may validate payloads but must
-not transform them: replay must see the exact values the Command emitted.
+not transform them: replay must see the exact values the Command emitted. The
+host's per-Event context (an ID, a time) is recorded with the Event after the
+decision, so a later fold reads it from the log like any other fact.
 
 Changing an Event payload changes every producer, Scenario example, and apply
 consumer. Before a change, run `analyzeEventPropagation(...)` and
@@ -209,7 +263,7 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 - Never make Slice State authoritative. Shared SQL transaction may atomically
   join Reaction cursor, nested Command append, or outbox enqueue for delivery.
 - Never generate domain identity or time inside a Command handler or Reaction
-  retry.
+  retry. Supply an Event's ID and recorded time as dispatch context instead.
 - Do not advance a cursor past partially applied State.
 - Keep payloads JSON-compatible when Events use the bundled persistent
   adapters or cross a JSON transport.

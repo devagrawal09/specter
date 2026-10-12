@@ -12,11 +12,11 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 | --- | --- | --- |
 | `testSliceImplementation` | `(implementation, options) => void` | Defines Vitest tests for one completed Slice implementation. |
 | `testSliceImplementations` | `(implementations, options) => void` | Defines Vitest tests for a registry of completed Slice implementations. |
-| `replay` | `(implementations, eventDefinitions, events) => Effect<void, ...>` | Validates and applies Scenario Events in order, then publishes each affected Slice cursor. |
+| `replay` | `(implementations, eventDefinitions, events) => Effect<void, ...>` | Validates and applies Scenario Events in order, as persisted Events with metadata from their positions, then publishes each affected Slice cursor. |
 | `eventsFor` | `(slice, fullCatalog) => readonly ApplyEventDefinition[]` | Selects the Event Definitions needed by one Slice's Given Events, apply handlers, and accepted Command outcomes. Re-exported from `@specter-ts/core`, where application code imports it. |
 | `analyzeEventPropagation` | `(input, eventType?) => readonly EventPropagation[]` | Finds each Scenario producer/example and apply consumer for one Event type or the complete catalog. |
 | `formatEventPropagation` | `(propagation) => string` | Formats one propagation report for terminal or review output. |
-| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, filtered queries, and the scoped compare-and-swap (`expectedUnchanged`, with and without `matches`). |
+| `eventLogConformance` | `(serviceEffect) => Effect<void, AdapterConformanceFailure | ...>` | Checks ordering, commit boundaries, first-commit idempotency receipts with stored fingerprints, filtered queries, stored keys returned with every read, the host's IDs and times (and the refusal of an ID already in the log), and the scoped compare-and-swap (`expectedUnchanged`, with and without `keys`) and keyed reads as declared. |
 | `sliceStoreConformance` | `(options) => Effect<void, AdapterConformanceFailure | ...>` | Checks atomic publication, isolation, rollback, locking, and one-shot callbacks. |
 | `testEventLogService` | `(name, factory) => void` | Thin Vitest runner over Event Log conformance. |
 | `testSliceStoreService` | `(name, options) => void` | Thin Vitest runner over Store conformance. |
@@ -39,7 +39,7 @@ The testing entrypoint turns a Slice's executable Scenarios into Vitest tests, r
 
 Both test runners first call the same conformance check used to construct an app, with `requireCommandSlice: false`. They then execute every Scenario in declaration order:
 
-1. `replay` validates each Scenario Event against its registered Event Definition, assigns deterministic test metadata, and calls matching apply handlers.
+1. `replay` validates each Scenario Event against its registered Event Definition, assigns deterministic metadata from its one-based position N (ID `scenario-event-N`, `order` N, `recordedAt` N seconds after the Unix epoch, and the keys its definition derives), and calls matching apply handlers.
 2. The runner loads the Slice's read state and validates/transforms the `when` input when an input schema exists.
 3. A Command handler must either throw a `CommandRejection` or emit one or more authorized Events; a Query returns one result; a Reaction returns one effect or `undefined`, and a keyed Reaction one per value of its key the Given Events carry, in the order the values first appear.
 4. Event drafts and actual Query or Reaction outputs pass through their runtime schemas before comparison.

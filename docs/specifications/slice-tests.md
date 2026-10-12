@@ -76,9 +76,11 @@ For each Given Scenario Event, `replay`:
 
 1. resolves the Event Definition by type;
 2. decodes the example payload and rejects schema transformation;
-3. assigns deterministic metadata: `scenario-event-1`, `scenario-event-2`, and so on, with `recordedAt` set to the Unix epoch;
-4. calls the matching apply handler on every supplied implementation; and
-5. advances each affected Slice cursor to the Event's one-based order.
+3. assigns deterministic metadata from the Event's one-based position N: the ID `scenario-event-N`, `order` N, `recordedAt` N seconds after the Unix epoch (`1970-01-01T00:00:0N.000Z`), and the keys its definition derives from its payload;
+4. calls the matching apply handler on every supplied implementation with that persisted Event; and
+5. advances each affected Slice cursor to the Event's order.
+
+A fold that reads `recordedAt` or `order` therefore sees later Given Events recorded later, and a Scenario that compares times writes them from positions: the second Given Event was recorded at `2000` milliseconds after the epoch.
 
 An implementation without an apply handler for that Event is skipped by `replay`, but conformance rejects a Slice when its own Given data lacks a matching apply registration.
 

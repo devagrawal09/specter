@@ -30,6 +30,27 @@ apply handlers. `slices` contains completed Command, Query, and Reaction Slice
 implementations, not specifications. Infrastructure lives in supplied Layer,
 not registry.
 
+### Test-only Slices
+
+A test may need a Slice production must never register, such as one that
+records history as given. `extendSpecterConfig` registers Slices, and the
+Event Definitions they need, beside a config's, typed as both:
+
+```ts
+const testConfig = extendSpecterConfig(todoConfig, {
+  slices: { recordHistory },
+  events: historyEvents,
+})
+const app = await createSpecterApp(testConfig, testDependencies)
+await app.command({ type: 'recordHistory', payload: { facts } })
+```
+
+The production config and its type stay as they are, so production code
+cannot dispatch the test-only Command; the test's app dispatches both. An
+extension never replaces a Slice the config registers (that throws), and each
+call builds a new config, which conformance validates on its own: build it
+once, as with any config.
+
 ## Per-config and per-log work
 
 Construction has two halves:
@@ -101,12 +122,15 @@ For `app.command(envelope, options)`, core:
    `CommandRejection` it throws rejects the Command;
 5. validates emitted Event types and payloads, and derives their keys, each
    carrying one of the key names of every keyed Slice that applies its type;
-6. atomically appends the Events with their keys, with a compare-and-swap
+6. adds the host's per-Event context, when the dispatch carries
+   `eventContext`: each Event's ID, recorded time and metadata for the Event
+   Log (see [Host context on dispatch](event-sourcing.md#host-context-on-dispatch));
+7. atomically appends the Events with their keys, with a compare-and-swap
    scoped to what the decision read: the Event types the Command applies,
    narrowed to its consistency keys when it declares them, or the whole log
    for a caller's `expectedVersion` (see
    [Command consistency](event-sourcing.md#command-consistency));
-7. starts affected subscription invalidation and requests a Reaction pass.
+8. starts affected subscription invalidation and requests a Reaction pass.
 
 The outer Promise resolves with a durable commit receipt after the Reaction pass
 has been requested; it does not await subscription refresh or Reaction work.
@@ -136,6 +160,15 @@ rejects with must appear in one of its rejected Scenarios, as every Event type
 it emits must appear in an accepted one; a code no Scenario names, any other
 error the handler throws, and a handler that returns no Events are failures
 (`SpecterInfrastructureError`), not rejections.
+
+Since the Scenarios list every code, the codes are also a type:
+`SpecterRejectionCode<typeof config>` is the union of the codes the app's
+Commands reject with, and `CommandRejectionCode<typeof slice>` one Command's.
+`specter-spec export` declares each `spec.json`'s literal types beside it
+(`spec.d.json.ts`), which TypeScript reads for the JSON import when
+`allowArbitraryExtensions` is on, so `implementCommand` knows them; a plain
+JSON import types the codes as `string`. A host matches on the union without
+keeping a list of its own.
 
 A Reaction failure rejects
 `execution.reactions` but never reverses the commit. Retrying the Command solely
@@ -239,8 +272,11 @@ export const runStep = implementReaction(specification)
 ```
 
 For each relevant commit, core runs the handler once for each distinct value
-of that key the commit's relevant Events carry, in the order the values first
-appear, all inside the one Slice Store transaction. Each output is its own
+of that key the commit's relevant Events carry, read from the keys stored
+with them, in the order the values first appear, all inside the one Slice
+Store transaction. Because the stored keys are the ones handled, a key
+function that changes later cannot make a Reaction's catch-up disagree with
+the index. Each output is its own
 delivery, with `deliveryId` `reaction:version:value`, so an outbox enqueues
 each as its own job. A value the commit does not carry is not handled: its
 State did not change, so its output cannot have. Other keys the Events carry

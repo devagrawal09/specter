@@ -8,7 +8,7 @@ description: Teaches coding agents how to add and change Specter features in gen
 ## Mental Model
 
 - A Specter Project is a TypeScript app composed from Vertical Features under `src/features`.
-- Events are exact durable domain facts emitted by accepted Commands. Event Log IDs, global order, and recorded timestamps are metadata outside Event payloads.
+- Events are exact durable domain facts emitted by accepted Commands. Event Log IDs, global order, recorded timestamps, and stored keys are metadata outside Event payloads; apply handlers can read them, and a host may supply an Event's ID and recorded time when it dispatches.
 - A Slice Specification is the immutable structural "what": name, description, and executable Scenarios.
 - A Slice Implementation is the "how": schemas, Reaction Plugin, private Store, typed apply handlers, and handler.
 - One specification may have divergent implementations. A Specter App registers exactly one completed implementation per lower-camel-case registry key. That key owns the TypeScript operation name and must exactly match the loaded JSON specification name.
@@ -56,7 +56,9 @@ Implementations follow these exact builder orders:
 
 `createEventDefinition(type, schema, { keys: { todo: (payload) => payload.todoId } })` declares the named keys an Event carries (the IDs it is about, each under the name of its kind; a function returns `undefined` for an Event without that key). Core stores them with the Event when it is appended. `.consistencyKeys({ todo: (command, state) => command.todoId })` makes a Command's append conflict only with new Events of its applied types that carry one of those values under that name; declare every key the decision reads, and Scenarios check it. Every applied Event type must declare one of its key names, and every such Event must carry one. Without it, any new Event of an applied type conflicts. `.handleEachKey('todo', (state, todoId) => effect)` makes a keyed Reaction: one handler run, and one delivery (`reaction:version:value`), per value of that key a commit carries; every applied Event type must declare the key, and it must decide each value from that value's State alone.
 
-A Command handler rejects by throwing `new CommandRejection(code, message, details?)` from `@specter-ts/core`: a stable kebab-case `code` hosts match on (`error.rejection.code` of the `SpecterCommandRejectedError`), a message, and optional JSON `details`. Every code must appear in one of the Command's rejected Scenarios. Any other thrown error, or no Events, is a failure, not a rejection.
+A Command handler rejects by throwing `new CommandRejection(code, message, details?)` from `@specter-ts/core`: a stable kebab-case `code` hosts match on (`error.rejection.code` of the `SpecterCommandRejectedError`), a message, and optional JSON `details`. Every code must appear in one of the Command's rejected Scenarios. Any other thrown error, or no Events, is a failure, not a rejection. `specter-spec export` writes `spec.d.json.ts` beside each `spec.json` (keep `allowArbitraryExtensions` on in `tsconfig.json`), so `SpecterRejectionCode<typeof config>` is the union of every code the app's Commands reject with; match on it rather than a hand-kept list.
+
+A host that owns an Event's ID or time (its records named after the Event, its clock at the request) passes `eventContext: (draft, index) => ({ id, recordedAt, metadata })` to `app.command`; it runs after the decision and never reaches it. A test registers a test-only Slice with `extendSpecterConfig(config, { slices, events })` instead of casting the production config.
 
 Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing only. Passing a Standard Schema enables runtime validation and transformation. Use runtime schemas at every untrusted transport boundary.
 
@@ -68,7 +70,8 @@ Calling `.inputSchema<Type>()` or `.outputSchema<Type>()` supplies static typing
 - Scenario payloads are exact. Include every ID-shaped field and domain timestamp.
 - Accepted Command Scenarios expect one or more Scenario Events. Rejected Command Scenarios expect no Events and name the rejection: `reject: { code: 'title-required' }`, adding the exact `message` and `details` where they matter. Invalid schema input is not a Scenario.
 - Across a Slice's Scenarios, the union of Given Event types exactly equals the implementation's apply Event types.
-- Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed.
+- Register apply handlers with `.apply(eventDefinition, async (event, state) => ...)`; `event.payload` is already decoded and typed, and `event.order`, `event.recordedAt` and `event.keys` are the Event's position, recorded time and stored keys.
+- In a Scenario, Given Event N has order N and is recorded N seconds after the Unix epoch, so a Scenario that compares times writes them from positions (`3000` for the third Given Event).
 - Every registered Event Definition and Slice appears in executable Scenario coverage.
 - Command handlers emit only Event types authorized by accepted outcomes.
 - Query and Reaction `expect` values are final public values after output-schema transformation. A keyed Reaction's `expect` lists one effect per value of its key the Given Events carry, in the order the values first appear.
@@ -124,7 +127,7 @@ await execution.reactions
 - Event Log queries return unique Events strictly ascending by global order and strictly after the requested cursor.
 - Do not let Query Slices drive Command decisions; Command Slices own their decision projections.
 - Define app-specific tables in the owning `impl.ts` or an adjacent Slice-owned `projection.ts` imported only by that implementation, then re-export those tables from `src/db/schema.ts`.
-- Do not centralize Slice State merely to remove nearby duplication.
+- Do not centralize Slice State merely to remove nearby duplication. Fold code many Slices repeat may live once in a non-Slice module of the feature (`src/features/<feature>/<module>.ts`); each Slice still registers its own `.apply` calls and keeps its own State.
 
 ## Feature Workflow
 
