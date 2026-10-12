@@ -387,6 +387,26 @@ export type CommandInputOf<TSlice> =
     ? TInput
     : never
 
+/**
+ * The codes a Command Slice rejects with: those its rejected Scenarios name.
+ * Exact for a Command implemented from a `spec.json` that `specter-spec
+ * export` declared (`spec.d.json.ts`), or built with `createCommandSlice`;
+ * `string` for one implemented from a plain JSON import; `never` for a Slice
+ * that is not a Command.
+ */
+export type CommandRejectionCode<TSlice> = TSlice extends {
+  readonly kind: 'command'
+  readonly scenarios: infer TScenarios
+}
+  ? ScenarioRejectionCode<TScenarios>
+  : never
+
+type ScenarioRejectionCode<TScenarios> = TScenarios extends readonly (infer S)[]
+  ? S extends { readonly reject: { readonly code: infer TCode extends string } }
+    ? TCode
+    : never
+  : never
+
 export type QueryInputOf<TSlice> =
   TSlice extends QuerySlice<
     infer _TName,

@@ -12,6 +12,7 @@ export type {
   SpecterQueryEnvelope,
   SpecterQueryResult,
   SpecterQueryType,
+  SpecterRejectionCode,
 } from './app'
 export {
   CommandRejection,

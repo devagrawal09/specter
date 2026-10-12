@@ -1,4 +1,5 @@
 import {
+  declareSpecification,
   digestSpecification,
   parseSpecification,
   serializeSpecification,
@@ -170,6 +171,7 @@ export async function createSpecificationRepository(
       await mkdir(dirname(target), { recursive: true })
       assertInside(featuresRoot, await realpath(dirname(target)))
       await atomicCreate(target, serializeSpecification(document), normalized)
+      await atomicWrite(declarationOf(target), declareSpecification(document))
       return readSpecification(normalized, target)
     })
   }
@@ -191,6 +193,7 @@ export async function createSpecificationRepository(
         )
       const document = validate(input)
       await atomicWrite(target, serializeSpecification(document))
+      await atomicWrite(declarationOf(target), declareSpecification(document))
       return readSpecification(normalized, target)
     })
   }
@@ -211,6 +214,9 @@ export async function createSpecificationRepository(
           `${normalized} changed on disk. Reload before removing.`,
         )
       await unlink(target)
+      await unlink(declarationOf(target)).catch((cause) => {
+        if (!isMissing(cause)) throw cause
+      })
       let directory = dirname(target)
       while (directory !== featuresRoot) {
         try {
@@ -224,6 +230,15 @@ export async function createSpecificationRepository(
   }
 
   return { projectRoot, featuresRoot, list, create, save, remove }
+}
+
+/**
+ * The `spec.d.json.ts` beside a `spec.json`: the literal types TypeScript
+ * reads for its import, which `specter-spec export` writes for a generated
+ * one and the editor for one it saves.
+ */
+function declarationOf(target: string) {
+  return resolve(dirname(target), 'spec.d.json.ts')
 }
 
 function normalizeSpecPath(input: string) {

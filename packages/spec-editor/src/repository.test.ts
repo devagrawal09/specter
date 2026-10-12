@@ -46,7 +46,7 @@ describe('specification repository', () => {
     ).rejects.toMatchObject({ code: 'READ_ONLY' })
   })
 
-  it('creates, atomically saves, detects conflicts, and removes only spec.json', async () => {
+  it('creates, atomically saves, detects conflicts, and removes only spec.json and its declaration', async () => {
     const root = await project()
     const repository = await createSpecificationRepository(root)
     const path = 'todos/add-todo/spec.json'
@@ -59,9 +59,15 @@ describe('specification repository', () => {
     await expect(
       repository.save(path, created.revision, specification()),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' })
-    expect(await readdir(resolve(root, 'src/features/todos/add-todo'))).toEqual(
-      ['spec.json'],
-    )
+    expect(
+      (await readdir(resolve(root, 'src/features/todos/add-todo'))).sort(),
+    ).toEqual(['spec.d.json.ts', 'spec.json'])
+    expect(
+      await readFile(
+        resolve(root, 'src/features/todos/add-todo/spec.d.json.ts'),
+        'utf8',
+      ),
+    ).toContain('CommandSliceDeclaration<"addTodo"')
 
     await writeFile(
       resolve(root, 'src/features/todos/add-todo/impl.ts'),
@@ -74,6 +80,9 @@ describe('specification repository', () => {
         'utf8',
       ),
     ).toBe('keep')
+    expect(await readdir(resolve(root, 'src/features/todos/add-todo'))).toEqual(
+      ['impl.ts'],
+    )
 
     const removable = await repository.create(
       'todos/remove-me/spec.json',

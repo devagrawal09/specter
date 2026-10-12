@@ -6,6 +6,7 @@ export {
 } from './builders.ts'
 export {
   canonicalizeSpecification,
+  declareSpecification,
   digestSpecification,
   serializeSpecification,
 } from './serialization.ts'

@@ -71,6 +71,7 @@ export type {
   CommandInputOf,
   CommandReceipt,
   CommandRef,
+  CommandRejectionCode,
   CommandSlice,
   ConsistencyKey,
   ConsistencyKeys,

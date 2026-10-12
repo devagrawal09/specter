@@ -12,6 +12,7 @@
       "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"]
     },
     "allowImportingTsExtensions": true,
+    "allowArbitraryExtensions": true,
     "verbatimModuleSyntax": true,
     "skipLibCheck": true,
     "strict": true,

@@ -3,6 +3,9 @@ import { describe, expect, it } from 'vitest'
 import {
   canonicalizeSpecification,
   createCommandSlice,
+  createQuerySlice,
+  createReactionSlice,
+  declareSpecification,
   digestSpecification,
   event,
   parseSpecification,
@@ -20,6 +23,31 @@ const specification = createCommandSlice('addTodo')
   })
 
 describe('portable Slice specification', () => {
+  it('declares each kind with its name, and a Command with its rejection codes', () => {
+    expect(declareSpecification(specification)).toContain(
+      'declare const specification: CommandSliceDeclaration<"addTodo", never>',
+    )
+    expect(
+      declareSpecification(
+        createQuerySlice('todosQuery').description('Lists todos.').scenarios({
+          description: 'Lists none.',
+          given: [],
+          when: {},
+          expect: [],
+        }),
+      ),
+    ).toContain(
+      'import type { QuerySliceDeclaration } from \'@specter-ts/spec\'\n\ndeclare const specification: QuerySliceDeclaration<"todosQuery">',
+    )
+    expect(
+      declareSpecification(
+        createReactionSlice('cheer')
+          .description('Cheers.')
+          .scenarios({ description: 'Cheers none.', given: [], expect: [] }),
+      ),
+    ).toContain('ReactionSliceDeclaration<"cheer">')
+  })
+
   it('serializes deterministically and computes a canonical digest', () => {
     expect(serializeSpecification(specification)).toContain(
       '"formatVersion": 2',

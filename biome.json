@@ -15,7 +15,8 @@
       "**/vite.config.ts",
       "!**/.repos",
       "!**/.reference",
-      "!**/src/routeTree.gen.ts"
+      "!**/src/routeTree.gen.ts",
+      "!**/spec.d.json.ts"
     ]
   },
   "formatter": {

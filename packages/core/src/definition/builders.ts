@@ -461,7 +461,37 @@ export function createCommandSlice<const TName extends string>(
   })
 }
 
-export function implementCommand(input: unknown): CommandSliceSpec<string> {
+/**
+ * The name a specification document declares: its literal under the
+ * `spec.d.json.ts` declaration `specter-spec export` writes beside its
+ * `spec.json`, and `string` for a plain JSON import.
+ */
+type DeclaredName<TSpecification> = TSpecification extends {
+  readonly name: infer TName extends string
+}
+  ? TName
+  : string
+
+/**
+ * The Scenarios a specification document declares: their exact type under its
+ * `spec.d.json.ts` declaration (a Command's names its rejection codes), and
+ * any Scenarios of the kind for a plain JSON import.
+ */
+type DeclaredScenarios<
+  TSpecification,
+  TScenario extends SliceScenario,
+> = TSpecification extends {
+  readonly scenarios: infer TScenarios extends NonEmptyScenarios<TScenario>
+}
+  ? TScenarios
+  : NonEmptyScenarios<TScenario>
+
+export function implementCommand<const TSpecification>(
+  input: TSpecification,
+): CommandSliceSpec<
+  DeclaredName<TSpecification>,
+  DeclaredScenarios<TSpecification, CommandScenario>
+> {
   const specification = loadSpecification(input)
   if (specification.kind !== 'command')
     throw new Error(
@@ -471,7 +501,10 @@ export function implementCommand(input: unknown): CommandSliceSpec<string> {
     specification.name,
     specification.description,
     freezeScenarios(specification.scenarios),
-  )
+  ) as unknown as CommandSliceSpec<
+    DeclaredName<TSpecification>,
+    DeclaredScenarios<TSpecification, CommandScenario>
+  >
 }
 
 function createCommandSpec<
@@ -596,7 +629,12 @@ export function createQuerySlice<const TName extends string>(
   })
 }
 
-export function implementQuery(input: unknown): QuerySliceSpec<string> {
+export function implementQuery<const TSpecification>(
+  input: TSpecification,
+): QuerySliceSpec<
+  DeclaredName<TSpecification>,
+  DeclaredScenarios<TSpecification, QueryScenario>
+> {
   const specification = loadSpecification(input)
   if (specification.kind !== 'query')
     throw new Error(
@@ -606,7 +644,10 @@ export function implementQuery(input: unknown): QuerySliceSpec<string> {
     specification.name,
     specification.description,
     freezeScenarios(specification.scenarios),
-  )
+  ) as unknown as QuerySliceSpec<
+    DeclaredName<TSpecification>,
+    DeclaredScenarios<TSpecification, QueryScenario>
+  >
 }
 
 function createQuerySpec<
@@ -727,7 +768,12 @@ export function createReactionSlice<const TName extends string>(
   })
 }
 
-export function implementReaction(input: unknown): ReactionSliceSpec<string> {
+export function implementReaction<const TSpecification>(
+  input: TSpecification,
+): ReactionSliceSpec<
+  DeclaredName<TSpecification>,
+  DeclaredScenarios<TSpecification, ReactionScenario>
+> {
   const specification = loadSpecification(input)
   if (specification.kind !== 'reaction')
     throw new Error(
@@ -737,7 +783,10 @@ export function implementReaction(input: unknown): ReactionSliceSpec<string> {
     specification.name,
     specification.description,
     freezeScenarios(specification.scenarios),
-  )
+  ) as unknown as ReactionSliceSpec<
+    DeclaredName<TSpecification>,
+    DeclaredScenarios<TSpecification, ReactionScenario>
+  >
 }
 
 function loadSpecification(input: unknown) {

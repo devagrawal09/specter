@@ -29,23 +29,27 @@ export type AcceptedCommandScenario<TWhen extends JsonValue = JsonValue> = {
  * The rejection a Command Scenario expects: its stable kebab-case `code`, and
  * where useful the exact `message` and structured `details`.
  */
-export type ScenarioRejection = {
-  readonly code: string
+export type ScenarioRejection<TCode extends string = string> = {
+  readonly code: TCode
   readonly message?: string
   readonly details?: JsonValue
 }
 
-export type RejectedCommandScenario<TWhen extends JsonValue = JsonValue> = {
+export type RejectedCommandScenario<
+  TWhen extends JsonValue = JsonValue,
+  TCode extends string = string,
+> = {
   readonly description: string
   readonly given: readonly ScenarioEvent[]
   readonly when: TWhen
   readonly expect: readonly []
-  readonly reject: ScenarioRejection
+  readonly reject: ScenarioRejection<TCode>
 }
 
-export type CommandScenario<TWhen extends JsonValue = JsonValue> =
-  | AcceptedCommandScenario<TWhen>
-  | RejectedCommandScenario<TWhen>
+export type CommandScenario<
+  TWhen extends JsonValue = JsonValue,
+  TCode extends string = string,
+> = AcceptedCommandScenario<TWhen> | RejectedCommandScenario<TWhen, TCode>
 
 export type QueryScenario<
   TWhen extends JsonValue = JsonValue,
@@ -106,3 +110,24 @@ export type SliceSpecification =
   | ReactionSliceSpecification
 
 export type SpecificationDigest = `sha256:${string}`
+
+/**
+ * The type `specter-spec export` declares for a Command's `spec.json`, in the
+ * adjacent `spec.d.json.ts`: its name, and the codes its rejected Scenarios
+ * name, so `implementCommand` types the Slice's rejections exactly.
+ */
+export type CommandSliceDeclaration<
+  TName extends string,
+  TRejectionCode extends string = never,
+> = CommandSliceSpecification<
+  TName,
+  NonEmptyScenarios<CommandScenario<JsonValue, TRejectionCode>>
+>
+
+/** The type `specter-spec export` declares for a Query's `spec.json`. */
+export type QuerySliceDeclaration<TName extends string> =
+  QuerySliceSpecification<TName>
+
+/** The type `specter-spec export` declares for a Reaction's `spec.json`. */
+export type ReactionSliceDeclaration<TName extends string> =
+  ReactionSliceSpecification<TName>

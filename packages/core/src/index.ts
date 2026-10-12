@@ -27,6 +27,7 @@ export type {
   CommandInputOf,
   CommandReceipt,
   CommandRef,
+  CommandRejectionCode,
   CommandSlice,
   ConformanceDiagnostic,
   ConsistencyKey,
@@ -86,6 +87,7 @@ export type {
   SpecterQueryEnvelope,
   SpecterQueryResult,
   SpecterQueryType,
+  SpecterRejectionCode,
 } from './runtime'
 export type {
   BoundReactionScheduler,

@@ -136,3 +136,49 @@ export type AppFromConfigCheck = Expect<
 export type AppFromPreparedCheck = Expect<
   Equal<Awaited<typeof appFromPrepared>, SpecterApp<Config>>
 >
+
+// A host matches rejections on the codes its Commands' Scenarios name.
+declare const renameTodo: CommandSlice<
+  'renameTodo',
+  { title: string },
+  { title: string },
+  unknown,
+  unknown,
+  readonly [
+    import('../definition').AcceptedCommandScenario,
+    import('../definition').RejectedCommandScenario<
+      import('@specter-ts/spec').JsonValue,
+      'todo-not-found'
+    >,
+    import('../definition').RejectedCommandScenario<
+      import('@specter-ts/spec').JsonValue,
+      'title-required'
+    >,
+  ]
+>
+declare const tidyTodo: CommandSlice<
+  'tidyTodo',
+  { todoId: string },
+  { todoId: string },
+  unknown,
+  unknown,
+  readonly [
+    import('../definition').RejectedCommandScenario<
+      import('@specter-ts/spec').JsonValue,
+      'todo-not-found'
+    >,
+  ]
+>
+type RejectingConfig = Omit<SpecterAppConfig, 'slices'> & {
+  readonly slices: {
+    readonly renameTodo: typeof renameTodo
+    readonly tidyTodo: typeof tidyTodo
+    readonly todoCount: typeof todoCount
+  }
+}
+export type RejectionCodeCheck = Expect<
+  Equal<
+    core.SpecterRejectionCode<RejectingConfig>,
+    'todo-not-found' | 'title-required'
+  >
+>

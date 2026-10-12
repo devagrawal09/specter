@@ -3,14 +3,21 @@ import { Context, Effect } from 'effect'
 
 import type { SliceStoreService } from '../adapters'
 import type { SpecterEffectError } from '../effect/runtime'
+import type {
+  CommandSliceDeclaration,
+  QuerySliceDeclaration,
+} from '@specter-ts/spec'
 import {
   type CommandInputOf,
   type CommandReceipt,
+  type CommandRejectionCode,
   createCommandSlice,
   createEventDefinition,
   createQuerySlice,
   createReactionSlice,
   event,
+  implementCommand,
+  implementQuery,
   type QueryInputOf,
   type QueryOutputOf,
   type ReactionPlugin,
@@ -272,3 +279,96 @@ export const declaredRequirementPlugin: ReactionPlugin<
     const notifier = yield* AmountNotifier
     return (output: string) => notifier.notify(output)
   })
+
+// A Command's rejection codes come from its Scenarios: exact for one built in
+// TypeScript, and for one implemented from a spec.json that `specter-spec
+// export` declared; `string` for a plain JSON import.
+const rejectingCommand = createCommandSlice('renameAmount')
+  .description('Renames an amount.')
+  .scenarios(
+    {
+      description: 'Renames one amount.',
+      given: [],
+      when: { text: '41' },
+      expect: [event('amount-recorded', { amount: 41 })],
+    },
+    {
+      description: 'Refuses a blank amount.',
+      given: [],
+      when: { text: '' },
+      expect: [],
+      reject: { code: 'amount-required' },
+    },
+    {
+      description: 'Refuses a negative amount.',
+      given: [],
+      when: { text: '-1' },
+      expect: [],
+      reject: { code: 'amount-negative', message: 'Amount is negative' },
+    },
+  )
+  .inputSchema<{ text: string }>()
+  .store(AmountStore)
+  .handle(async () => [amountRecorded.create({ amount: 41 })])
+
+export type BuiltRejectionCodeCheck = Expect<
+  Equal<
+    CommandRejectionCode<typeof rejectingCommand>,
+    'amount-required' | 'amount-negative'
+  >
+>
+
+declare const declaredCommand: CommandSliceDeclaration<
+  'addAmount',
+  'amount-required' | 'amount-too-large'
+>
+const implementedCommand = implementCommand(declaredCommand)
+  .inputSchema<{ text: string }>()
+  .store(AmountStore)
+  .handle(async () => [amountRecorded.create({ amount: 41 })])
+
+export type DeclaredNameCheck = Expect<
+  Equal<typeof implementedCommand.name, 'addAmount'>
+>
+export type DeclaredRejectionCodeCheck = Expect<
+  Equal<
+    CommandRejectionCode<typeof implementedCommand>,
+    'amount-required' | 'amount-too-large'
+  >
+>
+
+declare const declaredAcceptingCommand: CommandSliceDeclaration<'noteAmount'>
+const acceptingCommand = implementCommand(declaredAcceptingCommand)
+  .inputSchema<{ text: string }>()
+  .store(AmountStore)
+  .handle(async () => [amountRecorded.create({ amount: 41 })])
+
+export type DeclaredNoRejectionCheck = Expect<
+  Equal<CommandRejectionCode<typeof acceptingCommand>, never>
+>
+
+declare const jsonImport: {
+  kind: string
+  name: string
+  scenarios: { reject?: { code: string } }[]
+}
+const widenedCommand = implementCommand(jsonImport)
+  .inputSchema<{ text: string }>()
+  .store(AmountStore)
+  .handle(async () => [amountRecorded.create({ amount: 41 })])
+
+export type WidenedRejectionCodeCheck = Expect<
+  Equal<CommandRejectionCode<typeof widenedCommand>, string>
+>
+export type WidenedNameCheck = Expect<Equal<typeof widenedCommand.name, string>>
+
+declare const declaredQuery: QuerySliceDeclaration<'listAmounts'>
+const implementedQuery = implementQuery(declaredQuery)
+  .inputSchema<{ id: string }>()
+  .outputSchema<number>()
+  .store(QueryStore)
+  .handle(async (_query, state) => state.amount)
+
+export type QueryRejectionCodeCheck = Expect<
+  Equal<CommandRejectionCode<typeof implementedQuery>, never>
+>

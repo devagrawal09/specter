@@ -10,7 +10,10 @@ import {
 } from 'node:fs/promises'
 import { dirname, extname, relative, resolve, sep } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
-import { serializeSpecification } from './serialization.ts'
+import {
+  declareSpecification,
+  serializeSpecification,
+} from './serialization.ts'
 import { parseSpecification } from './validation.ts'
 
 const [command, ...args] = process.argv.slice(2)
@@ -150,8 +153,16 @@ async function exportOne(file: string) {
   const specification = parseSpecification(module.default)
   const output = file.replace(/spec\.ts$/, 'spec.json')
   await mkdir(dirname(output), { recursive: true })
-  const next = serializeSpecification(specification)
-  const current = await readFile(output, 'utf8').catch(() => undefined)
-  if (current !== next) await writeFile(output, next)
+  await writeIfChanged(output, serializeSpecification(specification))
+  // The literal types of spec.json, which a JSON import alone widens.
+  await writeIfChanged(
+    file.replace(/spec\.ts$/, 'spec.d.json.ts'),
+    declareSpecification(specification),
+  )
   console.log(output)
+}
+
+async function writeIfChanged(path: string, next: string) {
+  const current = await readFile(path, 'utf8').catch(() => undefined)
+  if (current !== next) await writeFile(path, next)
 }

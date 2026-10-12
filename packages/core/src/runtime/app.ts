@@ -3,6 +3,7 @@ import { Effect, type Layer } from 'effect'
 import type {
   ApplyEventDefinition,
   CommandDispatchOptions,
+  CommandRejectionCode,
   CommandSlice,
   PersistedEvent,
   QuerySlice,
@@ -123,6 +124,13 @@ export type SpecterQueryResult<
   >
     ? TOutput
     : never
+
+/**
+ * Every code the app's Commands reject with, from their specifications: what a
+ * host matches `SpecterCommandRejectedError.rejection.code` against.
+ */
+export type SpecterRejectionCode<TConfig extends SpecterAppConfig> =
+  CommandRejectionCode<TConfig['slices'][keyof TConfig['slices']]>
 
 export type CommandExecutionOptions = CommandDispatchOptions
 

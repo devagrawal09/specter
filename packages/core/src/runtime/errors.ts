@@ -117,12 +117,12 @@ export class SpecterInvalidOutputError extends SpecterError {
  * carrying it. Every code a Command rejects with must appear in one of its
  * rejected Scenarios.
  */
-export class CommandRejection extends Error {
+export class CommandRejection<TCode extends string = string> extends Error {
   readonly _tag = 'CommandRejection' as const
-  readonly code: string
+  readonly code: TCode
   readonly details?: unknown
 
-  constructor(code: string, message: string, details?: unknown) {
+  constructor(code: TCode, message: string, details?: unknown) {
     super(message)
     this.name = 'CommandRejection'
     this.code = code
@@ -130,12 +130,18 @@ export class CommandRejection extends Error {
   }
 }
 
-/** A Command was rejected: its handler threw `rejection`. */
-export class SpecterCommandRejectedError extends SpecterError {
+/**
+ * A Command was rejected: its handler threw `rejection`. `TCode` narrows its
+ * code for a host that knows the Commands it dispatches, such as to
+ * `SpecterRejectionCode<typeof config>`.
+ */
+export class SpecterCommandRejectedError<
+  TCode extends string = string,
+> extends SpecterError {
   readonly commandType: string
-  readonly rejection: CommandRejection
+  readonly rejection: CommandRejection<TCode>
 
-  constructor(commandType: string, rejection: CommandRejection) {
+  constructor(commandType: string, rejection: CommandRejection<TCode>) {
     super(
       specterErrorCodes.commandRejected,
       `Command "${commandType}" rejected (${rejection.code}): ${rejection.message}`,
