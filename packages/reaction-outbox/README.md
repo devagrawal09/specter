@@ -37,11 +37,16 @@ support another representation.
 Store methods return Effects so enqueue can join active Slice Store transaction.
 Low-level worker methods remain Promise-based at background-service boundary.
 
-Stores with `subscribe` (memory, JSONL) wake workers in the same process on
-enqueue, so jobs start without waiting for `pollIntervalMs`; polling still finds
-work enqueued by other processes. Stores with `renewLease` (memory, JSONL) get
-a lease heartbeat every `heartbeatMs` while a handler runs; renewal failures
-reach `onTransition` as `lease-renewal-failed`.
+Stores with `subscribe` (memory, JSONL, SQLite) wake workers in the same
+process on enqueue, so jobs start without waiting for `pollIntervalMs`; polling
+still finds work enqueued by other processes. Stores with `renewLease`
+(memory, JSONL, SQLite) get a lease heartbeat every `heartbeatMs` while a
+handler runs; renewal failures reach `onTransition` as
+`lease-renewal-failed`.
+
+`@specter-ts/reaction-outbox/testing` holds a Store to the contract the worker
+relies on: `reactionOutboxStoreConformance(createStore)`, or
+`testReactionOutboxStore(name, createStore)` in Vitest.
 
 When the wrapper's scope closes (for example on `app.close()`), its worker
 stops claiming and the finalizer waits up to `shutdownTimeoutMs` (30 seconds

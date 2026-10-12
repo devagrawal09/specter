@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { createSqliteDatabaseContext } from './database'
 import {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
@@ -30,8 +31,9 @@ async function setup() {
   tempDirectories.push(directory)
   const client = createClient({ url: `file:${join(directory, 'specter.db')}` })
   clients.push(client)
-  await prepareSpecterSqlite(client)
-  return createSpecterSqlitePersistence(client)
+  const context = createSqliteDatabaseContext(client)
+  await Effect.runPromise(prepareSpecterSqlite(context))
+  return createSpecterSqlitePersistence(context)
 }
 
 describe('Specter SQLite persistence', () => {
@@ -43,7 +45,9 @@ describe('Specter SQLite persistence', () => {
     })
     clients.push(client)
 
-    await prepareSpecterSqlite(client)
+    await Effect.runPromise(
+      prepareSpecterSqlite(createSqliteDatabaseContext(client)),
+    )
 
     const result = await client.execute(
       `SELECT name FROM sqlite_master
@@ -75,8 +79,9 @@ describe('Specter SQLite persistence', () => {
     )`)
     const schemaBefore = await eventCommitTableSql(client)
 
-    await prepareSpecterSqlite(client)
-    const { eventLog } = createSpecterSqlitePersistence(client)
+    const context = createSqliteDatabaseContext(client)
+    await Effect.runPromise(prepareSpecterSqlite(context))
+    const { eventLog } = createSpecterSqlitePersistence(context)
     const first = await Effect.runPromise(
       eventLog.append(
         [

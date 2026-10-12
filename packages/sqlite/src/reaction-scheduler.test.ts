@@ -10,6 +10,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { createSqliteDatabaseContext } from './database'
 import {
   createSqliteReactionSchedulerService,
   prepareSqliteReactionScheduler,
@@ -31,9 +32,13 @@ async function setup() {
   const first = createClient({ url })
   const second = createClient({ url })
   clients.push(first, second)
-  await prepareSqliteReactionScheduler(first)
-  await prepareSqliteReactionScheduler(second)
-  return { first, second }
+  const contexts = {
+    first: createSqliteDatabaseContext(first),
+    second: createSqliteDatabaseContext(second),
+  }
+  await Effect.runPromise(prepareSqliteReactionScheduler(contexts.first))
+  await Effect.runPromise(prepareSqliteReactionScheduler(contexts.second))
+  return contexts
 }
 
 describe('SQLite Reaction scheduler', () => {
@@ -187,7 +192,7 @@ describe('SQLite Reaction scheduler', () => {
           })
           const completion = yield* bound.schedule(4)
           const persisted = yield* Effect.promise(() =>
-            first.execute({
+            first.client.execute({
               sql: `SELECT status FROM specter_reaction_scheduler
                 WHERE through_order = ?`,
               args: [4],
@@ -206,7 +211,7 @@ describe('SQLite Reaction scheduler', () => {
   it('claims work accepted by a failed runtime without another local schedule', async () => {
     const { first, second } = await setup()
     const requestedAt = new Date().toISOString()
-    await first.execute({
+    await first.client.execute({
       sql: `INSERT INTO specter_reaction_scheduler (
         through_order, status, scheduled_at, available_at
       ) VALUES (?, 'pending', ?, ?)`,
@@ -235,7 +240,7 @@ describe('SQLite Reaction scheduler', () => {
       ),
     )
 
-    const persisted = await second.execute({
+    const persisted = await second.client.execute({
       sql: `SELECT status FROM specter_reaction_scheduler
         WHERE through_order = ?`,
       args: [5],

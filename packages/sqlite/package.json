@@ -1,7 +1,7 @@
 {
   "name": "@specter-ts/sqlite",
   "version": "0.4.0",
-  "description": "SQLite Event Log, Slice Store, and Reaction outbox adapters for Specter.",
+  "description": "SQLite Event Log, Slice Stores, Slice snapshots, Reaction outbox and scheduler for Specter, on the host's SQLite connection.",
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
@@ -21,7 +21,6 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@libsql/client": "^0.17.3",
     "@specter-ts/core": "workspace:*",
     "@specter-ts/reaction-outbox": "workspace:*"
   },
@@ -29,6 +28,8 @@
     "effect": "4.0.1"
   },
   "devDependencies": {
+    "@libsql/client": "^0.17.3",
+    "@specter-ts/spec": "workspace:*",
     "@types/node": "^24.10.1",
     "effect": "4.0.1",
     "typescript": "^6.0.2",

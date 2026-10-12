@@ -1,13 +1,22 @@
-import type { Client, Transaction } from '@libsql/client'
 import { Context, Effect, Exit, Option, Semaphore } from 'effect'
+import type { SqlClient, SqlError } from 'effect/sql'
 
-export type SqliteConnection = Client | Transaction
+/** A value a statement binds. */
+export type SqliteValue = string | number | bigint | Uint8Array | null
+
+/** One row a statement returns, by column name. */
+export type SqliteRow = Readonly<Record<string, unknown>>
 
 export class SqliteDatabaseFailure extends Error {
   readonly _tag = 'SqliteDatabaseFailure' as const
 
   constructor(
-    readonly operation: 'begin' | 'commit' | 'rollback',
+    readonly operation:
+      | 'execute'
+      | 'begin'
+      | 'commit'
+      | 'rollback'
+      | 'transaction',
     readonly cause: unknown,
   ) {
     super(`SQLite ${operation} failed.`, { cause })
@@ -15,22 +24,64 @@ export class SqliteDatabaseFailure extends Error {
   }
 }
 
-export type SqliteDatabaseContext = {
-  readonly client: Client
+/**
+ * The database Specter's SQLite stores run on: the host's connection, through
+ * one of the drivers below or the host's own. Its transactions nest, so an
+ * Event Log append, a Slice Store transaction, an outbox enqueue and the
+ * host's own writes (its read models, through `use`) share one transaction
+ * when they run inside it.
+ *
+ * `TConnection` is what the host's own queries run on, such as a libSQL
+ * client for an ORM; Specter's stores only `execute`.
+ */
+export type SqliteDatabaseContext<TConnection = unknown> = {
+  /**
+   * Runs one statement and returns its rows: on the active transaction when
+   * there is one, and otherwise on the database.
+   */
+  readonly execute: (
+    sql: string,
+    args?: readonly SqliteValue[],
+  ) => Effect.Effect<readonly SqliteRow[], SqliteDatabaseFailure>
+  /** Runs `run` with the connection a statement runs on now. */
   readonly use: <A, E, R>(
-    run: (connection: SqliteConnection) => Effect.Effect<A, E, R>,
+    run: (connection: TConnection) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E, R>
-  readonly serialize: <A, E, R>(
-    effect: Effect.Effect<A, E, R>,
-  ) => Effect.Effect<A, E, R>
+  /**
+   * Runs `run` in one write transaction, committed when it succeeds and
+   * rolled back when it fails, or inside the active one.
+   */
   readonly transaction: <A, E, R>(
-    run: (connection: SqliteConnection) => Effect.Effect<A, E, R>,
+    run: (connection: TConnection) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | SqliteDatabaseFailure, R>
+}
+
+/** What Specter uses of a libSQL `Client` or `Transaction`. */
+export type LibsqlConnection = {
+  execute(statement: {
+    readonly sql: string
+    readonly args: SqliteValue[]
+  }): Promise<{ readonly rows: readonly SqliteRow[] }>
+}
+
+/** What Specter uses of a libSQL `Client`. */
+export type LibsqlClient = LibsqlConnection & {
+  transaction(mode: 'write'): Promise<
+    LibsqlConnection & {
+      commit(): Promise<void>
+      rollback(): Promise<void>
+      close(): void
+    }
+  >
+}
+
+export type LibsqlDatabaseContext = SqliteDatabaseContext<LibsqlConnection> & {
+  readonly client: LibsqlClient
 }
 
 type ActiveSqliteTransaction = {
   readonly owner: object
-  readonly connection: SqliteConnection
+  readonly connection: LibsqlConnection
   active: boolean
 }
 
@@ -38,15 +89,21 @@ const ActiveSqliteTransaction = Context.Service<ActiveSqliteTransaction>(
   '@specter-ts/sqlite/ActiveTransaction',
 )
 
+/**
+ * The database over a libSQL client (`@libsql/client`). Transactions are
+ * serialized in the process and nest by joining the active one; `use` gives
+ * the host the libSQL connection a statement runs on now, for its own
+ * queries.
+ */
 export function createSqliteDatabaseContext(
-  client: Client,
-): SqliteDatabaseContext {
+  client: LibsqlClient,
+): LibsqlDatabaseContext {
   const semaphore = Semaphore.makeUnsafe(1)
   const owner = {}
 
   const activeConnection = Effect.contextWith<
     never,
-    SqliteConnection,
+    LibsqlConnection,
     never,
     never
   >((services) => {
@@ -60,13 +117,20 @@ export function createSqliteDatabaseContext(
     )
   })
 
-  const context: SqliteDatabaseContext = {
+  const use: LibsqlDatabaseContext['use'] = (run) =>
+    Effect.flatMap(activeConnection, run)
+
+  return {
     client,
-    use: (run) => Effect.flatMap(activeConnection, run),
-    serialize: (effect) =>
-      Effect.flatMap(activeConnection, (active) =>
-        active !== client ? effect : semaphore.withPermit(effect),
+    execute: (sql, args = []) =>
+      use((connection) =>
+        Effect.tryPromise({
+          try: async () =>
+            (await connection.execute({ sql, args: [...args] })).rows,
+          catch: (cause) => new SqliteDatabaseFailure('execute', cause),
+        }),
       ),
+    use,
     transaction: (run) =>
       Effect.flatMap(activeConnection, (active) =>
         active !== client
@@ -111,8 +175,72 @@ export function createSqliteDatabaseContext(
             ),
       ),
   }
+}
 
-  return context
+export type SqlClientDatabaseOptions = {
+  /**
+   * Runs an Effect in one write transaction, joining the active one, such as
+   * the host ORM's own transaction (Drizzle's `db.transaction(() => effect,
+   * { behavior: 'immediate' })`). Statements inside it run on its
+   * connection. Defaults to `sql.withTransaction`, which begins a deferred
+   * transaction and nests with savepoints: begin it immediately instead when
+   * several processes write the database.
+   */
+  readonly transaction?: <A, E, R>(
+    effect: Effect.Effect<A, E, R>,
+  ) => Effect.Effect<A, E | SqlError.SqlError, R>
+}
+
+/**
+ * The database over an Effect `SqlClient` (`effect/sql`) on SQLite, such as
+ * `@effect/sql-sqlite-bun`, `@effect/sql-sqlite-node` or the host's own.
+ * Statements run through the client, so inside a transaction the client
+ * knows, the host's or Specter's, they run on that transaction's
+ * connection; `use` gives the host the client itself.
+ */
+export function createSqlClientDatabaseContext(
+  sql: SqlClient.SqlClient,
+  options: SqlClientDatabaseOptions = {},
+): SqliteDatabaseContext<SqlClient.SqlClient> {
+  const transaction = options.transaction ?? sql.withTransaction
+  return {
+    execute: (statement, args = []) =>
+      sql
+        .unsafe<Record<string, unknown>>(statement, [...args])
+        .withoutTransform.pipe(
+          Effect.mapError(
+            (cause) => new SqliteDatabaseFailure('execute', cause),
+          ),
+        ),
+    use: (run) => run(sql),
+    transaction: (run) =>
+      transaction(run(sql)).pipe(
+        Effect.catchIf(isSqlError, (cause) =>
+          Effect.fail(new SqliteDatabaseFailure('transaction', cause)),
+        ),
+      ),
+  }
+}
+
+function isSqlError(cause: unknown): cause is SqlError.SqlError {
+  return (
+    typeof cause === 'object' &&
+    cause !== null &&
+    '_tag' in cause &&
+    cause._tag === 'SqlError'
+  )
+}
+
+/** Runs each statement in one transaction, such as a schema's. */
+export function executeAll(
+  context: SqliteDatabaseContext,
+  statements: readonly string[],
+) {
+  return context.transaction(() =>
+    Effect.forEach(statements, (statement) => context.execute(statement), {
+      discard: true,
+    }),
+  )
 }
 
 export function requireString(value: unknown, field: string) {

@@ -1,8 +1,8 @@
 import type { Client } from '@libsql/client'
 import {
   createSqliteDatabaseContext,
-  type SqliteConnection,
-  type SqliteDatabaseContext,
+  type LibsqlConnection,
+  type LibsqlDatabaseContext,
 } from '@specter-ts/sqlite'
 import { Effect } from 'effect'
 
@@ -48,11 +48,11 @@ export async function prepareSqliteReactionTicketStore(client: Client) {
 
 export function createSqliteReactionTicketStore(
   client: Client,
-  options: { readonly context?: SqliteDatabaseContext } = {},
+  options: { readonly context?: LibsqlDatabaseContext } = {},
 ): SpecterReactionTicketStore {
   const context = options.context ?? createSqliteDatabaseContext(client)
 
-  async function prune(connection: SqliteConnection) {
+  async function prune(connection: LibsqlConnection) {
     await connection.execute({
       sql: 'DELETE FROM specter_reaction_tickets WHERE expires_at <= ?',
       args: [new Date().toISOString()],
@@ -60,7 +60,7 @@ export function createSqliteReactionTicketStore(
   }
 
   function runTransaction<A>(
-    run: (connection: SqliteConnection) => Promise<A>,
+    run: (connection: LibsqlConnection) => Promise<A>,
   ): Promise<A> {
     return Effect.runPromise(
       context.transaction((connection) =>

@@ -1,6 +1,5 @@
 import { randomUUID } from 'node:crypto'
 
-import type { Client } from '@libsql/client'
 import {
   EventLog,
   EventLogFailure,
@@ -19,11 +18,12 @@ import {
 import { Effect, Layer } from 'effect'
 
 import {
-  createSqliteDatabaseContext,
+  executeAll,
   requireNumber,
   requireString,
-  type SqliteConnection,
   type SqliteDatabaseContext,
+  type SqliteRow,
+  type SqliteValue,
 } from './database'
 
 export type SqliteEventCodec = {
@@ -31,11 +31,33 @@ export type SqliteEventCodec = {
   decode(payload: string): unknown
 }
 
+/** One commit an append stored, as the append's transaction hands it to the host. */
+export type SqliteEventLogAppend = {
+  /** The commit, as `append` returns it. */
+  readonly commit: EventLogCommit
+  /**
+   * The metadata each Event's draft carried (`EventLogDraft.metadata`, the
+   * dispatch's `eventContext`), by position; undefined where it had none.
+   */
+  readonly metadata: readonly unknown[]
+}
+
 export type SqliteEventLogOptions = {
-  readonly context?: SqliteDatabaseContext
   readonly eventId?: () => string
   readonly now?: () => Date
   readonly codec?: SqliteEventCodec
+  /**
+   * Runs inside each append's transaction once its Events and keys are
+   * stored, with the commit and each Event's metadata: a host writes its own
+   * read models here, so they change with the log or not at all. Its failure
+   * rolls the append back and fails it. It may return an Effect to run once
+   * the transaction has committed, such as notifying listeners; the append
+   * runs it before it returns, uninterruptibly. A duplicate (a known
+   * idempotency key) appends nothing and runs no hook.
+   */
+  readonly onAppend?: (
+    append: SqliteEventLogAppend,
+  ) => Effect.Effect<Effect.Effect<void> | undefined, unknown>
 }
 
 export type SqliteEventLogService = EventLogService & {
@@ -55,38 +77,42 @@ const jsonCodec: SqliteEventCodec = {
   decode: JSON.parse,
 }
 
-export async function prepareSqliteEventLog(client: Client) {
-  await client.batch(
-    [
-      `CREATE TABLE IF NOT EXISTS specter_events (
-        event_order INTEGER PRIMARY KEY AUTOINCREMENT,
-        id TEXT NOT NULL UNIQUE,
-        type TEXT NOT NULL,
-        payload TEXT NOT NULL,
-        recorded_at TEXT NOT NULL
-      )`,
-      `CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
-        ON specter_events(type, event_order)`,
-      `CREATE TABLE IF NOT EXISTS specter_event_commits (
-        commit_version INTEGER PRIMARY KEY,
-        idempotency_key TEXT UNIQUE,
-        fingerprint TEXT,
-        first_event_order INTEGER NOT NULL,
-        last_event_order INTEGER NOT NULL,
-        committed_at TEXT NOT NULL
-      )`,
-      // Each Event's named keys, as core derived them when it was appended.
-      `CREATE TABLE IF NOT EXISTS specter_event_keys (
-        event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
-        name TEXT NOT NULL,
-        value TEXT NOT NULL,
-        PRIMARY KEY (event_order, name)
-      )`,
-      `CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
-        ON specter_event_keys(name, value, event_order)`,
-    ],
-    'write',
-  )
+/**
+ * The statements that create the Event Log's tables and indexes. A host that
+ * runs its own migrations runs them in one; `prepareSqliteEventLog` runs them
+ * for a host that does not.
+ */
+export const sqliteEventLogSchema: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS specter_events (
+    event_order INTEGER PRIMARY KEY AUTOINCREMENT,
+    id TEXT NOT NULL UNIQUE,
+    type TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    recorded_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
+    ON specter_events(type, event_order)`,
+  `CREATE TABLE IF NOT EXISTS specter_event_commits (
+    commit_version INTEGER PRIMARY KEY,
+    idempotency_key TEXT UNIQUE,
+    fingerprint TEXT,
+    first_event_order INTEGER NOT NULL,
+    last_event_order INTEGER NOT NULL,
+    committed_at TEXT NOT NULL
+  )`,
+  // Each Event's named keys, as core derived them when it was appended.
+  `CREATE TABLE IF NOT EXISTS specter_event_keys (
+    event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
+    name TEXT NOT NULL,
+    value TEXT NOT NULL,
+    PRIMARY KEY (event_order, name)
+  )`,
+  `CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
+    ON specter_event_keys(name, value, event_order)`,
+]
+
+export function prepareSqliteEventLog(context: SqliteDatabaseContext) {
+  return executeAll(context, sqliteEventLogSchema)
 }
 
 /**
@@ -112,35 +138,54 @@ function storedKeys(value: unknown): Readonly<Record<string, string>> {
   return keys as Readonly<Record<string, string>>
 }
 
+const placeholders = (values: readonly unknown[]) =>
+  values.map(() => '?').join(', ')
+
+/**
+ * Specter's Event Log on a SQLite database the host provides. Appends run in
+ * the database's transaction, joining the host's when it runs one, and hand
+ * each commit to `onAppend` before it commits.
+ */
 export function createSqliteEventLogService(
-  client: Client,
+  context: SqliteDatabaseContext,
   options: SqliteEventLogOptions = {},
 ): SqliteEventLogService {
-  const context = options.context ?? createSqliteDatabaseContext(client)
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
   const codec = options.codec ?? jsonCodec
-  let commitTableShape: Promise<CommitTableShape> | undefined
+  let commitTableShape: CommitTableShape | undefined
 
-  function getCommitTableShape(connection: SqliteConnection) {
-    commitTableShape ??= connection
-      .execute('PRAGMA table_info(specter_event_commits)')
-      .then((result) => {
-        const columns = new Set(
-          result.rows.map((row) =>
-            requireString(row.name, 'Event commit table column name'),
-          ),
-        )
-        if (columns.has('commit_version')) return 'versioned' as const
-        if (columns.has('idempotency_key') && columns.has('last_event_order')) {
-          return 'legacy' as const
-        }
-        throw new Error('Unsupported SQLite Event commit table schema')
-      })
-    return commitTableShape
+  const rows = (sql: string, args: readonly SqliteValue[] = []) =>
+    context.execute(sql, args)
+  const decode = <A>(run: () => A) =>
+    Effect.try({ try: run, catch: (cause) => cause })
+
+  function getCommitTableShape() {
+    if (commitTableShape) return Effect.succeed(commitTableShape)
+    return rows('PRAGMA table_info(specter_event_commits)').pipe(
+      Effect.flatMap((columns) =>
+        decode(() => {
+          const names = new Set(
+            columns.map((row) =>
+              requireString(row.name, 'Event commit table column name'),
+            ),
+          )
+          if (names.has('commit_version')) return 'versioned' as const
+          if (names.has('idempotency_key') && names.has('last_event_order')) {
+            return 'legacy' as const
+          }
+          throw new Error('Unsupported SQLite Event commit table schema')
+        }),
+      ),
+      Effect.tap((shape) =>
+        Effect.sync(() => {
+          commitTableShape = shape
+        }),
+      ),
+    )
   }
 
-  function fromRow(row: Record<string, unknown>): PersistedEvent {
+  function fromRow(row: SqliteRow): PersistedEvent {
     const recordedAt = requireString(row.recorded_at, 'recorded time')
     if (Number.isNaN(Date.parse(recordedAt))) {
       throw new Error('Expected SQLite recorded time to be ISO-8601')
@@ -155,23 +200,23 @@ export function createSqliteEventLogService(
     }
   }
 
-  async function query(
-    connection: SqliteConnection,
+  const events = (found: readonly SqliteRow[]) =>
+    decode(() => found.map(fromRow))
+
+  function query(
     afterOrder: number,
     eventTypes: readonly string[],
     page: EventLogPage,
   ) {
-    if (!eventTypes.length) return []
-    const result = await connection.execute({
-      sql: `SELECT ${eventColumns}
+    if (!eventTypes.length) return Effect.succeed([])
+    return rows(
+      `SELECT ${eventColumns}
         FROM specter_events e
-        WHERE event_order > ?
-          AND type IN (${eventTypes.map(() => '?').join(', ')})
+        WHERE event_order > ? AND type IN (${placeholders(eventTypes)})
         ORDER BY event_order ASC
         LIMIT ?`,
-      args: [afterOrder, ...eventTypes, page.limit ?? -1],
-    })
-    return result.rows.map((row) => fromRow(row as Record<string, unknown>))
+      [afterOrder, ...eventTypes, page.limit ?? -1],
+    ).pipe(Effect.flatMap(events))
   }
 
   /**
@@ -179,320 +224,329 @@ export function createSqliteEventLogService(
    * covers, or undefined when there is none. Checked in SQL, from the stored
    * keys.
    */
-  async function staleOrder(
-    connection: SqliteConnection,
-    condition: EventLogAppendCondition,
-  ): Promise<number | undefined> {
-    if (condition.eventTypes.length === 0) return undefined
-    const types = condition.eventTypes.map(() => '?').join(', ')
-    if (!condition.keys) {
-      const result = await connection.execute({
-        sql: `SELECT event_order FROM specter_events
-          WHERE event_order > ? AND type IN (${types})
-          ORDER BY event_order ASC LIMIT 1`,
-        args: [condition.afterOrder, ...condition.eventTypes],
-      })
-      const row = result.rows[0]
-      return row
-        ? requireNumber(row.event_order, 'stale event order')
-        : undefined
-    }
-    const keys = Object.entries(condition.keys).filter(
+  function staleOrder(condition: EventLogAppendCondition) {
+    if (condition.eventTypes.length === 0) return Effect.succeed(undefined)
+    const types = placeholders(condition.eventTypes)
+    const keys = Object.entries(condition.keys ?? {}).filter(
       ([, values]) => values.length > 0,
     )
-    if (keys.length === 0) return undefined
-    const result = await connection.execute({
-      sql: `SELECT k.event_order FROM specter_event_keys k
-        JOIN specter_events e ON e.event_order = k.event_order
-        WHERE k.event_order > ? AND e.type IN (${types})
-          AND (${keys
-            .map(
-              ([, values]) =>
-                `(k.name = ? AND k.value IN (${values.map(() => '?').join(', ')}))`,
-            )
-            .join(' OR ')})
-        ORDER BY k.event_order ASC LIMIT 1`,
-      args: [
-        condition.afterOrder,
-        ...condition.eventTypes,
-        ...keys.flatMap(([name, values]) => [name, ...values]),
-      ],
-    })
-    const row = result.rows[0]
-    return row ? requireNumber(row.event_order, 'stale event order') : undefined
+    if (condition.keys && keys.length === 0) return Effect.succeed(undefined)
+    const found = condition.keys
+      ? rows(
+          `SELECT k.event_order FROM specter_event_keys k
+            JOIN specter_events e ON e.event_order = k.event_order
+            WHERE k.event_order > ? AND e.type IN (${types})
+              AND (${keys
+                .map(
+                  ([, values]) =>
+                    `(k.name = ? AND k.value IN (${placeholders(values)}))`,
+                )
+                .join(' OR ')})
+            ORDER BY k.event_order ASC LIMIT 1`,
+          [
+            condition.afterOrder,
+            ...condition.eventTypes,
+            ...keys.flatMap(([name, values]) => [name, ...values]),
+          ],
+        )
+      : rows(
+          `SELECT event_order FROM specter_events
+            WHERE event_order > ? AND type IN (${types})
+            ORDER BY event_order ASC LIMIT 1`,
+          [condition.afterOrder, ...condition.eventTypes],
+        )
+    return found.pipe(
+      Effect.flatMap(([row]) =>
+        decode(() =>
+          row ? requireNumber(row.event_order, 'stale event order') : undefined,
+        ),
+      ),
+    )
   }
 
-  async function readKey(
-    connection: SqliteConnection,
-    key: EventKey,
-    page: EventLogKeyPage,
-  ) {
-    const result = await connection.execute({
-      sql: `SELECT ${eventColumns}
+  function readKey(key: EventKey, page: EventLogKeyPage) {
+    return rows(
+      `SELECT ${eventColumns}
         FROM specter_event_keys k
         JOIN specter_events e ON e.event_order = k.event_order
         WHERE k.name = ? AND k.value = ? AND k.event_order > ?
         ORDER BY k.event_order ASC
         LIMIT ?`,
-      args: [key.name, key.value, page.afterOrder ?? 0, page.limit ?? -1],
-    })
-    return result.rows.map((row) => fromRow(row as Record<string, unknown>))
+      [key.name, key.value, page.afterOrder ?? 0, page.limit ?? -1],
+    ).pipe(Effect.flatMap(events))
   }
 
-  async function currentVersion(connection: SqliteConnection) {
-    const result = await connection.execute(
-      'SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events',
-    )
-    return requireNumber(result.rows[0]?.version, 'Event Log version')
-  }
+  const currentVersion = rows(
+    'SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events',
+  ).pipe(
+    Effect.flatMap(([row]) =>
+      decode(() => requireNumber(row?.version, 'Event Log version')),
+    ),
+  )
 
-  async function findCommit(
-    connection: SqliteConnection,
-    idempotencyKey: string,
-  ): Promise<EventLogCommit | undefined> {
-    const receipt = await connection.execute({
-      sql: `SELECT idempotency_key, fingerprint, first_event_order,
-          last_event_order, committed_at
-        FROM specter_event_commits
-        WHERE idempotency_key = ?`,
-      args: [idempotencyKey],
-    })
-    const row = receipt.rows[0]
-    if (!row) return undefined
-    return commitFromRow(connection, row as Record<string, unknown>)
-  }
+  const commitColumns = `idempotency_key, fingerprint, first_event_order,
+    last_event_order, committed_at`
 
-  async function commitFromRow(
-    connection: SqliteConnection,
-    row: Record<string, unknown>,
-  ): Promise<EventLogCommit> {
-    const firstOrder = requireNumber(
-      row.first_event_order,
-      'first commit event order',
-    )
-    const version = requireNumber(row.last_event_order, 'commit version')
-    const committedAt = requireString(row.committed_at, 'commit time')
-    if (Number.isNaN(Date.parse(committedAt))) {
-      throw new Error('Expected SQLite commit time to be ISO-8601')
-    }
-    const events = await connection.execute({
-      sql: `SELECT ${eventColumns}
-        FROM specter_events e
-        WHERE event_order BETWEEN ? AND ?
-        ORDER BY event_order ASC`,
-      args: [firstOrder, version],
-    })
-    return {
-      events: events.rows.map((event) =>
-        fromRow(event as Record<string, unknown>),
-      ),
-      version,
-      committedAt,
-      idempotencyKey:
-        row.idempotency_key === null
-          ? undefined
-          : requireString(row.idempotency_key, 'commit idempotency key'),
-      fingerprint:
-        row.fingerprint === null
-          ? undefined
-          : requireString(row.fingerprint, 'commit fingerprint'),
-    }
-  }
-
-  async function commitsAfter(
-    connection: SqliteConnection,
-    afterVersion: number,
-    page: EventLogPage,
-  ): Promise<readonly EventLogCommit[]> {
-    const tableShape = await getCommitTableShape(connection)
-    const versionColumn =
-      tableShape === 'versioned' ? 'commit_version' : 'last_event_order'
-    const result = await connection.execute({
-      sql: `SELECT idempotency_key, fingerprint, first_event_order,
-          last_event_order, committed_at
-        FROM specter_event_commits
-        WHERE ${versionColumn} > ?
-        ORDER BY ${versionColumn} ASC
-        LIMIT ?`,
-      args: [afterVersion, page.limit ?? -1],
-    })
-    return Promise.all(
-      result.rows.map((row) =>
-        commitFromRow(connection, row as Record<string, unknown>),
-      ),
-    )
-  }
-
-  async function append(
-    connection: SqliteConnection,
-    drafts: readonly EventLogDraft[],
-    appendOptions: EventLogAppendOptions = {},
-  ): Promise<EventLogAppendResult> {
-    const existing = appendOptions.idempotencyKey
-      ? await findCommit(connection, appendOptions.idempotencyKey)
-      : undefined
-    if (existing) {
-      return { ...existing, duplicate: true }
-    }
-    if (drafts.length === 0) {
-      throw new Error('Event Log append requires at least one Event')
-    }
-
-    const tableShape = await getCommitTableShape(connection)
-
-    const version = await currentVersion(connection)
-    if (
-      appendOptions.expectedVersion !== undefined &&
-      appendOptions.expectedVersion !== version
-    ) {
-      throw new SpecterVersionConflictError(
-        appendOptions.expectedVersion,
-        version,
+  /**
+   * The commits of these rows with their Events. A commit's Events are the
+   * orders from its first to its last, and commits never overlap, so one
+   * read finds every commit's Events.
+   */
+  function withEvents(commitRows: readonly SqliteRow[]) {
+    return Effect.gen(function* () {
+      const commits = yield* decode(() =>
+        commitRows.map((row) => {
+          const committedAt = requireString(row.committed_at, 'commit time')
+          if (Number.isNaN(Date.parse(committedAt))) {
+            throw new Error('Expected SQLite commit time to be ISO-8601')
+          }
+          return {
+            first: requireNumber(
+              row.first_event_order,
+              'first commit event order',
+            ),
+            version: requireNumber(row.last_event_order, 'commit version'),
+            committedAt,
+            idempotencyKey:
+              row.idempotency_key === null
+                ? undefined
+                : requireString(row.idempotency_key, 'commit idempotency key'),
+            fingerprint:
+              row.fingerprint === null
+                ? undefined
+                : requireString(row.fingerprint, 'commit fingerprint'),
+          }
+        }),
       )
-    }
-    const unchanged = appendOptions.expectedUnchanged
-    const stale = unchanged && (await staleOrder(connection, unchanged))
-    if (unchanged && stale !== undefined) {
-      throw new SpecterVersionConflictError(unchanged.afterOrder, stale)
-    }
-
-    const events: PersistedEvent[] = []
-    for (const draft of drafts) {
-      // The host's ID and time when it supplied them. The ID column is
-      // unique, so an ID already in the log fails the append.
-      const id = draft.id ?? eventId()
-      const recordedAt = draft.recordedAt ?? now().toISOString()
-      if (Number.isNaN(Date.parse(recordedAt))) {
-        throw new Error('Event recordedAt must be an ISO-8601 timestamp')
-      }
-      const inserted = await connection.execute({
-        sql: `INSERT INTO specter_events (id, type, payload, recorded_at)
-          VALUES (?, ?, ?, ?)
-          RETURNING event_order`,
-        args: [id, draft.type, codec.encode(draft.payload), recordedAt],
+      if (commits.length === 0) return []
+      const stored = yield* rows(
+        `SELECT ${eventColumns}
+          FROM specter_events e
+          WHERE event_order BETWEEN ? AND ?
+          ORDER BY event_order ASC`,
+        [
+          Math.min(...commits.map((commit) => commit.first)),
+          Math.max(...commits.map((commit) => commit.version)),
+        ],
+      ).pipe(Effect.flatMap(events))
+      // Both are ordered, so one pass splits the Events by commit.
+      let index = 0
+      return commits.map(({ first, ...commit }): EventLogCommit => {
+        while (index < stored.length && (stored[index]?.order ?? 0) < first)
+          index += 1
+        const start = index
+        while (
+          index < stored.length &&
+          (stored[index]?.order ?? 0) <= commit.version
+        )
+          index += 1
+        return { ...commit, events: stored.slice(start, index) }
       })
-      const order = requireNumber(
-        inserted.rows[0]?.event_order,
-        'inserted event order',
-      )
-      const keys = Object.entries(draft.keys)
-      if (keys.length > 0) {
-        await connection.execute({
-          sql: `INSERT INTO specter_event_keys (event_order, name, value)
-            VALUES ${keys.map(() => '(?, ?, ?)').join(', ')}`,
-          args: keys.flatMap(([name, value]) => [order, name, value]),
+    })
+  }
+
+  function findCommit(idempotencyKey: string) {
+    return rows(
+      `SELECT ${commitColumns} FROM specter_event_commits
+        WHERE idempotency_key = ?`,
+      [idempotencyKey],
+    ).pipe(
+      Effect.flatMap(withEvents),
+      Effect.map(([commit]) => commit),
+    )
+  }
+
+  function commitsAfter(afterVersion: number, page: EventLogPage) {
+    return getCommitTableShape().pipe(
+      Effect.flatMap((shape) => {
+        const versionColumn =
+          shape === 'versioned' ? 'commit_version' : 'last_event_order'
+        return rows(
+          `SELECT ${commitColumns} FROM specter_event_commits
+            WHERE ${versionColumn} > ?
+            ORDER BY ${versionColumn} ASC
+            LIMIT ?`,
+          [afterVersion, page.limit ?? -1],
+        )
+      }),
+      Effect.flatMap(withEvents),
+    )
+  }
+
+  /** Stores one commit and runs the host's hook, inside the transaction. */
+  function store(
+    drafts: readonly EventLogDraft[],
+    appendOptions: EventLogAppendOptions,
+  ) {
+    return Effect.gen(function* () {
+      const existing = appendOptions.idempotencyKey
+        ? yield* findCommit(appendOptions.idempotencyKey)
+        : undefined
+      if (existing) {
+        return {
+          result: { ...existing, duplicate: true } as EventLogAppendResult,
+          committed: undefined,
+        }
+      }
+      if (drafts.length === 0) {
+        return yield* Effect.fail(
+          new Error('Event Log append requires at least one Event'),
+        )
+      }
+
+      const tableShape = yield* getCommitTableShape()
+      const version = yield* currentVersion
+      if (
+        appendOptions.expectedVersion !== undefined &&
+        appendOptions.expectedVersion !== version
+      ) {
+        return yield* Effect.fail(
+          new SpecterVersionConflictError(
+            appendOptions.expectedVersion,
+            version,
+          ),
+        )
+      }
+      const unchanged = appendOptions.expectedUnchanged
+      const stale = unchanged ? yield* staleOrder(unchanged) : undefined
+      if (unchanged && stale !== undefined) {
+        return yield* Effect.fail(
+          new SpecterVersionConflictError(unchanged.afterOrder, stale),
+        )
+      }
+
+      const appended: PersistedEvent[] = []
+      for (const draft of drafts) {
+        // The host's ID and time when it supplied them. The ID column is
+        // unique, so an ID already in the log fails the append.
+        const id = draft.id ?? eventId()
+        const recordedAt = draft.recordedAt ?? now().toISOString()
+        if (Number.isNaN(Date.parse(recordedAt))) {
+          return yield* Effect.fail(
+            new Error('Event recordedAt must be an ISO-8601 timestamp'),
+          )
+        }
+        const payload = yield* decode(() => codec.encode(draft.payload))
+        const [inserted] = yield* rows(
+          `INSERT INTO specter_events (id, type, payload, recorded_at)
+            VALUES (?, ?, ?, ?)
+            RETURNING event_order`,
+          [id, draft.type, payload, recordedAt],
+        )
+        const order = yield* decode(() =>
+          requireNumber(inserted?.event_order, 'inserted event order'),
+        )
+        const keys = Object.entries(draft.keys)
+        if (keys.length > 0) {
+          yield* rows(
+            `INSERT INTO specter_event_keys (event_order, name, value)
+              VALUES ${keys.map(() => '(?, ?, ?)').join(', ')}`,
+            keys.flatMap(([name, value]) => [order, name, value]),
+          )
+        }
+        appended.push({
+          type: draft.type,
+          payload: draft.payload,
+          id,
+          order,
+          recordedAt,
+          keys: { ...draft.keys },
         })
       }
-      events.push({
-        type: draft.type,
-        payload: draft.payload,
-        id,
-        order,
-        recordedAt,
-        keys: { ...draft.keys },
-      })
-    }
-    const committedVersion = events.at(-1)?.order ?? version
-    const committedAt = now().toISOString()
-    if (tableShape === 'versioned') {
-      await connection.execute({
-        sql: `INSERT INTO specter_event_commits (
-            commit_version,
-            idempotency_key,
-            fingerprint,
-            first_event_order,
-            last_event_order,
-            committed_at
-          ) VALUES (?, ?, ?, ?, ?, ?)`,
-        args: [
-          committedVersion,
-          appendOptions.idempotencyKey ?? null,
-          appendOptions.fingerprint ?? null,
-          events[0]?.order ?? version,
-          committedVersion,
-          committedAt,
-        ],
-      })
-    } else {
-      await connection.execute({
-        sql: `INSERT INTO specter_event_commits (
-            idempotency_key,
-            fingerprint,
-            first_event_order,
-            last_event_order,
-            committed_at
-          ) VALUES (?, ?, ?, ?, ?)`,
-        args: [
-          appendOptions.idempotencyKey ?? null,
-          appendOptions.fingerprint ?? null,
-          events[0]?.order ?? version,
-          committedVersion,
-          committedAt,
-        ],
-      })
-    }
-    return {
-      events,
-      version: committedVersion,
-      committedAt,
-      idempotencyKey: appendOptions.idempotencyKey,
-      fingerprint: appendOptions.fingerprint,
-      duplicate: false,
-    }
+      const committedVersion = appended.at(-1)?.order ?? version
+      const committedAt = now().toISOString()
+      const first = appended[0]?.order ?? version
+      if (tableShape === 'versioned') {
+        yield* rows(
+          `INSERT INTO specter_event_commits (
+              commit_version, idempotency_key, fingerprint,
+              first_event_order, last_event_order, committed_at
+            ) VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            committedVersion,
+            appendOptions.idempotencyKey ?? null,
+            appendOptions.fingerprint ?? null,
+            first,
+            committedVersion,
+            committedAt,
+          ],
+        )
+      } else {
+        yield* rows(
+          `INSERT INTO specter_event_commits (
+              idempotency_key, fingerprint, first_event_order,
+              last_event_order, committed_at
+            ) VALUES (?, ?, ?, ?, ?)`,
+          [
+            appendOptions.idempotencyKey ?? null,
+            appendOptions.fingerprint ?? null,
+            first,
+            committedVersion,
+            committedAt,
+          ],
+        )
+      }
+      const commit: EventLogCommit = {
+        events: appended,
+        version: committedVersion,
+        committedAt,
+        idempotencyKey: appendOptions.idempotencyKey,
+        fingerprint: appendOptions.fingerprint,
+      }
+      const committed = options.onAppend
+        ? yield* options.onAppend({
+            commit,
+            metadata: drafts.map((draft) => draft.metadata),
+          })
+        : undefined
+      return {
+        result: { ...commit, duplicate: false } as EventLogAppendResult,
+        committed,
+      }
+    })
   }
 
-  function attempt<A>(
+  function attempt<A, E>(
     operation: EventLogFailure['operation'],
-    run: () => Promise<A>,
+    effect: Effect.Effect<A, E>,
   ) {
-    return Effect.tryPromise({
-      try: run,
-      catch: (cause) => new EventLogFailure(operation, cause),
-    })
+    return effect.pipe(
+      Effect.mapError((cause) =>
+        cause instanceof EventLogFailure
+          ? cause
+          : new EventLogFailure(operation, cause),
+      ),
+    )
   }
 
   return {
     capabilities: { scopedAppend: true, keyedRead: true },
     context,
     query: (afterOrder, eventTypes, page = {}) =>
-      context.use((connection) =>
-        attempt('query', () => query(connection, afterOrder, eventTypes, page)),
-      ),
-    currentVersion: context.use((connection) =>
-      attempt('currentVersion', () => currentVersion(connection)),
-    ),
-    readKey: (key, page = {}) =>
-      context.use((connection) =>
-        attempt('readKey', () => readKey(connection, key, page)),
-      ),
+      attempt('query', query(afterOrder, eventTypes, page)),
+    currentVersion: attempt('currentVersion', currentVersion),
+    readKey: (key, page = {}) => attempt('readKey', readKey(key, page)),
     commitsAfter: (afterVersion, page = {}) =>
-      context.use((connection) =>
-        attempt('commitsAfter', () =>
-          commitsAfter(connection, afterVersion, page),
-        ),
-      ),
+      attempt('commitsAfter', commitsAfter(afterVersion, page)),
     findCommit: (idempotencyKey) =>
-      context.use((connection) =>
-        attempt('findCommit', () => findCommit(connection, idempotencyKey)),
+      attempt('findCommit', findCommit(idempotencyKey)),
+    append: (drafts, appendOptions = {}) =>
+      attempt(
+        'append',
+        context.transaction(() => store(drafts, appendOptions)),
+      ).pipe(
+        // A committed append always runs what its hook left for after the
+        // commit.
+        Effect.tap(({ committed }) => committed ?? Effect.void),
+        Effect.map(({ result }) => result),
+        Effect.uninterruptible,
       ),
-    append: (drafts, appendOptions) =>
-      context
-        .transaction((connection) =>
-          attempt('append', () => append(connection, drafts, appendOptions)),
-        )
-        .pipe(
-          Effect.mapError((cause) =>
-            cause instanceof EventLogFailure
-              ? cause
-              : new EventLogFailure('append', cause),
-          ),
-        ),
   }
 }
 
 export function createSqliteEventLogLayer(
-  client: Client,
+  context: SqliteDatabaseContext,
   options: SqliteEventLogOptions = {},
 ): Layer.Layer<EventLog> {
-  return Layer.succeed(EventLog, createSqliteEventLogService(client, options))
+  return Layer.succeed(EventLog, createSqliteEventLogService(context, options))
 }

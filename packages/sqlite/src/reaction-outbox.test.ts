@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { createSqliteDatabaseContext } from './database'
 import {
   createSqliteReactionOutboxStore,
   prepareSqliteReactionOutbox,
@@ -29,16 +30,18 @@ async function setup() {
   tempDirectories.push(directory)
   const client = createClient({ url: `file:${join(directory, 'outbox.db')}` })
   clients.push(client)
-  await prepareSqliteReactionOutbox(client)
+  const context = createSqliteDatabaseContext(client)
+  await Effect.runPromise(prepareSqliteReactionOutbox(context))
   return {
     client,
-    store: createSqliteReactionOutboxStore<{ task: string }>(client),
+    context,
+    store: createSqliteReactionOutboxStore<{ task: string }>(context),
   }
 }
 
 describe('SQLite Reaction outbox', () => {
   it('persists idempotent jobs across store instances', async () => {
-    const { client, store } = await setup()
+    const { context, store } = await setup()
     const input = {
       id: 'job-1',
       idempotencyKey: 'email-1',
@@ -47,7 +50,7 @@ describe('SQLite Reaction outbox', () => {
       availableAt: new Date(0),
     }
     await Effect.runPromise(store.enqueue(input))
-    const restarted = createSqliteReactionOutboxStore<{ task: string }>(client)
+    const restarted = createSqliteReactionOutboxStore<{ task: string }>(context)
     const duplicate = await Effect.runPromise(
       restarted.enqueue({ ...input, id: 'job-2' }),
     )
@@ -57,8 +60,8 @@ describe('SQLite Reaction outbox', () => {
   })
 
   it('supports custom payload codecs', async () => {
-    const { client } = await setup()
-    const store = createSqliteReactionOutboxStore<{ value: bigint }>(client, {
+    const { context } = await setup()
+    const store = createSqliteReactionOutboxStore<{ value: bigint }>(context, {
       codec: {
         encode: (payload) => payload.value.toString(),
         decode: (payload) => ({ value: BigInt(payload) }),

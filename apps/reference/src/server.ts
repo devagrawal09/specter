@@ -11,7 +11,7 @@ import {
   prepareSqliteReactionScheduler,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
-import { Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 
 import { createSqliteSliceStoreLayer } from './db/specter-sqlite'
 import { todoSpecterAppConfig } from './features/todos/registry'
@@ -27,17 +27,16 @@ mkdirSync(dirname(sqlitePath), { recursive: true })
 const sqliteUrl = `file:${sqlitePath}`
 const sqliteClient = createClient({ url: sqliteUrl })
 const operationalSqliteClient = createClient({ url: sqliteUrl })
-await prepareSpecterSqlite(sqliteClient)
+const sqliteContext = createSqliteDatabaseContext(sqliteClient)
+const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
+await Effect.runPromise(prepareSpecterSqlite(sqliteContext))
 await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
-await prepareSqliteReactionScheduler(operationalSqliteClient)
+await Effect.runPromise(prepareSqliteReactionScheduler(operationalContext))
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
-const persistence = createSpecterSqlitePersistence(sqliteClient)
-const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
-const reactionSchedulerLayer = createSqliteReactionSchedulerLayer(
-  operationalSqliteClient,
-  { context: operationalContext },
-)
+const persistence = createSpecterSqlitePersistence(sqliteContext)
+const reactionSchedulerLayer =
+  createSqliteReactionSchedulerLayer(operationalContext)
 const specterApp = await createSpecterApp(
   todoSpecterAppConfig,
   Layer.mergeAll(

@@ -325,9 +325,6 @@ importers:
 
   packages/sqlite:
     dependencies:
-      '@libsql/client':
-        specifier: ^0.17.3
-        version: 0.17.3
       '@specter-ts/core':
         specifier: workspace:*
         version: link:../core
@@ -335,6 +332,12 @@ importers:
         specifier: workspace:*
         version: link:../reaction-outbox
     devDependencies:
+      '@libsql/client':
+        specifier: ^0.17.3
+        version: 0.17.3
+      '@specter-ts/spec':
+        specifier: workspace:*
+        version: link:../spec
       '@types/node':
         specifier: ^24.10.1
         version: 24.12.4

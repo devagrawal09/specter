@@ -3,8 +3,8 @@ import type { Client } from '@libsql/client/sqlite3'
 import { drizzle } from 'drizzle-orm/libsql/sqlite3'
 import type { SliceStoreService } from '@specter-ts/core'
 import type {
-  SqliteConnection,
-  SqliteDatabaseContext,
+  LibsqlConnection,
+  LibsqlDatabaseContext,
 } from '@specter-ts/sqlite'
 import { Effect, Layer } from 'effect'
 
@@ -17,8 +17,8 @@ export { sqliteSliceStore } from './specter-store'
 export type SqliteDb = ReturnType<typeof drizzle<typeof schema>>
 type ScopedSqliteDb = SqliteDb
 
-export function createSqliteSliceStoreLayer(context: SqliteDatabaseContext) {
-  const database = (client: SqliteConnection) =>
+export function createSqliteSliceStoreLayer(context: LibsqlDatabaseContext) {
+  const database = (client: LibsqlConnection) =>
     drizzle(client as Client, { schema })
 
   async function loadCursor(connection: ScopedSqliteDb, sliceName: string) {

@@ -1,31 +1,45 @@
 # `@specter-ts/sqlite`
 
-Production SQLite persistence for Specter using `@libsql/client`.
+SQLite persistence for Specter on the host's own connection: an Event Log,
+JSON Slice Stores, Slice snapshots, a Reaction outbox and a Reaction scheduler.
+
+Every store runs on a `SqliteDatabaseContext`, which the host provides over its
+driver, so the stores share the host's connection and transactions:
 
 ```ts
-const client = createClient({ url: 'file:data/app.db' })
-await prepareSpecterSqlite(client)
+// libSQL (`@libsql/client`)
+const context = createSqliteDatabaseContext(client)
+await Effect.runPromise(prepareSpecterSqlite(context))
 
-const persistence = createSpecterSqlitePersistence(client)
+// An Effect SqlClient (`effect/sql`), with the host ORM's transaction
+const context = createSqlClientDatabaseContext(db.$client, {
+  transaction: (effect) => db.transaction(() => effect, { behavior: 'immediate' }),
+})
+
+const persistence = createSpecterSqlitePersistence(context)
 const todosStore = persistence.createSliceStoreService(() => ({ todos: [] }))
-const outboxStore = persistence.createReactionOutboxStore()
+const outboxStore = persistence.createReactionOutboxStore({ queue: 'emails' })
 ```
 
-Use the combined persistence factory when the Event Log and Slice Stores share
-one database. Command callbacks are logically serialized and reentrant, but do
-not hold a SQLite write transaction while Slice State catches up or handlers
-run. Slice publication remains independent. Event append opens its own short
-atomic write transaction and automatically checks the version captured when
-the command callback started, detecting competing processes without blocking
-project-owned state writes.
+A host that runs its own migrations creates the tables by running the
+statements it needs (`sqliteEventLogSchema`, `sqliteReactionOutboxSchema`,
+`sqliteSliceSnapshotSchema`, `sqliteSliceStoreSchema`,
+`sqliteReactionSchedulerSchema`) in a migration; others call
+`prepareSpecterSqlite(context)` at startup.
 
-The Event Log enforces expected versions and stores durable idempotency
-receipts in the same transaction as its Events. The Reaction outbox uses atomic
-claims, deterministic attempt IDs, leases, retries, dead letters, and replay.
-Event payloads, Slice State, and outbox payloads must be JSON-serializable.
+The Event Log enforces expected versions and the scoped compare-and-swap in
+SQL, stores durable idempotency receipts and each Event's keys in the same
+transaction as its Events, and pages its reads. Its `onAppend` hook runs in
+the append's transaction with each Event and the metadata its dispatch gave
+it, so a host's read models change with the log, and may return work to run
+once the commit is durable. Slice Stores and snapshots keep each Slice's
+State under its version and ignore State of another. The Reaction outbox keeps
+one queue per Store, with atomic claims, concurrency keys, lease renewal,
+in-process wake-ups, retries, dead letters, replay, release of what an earlier
+process left running, and pruning. Event payloads, Slice State and outbox
+payloads must be JSON-serializable unless a codec says otherwise.
 
 The Event Log can also open the earlier commit table whose primary key is
 `idempotency_key` and which has no `commit_version` column. It detects that
 shape without migrating or rebuilding the table, and uses `last_event_order`
-as the ordered commit boundary. New databases continue to use the current
-`commit_version` table.
+as the ordered commit boundary. New databases use the `commit_version` table.

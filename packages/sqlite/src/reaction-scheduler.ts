@@ -1,4 +1,3 @@
-import type { Client } from '@libsql/client'
 import {
   ReactionScheduler,
   ReactionSchedulerFailure,
@@ -8,14 +7,15 @@ import {
 import { Effect, Layer } from 'effect'
 
 import {
-  createSqliteDatabaseContext,
+  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
+  type SqliteRow,
+  type SqliteValue,
 } from './database'
 
 export type SqliteReactionSchedulerOptions = {
-  readonly context?: SqliteDatabaseContext
   readonly now?: () => Date
   readonly leaseMs?: number
   readonly pollIntervalMs?: number
@@ -39,45 +39,55 @@ type Claim =
       readonly context: ReactionScheduleContext
     }
 
-export async function prepareSqliteReactionScheduler(client: Client) {
-  await client.execute('PRAGMA busy_timeout = 5000')
-  await client.batch(
-    [
-      `CREATE TABLE IF NOT EXISTS specter_reaction_scheduler (
-        through_order INTEGER PRIMARY KEY,
-        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed')),
-        scheduled_at TEXT NOT NULL,
-        available_at TEXT NOT NULL,
-        lease_expires_at TEXT,
-        claim_token TEXT,
-        last_error TEXT
-      )`,
-      `CREATE INDEX IF NOT EXISTS specter_reaction_scheduler_pending_idx
-        ON specter_reaction_scheduler(status, available_at, through_order)`,
-    ],
-    'write',
-  )
+/** The statements that create the Reaction scheduler's table and index. */
+export const sqliteReactionSchedulerSchema: readonly string[] = [
+  `CREATE TABLE IF NOT EXISTS specter_reaction_scheduler (
+    through_order INTEGER PRIMARY KEY,
+    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed')),
+    scheduled_at TEXT NOT NULL,
+    available_at TEXT NOT NULL,
+    lease_expires_at TEXT,
+    claim_token TEXT,
+    last_error TEXT
+  )`,
+  `CREATE INDEX IF NOT EXISTS specter_reaction_scheduler_pending_idx
+    ON specter_reaction_scheduler(status, available_at, through_order)`,
+]
+
+export function prepareSqliteReactionScheduler(context: SqliteDatabaseContext) {
+  return executeAll(context, sqliteReactionSchedulerSchema)
 }
 
 export function createSqliteReactionSchedulerService(
-  client: Client,
+  context: SqliteDatabaseContext,
   options: SqliteReactionSchedulerOptions = {},
 ): ReactionSchedulerService {
-  const context = options.context ?? createSqliteDatabaseContext(client)
   const now = options.now ?? (() => new Date())
   const leaseMs = options.leaseMs ?? 5 * 60_000
   const pollIntervalMs = options.pollIntervalMs ?? 100
   const retryIntervalMs = options.retryIntervalMs ?? 100
 
+  /**
+   * Runs `run` with a statement runner, failing with a scheduler failure.
+   * `run` reads the rows of each statement it awaits.
+   */
   function attempt<A>(
     operation: 'schedule' | 'run',
-    run: (connection: import('./database').SqliteConnection) => Promise<A>,
+    run: (
+      execute: (
+        sql: string,
+        args?: readonly SqliteValue[],
+      ) => Effect.Effect<readonly SqliteRow[], unknown>,
+    ) => Effect.Effect<A, unknown>,
   ): Effect.Effect<A, ReactionSchedulerFailure> {
-    return context.use((connection) =>
-      Effect.tryPromise({
-        try: () => run(connection),
-        catch: (cause) => new ReactionSchedulerFailure(operation, cause),
-      }),
+    return Effect.suspend(() =>
+      run((sql, args) => context.execute(sql, args)),
+    ).pipe(
+      // A row that does not decode throws: it fails the operation too.
+      Effect.catchDefect((cause) => Effect.fail(cause)),
+      Effect.mapError(
+        (cause) => new ReactionSchedulerFailure(operation, cause),
+      ),
     )
   }
 
@@ -88,7 +98,7 @@ export function createSqliteReactionSchedulerService(
     return decoded
   }
 
-  function decodeRow(row: Record<string, unknown>): SchedulerRow {
+  function decodeRow(row: SqliteRow): SchedulerRow {
     return {
       throughOrder: requireNumber(row.through_order, 'scheduler through order'),
       status: requireString(
@@ -105,109 +115,126 @@ export function createSqliteReactionSchedulerService(
   }
 
   function request(throughOrder: number) {
-    return attempt('schedule', async (connection) => {
+    return attempt('schedule', (execute) => {
       const requestedAt = now().toISOString()
-      await connection.execute({
-        sql: `INSERT INTO specter_reaction_scheduler (
+      return execute(
+        `INSERT INTO specter_reaction_scheduler (
           through_order, status, scheduled_at, available_at
         ) VALUES (?, 'pending', ?, ?)
         ON CONFLICT (through_order) DO UPDATE SET
           status = 'pending', available_at = excluded.available_at,
           lease_expires_at = NULL, claim_token = NULL, last_error = NULL
         WHERE specter_reaction_scheduler.status = 'completed'`,
-        args: [throughOrder, requestedAt, requestedAt],
-      })
+        [throughOrder, requestedAt, requestedAt],
+      )
     })
   }
 
   function claim(
     throughOrder: number,
   ): Effect.Effect<Claim, ReactionSchedulerFailure> {
-    return attempt('run', async (connection) => {
-      const claimTime = now()
-      const token = globalThis.crypto.randomUUID()
-      const leaseExpiresAt = new Date(claimTime.getTime() + leaseMs)
-      const claimed = await connection.execute({
-        sql: `UPDATE specter_reaction_scheduler
-          SET status = 'running', lease_expires_at = ?, claim_token = ?
-          WHERE through_order = ? AND status != 'completed'
-            AND ((status = 'pending' AND available_at <= ?)
-              OR (status = 'running'
-                AND (lease_expires_at IS NULL OR lease_expires_at <= ?)))`,
-        args: [
-          leaseExpiresAt.toISOString(),
-          token,
-          throughOrder,
-          claimTime.toISOString(),
-          claimTime.toISOString(),
-        ],
-      })
-      if (claimed.rowsAffected === 1) {
-        const row = await connection.execute({
-          sql: `SELECT scheduled_at FROM specter_reaction_scheduler
-            WHERE through_order = ?`,
-          args: [throughOrder],
-        })
-        return {
-          type: 'claimed',
-          token,
-          context: {
+    return attempt('run', (execute) =>
+      Effect.gen(function* () {
+        const claimTime = now()
+        const token = globalThis.crypto.randomUUID()
+        const leaseExpiresAt = new Date(claimTime.getTime() + leaseMs)
+        const [claimed] = yield* execute(
+          `UPDATE specter_reaction_scheduler
+            SET status = 'running', lease_expires_at = ?, claim_token = ?
+            WHERE through_order = ? AND status != 'completed'
+              AND ((status = 'pending' AND available_at <= ?)
+                OR (status = 'running'
+                  AND (lease_expires_at IS NULL OR lease_expires_at <= ?)))
+            RETURNING scheduled_at`,
+          [
+            leaseExpiresAt.toISOString(),
+            token,
             throughOrder,
-            scheduledAt: decodeDate(
-              row.rows[0]?.scheduled_at,
-              'scheduler scheduled time',
-            ).toISOString(),
-          },
+            claimTime.toISOString(),
+            claimTime.toISOString(),
+          ],
+        )
+        if (claimed) {
+          return {
+            type: 'claimed',
+            token,
+            context: {
+              throughOrder,
+              scheduledAt: decodeDate(
+                claimed.scheduled_at,
+                'scheduler scheduled time',
+              ).toISOString(),
+            },
+          } as const
         }
-      }
-      const current = await connection.execute({
-        sql: `SELECT through_order, status, scheduled_at, available_at,
-          lease_expires_at FROM specter_reaction_scheduler
-          WHERE through_order = ?`,
-        args: [throughOrder],
-      })
-      if (!current.rows[0])
-        throw new Error('Failed to read Reaction scheduler job')
-      const row = decodeRow(current.rows[0] as Record<string, unknown>)
-      if (row.status === 'completed') return { type: 'completed' }
-      return {
-        type: 'waiting',
-        wakeAt:
-          row.status === 'running' && row.leaseExpiresAt
-            ? row.leaseExpiresAt
-            : row.availableAt,
-      }
-    })
+        const [current] = yield* execute(
+          `SELECT through_order, status, scheduled_at, available_at,
+            lease_expires_at FROM specter_reaction_scheduler
+            WHERE through_order = ?`,
+          [throughOrder],
+        )
+        if (!current)
+          return yield* Effect.fail(
+            new Error('Failed to read Reaction scheduler job'),
+          )
+        const row = decodeRow(current)
+        if (row.status === 'completed') return { type: 'completed' } as const
+        return {
+          type: 'waiting',
+          wakeAt:
+            row.status === 'running' && row.leaseExpiresAt
+              ? row.leaseExpiresAt
+              : row.availableAt,
+        } as const
+      }),
+    )
+  }
+
+  /** Runs an update of the running boundary this claim holds. */
+  function settle(
+    throughOrder: number,
+    token: string,
+    set: string,
+    args: readonly SqliteValue[],
+  ) {
+    return attempt('run', (execute) =>
+      execute(
+        `UPDATE specter_reaction_scheduler
+          SET ${set}
+          WHERE through_order = ? AND status = 'running' AND claim_token = ?
+          RETURNING through_order`,
+        [...args, throughOrder, token],
+      ).pipe(
+        Effect.flatMap((rows) =>
+          rows.length === 1
+            ? Effect.void
+            : Effect.fail(
+                new Error(`Reaction scheduler lease was lost: ${throughOrder}`),
+              ),
+        ),
+      ),
+    )
   }
 
   function complete(throughOrder: number, token: string) {
-    return attempt('run', async (connection) => {
-      const result = await connection.execute({
-        sql: `UPDATE specter_reaction_scheduler
-          SET status = 'completed', lease_expires_at = NULL,
-            claim_token = NULL, last_error = NULL
-          WHERE through_order = ? AND status = 'running' AND claim_token = ?`,
-        args: [throughOrder, token],
-      })
-      if (result.rowsAffected !== 1)
-        throw new Error(`Reaction scheduler lease was lost: ${throughOrder}`)
-    })
+    return settle(
+      throughOrder,
+      token,
+      `status = 'completed', lease_expires_at = NULL,
+        claim_token = NULL, last_error = NULL`,
+      [],
+    )
   }
 
   function reschedule(throughOrder: number, token: string, cause: unknown) {
-    return attempt('run', async (connection) => {
-      const availableAt = new Date(now().getTime() + retryIntervalMs)
-      const result = await connection.execute({
-        sql: `UPDATE specter_reaction_scheduler
-          SET status = 'pending', available_at = ?, lease_expires_at = NULL,
-            claim_token = NULL, last_error = ?
-          WHERE through_order = ? AND status = 'running' AND claim_token = ?`,
-        args: [availableAt.toISOString(), String(cause), throughOrder, token],
-      })
-      if (result.rowsAffected !== 1)
-        throw new Error(`Reaction scheduler lease was lost: ${throughOrder}`)
-      return availableAt
-    })
+    const availableAt = new Date(now().getTime() + retryIntervalMs)
+    return settle(
+      throughOrder,
+      token,
+      `status = 'pending', available_at = ?, lease_expires_at = NULL,
+        claim_token = NULL, last_error = ?`,
+      [availableAt.toISOString(), String(cause)],
+    ).pipe(Effect.as(availableAt))
   }
 
   /**
@@ -220,17 +247,13 @@ export function createSqliteReactionSchedulerService(
     token: string,
     cause: unknown,
   ) {
-    return attempt('run', async (connection) => {
-      const result = await connection.execute({
-        sql: `UPDATE specter_reaction_scheduler
-          SET status = 'completed', lease_expires_at = NULL,
-            claim_token = NULL, last_error = ?
-          WHERE through_order = ? AND status = 'running' AND claim_token = ?`,
-        args: [describeFailure(cause), throughOrder, token],
-      })
-      if (result.rowsAffected !== 1)
-        throw new Error(`Reaction scheduler lease was lost: ${throughOrder}`)
-    })
+    return settle(
+      throughOrder,
+      token,
+      `status = 'completed', lease_expires_at = NULL,
+        claim_token = NULL, last_error = ?`,
+      [describeFailure(cause)],
+    )
   }
 
   function run<E>(
@@ -270,41 +293,48 @@ export function createSqliteReactionSchedulerService(
   }
 
   function nextRunnableOrder() {
-    return attempt('run', async (connection) => {
+    return attempt('run', (execute) => {
       const currentTime = now().toISOString()
-      const result = await connection.execute({
-        sql: `SELECT through_order FROM specter_reaction_scheduler
+      return execute(
+        `SELECT through_order FROM specter_reaction_scheduler
           WHERE (status = 'pending' AND available_at <= ?)
             OR (status = 'running'
               AND (lease_expires_at IS NULL OR lease_expires_at <= ?))
           ORDER BY through_order ASC LIMIT 1`,
-        args: [currentTime, currentTime],
-      })
-      const value = result.rows[0]?.through_order
-      return value === undefined
-        ? undefined
-        : requireNumber(value, 'scheduler through order')
+        [currentTime, currentTime],
+      ).pipe(
+        Effect.map(([row]) =>
+          row?.through_order === undefined
+            ? undefined
+            : requireNumber(row.through_order, 'scheduler through order'),
+        ),
+      )
     })
   }
 
   function waitFor(throughOrder: number) {
     return Effect.gen(function* () {
       for (;;) {
-        const row = yield* attempt('run', async (connection) => {
-          const result = await connection.execute({
-            sql: `SELECT status, last_error FROM specter_reaction_scheduler
+        const row = yield* attempt('run', (execute) =>
+          execute(
+            `SELECT status, last_error FROM specter_reaction_scheduler
               WHERE through_order = ?`,
-            args: [throughOrder],
-          })
-          if (!result.rows[0])
-            throw new Error(
-              `Unknown Reaction scheduler boundary: ${throughOrder}`,
-            )
-          return {
-            status: requireString(result.rows[0].status, 'scheduler status'),
-            lastError: result.rows[0].last_error,
-          }
-        })
+            [throughOrder],
+          ).pipe(
+            Effect.flatMap(([found]) =>
+              found
+                ? Effect.succeed({
+                    status: requireString(found.status, 'scheduler status'),
+                    lastError: found.last_error,
+                  })
+                : Effect.fail(
+                    new Error(
+                      `Unknown Reaction scheduler boundary: ${throughOrder}`,
+                    ),
+                  ),
+            ),
+          ),
+        )
         if (row.status === 'completed') {
           if (typeof row.lastError === 'string') {
             return yield* Effect.fail(
@@ -371,11 +401,11 @@ function describeFailure(cause: unknown) {
 }
 
 export function createSqliteReactionSchedulerLayer(
-  client: Client,
+  context: SqliteDatabaseContext,
   options: SqliteReactionSchedulerOptions = {},
 ): Layer.Layer<never> {
   return Layer.succeed(
     ReactionScheduler,
-    createSqliteReactionSchedulerService(client, options),
+    createSqliteReactionSchedulerService(context, options),
   )
 }

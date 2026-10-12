@@ -1,64 +1,75 @@
-import type { Client } from '@libsql/client'
+import { Effect } from 'effect'
 
-import { createSqliteDatabaseContext } from './database'
+import { executeAll, type SqliteDatabaseContext } from './database'
 import {
   createSqliteEventLogService,
-  prepareSqliteEventLog,
+  sqliteEventLogSchema,
   type SqliteEventLogOptions,
 } from './event-log'
 import {
-  createSqliteSliceStoreService,
-  prepareSqliteSliceStore,
-  type SqliteSliceStoreOptions,
-} from './slice-store'
-import {
   createSqliteReactionOutboxStore,
-  prepareSqliteReactionOutbox,
+  sqliteReactionOutboxSchema,
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
-import { prepareSqliteReactionScheduler } from './reaction-scheduler'
+import { sqliteReactionSchedulerSchema } from './reaction-scheduler'
+import {
+  createSqliteSliceSnapshotStore,
+  sqliteSliceSnapshotSchema,
+  type SqliteSliceSnapshotStoreOptions,
+} from './slice-snapshot-store'
+import {
+  createSqliteSliceStoreService,
+  sqliteSliceStoreSchema,
+  type SqliteSliceStoreOptions,
+} from './slice-store'
 
-export async function prepareSpecterSqlite(client: Client) {
-  await client.execute('PRAGMA journal_mode = WAL')
-  await client.execute('PRAGMA busy_timeout = 5000')
-  await prepareSqliteEventLog(client)
-  await prepareSqliteSliceStore(client)
-  await prepareSqliteReactionScheduler(client)
-  await prepareSqliteReactionOutbox(client)
+/**
+ * Every table and index Specter's SQLite stores use. A host that runs its
+ * own migrations runs the ones it uses (`sqliteEventLogSchema` and the
+ * others) in one of them instead.
+ */
+export const specterSqliteSchema: readonly string[] = [
+  ...sqliteEventLogSchema,
+  ...sqliteSliceStoreSchema,
+  ...sqliteSliceSnapshotSchema,
+  ...sqliteReactionSchedulerSchema,
+  ...sqliteReactionOutboxSchema,
+]
+
+/**
+ * Turns on WAL and a five-second busy timeout for this connection, and
+ * creates every table and index Specter's SQLite stores use.
+ */
+export function prepareSpecterSqlite(context: SqliteDatabaseContext) {
+  return Effect.gen(function* () {
+    yield* context.execute('PRAGMA journal_mode = WAL')
+    yield* context.execute('PRAGMA busy_timeout = 5000')
+    yield* executeAll(context, specterSqliteSchema)
+  })
 }
 
-export function createSpecterSqlitePersistence(
-  client: Client,
-  options: Omit<SqliteEventLogOptions, 'context'> = {},
-) {
-  const context = createSqliteDatabaseContext(client)
-  const eventLog = createSqliteEventLogService(client, { ...options, context })
-
+/** Specter's SQLite stores on one database, so they share its transactions. */
+export function createSpecterSqlitePersistence<
+  TContext extends SqliteDatabaseContext,
+>(context: TContext, options: SqliteEventLogOptions = {}) {
   return {
     context,
-    eventLog,
+    eventLog: createSqliteEventLogService(context, options),
     createReactionOutboxStore<TPayload>(
-      outboxOptions: Omit<
-        SqliteReactionOutboxOptions<TPayload>,
-        'context'
-      > = {},
+      outboxOptions: SqliteReactionOutboxOptions<TPayload> = {},
     ) {
-      return createSqliteReactionOutboxStore<TPayload>(client, {
-        ...outboxOptions,
-        context,
-      })
+      return createSqliteReactionOutboxStore<TPayload>(context, outboxOptions)
     },
     createSliceStoreService<TWriteState, TReadState = Readonly<TWriteState>>(
       createState: () => TWriteState,
-      storeOptions: Omit<
-        SqliteSliceStoreOptions<TWriteState, TReadState>,
-        'context'
-      > = {},
+      storeOptions: SqliteSliceStoreOptions<TWriteState, TReadState> = {},
     ) {
-      return createSqliteSliceStoreService(client, createState, {
-        ...storeOptions,
-        context,
-      })
+      return createSqliteSliceStoreService(context, createState, storeOptions)
+    },
+    createSliceSnapshotStore(
+      snapshotOptions: SqliteSliceSnapshotStoreOptions = {},
+    ) {
+      return createSqliteSliceSnapshotStore(context, snapshotOptions)
     },
   }
 }

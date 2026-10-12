@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { expect, test } from 'vitest'
 import {
+  createSqliteDatabaseContext,
   createSqliteEventLogService,
   prepareSqliteEventLog,
 } from '@specter-ts/sqlite'
@@ -16,8 +17,9 @@ test('appends multiple events in input order', async () => {
   const { sqlite, tempDir } = await createMigratedDb()
 
   try {
-    await prepareSqliteEventLog(sqlite)
-    const eventLog = createSqliteEventLogService(sqlite)
+    const context = createSqliteDatabaseContext(sqlite)
+    await Effect.runPromise(prepareSqliteEventLog(context))
+    const eventLog = createSqliteEventLogService(context)
     const appended = await Effect.runPromise(
       eventLog.append([
         { type: 'event.one', payload: { position: 1 }, keys: {} },
