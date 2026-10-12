@@ -26,6 +26,7 @@ import {
   ReactionSchedulerFailure,
   type ReactionScheduleContext,
   type SliceStoreService,
+  type SliceStoreSlice,
   type SliceStoreTag,
 } from '../adapters'
 import {
@@ -54,6 +55,7 @@ import {
   type ReactionPluginRequirements,
   type SliceRegistration,
   SpecterConformanceError,
+  storeSliceOf,
   valuesEqual,
 } from '../definition'
 import type {
@@ -204,6 +206,8 @@ const DirectReactionExecution = Context.Reference<boolean>(
 
 type ResolvedStore = {
   readonly service: SliceStoreService<unknown, unknown, unknown>
+  /** The Slice as its Store keeps it: its name and its State's version. */
+  readonly slice: SliceStoreSlice
 }
 
 type Subscription = {
@@ -231,6 +235,9 @@ const reactionSkipFlushOrders = 256
 // How many times a Command re-runs its decision after another writer moved
 // the Event Log between the version read and the append.
 const staleAppendRetries = 32
+// How many Events or commits one Event Log read returns while a Slice or a
+// Reaction catches up, unless the runtime is made with `readPageSize`.
+const defaultReadPageSize = 1000
 
 /** Per-config work: everything derived from a conforming config alone. */
 type SpecterAppPlan = {
@@ -461,6 +468,12 @@ export type SpecterRuntimeOptions = {
    * refuses to start on an Event Log that lacks one.
    */
   readonly requires?: Partial<EventLogCapabilities>
+  /**
+   * How many Events (a Slice's catch-up) or commits (a Reaction's) one Event
+   * Log read returns, a positive integer: catch-up reads the log one page at
+   * a time, so a long one never holds the whole log. Defaults to 1000.
+   */
+  readonly readPageSize?: number
 }
 
 export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
@@ -501,6 +514,14 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       requiredKeys,
     } = yield* resolvePlan(config)
 
+    const readPageSize = options.readPageSize ?? defaultReadPageSize
+    if (!Number.isSafeInteger(readPageSize) || readPageSize < 1) {
+      return yield* Effect.die(
+        new RangeError(
+          `readPageSize must be a positive integer, received ${readPageSize}`,
+        ),
+      )
+    }
     const eventLog = yield* EventLog
     yield* requireCapabilities(eventLog.capabilities, {
       scopedAppend:
@@ -1064,7 +1085,6 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
     function catchUpSlice(
       slice: SliceRegistration,
-      throughOrder?: number,
     ): Effect.Effect<void, SpecterEffectError> {
       const resolved = stores.get(slice)
       if (!resolved) {
@@ -1078,34 +1098,51 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       return Effect.gen(function* () {
         const result = yield* Effect.result(
           resolved.service
-            .transaction(slice.name, (write, _read, cursor, publishCursor) =>
-              Effect.gen(function* () {
-                const handlers = applyBySlice.get(slice)
-                const eventTypes = [...(handlers?.keys() ?? [])]
-                if (eventTypes.length === 0) return undefined
-                const loaded = yield* eventLog.query(cursor, eventTypes)
-                const events =
-                  throughOrder === undefined
-                    ? loaded
-                    : loaded.filter((event) => event.order <= throughOrder)
-                assertEventLogOrder(cursor, events)
-                if (events.length === 0) return undefined
-                for (const event of yield* Effect.forEach(
-                  events,
-                  decodePersistedEvent,
-                )) {
-                  const apply = handlers?.get(event.type)
-                  if (!apply) continue
-                  yield* fromPromise(
-                    () => apply.handle(event, write),
-                    (cause) =>
-                      new SpecterProjectionFailedError(slice.name, cause),
-                  )
-                }
-                const toOrder = events[events.length - 1].order
-                yield* publishCursor(toOrder)
-                return { fromOrder: cursor, toOrder, events }
-              }),
+            .transaction(
+              resolved.slice,
+              (write, _read, cursor, publishCursor) =>
+                Effect.gen(function* () {
+                  const handlers = applyBySlice.get(slice)
+                  const eventTypes = [...(handlers?.keys() ?? [])]
+                  if (eventTypes.length === 0) return undefined
+                  // One page of the log at a time: a long catch-up never
+                  // holds more than a page of Events.
+                  let toOrder = cursor
+                  let count = 0
+                  const read: PersistedEvent[] = []
+                  while (true) {
+                    const page = yield* eventLog.query(toOrder, eventTypes, {
+                      limit: readPageSize,
+                    })
+                    assertEventLogOrder(toOrder, page)
+                    for (const event of yield* Effect.forEach(
+                      page,
+                      decodePersistedEvent,
+                    )) {
+                      const apply = handlers?.get(event.type)
+                      if (!apply) continue
+                      yield* fromPromise(
+                        () => apply.handle(event, write),
+                        (cause) =>
+                          new SpecterProjectionFailedError(slice.name, cause),
+                      )
+                    }
+                    if (page.length === 0) break
+                    toOrder = page[page.length - 1].order
+                    count += page.length
+                    // Span attributes name each Event of a short catch-up.
+                    if (count <= readPageSize) read.push(...page)
+                    if (page.length < readPageSize) break
+                  }
+                  if (count === 0) return undefined
+                  yield* publishCursor(toOrder)
+                  return {
+                    fromOrder: cursor,
+                    toOrder,
+                    count,
+                    events: count === read.length ? read : undefined,
+                  }
+                }),
             )
             .pipe(
               Effect.mapError((cause) =>
@@ -1129,11 +1166,15 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         const caughtUp = result.success
         yield* Effect.annotateCurrentSpan({
           'specter.outcome': 'completed',
-          'specter.event.count': caughtUp?.events.length ?? 0,
+          'specter.event.count': caughtUp?.count ?? 0,
           ...(caughtUp
             ? {
                 'specter.cursor.from': caughtUp.fromOrder,
                 'specter.cursor.to': caughtUp.toOrder,
+              }
+            : {}),
+          ...(caughtUp?.events
+            ? {
                 'specter.event.types': caughtUp.events.map(
                   (event) => event.type,
                 ),
@@ -1167,7 +1208,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         )
       }
       return resolved.service
-        .read(slice.name, use)
+        .read(resolved.slice, use)
         .pipe(
           Effect.mapError((cause) =>
             isPublicError(cause)
@@ -1219,10 +1260,14 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             : cursor
         // Every commit in (skippedFrom, scanned] is irrelevant.
         let skippedFrom = cursor
-        if (scanned < throughOrder) {
-          const commits = yield* eventLog.commitsAfter(scanned)
+        // One page of commits at a time, each read after the last one seen.
+        pages: while (scanned < throughOrder) {
+          const commits = yield* eventLog.commitsAfter(scanned, {
+            limit: readPageSize,
+          })
+          const pageFrom = scanned
           for (const commit of commits) {
-            if (commit.version > throughOrder) break
+            if (commit.version > throughOrder) break pages
             if (!commit.events.some((event) => handlers?.has(event.type))) {
               scanned = commit.version
               if (scanned - skippedFrom >= reactionSkipFlushOrders) {
@@ -1236,6 +1281,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
             skippedFrom = commit.version
             scanned = commit.version
           }
+          if (commits.length < readPageSize || scanned <= pageFrom) break
         }
         rememberReactionSkip(reaction, skippedFrom, scanned)
         if (scanned - skippedFrom >= reactionSkipFlushOrders) {
@@ -1270,7 +1316,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         const result = yield* Effect.result(
           resolved.service
             .transaction(
-              reaction.name,
+              resolved.slice,
               (_write, _read, cursor, publishCursor) =>
                 // Publish only across the skipped range: never backwards,
                 // and never from a cursor older than that range.
@@ -1331,7 +1377,7 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
       return Effect.gen(function* () {
         const result = yield* Effect.result(
           resolved.service
-            .transaction(reaction.name, (write, read, cursor, publishCursor) =>
+            .transaction(resolved.slice, (write, read, cursor, publishCursor) =>
               Effect.gen(function* () {
                 if (cursor >= commit.version) return false
                 const execute = yield* getReactionExec(reaction)
@@ -1793,7 +1839,10 @@ function resolveStore(
       ),
     )
   }
-  return Effect.succeed({ service: found.value })
+  return Effect.succeed({
+    service: found.value,
+    slice: storeSliceOf(slice),
+  })
 }
 
 function isStoreTag(

@@ -3,13 +3,16 @@ import { describe, expect, it } from 'vitest'
 
 import { createMemorySliceStoreService } from './slice-store'
 
+const todosQuery = { name: 'todosQuery', version: 'v1' }
+const countQuery = { name: 'countQuery', version: 'v1' }
+
 describe('memory Slice Store', () => {
   it('commits state and cursor together and rolls both back on failure', async () => {
     const service = createMemorySliceStoreService(() => ({
       todos: [] as string[],
     }))
     await Effect.runPromise(
-      service.transaction('todosQuery', (write, _read, _cursor, publish) =>
+      service.transaction(todosQuery, (write, _read, _cursor, publish) =>
         Effect.gen(function* () {
           write.todos.push('one')
           yield* publish(1)
@@ -18,7 +21,7 @@ describe('memory Slice Store', () => {
     )
     await Effect.runPromise(
       Effect.result(
-        service.transaction('todosQuery', (write, _read, _cursor, publish) =>
+        service.transaction(todosQuery, (write, _read, _cursor, publish) =>
           Effect.gen(function* () {
             write.todos.push('two')
             yield* publish(2)
@@ -30,18 +33,19 @@ describe('memory Slice Store', () => {
     expect(service.inspect('todosQuery')).toEqual({
       state: { todos: ['one'] },
       lastAppliedOrder: 1,
+      version: 'v1',
     })
   })
 
   it('starts a Slice from the state and cursor a host seeds, and catches up after it', async () => {
     const service = createMemorySliceStoreService(() => ({ count: 0 }), {
-      initial: (sliceName) =>
-        sliceName === 'countQuery'
+      initial: (slice) =>
+        slice.name === 'countQuery' && slice.version === 'v1'
           ? { state: { count: 7 }, cursor: 12 }
           : undefined,
     })
     await Effect.runPromise(
-      service.transaction('countQuery', (write, _read, cursor, publish) =>
+      service.transaction(countQuery, (write, _read, cursor, publish) =>
         Effect.gen(function* () {
           expect(cursor).toBe(12)
           write.count += 1
@@ -52,13 +56,21 @@ describe('memory Slice Store', () => {
     expect(service.inspect('countQuery')).toEqual({
       state: { count: 8 },
       lastAppliedOrder: 13,
+      version: 'v1',
     })
-    // A Slice the host has no snapshot for starts empty.
-    await Effect.runPromise(
-      service.read('otherQuery', (read, cursor) =>
-        Effect.sync(() => expect([read, cursor]).toEqual([{ count: 0 }, 0])),
-      ),
-    )
+    // A Slice the host has no snapshot for starts empty, and so does one
+    // whose version is not the snapshot's.
+    for (const slice of [
+      { name: 'otherQuery', version: 'v1' },
+      { name: 'countQuery', version: 'v2' },
+    ]) {
+      await Effect.runPromise(
+        service.read(slice, (read, cursor) =>
+          Effect.sync(() => expect([read, cursor]).toEqual([{ count: 0 }, 0])),
+        ),
+      )
+    }
+    expect(service.inspect('countQuery')?.version).toBe('v2')
   })
 
   it('exposes narrower read capability', async () => {
@@ -66,7 +78,7 @@ describe('memory Slice Store', () => {
       read: (state) => ({ current: state.count }),
     })
     await Effect.runPromise(
-      service.transaction('countQuery', (write, read, _cursor, publish) =>
+      service.transaction(countQuery, (write, read, _cursor, publish) =>
         Effect.gen(function* () {
           write.count = 4
           expect(read()).toEqual({ current: 4 })
@@ -76,7 +88,7 @@ describe('memory Slice Store', () => {
     )
     await expect(
       Effect.runPromise(
-        service.read('countQuery', (read) => Effect.succeed(read)),
+        service.read(countQuery, (read) => Effect.succeed(read)),
       ),
     ).resolves.toEqual({ current: 4 })
   })

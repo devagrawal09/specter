@@ -369,11 +369,11 @@ function makeStoreService(): SliceStoreService<Readonly<State>, State> {
     return created
   }
   return {
-    read: (name, run) => {
+    read: ({ name }, run) => {
       const current = entry(name)
       return run(current.state, current.cursor)
     },
-    transaction: (name, run) =>
+    transaction: ({ name }, run) =>
       Effect.gen(function* () {
         const working = structuredClone(entry(name))
         let publish = false

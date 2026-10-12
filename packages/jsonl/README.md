@@ -104,16 +104,19 @@ Slice bound to the Tag, and each Slice gets its own file:
 
 ```text
 data/sessions/<id>/slices/autoApproveReadTools.json
-{"cursor":902,"state":{"created":true,"toolCalls":{}}}
+{"cursor":902,"version":"sha256:…/1","state":{"created":true,"toolCalls":{}}}
 ```
 
 - The first read or transaction for a Slice reads its file once; later reads
-  come from memory. A missing file is `createState()` with cursor 0. A Slice
+  come from memory. A missing file is `createState()` with cursor 0, and so
+  is a file of another version of the Slice (its specification digest and
+  `stateVersion`): the Slice folds the log, and its first commit replaces the
+  file. A Slice
   that never publishes a cursor, for example a Command Slice with no `apply`
   handlers, never gets a file.
 - Transactions are serialized per Slice in the process and start from a fresh
   decode of the committed State. When a transaction publishes a cursor, the
-  Store writes `{ cursor, state }` to `<sliceName>.json.tmp` and renames it
+  Store writes `{ cursor, version, state }` to `<sliceName>.json.tmp` and renames it
   over `<sliceName>.json` before the new State becomes visible. A crash leaves
   the previous or the new document, never a mix. A failed transaction, or one
   that publishes no cursor, does not touch the file.
@@ -147,8 +150,11 @@ diverged and the Slice file must be rebuilt or removed.
 
 ```ts
 const version = yield* eventLog.currentVersion
-const cursor = yield* store.read('autoApproveReadTools', (_state, cursor) =>
-  Effect.succeed(cursor),
+// The version core keys the Slice's State by.
+const storeVersion = `${slice.specificationDigest}/${slice.stateVersion}`
+const cursor = yield* store.read(
+  { name: 'autoApproveReadTools', version: storeVersion },
+  (_state, cursor) => Effect.succeed(cursor),
 )
 if (cursor > version) throw new Error('Slice is ahead of the Event Log')
 ```

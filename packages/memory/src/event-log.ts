@@ -54,13 +54,14 @@ export function createMemoryEventLog(
 
   return {
     capabilities: { scopedAppend: true, keyedRead: true },
-    query: (afterOrder, eventTypes) =>
+    query: (afterOrder, eventTypes, page = {}) =>
       Effect.sync(() =>
         events
           .filter(
             (event) =>
               event.order > afterOrder && eventTypes.includes(event.type),
           )
+          .slice(0, page.limit)
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.at(-1)?.order ?? 0),
@@ -74,10 +75,11 @@ export function createMemoryEventLog(
           copyEvent(events[order - 1] as PersistedEvent),
         )
       }),
-    commitsAfter: (afterVersion) =>
+    commitsAfter: (afterVersion, page = {}) =>
       Effect.sync(() =>
         commits
           .filter((commit) => commit.version > afterVersion)
+          .slice(0, page.limit)
           .map(copyCommit),
       ),
     findCommit: (key) =>

@@ -6,6 +6,7 @@ export type {
   EventLogCommit,
   EventLogDraft,
   EventLogKeyPage,
+  EventLogPage,
   EventLogService,
 } from './event-log'
 export { EventLog, EventLogFailure } from './event-log'
@@ -25,6 +26,7 @@ export type {
   SliceStoreRead,
   SliceStoreRequirement,
   SliceStoreService,
+  SliceStoreSlice,
   SliceStoreTag,
   SliceStoreWrite,
 } from './slice-store'

@@ -335,4 +335,36 @@ describe('conformance diagnostics', () => {
       }),
     )
   })
+
+  test('reports a State version that is not a positive integer', async () => {
+    const query = (stateVersion: number) =>
+      createQuerySlice('readValue')
+        .description('Reads a value.')
+        .scenarios({
+          description: 'Reads empty state.',
+          given: [],
+          when: {},
+          expect: 0,
+        })
+        .inputSchema<Record<string, never>>()
+        .outputSchema<number>()
+        .store(createTestSliceStore({ value: 0 }).tag, { stateVersion })
+        .handle(async (_input, state) => state.value)
+
+    expect(query(3).stateVersion).toBe(3)
+    for (const stateVersion of [0, 1.5]) {
+      const diagnostics = await Effect.runPromise(
+        collectConformanceDiagnostics(
+          { events: [], slices: { readValue: query(stateVersion) } },
+          { requireCommandSlice: false },
+        ),
+      )
+      expect(diagnostics).toContainEqual(
+        expect.objectContaining({
+          code: 'invalid-store-state-version',
+          sliceName: 'readValue',
+        }),
+      )
+    }
+  })
 })

@@ -148,27 +148,31 @@ describe('Specter SQLite persistence', () => {
     const { createSliceStoreService } = await setup()
     const store = createSliceStoreService(() => ({ count: 0 }))
     await Effect.runPromise(
-      store.transaction('counter', (write, _read, _cursor, publish) =>
-        Effect.gen(function* () {
-          write.count = 3
-          yield* publish(2)
-        }),
+      store.transaction(
+        { name: 'counter', version: 'v1' },
+        (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 3
+            yield* publish(2)
+          }),
       ),
     )
     await Effect.runPromise(
       Effect.result(
-        store.transaction('counter', (write, _read, _cursor, publish) =>
-          Effect.gen(function* () {
-            write.count = 9
-            yield* publish(4)
-            return yield* Effect.fail('rollback')
-          }),
+        store.transaction(
+          { name: 'counter', version: 'v1' },
+          (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.count = 9
+              yield* publish(4)
+              return yield* Effect.fail('rollback')
+            }),
         ),
       ),
     )
 
     const visible = await Effect.runPromise(
-      store.read('counter', (read, cursor) =>
+      store.read({ name: 'counter', version: 'v1' }, (read, cursor) =>
         Effect.succeed({ count: read.count, cursor }),
       ),
     )
@@ -181,19 +185,21 @@ describe('Specter SQLite persistence', () => {
 
     await Effect.runPromise(
       Effect.result(
-        store.transaction('reaction', (write, _read, _cursor, publish) =>
-          Effect.gen(function* () {
-            write.count = 1
-            yield* eventLog.append([
-              {
-                type: 'nested-command-recorded',
-                payload: { value: 1 },
-                keys: {},
-              },
-            ])
-            yield* publish(1)
-            return yield* Effect.fail('plugin-failed')
-          }),
+        store.transaction(
+          { name: 'reaction', version: 'v1' },
+          (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.count = 1
+              yield* eventLog.append([
+                {
+                  type: 'nested-command-recorded',
+                  payload: { value: 1 },
+                  keys: {},
+                },
+              ])
+              yield* publish(1)
+              return yield* Effect.fail('plugin-failed')
+            }),
         ),
       ),
     )
@@ -202,7 +208,7 @@ describe('Specter SQLite persistence', () => {
       eventLog.query(0, ['nested-command-recorded']),
     )
     const state = await Effect.runPromise(
-      store.read('reaction', (read, cursor) =>
+      store.read({ name: 'reaction', version: 'v1' }, (read, cursor) =>
         Effect.succeed({ count: read.count, cursor }),
       ),
     )
@@ -224,13 +230,15 @@ describe('Specter SQLite persistence', () => {
 
     await Effect.runPromise(
       Effect.result(
-        store.transaction('notification', (write, _read, _cursor, publish) =>
-          Effect.gen(function* () {
-            write.count = 1
-            yield* enqueue
-            yield* publish(1)
-            return yield* Effect.fail('plugin-failed')
-          }),
+        store.transaction(
+          { name: 'notification', version: 'v1' },
+          (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.count = 1
+              yield* enqueue
+              yield* publish(1)
+              return yield* Effect.fail('plugin-failed')
+            }),
         ),
       ),
     )
@@ -238,19 +246,21 @@ describe('Specter SQLite persistence', () => {
     expect(await Effect.runPromise(outbox.get('notify:1'))).toBeUndefined()
     expect(
       await Effect.runPromise(
-        store.read('notification', (read, cursor) =>
+        store.read({ name: 'notification', version: 'v1' }, (read, cursor) =>
           Effect.succeed({ count: read.count, cursor }),
         ),
       ),
     ).toEqual({ count: 0, cursor: 0 })
 
     await Effect.runPromise(
-      store.transaction('notification', (write, _read, _cursor, publish) =>
-        Effect.gen(function* () {
-          write.count = 1
-          yield* enqueue
-          yield* publish(1)
-        }),
+      store.transaction(
+        { name: 'notification', version: 'v1' },
+        (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 1
+            yield* enqueue
+            yield* publish(1)
+          }),
       ),
     )
     await Effect.runPromise(enqueue)
@@ -258,7 +268,7 @@ describe('Specter SQLite persistence', () => {
     expect(await Effect.runPromise(outbox.list())).toHaveLength(1)
     expect(
       await Effect.runPromise(
-        store.read('notification', (read, cursor) =>
+        store.read({ name: 'notification', version: 'v1' }, (read, cursor) =>
           Effect.succeed({ count: read.count, cursor }),
         ),
       ),

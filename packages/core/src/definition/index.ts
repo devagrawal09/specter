@@ -50,6 +50,7 @@ export type {
   ReactionSliceSpec,
 } from './builders'
 export { event, isScenarioEvent } from './scenario-types'
+export { storeSliceOf } from './store-slice'
 export type {
   AcceptedCommandScenario,
   CommandScenario,

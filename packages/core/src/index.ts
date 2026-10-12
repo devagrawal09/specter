@@ -100,6 +100,7 @@ export type {
   EventLogCommit,
   EventLogDraft,
   EventLogKeyPage,
+  EventLogPage,
   EventLogService,
   ReactionExecutor,
   ReactionScheduleContext,
@@ -109,6 +110,7 @@ export type {
   SliceStoreRead,
   SliceStoreRequirement,
   SliceStoreService,
+  SliceStoreSlice,
   SliceStoreTag,
   SliceStoreWrite,
 } from './adapters'

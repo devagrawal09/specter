@@ -76,12 +76,20 @@ export type EventLogCapabilities = {
   readonly keyedRead: boolean
 }
 
+/**
+ * A page of a read: at most `limit` Events (`query`, `readKey`) or commits
+ * (`commitsAfter`), the first ones after where the read starts. A reader
+ * pages by starting the next read after the last item of a full page.
+ */
+export type EventLogPage = {
+  /** A positive safe integer; every remaining item when omitted. */
+  readonly limit?: number
+}
+
 /** A page of a keyed read: the Events after `afterOrder`, at most `limit`. */
-export type EventLogKeyPage = {
+export type EventLogKeyPage = EventLogPage & {
   /** Defaults to 0, the start of the log. */
   readonly afterOrder?: number
-  /** Every remaining Event when omitted. */
-  readonly limit?: number
 }
 
 export type EventLogAppendOptions = {
@@ -118,13 +126,23 @@ export class EventLogFailure extends Error {
 export type EventLogService = {
   /** What this Event Log supports; see `EventLogCapabilities`. */
   readonly capabilities: EventLogCapabilities
+  /**
+   * The Events of `eventTypes` with an order above `afterOrder`, ascending,
+   * at most `page.limit` of them.
+   */
   readonly query: (
     afterOrder: number,
     eventTypes: readonly string[],
+    page?: EventLogPage,
   ) => Effect.Effect<readonly PersistedEvent[], EventLogFailure>
   readonly currentVersion: Effect.Effect<number, EventLogFailure>
+  /**
+   * The complete commits with a version above `afterVersion`, ordered by
+   * version, at most `page.limit` of them.
+   */
   readonly commitsAfter: (
     afterVersion: number,
+    page?: EventLogPage,
   ) => Effect.Effect<readonly EventLogCommit[], EventLogFailure>
   /**
    * The Events carrying one key, such as one aggregate's: those whose stored

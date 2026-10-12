@@ -41,6 +41,8 @@ testSliceStoreService('node:sqlite', {
   value: 42,
 })
 
+const reaction = { name: 'reaction', version: 'v1' }
+
 describe('node:sqlite Effect runtime', () => {
   it('joins nested Event Log appends to Slice Store transactions', async () => {
     const context = openNodeSqlite({ filename: ':memory:' })
@@ -53,7 +55,7 @@ describe('node:sqlite Effect runtime', () => {
 
     await Effect.runPromise(
       Effect.result(
-        store.transaction('reaction', (write, _read, _cursor, publish) =>
+        store.transaction(reaction, (write, _read, _cursor, publish) =>
           Effect.gen(function* () {
             write.count = 1
             yield* eventLog.append([
@@ -75,7 +77,7 @@ describe('node:sqlite Effect runtime', () => {
     ).resolves.toEqual([])
     await expect(
       Effect.runPromise(
-        store.read('reaction', (read, cursor) =>
+        store.read(reaction, (read, cursor) =>
           Effect.succeed({ count: read.count, cursor }),
         ),
       ),

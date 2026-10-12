@@ -5,6 +5,7 @@ import type {
   EventLogFailure,
   EventLogService,
   SliceStoreService,
+  SliceStoreSlice,
 } from '../adapters'
 import type { PersistedEvent } from '../definition'
 import { SpecterVersionConflictError } from '../runtime/errors'
@@ -180,6 +181,8 @@ export function eventLogConformance<TCreateError, TRequirements>(
       { keyed, queriedKeys, committedKeys },
     )
 
+    yield* pagedReadConformance(service)
+
     const capabilities = service.capabilities
     yield* requireInvariant(
       'event-log',
@@ -326,6 +329,60 @@ function hostContextConformance(
       'an Event ID already in the log fails the append',
       failed(reused, 'append') && after === hosted.version,
       { reused, after },
+    )
+  })
+}
+
+/**
+ * Reads come in pages: `query` returns at most `limit` Events, and
+ * `commitsAfter` at most `limit` complete commits, each the first after
+ * where the read starts. Runs on a log holding the Events
+ * `eventLogConformance` appended, at version 6, in commits 2, 3 and 6.
+ */
+function pagedReadConformance(service: EventLogService) {
+  return Effect.gen(function* () {
+    const types = [
+      'first-recorded',
+      'second-recorded',
+      'third-recorded',
+      'item-recorded',
+      'list-recorded',
+    ]
+    const orders = (events: readonly PersistedEvent[]) =>
+      events.map((event) => event.order).join(',')
+    const firstPage = yield* service.query(0, types, { limit: 2 })
+    const secondPage = yield* service.query(2, types, { limit: 2 })
+    const filteredPage = yield* service.query(4, ['item-recorded'], {
+      limit: 1,
+    })
+    const lastPage = yield* service.query(4, types, { limit: 5 })
+    const pastEnd = yield* service.query(6, types, { limit: 2 })
+    yield* requireInvariant(
+      'event-log',
+      'query returns at most limit Events, the first after its order',
+      orders(firstPage) === '1,2' &&
+        orders(secondPage) === '3,4' &&
+        orders(filteredPage) === '5' &&
+        orders(lastPage) === '5,6' &&
+        pastEnd.length === 0,
+      { firstPage, secondPage, filteredPage, lastPage, pastEnd },
+    )
+    const versions = (commits: readonly { readonly version: number }[]) =>
+      commits.map((commit) => commit.version).join(',')
+    const firstCommits = yield* service.commitsAfter(0, { limit: 1 })
+    const nextCommits = yield* service.commitsAfter(2, { limit: 1 })
+    const lastCommits = yield* service.commitsAfter(3, { limit: 2 })
+    const noCommits = yield* service.commitsAfter(6, { limit: 1 })
+    yield* requireInvariant(
+      'event-log',
+      'commitsAfter returns at most limit whole commits, the first after its version',
+      versions(firstCommits) === '2' &&
+        firstCommits[0]?.events.length === 2 &&
+        versions(nextCommits) === '3' &&
+        versions(lastCommits) === '6' &&
+        orders(lastCommits[0]?.events ?? []) === '4,5,6' &&
+        noCommits.length === 0,
+      { firstCommits, nextCommits, lastCommits, noCommits },
     )
   })
 }
@@ -484,41 +541,44 @@ export function sliceStoreConformance<
 ) {
   return Effect.gen(function* () {
     const service = yield* options.createService
-    yield* service.transaction(
-      'sharedTagFirstSlice',
-      (write, _read, cursor, publishCursor) =>
-        Effect.gen(function* () {
-          yield* requireInvariant(
-            'slice-store',
-            'fresh cursor',
-            cursor === 0,
-            cursor,
-          )
-          yield* Effect.promise(() => options.write(write, options.value))
-          yield* publishCursor(7)
-        }),
-    )
-    const published = yield* service.read(
-      'sharedTagFirstSlice',
-      (read, cursor) =>
+    const first: SliceStoreSlice = {
+      name: 'sharedTagFirstSlice',
+      version: 'conformance-1',
+    }
+    const second: SliceStoreSlice = {
+      name: 'sharedTagSecondSlice',
+      version: 'conformance-1',
+    }
+    const valueAndCursor = (slice: SliceStoreSlice) =>
+      service.read(slice, (read, cursor) =>
         Effect.map(
           Effect.promise(() => options.read(read)),
-          (value) => ({
-            value,
-            cursor,
-          }),
+          (value) => ({ value, cursor }),
         ),
+      )
+    const cursorOf = (slice: SliceStoreSlice) =>
+      service.read(slice, (_read, cursor) => Effect.succeed(cursor))
+
+    yield* service.transaction(first, (write, _read, cursor, publishCursor) =>
+      Effect.gen(function* () {
+        yield* requireInvariant(
+          'slice-store',
+          'fresh cursor',
+          cursor === 0,
+          cursor,
+        )
+        yield* Effect.promise(() => options.write(write, options.value))
+        yield* publishCursor(7)
+      }),
     )
+    const published = yield* valueAndCursor(first)
     yield* requireInvariant(
       'slice-store',
       'atomic apply and cursor publication',
       published.cursor === 7 && Object.is(published.value, options.value),
       published,
     )
-    const secondCursor = yield* service.read(
-      'sharedTagSecondSlice',
-      (_read, cursor) => Effect.succeed(cursor),
-    )
+    const secondCursor = yield* cursorOf(second)
     yield* requireInvariant(
       'slice-store',
       'independent cursors for shared Tag',
@@ -527,27 +587,15 @@ export function sliceStoreConformance<
     )
 
     yield* Effect.result(
-      service.transaction(
-        'sharedTagFirstSlice',
-        (write, _read, _cursor, publishCursor) =>
-          Effect.gen(function* () {
-            yield* Effect.promise(() => options.write(write, options.value))
-            yield* publishCursor(9)
-            return yield* Effect.fail('rollback-conformance')
-          }),
+      service.transaction(first, (write, _read, _cursor, publishCursor) =>
+        Effect.gen(function* () {
+          yield* Effect.promise(() => options.write(write, options.value))
+          yield* publishCursor(9)
+          return yield* Effect.fail('rollback-conformance')
+        }),
       ),
     )
-    const afterRollback = yield* service.read(
-      'sharedTagFirstSlice',
-      (read, cursor) =>
-        Effect.map(
-          Effect.promise(() => options.read(read)),
-          (value) => ({
-            value,
-            cursor,
-          }),
-        ),
-    )
+    const afterRollback = yield* valueAndCursor(first)
     yield* requireInvariant(
       'slice-store',
       'rollback keeps prior visible cursor',
@@ -558,7 +606,7 @@ export function sliceStoreConformance<
     let callbacks = 0
     const observedCursors: number[] = []
     const concurrentTransaction = service.transaction(
-      'sharedTagFirstSlice',
+      first,
       (_write, _read, cursor, publishCursor) =>
         Effect.gen(function* () {
           callbacks += 1
@@ -570,10 +618,7 @@ export function sliceStoreConformance<
     yield* Effect.all([concurrentTransaction, concurrentTransaction], {
       concurrency: 'unbounded',
     })
-    const finalCursor = yield* service.read(
-      'sharedTagFirstSlice',
-      (_read, cursor) => Effect.succeed(cursor),
-    )
+    const finalCursor = yield* cursorOf(first)
     yield* requireInvariant(
       'slice-store',
       'adapter locks before one-shot transaction callbacks',
@@ -582,6 +627,34 @@ export function sliceStoreConformance<
         observedCursors[1] === 8 &&
         finalCursor === 9,
       { callbacks, observedCursors, finalCursor },
+    )
+
+    // A Slice of another version, such as after its State changed shape,
+    // starts empty: it folds the log again from its start.
+    const upgraded: SliceStoreSlice = { ...first, version: 'conformance-2' }
+    const upgradedCursor = yield* cursorOf(upgraded)
+    yield* service.transaction(
+      upgraded,
+      (write, _read, cursor, publishCursor) =>
+        Effect.gen(function* () {
+          yield* requireInvariant(
+            'slice-store',
+            'a Slice of another version starts at cursor 0',
+            cursor === 0,
+            cursor,
+          )
+          yield* Effect.promise(() => options.write(write, options.value))
+          yield* publishCursor(3)
+        }),
+    )
+    const refolded = yield* valueAndCursor(upgraded)
+    yield* requireInvariant(
+      'slice-store',
+      'State kept under another version is never read, and a Slice of a new version publishes from 0',
+      upgradedCursor === 0 &&
+        refolded.cursor === 3 &&
+        Object.is(refolded.value, options.value),
+      { upgradedCursor, refolded },
     )
   })
 }

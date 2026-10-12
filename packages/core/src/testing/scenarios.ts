@@ -19,6 +19,7 @@ import {
   type ReactionScenario,
   type ScenarioEvent,
   type SliceRegistration,
+  storeSliceOf,
   valuesEqual,
 } from '../definition'
 
@@ -535,7 +536,7 @@ function withStoreRead<T>(
 ) {
   return resolveStore(implementation).pipe(
     Effect.flatMap((store) =>
-      store.read(implementation.name, (state, cursor) =>
+      store.read(storeSliceOf(implementation), (state, cursor) =>
         Effect.tryPromise({
           try: () => run(state, cursor),
           catch: (cause) => cause,
@@ -552,6 +553,8 @@ function withStoreTransaction<T>(
   >[1],
 ) {
   return resolveStore(implementation).pipe(
-    Effect.flatMap((store) => store.transaction(implementation.name, run)),
+    Effect.flatMap((store) =>
+      store.transaction(storeSliceOf(implementation), run),
+    ),
   ) as Effect.Effect<T, unknown>
 }

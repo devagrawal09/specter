@@ -61,6 +61,7 @@ testSliceStoreService('jsonl with fsync', {
 })
 
 type TodoState = { todos: string[] }
+const slice = (name: string, version = 'v1') => ({ name, version })
 const createTodoState = (): TodoState => ({ todos: [] })
 
 function addTodo(
@@ -69,7 +70,7 @@ function addTodo(
   order: number,
 ) {
   return Effect.runPromise(
-    service.transaction('todosQuery', (write, _read, _cursor, publish) =>
+    service.transaction(slice('todosQuery'), (write, _read, _cursor, publish) =>
       Effect.gen(function* () {
         write.todos.push(todo)
         yield* publish(order)
@@ -81,9 +82,10 @@ function addTodo(
 const snapshot = (
   service: SliceStoreService<Readonly<TodoState>, TodoState, unknown>,
   sliceName = 'todosQuery',
+  version = 'v1',
 ) =>
   Effect.runPromise(
-    service.read(sliceName, (state, cursor) =>
+    service.read(slice(sliceName, version), (state, cursor) =>
       Effect.succeed({ state, cursor }),
     ),
   )
@@ -110,8 +112,46 @@ describe('JSON file Slice Store', () => {
     })
     expect(
       JSON.parse(readFileSync(reopened.pathFor('todosQuery'), 'utf8')),
-    ).toEqual({ cursor: 5, state: { todos: ['one', 'two'] } })
+    ).toEqual({ cursor: 5, version: 'v1', state: { todos: ['one', 'two'] } })
     expect(readdirSync(directory)).toEqual(['todosQuery.json'])
+  })
+
+  it('starts a Slice of another version empty, and replaces its file at its first commit', async () => {
+    const directory = temporaryDirectory()
+    const first = createJsonlSliceStoreService(createTodoState, { directory })
+    await addTodo(first, 'one', 3)
+    const reopened = createJsonlSliceStoreService(createTodoState, {
+      directory,
+    })
+    expect(await snapshot(reopened, 'todosQuery', 'v2')).toEqual({
+      state: { todos: [] },
+      cursor: 0,
+    })
+    await Effect.runPromise(
+      reopened.transaction(
+        slice('todosQuery', 'v2'),
+        (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.todos.push('refolded')
+            yield* publish(1)
+          }),
+      ),
+    )
+    expect(
+      JSON.parse(readFileSync(reopened.pathFor('todosQuery'), 'utf8')),
+    ).toEqual({ cursor: 1, version: 'v2', state: { todos: ['refolded'] } })
+    // A file written before Slices had versions is of another version too.
+    writeFileSync(
+      reopened.pathFor('todosQuery'),
+      '{"cursor":4,"state":{"todos":["unversioned"]}}\n',
+    )
+    expect(
+      await snapshot(
+        createJsonlSliceStoreService(createTodoState, { directory }),
+        'todosQuery',
+        'v2',
+      ),
+    ).toEqual({ state: { todos: [] }, cursor: 0 })
   })
 
   it('leaves the file unchanged when a transaction fails', async () => {
@@ -124,12 +164,14 @@ describe('JSON file Slice Store', () => {
 
     const failed = await Effect.runPromise(
       Effect.result(
-        service.transaction('todosQuery', (write, _read, _cursor, publish) =>
-          Effect.gen(function* () {
-            write.todos.push('two')
-            yield* publish(2)
-            return yield* Effect.fail(new Error('projection failed'))
-          }),
+        service.transaction(
+          slice('todosQuery'),
+          (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.todos.push('two')
+              yield* publish(2)
+              return yield* Effect.fail(new Error('projection failed'))
+            }),
         ),
       ),
     )
@@ -148,11 +190,13 @@ describe('JSON file Slice Store', () => {
     )
     const result = await Effect.runPromise(
       Effect.result(
-        service.transaction('valueQuery', (write, _read, _cursor, publish) =>
-          Effect.gen(function* () {
-            write.value = 10n
-            yield* publish(1)
-          }),
+        service.transaction(
+          slice('valueQuery'),
+          (write, _read, _cursor, publish) =>
+            Effect.gen(function* () {
+              write.value = 10n
+              yield* publish(1)
+            }),
         ),
       ),
     )
@@ -175,7 +219,7 @@ describe('JSON file Slice Store', () => {
       { directory },
     )
     await Effect.runPromise(
-      first.transaction('dateQuery', (write, _read, _cursor, publish) =>
+      first.transaction(slice('dateQuery'), (write, _read, _cursor, publish) =>
         Effect.gen(function* () {
           write.at = new Date('2026-01-02T03:04:05.000Z')
           write.skipped = undefined
@@ -205,7 +249,9 @@ describe('JSON file Slice Store', () => {
     for (const sliceName of ['todosQuery', '../escape']) {
       const result = await Effect.runPromise(
         Effect.result(
-          reopened.read(sliceName, (_state, cursor) => Effect.succeed(cursor)),
+          reopened.read(slice(sliceName), (_state, cursor) =>
+            Effect.succeed(cursor),
+          ),
         ),
       )
       expect(result._tag).toBe('Failure')
@@ -251,6 +297,7 @@ describe('JSON file Slice Store', () => {
     expect(existsSync(`${path}.tmp`)).toBe(false)
     expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({
       cursor: 2,
+      version: 'v1',
       state: { todos: ['one', 'two'] },
     })
   })
@@ -263,11 +310,13 @@ describe('JSON file Slice Store', () => {
     for (const value of [new Map([['a', 1]]), new Set([1])]) {
       const result = await Effect.runPromise(
         Effect.result(
-          service.transaction('valueQuery', (write, _read, _cursor, publish) =>
-            Effect.gen(function* () {
-              write.value = value
-              yield* publish(1)
-            }),
+          service.transaction(
+            slice('valueQuery'),
+            (write, _read, _cursor, publish) =>
+              Effect.gen(function* () {
+                write.value = value
+                yield* publish(1)
+              }),
           ),
         ),
       )

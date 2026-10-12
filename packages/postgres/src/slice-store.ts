@@ -1,4 +1,8 @@
-import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import type {
+  SliceStoreService,
+  SliceStoreSlice,
+  SliceStoreTag,
+} from '@specter-ts/core'
 import { Effect, Layer } from 'effect'
 
 import {
@@ -33,6 +37,7 @@ export type PostgresSliceStoreOptions<TWriteState, TReadState> =
 export async function preparePostgresSliceStore(pool: PostgresPool) {
   await pool.query(`CREATE TABLE IF NOT EXISTS specter_slice_states (
     slice_name TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
     state_json JSONB NOT NULL,
     last_applied_order BIGINT NOT NULL
   )`)
@@ -55,15 +60,17 @@ export function createPostgresSliceStoreService<
   const read =
     options.read ?? ((state: TWriteState) => state as unknown as TReadState)
 
-  async function load(connection: PostgresConnection, sliceName: string) {
+  // State kept under another version of the Slice is not read: the Slice
+  // starts empty and folds the log.
+  async function load(connection: PostgresConnection, slice: SliceStoreSlice) {
     const result = await connection.query<{
       state_json: unknown
       last_applied_order: unknown
     }>(
       `SELECT state_json, last_applied_order
        FROM specter_slice_states
-       WHERE slice_name = $1`,
-      [sliceName],
+       WHERE slice_name = $1 AND version = $2`,
+      [slice.name, slice.version],
     )
     const row = result.rows[0]
     if (!row) return { state: createState(), cursor: 0 }
@@ -75,27 +82,31 @@ export function createPostgresSliceStoreService<
 
   async function save(
     connection: PostgresConnection,
-    sliceName: string,
+    slice: SliceStoreSlice,
     entry: { state: TWriteState; cursor: number },
   ) {
     const encoded = JSON.stringify(entry.state)
     if (encoded === undefined) {
       throw new Error('Postgres Slice State must be JSON-serializable')
     }
+    // A State of another version is replaced whatever its cursor.
     const result = await connection.query(
       `INSERT INTO specter_slice_states (
         slice_name,
+        version,
         state_json,
         last_applied_order
-      ) VALUES ($1, $2::jsonb, $3)
+      ) VALUES ($1, $2, $3::jsonb, $4)
       ON CONFLICT(slice_name) DO UPDATE SET
+        version = excluded.version,
         state_json = excluded.state_json,
         last_applied_order = excluded.last_applied_order
-      WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
-      [sliceName, encoded, entry.cursor],
+      WHERE specter_slice_states.version <> excluded.version
+        OR specter_slice_states.last_applied_order <= excluded.last_applied_order`,
+      [slice.name, slice.version, encoded, entry.cursor],
     )
     if (result.rowCount !== 1) {
-      throw new Error(`Stale Slice cursor publication for ${sliceName}`)
+      throw new Error(`Stale Slice cursor publication for ${slice.name}`)
     }
   }
 
@@ -110,26 +121,22 @@ export function createPostgresSliceStoreService<
   }
 
   return {
-    read: (sliceName, run) =>
+    read: (slice, run) =>
       context.use((connection) =>
         Effect.gen(function* () {
-          const current = yield* attempt('read', () =>
-            load(connection, sliceName),
-          )
+          const current = yield* attempt('read', () => load(connection, slice))
           return yield* run(read(current.state), current.cursor)
         }),
       ),
-    transaction: (sliceName, run) =>
+    transaction: (slice, run) =>
       context.transaction((connection) =>
         Effect.gen(function* () {
           yield* attempt('lock', () =>
             connection.query('SELECT pg_advisory_xact_lock(hashtext($1))', [
-              `specter-slice:${sliceName}`,
+              `specter-slice:${slice.name}`,
             ]),
           )
-          const working = yield* attempt('read', () =>
-            load(connection, sliceName),
-          )
+          const working = yield* attempt('read', () => load(connection, slice))
           let published = false
           const result = yield* run(
             working.state,
@@ -150,7 +157,7 @@ export function createPostgresSliceStoreService<
             },
           )
           if (published) {
-            yield* attempt('write', () => save(connection, sliceName, working))
+            yield* attempt('write', () => save(connection, slice, working))
           }
           return result
         }),

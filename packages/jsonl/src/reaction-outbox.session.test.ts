@@ -55,6 +55,8 @@ afterEach(() => {
 
 const run = Effect.runPromise
 
+const notification = { name: 'notification', version: 'v1' }
+
 const notify = {
   id: 'notify:1',
   idempotencyKey: 'notify:1',
@@ -78,7 +80,7 @@ it('writes the enqueue before the Slice Store writes the cursor', async () => {
   const observed: { lines: number; sliceFile: boolean }[] = []
 
   await run(
-    store.transaction('notification', (write, _read, _cursor, publish) =>
+    store.transaction(notification, (write, _read, _cursor, publish) =>
       Effect.gen(function* () {
         write.count = 1
         yield* outbox.enqueue(notify)
@@ -95,7 +97,7 @@ it('writes the enqueue before the Slice Store writes the cursor', async () => {
   expect(observed).toEqual([{ lines: 1, sliceFile: false }])
   expect(
     JSON.parse(readFileSync(store.pathFor('notification'), 'utf8')),
-  ).toEqual({ cursor: 1, state: { count: 1 } })
+  ).toEqual({ cursor: 1, version: 'v1', state: { count: 1 } })
 })
 
 it('keeps an enqueue whose cursor write never happened, and ignores its replay', async () => {
@@ -107,7 +109,7 @@ it('keeps an enqueue whose cursor write never happened, and ignores its replay',
     outbox: JsonlReactionOutboxStore<{ message: string }>,
     crash: boolean,
   ) =>
-    store.transaction('notification', (write, _read, _cursor, publish) =>
+    store.transaction(notification, (write, _read, _cursor, publish) =>
       Effect.gen(function* () {
         write.count = 1
         const enqueued = yield* outbox.enqueue(notify)
@@ -134,7 +136,7 @@ it('keeps an enqueue whose cursor write never happened, and ignores its replay',
   })
   expect(
     await run(
-      store.read('notification', (_read, cursor) => Effect.succeed(cursor)),
+      store.read(notification, (_read, cursor) => Effect.succeed(cursor)),
     ),
   ).toBe(0)
   expect(await run(reopened.list())).toMatchObject([
@@ -145,7 +147,7 @@ it('keeps an enqueue whose cursor write never happened, and ignores its replay',
   expect(await run(transaction(store, reopened, false))).toBe(false)
   expect(
     await run(
-      store.read('notification', (_read, cursor) => Effect.succeed(cursor)),
+      store.read(notification, (_read, cursor) => Effect.succeed(cursor)),
     ),
   ).toBe(1)
   expect(enqueuedLines(path)).toHaveLength(1)

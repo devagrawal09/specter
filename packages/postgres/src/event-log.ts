@@ -11,6 +11,7 @@ import {
   type EventLogCommit,
   type EventLogDraft,
   type EventLogKeyPage,
+  type EventLogPage,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -115,14 +116,16 @@ export function createPostgresEventLogService(
     connection: PostgresConnection,
     afterOrder: number,
     eventTypes: readonly string[],
+    page: EventLogPage,
   ) {
     if (!eventTypes.length) return []
     const result = await connection.query(
       `SELECT ${eventColumns}
        FROM specter_events e
        WHERE event_order > $1 AND type = ANY($2::text[])
-       ORDER BY event_order ASC`,
-      [afterOrder, eventTypes],
+       ORDER BY event_order ASC
+       LIMIT $3`,
+      [afterOrder, eventTypes, page.limit ?? null],
     )
     return result.rows.map((row) => toEvent(row))
   }
@@ -248,14 +251,16 @@ export function createPostgresEventLogService(
   async function commitsAfter(
     connection: PostgresConnection,
     afterVersion: number,
+    page: EventLogPage,
   ): Promise<readonly EventLogCommit[]> {
     const result = await connection.query(
       `SELECT idempotency_key, fingerprint, first_event_order,
          last_event_order, committed_at
        FROM specter_event_commits
        WHERE commit_version > $1
-       ORDER BY commit_version ASC`,
-      [afterVersion],
+       ORDER BY commit_version ASC
+       LIMIT $2`,
+      [afterVersion, page.limit ?? null],
     )
     return Promise.all(result.rows.map((row) => commitFromRow(connection, row)))
   }
@@ -375,9 +380,9 @@ export function createPostgresEventLogService(
   return {
     capabilities: { scopedAppend: true, keyedRead: true },
     context,
-    query: (afterOrder, eventTypes) =>
+    query: (afterOrder, eventTypes, page = {}) =>
       context.use((connection) =>
-        attempt('query', () => query(connection, afterOrder, eventTypes)),
+        attempt('query', () => query(connection, afterOrder, eventTypes, page)),
       ),
     currentVersion: context.use((connection) =>
       attempt('currentVersion', () => currentVersion(connection)),
@@ -386,9 +391,11 @@ export function createPostgresEventLogService(
       context.use((connection) =>
         attempt('readKey', () => readKey(connection, key, page)),
       ),
-    commitsAfter: (afterVersion) =>
+    commitsAfter: (afterVersion, page = {}) =>
       context.use((connection) =>
-        attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),
+        attempt('commitsAfter', () =>
+          commitsAfter(connection, afterVersion, page),
+        ),
       ),
     findCommit: (idempotencyKey) =>
       context.use((connection) =>

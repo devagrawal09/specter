@@ -267,8 +267,12 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
     ).rejects.toBeInstanceOf(EventLogFailure)
 
     const published = await run(
-      store.read('incrementCounter', (state, cursor) =>
-        Effect.succeed({ state, cursor }),
+      store.read(
+        {
+          name: 'incrementCounter',
+          version: `${incrementCounter.specificationDigest}/${incrementCounter.stateVersion}`,
+        },
+        (state, cursor) => Effect.succeed({ state, cursor }),
       ),
     )
     expect(published.state).toEqual({ count: 1 })
@@ -303,12 +307,13 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       const store = createPostgresSliceStoreService(pool, () => value)
       const sliceName = `primitive${index}`
       await run(
-        store.transaction(sliceName, (_write, _read, _cursor, publishCursor) =>
-          publishCursor(index + 1),
+        store.transaction(
+          { name: sliceName, version: 'v1' },
+          (_write, _read, _cursor, publishCursor) => publishCursor(index + 1),
         ),
       )
       const persisted = await run(
-        store.read(sliceName, (state, cursor) =>
+        store.read({ name: sliceName, version: 'v1' }, (state, cursor) =>
           Effect.succeed({ state, cursor }),
         ),
       )

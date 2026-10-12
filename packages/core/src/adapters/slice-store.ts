@@ -1,6 +1,23 @@
 import type { Context, Effect } from 'effect'
 
 /**
+ * The Slice a Store call is for. A Store keeps each Slice's State and cursor
+ * under its `name`.
+ */
+export type SliceStoreSlice = {
+  readonly name: string
+  /**
+   * The version of the Slice's State: it changes with the Slice's
+   * specification digest and with the `stateVersion` its implementation
+   * declares (`.store(Tag, { stateVersion })`), so a State of another shape
+   * has another version. A Store keeps the version with the State and never
+   * returns State kept under another version: it starts that Slice empty at
+   * cursor 0, so the Slice folds the log from its start.
+   */
+  readonly version: string
+}
+
+/**
  * Runtime service contract supplied for a Slice's `.store(Context.Tag)`.
  *
  * The adapter owns projection persistence and concurrency. Specter only
@@ -11,11 +28,11 @@ import type { Context, Effect } from 'effect'
  */
 export type SliceStoreService<TRead, TWrite, TError = never> = {
   readonly read: <A, E, R>(
-    sliceName: string,
+    slice: SliceStoreSlice,
     run: (state: TRead, cursor: number) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, TError | E, R>
   readonly transaction: <A, E, R>(
-    sliceName: string,
+    slice: SliceStoreSlice,
     run: (
       write: TWrite,
       read: () => TRead,

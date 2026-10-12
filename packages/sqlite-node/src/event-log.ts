@@ -102,7 +102,11 @@ export function createNodeSqliteEventLogService(
     }
   }
 
-  function query(afterOrder: number, eventTypes: readonly string[]) {
+  function query(
+    afterOrder: number,
+    eventTypes: readonly string[],
+    limit: number,
+  ) {
     if (!eventTypes.length) return []
     const placeholders = eventTypes.map(() => '?').join(', ')
     return context.database
@@ -110,9 +114,10 @@ export function createNodeSqliteEventLogService(
         `SELECT ${eventColumns}
          FROM specter_events e
          WHERE event_order > ? AND type IN (${placeholders})
-         ORDER BY event_order ASC`,
+         ORDER BY event_order ASC
+         LIMIT ?`,
       )
-      .all(afterOrder, ...eventTypes)
+      .all(afterOrder, ...eventTypes, limit)
       .map((row) => decodeRow(row as Record<string, unknown>))
   }
 
@@ -233,15 +238,19 @@ export function createNodeSqliteEventLogService(
     }
   }
 
-  function commitsAfter(afterVersion: number): readonly EventLogCommit[] {
+  function commitsAfter(
+    afterVersion: number,
+    limit: number,
+  ): readonly EventLogCommit[] {
     return context.database
       .prepare(
         `SELECT idempotency_key, fingerprint, first_event_order,
            last_event_order, committed_at
          FROM specter_event_commits WHERE commit_version > ?
-         ORDER BY commit_version ASC`,
+         ORDER BY commit_version ASC
+         LIMIT ?`,
       )
-      .all(afterVersion)
+      .all(afterVersion, limit)
       .map((row) => commitFromRow(row as Record<string, unknown>))
   }
 
@@ -331,9 +340,9 @@ export function createNodeSqliteEventLogService(
 
   return {
     capabilities: { scopedAppend: true, keyedRead: true },
-    query: (afterOrder, eventTypes) =>
+    query: (afterOrder, eventTypes, page = {}) =>
       Effect.try({
-        try: () => query(afterOrder, eventTypes),
+        try: () => query(afterOrder, eventTypes, page.limit ?? -1),
         catch: (cause) => new EventLogFailure('query', cause),
       }),
     currentVersion: Effect.try({
@@ -346,9 +355,9 @@ export function createNodeSqliteEventLogService(
           readKey(key.name, key.value, page.afterOrder ?? 0, page.limit ?? -1),
         catch: (cause) => new EventLogFailure('readKey', cause),
       }),
-    commitsAfter: (afterVersion) =>
+    commitsAfter: (afterVersion, page = {}) =>
       Effect.try({
-        try: () => commitsAfter(afterVersion),
+        try: () => commitsAfter(afterVersion, page.limit ?? -1),
         catch: (cause) => new EventLogFailure('commitsAfter', cause),
       }),
     findCommit: (key) =>

@@ -361,15 +361,15 @@ describe('Effect-native runtime', () => {
       resolveSecondRead = resolve
     })
     const store: SliceStoreService<Readonly<State>, State> = {
-      read: (name, run) =>
-        baseStore.read(name, (state, cursor) =>
+      read: (slice, run) =>
+        baseStore.read(slice, (state, cursor) =>
           Effect.sync(() => {
-            if (name === 'publishValue' && ++reactionReads === 3)
+            if (slice.name === 'publishValue' && ++reactionReads === 3)
               resolveSecondRead()
           }).pipe(Effect.andThen(run(state, cursor))),
         ),
-      transaction: (name, run) =>
-        transactionLock.withPermit(baseStore.transaction(name, run)),
+      transaction: (slice, run) =>
+        transactionLock.withPermit(baseStore.transaction(slice, run)),
     }
     const eventLog = makeEventLogService()
     let resolveFirstStarted!: () => void
@@ -504,7 +504,7 @@ describe('Effect-native runtime', () => {
     )
     await expect(
       Effect.runPromise(
-        store.read('publishValue', (state, cursor) =>
+        store.read({ name: 'publishValue', version: 'test' }, (state, cursor) =>
           Effect.succeed({ state, cursor }),
         ),
       ),
@@ -520,7 +520,7 @@ describe('Effect-native runtime', () => {
     await secondExecution.reactions
     await expect(
       Effect.runPromise(
-        store.read('publishValue', (state, cursor) =>
+        store.read({ name: 'publishValue', version: 'test' }, (state, cursor) =>
           Effect.succeed({ state, cursor }),
         ),
       ),
@@ -658,8 +658,9 @@ describe('Effect-native runtime', () => {
     await irrelevant.reactions
     await expect(
       Effect.runPromise(
-        store.read('publishRelevantValue', (_state, cursor) =>
-          Effect.succeed(cursor),
+        store.read(
+          { name: 'publishRelevantValue', version: 'test' },
+          (_state, cursor) => Effect.succeed(cursor),
         ),
       ),
     ).resolves.toBe(0)
@@ -670,8 +671,9 @@ describe('Effect-native runtime', () => {
     expect(handles).toBe(1)
     await expect(
       Effect.runPromise(
-        store.read('publishRelevantValue', (_state, cursor) =>
-          Effect.succeed(cursor),
+        store.read(
+          { name: 'publishRelevantValue', version: 'test' },
+          (_state, cursor) => Effect.succeed(cursor),
         ),
       ),
     ).resolves.toBe(2)
@@ -706,8 +708,10 @@ describe('Effect-native runtime', () => {
     )
     await expect(
       Effect.runPromise(
-        counted.service.read('publishRelevantValue', (state, cursor) =>
-          Effect.succeed({ values: state.values.length, cursor }),
+        counted.service.read(
+          { name: 'publishRelevantValue', version: 'test' },
+          (state, cursor) =>
+            Effect.succeed({ values: state.values.length, cursor }),
         ),
       ),
     ).resolves.toEqual({ values: 10, cursor: 95 })
@@ -724,8 +728,9 @@ describe('Effect-native runtime', () => {
     )
     const cursor = () =>
       Effect.runPromise(
-        counted.service.read('publishRelevantValue', (_state, current) =>
-          Effect.succeed(current),
+        counted.service.read(
+          { name: 'publishRelevantValue', version: 'test' },
+          (_state, current) => Effect.succeed(current),
         ),
       )
 
@@ -788,7 +793,7 @@ describe('Effect-native runtime', () => {
     )
     const cursor = (name: string) =>
       Effect.runPromise(
-        counted.service.read(name, (_state, current) =>
+        counted.service.read({ name, version: 'test' }, (_state, current) =>
           Effect.succeed(current),
         ),
       )
@@ -831,7 +836,7 @@ describe('Effect-native runtime', () => {
     )
     const cursor = (name: string) =>
       Effect.runPromise(
-        counted.service.read(name, (_state, current) =>
+        counted.service.read({ name, version: 'test' }, (_state, current) =>
           Effect.succeed(current),
         ),
       )
@@ -1193,7 +1198,10 @@ describe('Effect-native runtime', () => {
     expect((detail?.cause as Error).message).toContain('withReactionOutbox')
     await expect(
       Effect.runPromise(
-        store.read('inspectValues', (_state, cursor) => Effect.succeed(cursor)),
+        store.read(
+          { name: 'inspectValues', version: 'test' },
+          (_state, cursor) => Effect.succeed(cursor),
+        ),
       ),
     ).resolves.toBe(0)
     await expect(app.query({ type: 'values', payload: {} })).resolves.toEqual([
@@ -1591,7 +1599,7 @@ describe('Effect-native runtime', () => {
     expect(result._tag).toBe('Failure')
     await expect(
       Effect.runPromise(
-        store.read('values', (state, cursor) =>
+        store.read({ name: 'values', version: 'test' }, (state, cursor) =>
           Effect.succeed({ state: [...state.values], cursor }),
         ),
       ),
@@ -2427,12 +2435,12 @@ function countTransactions(service: SliceStoreService<Readonly<State>, State>) {
   const control = { crashed: false }
   const counted: SliceStoreService<Readonly<State>, State> = {
     read: service.read,
-    transaction: (name, run) =>
+    transaction: (slice, run) =>
       Effect.suspend(() => {
-        counts.set(name, (counts.get(name) ?? 0) + 1)
+        counts.set(slice.name, (counts.get(slice.name) ?? 0) + 1)
         // A crashed process writes nothing more, not even on shutdown.
         if (control.crashed) return Effect.fail(new Error('process crashed'))
-        return service.transaction(name, run)
+        return service.transaction(slice, run)
       }),
   }
   return {
@@ -2631,11 +2639,11 @@ function makeStoreService(
     return created
   }
   return {
-    read: (name, run) => {
+    read: ({ name }, run) => {
       const current = entry(name)
       return run(current.state, current.cursor)
     },
-    transaction: (name, run) =>
+    transaction: ({ name }, run) =>
       Effect.gen(function* () {
         const current = entry(name)
         const working = structuredClone(current)

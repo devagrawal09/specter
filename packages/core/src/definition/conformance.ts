@@ -165,6 +165,18 @@ export function collectConformanceDiagnostics(
         })
       }
 
+      if (
+        !Number.isSafeInteger(slice.stateVersion) ||
+        (slice.stateVersion as number) < 1
+      ) {
+        diagnostics.push({
+          code: 'invalid-store-state-version',
+          sliceName: slice.name,
+          message:
+            'Slice Store option "stateVersion" must be a positive integer. Raise it with .store(StoreTag, { stateVersion: 2 }) when the State changes shape.',
+        })
+      }
+
       if (!slice.name.trim()) {
         diagnostics.push({
           code: 'empty-slice-name',

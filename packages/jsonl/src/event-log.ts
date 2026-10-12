@@ -241,7 +241,7 @@ export function createJsonlEventLog(
     path: options.path,
     discardedTrailingBytes,
     recoveredStaleLock,
-    query: (afterOrder, eventTypes) =>
+    query: (afterOrder, eventTypes, page = {}) =>
       Effect.sync(() =>
         events
           // `order` is index + 1, so slicing skips most earlier Events; the
@@ -251,6 +251,7 @@ export function createJsonlEventLog(
             (event) =>
               event.order > afterOrder && eventTypes.includes(event.type),
           )
+          .slice(0, page.limit)
           .map(copyEvent),
       ),
     currentVersion: Effect.sync(() => events.length),
@@ -262,10 +263,11 @@ export function createJsonlEventLog(
           .slice(0, page.limit ?? Number.POSITIVE_INFINITY)
           .map((order) => copyEvent(events[order - 1] as StoredEvent))
       }),
-    commitsAfter: (afterVersion) =>
+    commitsAfter: (afterVersion, page = {}) =>
       Effect.sync(() =>
         commits
           .filter((commit) => commit.version > afterVersion)
+          .slice(0, page.limit)
           .map(copyCommit),
       ),
     findCommit: (key) =>

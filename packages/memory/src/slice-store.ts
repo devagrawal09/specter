@@ -1,9 +1,14 @@
-import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import type {
+  SliceStoreService,
+  SliceStoreSlice,
+  SliceStoreTag,
+} from '@specter-ts/core'
 import { Effect, Layer, Semaphore } from 'effect'
 
 type SliceEntry<TState> = {
   state: TState
   cursor: number
+  readonly version: string
 }
 
 export type MemorySliceStoreOptions<TWriteState, TReadState> = {
@@ -11,25 +16,36 @@ export type MemorySliceStoreOptions<TWriteState, TReadState> = {
   readonly read?: (state: TWriteState) => TReadState
   /**
    * A Slice's state and cursor to start from instead of empty state at the
-   * log's start, such as a snapshot a host saved from `inspect`. The Slice
-   * catches up from the cursor.
+   * log's start, such as a snapshot a host saved from `inspect`, for the
+   * Slice's name and version. The Slice catches up from the cursor. Return
+   * nothing for a snapshot of another version.
    */
   readonly initial?: (
-    sliceName: string,
+    slice: SliceStoreSlice,
   ) => { readonly state: TWriteState; readonly cursor: number } | undefined
 }
 
 export type MemorySliceStoreService<TWriteState, TReadState> =
   SliceStoreService<TReadState, TWriteState, unknown> & {
-    readonly inspect: (
-      sliceName: string,
-    ) =>
-      | { readonly state: TWriteState; readonly lastAppliedOrder: number }
+    /**
+     * A copy of a Slice's committed State, its cursor and the version of
+     * the Slice it was folded for, or undefined before its first use.
+     */
+    readonly inspect: (sliceName: string) =>
+      | {
+          readonly state: TWriteState
+          readonly lastAppliedOrder: number
+          readonly version: string
+        }
       | undefined
     readonly reset: (sliceName?: string) => void
   }
 
-/** Creates one app-scoped in-memory Store service. */
+/**
+ * Creates one app-scoped in-memory Store service. It keeps one State per
+ * Slice name; a call for another version of the Slice starts it again from
+ * `initial` or empty, so a Slice whose State changed shape folds the log.
+ */
 export function createMemorySliceStoreService<
   TWriteState,
   TReadState = Readonly<TWriteState>,
@@ -43,14 +59,14 @@ export function createMemorySliceStoreService<
   const entries = new Map<string, SliceEntry<TWriteState>>()
   const semaphores = new Map<string, Semaphore.Semaphore>()
 
-  function getEntry(sliceName: string) {
-    const current = entries.get(sliceName)
-    if (current) return current
-    const seeded = options.initial?.(sliceName)
+  function getEntry(slice: SliceStoreSlice) {
+    const current = entries.get(slice.name)
+    if (current?.version === slice.version) return current
+    const seeded = options.initial?.(slice)
     const created = seeded
-      ? { state: seeded.state, cursor: seeded.cursor }
-      : { state: createState(), cursor: 0 }
-    entries.set(sliceName, created)
+      ? { state: seeded.state, cursor: seeded.cursor, version: slice.version }
+      : { state: createState(), cursor: 0, version: slice.version }
+    entries.set(slice.name, created)
     return created
   }
 
@@ -63,19 +79,20 @@ export function createMemorySliceStoreService<
   }
 
   return {
-    read: (sliceName, run) =>
+    read: (slice, run) =>
       Effect.suspend(() => {
-        const current = getEntry(sliceName)
+        const current = getEntry(slice)
         return run(read(current.state), current.cursor)
       }),
-    transaction: (sliceName, run) =>
+    transaction: (slice, run) =>
       Effect.suspend(() =>
-        semaphore(sliceName).withPermit(
+        semaphore(slice.name).withPermit(
           Effect.gen(function* () {
-            const current = getEntry(sliceName)
+            const current = getEntry(slice)
             const working: SliceEntry<TWriteState> = {
               state: clone(current.state),
               cursor: current.cursor,
+              version: current.version,
             }
             let published = false
             const result = yield* run(
@@ -93,8 +110,12 @@ export function createMemorySliceStoreService<
                   published = true
                 }),
             )
-            if (published && working.cursor >= current.cursor) {
-              entries.set(sliceName, working)
+            if (
+              published &&
+              entries.get(slice.name) === current &&
+              working.cursor >= current.cursor
+            ) {
+              entries.set(slice.name, working)
             }
             return result
           }),
@@ -106,6 +127,7 @@ export function createMemorySliceStoreService<
         ? {
             state: clone(current.state),
             lastAppliedOrder: current.cursor,
+            version: current.version,
           }
         : undefined
     },

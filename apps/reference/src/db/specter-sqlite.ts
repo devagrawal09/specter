@@ -31,22 +31,22 @@ export function createSqliteSliceStoreLayer(context: SqliteDatabaseContext) {
   }
 
   const service: SliceStoreService<ScopedSqliteDb, ScopedSqliteDb, unknown> = {
-    read: (sliceName, run) =>
+    read: (slice, run) =>
       context.use((connection) => {
         const scoped = database(connection)
         return Effect.gen(function* () {
           const cursor = yield* Effect.tryPromise(() =>
-            loadCursor(scoped, sliceName),
+            loadCursor(scoped, slice.name),
           )
           return yield* run(scoped, cursor)
         })
       }),
-    transaction: (sliceName, run) =>
+    transaction: (slice, run) =>
       context.transaction((connection) => {
         const scoped = database(connection)
         return Effect.gen(function* () {
           const cursor = yield* Effect.tryPromise(() =>
-            loadCursor(scoped, sliceName),
+            loadCursor(scoped, slice.name),
           )
           return yield* run(
             scoped,
@@ -63,7 +63,7 @@ export function createSqliteSliceStoreLayer(context: SqliteDatabaseContext) {
               return Effect.tryPromise(() =>
                 scoped
                   .insert(sliceCursors)
-                  .values({ sliceName, lastAppliedOrder: order })
+                  .values({ sliceName: slice.name, lastAppliedOrder: order })
                   .onConflictDoUpdate({
                     target: sliceCursors.sliceName,
                     set: {

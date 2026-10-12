@@ -12,6 +12,7 @@ import {
   type EventLogCommit,
   type EventLogDraft,
   type EventLogKeyPage,
+  type EventLogPage,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -158,6 +159,7 @@ export function createSqliteEventLogService(
     connection: SqliteConnection,
     afterOrder: number,
     eventTypes: readonly string[],
+    page: EventLogPage,
   ) {
     if (!eventTypes.length) return []
     const result = await connection.execute({
@@ -165,8 +167,9 @@ export function createSqliteEventLogService(
         FROM specter_events e
         WHERE event_order > ?
           AND type IN (${eventTypes.map(() => '?').join(', ')})
-        ORDER BY event_order ASC`,
-      args: [afterOrder, ...eventTypes],
+        ORDER BY event_order ASC
+        LIMIT ?`,
+      args: [afterOrder, ...eventTypes, page.limit ?? -1],
     })
     return result.rows.map((row) => fromRow(row as Record<string, unknown>))
   }
@@ -299,6 +302,7 @@ export function createSqliteEventLogService(
   async function commitsAfter(
     connection: SqliteConnection,
     afterVersion: number,
+    page: EventLogPage,
   ): Promise<readonly EventLogCommit[]> {
     const tableShape = await getCommitTableShape(connection)
     const versionColumn =
@@ -308,8 +312,9 @@ export function createSqliteEventLogService(
           last_event_order, committed_at
         FROM specter_event_commits
         WHERE ${versionColumn} > ?
-        ORDER BY ${versionColumn} ASC`,
-      args: [afterVersion],
+        ORDER BY ${versionColumn} ASC
+        LIMIT ?`,
+      args: [afterVersion, page.limit ?? -1],
     })
     return Promise.all(
       result.rows.map((row) =>
@@ -449,9 +454,9 @@ export function createSqliteEventLogService(
   return {
     capabilities: { scopedAppend: true, keyedRead: true },
     context,
-    query: (afterOrder, eventTypes) =>
+    query: (afterOrder, eventTypes, page = {}) =>
       context.use((connection) =>
-        attempt('query', () => query(connection, afterOrder, eventTypes)),
+        attempt('query', () => query(connection, afterOrder, eventTypes, page)),
       ),
     currentVersion: context.use((connection) =>
       attempt('currentVersion', () => currentVersion(connection)),
@@ -460,9 +465,11 @@ export function createSqliteEventLogService(
       context.use((connection) =>
         attempt('readKey', () => readKey(connection, key, page)),
       ),
-    commitsAfter: (afterVersion) =>
+    commitsAfter: (afterVersion, page = {}) =>
       context.use((connection) =>
-        attempt('commitsAfter', () => commitsAfter(connection, afterVersion)),
+        attempt('commitsAfter', () =>
+          commitsAfter(connection, afterVersion, page),
+        ),
       ),
     findCommit: (idempotencyKey) =>
       context.use((connection) =>

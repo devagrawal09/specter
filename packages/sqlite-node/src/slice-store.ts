@@ -1,4 +1,8 @@
-import type { SliceStoreService, SliceStoreTag } from '@specter-ts/core'
+import type {
+  SliceStoreService,
+  SliceStoreSlice,
+  SliceStoreTag,
+} from '@specter-ts/core'
 import { Effect, Layer } from 'effect'
 
 import {
@@ -16,6 +20,7 @@ export type NodeSqliteSliceStoreOptions<TWriteState, TReadState> = {
 export function prepareNodeSqliteSliceStore(context: NodeSqliteContext) {
   context.database.exec(`CREATE TABLE IF NOT EXISTS specter_slice_states (
     slice_name TEXT PRIMARY KEY,
+    version TEXT NOT NULL,
     state_json TEXT NOT NULL,
     last_applied_order INTEGER NOT NULL
   )`)
@@ -43,13 +48,15 @@ export function createNodeSqliteSliceStoreService<
   const decode =
     options.decode ?? (JSON.parse as (value: string) => TWriteState)
 
-  function load(sliceName: string) {
+  // State kept under another version of the Slice is not read: the Slice
+  // starts empty and folds the log.
+  function load(slice: SliceStoreSlice) {
     const row = context.database
       .prepare(
         `SELECT state_json, last_applied_order FROM specter_slice_states
-          WHERE slice_name = ?`,
+          WHERE slice_name = ? AND version = ?`,
       )
-      .get(sliceName) as Record<string, unknown> | undefined
+      .get(slice.name, slice.version) as Record<string, unknown> | undefined
     return row
       ? {
           state: decode(requireString(row.state_json, 'Slice State')),
@@ -59,32 +66,35 @@ export function createNodeSqliteSliceStoreService<
   }
 
   function save(
-    sliceName: string,
+    slice: SliceStoreSlice,
     entry: { state: TWriteState; cursor: number },
   ) {
+    // A State of another version is replaced whatever its cursor.
     context.database
       .prepare(
         `INSERT INTO specter_slice_states (
-          slice_name, state_json, last_applied_order
-        ) VALUES (?, ?, ?)
+          slice_name, version, state_json, last_applied_order
+        ) VALUES (?, ?, ?, ?)
         ON CONFLICT(slice_name) DO UPDATE SET
+          version = excluded.version,
           state_json = excluded.state_json,
           last_applied_order = excluded.last_applied_order
-        WHERE specter_slice_states.last_applied_order <= excluded.last_applied_order`,
+        WHERE specter_slice_states.version <> excluded.version
+          OR specter_slice_states.last_applied_order <= excluded.last_applied_order`,
       )
-      .run(sliceName, encode(entry.state), entry.cursor)
+      .run(slice.name, slice.version, encode(entry.state), entry.cursor)
   }
 
   return {
-    read: (sliceName, run) =>
+    read: (slice, run) =>
       Effect.suspend(() => {
-        const current = context.run(() => load(sliceName))
+        const current = context.run(() => load(slice))
         return run(read(current.state), current.cursor)
       }),
-    transaction: (sliceName, run) =>
+    transaction: (slice, run) =>
       context.transactionEffect(
         Effect.gen(function* () {
-          const working = load(sliceName)
+          const working = load(slice)
           let published = false
           const result = yield* run(
             working.state,
@@ -101,7 +111,7 @@ export function createNodeSqliteSliceStoreService<
                 published = true
               }),
           )
-          if (published) save(sliceName, working)
+          if (published) save(slice, working)
           return result
         }),
       ),

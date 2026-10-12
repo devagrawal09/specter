@@ -59,6 +59,13 @@ testEventLogService('Postgres (fake pool)', () =>
   createPostgresEventLogService(new FakePostgresPool()),
 )
 
+/** A read's LIMIT parameter: null, or absent, reads every row. */
+function limitOf(parameter: unknown) {
+  return parameter === null || parameter === undefined
+    ? Number.POSITIVE_INFINITY
+    : Number(parameter)
+}
+
 class FakePostgresPool implements PostgresPool {
   readonly statements: string[] = []
   readonly events: EventRow[] = []
@@ -66,7 +73,7 @@ class FakePostgresPool implements PostgresPool {
   readonly commits: CommitRow[] = []
   readonly sliceStates = new Map<
     string,
-    { state_json: unknown; last_applied_order: string }
+    { version: string; state_json: unknown; last_applied_order: string }
   >()
   readonly outbox = new Map<string, OutboxRow>()
   #lockTail = Promise.resolve()
@@ -152,9 +159,9 @@ class FakePostgresPool implements PostgresPool {
       normalized.includes('WHERE commit_version > $1')
     ) {
       return {
-        rows: this.commits.filter(
-          (row) => Number(row.commit_version) > Number(parameters[0]),
-        ),
+        rows: this.commits
+          .filter((row) => Number(row.commit_version) > Number(parameters[0]))
+          .slice(0, limitOf(parameters[1])),
       }
     }
     if (
@@ -186,6 +193,7 @@ class FakePostgresPool implements PostgresPool {
               Number(event.event_order) > afterOrder &&
               eventTypes.has(event.type),
           )
+          .slice(0, limitOf(parameters[2]))
           .map((event) => this.#withKeys(event)),
       }
     }
@@ -276,12 +284,13 @@ class FakePostgresPool implements PostgresPool {
       normalized.includes('FROM specter_slice_states')
     ) {
       const state = this.sliceStates.get(String(parameters[0]))
-      return { rows: state ? [state] : [] }
+      return { rows: state && state.version === parameters[1] ? [state] : [] }
     }
     if (normalized.startsWith('INSERT INTO specter_slice_states')) {
       this.sliceStates.set(String(parameters[0]), {
-        state_json: JSON.parse(String(parameters[1])) as unknown,
-        last_applied_order: String(parameters[2]),
+        version: String(parameters[1]),
+        state_json: JSON.parse(String(parameters[2])) as unknown,
+        last_applied_order: String(parameters[3]),
       })
       return { rows: [], rowCount: 1 }
     }
@@ -419,12 +428,13 @@ describe('Postgres Event Log adapter', () => {
       const store = createPostgresSliceStoreService(pool, () => value)
       const sliceName = `primitive${index}`
       await Effect.runPromise(
-        store.transaction(sliceName, (_write, _read, _cursor, publish) =>
-          publish(index + 1),
+        store.transaction(
+          { name: sliceName, version: 'v1' },
+          (_write, _read, _cursor, publish) => publish(index + 1),
         ),
       )
       await Effect.runPromise(
-        store.read(sliceName, (read, cursor) =>
+        store.read({ name: sliceName, version: 'v1' }, (read, cursor) =>
           Effect.sync(() => {
             expect(read).toBe(value)
             expect(cursor).toBe(index + 1)
@@ -513,14 +523,14 @@ describe('Postgres Event Log adapter', () => {
     const pool = new FakePostgresPool()
     const store = createPostgresSliceStoreService(pool, () => ({ count: 0 }))
     await Effect.runPromise(
-      store.transaction('counter', (write) =>
+      store.transaction({ name: 'counter', version: 'v1' }, (write) =>
         Effect.sync(() => {
           write.count = 9
         }),
       ),
     )
     await Effect.runPromise(
-      store.read('counter', (read) =>
+      store.read({ name: 'counter', version: 'v1' }, (read) =>
         Effect.sync(() => {
           expect(read).toEqual({ count: 0 })
         }),
@@ -528,15 +538,17 @@ describe('Postgres Event Log adapter', () => {
     )
 
     await Effect.runPromise(
-      store.transaction('counter', (write, _read, _cursor, publish) =>
-        Effect.gen(function* () {
-          write.count = 3
-          yield* publish(2)
-        }),
+      store.transaction(
+        { name: 'counter', version: 'v1' },
+        (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            write.count = 3
+            yield* publish(2)
+          }),
       ),
     )
     await Effect.runPromise(
-      store.read('counter', (read, cursor) =>
+      store.read({ name: 'counter', version: 'v1' }, (read, cursor) =>
         Effect.sync(() => {
           expect(read).toEqual({ count: 3 })
           expect(cursor).toBe(2)
@@ -558,23 +570,27 @@ describe('Postgres Event Log adapter', () => {
     })
 
     const first = Effect.runPromise(
-      store.transaction('counter', (write, _read, _cursor, publish) =>
-        Effect.gen(function* () {
-          entered()
-          yield* Effect.promise(() => gate)
-          write.count = 12
-          yield* publish(12)
-        }),
+      store.transaction(
+        { name: 'counter', version: 'v1' },
+        (write, _read, _cursor, publish) =>
+          Effect.gen(function* () {
+            entered()
+            yield* Effect.promise(() => gate)
+            write.count = 12
+            yield* publish(12)
+          }),
       ),
     )
     await firstEntered
     const second = Effect.runPromise(
-      store.transaction('counter', (write, _read, cursor, publish) =>
-        Effect.gen(function* () {
-          expect(cursor).toBe(12)
-          write.count = 13
-          yield* publish(13)
-        }),
+      store.transaction(
+        { name: 'counter', version: 'v1' },
+        (write, _read, cursor, publish) =>
+          Effect.gen(function* () {
+            expect(cursor).toBe(12)
+            write.count = 13
+            yield* publish(13)
+          }),
       ),
     )
     release()
@@ -582,7 +598,7 @@ describe('Postgres Event Log adapter', () => {
 
     expect(
       await Effect.runPromise(
-        store.read('counter', (read, cursor) =>
+        store.read({ name: 'counter', version: 'v1' }, (read, cursor) =>
           Effect.succeed({ count: read.count, cursor }),
         ),
       ),

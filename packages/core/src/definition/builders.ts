@@ -542,7 +542,7 @@ function createCommandSpec<
             schema,
             consistencyKeys,
             store,
-            options?.eager ?? false,
+            storeSettings(options),
             Object.freeze([]),
           )
         return {
@@ -568,7 +568,7 @@ function createCommandApplyStep<
   inputSchema: StandardSchemaV1<TInput, TCommand> | undefined,
   consistencyKeys: ConsistencyKeys<TCommand, TReadState> | undefined,
   store: TStore,
-  eager: boolean,
+  storage: StoreSettings,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): CommandApplyStep<
   TName,
@@ -595,7 +595,7 @@ function createCommandApplyStep<
         TReadState,
         TScenarios,
         TStore
-      >(specification, inputSchema, consistencyKeys, store, eager, [
+      >(specification, inputSchema, consistencyKeys, store, storage, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -611,7 +611,7 @@ function createCommandApplyStep<
         inputSchema,
         ...(consistencyKeys ? { consistencyKeys } : {}),
         store,
-        eager,
+        ...storage,
         apply: Object.freeze([...apply]),
         handle,
       }),
@@ -685,7 +685,7 @@ function createQuerySpec<
             inputSchema,
             outputSchema,
             store,
-            options?.eager ?? false,
+            storeSettings(options),
             Object.freeze([]),
           ),
       }),
@@ -708,7 +708,7 @@ function createQueryApplyStep<
   inputSchema: StandardSchemaV1<TInput, TQuery> | undefined,
   outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
   store: TStore,
-  eager: boolean,
+  storage: StoreSettings,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): QueryApplyStep<
   TName,
@@ -739,7 +739,7 @@ function createQueryApplyStep<
         TReadState,
         TScenarios,
         TStore
-      >(specification, inputSchema, outputSchema, store, eager, [
+      >(specification, inputSchema, outputSchema, store, storage, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -750,7 +750,7 @@ function createQueryApplyStep<
         inputSchema,
         outputSchema,
         store,
-        eager,
+        ...storage,
         apply: Object.freeze([...apply]),
         handle,
       }),
@@ -831,7 +831,7 @@ function createReactionSpec<
             outputSchema,
             plugin,
             store,
-            options?.eager ?? false,
+            storeSettings(options),
             Object.freeze([]),
           ),
       })
@@ -841,6 +841,19 @@ function createReactionSpec<
       }
     },
   }) as ReactionSliceSpec<TName, TScenarios>
+}
+
+/** How a Slice's Store holds it: catch-up at startup, and its State's version. */
+type StoreSettings = {
+  readonly eager: boolean
+  readonly stateVersion: number
+}
+
+function storeSettings(options: SliceStoreOptions | undefined): StoreSettings {
+  return {
+    eager: options?.eager ?? false,
+    stateVersion: options?.stateVersion ?? 1,
+  }
 }
 
 function specificationDigest(
@@ -879,7 +892,7 @@ function createReactionApplyStep<
   outputSchema: StandardSchemaV1<TResult, TOutput> | undefined,
   plugin: ReactionPlugin<TOutput, TPluginRequirements> | undefined,
   store: TStore,
-  eager: boolean,
+  storage: StoreSettings,
   apply: readonly ApplyRegistration<TWriteState>[],
 ): ReactionApplyStep<
   TName,
@@ -908,7 +921,7 @@ function createReactionApplyStep<
         TScenarios,
         TStore,
         TPluginRequirements
-      >(specification, outputSchema, plugin, store, eager, [
+      >(specification, outputSchema, plugin, store, storage, [
         ...apply,
         { event: definition, handle } as ApplyRegistration<TWriteState>,
       ]),
@@ -919,7 +932,7 @@ function createReactionApplyStep<
         outputSchema,
         plugin,
         store,
-        eager,
+        ...storage,
         apply: Object.freeze([...apply]),
         handle: (state: TReadState) => handle(state),
       }),
@@ -936,7 +949,7 @@ function createReactionApplyStep<
         outputSchema,
         plugin,
         store,
-        eager,
+        ...storage,
         apply: Object.freeze([...apply]),
         key,
         handle: (state: TReadState, value?: string) => {

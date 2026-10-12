@@ -97,10 +97,19 @@ type SliceBase<
   readonly scenarios: TScenarios
   readonly specificationDigest: SpecificationDigest
   readonly eager: boolean
+  /** The version of the Slice's State the implementation declares. */
+  readonly stateVersion: number
 }
 
 export type SliceStoreOptions = {
   readonly eager?: boolean
+  /**
+   * The version of this implementation's State, a positive integer (1 by
+   * default). Raise it when the State changes shape while the specification
+   * does not: a Store never returns State kept under another version, so the
+   * Slice folds the log again instead of reading a State of the old shape.
+   */
+  readonly stateVersion?: number
 }
 
 export type CommandSlice<
