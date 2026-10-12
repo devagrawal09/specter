@@ -206,7 +206,7 @@ Its append then conflicts only with a new Event of an applied type that
 carries one of those values under that name. A key function returns one
 value, several, or `undefined` for none; a Command whose functions return no
 value at all conflicts with nothing. The adapter checks the stored keys in
-SQL (SQLite, node:sqlite, Postgres) or in its own index (memory, JSONL). The
+SQL (SQLite, Postgres) or in its own index (memory, JSONL). The
 re-decision on a stale append is scoped the same way.
 
 Keys are checked when the Command appends, after it decided, so they may come

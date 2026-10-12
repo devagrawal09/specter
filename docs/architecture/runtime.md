@@ -416,11 +416,15 @@ Schema at an untrusted boundary.
   saved snapshots (`persistSliceSnapshots`) a process that folds in memory
   starts each Slice from its snapshot of the same version.
 - SQLite is the default single-process persistent preset. Its stores run on
-  the host's connection (libSQL or an Effect `SqlClient`), share the host's
-  transactions, and hand each append to the host's `onAppend` hook in its
-  transaction.
+  the host's connection (libSQL, an Effect `SqlClient` or `node:sqlite`),
+  share the host's transactions, and hand each append to the host's
+  `onAppend` hook in its transaction.
 - Postgres provides multi-process persistence and database-level
   serialization.
+- The SQL stores' tables are versioned migrations, which Specter applies and
+  records or a host embeds in its own (see
+  [Migrations](../api-reference/persistence.md#migrations)); one database
+  holds one app's tables.
 - Every bundled Event Log stores Event keys and declares every capability:
   the scoped compare-and-swap in its store, keyed reads, and purges (see
   [Purging a key](event-sourcing.md#purging-a-key)). A host that purges makes

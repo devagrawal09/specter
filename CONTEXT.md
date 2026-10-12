@@ -80,6 +80,10 @@ _Avoid_: Compaction, rewriting history to repair a projection
 An Event type a Purge keeps for its key, such as a deletion: what a purge-safe fold needs to know the key is gone. A purge-safe Slice forgets a key once it folds its Tombstone, keeping only what a rule still needs, so its State is the same before and after the Purge.
 _Avoid_: Soft delete flag
 
+**Store Migration**:
+One versioned step of a SQL store's tables (its Event Log's, Slice Store's, snapshots', outbox's or scheduler's), numbered from 1 per store and never changed once released; a release that changes a store's tables adds the next version. Specter applies the ones a database lacks and records them, or a host with migrations of its own runs them in its own and records them there.
+_Avoid_: Schema statements run idempotently at every boot
+
 **Command Slice**:
 A Slice that defines exactly one Command and decides which Events should be emitted when that Command is accepted. An accepted Command emits at least one Event whose type appears in an accepted Scenario outcome; any other emitted Event type is rejected at runtime. A Command that would emit no Events is a Rejected Command. Command handlers are deterministic: domain IDs, timestamps, and randomness enter through Command input or prior Events rather than being generated inside the handler. The Command call resolves after durable commit and returns a Command Execution whose nested Reaction Promise reports subsequent Reaction completion.
 _Avoid_: Stateless command handler, query reader

@@ -16,16 +16,27 @@ const context = createSqlClientDatabaseContext(db.$client, {
   transaction: (effect) => db.transaction(() => effect, { behavior: 'immediate' }),
 })
 
+// node:sqlite, on a `DatabaseSync` the host opens and closes
+const context = createNodeSqliteDatabaseContext(new DatabaseSync(file))
+await Effect.runPromise(prepareSpecterSqlite(context))
+
 const persistence = createSpecterSqlitePersistence(context)
 const todosStore = persistence.createSliceStoreService(() => ({ todos: [] }))
 const outboxStore = persistence.createReactionOutboxStore({ queue: 'emails' })
 ```
 
-A host that runs its own migrations creates the tables by running the
-statements it needs (`sqliteEventLogSchema`, `sqliteReactionOutboxSchema`,
-`sqliteSliceSnapshotSchema`, `sqliteSliceStoreSchema`,
-`sqliteReactionSchedulerSchema`) in a migration; others call
-`prepareSpecterSqlite(context)` at startup.
+Each store's tables are a list of versioned migrations
+(`sqliteEventLogMigrations`, `sqliteSliceStoreMigrations`,
+`sqliteSliceSnapshotMigrations`, `sqliteReactionOutboxMigrations`,
+`sqliteReactionSchedulerMigrations`, all in `specterSqliteMigrations`),
+numbered from 1 per store; a release that changes a store's tables adds a
+version and never edits one. A host without migrations of its own calls
+`prepareSpecterSqlite(context)` (or `migrateSpecterSqlite(context, list)` for
+some stores) at startup, which applies what the database lacks in one
+transaction and records it in `specter_migrations`. A host with its own
+migrations runs the statements of the versions it brings in from one of
+them, and adds a migration when a Specter release adds a version. See
+[Migrations](../../docs/api-reference/persistence.md#migrations).
 
 The Event Log enforces expected versions and the scoped compare-and-swap in
 SQL, stores durable idempotency receipts and each Event's keys in the same
@@ -43,7 +54,4 @@ in-process wake-ups, retries, dead letters, replay, release of what an earlier
 process left running, and pruning. Event payloads, Slice State and outbox
 payloads must be JSON-serializable unless a codec says otherwise.
 
-The Event Log can also open the earlier commit table whose primary key is
-`idempotency_key` and which has no `commit_version` column. It detects that
-shape without migrating or rebuilding the table, and uses `last_event_order`
-as the ordered commit boundary. New databases use the `commit_version` table.
+Table names are fixed, so one database holds one Specter app's tables.

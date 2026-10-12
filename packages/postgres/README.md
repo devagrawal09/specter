@@ -21,7 +21,7 @@ text. This preserves top-level JSON strings such as `"null"`, `"123"`, and
 `"true"` exactly.
 
 ```ts
-await prepareSpecterPostgres(pool)
+await migrateSpecterPostgres(pool, specterPostgresMigrations)
 
 const persistence = createSpecterPostgresPersistence(pool)
 const todosStore = persistence.createSliceStoreService(() => ({ todos: [] }))
@@ -39,6 +39,20 @@ coupling project-owned state to the Event Log transaction.
 A purge (`purge({ name, value }, { keep })`) takes the same advisory lock and
 removes a key's Events but the kept types in one transaction.
 
+Each store's tables are a list of versioned migrations
+(`postgresEventLogMigrations`, `postgresSliceStoreMigrations`,
+`postgresReactionOutboxMigrations`, all in `specterPostgresMigrations`).
+`migrateSpecterPostgres` applies what a database lacks in one transaction,
+under an advisory lock, and records it in `specter_migrations`; a host with
+its own migrations runs the statements in one of them instead. See
+[Migrations](../../docs/api-reference/persistence.md#migrations).
+
 Outbox workers claim jobs with `FOR UPDATE SKIP LOCKED`, making multiple worker
 processes safe. Expired leases are recoverable and failed deliveries remain in
 dead-letter storage until explicitly replayed.
+
+Known limits: the outbox Store is the database's whole outbox table, with no
+queues, concurrency keys, lease renewal or `subscribe` (its worker polls),
+so a database or schema holds one outboxed Plugin's jobs; and table names
+are fixed, so a database holds one Specter app. See
+[Known limits](../../docs/api-reference/persistence.md#known-limits).

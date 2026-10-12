@@ -65,8 +65,10 @@ Stores:
 | `createJsonlReactionOutboxStore` | `@specter-ts/jsonl` | Enqueue durable before cursor write; replay is a no-op. |
 
 Each wrapper runs its own worker, and a worker claims every job in its Store,
-so give each wrapped Plugin its own Store (a SQLite queue, a Postgres table,
-a JSONL file).
+so give each wrapped Plugin its own Store (a SQLite queue, a JSONL file).
+A Postgres Store is its database's whole outbox table, so each wrapped Plugin
+on Postgres needs a database or schema of its own (see
+[Known limits](persistence.md#known-limits)).
 
 `ReactionOutboxStore` operations return Effects. This lets SQL adapters join an
 active Slice Store transaction without AsyncLocalStorage or a Promise bridge.

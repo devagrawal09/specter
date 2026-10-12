@@ -1,7 +1,7 @@
 # Persistence API
 
 **Imports:** `@specter-ts/memory`, `@specter-ts/jsonl`, `@specter-ts/sqlite`,
-`@specter-ts/sqlite-node`, `@specter-ts/postgres`
+`@specter-ts/postgres`
 
 Event Log stores authoritative commits. Slice Stores own app-defined State,
 cursor, ORM access, and transaction policy.
@@ -143,14 +143,16 @@ not yet in the `release:*` scripts.
 | `SqliteDatabaseContext<TConnection>` | The host's database: `execute` a statement, `use` the connection a statement runs on now, run a nestable `transaction`. |
 | `createSqliteDatabaseContext(client)` | The database over a libSQL client; `use` gives the libSQL connection. |
 | `createSqlClientDatabaseContext(sql, { transaction })` | The database over an Effect `SqlClient` (`effect/sql`), with the host's transaction runner. |
+| `createNodeSqliteDatabaseContext(database)` | The database over one `node:sqlite` `DatabaseSync`; `use` gives the `DatabaseSync`. |
 | `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log, with the `onAppend` and `onPurge` hooks. |
 | `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store, versioned. |
 | `createSqliteSliceSnapshotStore` | `SliceSnapshotStore` in `specter_slice_snapshots`. |
 | `createSqliteReactionOutboxStore` | Durable outbox Store, one queue per Plugin. |
 | `createSqliteReactionSchedulerService` / `createSqliteReactionSchedulerLayer` | Durable, multi-runtime Reaction coordination. |
-| `sqliteEventLogSchema`, `sqliteSliceStoreSchema`, `sqliteSliceSnapshotSchema`, `sqliteReactionOutboxSchema`, `sqliteReactionSchedulerSchema` | The statements that create each store's tables and indexes. |
-| `specterSqliteSchema` | All of them. |
-| `prepareSpecterSqlite` and `prepareSqlite*` | Run them (the first also turns on WAL and a busy timeout). |
+| `sqliteEventLogMigrations`, `sqliteSliceStoreMigrations`, `sqliteSliceSnapshotMigrations`, `sqliteReactionOutboxMigrations`, `sqliteReactionSchedulerMigrations` | Each store's tables, as an ordered list of versioned migrations (`SqliteMigration`). |
+| `specterSqliteMigrations` | All of them, store by store. |
+| `migrateSpecterSqlite(context, migrations)` | Applies the migrations a database lacks and records them in `specter_migrations`. |
+| `prepareSpecterSqlite(context)` | Turns on WAL and a busy timeout, and applies `specterSqliteMigrations`. |
 | `createSpecterSqlitePersistence` | Every store on one database. |
 
 Specter's SQLite stores run on a database the host provides, so they share
@@ -189,23 +191,85 @@ Slice Store transaction, an outbox enqueue and the host's own writes inside one
 transaction commit or roll back together. Without a runner the context uses
 `sql.withTransaction`, which begins a deferred transaction; begin it
 immediately when several processes write the database. `context.transaction`
-nests: inside an active transaction it joins it (libSQL) or opens a savepoint
-(`SqlClient`).
+nests: inside an active transaction it joins it (libSQL, `node:sqlite`) or
+opens a savepoint (`SqlClient`).
 
-### Who creates the tables
+A host on `node:sqlite` opens and closes its `DatabaseSync` and hands it to
+Specter:
 
-The host does, when it owns the database's migrations: the migration that
-introduces Specter runs the statements of the stores it uses
-(`sqliteEventLogSchema` and the others, `CREATE ... IF NOT EXISTS`). A host
-without migrations runs `prepareSpecterSqlite(context)`, or a store's
-`prepareSqlite*`, at startup. Table names are fixed (`specter_events`,
-`specter_event_keys`, `specter_event_commits`, `specter_event_purges`,
-`specter_slice_states`,
+```ts
+const database = new DatabaseSync('./data/app.db')
+const context = createNodeSqliteDatabaseContext(database)
+await Effect.runPromise(prepareSpecterSqlite(context))
+```
+
+The context has the one connection, so its transactions (`BEGIN IMMEDIATE`)
+are serialized in the process, and a statement run outside a transaction
+waits for the active one to end instead of running inside it. The package
+reads the connection by its shape and never imports `node:sqlite`.
+
+### Migrations
+
+Each store's tables are an ordered list of migrations, numbered from 1 per
+store: `{ store, version, description, statements }`. A migration runs once,
+on a database where its store is at the version before it. A released
+migration never changes; a Specter release that changes a store's tables adds
+its next version, so a database that has the earlier ones gets only the new
+one. Version 1 of every store is the schema of Specter 0.4.
+
+A host without migrations of its own lets Specter apply them at startup:
+
+```ts
+// Every store, with WAL and a busy timeout.
+await Effect.runPromise(prepareSpecterSqlite(context))
+// Or only the stores it uses.
+await Effect.runPromise(
+  migrateSpecterSqlite(context, [
+    ...sqliteEventLogMigrations,
+    ...sqliteSliceSnapshotMigrations,
+  ]),
+)
+```
+
+`migrateSpecterSqlite` runs in one transaction: it applies the migrations a
+database lacks, in order, records each in `specter_migrations (store,
+version, applied_at)`, and answers the ones it applied, so a second run or a
+second process finds nothing to do. It refuses a database where a store is
+at a version the list does not have (a newer Specter migrated it), a list
+that skips a version, and a statement that fails, such as one creating a
+table the database already has; a refused run leaves the database as it was.
+A database whose Specter tables were created before the migrations therefore
+fails on its first table: recreate it, or, when its tables are Specter 0.4's,
+record version 1 of each store in `specter_migrations` by hand.
+
+A host that owns the database's migrations embeds Specter's instead: one of
+its migrations runs the statements of the Specter migrations it brings in,
+in order, and its own journal records them; `specter_migrations` then never
+exists. When a Specter release adds a version, the host adds a migration
+that runs it:
+
+```ts
+// The host's migration that introduces Specter: each store at version 1.
+const specter = [
+  ...sqliteEventLogMigrations,
+  ...sqliteReactionOutboxMigrations,
+].filter((migration) => migration.version === 1)
+for (const migration of specter)
+  for (const statement of migration.statements) yield* tx.run(statement)
+```
+
+A host keeps its embedded list honest by checking, in a test or its
+migration check, that every migration of the stores it uses is applied by
+one of its own; a Specter upgrade that adds a version then fails the check
+until the host adds the migration.
+
+Table names are fixed (`specter_events`, `specter_event_keys`,
+`specter_event_commits`, `specter_event_purges`, `specter_slice_states`,
 `specter_slice_snapshots`, `specter_reaction_outbox`,
-`specter_reaction_scheduler`), so one database holds one Specter app's
-tables; the host's own tables sit beside them and may reference them (an
-index of the log by `specter_events.event_order`). A Specter release that
-changes these statements says what moves an existing database.
+`specter_reaction_scheduler`, `specter_migrations`), so one database holds one
+Specter app's tables (see [Known limits](#known-limits)); the host's own
+tables sit beside them and may reference them (an index of the log by
+`specter_events.event_order`).
 
 ### Event Log
 
@@ -293,46 +357,57 @@ requiring a later Command. An explicit request rechecks even a completed
 scheduler boundary, so resetting a rebuildable Slice cursor cannot be masked by
 stale coordination state.
 
-## Native Node SQLite
-
-| Export | Purpose |
-| --- | --- |
-| `openNodeSqlite` | Open `DatabaseSync` context. |
-| `createNodeSqliteEventLogLayer` | Event Log Layer. |
-| `createNodeSqliteSliceStoreLayer` | App Store Layer. |
-| `createSpecterNodeSqliteLayer` | Scoped DB lifecycle Layer. |
-
-Nested Effect transactions join active `BEGIN IMMEDIATE` transaction. The
-Event Log keeps keys in `specter_event_keys` and its purges in
-`specter_event_purges`, as the SQLite adapter does, and pages its reads; the
-Slice Store keeps each Slice's version and `reached` in `specter_slice_states`
-and ignores State of another version.
-
 ## Postgres
 
 | Export | Purpose |
 | --- | --- |
-| `prepareSpecterPostgres` | Create tables/indexes. |
+| `postgresEventLogMigrations`, `postgresSliceStoreMigrations`, `postgresReactionOutboxMigrations` | Each store's tables, as an ordered list of versioned migrations (`PostgresMigration`). |
+| `specterPostgresMigrations` | All of them, store by store. |
+| `migrateSpecterPostgres(pool, migrations)` | Applies the migrations a database lacks and records them in `specter_migrations`. |
 | `createPostgresDatabaseContext` | Nestable Effect transaction context. |
 | `createPostgresEventLogService` / `createPostgresEventLogLayer` | Event Log. |
 | `createPostgresSliceStoreService` / `createPostgresSliceStoreLayer` | JSONB Store. |
 | `createPostgresReactionOutboxStore` | Concurrent durable outbox. |
 | `createSpecterPostgresPersistence` | Shared context and factories. |
 
+Migrations work as SQLite's do (see [Migrations](#migrations)), and a host
+with its own migrations embeds them the same way: `migrateSpecterPostgres`
+applies what a database lacks in one transaction, under an advisory lock so
+two processes never migrate at once, and Postgres runs the statements in the
+transaction, so a refused run leaves nothing behind.
+
+```ts
+await migrateSpecterPostgres(pool, specterPostgresMigrations)
+```
+
 Event Log append uses advisory lock. Slice transactions use per-Slice advisory
 lock. Outbox claims use row locking. Nested operations join active connection.
-`prepareSpecterPostgres` creates `specter_event_keys (event_order, name,
+The Event Log keeps `specter_event_keys (event_order, name,
 value)` with the same key and index as SQLite; the scoped check matches its
 `(name, value)` pairs against the condition's in one query, and
 `specter_event_purges` keeps a purge's high-water marks as in SQLite; a purge
 takes the append's advisory lock. Reads are paged with `LIMIT`. The JSONB
 Store keeps each Slice's version and `reached` beside its State and ignores
 State of another version. The outbox Store has one queue per table
-and no concurrency keys, lease renewal or wake-ups.
+and no concurrency keys, lease renewal or wake-ups (see
+[Known limits](#known-limits)).
+
+## Known limits
+
+- **The Postgres outbox has no parity with SQLite's.** A Postgres outbox
+  Store is the whole table: it has no queues, so a database (or schema)
+  holds one outboxed Plugin's jobs; it keeps no concurrency keys and renews
+  no leases, so a job must finish within its lease or run again; and it has
+  no `subscribe`, so its worker polls, nor `release` or `prune`. The SQLite
+  outbox has all of them.
+- **One app per database.** Table names are fixed (`specter_events` and the
+  others), with no prefix option, so two Specter apps cannot share a
+  database or schema: give each its own (a Postgres schema on the
+  `search_path` works).
 
 ## Adapter rules
 
-- Prepare schema before runtime acquisition.
+- Migrate the schema before runtime acquisition.
 - Use one shared database context for atomic nested operations.
 - Lock before invoking Store transaction callback.
 - Invoke callback exactly once; never optimistic-replay developer code.
