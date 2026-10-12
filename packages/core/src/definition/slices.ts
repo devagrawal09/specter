@@ -4,12 +4,7 @@ import type { Effect, Scope } from 'effect'
 
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
 import type { SpecterEffectError } from '../effect/runtime'
-import type {
-  Event,
-  EventDefinition,
-  EventDraft,
-  PersistedEvent,
-} from './events'
+import type { EventDefinition, EventDraft, PersistedEvent } from './events'
 import type {
   CommandScenario,
   NonEmptyScenarios,
@@ -36,26 +31,30 @@ export type ApplyEventDefinition = {
   >
 }
 
+/**
+ * The Event an apply handler receives for a definition: its typed payload,
+ * with the ID, time, order and keys the Event Log recorded it under.
+ */
 export type EventForDefinition<TDefinition> =
   TDefinition extends EventDefinition<
     infer TType extends string,
     infer TPayload
   >
-    ? Event<TType, TPayload>
+    ? PersistedEvent<TType, TPayload>
     : TDefinition extends {
           readonly type: infer TType extends string
           readonly decode: (payload: unknown) => Promise<infer TPayload>
         }
-      ? Event<TType, TPayload>
+      ? PersistedEvent<TType, TPayload>
       : never
 
-type ApplyHandler<TEvent extends Event, TState> = {
+type ApplyHandler<TEvent extends PersistedEvent, TState> = {
   bivarianceHack(event: TEvent, state: TState): Promise<void>
 }['bivarianceHack']
 
 export type ApplyRegistration<TState = unknown> = {
   readonly event: ApplyEventDefinition
-  readonly handle: ApplyHandler<Event, TState>
+  readonly handle: ApplyHandler<PersistedEvent, TState>
 }
 
 /**

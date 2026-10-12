@@ -456,9 +456,12 @@ export function replay(
         )
       }
 
-      const id = `scenario-event-${index + 1}`
+      // A Given Event is recorded as if appended alone at its position: its
+      // order is its one-based position, its time that many seconds after
+      // the Unix epoch, and its keys those its definition derives.
       const order = index + 1
-      const recordedAt = '1970-01-01T00:00:00.000Z'
+      const id = `scenario-event-${order}`
+      const recordedAt = scenarioRecordedAt(order)
       const payload = yield* Effect.tryPromise({
         try: () => definition.decode(scenarioEvent.examplePayload),
         catch: (cause) => cause,
@@ -468,6 +471,7 @@ export function replay(
           `Event schema transformed Scenario Event payload for "${scenarioEvent.eventType}".`,
         )
       }
+      const keys = eventKeys(definition, payload)
 
       for (const implementation of implementations) {
         const apply = implementation.apply.find(
@@ -486,7 +490,9 @@ export function replay(
                       type: scenarioEvent.eventType,
                       payload,
                       id,
+                      order,
                       recordedAt,
+                      keys,
                     },
                     write,
                   ),
@@ -498,6 +504,14 @@ export function replay(
       }
     }
   })
+}
+
+/**
+ * When the Given Event at one-based `order` is recorded in a Scenario: that
+ * many seconds after the Unix epoch, so later Events are recorded later.
+ */
+export function scenarioRecordedAt(order: number) {
+  return new Date(order * 1000).toISOString()
 }
 
 function resolveStore(implementation: SliceRegistration) {

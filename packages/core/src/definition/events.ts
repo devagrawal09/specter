@@ -7,19 +7,29 @@ export type EventDraft<TType extends string = string, TPayload = unknown> = {
   readonly payload: TPayload
 }
 
-export type Event<
-  TType extends string = string,
-  TPayload = unknown,
-> = EventDraft<TType, TPayload> & {
-  readonly id: string
-  readonly recordedAt: string
-}
-
+/**
+ * An Event as the Event Log recorded it: its draft, the ID and time it was
+ * recorded under, its position in the log, and the keys stored with it. Apply
+ * handlers receive it, so a fold can read when and in what order its facts
+ * were recorded.
+ */
 export type PersistedEvent<
   TType extends string = string,
   TPayload = unknown,
-> = Event<TType, TPayload> & {
+> = EventDraft<TType, TPayload> & {
+  /** Unique in the log. */
+  readonly id: string
+  /** ISO-8601: when the Event Log appended it. */
+  readonly recordedAt: string
+  /** Its unique global position, strictly ascending in the log. */
   readonly order: number
+  /**
+   * The named keys stored with it, derived from its payload when it was
+   * appended; empty for an unkeyed Event. They are the index the scoped
+   * compare-and-swap and keyed reads use, so a changed key function does not
+   * change them.
+   */
+  readonly keys: Readonly<Record<string, string>>
 }
 
 /**

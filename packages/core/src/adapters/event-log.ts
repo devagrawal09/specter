@@ -16,8 +16,9 @@ export type EventLogAppendResult = EventLogCommit & {
 
 /**
  * An Event to append, with the named keys core derived from its payload. The
- * Event Log stores the keys with the Event: its scoped compare-and-swap and
- * keyed reads use them, and it never derives keys itself.
+ * Event Log stores the keys with the Event and returns them with it: its
+ * scoped compare-and-swap and keyed reads use them, and it never derives keys
+ * itself.
  */
 export type EventLogDraft = EventDraft & {
   /** One value per key name the Event carries; empty for an unkeyed Event. */

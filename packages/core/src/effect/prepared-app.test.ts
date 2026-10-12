@@ -401,6 +401,7 @@ function makeEventLogService(): EventLogService {
     type: string
     payload: unknown
     recordedAt: string
+    keys: Readonly<Record<string, string>>
   }> = []
   const commits: EventLogCommit[] = []
   return {
@@ -427,6 +428,7 @@ function makeEventLogService(): EventLogService {
           id: `event-${events.length + index + 1}`,
           order: events.length + index + 1,
           recordedAt: new Date(0).toISOString(),
+          keys: draft.keys,
         }))
         events.push(...persisted)
         const commit = {

@@ -55,6 +55,29 @@ export function prepareNodeSqliteEventLog(context: NodeSqliteContext) {
   `)
 }
 
+/**
+ * An Event's columns, with the keys stored with it as one JSON object, for a
+ * query whose `specter_events` alias is `e`.
+ */
+const eventColumns = `e.id, e.event_order, e.type, e.payload, e.recorded_at,
+  (SELECT json_group_object(stored.name, stored.value)
+    FROM specter_event_keys stored
+    WHERE stored.event_order = e.event_order) AS event_keys`
+
+/** The keys stored with an Event, from their JSON object column. */
+function storedKeys(value: unknown): Readonly<Record<string, string>> {
+  const keys: unknown = JSON.parse(requireString(value, 'event keys'))
+  if (
+    typeof keys !== 'object' ||
+    keys === null ||
+    Array.isArray(keys) ||
+    !Object.values(keys).every((key) => typeof key === 'string')
+  ) {
+    throw new Error('Expected SQLite event keys to be an object of strings')
+  }
+  return keys as Readonly<Record<string, string>>
+}
+
 export function createNodeSqliteEventLogService(
   context: NodeSqliteContext,
   options: NodeSqliteEventLogOptions = {},
@@ -75,6 +98,7 @@ export function createNodeSqliteEventLogService(
       type: requireString(row.type, 'event type'),
       payload: JSON.parse(requireString(row.payload, 'event payload')),
       recordedAt,
+      keys: storedKeys(row.event_keys),
     }
   }
 
@@ -83,8 +107,8 @@ export function createNodeSqliteEventLogService(
     const placeholders = eventTypes.map(() => '?').join(', ')
     return context.database
       .prepare(
-        `SELECT id, event_order, type, payload, recorded_at
-         FROM specter_events
+        `SELECT ${eventColumns}
+         FROM specter_events e
          WHERE event_order > ? AND type IN (${placeholders})
          ORDER BY event_order ASC`,
       )
@@ -147,7 +171,7 @@ export function createNodeSqliteEventLogService(
   ) {
     return context.database
       .prepare(
-        `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+        `SELECT ${eventColumns}
          FROM specter_event_keys k
          JOIN specter_events e ON e.event_order = k.event_order
          WHERE k.name = ? AND k.value = ? AND k.event_order > ?
@@ -188,8 +212,8 @@ export function createNodeSqliteEventLogService(
     }
     const events = context.database
       .prepare(
-        `SELECT id, event_order, type, payload, recorded_at
-         FROM specter_events WHERE event_order BETWEEN ? AND ?
+        `SELECT ${eventColumns}
+         FROM specter_events e WHERE event_order BETWEEN ? AND ?
          ORDER BY event_order ASC`,
       )
       .all(first, version)
@@ -264,7 +288,14 @@ export function createNodeSqliteEventLogService(
       for (const [name, value] of Object.entries(draft.keys)) {
         insertKey.run(order, name, value)
       }
-      return { type: draft.type, payload: draft.payload, id, order, recordedAt }
+      return {
+        type: draft.type,
+        payload: draft.payload,
+        id,
+        order,
+        recordedAt,
+        keys: { ...draft.keys },
+      }
     })
     const committedVersion = events.at(-1)?.order ?? version
     const committedAt = now().toISOString()

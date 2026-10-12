@@ -84,7 +84,15 @@ const commandImplementation = commandApplyStep
     const eventType: _EventType = true
     const payload: _Payload = true
     const stateType: _State = true
-    void [eventType, payload, stateType, applied.id, applied.recordedAt]
+    // A fold reads when and in what order its Events were recorded, and the
+    // keys stored with them.
+    type _Order = Expect<Equal<typeof applied.order, number>>
+    type _Keys = Expect<
+      Equal<typeof applied.keys, Readonly<Record<string, string>>>
+    >
+    const order: _Order = true
+    const keys: _Keys = true
+    void [eventType, payload, stateType, order, keys, applied.recordedAt]
     state.total += applied.payload.amount
   })
   .handle(async (command, state) => {

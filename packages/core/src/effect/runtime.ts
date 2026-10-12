@@ -1393,7 +1393,8 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
 
     /**
      * The distinct values of a keyed Reaction's key that a commit's Events
-     * carry, in the order they appear. Every Event it applies carries one.
+     * carry, in the order they appear, from the keys stored with them. Every
+     * Event it applies carries one.
      */
     function commitKeys(
       reaction: AnyReaction,
@@ -1404,10 +1405,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         try: () => [
           ...new Set(
             events.map((event) => {
-              const value = eventKeys(
-                eventDefinitions.get(event.type),
-                event.payload,
-              )[name]
+              // The stored keys, not the payload's: the index is what the
+              // Event was appended with, whatever the key function says now.
+              const value = event.keys[name]
               if (value === undefined) {
                 throw new TypeError(
                   `Event ${event.order} ("${event.type}") carries no "${name}" key.`,
@@ -1530,6 +1530,12 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         return Effect.fail(new SpecterUnknownEventError(event.type))
       return fromPromise(
         async () => {
+          if (!isStoredKeys(event.keys)) {
+            throw new SpecterInfrastructureError(
+              `Event Log returned Event ${event.order} ("${event.type}") without the keys stored with it.`,
+              undefined,
+            )
+          }
           const payload = await definition.decode(event.payload)
           if (!valuesEqual(payload, event.payload)) {
             throw new SpecterInfrastructureError(
@@ -1909,6 +1915,15 @@ function preservePublicError(message: string) {
     isPublicError(cause)
       ? cause
       : new SpecterInfrastructureError(message, cause)
+}
+
+/** Whether an Event Log returned the keys stored with an Event. */
+function isStoredKeys(keys: unknown) {
+  return (
+    isObject(keys) &&
+    !Array.isArray(keys) &&
+    Object.values(keys).every((value) => typeof value === 'string')
+  )
 }
 
 const commandIdempotencyModes: ReadonlySet<string> =

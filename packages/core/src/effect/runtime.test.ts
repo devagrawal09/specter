@@ -2676,11 +2676,13 @@ function makeEventLogService(
     type: string
     payload: unknown
     recordedAt: string
+    keys: Readonly<Record<string, string>>
   }> = initial.map((draft, index) => ({
     ...draft,
     id: `seed-${index + 1}`,
     order: index + 1,
     recordedAt: new Date(0).toISOString(),
+    keys: {},
   }))
   const commitList: EventLogCommit[] =
     events.length > 0
@@ -2749,9 +2751,10 @@ function makeEventLogService(
           const persisted = drafts.map((draft, index) => ({
             type: draft.type,
             payload: draft.payload,
-            id: `event-${events.length + index + 1}`,
+            id: draft.id ?? `event-${events.length + index + 1}`,
             order: events.length + index + 1,
-            recordedAt: new Date(0).toISOString(),
+            recordedAt: draft.recordedAt ?? new Date(0).toISOString(),
+            keys: draft.keys,
           }))
           events.push(...persisted)
           onAppend?.()

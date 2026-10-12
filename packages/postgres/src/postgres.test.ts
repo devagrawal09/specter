@@ -111,6 +111,19 @@ class FakePostgresPool implements PostgresPool {
     }
   }
 
+  // An Event row as the adapter selects it: with its stored keys as one
+  // JSON object.
+  #withKeys(event: EventRow) {
+    return {
+      ...event,
+      event_keys: Object.fromEntries(
+        this.keys
+          .filter((key) => key.event_order === event.event_order)
+          .map((key) => [key.name, key.value]),
+      ),
+    }
+  }
+
   async #query(
     sql: string,
     parameters: readonly unknown[],
@@ -151,11 +164,13 @@ class FakePostgresPool implements PostgresPool {
       const first = Number(parameters[0])
       const last = Number(parameters[1])
       return {
-        rows: this.events.filter(
-          (event) =>
-            Number(event.event_order) >= first &&
-            Number(event.event_order) <= last,
-        ),
+        rows: this.events
+          .filter(
+            (event) =>
+              Number(event.event_order) >= first &&
+              Number(event.event_order) <= last,
+          )
+          .map((event) => this.#withKeys(event)),
       }
     }
     if (
@@ -165,11 +180,13 @@ class FakePostgresPool implements PostgresPool {
       const afterOrder = Number(parameters[0])
       const eventTypes = new Set(parameters[1] as readonly string[])
       return {
-        rows: this.events.filter(
-          (event) =>
-            Number(event.event_order) > afterOrder &&
-            eventTypes.has(event.type),
-        ),
+        rows: this.events
+          .filter(
+            (event) =>
+              Number(event.event_order) > afterOrder &&
+              eventTypes.has(event.type),
+          )
+          .map((event) => this.#withKeys(event)),
       }
     }
     if (normalized.startsWith('INSERT INTO specter_event_keys')) {
@@ -222,7 +239,11 @@ class FakePostgresPool implements PostgresPool {
               Number(key.event_order) > afterOrder,
           )
           .slice(0, limit)
-          .map((key) => this.events[Number(key.event_order) - 1]),
+          .map((key) =>
+            this.#withKeys(
+              this.events[Number(key.event_order) - 1] as EventRow,
+            ),
+          ),
       }
     }
     if (normalized.startsWith('INSERT INTO specter_events')) {

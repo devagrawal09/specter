@@ -67,6 +67,29 @@ export async function preparePostgresEventLog(pool: PostgresPool) {
     ON specter_event_keys(name, value, event_order)`)
 }
 
+/**
+ * An Event's columns, with the keys stored with it as one JSON object, for a
+ * query whose `specter_events` alias is `e`.
+ */
+const eventColumns = `e.id, e.event_order, e.type, e.payload, e.recorded_at,
+  (SELECT COALESCE(jsonb_object_agg(stored.name, stored.value), '{}'::jsonb)
+    FROM specter_event_keys stored
+    WHERE stored.event_order = e.event_order) AS event_keys`
+
+/** The keys stored with an Event, from their JSON object column. */
+function storedKeys(value: unknown): Readonly<Record<string, string>> {
+  const keys = postgresJson<unknown>(value, 'event keys')
+  if (
+    typeof keys !== 'object' ||
+    keys === null ||
+    Array.isArray(keys) ||
+    !Object.values(keys).every((key) => typeof key === 'string')
+  ) {
+    throw new Error('Expected Postgres event keys to be an object of strings')
+  }
+  return keys as Readonly<Record<string, string>>
+}
+
 export function createPostgresEventLogService(
   pool: PostgresPool,
   options: PostgresEventLogOptions = {},
@@ -84,6 +107,7 @@ export function createPostgresEventLogService(
       type: postgresString(row.type, 'event type'),
       payload: postgresJson(row.payload, 'event payload'),
       recordedAt: postgresDate(row.recorded_at, 'recorded time').toISOString(),
+      keys: storedKeys(row.event_keys),
     }
   }
 
@@ -94,8 +118,8 @@ export function createPostgresEventLogService(
   ) {
     if (!eventTypes.length) return []
     const result = await connection.query(
-      `SELECT id, event_order, type, payload, recorded_at
-       FROM specter_events
+      `SELECT ${eventColumns}
+       FROM specter_events e
        WHERE event_order > $1 AND type = ANY($2::text[])
        ORDER BY event_order ASC`,
       [afterOrder, eventTypes],
@@ -156,7 +180,7 @@ export function createPostgresEventLogService(
     page: EventLogKeyPage,
   ) {
     const result = await connection.query(
-      `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+      `SELECT ${eventColumns}
        FROM specter_event_keys k
        JOIN specter_events e ON e.event_order = k.event_order
        WHERE k.name = $1 AND k.value = $2 AND k.event_order > $3
@@ -200,8 +224,8 @@ export function createPostgresEventLogService(
     )
     const version = postgresNumber(row.last_event_order, 'commit version')
     const eventRows = await connection.query(
-      `SELECT id, event_order, type, payload, recorded_at
-       FROM specter_events
+      `SELECT ${eventColumns}
+       FROM specter_events e
        WHERE event_order BETWEEN $1 AND $2
        ORDER BY event_order ASC`,
       [firstOrder, version],
@@ -300,6 +324,7 @@ export function createPostgresEventLogService(
         id,
         order,
         recordedAt,
+        keys: { ...draft.keys },
       })
     }
     const committedVersion = events.at(-1)?.order ?? version

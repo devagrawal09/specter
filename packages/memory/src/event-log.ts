@@ -27,17 +27,19 @@ export function createMemoryEventLog(
   const recordedAt =
     options.recordedAt ?? ((order: number) => new Date(order - 1).toISOString())
   const events: PersistedEvent[] = []
-  // Each Event's stored keys, by order, and the orders carrying each key.
-  const keysByOrder = new Map<number, Readonly<Record<string, string>>>()
+  // The orders of the Events carrying each key.
   const ordersByKey = new Map<string, number[]>()
   const commits: EventLogCommit[] = []
   const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
-  const copyEvent = (event: PersistedEvent): PersistedEvent => ({ ...event })
+  const copyEvent = (event: PersistedEvent): PersistedEvent => ({
+    ...event,
+    keys: { ...event.keys },
+  })
   // Whether a stored Event is one the condition's decision read.
   const read = (event: PersistedEvent, condition: EventLogAppendCondition) => {
     if (!condition.eventTypes.includes(event.type)) return false
     if (!condition.keys) return true
-    const carried = keysByOrder.get(event.order) ?? {}
+    const carried = event.keys
     return Object.entries(condition.keys).some(
       ([name, values]) =>
         Object.hasOwn(carried, name) &&
@@ -119,6 +121,7 @@ export function createMemoryEventLog(
           }
           const persisted = drafts.map((draft, index): PersistedEvent => {
             const order = version + index + 1
+            const id = eventId(order, draft)
             const time = recordedAt(order, draft)
             if (Number.isNaN(Date.parse(time))) {
               throw new Error('Event recordedAt must be an ISO-8601 timestamp')
@@ -126,25 +129,30 @@ export function createMemoryEventLog(
             return {
               type: draft.type,
               payload: draft.payload,
-              id: eventId(order, draft),
+              id,
               order,
               recordedAt: time,
+              keys: { ...draft.keys },
             }
           })
           events.push(...persisted)
-          for (const [index, draft] of drafts.entries()) {
-            const order = version + index + 1
-            keysByOrder.set(order, { ...draft.keys })
-            for (const [name, value] of Object.entries(draft.keys)) {
+          for (const event of persisted) {
+            for (const [name, value] of Object.entries(event.keys)) {
               const key = keyOf(name, value)
-              ordersByKey.set(key, [...(ordersByKey.get(key) ?? []), order])
+              ordersByKey.set(key, [
+                ...(ordersByKey.get(key) ?? []),
+                event.order,
+              ])
             }
           }
+          const lastOrder = version + drafts.length
           const commit: EventLogCommit = {
             events: persisted,
-            version: persisted.at(-1)?.order ?? version,
-            committedAt:
-              persisted.at(-1)?.recordedAt ?? new Date().toISOString(),
+            version: lastOrder,
+            committedAt: recordedAt(
+              lastOrder,
+              drafts.at(-1) as (typeof drafts)[number],
+            ),
             idempotencyKey: appendOptions.idempotencyKey,
             fingerprint: appendOptions.fingerprint,
           }
@@ -159,7 +167,6 @@ export function createMemoryEventLog(
     inspect: () => events.map(copyEvent),
     reset: () => {
       events.length = 0
-      keysByOrder.clear()
       ordersByKey.clear()
       commits.length = 0
       commitsByIdempotencyKey.clear()

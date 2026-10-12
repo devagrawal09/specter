@@ -1,5 +1,4 @@
 export type {
-  Event,
   EventDefinition,
   EventDefinitionOptions,
   EventDraft,

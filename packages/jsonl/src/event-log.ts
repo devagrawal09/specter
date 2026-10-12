@@ -109,13 +109,15 @@ export function createJsonlEventLog(
     }
   }
   for (const commit of commits) index(commit)
-  // A stored Event as the Event Log returns it: its keys stay in the file.
+  // A stored Event as the Event Log returns it, with the keys it was
+  // appended with.
   const copyEvent = (event: StoredEvent): PersistedEvent => ({
     id: event.id,
     order: event.order,
     type: event.type,
     payload: event.payload,
     recordedAt: event.recordedAt,
+    keys: { ...event.keys },
   })
   // Whether a stored Event is one the condition's decision read.
   const read = (event: StoredEvent, condition: EventLogAppendCondition) => {
@@ -302,8 +304,11 @@ export function createJsonlEventLogLayer(
   )
 }
 
-/** An Event as a commit line stores it: with the keys it was appended with. */
-type StoredEvent = PersistedEvent & {
+/**
+ * An Event as a commit line stores it: with the keys it was appended with,
+ * omitted when it has none.
+ */
+type StoredEvent = Omit<PersistedEvent, 'keys'> & {
   readonly keys?: Readonly<Record<string, string>>
 }
 

@@ -88,6 +88,29 @@ export async function prepareSqliteEventLog(client: Client) {
   )
 }
 
+/**
+ * An Event's columns, with the keys stored with it as one JSON object, for a
+ * query whose `specter_events` alias is `e`.
+ */
+const eventColumns = `e.id, e.event_order, e.type, e.payload, e.recorded_at,
+  (SELECT json_group_object(stored.name, stored.value)
+    FROM specter_event_keys stored
+    WHERE stored.event_order = e.event_order) AS event_keys`
+
+/** The keys stored with an Event, from their JSON object column. */
+function storedKeys(value: unknown): Readonly<Record<string, string>> {
+  const keys: unknown = JSON.parse(requireString(value, 'event keys'))
+  if (
+    typeof keys !== 'object' ||
+    keys === null ||
+    Array.isArray(keys) ||
+    !Object.values(keys).every((key) => typeof key === 'string')
+  ) {
+    throw new Error('Expected SQLite event keys to be an object of strings')
+  }
+  return keys as Readonly<Record<string, string>>
+}
+
 export function createSqliteEventLogService(
   client: Client,
   options: SqliteEventLogOptions = {},
@@ -127,6 +150,7 @@ export function createSqliteEventLogService(
       type: requireString(row.type, 'event type'),
       payload: codec.decode(requireString(row.payload, 'event payload')),
       recordedAt,
+      keys: storedKeys(row.event_keys),
     }
   }
 
@@ -137,8 +161,8 @@ export function createSqliteEventLogService(
   ) {
     if (!eventTypes.length) return []
     const result = await connection.execute({
-      sql: `SELECT id, event_order, type, payload, recorded_at
-        FROM specter_events
+      sql: `SELECT ${eventColumns}
+        FROM specter_events e
         WHERE event_order > ?
           AND type IN (${eventTypes.map(() => '?').join(', ')})
         ORDER BY event_order ASC`,
@@ -201,7 +225,7 @@ export function createSqliteEventLogService(
     page: EventLogKeyPage,
   ) {
     const result = await connection.execute({
-      sql: `SELECT e.id, e.event_order, e.type, e.payload, e.recorded_at
+      sql: `SELECT ${eventColumns}
         FROM specter_event_keys k
         JOIN specter_events e ON e.event_order = k.event_order
         WHERE k.name = ? AND k.value = ? AND k.event_order > ?
@@ -249,8 +273,8 @@ export function createSqliteEventLogService(
       throw new Error('Expected SQLite commit time to be ISO-8601')
     }
     const events = await connection.execute({
-      sql: `SELECT id, event_order, type, payload, recorded_at
-        FROM specter_events
+      sql: `SELECT ${eventColumns}
+        FROM specter_events e
         WHERE event_order BETWEEN ? AND ?
         ORDER BY event_order ASC`,
       args: [firstOrder, version],
@@ -355,6 +379,7 @@ export function createSqliteEventLogService(
         id,
         order,
         recordedAt,
+        keys: { ...draft.keys },
       })
     }
     const committedVersion = events.at(-1)?.order ?? version

@@ -6,6 +6,7 @@ import type {
   EventLogService,
   SliceStoreService,
 } from '../adapters'
+import type { PersistedEvent } from '../definition'
 import { SpecterVersionConflictError } from '../runtime/errors'
 
 export class AdapterConformanceFailure extends Error {
@@ -58,11 +59,12 @@ export function eventLogConformance<TCreateError, TRequirements>(
     )
     yield* requireInvariant(
       'event-log',
-      'persisted Events carry type, payload and metadata only',
+      'persisted Events carry type, payload, metadata and keys only',
       first.events.every(
         (event) =>
           Object.keys(event).sort().join(',') ===
-          'id,order,payload,recordedAt,type',
+            'id,keys,order,payload,recordedAt,type' &&
+          Object.keys(event.keys).length === 0,
       ),
       first.events,
     )
@@ -155,6 +157,28 @@ export function eventLogConformance<TCreateError, TRequirements>(
         keyed.events.map((event) => event.order).join(',') === '4,5,6',
       keyed,
     )
+    // The keys stored with each Event come back with it from every read.
+    const keysOf = (events: readonly PersistedEvent[]) =>
+      events.map((event) => JSON.stringify(sortedKeys(event.keys))).join(' ')
+    const storedKeys =
+      '{"item":"a","list":"l"} {"item":"b","list":"a"} {"list":"l"}'
+    const queriedKeys = yield* service.query(3, [
+      'item-recorded',
+      'list-recorded',
+    ])
+    const committedKeys = yield* service.commitsAfter(3)
+    yield* requireInvariant(
+      'event-log',
+      'every read returns each Event with the keys stored with it',
+      keysOf(keyed.events) === storedKeys &&
+        keysOf(queriedKeys) === storedKeys &&
+        committedKeys.length === 1 &&
+        keysOf(committedKeys[0]?.events ?? []) === storedKeys &&
+        (yield* service.query(0, ['first-recorded'])).every(
+          (event) => Object.keys(event.keys).length === 0,
+        ),
+      { keyed, queriedKeys, committedKeys },
+    )
 
     const capabilities = service.capabilities
     yield* requireInvariant(
@@ -222,6 +246,7 @@ export function eventLogConformance<TCreateError, TRequirements>(
         byList.map((event) => event.order).join(',') === '4,6' &&
           byList[0]?.type === 'item-recorded' &&
           (byList[0]?.payload as { readonly item?: unknown }).item === 'a' &&
+          keysOf(byList) === '{"item":"a","list":"l"} {"list":"l"}' &&
           byListPage.map((event) => event.order).join(',') === '6' &&
           byItem.map((event) => event.order).join(',') === '4' &&
           byOtherName.length === 0,
@@ -239,6 +264,15 @@ export function eventLogConformance<TCreateError, TRequirements>(
       )
     }
   })
+}
+
+/** Keys by name in a stable order, to compare them as text. */
+function sortedKeys(keys: Readonly<Record<string, string>>) {
+  return Object.fromEntries(
+    Object.entries(keys).sort(([left], [right]) =>
+      left < right ? -1 : left > right ? 1 : 0,
+    ),
+  )
 }
 
 /**

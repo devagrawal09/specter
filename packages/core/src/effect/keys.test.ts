@@ -77,6 +77,7 @@ function makeLog(
         id: `event-${order}`,
         order,
         recordedAt: new Date(0).toISOString(),
+        keys: draft.keys,
       }
     })
     events.push(...persisted)
