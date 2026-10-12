@@ -464,8 +464,9 @@ export type SpecterRuntimeOptions = {
   /**
    * Event Log capabilities the host relies on besides those the runtime
    * itself needs (`scopedAppend`, for an app with a Command), such as
-   * `{ keyedRead: true }` for a host that reads Events by key. The runtime
-   * refuses to start on an Event Log that lacks one.
+   * `{ keyedRead: true }` for a host that reads Events by key, or
+   * `{ purge: true }` for one that purges keys. The runtime refuses to start
+   * on an Event Log that lacks one.
    */
   readonly requires?: Partial<EventLogCapabilities>
   /**
@@ -530,6 +531,9 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           : undefined,
       keyedRead: options.requires?.keyedRead
         ? 'the host reads Events by key'
+        : undefined,
+      purge: options.requires?.purge
+        ? 'the host purges the Events of a key'
         : undefined,
     })
     const scheduler = yield* ReactionScheduler

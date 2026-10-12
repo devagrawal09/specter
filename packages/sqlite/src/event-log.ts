@@ -6,6 +6,8 @@ import {
   SpecterVersionConflictError,
   type EventKey,
   type EventLogAppendCondition,
+  type EventLogPurgeOptions,
+  type EventLogPurgeResult,
   type EventLogAppendOptions,
   type EventLogAppendResult,
   type EventLogCommit,
@@ -42,6 +44,16 @@ export type SqliteEventLogAppend = {
   readonly metadata: readonly unknown[]
 }
 
+/** One purge, as its transaction hands it to the host before it deletes. */
+export type SqliteEventLogPurge = {
+  /** The key whose Events the purge removes. */
+  readonly key: EventKey
+  /** The Event types it keeps though they carry the key. */
+  readonly keep: readonly string[]
+  /** The orders of the Events it removes, ascending; never empty. */
+  readonly orders: readonly number[]
+}
+
 export type SqliteEventLogOptions = {
   readonly eventId?: () => string
   readonly now?: () => Date
@@ -58,6 +70,16 @@ export type SqliteEventLogOptions = {
   readonly onAppend?: (
     append: SqliteEventLogAppend,
   ) => Effect.Effect<Effect.Effect<void> | undefined, unknown>
+  /**
+   * Runs inside each purge's transaction before it deletes anything, with
+   * the orders of the Events it removes: a host removes its own rows that
+   * refer to them (an index of the log by order), so they go with the
+   * Events or not at all. Its failure rolls the purge back and fails it. A
+   * purge that finds nothing to remove runs no hook.
+   */
+  readonly onPurge?: (
+    purge: SqliteEventLogPurge,
+  ) => Effect.Effect<void, unknown>
 }
 
 export type SqliteEventLogService = EventLogService & {
@@ -109,6 +131,13 @@ export const sqliteEventLogSchema: readonly string[] = [
   )`,
   `CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
     ON specter_event_keys(name, value, event_order)`,
+  // The highest order a purge removed, by Event type: the log's version
+  // never moves back, and a decision that read before a removed Event was
+  // appended stays stale.
+  `CREATE TABLE IF NOT EXISTS specter_event_purges (
+    type TEXT PRIMARY KEY,
+    through_order INTEGER NOT NULL
+  )`,
 ]
 
 export function prepareSqliteEventLog(context: SqliteDatabaseContext) {
@@ -231,6 +260,14 @@ export function createSqliteEventLogService(
       ([, values]) => values.length > 0,
     )
     if (condition.keys && keys.length === 0) return Effect.succeed(undefined)
+    // A purge removed an Event of the condition's types after its read:
+    // stale whatever the Event's keys were.
+    const purged = rows(
+      `SELECT through_order AS event_order FROM specter_event_purges
+        WHERE through_order > ? AND type IN (${types})
+        ORDER BY through_order ASC LIMIT 1`,
+      [condition.afterOrder, ...condition.eventTypes],
+    )
     const found = condition.keys
       ? rows(
           `SELECT k.event_order FROM specter_event_keys k
@@ -255,7 +292,9 @@ export function createSqliteEventLogService(
             ORDER BY event_order ASC LIMIT 1`,
           [condition.afterOrder, ...condition.eventTypes],
         )
-    return found.pipe(
+    return Effect.flatMap(found, (stored) =>
+      stored.length > 0 ? Effect.succeed(stored) : purged,
+    ).pipe(
       Effect.flatMap(([row]) =>
         decode(() =>
           row ? requireNumber(row.event_order, 'stale event order') : undefined,
@@ -276,8 +315,13 @@ export function createSqliteEventLogService(
     ).pipe(Effect.flatMap(events))
   }
 
+  // The highest order the log ever assigned: its Events' or, when a purge
+  // removed the latest ones, the purge's.
   const currentVersion = rows(
-    'SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events',
+    `SELECT MAX(
+        COALESCE((SELECT MAX(event_order) FROM specter_events), 0),
+        COALESCE((SELECT MAX(through_order) FROM specter_event_purges), 0)
+      ) AS version`,
   ).pipe(
     Effect.flatMap(([row]) =>
       decode(() => requireNumber(row?.version, 'Event Log version')),
@@ -506,6 +550,70 @@ export function createSqliteEventLogService(
     })
   }
 
+  /** Removes a key's Events but the kept types, inside the transaction. */
+  function remove(key: EventKey, keep: readonly string[]) {
+    return Effect.gen(function* () {
+      const found = yield* rows(
+        `SELECT e.event_order, e.type FROM specter_event_keys k
+          JOIN specter_events e ON e.event_order = k.event_order
+          WHERE k.name = ? AND k.value = ?${
+            keep.length > 0 ? ` AND e.type NOT IN (${placeholders(keep)})` : ''
+          }
+          ORDER BY e.event_order ASC`,
+        [key.name, key.value, ...keep],
+      )
+      const removed = yield* decode(() =>
+        found.map((row) => ({
+          order: requireNumber(row.event_order, 'purged event order'),
+          type: requireString(row.type, 'purged event type'),
+        })),
+      )
+      if (removed.length === 0) return { purged: 0 }
+      const orders = removed.map((event) => event.order)
+      if (options.onPurge) yield* options.onPurge({ key, keep, orders })
+      const through = new Map<string, number>()
+      for (const event of removed) {
+        through.set(
+          event.type,
+          Math.max(through.get(event.type) ?? 0, event.order),
+        )
+      }
+      yield* rows(
+        `INSERT INTO specter_event_purges (type, through_order)
+          VALUES ${[...through].map(() => '(?, ?)').join(', ')}
+          ON CONFLICT(type) DO UPDATE SET
+            through_order = MAX(through_order, excluded.through_order)`,
+        [...through].flat(),
+      )
+      // In chunks, within SQLite's limit on bound parameters.
+      for (let start = 0; start < orders.length; start += purgeChunk) {
+        const chunk = orders.slice(start, start + purgeChunk)
+        yield* rows(
+          `DELETE FROM specter_event_keys
+            WHERE event_order IN (${placeholders(chunk)})`,
+          chunk,
+        )
+        yield* rows(
+          `DELETE FROM specter_events
+            WHERE event_order IN (${placeholders(chunk)})`,
+          chunk,
+        )
+      }
+      // A commit left with no Events goes, with its idempotency receipt.
+      yield* rows(
+        `DELETE FROM specter_event_commits
+          WHERE last_event_order >= ? AND first_event_order <= ?
+            AND NOT EXISTS (
+              SELECT 1 FROM specter_events e
+              WHERE e.event_order BETWEEN specter_event_commits.first_event_order
+                AND specter_event_commits.last_event_order
+            )`,
+        [orders[0] as number, orders[orders.length - 1] as number],
+      )
+      return { purged: removed.length } satisfies EventLogPurgeResult
+    })
+  }
+
   function attempt<A, E>(
     operation: EventLogFailure['operation'],
     effect: Effect.Effect<A, E>,
@@ -520,7 +628,7 @@ export function createSqliteEventLogService(
   }
 
   return {
-    capabilities: { scopedAppend: true, keyedRead: true },
+    capabilities: { scopedAppend: true, keyedRead: true, purge: true },
     context,
     query: (afterOrder, eventTypes, page = {}) =>
       attempt('query', query(afterOrder, eventTypes, page)),
@@ -541,8 +649,16 @@ export function createSqliteEventLogService(
         Effect.map(({ result }) => result),
         Effect.uninterruptible,
       ),
+    purge: (key, purgeOptions: EventLogPurgeOptions = {}) =>
+      attempt(
+        'purge',
+        context.transaction(() => remove(key, purgeOptions.keep ?? [])),
+      ).pipe(Effect.uninterruptible),
   }
 }
+
+// Orders deleted per statement, well within SQLite's bound parameter limit.
+const purgeChunk = 500
 
 export function createSqliteEventLogLayer(
   context: SqliteDatabaseContext,

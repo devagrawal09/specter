@@ -17,6 +17,7 @@ export {
   sqliteEventLogSchema,
   type SqliteEventCodec,
   type SqliteEventLogAppend,
+  type SqliteEventLogPurge,
   type SqliteEventLogOptions,
   type SqliteEventLogService,
 } from './event-log'

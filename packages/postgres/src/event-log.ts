@@ -12,6 +12,7 @@ import {
   type EventLogDraft,
   type EventLogKeyPage,
   type EventLogPage,
+  type EventLogPurgeResult,
   type EventLogService,
   type PersistedEvent,
 } from '@specter-ts/core'
@@ -66,6 +67,11 @@ export async function preparePostgresEventLog(pool: PostgresPool) {
   )`)
   await pool.query(`CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
     ON specter_event_keys(name, value, event_order)`)
+  // The highest order a purge removed, by Event type.
+  await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_purges (
+    type TEXT PRIMARY KEY,
+    through_order BIGINT NOT NULL
+  )`)
 }
 
 /**
@@ -139,6 +145,31 @@ export function createPostgresEventLogService(
     connection: PostgresConnection,
     condition: EventLogAppendCondition,
   ): Promise<number | undefined> {
+    const stale = await staleEventOrder(connection, condition)
+    if (stale !== undefined || condition.eventTypes.length === 0) return stale
+    if (
+      condition.keys &&
+      Object.values(condition.keys).every((values) => values.length === 0)
+    )
+      return undefined
+    // A purge removed an Event of the condition's types after its read:
+    // stale whatever the Event's keys were.
+    const result = await connection.query<{ through_order: unknown }>(
+      `SELECT through_order FROM specter_event_purges
+       WHERE through_order > $1 AND type = ANY($2::text[])
+       ORDER BY through_order ASC LIMIT 1`,
+      [condition.afterOrder, condition.eventTypes],
+    )
+    const row = result.rows[0]
+    return row
+      ? postgresNumber(row.through_order, 'stale purged order')
+      : undefined
+  }
+
+  async function staleEventOrder(
+    connection: PostgresConnection,
+    condition: EventLogAppendCondition,
+  ): Promise<number | undefined> {
     if (condition.eventTypes.length === 0) return undefined
     if (!condition.keys) {
       const result = await connection.query<{ event_order: unknown }>(
@@ -194,11 +225,77 @@ export function createPostgresEventLogService(
     return result.rows.map((row) => toEvent(row))
   }
 
+  // The highest order the log ever assigned: its Events' or, when a purge
+  // removed the latest ones, the purge's.
   async function currentVersion(connection: PostgresConnection) {
     const result = await connection.query<{ version: unknown }>(
-      'SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events',
+      `SELECT GREATEST(
+         COALESCE((SELECT MAX(event_order) FROM specter_events), 0),
+         COALESCE((SELECT MAX(through_order) FROM specter_event_purges), 0)
+       ) AS version`,
     )
     return postgresNumber(result.rows[0]?.version, 'Event Log version')
+  }
+
+  /** Removes a key's Events but the kept types, inside the transaction. */
+  async function purge(
+    connection: PostgresConnection,
+    key: EventKey,
+    keep: readonly string[],
+  ): Promise<EventLogPurgeResult> {
+    const found = await connection.query<{
+      event_order: unknown
+      type: unknown
+    }>(
+      `SELECT e.event_order, e.type FROM specter_event_keys k
+       JOIN specter_events e ON e.event_order = k.event_order
+       WHERE k.name = $1 AND k.value = $2 AND NOT (e.type = ANY($3::text[]))
+       ORDER BY e.event_order ASC`,
+      [key.name, key.value, keep],
+    )
+    const removed = found.rows.map((row) => ({
+      order: postgresNumber(row.event_order, 'purged event order'),
+      type: postgresString(row.type, 'purged event type'),
+    }))
+    if (removed.length === 0) return { purged: 0 }
+    const orders = removed.map((event) => event.order)
+    const through = new Map<string, number>()
+    for (const event of removed) {
+      through.set(
+        event.type,
+        Math.max(through.get(event.type) ?? 0, event.order),
+      )
+    }
+    await connection.query(
+      `INSERT INTO specter_event_purges (type, through_order)
+       SELECT type, through_order FROM unnest($1::text[], $2::bigint[])
+         AS purged(type, through_order)
+       ON CONFLICT (type) DO UPDATE SET
+         through_order = GREATEST(
+           specter_event_purges.through_order,
+           excluded.through_order
+         )`,
+      [[...through.keys()], [...through.values()]],
+    )
+    await connection.query(
+      'DELETE FROM specter_event_keys WHERE event_order = ANY($1::bigint[])',
+      [orders],
+    )
+    await connection.query(
+      'DELETE FROM specter_events WHERE event_order = ANY($1::bigint[])',
+      [orders],
+    )
+    // A commit left with no Events goes, with its idempotency receipt.
+    await connection.query(
+      `DELETE FROM specter_event_commits c
+       WHERE c.last_event_order >= $1 AND c.first_event_order <= $2
+         AND NOT EXISTS (
+           SELECT 1 FROM specter_events e
+           WHERE e.event_order BETWEEN c.first_event_order AND c.last_event_order
+         )`,
+      [orders[0], orders[orders.length - 1]],
+    )
+    return { purged: removed.length }
   }
 
   async function findCommit(
@@ -378,7 +475,7 @@ export function createPostgresEventLogService(
   }
 
   return {
-    capabilities: { scopedAppend: true, keyedRead: true },
+    capabilities: { scopedAppend: true, keyedRead: true, purge: true },
     context,
     query: (afterOrder, eventTypes, page = {}) =>
       context.use((connection) =>
@@ -420,6 +517,28 @@ export function createPostgresEventLogService(
             cause instanceof EventLogFailure
               ? cause
               : new EventLogFailure('append', cause),
+          ),
+        ),
+    // Under the append lock, so a purge and an append never interleave.
+    purge: (key, purgeOptions = {}) =>
+      context
+        .transaction((connection) =>
+          Effect.gen(function* () {
+            yield* attempt('purge', () =>
+              connection.query('SELECT pg_advisory_xact_lock($1)', [
+                advisoryLockKey,
+              ]),
+            )
+            return yield* attempt('purge', () =>
+              purge(connection, key, purgeOptions.keep ?? []),
+            )
+          }),
+        )
+        .pipe(
+          Effect.mapError((cause) =>
+            cause instanceof EventLogFailure
+              ? cause
+              : new EventLogFailure('purge', cause),
           ),
         ),
   }

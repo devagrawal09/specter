@@ -33,6 +33,7 @@ import {
 import {
   createSqliteEventLogService,
   type SqliteEventLogAppend,
+  type SqliteEventLogPurge,
 } from './event-log'
 import { prepareSpecterSqlite, specterSqliteSchema } from './persistence'
 import { createSqliteReactionOutboxStore } from './reaction-outbox'
@@ -352,6 +353,114 @@ describe('An Event Log embedded in its host', () => {
         expect(yield* notes(sql)).toEqual([
           { event_id: 'evt-n1', request: 'request-1' },
         ])
+      }),
+    ))
+})
+
+describe("A purge in its host's database", () => {
+  /**
+   * A host's index of the log by order, which refers to each Event, as an
+   * index by aggregate does.
+   */
+  const indexedDatabase = Effect.gen(function* () {
+    const sql = yield* hostDatabase
+    yield* sql`PRAGMA foreign_keys = ON`
+    yield* sql`CREATE TABLE host_index (
+      event_order INTEGER PRIMARY KEY REFERENCES specter_events(event_order),
+      note TEXT NOT NULL
+    )`
+    return sql
+  })
+  const indexed = (sql: SqlClient.SqlClient) =>
+    sql<{ readonly event_order: number }>`SELECT event_order FROM host_index
+      ORDER BY event_order`.pipe(
+      Effect.map((rows) => rows.map((row) => row.event_order)),
+    )
+  const keyed = (noteId: string, session: string): EventLogDraft => ({
+    type: noteId.startsWith('deleted') ? 'session-deleted' : 'note-written',
+    payload: { noteId },
+    keys: { session },
+  })
+
+  it('runs the host hook in the purge transaction, before it deletes', () =>
+    run(
+      Effect.gen(function* () {
+        const sql = yield* indexedDatabase
+        const context = createSqlClientDatabaseContext(sql)
+        const seen: SqliteEventLogPurge[] = []
+        const eventLog = createSqliteEventLogService(context, {
+          onAppend: ({ commit }) =>
+            Effect.forEach(
+              commit.events,
+              (event) =>
+                sql`INSERT INTO host_index (event_order, note)
+                  VALUES (${event.order}, ${event.id})`,
+              { discard: true },
+            ).pipe(Effect.as(undefined)),
+          onPurge: (purge) =>
+            Effect.gen(function* () {
+              seen.push(purge)
+              yield* sql`DELETE FROM host_index
+                WHERE event_order IN ${sql.in(purge.orders)}`
+            }),
+        })
+        yield* eventLog.append([keyed('n1', 's1'), keyed('n2', 's2')])
+        yield* eventLog.append([keyed('n3', 's1'), keyed('deleted-1', 's1')])
+        const purged = yield* eventLog.purge(
+          { name: 'session', value: 's1' },
+          { keep: ['session-deleted'] },
+        )
+        expect(purged).toEqual({ purged: 2 })
+        expect(seen).toEqual([
+          {
+            key: { name: 'session', value: 's1' },
+            keep: ['session-deleted'],
+            orders: [1, 3],
+          },
+        ])
+        // The host's rows went with the Events they referred to.
+        expect(yield* indexed(sql)).toEqual([2, 4])
+        // Nothing left to purge runs no hook.
+        expect(
+          yield* eventLog.purge(
+            { name: 'session', value: 's1' },
+            { keep: ['session-deleted'] },
+          ),
+        ).toEqual({ purged: 0 })
+        expect(seen).toHaveLength(1)
+      }),
+    ))
+
+  it('rolls the purge back when the hook fails, or when a reference the host left fails it', () =>
+    run(
+      Effect.gen(function* () {
+        const sql = yield* indexedDatabase
+        const context = createSqlClientDatabaseContext(sql)
+        let fail = true
+        const eventLog = createSqliteEventLogService(context, {
+          onAppend: ({ commit }) =>
+            Effect.forEach(
+              commit.events,
+              (event) =>
+                sql`INSERT INTO host_index (event_order, note)
+                  VALUES (${event.order}, ${event.id})`,
+              { discard: true },
+            ).pipe(Effect.as(undefined)),
+          onPurge: () =>
+            fail ? Effect.fail(new Error('index failed')) : Effect.void,
+        })
+        yield* eventLog.append([keyed('n1', 's1'), keyed('n2', 's2')])
+        const key = { name: 'session', value: 's1' }
+        const failed = yield* Effect.exit(eventLog.purge(key))
+        // The hook ran and kept its row: the Event it refers to cannot go.
+        fail = false
+        const refused = yield* Effect.exit(eventLog.purge(key))
+        expect(Exit.isFailure(failed)).toBe(true)
+        expect(Exit.isFailure(refused)).toBe(true)
+        expect(
+          (yield* eventLog.readKey(key)).map((event) => event.order),
+        ).toEqual([1])
+        expect(yield* indexed(sql)).toEqual([1, 2])
       }),
     ))
 })

@@ -101,6 +101,8 @@ export type {
   EventLogDraft,
   EventLogKeyPage,
   EventLogPage,
+  EventLogPurgeOptions,
+  EventLogPurgeResult,
   EventLogService,
   ReactionExecutor,
   ReactionScheduleContext,

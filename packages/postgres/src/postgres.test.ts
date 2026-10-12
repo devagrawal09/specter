@@ -75,6 +75,8 @@ class FakePostgresPool implements PostgresPool {
     string,
     { version: string; state_json: unknown; last_applied_order: string }
   >()
+  readonly purges = new Map<string, number>()
+  #nextOrder = 1
   readonly outbox = new Map<string, OutboxRow>()
   #lockTail = Promise.resolve()
 
@@ -131,6 +133,10 @@ class FakePostgresPool implements PostgresPool {
     }
   }
 
+  #event(order: unknown) {
+    return this.events.find((event) => event.event_order === String(order))
+  }
+
   async #query(
     sql: string,
     parameters: readonly unknown[],
@@ -138,8 +144,90 @@ class FakePostgresPool implements PostgresPool {
     this.statements.push(sql)
     const normalized = sql.replace(/\s+/g, ' ').trim()
 
-    if (normalized.startsWith('SELECT COALESCE(MAX(event_order)')) {
-      return { rows: [{ version: String(this.events.length) }] }
+    if (normalized.startsWith('SELECT GREATEST(')) {
+      return {
+        rows: [
+          {
+            version: String(
+              Math.max(
+                0,
+                ...this.events.map((event) => Number(event.event_order)),
+                ...this.purges.values(),
+              ),
+            ),
+          },
+        ],
+      }
+    }
+    if (normalized.includes('NOT (e.type = ANY($3::text[]))')) {
+      const keep = new Set(parameters[2] as readonly string[])
+      return {
+        rows: this.keys
+          .filter(
+            (key) =>
+              key.name === parameters[0] &&
+              key.value === parameters[1] &&
+              !keep.has(this.#event(key.event_order)?.type ?? ''),
+          )
+          .map((key) => ({
+            event_order: key.event_order,
+            type: this.#event(key.event_order)?.type,
+          }))
+          .sort(
+            (left, right) =>
+              Number(left.event_order) - Number(right.event_order),
+          ),
+      }
+    }
+    if (normalized.startsWith('INSERT INTO specter_event_purges')) {
+      const types = parameters[0] as readonly string[]
+      const orders = parameters[1] as readonly number[]
+      for (const [index, type] of types.entries()) {
+        this.purges.set(
+          type,
+          Math.max(this.purges.get(type) ?? 0, Number(orders[index])),
+        )
+      }
+      return { rows: [], rowCount: types.length }
+    }
+    if (
+      normalized.startsWith('SELECT through_order FROM specter_event_purges')
+    ) {
+      const types = parameters[1] as readonly string[]
+      const found = types
+        .map((type) => this.purges.get(type) ?? 0)
+        .filter((order) => order > Number(parameters[0]))
+        .sort((left, right) => left - right)
+      return { rows: found.length > 0 ? [{ through_order: found[0] }] : [] }
+    }
+    if (normalized.startsWith('DELETE FROM specter_event_keys')) {
+      const orders = new Set((parameters[0] as number[]).map(String))
+      const left = this.keys.filter((key) => !orders.has(key.event_order))
+      this.keys.splice(0, this.keys.length, ...left)
+      return { rows: [] }
+    }
+    if (normalized.startsWith('DELETE FROM specter_events')) {
+      const orders = new Set((parameters[0] as number[]).map(String))
+      if (this.keys.some((key) => orders.has(key.event_order))) {
+        throw new Error('violates foreign key constraint')
+      }
+      const left = this.events.filter((event) => !orders.has(event.event_order))
+      this.events.splice(0, this.events.length, ...left)
+      return { rows: [] }
+    }
+    if (normalized.startsWith('DELETE FROM specter_event_commits')) {
+      const left = this.commits.filter(
+        (commit) =>
+          Number(commit.last_event_order) < Number(parameters[0]) ||
+          Number(commit.first_event_order) > Number(parameters[1]) ||
+          this.events.some(
+            (event) =>
+              Number(event.event_order) >= Number(commit.first_event_order) &&
+              Number(event.event_order) <= Number(commit.last_event_order),
+          ),
+      )
+      this.commits.splice(0, this.commits.length, ...left)
+      return { rows: [] }
     }
     if (
       normalized.startsWith(
@@ -220,9 +308,7 @@ class FakePostgresPool implements PostgresPool {
       const stale = this.keys.find(
         (key) =>
           Number(key.event_order) > afterOrder &&
-          eventTypes.has(
-            this.events[Number(key.event_order) - 1]?.type ?? '',
-          ) &&
+          eventTypes.has(this.#event(key.event_order)?.type ?? '') &&
           names.some(
             (name, index) => name === key.name && values[index] === key.value,
           ),
@@ -248,9 +334,7 @@ class FakePostgresPool implements PostgresPool {
           )
           .slice(0, limit)
           .map((key) =>
-            this.#withKeys(
-              this.events[Number(key.event_order) - 1] as EventRow,
-            ),
+            this.#withKeys(this.#event(key.event_order) as EventRow),
           ),
       }
     }
@@ -260,7 +344,7 @@ class FakePostgresPool implements PostgresPool {
       }
       const event: EventRow = {
         id: String(parameters[0]),
-        event_order: String(this.events.length + 1),
+        event_order: String(this.#nextOrder++),
         type: String(parameters[1]),
         payload: JSON.parse(String(parameters[2])) as unknown,
         recorded_at: String(parameters[3]),

@@ -692,6 +692,19 @@ describe('Event Log capabilities', () => {
     if (required._tag !== 'Failure') return
     expect(required.failure).toMatchObject({ missing: ['keyedRead'] })
   })
+
+  it('refuses to start without purges only when the host requires them', async () => {
+    const capabilities = { scopedAppend: true, keyedRead: true, purge: false }
+    const unrequired = await start(capabilities)
+    expect(unrequired._tag).toBe('Success')
+    const required = await start(capabilities, { purge: true })
+    expect(required._tag).toBe('Failure')
+    if (required._tag !== 'Failure') return
+    expect(required.failure).toMatchObject({ missing: ['purge'] })
+    expect(required.failure.message).toContain(
+      'purge (the host purges the Events of a key)',
+    )
+  })
 })
 
 class Notifier extends Context.Service<

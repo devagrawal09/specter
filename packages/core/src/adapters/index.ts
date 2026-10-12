@@ -7,6 +7,8 @@ export type {
   EventLogDraft,
   EventLogKeyPage,
   EventLogPage,
+  EventLogPurgeOptions,
+  EventLogPurgeResult,
   EventLogService,
 } from './event-log'
 export { EventLog, EventLogFailure } from './event-log'

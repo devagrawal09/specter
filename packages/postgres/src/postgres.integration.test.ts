@@ -87,6 +87,7 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       DROP TABLE IF EXISTS specter_slice_states;
       DROP TABLE IF EXISTS specter_event_commits;
       DROP TABLE IF EXISTS specter_event_keys;
+      DROP TABLE IF EXISTS specter_event_purges;
       DROP TABLE IF EXISTS specter_events;
     `)
     await preparePostgresEventLog(pool)

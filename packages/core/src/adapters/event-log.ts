@@ -74,6 +74,10 @@ export type EventLogCapabilities = {
    * `readKey` reads the Events carrying a key. Without it, `readKey` fails.
    */
   readonly keyedRead: boolean
+  /**
+   * `purge` removes the Events carrying a key. Without it, `purge` fails.
+   */
+  readonly purge: boolean
 }
 
 /**
@@ -90,6 +94,21 @@ export type EventLogPage = {
 export type EventLogKeyPage = EventLogPage & {
   /** Defaults to 0, the start of the log. */
   readonly afterOrder?: number
+}
+
+/**
+ * What a purge keeps of the Events carrying its key: those of the types
+ * named here, the tombstones a fold needs to know the key is gone (its
+ * deletion, say).
+ */
+export type EventLogPurgeOptions = {
+  readonly keep?: readonly string[]
+}
+
+/** What a purge removed. */
+export type EventLogPurgeResult = {
+  /** How many Events it removed; 0 when the key carried none to remove. */
+  readonly purged: number
 }
 
 export type EventLogAppendOptions = {
@@ -114,7 +133,8 @@ export class EventLogFailure extends Error {
       | 'currentVersion'
       | 'findCommit'
       | 'readKey'
-      | 'append',
+      | 'append'
+      | 'purge',
     readonly cause: unknown,
   ) {
     super(`Event Log ${operation} failed.`, { cause })
@@ -171,6 +191,29 @@ export type EventLogService = {
     events: readonly EventLogDraft[],
     options?: EventLogAppendOptions,
   ) => Effect.Effect<EventLogAppendResult, EventLogFailure>
+  /**
+   * Removes every Event that carries `key` (its stored key `key.name` is
+   * `key.value`) and whose type `options.keep` does not name, atomically
+   * and under the same lock as an append. The log stays consistent:
+   *
+   * - Orders are never reused: `currentVersion` does not move back, and a
+   *   later append takes orders above every order the log ever assigned.
+   * - A commit keeps its version, time, idempotency key, fingerprint and
+   *   the Events it has left; a commit left with none is removed with its
+   *   idempotency receipt, so a Command retried under that key decides
+   *   again.
+   * - The keys stored with a removed Event go with it.
+   * - `expectedVersion` is unaffected, and `expectedUnchanged` is stale when
+   *   a removed Event of one of its types had an order above `afterOrder`,
+   *   whatever its keys: a purge never hides a conflict, and a purge of
+   *   Events a decision had already read is not one.
+   *
+   * Requires `capabilities.purge`; without it the purge fails.
+   */
+  readonly purge: (
+    key: EventKey,
+    options?: EventLogPurgeOptions,
+  ) => Effect.Effect<EventLogPurgeResult, EventLogFailure>
 }
 
 export class EventLog extends Context.Service<EventLog, EventLogService>()(

@@ -39,6 +39,71 @@ testEventLogService('jsonl with fsync', () =>
 )
 
 describe('JSONL Event Log', () => {
+  it('rewrites the file on a purge, and reopens with what the purge left and the version it kept', async () => {
+    const path = temporaryLogPath()
+    const first = createJsonlEventLog({ path, fsync: true })
+    const note = (session: string, type = 'note-written') => ({
+      type,
+      payload: { session },
+      keys: { session },
+    })
+    await Effect.runPromise(first.append([note('s1'), note('s2')]))
+    await Effect.runPromise(
+      first.append([note('s1'), note('s1', 'session-deleted')], {
+        idempotencyKey: 'delete-s1',
+      }),
+    )
+    await Effect.runPromise(first.append([note('s1')]))
+    const purged = await Effect.runPromise(
+      first.purge(
+        { name: 'session', value: 's1' },
+        { keep: ['session-deleted'] },
+      ),
+    )
+    expect(purged).toEqual({ purged: 3 })
+    const snapshot = async (log: typeof first) => ({
+      version: await Effect.runPromise(log.currentVersion),
+      commits: await Effect.runPromise(log.commitsAfter(0)),
+      byKey: await Effect.runPromise(
+        log.readKey({ name: 'session', value: 's1' }),
+      ),
+      receipt: await Effect.runPromise(log.findCommit('delete-s1')),
+    })
+    const before = await snapshot(first)
+    expect(before.version).toBe(5)
+    expect(
+      before.commits.map((commit) => [
+        commit.version,
+        commit.events.map((event) => event.order),
+      ]),
+    ).toEqual([
+      [2, [2]],
+      [4, [4]],
+    ])
+    expect(before.byKey.map((event) => event.type)).toEqual(['session-deleted'])
+    expect(before.receipt?.version).toBe(4)
+    // No payload of a purged Event is left in the file.
+    expect(readFileSync(path, 'utf8').split('\n')[0]).toBe(
+      '{"purged":{"note-written":5},"version":5}',
+    )
+    first.close()
+
+    const reopened = createJsonlEventLog({ path })
+    expect(await snapshot(reopened)).toEqual(before)
+    // The purged tail's orders are not reused, and the file stays a log.
+    const next = await Effect.runPromise(reopened.append([note('s2')]))
+    expect(next.events[0]?.order).toBe(6)
+    reopened.close()
+    const again = createJsonlEventLog({ path })
+    expect(
+      (await Effect.runPromise(again.commitsAfter(0))).map(
+        (commit) => commit.version,
+      ),
+    ).toEqual([2, 4, 6])
+    expect(await Effect.runPromise(again.currentVersion)).toBe(6)
+    again.close()
+  })
+
   it('reopens with identical version, commits, and queries', async () => {
     const path = temporaryLogPath()
     const first = createJsonlEventLog({ path })

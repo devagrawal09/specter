@@ -75,6 +75,8 @@ function makeLog(values: readonly number[]) {
     findCommit: () => Effect.succeed(undefined),
     append: () =>
       Effect.fail(new EventLogFailure('append', new Error('Read only.'))),
+    purge: () =>
+      Effect.fail(new EventLogFailure('purge', new Error('Read only.'))),
   }
   return { service, reads }
 }

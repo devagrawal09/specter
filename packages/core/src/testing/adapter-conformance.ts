@@ -194,7 +194,8 @@ export function eventLogConformance<TCreateError, TRequirements>(
       'event-log',
       'declares its capabilities',
       typeof capabilities?.scopedAppend === 'boolean' &&
-        typeof capabilities.keyedRead === 'boolean',
+        typeof capabilities.keyedRead === 'boolean' &&
+        typeof capabilities.purge === 'boolean',
       capabilities,
     )
     const isStale = (exit: Exit.Exit<unknown, EventLogFailure>) =>
@@ -274,6 +275,227 @@ export function eventLogConformance<TCreateError, TRequirements>(
     }
 
     yield* hostContextConformance(service, failed)
+
+    if (capabilities.purge) {
+      yield* purgeConformance(service, isStale, capabilities.scopedAppend)
+    } else {
+      const before = yield* service.currentVersion
+      const refused = yield* Effect.exit(
+        service.purge({ name: 'list', value: 'l' }),
+      )
+      const kept = yield* service
+        .readKey({ name: 'list', value: 'l' })
+        .pipe(Effect.orElseSucceed(() => undefined))
+      const after = yield* service.currentVersion
+      yield* requireInvariant(
+        'event-log',
+        'an Event Log without purge refuses purge and removes nothing',
+        failed(refused, 'purge') &&
+          after === before &&
+          (kept === undefined || kept.length === 2),
+        { refused, before, after, kept },
+      )
+    }
+  })
+}
+
+/**
+ * A purge removes the Events carrying its key but the types it keeps, and
+ * leaves the log consistent: orders are never reused and the version never
+ * moves back, a commit keeps its version and the Events it has left, one
+ * left with none goes with its idempotency receipt, the stored keys go with
+ * their Events, and the scoped compare-and-swap neither treats a purge as a
+ * conflict nor lets one hide a conflict.
+ */
+function purgeConformance(
+  service: EventLogService,
+  isStale: (exit: Exit.Exit<unknown, EventLogFailure>) => boolean,
+  scopedAppend: boolean,
+) {
+  return Effect.gen(function* () {
+    const start = yield* service.currentVersion
+    const account = (value: string) => ({ account: value })
+    // Commit A: wholly purged; B: another key's; C: keeps its tombstone;
+    // D: the log's tail, wholly purged. Orders only ascend: an adapter may
+    // leave gaps.
+    const a = yield* service.append(
+      [
+        { type: 'account-opened', payload: { a: 'x' }, keys: account('x') },
+        {
+          type: 'account-noted',
+          payload: { a: 'x' },
+          keys: { ...account('x'), ledger: 'l1' },
+        },
+      ],
+      { idempotencyKey: 'purge-a', fingerprint: 'v2:purge-a' },
+    )
+    const b = yield* service.append([
+      { type: 'account-noted', payload: { a: 'y' }, keys: account('y') },
+    ])
+    const c = yield* service.append(
+      [
+        { type: 'account-noted', payload: { a: 'x' }, keys: account('x') },
+        { type: 'account-closed', payload: { a: 'x' }, keys: account('x') },
+      ],
+      { idempotencyKey: 'purge-c', fingerprint: 'v2:purge-c' },
+    )
+    const d = yield* service.append(
+      [{ type: 'account-noted', payload: { a: 'x' }, keys: account('x') }],
+      { idempotencyKey: 'purge-d', fingerprint: 'v2:purge-d' },
+    )
+    const orderOf =
+      (commit: { readonly events: readonly PersistedEvent[] }) =>
+      (index: number) =>
+        commit.events[index]?.order ?? Number.NaN
+    const tombstone = orderOf(c)(1)
+    const kept = orderOf(b)(0)
+    const tail = orderOf(d)(0)
+    const before = yield* service.currentVersion
+    const purged = yield* service.purge(
+      { name: 'account', value: 'x' },
+      { keep: ['account-closed'] },
+    )
+    const after = yield* service.currentVersion
+    yield* requireInvariant(
+      'event-log',
+      'a purge removes the Events carrying its key but the kept types, and the version never moves back',
+      purged.purged === 4 &&
+        a.events[0] !== undefined &&
+        a.events[0].order > start &&
+        before === tail &&
+        after === before,
+      { purged, start, before, after },
+    )
+
+    const types = [
+      'account-opened',
+      'account-noted',
+      'account-closed',
+      'account-reopened',
+    ]
+    const orders = (events: readonly PersistedEvent[]) =>
+      events.map((event) => event.order).join(',')
+    const left = yield* service.query(start, types)
+    const commits = yield* service.commitsAfter(start)
+    yield* requireInvariant(
+      'event-log',
+      'reads return only the Events a purge left, in their commits under their versions',
+      orders(left) === `${kept},${tombstone}` &&
+        commits.length === 2 &&
+        commits[0]?.version === b.version &&
+        commits[1]?.version === c.version &&
+        orders(commits[1]?.events ?? []) === `${tombstone}` &&
+        commits[1]?.events[0]?.type === 'account-closed',
+      { left, commits },
+    )
+    const pagedCommits = yield* service.commitsAfter(start, { limit: 1 })
+    yield* requireInvariant(
+      'event-log',
+      'a commit a purge emptied is gone from paged reads too',
+      pagedCommits.length === 1 && pagedCommits[0]?.version === b.version,
+      pagedCommits,
+    )
+
+    const receiptA = yield* service.findCommit('purge-a')
+    const receiptC = yield* service.findCommit('purge-c')
+    const receiptD = yield* service.findCommit('purge-d')
+    yield* requireInvariant(
+      'event-log',
+      'a commit left with no Events goes with its receipt; one with Events left keeps it',
+      receiptA === undefined &&
+        receiptD === undefined &&
+        receiptC?.version === c.version &&
+        receiptC.fingerprint === 'v2:purge-c' &&
+        orders(receiptC.events) === `${tombstone}`,
+      { receiptA, receiptC, receiptD },
+    )
+    const duplicate = yield* service.append(
+      [{ type: 'account-noted', payload: { a: 'x' }, keys: account('x') }],
+      { idempotencyKey: 'purge-c', fingerprint: 'v2:purge-c' },
+    )
+    yield* requireInvariant(
+      'event-log',
+      'a kept receipt still answers its idempotency key',
+      duplicate.duplicate &&
+        duplicate.version === c.version &&
+        orders(duplicate.events) === `${tombstone}`,
+      duplicate,
+    )
+
+    if (service.capabilities.keyedRead) {
+      const byAccount = yield* service.readKey({ name: 'account', value: 'x' })
+      const byLedger = yield* service.readKey({ name: 'ledger', value: 'l1' })
+      const byOther = yield* service.readKey({ name: 'account', value: 'y' })
+      yield* requireInvariant(
+        'event-log',
+        "a purged Event's stored keys go with it",
+        orders(byAccount) === `${tombstone}` &&
+          byLedger.length === 0 &&
+          orders(byOther) === `${kept}`,
+        { byAccount, byLedger, byOther },
+      )
+    }
+
+    // Orders are never reused, though the purge removed the log's tail.
+    const reopened = yield* service.append([
+      { type: 'account-reopened', payload: { a: 'x' }, keys: account('x') },
+    ])
+    const reopenedOrder = reopened.events[0]?.order ?? Number.NaN
+    yield* requireInvariant(
+      'event-log',
+      'an append after a purge takes orders above every order the log assigned',
+      reopenedOrder > before &&
+        reopened.version === reopenedOrder &&
+        (yield* service.currentVersion) === reopenedOrder,
+      reopened,
+    )
+
+    const again = yield* service.purge(
+      { name: 'account', value: 'y' },
+      { keep: ['account-noted'] },
+    )
+    yield* requireInvariant(
+      'event-log',
+      'a purge whose key carries only kept Events removes nothing',
+      again.purged === 0 &&
+        orders(yield* service.query(start, types)) ===
+          `${kept},${tombstone},${reopenedOrder}`,
+      again,
+    )
+
+    if (scopedAppend) {
+      const scoped = (
+        afterOrder: number,
+        eventTypes: readonly string[],
+        keys?: Readonly<Record<string, readonly string[]>>,
+      ) =>
+        Effect.exit(
+          service.append([{ type: 'account-checked', payload: {}, keys: {} }], {
+            expectedUnchanged: keys
+              ? { afterOrder, eventTypes, keys }
+              : { afterOrder, eventTypes },
+          }),
+        )
+      // D's Event was removed: a decision that read before it was appended
+      // stays stale, whatever its keys.
+      const hidden = yield* scoped(tail - 1, ['account-noted'])
+      const hiddenByKey = yield* scoped(tail - 1, ['account-noted'], {
+        account: ['z'],
+      })
+      // A decision that read the purged Events is not in conflict with
+      // their purge.
+      const read = yield* scoped(tail, ['account-noted'])
+      const opened = yield* scoped(orderOf(a)(0), ['account-opened'])
+      yield* requireInvariant(
+        'event-log',
+        'a purge neither hides a conflict nor makes one',
+        isStale(hidden) &&
+          isStale(hiddenByKey) &&
+          Exit.isSuccess(read) &&
+          Exit.isSuccess(opened),
+        { hidden, hiddenByKey, read, opened },
+      )
+    }
   })
 }
 

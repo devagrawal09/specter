@@ -52,6 +52,11 @@ export function prepareNodeSqliteEventLog(context: NodeSqliteContext) {
     );
     CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
       ON specter_event_keys(name, value, event_order);
+    -- The highest order a purge removed, by Event type.
+    CREATE TABLE IF NOT EXISTS specter_event_purges (
+      type TEXT PRIMARY KEY,
+      through_order INTEGER NOT NULL
+    );
   `)
 }
 
@@ -127,6 +132,31 @@ export function createNodeSqliteEventLogService(
    * keys.
    */
   function staleOrder(condition: EventLogAppendCondition) {
+    const stale = staleEventOrder(condition)
+    if (stale !== undefined || condition.eventTypes.length === 0) return stale
+    if (
+      condition.keys &&
+      Object.values(condition.keys).every((values) => values.length === 0)
+    )
+      return undefined
+    // A purge removed an Event of the condition's types after its read:
+    // stale whatever the Event's keys were.
+    const types = condition.eventTypes.map(() => '?').join(', ')
+    const row = context.database
+      .prepare(
+        `SELECT through_order FROM specter_event_purges
+         WHERE through_order > ? AND type IN (${types})
+         ORDER BY through_order ASC LIMIT 1`,
+      )
+      .get(condition.afterOrder, ...condition.eventTypes) as
+      | Record<string, unknown>
+      | undefined
+    return row
+      ? requireNumber(row.through_order, 'stale purged order')
+      : undefined
+  }
+
+  function staleEventOrder(condition: EventLogAppendCondition) {
     if (condition.eventTypes.length === 0) return undefined
     const types = condition.eventTypes.map(() => '?').join(', ')
     if (!condition.keys) {
@@ -187,13 +217,71 @@ export function createNodeSqliteEventLogService(
       .map((row) => decodeRow(row as Record<string, unknown>))
   }
 
+  // The highest order the log ever assigned: its Events' or, when a purge
+  // removed the latest ones, the purge's.
   function currentVersion() {
     const row = context.database
       .prepare(
-        'SELECT COALESCE(MAX(event_order), 0) AS version FROM specter_events',
+        `SELECT MAX(
+           COALESCE((SELECT MAX(event_order) FROM specter_events), 0),
+           COALESCE((SELECT MAX(through_order) FROM specter_event_purges), 0)
+         ) AS version`,
       )
       .get() as Record<string, unknown>
     return requireNumber(row.version, 'Event Log version')
+  }
+
+  /** Removes a key's Events but the kept types, inside the transaction. */
+  function purge(name: string, value: string, keep: readonly string[]) {
+    const removed = context.database
+      .prepare(
+        `SELECT e.event_order, e.type FROM specter_event_keys k
+         JOIN specter_events e ON e.event_order = k.event_order
+         WHERE k.name = ? AND k.value = ?${
+           keep.length > 0
+             ? ` AND e.type NOT IN (${keep.map(() => '?').join(', ')})`
+             : ''
+         }
+         ORDER BY e.event_order ASC`,
+      )
+      .all(name, value, ...keep)
+      .map((row) => ({
+        order: requireNumber(row.event_order, 'purged event order'),
+        type: requireString(row.type, 'purged event type'),
+      }))
+    if (removed.length === 0) return { purged: 0 }
+    const markPurged = context.database.prepare(
+      `INSERT INTO specter_event_purges (type, through_order) VALUES (?, ?)
+       ON CONFLICT(type) DO UPDATE SET
+         through_order = MAX(through_order, excluded.through_order)`,
+    )
+    const deleteKeys = context.database.prepare(
+      'DELETE FROM specter_event_keys WHERE event_order = ?',
+    )
+    const deleteEvent = context.database.prepare(
+      'DELETE FROM specter_events WHERE event_order = ?',
+    )
+    for (const event of removed) {
+      markPurged.run(event.type, event.order)
+      deleteKeys.run(event.order)
+      deleteEvent.run(event.order)
+    }
+    // A commit left with no Events goes, with its idempotency receipt.
+    context.database
+      .prepare(
+        `DELETE FROM specter_event_commits
+         WHERE last_event_order >= ? AND first_event_order <= ?
+           AND NOT EXISTS (
+             SELECT 1 FROM specter_events e
+             WHERE e.event_order BETWEEN specter_event_commits.first_event_order
+               AND specter_event_commits.last_event_order
+           )`,
+      )
+      .run(
+        (removed[0] as { order: number }).order,
+        (removed[removed.length - 1] as { order: number }).order,
+      )
+    return { purged: removed.length }
   }
 
   function findCommit(key: string): EventLogCommit | undefined {
@@ -339,7 +427,7 @@ export function createNodeSqliteEventLogService(
   }
 
   return {
-    capabilities: { scopedAppend: true, keyedRead: true },
+    capabilities: { scopedAppend: true, keyedRead: true, purge: true },
     query: (afterOrder, eventTypes, page = {}) =>
       Effect.try({
         try: () => query(afterOrder, eventTypes, page.limit ?? -1),
@@ -370,6 +458,13 @@ export function createNodeSqliteEventLogService(
         Effect.try({
           try: () => append(drafts, appendOptions),
           catch: (cause) => new EventLogFailure('append', cause),
+        }),
+      ),
+    purge: (key, purgeOptions = {}) =>
+      context.transactionEffect(
+        Effect.try({
+          try: () => purge(key.name, key.value, purgeOptions.keep ?? []),
+          catch: (cause) => new EventLogFailure('purge', cause),
         }),
       ),
   }
