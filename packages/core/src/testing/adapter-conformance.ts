@@ -4,17 +4,23 @@ import { describe, it } from 'vitest'
 import type {
   EventLogFailure,
   EventLogService,
+  SliceSnapshot,
+  SliceSnapshotStore,
   SliceStoreService,
   SliceStoreSlice,
 } from '../adapters'
-import type { PersistedEvent } from '../definition'
+import { type PersistedEvent, valuesEqual } from '../definition'
 import { SpecterVersionConflictError } from '../runtime/errors'
 
 export class AdapterConformanceFailure extends Error {
   readonly _tag = 'AdapterConformanceFailure' as const
 
   constructor(
-    readonly adapter: 'event-log' | 'slice-store',
+    readonly adapter:
+      | 'event-log'
+      | 'slice-store'
+      | 'slice-snapshot-store'
+      | 'reaction-outbox-store',
     readonly invariant: string,
     readonly actual: unknown,
   ) {
@@ -659,6 +665,93 @@ export function sliceStoreConformance<
   })
 }
 
+/**
+ * A snapshot store returns what it saved, one snapshot per Slice: a save
+ * replaces a Slice's snapshot unless the saved one has the same version and
+ * a later cursor, and a snapshot of another version always replaces it.
+ * State round-trips as JSON. Each call needs an empty store.
+ */
+export function sliceSnapshotStoreConformance<TCreateError, TRequirements>(
+  createStore: Effect.Effect<SliceSnapshotStore, TCreateError, TRequirements>,
+) {
+  return Effect.gen(function* () {
+    const store = yield* createStore
+    const empty = yield* store.load
+    yield* requireInvariant(
+      'slice-snapshot-store',
+      'an empty store loads nothing',
+      empty.length === 0,
+      empty,
+    )
+    const todos: SliceSnapshot = {
+      slice: 'todos',
+      version: 'sha256:a/1',
+      state: { items: [{ id: 't1', done: false }], names: ['first'] },
+      cursor: 4,
+    }
+    const counts: SliceSnapshot = {
+      slice: 'counts',
+      version: 'sha256:b/1',
+      state: { total: 2 },
+      cursor: 7,
+    }
+    yield* store.save([todos, counts])
+    const loaded = bySlice(yield* store.load)
+    yield* requireInvariant(
+      'slice-snapshot-store',
+      'loads each saved snapshot with its version, State and cursor',
+      loaded.size === 2 &&
+        sameSnapshot(loaded.get('todos'), todos) &&
+        sameSnapshot(loaded.get('counts'), counts),
+      [...loaded.values()],
+    )
+
+    const behind = { ...todos, state: { items: [] }, cursor: 3 }
+    const ahead = { ...counts, state: { total: 5 }, cursor: 9 }
+    yield* store.save([behind, ahead])
+    const moved = bySlice(yield* store.load)
+    yield* requireInvariant(
+      'slice-snapshot-store',
+      'a save never moves a Slice of the same version back',
+      sameSnapshot(moved.get('todos'), todos) &&
+        sameSnapshot(moved.get('counts'), ahead),
+      [...moved.values()],
+    )
+
+    const reshaped = {
+      ...todos,
+      version: 'sha256:a/2',
+      state: { open: [] },
+      cursor: 2,
+    }
+    yield* store.save([reshaped])
+    const replaced = bySlice(yield* store.load)
+    yield* requireInvariant(
+      'slice-snapshot-store',
+      "a snapshot of another version replaces its Slice's snapshot, whatever its cursor",
+      replaced.size === 2 && sameSnapshot(replaced.get('todos'), reshaped),
+      [...replaced.values()],
+    )
+  })
+}
+
+function bySlice(snapshots: readonly SliceSnapshot[]) {
+  return new Map(snapshots.map((snapshot) => [snapshot.slice, snapshot]))
+}
+
+function sameSnapshot(
+  actual: SliceSnapshot | undefined,
+  expected: SliceSnapshot,
+) {
+  return (
+    actual !== undefined &&
+    actual.slice === expected.slice &&
+    actual.version === expected.version &&
+    actual.cursor === expected.cursor &&
+    valuesEqual(actual.state, expected.state)
+  )
+}
+
 /** Thin Vitest runners. Semantics live in Effect programs above. */
 export function testEventLogService(
   name: string,
@@ -669,6 +762,21 @@ export function testEventLogService(
       await Effect.runPromise(
         eventLogConformance(
           Effect.promise(() => Promise.resolve(createService())),
+        ),
+      )
+    })
+  })
+}
+
+export function testSliceSnapshotStore(
+  name: string,
+  createStore: () => SliceSnapshotStore | Promise<SliceSnapshotStore>,
+) {
+  describe(`${name} Slice snapshot store`, () => {
+    it('conforms', async () => {
+      await Effect.runPromise(
+        sliceSnapshotStoreConformance(
+          Effect.promise(() => Promise.resolve(createStore())),
         ),
       )
     })

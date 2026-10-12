@@ -2,8 +2,10 @@ export { eventsFor } from '../definition'
 export {
   AdapterConformanceFailure,
   eventLogConformance,
+  sliceSnapshotStoreConformance,
   sliceStoreConformance,
   testEventLogService,
+  testSliceSnapshotStore,
   testSliceStoreService,
 } from './adapter-conformance'
 export type { SliceStoreConformanceOptions } from './adapter-conformance'

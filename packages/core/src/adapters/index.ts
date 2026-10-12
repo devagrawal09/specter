@@ -22,6 +22,10 @@ export {
   ReactionSchedulerFailure,
 } from './reaction-scheduler'
 export type {
+  SliceSnapshot,
+  SliceSnapshotStore,
+} from './slice-snapshot-store'
+export type {
   SliceStoreError,
   SliceStoreRead,
   SliceStoreRequirement,

@@ -106,6 +106,8 @@ export type {
   ReactionScheduleContext,
   ReactionSchedulerBinding,
   ReactionSchedulerService,
+  SliceSnapshot,
+  SliceSnapshotStore,
   SliceStoreError,
   SliceStoreRead,
   SliceStoreRequirement,

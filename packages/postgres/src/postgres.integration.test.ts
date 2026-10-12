@@ -9,7 +9,14 @@ import {
   SpecterVersionConflictError,
   type SliceStoreService,
 } from '@specter-ts/core'
-import { eventLogConformance } from '@specter-ts/core/testing'
+import {
+  eventLogConformance,
+  sliceStoreConformance,
+} from '@specter-ts/core/testing'
+import {
+  type ReactionOutboxConformancePayload,
+  reactionOutboxStoreConformance,
+} from '@specter-ts/reaction-outbox/testing'
 import { createCommandSlice, event } from '@specter-ts/spec'
 import { Context, Effect, Layer } from 'effect'
 
@@ -94,6 +101,33 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
   it('conforms to the Event Log contract, keys and keyed reads included', async () => {
     await run(
       eventLogConformance(Effect.succeed(createPostgresEventLogService(pool))),
+    )
+  })
+
+  it('conforms to the Slice Store contract, versions included', async () => {
+    await run(
+      sliceStoreConformance({
+        createService: Effect.succeed(
+          createPostgresSliceStoreService(pool, () => ({ value: 0 })),
+        ),
+        write: async (state, value: number) => {
+          state.value = value
+        },
+        read: async (state) => state.value,
+        value: 42,
+      }),
+    )
+  })
+
+  it('conforms to the Reaction outbox Store contract', async () => {
+    await run(
+      reactionOutboxStoreConformance(
+        Effect.succeed(
+          createPostgresReactionOutboxStore<ReactionOutboxConformancePayload>(
+            pool,
+          ),
+        ),
+      ),
     )
   })
 

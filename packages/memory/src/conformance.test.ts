@@ -3,6 +3,7 @@ import {
   AdapterConformanceFailure,
   eventLogConformance,
   testEventLogService,
+  testSliceSnapshotStore,
   testSliceStoreService,
 } from '@specter-ts/core/testing'
 import { Effect } from 'effect'
@@ -10,6 +11,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createMemoryEventLog } from './event-log'
 import { createMemorySliceStoreService } from './slice-store'
+import { createMemorySliceSnapshotStore } from './snapshots'
 
 testEventLogService('memory', createMemoryEventLog)
 
@@ -72,3 +74,5 @@ testSliceStoreService('memory', {
   read: async (state) => state.value,
   value: 42,
 })
+
+testSliceSnapshotStore('memory', createMemorySliceSnapshotStore)

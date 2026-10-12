@@ -17,6 +17,10 @@ import {
   runReactionOutboxWorker,
   withReactionOutbox,
 } from '@specter-ts/reaction-outbox'
+import {
+  type ReactionOutboxConformancePayload,
+  testReactionOutboxStore,
+} from '@specter-ts/reaction-outbox/testing'
 import type { ReactionPluginContext } from '@specter-ts/core'
 import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -60,6 +64,10 @@ const job = (id: string, idempotencyKey = id) => ({
 })
 
 const run = Effect.runPromise
+
+testReactionOutboxStore('JSONL', () =>
+  open<ReactionOutboxConformancePayload>({ path: temporaryOutboxPath() }),
+)
 
 describe.each([
   ['without fsync', false],

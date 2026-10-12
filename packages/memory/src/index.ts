@@ -11,6 +11,13 @@ export {
   type MemorySliceStoreService,
 } from './slice-store'
 export {
+  createMemorySliceSnapshotStore,
+  createSnapshotSliceStores,
+  persistSliceSnapshots,
+  type PersistSliceSnapshotsOptions,
+  type SnapshotSliceStores,
+} from './snapshots'
+export {
   createImmediateReactionSchedulerLayer,
   createImmediateReactionSchedulerService,
   type ImmediateReactionSchedulerOptions,
