@@ -10,9 +10,10 @@ import { Effect } from 'effect'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createSqliteDatabaseContext } from './database'
+import { migrateSpecterSqlite } from './migrations'
 import {
   createSqliteReactionOutboxStore,
-  prepareSqliteReactionOutbox,
+  sqliteReactionOutboxMigrations,
 } from './reaction-outbox'
 
 const clients: ReturnType<typeof createClient>[] = []
@@ -31,7 +32,9 @@ async function setup() {
   const client = createClient({ url: `file:${join(directory, 'outbox.db')}` })
   clients.push(client)
   const context = createSqliteDatabaseContext(client)
-  await Effect.runPromise(prepareSqliteReactionOutbox(context))
+  await Effect.runPromise(
+    migrateSpecterSqlite(context, sqliteReactionOutboxMigrations),
+  )
   return {
     client,
     context,

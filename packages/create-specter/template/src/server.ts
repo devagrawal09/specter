@@ -8,7 +8,6 @@ import {
   createSqliteDatabaseContext,
   createSqliteReactionSchedulerLayer,
   createSpecterSqlitePersistence,
-  prepareSqliteReactionScheduler,
   prepareSpecterSqlite,
 } from '@specter-ts/sqlite'
 
@@ -29,10 +28,11 @@ const sqliteClient = createClient({ url: sqliteUrl })
 const operationalSqliteClient = createClient({ url: sqliteUrl })
 const sqliteContext = createSqliteDatabaseContext(sqliteClient)
 const operationalContext = createSqliteDatabaseContext(operationalSqliteClient)
+// Brings Specter's tables, the scheduler's included, to the version this
+// release of Specter needs.
 await Effect.runPromise(prepareSpecterSqlite(sqliteContext))
 await operationalSqliteClient.execute('PRAGMA journal_mode = WAL')
 await operationalSqliteClient.execute('PRAGMA busy_timeout = 5000')
-await Effect.runPromise(prepareSqliteReactionScheduler(operationalContext))
 await prepareSqliteReactionTicketStore(operationalSqliteClient)
 const persistence = createSpecterSqlitePersistence(sqliteContext)
 const reactionSchedulerLayer =

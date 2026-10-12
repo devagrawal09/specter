@@ -7,13 +7,13 @@ import {
 import { Effect, Layer } from 'effect'
 
 import {
-  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
   type SqliteRow,
   type SqliteValue,
 } from './database'
+import type { SqliteMigration } from './migrations'
 
 export type SqliteReactionSchedulerOptions = {
   readonly now?: () => Date
@@ -39,24 +39,31 @@ type Claim =
       readonly context: ReactionScheduleContext
     }
 
-/** The statements that create the Reaction scheduler's table and index. */
-export const sqliteReactionSchedulerSchema: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS specter_reaction_scheduler (
-    through_order INTEGER PRIMARY KEY,
-    status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed')),
-    scheduled_at TEXT NOT NULL,
-    available_at TEXT NOT NULL,
-    lease_expires_at TEXT,
-    claim_token TEXT,
-    last_error TEXT
-  )`,
-  `CREATE INDEX IF NOT EXISTS specter_reaction_scheduler_pending_idx
-    ON specter_reaction_scheduler(status, available_at, through_order)`,
+/**
+ * The Reaction scheduler's table, as versioned migrations:
+ * `migrateSpecterSqlite` applies them, or a host runs them in its own
+ * migrations.
+ */
+export const sqliteReactionSchedulerMigrations: readonly SqliteMigration[] = [
+  {
+    store: 'reaction-scheduler',
+    version: 1,
+    description: 'Scheduled Reaction boundaries',
+    statements: [
+      `CREATE TABLE specter_reaction_scheduler (
+        through_order INTEGER PRIMARY KEY,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'running', 'completed')),
+        scheduled_at TEXT NOT NULL,
+        available_at TEXT NOT NULL,
+        lease_expires_at TEXT,
+        claim_token TEXT,
+        last_error TEXT
+      )`,
+      `CREATE INDEX specter_reaction_scheduler_pending_idx
+        ON specter_reaction_scheduler(status, available_at, through_order)`,
+    ],
+  },
 ]
-
-export function prepareSqliteReactionScheduler(context: SqliteDatabaseContext) {
-  return executeAll(context, sqliteReactionSchedulerSchema)
-}
 
 export function createSqliteReactionSchedulerService(
   context: SqliteDatabaseContext,

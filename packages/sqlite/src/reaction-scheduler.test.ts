@@ -11,9 +11,10 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createSqliteDatabaseContext } from './database'
+import { migrateSpecterSqlite } from './migrations'
 import {
   createSqliteReactionSchedulerService,
-  prepareSqliteReactionScheduler,
+  sqliteReactionSchedulerMigrations,
 } from './reaction-scheduler'
 
 const clients: ReturnType<typeof createClient>[] = []
@@ -36,8 +37,11 @@ async function setup() {
     first: createSqliteDatabaseContext(first),
     second: createSqliteDatabaseContext(second),
   }
-  await Effect.runPromise(prepareSqliteReactionScheduler(contexts.first))
-  await Effect.runPromise(prepareSqliteReactionScheduler(contexts.second))
+  // Both connections migrate; the second finds the scheduler migrated.
+  for (const context of [contexts.first, contexts.second])
+    await Effect.runPromise(
+      migrateSpecterSqlite(context, sqliteReactionSchedulerMigrations),
+    )
   return contexts
 }
 

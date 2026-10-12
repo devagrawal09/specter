@@ -15,6 +15,7 @@ import {
   type PostgresDatabaseOptions,
   type PostgresPool,
 } from './database'
+import type { PostgresMigration } from './migrations'
 
 export class PostgresSliceStoreFailure extends Error {
   readonly _tag = 'PostgresSliceStoreFailure' as const
@@ -34,15 +35,27 @@ export type PostgresSliceStoreOptions<TWriteState, TReadState> =
     readonly read?: (state: TWriteState) => TReadState
   }
 
-export async function preparePostgresSliceStore(pool: PostgresPool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_slice_states (
-    slice_name TEXT PRIMARY KEY,
-    version TEXT NOT NULL,
-    state_json JSONB NOT NULL,
-    last_applied_order BIGINT NOT NULL,
-    reached BIGINT NOT NULL DEFAULT 0
-  )`)
-}
+/**
+ * The JSONB Slice Store's table, as versioned migrations:
+ * `migrateSpecterPostgres` applies them, or a host runs them in its own
+ * migrations.
+ */
+export const postgresSliceStoreMigrations: readonly PostgresMigration[] = [
+  {
+    store: 'slice-store',
+    version: 1,
+    description: 'Slice State with its cursor, version and reached cursor',
+    statements: [
+      `CREATE TABLE specter_slice_states (
+        slice_name TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        state_json JSONB NOT NULL,
+        last_applied_order BIGINT NOT NULL,
+        reached BIGINT NOT NULL DEFAULT 0
+      )`,
+    ],
+  },
+]
 
 export function createPostgresSliceStoreService<
   TWriteState,

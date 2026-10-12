@@ -28,16 +28,16 @@ import type {
 import { createPostgresDatabaseContext } from './database'
 import {
   createPostgresEventLogService,
-  preparePostgresEventLog,
+  postgresEventLogMigrations,
 } from './event-log'
 import {
-  createPostgresReactionOutboxStore,
-  preparePostgresReactionOutbox,
-} from './reaction-outbox'
-import {
-  createPostgresSliceStoreService,
-  preparePostgresSliceStore,
-} from './slice-store'
+  migrateSpecterPostgres,
+  type PostgresMigration,
+  PostgresMigrationFailure,
+} from './migrations'
+import { specterPostgresMigrations } from './persistence'
+import { createPostgresReactionOutboxStore } from './reaction-outbox'
+import { createPostgresSliceStoreService } from './slice-store'
 
 const databaseUrl = process.env.SPECTER_POSTGRES_URL
 
@@ -89,14 +89,62 @@ describe.skipIf(!databaseUrl)('Postgres adapters against a real server', () => {
       DROP TABLE IF EXISTS specter_event_keys;
       DROP TABLE IF EXISTS specter_event_purges;
       DROP TABLE IF EXISTS specter_events;
+      DROP TABLE IF EXISTS specter_migrations;
     `)
-    await preparePostgresEventLog(pool)
-    await preparePostgresSliceStore(pool)
-    await preparePostgresReactionOutbox(pool)
+    await migrateSpecterPostgres(pool, specterPostgresMigrations)
   })
 
   afterAll(async () => {
     await nativePool.end()
+  })
+
+  it('applies each migration once, records it, and refuses a newer database or tables it did not create', async () => {
+    const recorded = async () =>
+      (
+        await nativePool.query(
+          'SELECT store, version FROM specter_migrations ORDER BY store, version',
+        )
+      ).rows.map((row) => `${row.store}@${row.version}`)
+    expect(await recorded()).toEqual([
+      'event-log@1',
+      'reaction-outbox@1',
+      'slice-store@1',
+    ])
+    // A second run, or a second process, finds nothing to do.
+    expect(
+      await migrateSpecterPostgres(pool, specterPostgresMigrations),
+    ).toEqual([])
+    // A later release's migration of the Event Log, for this test only.
+    const version2: PostgresMigration = {
+      store: 'event-log',
+      version: 2,
+      description: 'Events by recorded time',
+      statements: [
+        'CREATE INDEX specter_events_recorded_idx ON specter_events(recorded_at)',
+      ],
+    }
+    expect(
+      await migrateSpecterPostgres(pool, [
+        ...postgresEventLogMigrations,
+        version2,
+      ]),
+    ).toEqual([version2])
+    expect(await recorded()).toContain('event-log@2')
+    await expect(
+      migrateSpecterPostgres(pool, postgresEventLogMigrations),
+    ).rejects.toThrow(PostgresMigrationFailure)
+    // Tables from before the migrations fail the run, which leaves nothing.
+    await nativePool.query('DROP TABLE specter_migrations')
+    await expect(
+      migrateSpecterPostgres(pool, specterPostgresMigrations),
+    ).rejects.toThrow("event-log store's migration 1")
+    expect(
+      (
+        await nativePool.query(
+          "SELECT to_regclass('specter_migrations') AS migrations",
+        )
+      ).rows[0]?.migrations,
+    ).toBe(null)
   })
 
   it('conforms to the Event Log contract, keys and keyed reads included', async () => {

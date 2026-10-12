@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto'
+
 import { EventLogFailure, SpecterVersionConflictError } from '@specter-ts/core'
 import { testEventLogService } from '@specter-ts/core/testing'
 import { Effect } from 'effect'
@@ -8,14 +10,10 @@ import type {
   PostgresPoolClient,
   PostgresQueryResult,
 } from './database'
-import {
-  createPostgresEventLogService,
-  preparePostgresEventLog,
-} from './event-log'
-import {
-  createPostgresReactionOutboxStore,
-  preparePostgresReactionOutbox,
-} from './reaction-outbox'
+import { createPostgresEventLogService } from './event-log'
+import { migrateSpecterPostgres } from './migrations'
+import { specterPostgresMigrations } from './persistence'
+import { createPostgresReactionOutboxStore } from './reaction-outbox'
 import { createPostgresSliceStoreService } from './slice-store'
 
 type EventRow = {
@@ -446,18 +444,48 @@ class FakePostgresPool implements PostgresPool {
 }
 
 describe('Postgres Event Log adapter', () => {
-  it('provides executable schema preparation without a live server', async () => {
+  it('applies its migrations and records them without a live server', async () => {
     const pool = new FakePostgresPool()
 
-    await preparePostgresEventLog(pool)
-    await preparePostgresReactionOutbox(pool)
-
-    expect(pool.statements.some((sql) => sql.includes('specter_events'))).toBe(
-      true,
+    const applied = await migrateSpecterPostgres(
+      pool,
+      specterPostgresMigrations,
     )
+
+    expect(applied).toEqual(specterPostgresMigrations)
+    for (const table of [
+      'specter_events',
+      'specter_slice_states',
+      'specter_reaction_outbox',
+    ])
+      expect(
+        pool.statements.some((sql) => sql.includes(`CREATE TABLE ${table}`)),
+      ).toBe(true)
     expect(
-      pool.statements.some((sql) => sql.includes('specter_reaction_outbox')),
-    ).toBe(true)
+      pool.statements.filter((sql) =>
+        sql.includes('INSERT INTO specter_migrations'),
+      ),
+    ).toHaveLength(specterPostgresMigrations.length)
+  })
+
+  it('never changes a released migration', () => {
+    // A release that changes a store's tables adds a version; these are the
+    // digests of the released ones.
+    expect(
+      Object.fromEntries(
+        specterPostgresMigrations.map((migration) => [
+          `${migration.store}@${migration.version}`,
+          createHash('sha256')
+            .update(JSON.stringify(migration.statements))
+            .digest('hex')
+            .slice(0, 16),
+        ]),
+      ),
+    ).toEqual({
+      'event-log@1': '839bde45c2c9dcb6',
+      'slice-store@1': '8eaf4de51918147a',
+      'reaction-outbox@1': '1382c3d965cf6b90',
+    })
   })
 
   it('persists and retrieves durable idempotency receipts', async () => {

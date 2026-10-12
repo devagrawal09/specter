@@ -6,12 +6,12 @@ import type {
 import { Effect, Layer } from 'effect'
 
 import {
-  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
   type SqliteDatabaseFailure,
 } from './database'
+import type { SqliteMigration } from './migrations'
 
 export class SqliteSliceStoreFailure extends Error {
   readonly _tag = 'SqliteSliceStoreFailure' as const
@@ -46,20 +46,27 @@ const jsonCodec = <TState>(): SqliteSliceStateCodec<TState> => ({
   decode: JSON.parse,
 })
 
-/** The statements that create the JSON Slice Store's table. */
-export const sqliteSliceStoreSchema: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS specter_slice_states (
-    slice_name TEXT PRIMARY KEY,
-    version TEXT NOT NULL,
-    state_json TEXT NOT NULL,
-    last_applied_order INTEGER NOT NULL,
-    reached INTEGER NOT NULL DEFAULT 0
-  )`,
+/**
+ * The JSON Slice Store's table, as versioned migrations:
+ * `migrateSpecterSqlite` applies them, or a host runs them in its own
+ * migrations.
+ */
+export const sqliteSliceStoreMigrations: readonly SqliteMigration[] = [
+  {
+    store: 'slice-store',
+    version: 1,
+    description: 'Slice State with its cursor, version and reached cursor',
+    statements: [
+      `CREATE TABLE specter_slice_states (
+        slice_name TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        state_json TEXT NOT NULL,
+        last_applied_order INTEGER NOT NULL,
+        reached INTEGER NOT NULL DEFAULT 0
+      )`,
+    ],
+  },
 ]
-
-export function prepareSqliteSliceStore(context: SqliteDatabaseContext) {
-  return executeAll(context, sqliteSliceStoreSchema)
-}
 
 /**
  * A Slice Store that keeps each Slice's State as JSON beside its cursor and

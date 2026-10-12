@@ -20,13 +20,13 @@ import {
 import { Effect, Layer } from 'effect'
 
 import {
-  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
   type SqliteRow,
   type SqliteValue,
 } from './database'
+import type { SqliteMigration } from './migrations'
 
 export type SqliteEventCodec = {
   encode(payload: unknown): string
@@ -86,8 +86,6 @@ export type SqliteEventLogService = EventLogService & {
   readonly context: SqliteDatabaseContext
 }
 
-type CommitTableShape = 'versioned' | 'legacy'
-
 const jsonCodec: SqliteEventCodec = {
   encode(payload) {
     const encoded = JSON.stringify(payload)
@@ -100,49 +98,51 @@ const jsonCodec: SqliteEventCodec = {
 }
 
 /**
- * The statements that create the Event Log's tables and indexes. A host that
- * runs its own migrations runs them in one; `prepareSqliteEventLog` runs them
- * for a host that does not.
+ * The Event Log's tables, as versioned migrations: `migrateSpecterSqlite`
+ * applies them, or a host runs them in its own migrations.
  */
-export const sqliteEventLogSchema: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS specter_events (
-    event_order INTEGER PRIMARY KEY AUTOINCREMENT,
-    id TEXT NOT NULL UNIQUE,
-    type TEXT NOT NULL,
-    payload TEXT NOT NULL,
-    recorded_at TEXT NOT NULL
-  )`,
-  `CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
-    ON specter_events(type, event_order)`,
-  `CREATE TABLE IF NOT EXISTS specter_event_commits (
-    commit_version INTEGER PRIMARY KEY,
-    idempotency_key TEXT UNIQUE,
-    fingerprint TEXT,
-    first_event_order INTEGER NOT NULL,
-    last_event_order INTEGER NOT NULL,
-    committed_at TEXT NOT NULL
-  )`,
-  // Each Event's named keys, as core derived them when it was appended.
-  `CREATE TABLE IF NOT EXISTS specter_event_keys (
-    event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
-    name TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (event_order, name)
-  )`,
-  `CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
-    ON specter_event_keys(name, value, event_order)`,
-  // The highest order a purge removed, by Event type: the log's version
-  // never moves back, and a decision that read before a removed Event was
-  // appended stays stale.
-  `CREATE TABLE IF NOT EXISTS specter_event_purges (
-    type TEXT PRIMARY KEY,
-    through_order INTEGER NOT NULL
-  )`,
+export const sqliteEventLogMigrations: readonly SqliteMigration[] = [
+  {
+    store: 'event-log',
+    version: 1,
+    description: 'Events, their keys, commits and purges',
+    statements: [
+      `CREATE TABLE specter_events (
+        event_order INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        payload TEXT NOT NULL,
+        recorded_at TEXT NOT NULL
+      )`,
+      `CREATE INDEX specter_events_type_order_idx
+        ON specter_events(type, event_order)`,
+      `CREATE TABLE specter_event_commits (
+        commit_version INTEGER PRIMARY KEY,
+        idempotency_key TEXT UNIQUE,
+        fingerprint TEXT,
+        first_event_order INTEGER NOT NULL,
+        last_event_order INTEGER NOT NULL,
+        committed_at TEXT NOT NULL
+      )`,
+      // Each Event's named keys, as core derived them when it was appended.
+      `CREATE TABLE specter_event_keys (
+        event_order INTEGER NOT NULL REFERENCES specter_events(event_order),
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (event_order, name)
+      )`,
+      `CREATE INDEX specter_event_keys_name_value_order_idx
+        ON specter_event_keys(name, value, event_order)`,
+      // The highest order a purge removed, by Event type: the log's version
+      // never moves back, and a decision that read before a removed Event
+      // was appended stays stale.
+      `CREATE TABLE specter_event_purges (
+        type TEXT PRIMARY KEY,
+        through_order INTEGER NOT NULL
+      )`,
+    ],
+  },
 ]
-
-export function prepareSqliteEventLog(context: SqliteDatabaseContext) {
-  return executeAll(context, sqliteEventLogSchema)
-}
 
 /**
  * An Event's columns, with the keys stored with it as one JSON object, for a
@@ -182,37 +182,11 @@ export function createSqliteEventLogService(
   const eventId = options.eventId ?? randomUUID
   const now = options.now ?? (() => new Date())
   const codec = options.codec ?? jsonCodec
-  let commitTableShape: CommitTableShape | undefined
 
   const rows = (sql: string, args: readonly SqliteValue[] = []) =>
     context.execute(sql, args)
   const decode = <A>(run: () => A) =>
     Effect.try({ try: run, catch: (cause) => cause })
-
-  function getCommitTableShape() {
-    if (commitTableShape) return Effect.succeed(commitTableShape)
-    return rows('PRAGMA table_info(specter_event_commits)').pipe(
-      Effect.flatMap((columns) =>
-        decode(() => {
-          const names = new Set(
-            columns.map((row) =>
-              requireString(row.name, 'Event commit table column name'),
-            ),
-          )
-          if (names.has('commit_version')) return 'versioned' as const
-          if (names.has('idempotency_key') && names.has('last_event_order')) {
-            return 'legacy' as const
-          }
-          throw new Error('Unsupported SQLite Event commit table schema')
-        }),
-      ),
-      Effect.tap((shape) =>
-        Effect.sync(() => {
-          commitTableShape = shape
-        }),
-      ),
-    )
-  }
 
   function fromRow(row: SqliteRow): PersistedEvent {
     const recordedAt = requireString(row.recorded_at, 'recorded time')
@@ -401,20 +375,13 @@ export function createSqliteEventLogService(
   }
 
   function commitsAfter(afterVersion: number, page: EventLogPage) {
-    return getCommitTableShape().pipe(
-      Effect.flatMap((shape) => {
-        const versionColumn =
-          shape === 'versioned' ? 'commit_version' : 'last_event_order'
-        return rows(
-          `SELECT ${commitColumns} FROM specter_event_commits
-            WHERE ${versionColumn} > ?
-            ORDER BY ${versionColumn} ASC
-            LIMIT ?`,
-          [afterVersion, page.limit ?? -1],
-        )
-      }),
-      Effect.flatMap(withEvents),
-    )
+    return rows(
+      `SELECT ${commitColumns} FROM specter_event_commits
+        WHERE commit_version > ?
+        ORDER BY commit_version ASC
+        LIMIT ?`,
+      [afterVersion, page.limit ?? -1],
+    ).pipe(Effect.flatMap(withEvents))
   }
 
   /** Stores one commit and runs the host's hook, inside the transaction. */
@@ -438,7 +405,6 @@ export function createSqliteEventLogService(
         )
       }
 
-      const tableShape = yield* getCommitTableShape()
       const version = yield* currentVersion
       if (
         appendOptions.expectedVersion !== undefined &&
@@ -500,36 +466,20 @@ export function createSqliteEventLogService(
       const committedVersion = appended.at(-1)?.order ?? version
       const committedAt = now().toISOString()
       const first = appended[0]?.order ?? version
-      if (tableShape === 'versioned') {
-        yield* rows(
-          `INSERT INTO specter_event_commits (
-              commit_version, idempotency_key, fingerprint,
-              first_event_order, last_event_order, committed_at
-            ) VALUES (?, ?, ?, ?, ?, ?)`,
-          [
-            committedVersion,
-            appendOptions.idempotencyKey ?? null,
-            appendOptions.fingerprint ?? null,
-            first,
-            committedVersion,
-            committedAt,
-          ],
-        )
-      } else {
-        yield* rows(
-          `INSERT INTO specter_event_commits (
-              idempotency_key, fingerprint, first_event_order,
-              last_event_order, committed_at
-            ) VALUES (?, ?, ?, ?, ?)`,
-          [
-            appendOptions.idempotencyKey ?? null,
-            appendOptions.fingerprint ?? null,
-            first,
-            committedVersion,
-            committedAt,
-          ],
-        )
-      }
+      yield* rows(
+        `INSERT INTO specter_event_commits (
+            commit_version, idempotency_key, fingerprint,
+            first_event_order, last_event_order, committed_at
+          ) VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          committedVersion,
+          appendOptions.idempotencyKey ?? null,
+          appendOptions.fingerprint ?? null,
+          first,
+          committedVersion,
+          committedAt,
+        ],
+      )
       const commit: EventLogCommit = {
         events: appended,
         version: committedVersion,

@@ -5,25 +5,31 @@ import {
 } from './database'
 import {
   createPostgresEventLogService,
-  preparePostgresEventLog,
+  postgresEventLogMigrations,
   type PostgresEventLogOptions,
 } from './event-log'
-import {
-  createPostgresSliceStoreService,
-  preparePostgresSliceStore,
-  type PostgresSliceStoreOptions,
-} from './slice-store'
+import type { PostgresMigration } from './migrations'
 import {
   createPostgresReactionOutboxStore,
-  preparePostgresReactionOutbox,
+  postgresReactionOutboxMigrations,
   type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
+import {
+  createPostgresSliceStoreService,
+  postgresSliceStoreMigrations,
+  type PostgresSliceStoreOptions,
+} from './slice-store'
 
-export async function prepareSpecterPostgres(pool: PostgresPool) {
-  await preparePostgresEventLog(pool)
-  await preparePostgresSliceStore(pool)
-  await preparePostgresReactionOutbox(pool)
-}
+/**
+ * Every store's migrations, store by store, for `migrateSpecterPostgres`. A
+ * host that runs its own migrations runs those of the stores it uses
+ * (`postgresEventLogMigrations` and the others) in its own instead.
+ */
+export const specterPostgresMigrations: readonly PostgresMigration[] = [
+  ...postgresEventLogMigrations,
+  ...postgresSliceStoreMigrations,
+  ...postgresReactionOutboxMigrations,
+]
 
 export function createSpecterPostgresPersistence(
   pool: PostgresPool,

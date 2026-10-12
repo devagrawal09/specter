@@ -1,50 +1,52 @@
 import { Effect } from 'effect'
 
-import { executeAll, type SqliteDatabaseContext } from './database'
+import type { SqliteDatabaseContext } from './database'
 import {
   createSqliteEventLogService,
-  sqliteEventLogSchema,
+  sqliteEventLogMigrations,
   type SqliteEventLogOptions,
 } from './event-log'
+import { migrateSpecterSqlite, type SqliteMigration } from './migrations'
 import {
   createSqliteReactionOutboxStore,
-  sqliteReactionOutboxSchema,
+  sqliteReactionOutboxMigrations,
   type SqliteReactionOutboxOptions,
 } from './reaction-outbox'
-import { sqliteReactionSchedulerSchema } from './reaction-scheduler'
+import { sqliteReactionSchedulerMigrations } from './reaction-scheduler'
 import {
   createSqliteSliceSnapshotStore,
-  sqliteSliceSnapshotSchema,
+  sqliteSliceSnapshotMigrations,
   type SqliteSliceSnapshotStoreOptions,
 } from './slice-snapshot-store'
 import {
   createSqliteSliceStoreService,
-  sqliteSliceStoreSchema,
+  sqliteSliceStoreMigrations,
   type SqliteSliceStoreOptions,
 } from './slice-store'
 
 /**
- * Every table and index Specter's SQLite stores use. A host that runs its
- * own migrations runs the ones it uses (`sqliteEventLogSchema` and the
- * others) in one of them instead.
+ * Every store's migrations, store by store. A host that runs its own
+ * migrations runs those of the stores it uses (`sqliteEventLogMigrations`
+ * and the others) in its own instead.
  */
-export const specterSqliteSchema: readonly string[] = [
-  ...sqliteEventLogSchema,
-  ...sqliteSliceStoreSchema,
-  ...sqliteSliceSnapshotSchema,
-  ...sqliteReactionSchedulerSchema,
-  ...sqliteReactionOutboxSchema,
+export const specterSqliteMigrations: readonly SqliteMigration[] = [
+  ...sqliteEventLogMigrations,
+  ...sqliteSliceStoreMigrations,
+  ...sqliteSliceSnapshotMigrations,
+  ...sqliteReactionSchedulerMigrations,
+  ...sqliteReactionOutboxMigrations,
 ]
 
 /**
  * Turns on WAL and a five-second busy timeout for this connection, and
- * creates every table and index Specter's SQLite stores use.
+ * brings every store's tables to their latest version
+ * (`migrateSpecterSqlite` with `specterSqliteMigrations`).
  */
 export function prepareSpecterSqlite(context: SqliteDatabaseContext) {
   return Effect.gen(function* () {
     yield* context.execute('PRAGMA journal_mode = WAL')
     yield* context.execute('PRAGMA busy_timeout = 5000')
-    yield* executeAll(context, specterSqliteSchema)
+    return yield* migrateSpecterSqlite(context, specterSqliteMigrations)
   })
 }
 

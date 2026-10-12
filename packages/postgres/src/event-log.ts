@@ -29,6 +29,7 @@ import {
   type PostgresDatabaseOptions,
   type PostgresPool,
 } from './database'
+import type { PostgresMigration } from './migrations'
 
 export type PostgresEventLogOptions = PostgresDatabaseOptions & {
   readonly context?: PostgresDatabaseContext
@@ -40,39 +41,50 @@ export type PostgresEventLogService = EventLogService & {
   readonly context: PostgresDatabaseContext
 }
 
-export async function preparePostgresEventLog(pool: PostgresPool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_events (
-    event_order BIGSERIAL PRIMARY KEY,
-    id TEXT NOT NULL UNIQUE,
-    type TEXT NOT NULL,
-    payload JSONB NOT NULL,
-    recorded_at TIMESTAMPTZ NOT NULL
-  )`)
-  await pool.query(`CREATE INDEX IF NOT EXISTS specter_events_type_order_idx
-    ON specter_events(type, event_order)`)
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_commits (
-    commit_version BIGINT PRIMARY KEY,
-    idempotency_key TEXT UNIQUE,
-    fingerprint TEXT,
-    first_event_order BIGINT NOT NULL,
-    last_event_order BIGINT NOT NULL,
-    committed_at TIMESTAMPTZ NOT NULL
-  )`)
-  // Each Event's named keys, as core derived them when it was appended.
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_keys (
-    event_order BIGINT NOT NULL REFERENCES specter_events(event_order),
-    name TEXT NOT NULL,
-    value TEXT NOT NULL,
-    PRIMARY KEY (event_order, name)
-  )`)
-  await pool.query(`CREATE INDEX IF NOT EXISTS specter_event_keys_name_value_order_idx
-    ON specter_event_keys(name, value, event_order)`)
-  // The highest order a purge removed, by Event type.
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_event_purges (
-    type TEXT PRIMARY KEY,
-    through_order BIGINT NOT NULL
-  )`)
-}
+/**
+ * The Event Log's tables, as versioned migrations: `migrateSpecterPostgres`
+ * applies them, or a host runs them in its own migrations.
+ */
+export const postgresEventLogMigrations: readonly PostgresMigration[] = [
+  {
+    store: 'event-log',
+    version: 1,
+    description: 'Events, their keys, commits and purges',
+    statements: [
+      `CREATE TABLE specter_events (
+        event_order BIGSERIAL PRIMARY KEY,
+        id TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        payload JSONB NOT NULL,
+        recorded_at TIMESTAMPTZ NOT NULL
+      )`,
+      `CREATE INDEX specter_events_type_order_idx
+        ON specter_events(type, event_order)`,
+      `CREATE TABLE specter_event_commits (
+        commit_version BIGINT PRIMARY KEY,
+        idempotency_key TEXT UNIQUE,
+        fingerprint TEXT,
+        first_event_order BIGINT NOT NULL,
+        last_event_order BIGINT NOT NULL,
+        committed_at TIMESTAMPTZ NOT NULL
+      )`,
+      // Each Event's named keys, as core derived them when it was appended.
+      `CREATE TABLE specter_event_keys (
+        event_order BIGINT NOT NULL REFERENCES specter_events(event_order),
+        name TEXT NOT NULL,
+        value TEXT NOT NULL,
+        PRIMARY KEY (event_order, name)
+      )`,
+      `CREATE INDEX specter_event_keys_name_value_order_idx
+        ON specter_event_keys(name, value, event_order)`,
+      // The highest order a purge removed, by Event type.
+      `CREATE TABLE specter_event_purges (
+        type TEXT PRIMARY KEY,
+        through_order BIGINT NOT NULL
+      )`,
+    ],
+  },
+]
 
 /**
  * An Event's columns, with the keys stored with it as one JSON object, for a

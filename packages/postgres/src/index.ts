@@ -11,24 +11,30 @@ export {
 export {
   createPostgresEventLogLayer,
   createPostgresEventLogService,
-  preparePostgresEventLog,
+  postgresEventLogMigrations,
   type PostgresEventLogService,
   type PostgresEventLogOptions,
 } from './event-log'
 export {
+  migrateSpecterPostgres,
+  PostgresMigrationFailure,
+  type PostgresMigration,
+  type PostgresStore,
+} from './migrations'
+export {
   createSpecterPostgresPersistence,
-  prepareSpecterPostgres,
+  specterPostgresMigrations,
 } from './persistence'
 export {
   createPostgresReactionOutboxStore,
-  preparePostgresReactionOutbox,
+  postgresReactionOutboxMigrations,
   type PostgresReactionOutboxCodec,
   type PostgresReactionOutboxOptions,
 } from './reaction-outbox'
 export {
   createPostgresSliceStoreLayer,
   createPostgresSliceStoreService,
-  preparePostgresSliceStore,
+  postgresSliceStoreMigrations,
   PostgresSliceStoreFailure,
   type PostgresSliceStoreOptions,
 } from './slice-store'

@@ -231,18 +231,6 @@ function isSqlError(cause: unknown): cause is SqlError.SqlError {
   )
 }
 
-/** Runs each statement in one transaction, such as a schema's. */
-export function executeAll(
-  context: SqliteDatabaseContext,
-  statements: readonly string[],
-) {
-  return context.transaction(() =>
-    Effect.forEach(statements, (statement) => context.execute(statement), {
-      discard: true,
-    }),
-  )
-}
-
 export function requireString(value: unknown, field: string) {
   if (typeof value !== 'string') {
     throw new Error(`Expected SQLite ${field} to be a string`)

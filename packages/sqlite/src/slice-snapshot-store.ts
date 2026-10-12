@@ -2,11 +2,11 @@ import type { SliceSnapshot, SliceSnapshotStore } from '@specter-ts/core'
 import { Effect } from 'effect'
 
 import {
-  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
 } from './database'
+import type { SqliteMigration } from './migrations'
 
 export type SqliteSliceSnapshotCodec = {
   encode(state: unknown): string
@@ -29,23 +29,27 @@ const jsonCodec: SqliteSliceSnapshotCodec = {
   decode: JSON.parse,
 }
 
-/** The statements that create the Slice snapshot table. */
-export const sqliteSliceSnapshotSchema: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS specter_slice_snapshots (
-    slice_name TEXT PRIMARY KEY,
-    version TEXT NOT NULL,
-    state_json TEXT NOT NULL,
-    cursor INTEGER NOT NULL,
-    reached INTEGER NOT NULL,
-    saved_at TEXT NOT NULL
-  )`,
+/**
+ * The Slice snapshot table, as versioned migrations: `migrateSpecterSqlite`
+ * applies them, or a host runs them in its own migrations.
+ */
+export const sqliteSliceSnapshotMigrations: readonly SqliteMigration[] = [
+  {
+    store: 'slice-snapshots',
+    version: 1,
+    description: 'Slice snapshots with their version and reached cursor',
+    statements: [
+      `CREATE TABLE specter_slice_snapshots (
+        slice_name TEXT PRIMARY KEY,
+        version TEXT NOT NULL,
+        state_json TEXT NOT NULL,
+        cursor INTEGER NOT NULL,
+        reached INTEGER NOT NULL,
+        saved_at TEXT NOT NULL
+      )`,
+    ],
+  },
 ]
-
-export function prepareSqliteSliceSnapshotStore(
-  context: SqliteDatabaseContext,
-) {
-  return executeAll(context, sqliteSliceSnapshotSchema)
-}
 
 /**
  * Slice snapshots in the database, one row per Slice with the version of the

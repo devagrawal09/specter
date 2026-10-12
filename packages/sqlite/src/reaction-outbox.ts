@@ -10,13 +10,13 @@ import { ReactionOutboxLeaseLostError } from '@specter-ts/reaction-outbox'
 import { Effect } from 'effect'
 
 import {
-  executeAll,
   requireNumber,
   requireString,
   type SqliteDatabaseContext,
   type SqliteDatabaseFailure,
   type SqliteRow,
 } from './database'
+import type { SqliteMigration } from './migrations'
 
 export type SqliteReactionOutboxCodec<TPayload> = {
   readonly encode: (payload: TPayload) => string
@@ -63,34 +63,40 @@ export type SqliteReactionOutboxStore<TPayload> =
       ) => Effect.Effect<number, SqliteDatabaseFailure>
     }
 
-/** The statements that create the Reaction outbox table and its index. */
-export const sqliteReactionOutboxSchema: readonly string[] = [
-  `CREATE TABLE IF NOT EXISTS specter_reaction_outbox (
-    queue TEXT NOT NULL,
-    id TEXT NOT NULL,
-    idempotency_key TEXT NOT NULL,
-    concurrency_key TEXT,
-    payload TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (
-      status IN ('pending', 'running', 'completed', 'dead-letter')
-    ),
-    requested_at TEXT NOT NULL,
-    available_at TEXT NOT NULL,
-    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-    active_attempt_id TEXT,
-    lease_expires_at TEXT,
-    completed_at TEXT,
-    last_error TEXT,
-    PRIMARY KEY (queue, id),
-    UNIQUE (queue, idempotency_key)
-  )`,
-  `CREATE INDEX IF NOT EXISTS specter_reaction_outbox_pending_idx
-    ON specter_reaction_outbox(queue, status, available_at, requested_at, id)`,
+/**
+ * The Reaction outbox table, as versioned migrations: `migrateSpecterSqlite`
+ * applies them, or a host runs them in its own migrations.
+ */
+export const sqliteReactionOutboxMigrations: readonly SqliteMigration[] = [
+  {
+    store: 'reaction-outbox',
+    version: 1,
+    description: 'Outbox jobs by queue',
+    statements: [
+      `CREATE TABLE specter_reaction_outbox (
+        queue TEXT NOT NULL,
+        id TEXT NOT NULL,
+        idempotency_key TEXT NOT NULL,
+        concurrency_key TEXT,
+        payload TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'running', 'completed', 'dead-letter')
+        ),
+        requested_at TEXT NOT NULL,
+        available_at TEXT NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        active_attempt_id TEXT,
+        lease_expires_at TEXT,
+        completed_at TEXT,
+        last_error TEXT,
+        PRIMARY KEY (queue, id),
+        UNIQUE (queue, idempotency_key)
+      )`,
+      `CREATE INDEX specter_reaction_outbox_pending_idx
+        ON specter_reaction_outbox(queue, status, available_at, requested_at, id)`,
+    ],
+  },
 ]
-
-export function prepareSqliteReactionOutbox(context: SqliteDatabaseContext) {
-  return executeAll(context, sqliteReactionOutboxSchema)
-}
 
 /** No other job of its queue with its concurrency key is running. */
 const unblocked = (alias: string) => `(${alias}.concurrency_key IS NULL

@@ -35,7 +35,7 @@ import {
   type SqliteEventLogAppend,
   type SqliteEventLogPurge,
 } from './event-log'
-import { prepareSpecterSqlite, specterSqliteSchema } from './persistence'
+import { prepareSpecterSqlite, specterSqliteMigrations } from './persistence'
 import { createSqliteReactionOutboxStore } from './reaction-outbox'
 import { createSqliteSliceSnapshotStore } from './slice-snapshot-store'
 import { createSqliteSliceStoreService } from './slice-store'
@@ -56,14 +56,15 @@ function databaseFile() {
 }
 
 /**
- * A host's database: an Effect SqlClient with Specter's tables, as the host's
- * own migration creates them, beside a table of its own.
+ * A host's database: an Effect SqlClient with Specter's tables, which the
+ * host's own migration creates by running Specter's migrations in it, beside
+ * a table of its own.
  */
 const hostDatabase = Effect.gen(function* () {
   const sql = yield* makeNodeSqlClient(databaseFile())
   yield* Effect.forEach(
     [
-      ...specterSqliteSchema,
+      ...specterSqliteMigrations.flatMap((migration) => migration.statements),
       'CREATE TABLE host_note (event_id TEXT PRIMARY KEY, request TEXT)',
     ],
     (statement) => sql.unsafe(statement),

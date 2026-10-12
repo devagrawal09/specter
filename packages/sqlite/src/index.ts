@@ -13,8 +13,7 @@ export {
 export {
   createSqliteEventLogLayer,
   createSqliteEventLogService,
-  prepareSqliteEventLog,
-  sqliteEventLogSchema,
+  sqliteEventLogMigrations,
   type SqliteEventCodec,
   type SqliteEventLogAppend,
   type SqliteEventLogPurge,
@@ -22,14 +21,19 @@ export {
   type SqliteEventLogService,
 } from './event-log'
 export {
+  migrateSpecterSqlite,
+  SqliteMigrationFailure,
+  type SqliteMigration,
+  type SqliteStore,
+} from './migrations'
+export {
   createSpecterSqlitePersistence,
   prepareSpecterSqlite,
-  specterSqliteSchema,
+  specterSqliteMigrations,
 } from './persistence'
 export {
   createSqliteReactionOutboxStore,
-  prepareSqliteReactionOutbox,
-  sqliteReactionOutboxSchema,
+  sqliteReactionOutboxMigrations,
   type SqliteReactionOutboxCodec,
   type SqliteReactionOutboxOptions,
   type SqliteReactionOutboxStore,
@@ -37,22 +41,19 @@ export {
 export {
   createSqliteReactionSchedulerLayer,
   createSqliteReactionSchedulerService,
-  prepareSqliteReactionScheduler,
-  sqliteReactionSchedulerSchema,
+  sqliteReactionSchedulerMigrations,
   type SqliteReactionSchedulerOptions,
 } from './reaction-scheduler'
 export {
   createSqliteSliceSnapshotStore,
-  prepareSqliteSliceSnapshotStore,
-  sqliteSliceSnapshotSchema,
+  sqliteSliceSnapshotMigrations,
   type SqliteSliceSnapshotCodec,
   type SqliteSliceSnapshotStoreOptions,
 } from './slice-snapshot-store'
 export {
   createSqliteSliceStoreLayer,
   createSqliteSliceStoreService,
-  prepareSqliteSliceStore,
-  sqliteSliceStoreSchema,
+  sqliteSliceStoreMigrations,
   type SqliteSliceStateCodec,
   SqliteSliceStoreFailure,
   type SqliteSliceStoreOptions,

@@ -8,7 +8,8 @@ import { expect, test } from 'vitest'
 import {
   createSqliteDatabaseContext,
   createSqliteEventLogService,
-  prepareSqliteEventLog,
+  migrateSpecterSqlite,
+  sqliteEventLogMigrations,
 } from '@specter-ts/sqlite'
 import { Effect } from 'effect'
 import * as schema from './schema'
@@ -18,7 +19,9 @@ test('appends multiple events in input order', async () => {
 
   try {
     const context = createSqliteDatabaseContext(sqlite)
-    await Effect.runPromise(prepareSqliteEventLog(context))
+    await Effect.runPromise(
+      migrateSpecterSqlite(context, sqliteEventLogMigrations),
+    )
     const eventLog = createSqliteEventLogService(context)
     const appended = await Effect.runPromise(
       eventLog.append([

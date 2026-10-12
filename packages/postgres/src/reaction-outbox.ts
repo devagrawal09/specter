@@ -20,6 +20,7 @@ import {
   type PostgresDatabaseOptions,
   type PostgresPool,
 } from './database'
+import type { PostgresMigration } from './migrations'
 
 export type PostgresReactionOutboxCodec<TPayload> = {
   readonly encode: (payload: TPayload) => unknown
@@ -32,25 +33,37 @@ export type PostgresReactionOutboxOptions<TPayload = unknown> =
     readonly codec?: PostgresReactionOutboxCodec<TPayload>
   }
 
-export async function preparePostgresReactionOutbox(pool: PostgresPool) {
-  await pool.query(`CREATE TABLE IF NOT EXISTS specter_reaction_outbox (
-    id TEXT PRIMARY KEY,
-    idempotency_key TEXT NOT NULL UNIQUE,
-    payload JSONB NOT NULL,
-    status TEXT NOT NULL CHECK (
-      status IN ('pending', 'running', 'completed', 'dead-letter')
-    ),
-    requested_at TIMESTAMPTZ NOT NULL,
-    available_at TIMESTAMPTZ NOT NULL,
-    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-    active_attempt_id TEXT,
-    lease_expires_at TIMESTAMPTZ,
-    completed_at TIMESTAMPTZ,
-    last_error TEXT
-  )`)
-  await pool.query(`CREATE INDEX IF NOT EXISTS specter_reaction_outbox_pending_idx
-    ON specter_reaction_outbox(status, available_at, requested_at, id)`)
-}
+/**
+ * The Reaction outbox table, as versioned migrations:
+ * `migrateSpecterPostgres` applies them, or a host runs them in its own
+ * migrations.
+ */
+export const postgresReactionOutboxMigrations: readonly PostgresMigration[] = [
+  {
+    store: 'reaction-outbox',
+    version: 1,
+    description: 'Outbox jobs',
+    statements: [
+      `CREATE TABLE specter_reaction_outbox (
+        id TEXT PRIMARY KEY,
+        idempotency_key TEXT NOT NULL UNIQUE,
+        payload JSONB NOT NULL,
+        status TEXT NOT NULL CHECK (
+          status IN ('pending', 'running', 'completed', 'dead-letter')
+        ),
+        requested_at TIMESTAMPTZ NOT NULL,
+        available_at TIMESTAMPTZ NOT NULL,
+        attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+        active_attempt_id TEXT,
+        lease_expires_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        last_error TEXT
+      )`,
+      `CREATE INDEX specter_reaction_outbox_pending_idx
+        ON specter_reaction_outbox(status, available_at, requested_at, id)`,
+    ],
+  },
+]
 
 export function createPostgresReactionOutboxStore<TPayload>(
   pool: PostgresPool,
