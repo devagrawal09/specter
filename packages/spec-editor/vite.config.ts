@@ -3,7 +3,6 @@ import solidPlugin from 'vite-plugin-solid'
 
 export default defineConfig({
   plugins: [solidPlugin()],
-  resolve: { tsconfigPaths: true },
   build: {
     emptyOutDir: true,
     cssCodeSplit: false,

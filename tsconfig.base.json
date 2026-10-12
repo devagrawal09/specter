@@ -7,10 +7,6 @@
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
-    "paths": {
-      "@specter-ts/core": ["./packages/core/src/index.ts"],
-      "@specter-ts/core/testing": ["./packages/core/src/testing-entry.ts"]
-    },
     "allowImportingTsExtensions": true,
     "allowArbitraryExtensions": true,
     "verbatimModuleSyntax": true,

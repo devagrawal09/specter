@@ -20,7 +20,7 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.dev.json --noEmit",
     "bench": "node --expose-gc --import tsx bench/app-construction.ts"
   },
   "dependencies": {

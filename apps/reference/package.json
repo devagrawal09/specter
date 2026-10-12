@@ -12,7 +12,7 @@
     "start": "node dist/index.js",
     "preview": "vite preview",
     "test": "pnpm spec:build && vitest run",
-    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "typecheck": "pnpm spec:build && tsc -p tsconfig.dev.json --noEmit",
     "spec:build": "node ../../packages/spec/dist/cli.js export src/features",
     "db:generate": "drizzle-kit generate",
     "db:prepare": "node -e \"require('node:fs').mkdirSync('data', { recursive: true })\"",

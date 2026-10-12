@@ -30,7 +30,7 @@
   "scripts": {
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.dev.json --noEmit"
   },
   "dependencies": {
     "@specter-ts/spec": "workspace:*",

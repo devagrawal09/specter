@@ -21,6 +21,18 @@ corepack prepare pnpm@11.1.3 --activate
 pnpm install
 ```
 
+## Packages and their builds
+
+Each package's `tsconfig.json` resolves the other Specter packages through
+their builds (`dist`), as an app that installs or links them does: Bun
+applies a linked package's tsconfig `paths`, so a source mapping there would
+make a linked app load a package twice, from `dist` and from `src`. Run
+`pnpm build:publishable` after `pnpm install`, and again after changing a
+package another one imports; editors and Vitest read the builds.
+`pnpm typecheck` checks each package against the others' sources instead:
+its `typecheck` script uses the package's `tsconfig.dev.json`, which adds the
+root `tsconfig.dev.json` mappings to `src`.
+
 ## Validation baseline
 
 ```sh

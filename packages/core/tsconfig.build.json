@@ -12,7 +12,6 @@
     "emitDeclarationOnly": true,
     "declaration": true,
     "declarationMap": true,
-    "paths": {},
     "rootDir": "src",
     "outDir": "dist"
   }

@@ -5,9 +5,6 @@
   "compilerOptions": {
     "jsxImportSource": "solid-js",
     "noEmit": true,
-    "types": ["node", "vite/client", "vitest"],
-    "paths": {
-      "@specter-ts/spec": ["../spec/src/index.ts"]
-    }
+    "types": ["node", "vite/client", "vitest"]
   }
 }

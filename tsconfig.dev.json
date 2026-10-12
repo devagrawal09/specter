@@ -1,0 +1,36 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@specter-ts/core": [
+        "./packages/core/src/index.ts"
+      ],
+      "@specter-ts/core/effect": [
+        "./packages/core/src/effect-entry.ts"
+      ],
+      "@specter-ts/core/testing": [
+        "./packages/core/src/testing-entry.ts"
+      ],
+      "@specter-ts/jsonl": [
+        "./packages/jsonl/src/index.ts"
+      ],
+      "@specter-ts/memory": [
+        "./packages/memory/src/index.ts"
+      ],
+      "@specter-ts/postgres": [
+        "./packages/postgres/src/index.ts"
+      ],
+      "@specter-ts/reaction-outbox": [
+        "./packages/reaction-outbox/src/index.ts"
+      ],
+      "@specter-ts/reaction-outbox/testing": [
+        "./packages/reaction-outbox/src/testing.ts"
+      ],
+      "@specter-ts/spec": [
+        "./packages/spec/src/index.ts"
+      ],
+      "@specter-ts/sqlite": [
+        "./packages/sqlite/src/index.ts"
+      ]
+    }
+  }
+}

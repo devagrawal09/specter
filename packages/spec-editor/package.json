@@ -22,7 +22,7 @@
     "build": "vite build && tsc -p tsconfig.build.json --emitDeclarationOnly",
     "test": "vitest run",
     "test:browser": "pnpm build && playwright test",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.dev.json --noEmit"
   },
   "dependencies": {
     "@codemirror/lang-json": "^6.0.2",
