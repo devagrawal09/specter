@@ -247,6 +247,9 @@ class FakePostgresPool implements PostgresPool {
       }
     }
     if (normalized.startsWith('INSERT INTO specter_events')) {
+      if (this.events.some((event) => event.id === String(parameters[0]))) {
+        throw new Error('duplicate key value violates unique constraint')
+      }
       const event: EventRow = {
         id: String(parameters[0]),
         event_order: String(this.events.length + 1),

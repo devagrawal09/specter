@@ -278,8 +278,13 @@ export function createNodeSqliteEventLogService(
       'INSERT INTO specter_event_keys (event_order, name, value) VALUES (?, ?, ?)',
     )
     const events = drafts.map((draft): PersistedEvent => {
-      const id = eventId()
-      const recordedAt = now().toISOString()
+      // The host's ID and time when it supplied them. The ID column is
+      // unique, so an ID already in the log fails the append.
+      const id = draft.id ?? eventId()
+      const recordedAt = draft.recordedAt ?? now().toISOString()
+      if (Number.isNaN(Date.parse(recordedAt))) {
+        throw new Error('Event recordedAt must be an ISO-8601 timestamp')
+      }
       const payload = JSON.stringify(draft.payload)
       if (payload === undefined) throw new Error('Event payload must be JSON')
       const result = insert.run(id, draft.type, payload, recordedAt)

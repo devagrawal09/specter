@@ -27,7 +27,8 @@ export function createMemoryEventLog(
   const recordedAt =
     options.recordedAt ?? ((order: number) => new Date(order - 1).toISOString())
   const events: PersistedEvent[] = []
-  // The orders of the Events carrying each key.
+  // The IDs Events are stored under, and the orders carrying each key.
+  const ids = new Set<string>()
   const ordersByKey = new Map<string, number[]>()
   const commits: EventLogCommit[] = []
   const commitsByIdempotencyKey = new Map<string, EventLogCommit>()
@@ -119,13 +120,19 @@ export function createMemoryEventLog(
               }
             }
           }
+          const appended = new Set<string>()
           const persisted = drafts.map((draft, index): PersistedEvent => {
             const order = version + index + 1
-            const id = eventId(order, draft)
-            const time = recordedAt(order, draft)
+            // The host's ID and time when it supplied them.
+            const id = draft.id ?? eventId(order, draft)
+            const time = draft.recordedAt ?? recordedAt(order, draft)
             if (Number.isNaN(Date.parse(time))) {
               throw new Error('Event recordedAt must be an ISO-8601 timestamp')
             }
+            if (ids.has(id) || appended.has(id)) {
+              throw new Error(`Event ID "${id}" is in the log already`)
+            }
+            appended.add(id)
             return {
               type: draft.type,
               payload: draft.payload,
@@ -137,6 +144,7 @@ export function createMemoryEventLog(
           })
           events.push(...persisted)
           for (const event of persisted) {
+            ids.add(event.id)
             for (const [name, value] of Object.entries(event.keys)) {
               const key = keyOf(name, value)
               ordersByKey.set(key, [
@@ -149,6 +157,7 @@ export function createMemoryEventLog(
           const commit: EventLogCommit = {
             events: persisted,
             version: lastOrder,
+            // The log's own time, whatever time the host gave its Events.
             committedAt: recordedAt(
               lastOrder,
               drafts.at(-1) as (typeof drafts)[number],
@@ -167,6 +176,7 @@ export function createMemoryEventLog(
     inspect: () => events.map(copyEvent),
     reset: () => {
       events.length = 0
+      ids.clear()
       ordersByKey.clear()
       commits.length = 0
       commitsByIdempotencyKey.clear()

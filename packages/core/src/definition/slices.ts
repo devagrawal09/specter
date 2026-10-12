@@ -4,7 +4,12 @@ import type { Effect, Scope } from 'effect'
 
 import type { SliceStoreService, SliceStoreTag } from '../adapters/slice-store'
 import type { SpecterEffectError } from '../effect/runtime'
-import type { EventDefinition, EventDraft, PersistedEvent } from './events'
+import type {
+  EventContext,
+  EventDefinition,
+  EventDraft,
+  PersistedEvent,
+} from './events'
 import type {
   CommandScenario,
   NonEmptyScenarios,
@@ -201,6 +206,17 @@ export type CommandDispatchOptions = {
   readonly idempotencyKey?: string
   /** Requires idempotencyKey. Defaults to `first-wins`. */
   readonly idempotencyMode?: CommandIdempotencyMode
+  /**
+   * The host's context for each Event the Command emits, by its draft and its
+   * position in the commit: its ID, its recorded time and metadata for the
+   * Event Log adapter. Called after the decision, for each attempt that
+   * appends, so the decision never sees it. An Event without context takes the
+   * Event Log's ID and time.
+   */
+  readonly eventContext?: (
+    draft: EventDraft,
+    index: number,
+  ) => EventContext | undefined
 }
 
 /** Commit receipt returned to a Plugin. Nested Reactions are not awaited. */

@@ -17,9 +17,9 @@ export type PersistedEvent<
   TType extends string = string,
   TPayload = unknown,
 > = EventDraft<TType, TPayload> & {
-  /** Unique in the log. */
+  /** Unique in the log: the host's when it supplied one, else the Event Log's. */
   readonly id: string
-  /** ISO-8601: when the Event Log appended it. */
+  /** ISO-8601: when the host recorded it when it supplied a time, else when the Event Log appended it. */
   readonly recordedAt: string
   /** Its unique global position, strictly ascending in the log. */
   readonly order: number
@@ -30,6 +30,27 @@ export type PersistedEvent<
    * change them.
    */
   readonly keys: Readonly<Record<string, string>>
+}
+
+/**
+ * What a host supplies with one Event a Command emits, when it dispatches the
+ * Command (`eventContext`): none of it reaches the decision, which happened
+ * before.
+ */
+export type EventContext = {
+  /** The Event's ID in place of one the Event Log generates; unique in the log. */
+  readonly id?: string
+  /**
+   * When the Event was recorded, an ISO-8601 timestamp, in place of the Event
+   * Log's clock: the host's clock at dispatch, for example.
+   */
+  readonly recordedAt?: string
+  /**
+   * Opaque to Specter: handed to the Event Log adapter with the Event's draft,
+   * for a host's own adapter (its projections or hooks in the append). The
+   * bundled adapters store none of it.
+   */
+  readonly metadata?: unknown
 }
 
 /**

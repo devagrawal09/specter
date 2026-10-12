@@ -1,4 +1,5 @@
 export type {
+  EventContext,
   EventDefinition,
   EventDefinitionOptions,
   EventDraft,

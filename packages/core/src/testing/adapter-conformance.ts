@@ -263,6 +263,70 @@ export function eventLogConformance<TCreateError, TRequirements>(
         refused,
       )
     }
+
+    yield* hostContextConformance(service, failed)
+  })
+}
+
+/**
+ * An Event the host gave an ID and a time is stored under them, an Event it
+ * gave none takes the Event Log's, and an ID already in the log fails the
+ * append. Metadata reaches the adapter and is not part of the Event.
+ */
+function hostContextConformance(
+  service: EventLogService,
+  failed: (
+    exit: Exit.Exit<unknown, EventLogFailure>,
+    operation: EventLogFailure['operation'],
+  ) => boolean,
+) {
+  return Effect.gen(function* () {
+    const recordedAt = '2026-01-02T03:04:05.006Z'
+    const before = yield* service.currentVersion
+    const hosted = yield* service.append([
+      {
+        type: 'host-recorded',
+        payload: { value: 1 },
+        keys: {},
+        id: 'host-event-1',
+        recordedAt,
+        metadata: { location: 'host' },
+      },
+      { type: 'host-recorded', payload: { value: 2 }, keys: {} },
+    ])
+    const read = yield* service.query(before, ['host-recorded'])
+    const generated = read[1]
+    yield* requireInvariant(
+      'event-log',
+      "an Event is stored under the host's ID and time, or the Event Log's",
+      hosted.events[0]?.id === 'host-event-1' &&
+        hosted.events[0]?.recordedAt === recordedAt &&
+        read[0]?.id === 'host-event-1' &&
+        read[0]?.recordedAt === recordedAt &&
+        !('metadata' in (read[0] ?? {})) &&
+        generated !== undefined &&
+        generated.id !== 'host-event-1' &&
+        generated.id === hosted.events[1]?.id &&
+        Number.isFinite(Date.parse(generated.recordedAt)),
+      { hosted, read },
+    )
+    const reused = yield* Effect.exit(
+      service.append([
+        {
+          type: 'host-recorded',
+          payload: { value: 3 },
+          keys: {},
+          id: 'host-event-1',
+        },
+      ]),
+    )
+    const after = yield* service.currentVersion
+    yield* requireInvariant(
+      'event-log',
+      'an Event ID already in the log fails the append',
+      failed(reused, 'append') && after === hosted.version,
+      { reused, after },
+    )
   })
 }
 

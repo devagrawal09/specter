@@ -293,8 +293,13 @@ export function createPostgresEventLogService(
 
     const events: PersistedEvent[] = []
     for (const draft of drafts) {
-      const id = eventId()
-      const recordedAt = now().toISOString()
+      // The host's ID and time when it supplied them. The ID column is
+      // unique, so an ID already in the log fails the append.
+      const id = draft.id ?? eventId()
+      const recordedAt = draft.recordedAt ?? now().toISOString()
+      if (Number.isNaN(Date.parse(recordedAt))) {
+        throw new Error('Event recordedAt must be an ISO-8601 timestamp')
+      }
       const encodedPayload = JSON.stringify(draft.payload)
       if (encodedPayload === undefined) {
         throw new Error('Postgres Event payload must be JSON-serializable')

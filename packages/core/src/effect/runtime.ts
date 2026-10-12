@@ -873,7 +873,10 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
           }
         }
         const decoded = yield* Effect.forEach(events, decodeEventDraft)
-        const appended = yield* eventLog.append(decoded, {
+        const drafts = options.eventContext
+          ? yield* withEventContext(command, decoded, options.eventContext)
+          : decoded
+        const appended = yield* eventLog.append(drafts, {
           ...(options.expectedVersion === undefined
             ? {
                 expectedUnchanged: decisionCondition(
@@ -893,6 +896,58 @@ export function makeSpecterRuntime<const TConfig extends SpecterAppConfig>(
         return appended.duplicate
           ? yield* acceptDuplicate(appended, options)
           : appended
+      })
+    }
+
+    /**
+     * The drafts with the context the host dispatched them with: an ID and a
+     * time it chose, and metadata for the Event Log. Each ID must be a
+     * non-blank string no other Event of the commit has, and each time an
+     * ISO-8601 timestamp.
+     */
+    function withEventContext(
+      command: AnyCommand,
+      drafts: readonly EventLogDraft[],
+      eventContext: NonNullable<CommandExecutionOptions['eventContext']>,
+    ): Effect.Effect<readonly EventLogDraft[], SpecterEffectError> {
+      return Effect.gen(function* () {
+        const ids = new Set<string>()
+        const withContext: EventLogDraft[] = []
+        for (const [index, draft] of drafts.entries()) {
+          const context = yield* Effect.try({
+            try: () =>
+              eventContext({ type: draft.type, payload: draft.payload }, index),
+            catch: (cause) =>
+              new SpecterInfrastructureError(
+                `Command "${command.name}" event context failed.`,
+                cause,
+              ),
+          })
+          if (context === undefined) {
+            withContext.push(draft)
+            continue
+          }
+          const invalid = invalidEventContext(context, ids)
+          if (invalid) {
+            return yield* Effect.fail(
+              new SpecterInvalidCommandOptionsError(
+                `eventContext for Event ${index} ("${draft.type}") of Command "${command.name}": ${invalid}`,
+              ),
+            )
+          }
+          if (context.id !== undefined) ids.add(context.id)
+          withContext.push({
+            ...draft,
+            ...(context.id === undefined ? {} : { id: context.id }),
+            ...(context.recordedAt === undefined
+              ? {}
+              : { recordedAt: context.recordedAt }),
+            ...(context.metadata === undefined
+              ? {}
+              : { metadata: context.metadata }),
+          })
+        }
+        return withContext
       })
     }
 
@@ -1926,6 +1981,40 @@ function isStoredKeys(keys: unknown) {
   )
 }
 
+/**
+ * Why a host's context for one Event is invalid, or undefined. `ids` holds
+ * the IDs earlier Events of the commit took.
+ */
+function invalidEventContext(
+  context: unknown,
+  ids: ReadonlySet<string>,
+): string | undefined {
+  if (!isObject(context)) return 'it must be an object or undefined.'
+  if ('id' in context && context.id !== undefined) {
+    if (typeof context.id !== 'string' || context.id.trim().length === 0) {
+      return 'id must be a non-empty string.'
+    }
+    if (ids.has(context.id)) {
+      return `id "${context.id}" is another Event's in the same commit.`
+    }
+  }
+  if ('recordedAt' in context && context.recordedAt !== undefined) {
+    if (
+      typeof context.recordedAt !== 'string' ||
+      !isIsoTimestamp(context.recordedAt)
+    ) {
+      return 'recordedAt must be an ISO-8601 timestamp.'
+    }
+  }
+  return undefined
+}
+
+/** An ISO-8601 UTC timestamp, as `Date.prototype.toISOString` writes one. */
+function isIsoTimestamp(value: string) {
+  const time = Date.parse(value)
+  return !Number.isNaN(time) && new Date(time).toISOString() === value
+}
+
 const commandIdempotencyModes: ReadonlySet<string> =
   new Set<CommandIdempotencyMode>(['first-wins', 'exact'])
 
@@ -1945,6 +2034,14 @@ function validateCommandOptions(options: CommandExecutionOptions) {
   ) {
     return new SpecterInvalidCommandOptionsError(
       'idempotencyKey must not be empty.',
+    )
+  }
+  if (
+    options.eventContext !== undefined &&
+    typeof options.eventContext !== 'function'
+  ) {
+    return new SpecterInvalidCommandOptionsError(
+      'eventContext must be a function.',
     )
   }
   if (options.idempotencyMode !== undefined) {

@@ -93,13 +93,16 @@ export function createJsonlEventLog(
   let poisoned: AggregateError | undefined
   const events: StoredEvent[] = commits.flatMap((commit) => commit.events)
   const commitsByIdempotencyKey = new Map<string, StoredCommit>()
-  // The orders of the Events carrying each key, in log order.
+  // The IDs Events are stored under, and the orders of the Events carrying
+  // each key, in log order.
+  const ids = new Set<string>()
   const ordersByKey = new Map<string, number[]>()
   const index = (commit: StoredCommit) => {
     if (commit.idempotencyKey) {
       commitsByIdempotencyKey.set(commit.idempotencyKey, commit)
     }
     for (const event of commit.events) {
+      ids.add(event.id)
       for (const [name, value] of Object.entries(event.keys ?? {})) {
         const key = keyOf(name, value)
         const orders = ordersByKey.get(key)
@@ -173,19 +176,31 @@ export function createJsonlEventLog(
         }
       }
     }
+    // The host's ID and time when it supplied them.
+    const stored = drafts.map((draft, index) => ({
+      id: draft.id ?? eventId(),
+      order: version + index + 1,
+      type: draft.type,
+      payload: draft.payload,
+      recordedAt: draft.recordedAt ?? now().toISOString(),
+      ...(Object.keys(draft.keys).length > 0 ? { keys: draft.keys } : {}),
+    }))
+    const appended = new Set<string>()
+    for (const event of stored) {
+      if (ids.has(event.id) || appended.has(event.id)) {
+        throw new Error(`Event ID "${event.id}" is in the log already`)
+      }
+      if (Number.isNaN(Date.parse(event.recordedAt))) {
+        throw new Error('Event recordedAt must be an ISO-8601 timestamp')
+      }
+      appended.add(event.id)
+    }
     const line = JSON.stringify({
       version: version + drafts.length,
       committedAt: now().toISOString(),
       idempotencyKey: appendOptions.idempotencyKey,
       fingerprint: appendOptions.fingerprint,
-      events: drafts.map((draft, index) => ({
-        id: eventId(),
-        order: version + index + 1,
-        type: draft.type,
-        payload: draft.payload,
-        recordedAt: now().toISOString(),
-        ...(Object.keys(draft.keys).length > 0 ? { keys: draft.keys } : {}),
-      })),
+      events: stored,
     })
     // Index the decoded line so live reads match what a reopen returns.
     const commit = parseCommit(line, version)
