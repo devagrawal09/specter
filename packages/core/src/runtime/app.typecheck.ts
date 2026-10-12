@@ -182,3 +182,27 @@ export type RejectionCodeCheck = Expect<
     'todo-not-found' | 'title-required'
   >
 >
+
+// A test's runtime registers a test-only Slice beside the production config,
+// typed as both, with no cast.
+declare const recordTodos: CommandSlice<'recordTodos', { titles: string[] }>
+const extended = core.extendSpecterConfig(config, {
+  slices: { recordTodos },
+})
+declare const extendedApp: SpecterApp<typeof extended>
+extendedApp.command({ type: 'recordTodos', payload: { titles: ['Ship it'] } })
+extendedApp.command({ type: 'addTodo', payload: { title: 'Ship it' } })
+const unextended = core.extendSpecterConfig(config, {})
+export type UnextendedCheck = Expect<
+  Equal<
+    SpecterCommandEnvelope<typeof unextended>,
+    SpecterCommandEnvelope<Config>
+  >
+>
+export type ExtendedCheck = Expect<
+  Equal<
+    SpecterCommandEnvelope<typeof extended>,
+    | { readonly type: 'addTodo'; readonly payload: { title: string } }
+    | { readonly type: 'recordTodos'; readonly payload: { titles: string[] } }
+  >
+>

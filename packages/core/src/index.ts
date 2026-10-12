@@ -50,6 +50,7 @@ export type {
 export {
   CommandRejection,
   createSpecterApp,
+  extendSpecterConfig,
   prepareSpecterApp,
   ReactionRunFailure,
   specterErrorCodes,
@@ -74,6 +75,7 @@ export {
 export type {
   CommandExecution,
   CommandExecutionOptions,
+  ExtendedSpecterAppConfig,
   PreparedSpecterApp,
   QuerySubscriptionOptions,
   ReactionRunFailureDetail,

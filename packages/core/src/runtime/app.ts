@@ -132,6 +132,52 @@ export type SpecterQueryResult<
 export type SpecterRejectionCode<TConfig extends SpecterAppConfig> =
   CommandRejectionCode<TConfig['slices'][keyof TConfig['slices']]>
 
+/**
+ * A config with more Slices beside another's, typed as both: a test's runtime
+ * with a test-only Slice beside the production config, for example.
+ */
+export type ExtendedSpecterAppConfig<
+  TConfig extends SpecterAppConfig,
+  TSlices extends Readonly<Record<string, SliceRegistration>>,
+> = {
+  readonly events: readonly ApplyEventDefinition[]
+  readonly slices: TConfig['slices'] & TSlices
+}
+
+/**
+ * Registers more Slices, and the Event Definitions they need, beside a
+ * config's: a test's runtime with a test-only Slice, typed as the production
+ * config and that Slice, without casting either. A Slice the config already
+ * names throws, so an extension never replaces one. Each call builds a new
+ * config, which conformance validates on its own, so build it once.
+ */
+export function extendSpecterConfig<
+  const TConfig extends SpecterAppConfig,
+  const TSlices extends Readonly<Record<string, SliceRegistration>> = Record<
+    never,
+    never
+  >,
+>(
+  config: TConfig,
+  extension: {
+    readonly slices?: TSlices
+    readonly events?: readonly ApplyEventDefinition[]
+  },
+): ExtendedSpecterAppConfig<TConfig, TSlices> {
+  const slices = extension.slices ?? ({} as TSlices)
+  for (const name of Object.keys(slices)) {
+    if (Object.hasOwn(config.slices, name)) {
+      throw new TypeError(
+        `Slice "${name}" is registered already; an extension adds Slices beside a config's and never replaces one.`,
+      )
+    }
+  }
+  return {
+    events: [...new Set([...config.events, ...(extension.events ?? [])])],
+    slices: { ...config.slices, ...slices },
+  }
+}
+
 export type CommandExecutionOptions = CommandDispatchOptions
 
 export type CommandExecution = {
