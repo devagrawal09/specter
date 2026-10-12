@@ -9,8 +9,8 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | Export | Purpose |
 | --- | --- |
 | `EventLog` | Runtime service Tag. |
-| `EventLogService` | `capabilities`, `query`, `readKey`, `currentVersion`, `commitsAfter`, `findCommit`, `append`. |
-| `EventLogCapabilities` | `{ scopedAppend, keyedRead }`: what the adapter supports beyond appending and reading the log. |
+| `EventLogService` | `capabilities`, `query`, `readKey`, `currentVersion`, `commitsAfter`, `findCommit`, `append`, `purge`. |
+| `EventLogCapabilities` | `{ scopedAppend, keyedRead, purge }`: what the adapter supports beyond appending and reading the log. |
 | `EventLogDraft` | An Event to append with the `keys` core derived from its payload (one value per key name) and the host's context: an optional `id`, `recordedAt` and opaque `metadata`. |
 | `EventLogCommit` | Durable Events, commit version/time, optional idempotency metadata. |
 | `EventLogAppendResult` | Commit plus `duplicate`. |
@@ -19,6 +19,8 @@ Runtime dependencies are Effect `Context` services supplied by `Layer`.
 | `EventLogPage` | `{ limit? }`: a page of `query` or `commitsAfter`. |
 | `EventLogKeyPage` | `{ afterOrder?, limit? }`: a page of a keyed read. |
 | `EventKey` | `{ name, value }`: one named key an Event carries. |
+| `EventLogPurgeOptions` | `{ keep? }`: the Event types a purge keeps though they carry its key (its tombstones). |
+| `EventLogPurgeResult` | `{ purged }`: how many Events a purge removed. |
 | `EventLogFailure` | Typed operation failure. |
 
 `append` atomically checks its compare-and-swap, assigns Event orders, writes
@@ -78,21 +80,48 @@ that key, such as one aggregate's, with an order above `afterOrder` (default
 0), ascending, at most `limit` (default all). A host pages through one key's
 Events with it; the runtime itself does not read by key.
 
+### Purge
+
+`purge({ name, value }, { keep })` removes every Event carrying that key but
+those of the types `keep` names, and returns `{ purged }`, how many it
+removed. It runs atomically and under the append lock, and keeps the log
+consistent:
+
+- `currentVersion` never moves back, and a later append takes orders above
+  every order the log ever assigned, even when the purge removed the latest
+  Events.
+- A commit keeps its version, `committedAt`, idempotency key, fingerprint and
+  the Events it has left, and reads return it with them; a commit left with
+  none is gone from `commitsAfter`, and `findCommit` no longer finds its
+  receipt.
+- The keys stored with a removed Event are removed with it.
+- `expectedVersion` is unaffected. `expectedUnchanged` is stale when a purge
+  removed an Event of one of its `eventTypes` with an order above
+  `afterOrder`, whatever the Event's keys were (the adapter keeps the highest
+  order a purge removed, by type): a purge does not hide a conflict, and the
+  purge of Events a decision had already read is not one.
+
+The runtime never purges; a host does, for retention, once the key's
+tombstones are in the log. What stays equivalent across a purge is described
+in [Purging a key](../architecture/event-sourcing.md#purging-a-key).
+
 ### Capabilities
 
-An adapter declares `capabilities: { scopedAppend, keyedRead }`. Without a
-capability it must refuse the operation rather than ignore part of it: an
-append carrying `expectedUnchanged` fails with `EventLogFailure('append')`,
-and `readKey` fails with `EventLogFailure('readKey')`. The runtime refuses to
-start, with `SpecterEventLogCapabilityError` naming what is missing and what
-uses it, on an Event Log without `scopedAppend` when the app registers a
-Command, and without `keyedRead` when the host requires it
-(`makeSpecterRuntime(config, { requires: { keyedRead: true } })`). An adapter
-that declares no capabilities supports none. `eventLogConformance` from
-`@specter-ts/core/testing` holds an adapter to its declaration: storage of
-keys and their return with every read, the host's IDs and times and the
-refusal of an ID already in the log, the scoped check and keyed reads when
-declared, and the refusals when not. Every bundled adapter declares both.
+An adapter declares `capabilities: { scopedAppend, keyedRead, purge }`.
+Without a capability it must refuse the operation rather than ignore part of
+it: an append carrying `expectedUnchanged` fails with
+`EventLogFailure('append')`, `readKey` fails with `EventLogFailure('readKey')`
+and `purge` with `EventLogFailure('purge')`. The runtime refuses to start,
+with `SpecterEventLogCapabilityError` naming what is missing and what uses it,
+on an Event Log without `scopedAppend` when the app registers a Command, and
+without `keyedRead` or `purge` when the host requires it
+(`makeSpecterRuntime(config, { requires: { keyedRead: true, purge: true } })`).
+An adapter that declares no capabilities supports none. `eventLogConformance`
+from `@specter-ts/core/testing` holds an adapter to its declaration: storage
+of keys and their return with every read, the host's IDs and times and the
+refusal of an ID already in the log, the scoped check, keyed reads and purges
+when declared, and the refusals when not. Every bundled adapter declares all
+three.
 
 ## Slice Store
 
@@ -130,9 +159,14 @@ starts that Slice empty at cursor 0, so the Slice folds the log from its
 start, and the Slice's next commit replaces the old State. A Store whose
 schema the host migrates itself (a Drizzle projection) may ignore it.
 
-A Reaction is a Slice like any other: a new version starts its cursor at 0,
-so it handles every relevant commit of the log again under its usual
-`deliveryId`, and its deliveries must stay idempotent.
+Beside the State and cursor kept under the version, a Store keeps under the
+Slice's name alone the highest cursor it published for it under any version,
+and passes it to `read` as `reached` (at least the cursor; 0 for a Slice it
+never published). A Store whose schema the host migrates, keeping one cursor
+per name, passes its cursor. A Reaction of a new version starts its State at
+0 like any Slice, but folds it up to `reached` without delivering and
+delivers only the commits after, so nothing it delivered is delivered again
+(see [When a Reaction's version changes](../architecture/runtime.md#when-a-reactions-version-changes)).
 
 Store owns State representation, ORM access, persistence, and concurrency.
 `transaction` must:
@@ -152,16 +186,18 @@ or last-write-wins publication internally, but cannot rerun developer code.
 
 | Export | Purpose |
 | --- | --- |
-| `SliceSnapshot` | `{ slice, version, state, cursor }`: one Slice's State as of its cursor, under its version. |
-| `SliceSnapshotStore` | `load` and `save(snapshots)`: where a host keeps snapshots between processes. |
+| `SliceSnapshot` | `{ slice, version, state, cursor, reached }`: one Slice's State as of its cursor, under its version, and the highest cursor its name reached under any version. |
+| `SliceSnapshotStore` | `load`, `save(snapshots)` and `remove(slices)`: where a host keeps snapshots between processes. |
 
 A host whose Slices fold in memory saves their snapshots so that a later
 process catches each Slice up after its cursor instead of folding the log
 from its start (`persistSliceSnapshots` in `@specter-ts/memory`). A snapshot
 is a cache of the log, never authority: a Slice whose version differs from
-its snapshot's ignores it and folds the log. `save` replaces a Slice's
-snapshot unless the saved one has the same version and a later cursor, and a
-snapshot of another version always replaces it. `sliceSnapshotStoreConformance`
+its snapshot's ignores its State and folds the log, keeping only its
+`reached`. `save` replaces a Slice's snapshot unless the saved one has the
+same version and a later cursor, and a snapshot of another version always
+replaces it; `remove(slices)` deletes the snapshots of the Slices it names,
+such as those the runtime no longer serves. `sliceSnapshotStoreConformance`
 holds a store to it.
 
 ## Reaction scheduler
@@ -195,7 +231,11 @@ Slice Store must not assume one transaction per commit.
 ## Invariants
 
 - Event Log is authority; Slice Stores are rebuildable views/checkpoints, and
-  State kept under another version of its Slice is never read.
+  State kept under another version of its Slice is never read; a Reaction of
+  a new version folds up to the cursor its name reached without delivering.
+- A purge removes a key's Events but its tombstones; orders are never reused
+  and the scoped compare-and-swap neither treats it as a conflict nor lets it
+  hide one.
 - Event keys are an index of the Event Log, derived by core when an Event is
   appended, stored by the adapter with it and returned with it on every read.
 - App Layer provides one `EventLog` and every registered Store Tag.

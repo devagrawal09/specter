@@ -32,8 +32,12 @@ SQL, stores durable idempotency receipts and each Event's keys in the same
 transaction as its Events, and pages its reads. Its `onAppend` hook runs in
 the append's transaction with each Event and the metadata its dispatch gave
 it, so a host's read models change with the log, and may return work to run
-once the commit is durable. Slice Stores and snapshots keep each Slice's
-State under its version and ignore State of another. The Reaction outbox keeps
+once the commit is durable. A purge (`purge({ name, value }, { keep })`)
+removes a key's Events but the kept types in one transaction, and its
+`onPurge` hook runs in it, before it deletes, with the removed Events' orders,
+so a host removes its own rows that refer to them. Slice Stores and snapshots
+keep each Slice's State under its version and ignore State of another, and
+keep the highest cursor each Slice's name reached under any version. The Reaction outbox keeps
 one queue per Store, with atomic claims, concurrency keys, lease renewal,
 in-process wake-ups, retries, dead letters, replay, release of what an earlier
 process left running, and pruning. Event payloads, Slice State and outbox

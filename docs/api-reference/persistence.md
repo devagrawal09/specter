@@ -11,16 +11,16 @@ cursor, ORM access, and transaction policy.
 | Export | Purpose |
 | --- | --- |
 | `createMemoryEventLog` / `createMemoryEventLogLayer` | In-memory Event Log. |
-| `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store; `initial(slice)` seeds a Slice, `inspect(name)` reads it back with its cursor and version. |
+| `createMemorySliceStoreService` / `createMemorySliceStoreLayer` | Typed Store; `initial(slice)` seeds a Slice (`{ folded: { state, cursor }, reached }`), `inspect(name)` reads it back with its cursor, version and `reached`. |
 | `createSnapshotSliceStores(snapshots)` | Memory Stores whose Slices start from snapshots of their version, and `snapshot()` of the Slices that moved. |
-| `persistSliceSnapshots(store, { interval })` | Scoped: memory Stores loaded from a `SliceSnapshotStore`, saved back every `interval` (one minute) and when the scope closes. |
+| `persistSliceSnapshots(store, { interval, slices })` | Scoped: memory Stores loaded from a `SliceSnapshotStore`, saved back every `interval` (one minute) and when the scope closes; with `slices`, the names the runtime serves, the snapshots of every other Slice are removed as it loads. |
 | `createMemorySliceSnapshotStore` | A `SliceSnapshotStore` in this process, for tests. |
 
 Memory Store clones staged State and rolls failure back. Data disappears with
 process. It keeps one State per Slice name, with the version of the Slice it
-was folded for; a call for another version starts the Slice again. The memory
-Event Log keeps each Event's keys in its own index, which its scoped check and
-keyed reads use.
+was folded for; a call for another version starts the Slice again, keeping
+the highest cursor the name reached. The memory Event Log keeps each Event's
+keys in its own index, which its scoped check, keyed reads and purges use.
 
 Slices that fold in memory need not fold the whole log at every boot:
 
@@ -36,9 +36,13 @@ const app = yield* makeSpecterRuntime(config).pipe(
 Each Slice starts from its saved snapshot when the snapshot's version is the
 Slice's, and catches up after its cursor; a Slice whose specification or
 `stateVersion` changed folds the log instead, so a snapshot of an old shape is
-never read. Make the runtime after `persistSliceSnapshots`, in the same scope:
-the last save then runs after the runtime closes. A failed save is logged and
-retried with the next one; a lost snapshot only costs its Slice a fold.
+never read, but keeps the snapshot's `reached`, so a Reaction of a new version
+does not deliver again what it delivered. Make the runtime after
+`persistSliceSnapshots`, in the same scope: the last save then runs after the
+runtime closes. A failed save is logged and retried with the next one; a lost
+snapshot only costs its Slice a fold. Pass the Slices the runtime serves
+(`slices: Object.keys(config.slices)`) and the snapshots of Slices it no
+longer registers are removed when it loads.
 
 ## JSONL
 
@@ -73,7 +77,12 @@ The `onOpen` option of both Event Log constructors and of
 `recoveredStaleLock` and `discardedTrailingBytes` (and the outbox's
 `releasedOnOpen`), so apps using the Layer can log recoveries too.
 Expected versions and idempotency receipts match the SQLite adapters, and
-`query` returns Events with `order > afterOrder`. Each Event in a commit line
+`query` returns Events with `order > afterOrder`. A purge rewrites the file
+without the Events it removes, through `<path>.purge` renamed over it, under a
+first line that keeps the log's version and, by type, the highest order a
+purge removed (`{"purged":{"note-written":5},"version":5}`); the rewritten
+file holds no payload of a removed Event, and the next appends follow it as
+before. Each Event in a commit line
 keeps its keys (`"keys": { "session": "s1" }`, omitted when it has none); the
 open builds an in-memory index of them, which the scoped check and keyed reads
 use. `fsync` is off by default, so
@@ -89,7 +98,8 @@ if that truncate fails too, every later append fails with an
 `EventLogFailure('append')` carrying both errors until the log is reopened.
 
 The JSON Slice Store keeps each Slice's State and cursor in
-`<directory>/<sliceName>.json`, with the version of the Slice that folded it.
+`<directory>/<sliceName>.json`, with the version of the Slice that folded it
+and the highest cursor its name reached (`reached`).
 It reads a Slice's file on first use and then serves reads from memory; a
 file of another version (or one written before Slices had versions) is not
 read, and the Slice folds the log until its first commit replaces the file. A transaction that publishes a cursor writes the
@@ -133,7 +143,7 @@ not yet in the `release:*` scripts.
 | `SqliteDatabaseContext<TConnection>` | The host's database: `execute` a statement, `use` the connection a statement runs on now, run a nestable `transaction`. |
 | `createSqliteDatabaseContext(client)` | The database over a libSQL client; `use` gives the libSQL connection. |
 | `createSqlClientDatabaseContext(sql, { transaction })` | The database over an Effect `SqlClient` (`effect/sql`), with the host's transaction runner. |
-| `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log, with the `onAppend` hook. |
+| `createSqliteEventLogService` / `createSqliteEventLogLayer` | Event Log, with the `onAppend` and `onPurge` hooks. |
 | `createSqliteSliceStoreService` / `createSqliteSliceStoreLayer` | JSON Store, versioned. |
 | `createSqliteSliceSnapshotStore` | `SliceSnapshotStore` in `specter_slice_snapshots`. |
 | `createSqliteReactionOutboxStore` | Durable outbox Store, one queue per Plugin. |
@@ -189,7 +199,8 @@ introduces Specter runs the statements of the stores it uses
 (`sqliteEventLogSchema` and the others, `CREATE ... IF NOT EXISTS`). A host
 without migrations runs `prepareSpecterSqlite(context)`, or a store's
 `prepareSqlite*`, at startup. Table names are fixed (`specter_events`,
-`specter_event_keys`, `specter_event_commits`, `specter_slice_states`,
+`specter_event_keys`, `specter_event_commits`, `specter_event_purges`,
+`specter_slice_states`,
 `specter_slice_snapshots`, `specter_reaction_outbox`,
 `specter_reaction_scheduler`), so one database holds one Specter app's
 tables; the host's own tables sit beside them and may reference them (an
@@ -227,17 +238,36 @@ returns, if anything, runs after the commit and before `append` returns; the
 append is uninterruptible, so a committed append always runs it. A duplicate
 (a known idempotency key) appends nothing and runs no hook. The Event Log
 keeps every guarantee of the contract (stored keys, the scoped
-compare-and-swap, keyed reads, idempotency, paged reads) and declares both
-capabilities.
+compare-and-swap, keyed reads, idempotency, paged reads, purges) and declares
+every capability.
+
+A purge runs in one `context.transaction` too. `onPurge` runs in it before
+anything is deleted, with the key, the kept types and the orders of the
+Events it removes, so a host removes its own rows that refer to them (an
+index of the log by `specter_events.event_order`) with them:
+
+```ts
+const eventLog = createSqliteEventLogService(context, {
+  onPurge: ({ orders }) =>
+    sql`DELETE FROM event_index WHERE log_order IN ${sql.in(orders)}`,
+})
+```
+
+A failing hook rolls the purge back and fails it; a purge that finds nothing
+to remove runs none. `specter_event_purges (type, through_order)` keeps, by
+Event type, the highest order a purge removed: the log's version is the
+highest of its Events' orders and those, and the scoped check reads it.
 
 ### Slice Stores and snapshots
 
 The JSON Slice Store keeps each Slice's State in `specter_slice_states` with
-its cursor and version, written in the database's transaction. State kept
-under another version is not read: the Slice folds the log, and its first
-commit replaces the row. `createSqliteSliceSnapshotStore` keeps snapshots of
-Slices that fold in memory (`persistSliceSnapshots` in `@specter-ts/memory`),
-one row per Slice with its version, all of a save in one transaction.
+its cursor, version and `reached`, written in the database's transaction.
+State kept under another version is not read: the Slice folds the log, and
+its first commit replaces the row, keeping the highest cursor the Slice
+reached. `createSqliteSliceSnapshotStore` keeps snapshots of Slices that fold
+in memory (`persistSliceSnapshots` in `@specter-ts/memory`), one row per Slice
+with its version and `reached`, all of a save in one transaction; `remove`
+deletes rows by Slice.
 
 ### Reaction outbox
 
@@ -273,9 +303,10 @@ stale coordination state.
 | `createSpecterNodeSqliteLayer` | Scoped DB lifecycle Layer. |
 
 Nested Effect transactions join active `BEGIN IMMEDIATE` transaction. The
-Event Log keeps keys in `specter_event_keys`, as the SQLite adapter does, and
-pages its reads; the Slice Store keeps each Slice's version in
-`specter_slice_states` and ignores State of another version.
+Event Log keeps keys in `specter_event_keys` and its purges in
+`specter_event_purges`, as the SQLite adapter does, and pages its reads; the
+Slice Store keeps each Slice's version and `reached` in `specter_slice_states`
+and ignores State of another version.
 
 ## Postgres
 
@@ -292,9 +323,11 @@ Event Log append uses advisory lock. Slice transactions use per-Slice advisory
 lock. Outbox claims use row locking. Nested operations join active connection.
 `prepareSpecterPostgres` creates `specter_event_keys (event_order, name,
 value)` with the same key and index as SQLite; the scoped check matches its
-`(name, value)` pairs against the condition's in one query. Reads are paged
-with `LIMIT`. The JSONB Store keeps each Slice's version beside its State and
-ignores State of another version. The outbox Store has one queue per table
+`(name, value)` pairs against the condition's in one query, and
+`specter_event_purges` keeps a purge's high-water marks as in SQLite; a purge
+takes the append's advisory lock. Reads are paged with `LIMIT`. The JSONB
+Store keeps each Slice's version and `reached` beside its State and ignores
+State of another version. The outbox Store has one queue per table
 and no concurrency keys, lease renewal or wake-ups.
 
 ## Adapter rules
@@ -309,7 +342,8 @@ and no concurrency keys, lease renewal or wake-ups.
 - Honor the `limit` of `query` and `commitsAfter`: at most that many Events or
   whole commits, the first after where the read starts.
 - Keep a Slice's State under its `SliceStoreSlice.version`, and never return
-  State kept under another version.
+  State kept under another version; keep under its name the highest cursor it
+  published under any version and pass it to `read` as `reached`.
 - Check `expectedVersion` and `expectedUnchanged` in the store, under the
   append lock, after the idempotency lookup; a stale append fails with a
   `SpecterVersionConflictError` cause.
@@ -318,6 +352,10 @@ and no concurrency keys, lease renewal or wake-ups.
   and `readKey`, and return them with the Event from every read.
 - Store an Event under the host's `id` and `recordedAt` when its draft carries
   them, and refuse an ID already in the log; `metadata` is the host's.
+- Purge under the append lock: remove the key's Events but the kept types,
+  their keys, and the commits left empty with their receipts; never reuse an
+  order or move the version back; keep, by type, the highest order a purge
+  removed and treat it as an Event for `expectedUnchanged`.
 - Declare `capabilities`, and refuse what is not supported rather than ignore
   it.
 

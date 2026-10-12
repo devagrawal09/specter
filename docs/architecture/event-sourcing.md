@@ -25,7 +25,7 @@ Event Log records it as a `PersistedEvent` with its storage metadata:
 | `type`, `payload` | Domain | The exact fact consumers replay |
 | `id` | Host or Event Log | Unique identity for the stored Event: the host's when it [supplied one](#host-context-on-dispatch), else one the Event Log generates |
 | `recordedAt` | Host or Event Log | ISO-8601 time the Event was recorded: the host's when it supplied one, else the Event Log's clock |
-| `order` | Event Log | Unique global position used by cursors |
+| `order` | Event Log | Unique global position used by cursors, never reused, even after a [purge](#purging-a-key) |
 | `keys` | Core, stored by the Event Log | The [named keys](#event-keys) derived from the payload when it was appended |
 
 Domain IDs and timestamps belong in the Command payload when they affect
@@ -150,10 +150,19 @@ never read: the Slice starts empty and folds the log, and its next commit
 replaces the old State. So a State whose shape changed is rebuilt instead of
 misread. Raise `stateVersion` when the State changes shape and the
 specification does not (a refactor of the fold); a specification change
-already changes the version. A Reaction of a new version handles the log's
-relevant commits again, under their usual `deliveryId`s, so its deliveries
-must stay idempotent. Snapshots of Slices that fold in memory are kept under
-the same version and ignored the same way.
+already changes the version. Snapshots of Slices that fold in memory are kept
+under the same version and ignored the same way.
+
+A Reaction's cursor is also how far it has delivered, and a new State does not
+undo a delivery. Beside each Slice's State and cursor, the Store keeps under
+the Slice's name alone the highest cursor it reached under any version
+(`reached`). A Reaction of a new version starts its State empty, folds it up to
+`reached` without running its handler or Plugin, and delivers only the
+commits after: what it delivered under its old version is not delivered again,
+and a commit after it is decided from the whole new fold. Pruned outbox jobs
+therefore never run again because a Reaction's specification or `stateVersion`
+changed. A Command or Query Slice of a new version folds the whole log, as
+before.
 
 For the Todo Query, replaying `todo-added`, `todo-completion-changed`, and
 `todo-removed` reconstructs the list projection. Deleting that projection does
@@ -255,11 +264,72 @@ Adapters return the stored commit for a known key and never decide conflicts;
 the runtime applies the mode.
 
 An adapter declares what it supports beyond appending and reading the log,
-`capabilities: { scopedAppend, keyedRead }`, and refuses an operation it does
-not support rather than ignore part of it. The runtime refuses to start, with
-`SpecterEventLogCapabilityError`, on an Event Log without scoped appends when
-the app has a Command, and without keyed reads when the host says it reads by
-key (`makeSpecterRuntime(config, { requires: { keyedRead: true } })`).
+`capabilities: { scopedAppend, keyedRead, purge }`, and refuses an operation
+it does not support rather than ignore part of it. The runtime refuses to
+start, with `SpecterEventLogCapabilityError`, on an Event Log without scoped
+appends when the app has a Command, and without keyed reads or purges when the
+host says it uses them
+(`makeSpecterRuntime(config, { requires: { keyedRead: true, purge: true } })`).
+
+## Purging a key
+
+The log is append-only, but retention is not optional: the facts of an
+aggregate the domain deleted, such as a deleted Session's messages and tool
+output, should not stay forever. A host purges them by key:
+
+```ts
+yield* eventLog.purge(
+  { name: 'session', value: sessionId },
+  { keep: ['session-deleted'] },
+)
+```
+
+A purge removes every Event that carries the key (its stored key
+`session` is `sessionId`), except Events of the types `keep` names: the
+tombstones the folds need to know the key is gone, such as its deletion,
+which a Command reads to refuse the ID again. It runs atomically, under the
+same lock as an append, and leaves the log consistent:
+
+- **Orders are never reused.** The log's version does not move back, even when
+  the purge removed its latest Events, and the next append takes orders above
+  every order the log ever assigned. Cursors, `deliveryId`s and outbox jobs
+  keep naming what they named.
+- **Commits.** A commit keeps its version, time, idempotency key, fingerprint
+  and the Events it has left; a commit left with none is removed with its
+  idempotency receipt, so a Command retried under that key decides again,
+  against the State its tombstones give.
+- **Keys.** The keys stored with a removed Event go with it.
+- **Compare-and-swap.** A purge is not a conflict: a decision that read the
+  removed Events appends as before, and `expectedVersion` sees the same
+  version. Nor does a purge hide one: when it removes an Event that was
+  appended after a decision read the log, of a type the decision applies, the
+  decision's scoped append is stale, whatever the Event's keys were, and core
+  decides again.
+- **Slices and Reactions keep their cursors, State and snapshots.** Nothing is
+  rebuilt or delivered again.
+
+What the purge guarantees about State is a property of the folds:
+
+> A Slice is *purge-safe* for a key when, once it has folded the key's kept
+> Events, its State no longer depends on the key's other Events. Folding the
+> log after a purge, a purge-safe Slice reaches the same State as before for
+> every key but the purged one, whose State is what its tombstones give.
+
+So a Slice that keeps anything about an aggregate folds its tombstone and
+forgets the aggregate, keeping only what a rule still needs (that the ID was
+deleted). Its State before the purge, its snapshot, and a fold of the purged
+log from the start are then the same State, which a test can check: fold the
+log, purge, fold again from nothing, compare. A purge before the tombstone is
+recorded, or a Slice that keeps a purged aggregate's data, breaks the
+equivalence, and a Command that records a fact about the key after its
+tombstone leaves a fact the purge did not see; the tombstone should make the
+key's Commands refuse.
+
+A host whose Event Log keeps rows of its own that refer to Events (an index of
+the log by order) removes them in the same transaction: the SQLite Event Log
+runs `onPurge` inside the purge, before it deletes, with the orders it
+removes. An adapter declares `capabilities.purge`; a host that purges requires
+it (`requires: { purge: true }`).
 
 ## Determinism and schema evolution
 
@@ -276,7 +346,9 @@ changes also need restart, replay, cursor-failure, and Reaction-retry coverage.
 
 ## Invariants and pitfalls
 
-- Never mutate or remove historical Events to repair a projection.
+- Never mutate or remove historical Events to repair a projection. A purge
+  removes a deleted key's Events for retention, keeping its tombstones, and
+  only purge-safe folds stay equivalent across it.
 - Never make Slice State authoritative. Shared SQL transaction may atomically
   join Reaction cursor, nested Command append, or outbox enqueue for delivery.
 - Never generate domain identity or time inside a Command handler or Reaction

@@ -257,6 +257,19 @@ the newly applied type inside that unpublished tail become relevant and are
 delivered once with their usual `deliveryId`. Keep those deliveries idempotent,
 or shut the old process down cleanly first.
 
+### When a Reaction's version changes
+
+A Reaction's State is kept under its version, like any Slice's, so a new
+specification or `stateVersion` starts it empty. Its deliveries are not new:
+its Store keeps, under the Reaction's name, the highest cursor it reached under
+any version (`reached`). Before it runs, a Reaction whose cursor is behind
+`reached` folds its State up to `reached` in one Store transaction, without
+running its handler or Plugin (span `specter.slice.catch-up <name>`), and
+publishes `reached` as its cursor; it then delivers the commits after, each
+decided from the whole new fold. A Reaction therefore never delivers a commit
+twice because its version changed, and an outbox's pruned jobs never run
+again.
+
 ### Keyed Reactions
 
 A Reaction completed with `.handle(state)` returns at most one output per
@@ -408,8 +421,10 @@ Schema at an untrusted boundary.
   transaction.
 - Postgres provides multi-process persistence and database-level
   serialization.
-- Every bundled Event Log stores Event keys and declares both capabilities:
-  the scoped compare-and-swap in its store and keyed reads.
+- Every bundled Event Log stores Event keys and declares every capability:
+  the scoped compare-and-swap in its store, keyed reads, and purges (see
+  [Purging a key](event-sourcing.md#purging-a-key)). A host that purges makes
+  the runtime with `requires: { purge: true }`.
 - Durable Reaction delivery uses `@specter-ts/reaction-outbox`.
 - Trace export is application-owned and stays outside domain correctness.
 

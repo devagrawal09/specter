@@ -16,11 +16,17 @@ const dependencies = Layer.mergeAll(
 )
 ```
 
-`persistSliceSnapshots(snapshotStore)` gives memory Slice Stores that start
-each Slice from its saved snapshot of the same version and save theirs back
-every minute and when the scope closes, so a process folds only the log's
-tail at startup. A Slice whose specification or `stateVersion` changed folds
-the log instead of reading a snapshot of the old shape.
+`persistSliceSnapshots(snapshotStore, { slices })` gives memory Slice Stores
+that start each Slice from its saved snapshot of the same version and save
+theirs back every minute and when the scope closes, so a process folds only
+the log's tail at startup. A Slice whose specification or `stateVersion`
+changed folds the log instead of reading a snapshot of the old shape, keeping
+the highest cursor its name reached, so a Reaction does not deliver again what
+it delivered. With `slices`, the names the runtime serves, the snapshots of
+Slices it no longer registers are removed.
+
+The Event Log purges a key's Events but the types the purge keeps
+(`purge({ name, value }, { keep })`), never reusing an order.
 
 The Event Log serializes transactions, atomically enforces expected versions,
 persists every commit boundary and idempotency receipt, and assigns deterministic Event metadata. The

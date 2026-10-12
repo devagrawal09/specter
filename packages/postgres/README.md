@@ -36,6 +36,9 @@ when the command callback started. This provides atomic
 Event/idempotency commits and detects competing application processes without
 coupling project-owned state to the Event Log transaction.
 
+A purge (`purge({ name, value }, { keep })`) takes the same advisory lock and
+removes a key's Events but the kept types in one transaction.
+
 Outbox workers claim jobs with `FOR UPDATE SKIP LOCKED`, making multiple worker
 processes safe. Expired leases are recoverable and failed deliveries remain in
 dead-letter storage until explicitly replayed.

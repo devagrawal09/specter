@@ -69,8 +69,16 @@ The private event-derived state a Slice uses after catch-up. Command Slice state
 _Avoid_: Shared app state
 
 **Slice Cursor**:
-The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds, through the same runtime-provided store that owns the Slice State. A Reaction Slice Cursor may lag behind irrelevant commits it has already skipped; it never lags behind a relevant commit that was delivered.
+The per-slice record of the last Event Log order applied to that Slice's Slice State. A Slice Cursor advances after successful event application, consistently across Slice kinds, through the same runtime-provided store that owns the Slice State. A Reaction Slice Cursor may lag behind irrelevant commits it has already skipped; it never lags behind a relevant commit that was delivered. The Store also keeps, under the Slice's name, the highest cursor it reached under any version, so a Reaction of a new version folds up to it without delivering again.
 _Avoid_: App-wide checkpoint
+
+**Purge**:
+The removal from the Event Log of every Event carrying one key value, except its Tombstones, for retention once the domain deleted what the key names. Orders are never reused, commits and receipts it empties go, and the scoped compare-and-swap neither treats a purge as a conflict nor lets one hide a conflict.
+_Avoid_: Compaction, rewriting history to repair a projection
+
+**Tombstone**:
+An Event type a Purge keeps for its key, such as a deletion: what a purge-safe fold needs to know the key is gone. A purge-safe Slice forgets a key once it folds its Tombstone, keeping only what a rule still needs, so its State is the same before and after the Purge.
+_Avoid_: Soft delete flag
 
 **Command Slice**:
 A Slice that defines exactly one Command and decides which Events should be emitted when that Command is accepted. An accepted Command emits at least one Event whose type appears in an accepted Scenario outcome; any other emitted Event type is rejected at runtime. A Command that would emit no Events is a Rejected Command. Command handlers are deterministic: domain IDs, timestamps, and randomness enter through Command input or prior Events rather than being generated inside the handler. The Command call resolves after durable commit and returns a Command Execution whose nested Reaction Promise reports subsequent Reaction completion.

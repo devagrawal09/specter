@@ -78,7 +78,7 @@ network transport and no application database schema.
 | `ApplyRegistration` | An Event Definition and its async State apply handler. |
 | `CommandEnvelope` | Generic `{ type, payload }` Command envelope. |
 | `CommandSlice` | Completed Command Slice implementation type; optional `consistencyKeys` names the Event keys its decision reads, each derived from the Command and the State it decided from. |
-| `SliceStoreOptions` | `.store(Tag, options)`: `eager` catches the Slice up at startup, and `stateVersion` (a positive integer, 1 by default) is the version of its State, which with the specification digest makes the version its Store keeps the State under (`SliceStoreSlice`); raise it when the State changes shape and the specification does not. A completed Slice carries both. |
+| `SliceStoreOptions` | `.store(Tag, options)`: `eager` catches the Slice up at startup, and `stateVersion` (a positive integer, 1 by default) is the version of its State, which with the specification digest makes the version its Store keeps the State under (`SliceStoreSlice`); raise it when the State changes shape and the specification does not. A Reaction of a new version folds up to what it delivered without delivering it again. A completed Slice carries both. |
 | `CommandRejectionCode<T>` | The codes a Command Slice rejects with, from its Scenarios: exact when implemented from a declared `spec.json` or built in TypeScript, `string` from a plain JSON import, `never` for another kind of Slice. |
 | `ConsistencyKey<C, S>` / `ConsistencyKeys<C, S>` | One consistency key's function, returning one value, several, or `undefined`; and a Command's functions by key name. |
 | `QuerySlice` | Completed Query Slice implementation type. |
@@ -408,10 +408,10 @@ yield* app.command(envelope) // its Reactions wait for start
 yield* app.start.pipe(Effect.provideService(Notifier, notifier))
 ```
 
-`makeSpecterRuntime(config, { requires: { keyedRead: true } })` and the same
-option of `createSpecterAppLayer` declare Event Log capabilities the host
-relies on beside those the runtime needs; the runtime refuses to start on an
-Event Log that lacks one.
+`makeSpecterRuntime(config, { requires: { keyedRead: true, purge: true } })`
+and the same option of `createSpecterAppLayer` declare Event Log capabilities
+the host relies on beside those the runtime needs (reading by key, purging a
+key); the runtime refuses to start on an Event Log that lacks one.
 
 `readPageSize` (1000 by default) is how many Events a Slice's catch-up, and
 how many commits a Reaction's, reads from the Event Log at a time; see

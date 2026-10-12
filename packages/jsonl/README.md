@@ -55,6 +55,17 @@ Each line is one commit:
 {"version":2,"committedAt":"…","idempotencyKey":"…","fingerprint":"…","events":[{"id":"…","order":1,"type":"…","payload":{},"recordedAt":"…","keys":{"session":"…"}},…]}
 ```
 
+A purge rewrites the file without the Events it removes (`<path>.purge`,
+renamed over it), under a first line that keeps the log's version and, by
+Event type, the highest order a purge removed:
+
+```json
+{"purged":{"note-written":5},"version":5}
+```
+
+In a file a purge rewrote, a commit's orders ascend with gaps and its version
+is the one it was appended with; appends continue after the version.
+
 A line boundary is the atomic commit boundary, so `commitsAfter`, `findCommit`,
 and idempotent receipts need no second file. Each Event keeps the named keys
 core derived for it (`keys`, omitted for an unkeyed Event); opening indexes
@@ -104,19 +115,19 @@ Slice bound to the Tag, and each Slice gets its own file:
 
 ```text
 data/sessions/<id>/slices/autoApproveReadTools.json
-{"cursor":902,"version":"sha256:…/1","state":{"created":true,"toolCalls":{}}}
+{"cursor":902,"reached":902,"version":"sha256:…/1","state":{"created":true,"toolCalls":{}}}
 ```
 
 - The first read or transaction for a Slice reads its file once; later reads
   come from memory. A missing file is `createState()` with cursor 0, and so
   is a file of another version of the Slice (its specification digest and
   `stateVersion`): the Slice folds the log, and its first commit replaces the
-  file. A Slice
+  file, keeping in `reached` the highest cursor the Slice's name reached. A Slice
   that never publishes a cursor, for example a Command Slice with no `apply`
   handlers, never gets a file.
 - Transactions are serialized per Slice in the process and start from a fresh
   decode of the committed State. When a transaction publishes a cursor, the
-  Store writes `{ cursor, version, state }` to `<sliceName>.json.tmp` and renames it
+  Store writes `{ cursor, reached, version, state }` to `<sliceName>.json.tmp` and renames it
   over `<sliceName>.json` before the new State becomes visible. A crash leaves
   the previous or the new document, never a mix. A failed transaction, or one
   that publishes no cursor, does not touch the file.
@@ -398,7 +409,8 @@ writes are removed and outbox attempts left running are released.
 - File-backed Reaction schedulers.
 - Outbox journal compaction.
 - Incremental or per-key Slice State storage for large State.
-- Multi-writer access, Event Log compaction, snapshots, or log rotation.
+- Multi-writer access, Event Log compaction beyond a key's purge, snapshots,
+  or log rotation.
 
 ## Open items
 
