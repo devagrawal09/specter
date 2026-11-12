@@ -603,14 +603,16 @@ function ProductivitySections(): JSX.Element {
         id="one-feature"
       >
         <div class="productivity-copy">
-          <h2>Build One Feature at a Time</h2>
+          <h2>Make One Transition Explicit</h2>
           <p>
-            A Specter application is divided into independent vertical slices.
-            Each slice keeps its behavior contract, implementation, state, and
-            tests close together, giving an agent one bounded problem to solve.
+            Each vertical slice keeps its specification, private state,
+            implementation, and tests together. You can see which events it
+            reads, what it decides, and which outcomes its scenarios check.
           </p>
           <ul class="productivity-points">
-            <li>Only the feature’s scenarios define its required behavior.</li>
+            <li>
+              Scenarios describe accepted transitions and rejected commands.
+            </li>
             <li>Private state stays behind the feature boundary.</li>
             <li>
               Focused tests run without loading every other implementation.
@@ -634,11 +636,11 @@ function ProductivitySections(): JSX.Element {
             <div class="slice-inspector__focus">
               <div class="slice-inspector__focus-head">
                 <strong>addTodo</strong>
-                <span>agent scope</span>
+                <span>transition scope</span>
               </div>
               <div class="slice-file">
                 <code>spec.ts</code>
-                <span>required behavior</span>
+                <span>histories + outcomes</span>
                 <b>fixed</b>
               </div>
               <div class="slice-file">
@@ -661,12 +663,12 @@ function ProductivitySections(): JSX.Element {
         id="smaller-models"
       >
         <header class="productivity-head">
-          <h2>Small Enough for Smaller Models</h2>
+          <h2>Understand the State Behind a Decision</h2>
           <p>
-            Agents perform better when the relevant problem fits cleanly in
-            context. A feature-sized task lets the model focus on its spec and
-            nearby implementation instead of rediscovering the whole
-            application.
+            A command owns the projection it needs to make a decision. Follow
+            its event history, state, and handler in one place, whether you are
+            implementing the transition yourself or handing it to a coding
+            agent.
           </p>
         </header>
 
@@ -685,7 +687,7 @@ function ProductivitySections(): JSX.Element {
               <span>billing</span>
               <span>tests</span>
             </div>
-            <small>everything competes for attention</small>
+            <small>behavior is spread across the application</small>
           </div>
 
           <div class="context-divider" aria-hidden="true">
@@ -703,7 +705,7 @@ function ProductivitySections(): JSX.Element {
               <span>implementation</span>
               <span>tests</span>
             </div>
-            <small>less context, more attention per requirement</small>
+            <small>one decision, its state, and its checks</small>
           </div>
         </div>
       </section>
@@ -713,11 +715,11 @@ function ProductivitySections(): JSX.Element {
         id="parallel"
       >
         <header class="productivity-head">
-          <h2>Parallel by Construction</h2>
+          <h2>Connect Slices Through Explicit Events</h2>
           <p>
-            Independent slices can be assigned to separate agents. They
-            coordinate through explicit event contracts and converge through app
-            registration and whole-application verification.
+            Commands emit facts, Queries expose state, and Reactions respond to
+            committed events. Shared event contracts connect the slices while
+            each keeps its own state and executable scenarios.
           </p>
         </header>
 
@@ -758,7 +760,7 @@ function ProductivitySections(): JSX.Element {
           <div class="parallel-map__contract">
             <span>shared event contracts</span>
             <b>registered app</b>
-            <span>whole-app checks</span>
+            <span>structural checks</span>
           </div>
         </div>
       </section>
@@ -768,15 +770,16 @@ function ProductivitySections(): JSX.Element {
         id="complete"
       >
         <div class="productivity-copy">
-          <h2>Complete Means More Than Generated Code</h2>
+          <h2>An Explicit State Machine in a Real App</h2>
           <p>
-            A feature is only useful when it works inside an application.
-            Specter supplies behavioral contracts, runtime boundaries, adapters,
-            and verification; the agent completes the product using your stack.
+            Specifications and handlers share the same event contracts. Specter
+            supplies the runtime boundaries, persistence adapters, and scenario
+            checks. Your UI and transport connect to the application through
+            typed envelopes.
           </p>
           <p class="complete-section__note">
-            The specification constrains described behavior. Everything else
-            remains an ordinary software-engineering decision.
+            The Event Log is the source of truth. Each Slice derives the state
+            it needs from that history.
           </p>
         </div>
 
@@ -794,8 +797,8 @@ function ProductivitySections(): JSX.Element {
             <small>typed envelopes</small>
           </div>
           <div class="application-orbit__core">
-            <strong>Complete app</strong>
-            <span>implemented by agents</span>
+            <strong>Your state machine</strong>
+            <span>explicit in your app</span>
           </div>
           <div class="application-orbit__item application-orbit__item--ui">
             <span>UI</span>
@@ -819,22 +822,22 @@ function ProductivitySections(): JSX.Element {
         <header class="productivity-head">
           <h2>What Specter Catches</h2>
           <p>
-            Generated code is not accepted because it looks plausible. Specter
-            checks the implementation against the specification and the
-            application’s structural rules.
+            Run the Scenario suite to check actual handlers against declared
+            histories and outcomes. Construction and runtime checks enforce
+            structural contracts alongside those tests.
           </p>
         </header>
 
         <div class="checks-console">
           <div class="checks-console__bar">
-            <span>npm test</span>
+            <span>scenarios + conformance + runtime</span>
             <b>5 guardrails</b>
           </div>
           <div class="checks-console__table-scroll">
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Generated-code mistake</th>
+                  <th scope="col">Implementation mistake</th>
                   <th scope="col">Detected by</th>
                   <th scope="col">
                     <span class="sr-only">Result</span>
@@ -882,16 +885,25 @@ function ProductivitySections(): JSX.Element {
           </div>
           <div class="checks-console__result">
             <span aria-hidden="true">✓</span>
-            <strong>Only conforming implementations move forward.</strong>
+            <strong>
+              Declared scenarios checked. Structural contracts enforced.
+            </strong>
           </div>
         </div>
+        <p class="complete-section__note">
+          Verified means checked against the scenarios and constraints you
+          declare. These checks do not prove every possible history or input.
+          App construction does not run the Scenario suite, and Reaction tests
+          check effect values without executing external Plugins.
+        </p>
       </section>
 
       <section class="cta productivity-cta content-panel" id="start">
-        <h2>Give a Spec to Your Agent</h2>
+        <h2>Make Your First State Machine Explicit</h2>
         <p>
-          Start with one feature. Let the specification define what must happen,
-          then let your coding agent decide how to implement it.
+          Start with one workflow. Write down the events that establish its
+          state, the command that requests a change, and the outcome you expect.
+          Implement it yourself or give the specification to your coding agent.
         </p>
         <AgentPrompt />
         <div class="cta__links">
@@ -899,7 +911,8 @@ function ProductivitySections(): JSX.Element {
           <a href={REPOSITORY_URL}>Explore the repository ↗</a>
         </div>
         <p class="cta__note">
-          TypeScript is official. Go and Rust support are in progress.
+          The 0.4 API is a main-branch preview. The published npm release is
+          0.2.1; use the getting-started guide for this preview.
         </p>
       </section>
     </>
@@ -932,7 +945,7 @@ export function App(): JSX.Element {
             Example
           </a>
           <a class="topnav__link" href="#one-feature">
-            Agents
+            Slices
           </a>
         </nav>
         <a class="topbar__link" href={GETTING_STARTED_URL}>
@@ -940,18 +953,19 @@ export function App(): JSX.Element {
         </a>
         <ThemeToggle />
         <a class="topbar__cta" href="#start">
-          <span class="topbar__cta-full">Give it to your agent</span>
-          <span class="topbar__cta-short">Give to agent</span>
+          <span class="topbar__cta-full">Get started</span>
+          <span class="topbar__cta-short">Get started</span>
         </a>
       </header>
 
       <main id="main-content" tabIndex={-1}>
         <section class="hero content-panel">
-          <h1 class="hero__title">Compile JSON Specs into Complete Apps</h1>
+          <h1 class="hero__title">Your State Machine, Explicit and Verified</h1>
           <p class="hero__lede">
-            Specter is a framework for authoring specifications that can be
-            compiled into complete, well-architected, fully tested applications
-            using coding agents.
+            Specter is the framework that makes your state machine explicit and
+            verified. Describe event histories, commands, and outcomes in
+            executable specifications, then check your real implementation
+            against them.
           </p>
 
           <div class="hero__agent-cta" id="give-to-agent">
@@ -985,49 +999,48 @@ export function App(): JSX.Element {
           id="why"
         >
           <header class="compiler-article__head">
-            <h2>LLMs generate code. Specter makes it trustworthy.</h2>
+            <h2>Your App Already Has a State Machine. Make It Explicit.</h2>
           </header>
 
           <div
             class="compiler-visual"
             role="img"
-            aria-label="A compiler maps source to deterministic output. An LLM alone produces plausible code. Specter combines the specification with generated constraints to produce an implementation verified against the specification."
+            aria-label="Given an event history, derive the state. When a command arrives, decide a transition. Then compare emitted events or a rejection with the scenario's expected outcome."
           >
             <strong class="compiler-visual__label compiler-visual__label--compiler">
-              compiler
+              Given
             </strong>
             <span class="compiler-visual__flow">
-              source <b aria-hidden="true">→</b> deterministic output
+              event history <b aria-hidden="true">→</b> current state
             </span>
             <strong class="compiler-visual__label compiler-visual__label--llm">
-              LLM alone
+              When
             </strong>
             <span class="compiler-visual__flow">
-              spec <b aria-hidden="true">→</b> plausible code
+              state + command <b aria-hidden="true">→</b> decision
             </span>
             <strong class="compiler-visual__label compiler-visual__label--specter">
-              Specter
+              Then
             </strong>
             <span class="compiler-visual__flow">
-              spec + constraints <b aria-hidden="true">→</b> verified against
-              spec
+              events or rejection <b aria-hidden="true">→</b> checked outcome
             </span>
           </div>
 
           <div class="compiler-argument__body">
             <p>
-              Compilers are trusted because source code constrains their output.
-              LLMs are useful because they can invent an implementation.
+              Every order, approval, or background job has states, transitions,
+              and rules about what can happen next.
             </p>
             <p>
-              That flexibility becomes a liability when the model can also
-              invent architecture, skip required behavior, or change what the
-              specification means.
+              When those rules are scattered across handlers, flags, and
+              database writes, the state machine is hard to see and harder to
+              check.
             </p>
             <p class="compiler-argument__answer">
-              Specter compiles structure, boundaries, and tests from the
-              specification, then lets the agent fill in the implementation. The
-              code can vary. The specified behavior cannot.
+              Specter makes the history, decision, and outcome explicit in
+              vertical slices. Executable scenarios check the real handlers;
+              structural and runtime rules keep their event contracts aligned.
             </p>
           </div>
         </article>
@@ -1035,13 +1048,13 @@ export function App(): JSX.Element {
         <section class="spec-result content-panel" id="spec-example">
           <header class="spec-result__head">
             <h2>
-              What a Spec Looks Like <span aria-hidden="true">→</span> What You
-              Get
+              Describe a Transition <span aria-hidden="true">→</span> Check Its
+              Implementation
             </h2>
             <p>
-              Each feature is described as exact inputs, prior facts, and
-              expected outcomes. Specter turns that contract into a bounded
-              implementation task for a coding agent.
+              An unused todo ID can be added. An existing ID must be rejected.
+              Both rules are written as event histories, commands, and exact
+              outcomes that the Scenario runner checks.
             </p>
           </header>
 
@@ -1049,7 +1062,7 @@ export function App(): JSX.Element {
             <SpecificationTabs />
 
             <div class="spec-result__connector" aria-hidden="true">
-              <span>compile</span>
+              <span>verify</span>
               <b>→</b>
             </div>
 
@@ -1085,9 +1098,9 @@ export function App(): JSX.Element {
                   <span class="spec-output__source">Executable contract</span>
                   <h3>Tests for the specified behavior</h3>
                   <p>
-                    The generated harness runs the implementation against every
-                    scenario and checks exact inputs, events, outputs, and
-                    rejections.
+                    The Scenario runner replays each declared history and checks
+                    the handler’s events, outputs, or rejection against that
+                    scenario’s expected result.
                   </p>
                   <div class="test-result">
                     <span>PASS</span>
@@ -1105,12 +1118,12 @@ export function App(): JSX.Element {
                 </div>
                 <div>
                   <span class="spec-output__source">
-                    Completed by your agent
+                    Implemented by you or your agent
                   </span>
                   <h3>Idiomatic application code</h3>
                   <p>
-                    The agent implements schemas, storage, and business logic
-                    inside the generated boundaries, using your chosen stack.
+                    Implement schemas, state projections, and business logic
+                    inside explicit Slice boundaries, using your chosen stack.
                   </p>
                   <ul
                     class="implementation-stages"
@@ -1131,7 +1144,7 @@ export function App(): JSX.Element {
       </main>
 
       <footer class="foot content-panel">
-        <span>Specter · specifications for agent-built applications</span>
+        <span>Specter · explicit state machines, verified behavior</span>
         <a href={REPOSITORY_URL}>GitHub ↗</a>
       </footer>
     </div>
