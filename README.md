@@ -2,32 +2,43 @@
 
 **Make your state machine explicit and verified.**
 
-Specter is a TypeScript framework that makes your application's state machine
-explicit in executable specifications and verifies your implementation against
-them. Describe the event history, the command, and the expected outcome. Keep
-state and transition logic in small vertical slices, then run those scenarios
-against the real handlers.
+Specter is a TypeScript framework for building applications with executable
+specifications, vertical slices, and an event-sourced runtime. Describe your
+business rules, give each feature a clear implementation boundary, and check
+the code you or your coding agent writes against the same contract.
 
-Your business logic already has states and transitions. Specter gives them a
-structure you can read, implement, and check.
+## Specify the Behavior
 
-## Make the State Machine Explicit
-
-- **State comes from events.** The Event Log records durable facts. Each Slice
-  projects the events it needs into its own private state.
-- **Commands decide transitions.** A Command reads that state and either emits
-  new Events or rejects the request. Queries expose state; Reactions respond
-  to committed Events.
-- **Scenarios describe the rules.** Given an event history, when a command
-  arrives, expect exact Events or a rejection. Query and Reaction Scenarios
-  describe their expected outputs in the same way.
+Start with the rules your application must follow. Given an event history,
+when a command arrives, expect exact Events or a rejection. Queries and
+Reactions describe their expected outputs in the same way. These executable
+Scenarios make the contract readable, portable as JSON, and testable against
+real implementations.
 
 For example: given a todo was added, completing it emits
 `todo-completion-changed`. Given it was already completed, completing it again
-rejects. The history, input, and outcome are explicit, alongside the
-implementation that must satisfy them.
+rejects. The history, input, and expected result stay alongside the feature.
 
-## Verify the Implementation
+## Give Agents a Smaller Problem
+
+Each vertical Slice keeps its specification, implementation, private state,
+and tests together. Specter supplies the architecture and scaffold so you or
+your coding agent can focus on one behavior instead of reconstructing the
+whole application. Independent Slices can be built in parallel and composed
+through shared Event contracts without sharing private state.
+
+## Build on Durable Facts
+
+The Event Log records durable facts. Each Slice projects the Events it needs
+into its own state, which can be rebuilt by replay. Commands decide what
+happens next, Queries expose useful views, and Reactions coordinate follow-up
+work after Events are committed.
+
+The runtime is Effect-native, with a Promise facade for non-Effect callers.
+Persistence adapters and typed envelopes support the application while you
+keep your own UI and HTTP, SSE, WebSocket, or other transport choices.
+
+## Check the Implementation
 
 Specter's Scenario runner replays each declared history and checks the real
 Slice handler's Events, outputs, or rejection against the expected result.
@@ -40,10 +51,6 @@ Run the Scenario suite to verify behavior; app construction checks structural
 conformance, not the Scenario suite. These checks do not prove every possible
 history or input, and Reaction Scenario tests check the returned effect value
 without executing its external Plugin.
-
-The runtime is Effect-native, with a Promise facade for non-Effect callers.
-Projects own any HTTP, SSE, WebSocket, or other transport used across process
-boundaries.
 
 > **0.4 main-branch preview:** the repository currently documents the upcoming
 > 0.4 API. npm remains on 0.2.1. To explore the preview, see
