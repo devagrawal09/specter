@@ -43,3 +43,6 @@ __unconfig*
 # Local agent scratch
 .repos/
 .codex-worktrees/
+
+# Specter Workspaces runtime files
+/apps/workspaces/data/

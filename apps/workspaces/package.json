@@ -1,0 +1,31 @@
+{
+  "name": "@specter/workspaces",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "spec:build": "node ../../packages/spec/dist/cli.js export src/features",
+    "dev": "pnpm spec:build && node --import tsx src/server.ts",
+    "test": "pnpm spec:build && vitest run",
+    "typecheck": "pnpm spec:build && tsc --noEmit",
+    "build": "pnpm typecheck",
+    "measure": "pnpm spec:build && node --import tsx src/measure.ts",
+    "test:browser": "pnpm spec:build && playwright test"
+  },
+  "dependencies": {
+    "@specter-ts/core": "workspace:*",
+    "@specter-ts/spec": "workspace:*",
+    "@specter-ts/memory": "workspace:*",
+    "@specter-ts/jsonl": "workspace:*",
+    "effect": "4.0.1",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "tsx": "^4.22.3",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.5",
+    "jsdom": "^28.1.0",
+    "@types/jsdom": "^28.0.0",
+    "@playwright/test": "^1.60.0"
+  }
+}
