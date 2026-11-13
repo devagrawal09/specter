@@ -43,3 +43,6 @@ __unconfig*
 # Local agent scratch
 .repos/
 .codex-worktrees/
+
+# Macro workspace runtime files
+/apps/macro-workspace/data/
