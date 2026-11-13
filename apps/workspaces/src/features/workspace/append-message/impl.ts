@@ -7,7 +7,7 @@ import specification from './spec.json' with { type: 'json' }
 type State = { lengths: Record<string, number> }
 export const createState = (): State => ({ lengths: {} })
 export const Store = Context.Service<SliceStoreService<State, State, unknown>>(
-  '@macro/appendMessage',
+  '@specter/workspaces/appendMessage',
 )
 export const appendMessage = implementCommand(specification)
   .inputSchema(

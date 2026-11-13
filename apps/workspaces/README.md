@@ -1,8 +1,8 @@
-# Macro-style workspace experiment
+# Specter Workspaces
 
-A working, local document → message → task workspace built entirely with existing
-Specter slices and adapters. This is a prototype, not a Macro clone. No Macro
-source, assets, or dependencies were copied.
+Specter Workspaces is a local document → message → task prototype built with
+existing Specter slices and adapters. No Macro source, assets, or dependencies
+were copied.
 
 ## Run
 
@@ -11,7 +11,7 @@ From the repository root:
 ```sh
 pnpm install --frozen-lockfile
 pnpm build:publishable
-pnpm --filter @specter/macro-workspace dev
+pnpm --filter @specter/workspaces dev
 ```
 
 Open **http://127.0.0.1:41732**. The fixed port fails if occupied. This is a local
@@ -25,9 +25,14 @@ or permission system. Do not expose it as a hosted application.
    and draft source revision return from `data/workspace`.
 
 The same browser profile shares one session ID across tabs. Separate profiles
-have independent drafts. Selecting a document starts a draft from its published
+have independent drafts. The opaque browser storage key `specter-macro-session`
+is intentionally unchanged so existing drafts remain associated with the same
+session after the rename. Event names, slice names, and the data-directory layout
+are also unchanged. Selecting a document starts a draft from its published
 body; this prototype retains one selected draft per session, not a draft for
 every document. Clicking a document again deliberately resets that draft.
+
+For the prioritized product and adapter experiments, see [what to build next](NEXT.md).
 
 ## Actual state ownership
 
@@ -131,7 +136,7 @@ requirements and test its failure model before changing a core contract.
 
 ## Measurements
 
-Run `pnpm --filter @specter/macro-workspace measure`. It makes 100 sequential
+Run `pnpm --filter @specter/workspaces measure`. It makes 100 sequential
 one-character chunk commits with exact idempotency and a full accumulated query
 after each, following a document and message creation. There are no subscribers
 or simulated network latency in this diagnostic. It uses a temporary directory
@@ -154,14 +159,14 @@ not characterize real collaborative editing or storage hardware.
 
 ## Verification
 
-- `pnpm --filter @specter/macro-workspace test`: **31 passing tests** covering
+- `pnpm --filter @specter/workspaces test`: **31 passing tests** covering
   executable scenarios, both adapters, competing edits, retry conflicts,
   subscriptions, restart/rebuild, HTTP/SSE, and the shipped UI script in a DOM
   simulation using real HTTP commands. A two-tab regression test also uses two
   live HTTP/SSE subscriptions with an EventSource compatibility shim to verify
   stale-text rejection, retained text, disabled publication, and explicit reload
   recovery. It failed against the original client before the fix.
-- `pnpm --filter @specter/macro-workspace typecheck`: passes.
+- `pnpm --filter @specter/workspaces typecheck`: passes.
 - Existing core, memory, and JSONL tests: **176 passing tests** (70 + 9 + 97).
 - Repository `pnpm check`, `pnpm lint`, and `pnpm build`: pass. Existing lint
   warnings remain in unrelated code.
@@ -170,9 +175,16 @@ not characterize real collaborative editing or storage hardware.
 - Full repository `pnpm test`: stopped by automatic approval review after its
   codemod step triggered telemetry to an untrusted PostHog destination. The full
   baseline did not finish and was not retried.
-- Real-browser visual verification: attempted, but the cloud browser could not
-  reach the local preview (`ERR_CONNECTION_REFUSED`). The DOM test is explicitly
-  not a real-browser test.
+- Real-browser verification: two repeatable Playwright tests were added for the
+  branded document/message/task flow and the two-tab conflict/reload flow. Run
+  `pnpm --filter @specter/workspaces test:browser` with a Playwright Chromium
+  installation, or set `SPECTER_CHROMIUM_PATH=/usr/bin/chromium` to use an existing
+  browser. The test server uses isolated memory state on fixed port `41732` and
+  refuses to reuse an existing server; it never opens developer data. In this
+  environment Chromium exits before either test can run because the sandbox
+  denies its required Unix socket: `socket() failed: Operation not permitted`.
+  The earlier cloud browser also could not reach local loopback. The new browser
+  assertions are typechecked but unverified; DOM tests are not browser evidence.
 
 The draft PR must retain these limitations until the full baseline and a real
 browser check can be completed. Nothing is merged or deployed.

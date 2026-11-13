@@ -9,10 +9,9 @@ type State = {
   messages: Record<string, boolean>
 }
 export const createState = (): State => ({ documents: {}, messages: {} })
-export const Store =
-  Context.Service<SliceStoreService<State, State, unknown>>(
-    '@macro/postMessage',
-  )
+export const Store = Context.Service<SliceStoreService<State, State, unknown>>(
+  '@specter/workspaces/postMessage',
+)
 export const postMessage = implementCommand(specification)
   .inputSchema(
     z.object({

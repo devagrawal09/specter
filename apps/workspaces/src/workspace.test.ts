@@ -55,7 +55,7 @@ afterEach(async () => {
     rmSync(directory, { recursive: true, force: true })
 })
 const directory = () => {
-  const path = mkdtempSync(join(tmpdir(), 'specter-macro-'))
+  const path = mkdtempSync(join(tmpdir(), 'specter-workspaces-'))
   directories.push(path)
   return path
 }

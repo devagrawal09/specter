@@ -9,8 +9,9 @@ type State = {
   revisions: Record<string, number>
 }
 export const createState = (): State => ({ documents: {}, revisions: {} })
-export const Store =
-  Context.Service<SliceStoreService<State, State, unknown>>('@macro/setView')
+export const Store = Context.Service<SliceStoreService<State, State, unknown>>(
+  '@specter/workspaces/setView',
+)
 export const setView = implementCommand(specification)
   .inputSchema(
     z.object({

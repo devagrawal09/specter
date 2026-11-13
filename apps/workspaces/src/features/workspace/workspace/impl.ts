@@ -46,10 +46,9 @@ export const createState = (): Workspace => ({
   tasks: {},
   views: {},
 })
-export const Store =
-  Context.Service<SliceStoreService<Workspace, Workspace, unknown>>(
-    '@macro/workspace',
-  )
+export const Store = Context.Service<
+  SliceStoreService<Workspace, Workspace, unknown>
+>('@specter/workspaces/workspace')
 export const workspace = implementQuery(specification)
   .inputSchema(z.object({}))
   .outputSchema<Workspace>()

@@ -10,7 +10,7 @@ server.once('error', async (error) => {
   process.exitCode = 1
 })
 server.listen(41732, '127.0.0.1', () =>
-  console.log('Workspace: http://127.0.0.1:41732'),
+  console.log('Specter Workspaces: http://127.0.0.1:41732'),
 )
 async function close() {
   server.close()

@@ -7,7 +7,7 @@ import { openWorkspace } from './app'
 // Local diagnostic, not a performance guarantee. Includes 100 sequential commits,
 // each with an exact retry fingerprint and a full accumulated query after commit.
 for (const mode of ['memory', 'jsonl'] as const) {
-  const directory = mkdtempSync(join(tmpdir(), 'specter-macro-measure-'))
+  const directory = mkdtempSync(join(tmpdir(), 'specter-workspaces-measure-'))
   let app = await openWorkspace(mode === 'jsonl' ? directory : undefined)
   try {
     await app.command({

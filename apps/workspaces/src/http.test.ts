@@ -44,7 +44,7 @@ const command = {
 }
 it('serves the UI and validates, commits, deduplicates and queries over HTTP', async () => {
   const { base, post } = await serve()
-  expect(await (await fetch(base)).text()).toContain('Specter workspace')
+  expect(await (await fetch(base)).text()).toContain('Specter Workspaces')
   expect((await post({ type: 'workspace', payload: {} })).status).toBe(400)
   expect((await post({ type: 'saveDocument', payload: {} })).status).toBe(400)
   expect((await post(command)).status).toBe(200)
