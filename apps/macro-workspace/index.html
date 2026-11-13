@@ -23,12 +23,38 @@ localStorage.setItem('specter-macro-session',sessionId)
 const state={documents:{},messages:{},tasks:{},views:{}}
 let pending=Promise.resolve()
 let draftGeneration=0
-let loadedDocument
+// Keep the revisions attached to the text actually displayed in this editor.
+// A remote snapshot may update the cache while focused input remains unchanged.
+let editorView
+let editorBusy=0
+let editorConflict=false
+function loadEditor(view){
+  editorView=view?{...view}:undefined
+  byId('draft').value=editorView?.draft || ''
+  draftGeneration=0
+  editorConflict=false
+  byId('draft-status').textContent=editorView?'Session draft saved.':'Drafts save through Specter as you type.'
+  byId('status').textContent=''
+}
+async function edit(work){
+  if(editorConflict)throw new Error('Draft conflict: select the document to load its latest revision')
+  editorBusy++
+  try{return await work()}catch(error){editorConflict=true;throw error}
+  finally{editorBusy--;render()}
+}
+async function persistDraft(target,draft,baseRevision=target.baseRevision){
+  if(target!==editorView)throw new Error('Editor selection changed')
+  const expectedRevision=target.revision
+  await command('setView',{sessionId,documentId:target.documentId,draft,baseRevision,expectedRevision})
+  // Advance only from our own accepted command, never from a remote cache entry.
+  target.revision=expectedRevision+1
+  target.baseRevision=baseRevision
+}
 function accept(snapshot){
   for(const group of ['documents','tasks','views'])for(const [id,value] of Object.entries(snapshot[group]))if(!state[group][id] || value.revision>=state[group][id].revision)state[group][id]=value
   for(const [id,value] of Object.entries(snapshot.messages))if(!state.messages[id] || value.text.length>=state.messages[id].text.length)state.messages[id]=value
 }
-const selected=()=>state.views[sessionId]?.documentId
+const selected=()=>editorView?.documentId
 const command=async(type,payload)=>{
   const key=crypto.randomUUID()
   const request=()=>fetch('/api/command',{method:'POST',headers:{'content-type':'application/json','idempotency-key':key},body:JSON.stringify({type,payload})})
@@ -42,21 +68,23 @@ const command=async(type,payload)=>{
   return result
 }
 const enqueue=work=>{
-  pending=pending.then(work).catch(error=>{byId('status').textContent=error.message+' — reload to use the latest revision.'})
+  pending=pending.then(work).catch(error=>{byId('status').textContent=error.message+' — local text retained; select the document to load its latest revision.'})
   return pending
 }
 function render(){
+  const remote=state.views[sessionId]
+  const idle=document.activeElement!==byId('draft') && !draftGeneration && !editorBusy && !editorConflict
+  if(remote && (!editorView || (idle && remote.revision!==editorView.revision)))loadEditor(remote)
   const documentId=selected(),doc=state.documents[documentId]
   byId('documents').replaceChildren(...Object.values(state.documents).map(doc=>{
     const button=document.createElement('button');button.textContent=doc.title
-    button.onclick=()=>enqueue(()=>command('setView',{sessionId,documentId:doc.documentId,draft:doc.body,baseRevision:doc.revision,expectedRevision:state.views[sessionId]?.revision || 0}))
+    button.onclick=()=>enqueue(async()=>{await command('setView',{sessionId,documentId:doc.documentId,draft:doc.body,baseRevision:doc.revision,expectedRevision:state.views[sessionId]?.revision || 0});loadEditor(state.views[sessionId]);render()})
     return button
   }))
   byId('title').textContent=doc?.title || 'Create your first document'
-  byId('revision').textContent=doc?`Published revision ${doc.revision}`:''
+  byId('revision').textContent=doc?`Published revision ${doc.revision} · Draft based on ${editorView.baseRevision}`:''
   for(const id of ['draft','save','send'])byId(id).disabled=!doc
-  if(loadedDocument!==documentId){byId('draft').value=state.views[sessionId]?.draft || '';loadedDocument=documentId}
-  else if(document.activeElement!==byId('draft') && !draftGeneration)byId('draft').value=state.views[sessionId]?.draft || ''
+  byId('save').disabled=!doc || editorConflict
   byId('messages').replaceChildren(...Object.values(state.messages).filter(m=>m.documentId===documentId).map(message=>{
     const article=document.createElement('article'),text=document.createElement('div');text.textContent=message.text;article.append(text)
     const task=document.createElement('button');task.textContent='Create linked task';task.onclick=()=>enqueue(()=>command('setTask',{taskId:`task-${crypto.randomUUID()}`,messageId:message.messageId,title:'Follow up: '+message.text.slice(0,70),done:false,expectedRevision:0}));article.append(task)
@@ -69,19 +97,25 @@ function render(){
 }
 byId('new-document').onclick=()=>{
   const title=prompt('Document title','Launch plan');if(!title?.trim())return
-  enqueue(async()=>{const documentId=`doc-${crypto.randomUUID()}`;await command('saveDocument',{documentId,title,body:'',expectedRevision:0});await command('setView',{sessionId,documentId,draft:'',baseRevision:1,expectedRevision:state.views[sessionId]?.revision || 0})})
+  enqueue(async()=>{const documentId=`doc-${crypto.randomUUID()}`;await command('saveDocument',{documentId,title,body:'',expectedRevision:0});await command('setView',{sessionId,documentId,draft:'',baseRevision:1,expectedRevision:state.views[sessionId]?.revision || 0});loadEditor(state.views[sessionId]);render()})
 }
 byId('draft').oninput=()=>{
-  const documentId=selected(),baseRevision=state.views[sessionId].baseRevision,draft=byId('draft').value,generation=++draftGeneration
+  const target=editorView,draft=byId('draft').value,generation=++draftGeneration
+  target.draft=draft
+  if(editorConflict){byId('draft-status').textContent='Draft conflict. Local text retained; select the document to load its latest revision.';return}
   byId('draft-status').textContent='Saving session draft…'
-  enqueue(async()=>{await command('setView',{sessionId,documentId,draft,baseRevision,expectedRevision:state.views[sessionId]?.revision || 0});if(draftGeneration===generation){draftGeneration=0;byId('draft-status').textContent='Session draft saved.'}})
+  enqueue(()=>edit(async()=>{await persistDraft(target,draft);if(draftGeneration===generation){draftGeneration=0;byId('draft-status').textContent='Session draft saved.'}}))
 }
-byId('save').onclick=()=>enqueue(async()=>{
-  const doc=state.documents[selected()],baseRevision=state.views[sessionId].baseRevision
-  await command('saveDocument',{documentId:doc.documentId,title:doc.title,body:state.views[sessionId].draft,expectedRevision:baseRevision})
-  await command('setView',{...state.views[sessionId],baseRevision:baseRevision+1,expectedRevision:state.views[sessionId].revision})
-  byId('status').textContent='Published document revision.'
-})
+byId('save').onclick=()=>{
+  const target=editorView,draft=target.draft
+  enqueue(()=>edit(async()=>{
+    if(target!==editorView)throw new Error('Editor selection changed')
+    const doc=state.documents[target.documentId],baseRevision=target.baseRevision
+    await command('saveDocument',{documentId:doc.documentId,title:doc.title,body:draft,expectedRevision:baseRevision})
+    await persistDraft(target,draft,baseRevision+1)
+    byId('status').textContent='Published document revision.'
+  }))
+}
 byId('send').onclick=()=>{const text=byId('message').value;if(!text.trim())return;enqueue(async()=>{await command('postMessage',{messageId:`msg-${crypto.randomUUID()}`,documentId:selected(),text});byId('message').value=''})}
 const events=new EventSource('/api/subscribe')
 events.onopen=()=>{byId('connection').textContent='● Live / JSONL persistence'}

@@ -60,7 +60,13 @@ so intervening publication causes a conflict instead of silently overwriting
 someone else's work. Publication and updating the session's source revision are
 two commands, not a cross-slice transaction. A failure between them can leave a
 stale draft that needs explicit reselection; it cannot silently overwrite a newer
-document revision. The UI reports conflicts and retains local text.
+document revision. The editor keeps its displayed draft, source document revision, and last
+acknowledged session revision together. Remote snapshots cannot advance these
+revisions while the editor is focused, dirty, saving, or conflicted. A stale tab
+therefore rejects its next session write rather than rebasing old text onto a
+newer revision. Conflicts retain local text and disable publication; selecting
+the document explicitly reloads text and revisions together. An idle, unfocused
+editor can adopt a complete newer snapshot.
 
 ## What the experiment establishes
 
@@ -148,10 +154,13 @@ not characterize real collaborative editing or storage hardware.
 
 ## Verification
 
-- `pnpm --filter @specter/macro-workspace test`: **30 passing tests** covering
+- `pnpm --filter @specter/macro-workspace test`: **31 passing tests** covering
   executable scenarios, both adapters, competing edits, retry conflicts,
   subscriptions, restart/rebuild, HTTP/SSE, and the shipped UI script in a DOM
-  simulation using real HTTP commands.
+  simulation using real HTTP commands. A two-tab regression test also uses two
+  live HTTP/SSE subscriptions with an EventSource compatibility shim to verify
+  stale-text rejection, retained text, disabled publication, and explicit reload
+  recovery. It failed against the original client before the fix.
 - `pnpm --filter @specter/macro-workspace typecheck`: passes.
 - Existing core, memory, and JSONL tests: **176 passing tests** (70 + 9 + 97).
 - Repository `pnpm check`, `pnpm lint`, and `pnpm build`: pass. Existing lint
